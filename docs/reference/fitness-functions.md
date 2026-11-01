@@ -447,6 +447,9 @@ in-flight action and reads like a command.
 intent.
 
 **Fix.** Rename the command to a verb-first imperative phrase (e.g. `PlaceOrder`).
+If the name already starts with a verb Protean does not know (`AdjustStock`),
+add the verb to [`[lint].command_verbs`](configuration/index.md#lint) in
+`domain.toml`.
 
 ### AGGREGATE_NOT_NOUN { #aggregate-not-noun }
 

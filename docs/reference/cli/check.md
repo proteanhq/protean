@@ -80,8 +80,7 @@ previously `1`, are usage errors (`2`).
 | `info` | Errors, warnings, and infos. |
 
 See the [`[lint]` configuration reference](../configuration/index.md#lint) for
-the full set of config keys (`level`, `suppressions`, `aggregate_size_limit`,
-`handler_breadth_limit`, `check_infra_imports`, `rules`).
+the full set of config keys.
 
 ## Result envelope
 
