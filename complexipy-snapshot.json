@@ -783,7 +783,7 @@
       },
       {
         "name": "IRBuilder::_extract_resolved_field",
-        "complexity": 53
+        "complexity": 51
       },
       {
         "name": "IRBuilder::_find_deprecated_import_uses",

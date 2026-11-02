@@ -76,7 +76,7 @@ A compact overview showing:
 
 ```
 Domain: Ordering
-IR Version: 0.3.0
+IR Version: 0.4.0
 Checksum: sha256:a1b2c3d4...
 
      Element Counts

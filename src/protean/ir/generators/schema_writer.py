@@ -149,8 +149,10 @@ def _check_unique_paths(paths: dict[str, PurePosixPath]) -> None:
         )
 
 
+# A ``dict`` field refers to a target only when its values are a value
+# object; an untyped dict carries no ``target`` and the walk skips it.
 _PROTO_REFERENCE_KINDS = frozenset(
-    {"value_object", "value_object_list", "has_one", "has_many"}
+    {"value_object", "value_object_list", "has_one", "has_many", "dict"}
 )
 
 

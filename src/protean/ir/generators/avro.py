@@ -179,6 +179,12 @@ def _field_to_avro_type(
         return {"type": "array", "items": items}
 
     if kind == "dict":
+        target = field.get("target")
+        if target:
+            return {
+                "type": "map",
+                "values": _named_record(target, all_elements, defined),
+            }
         return {"type": "map", "values": "string"}
 
     return _scalar_avro_type(field)

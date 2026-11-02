@@ -28,9 +28,9 @@ class TestSchemaFile:
         schema = load_schema()
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
         assert (
-            schema["$id"] == "https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json"
+            schema["$id"] == "https://docs.proteanhq.com/assets/ir/v0.4.0/schema.json"
         )
-        assert schema["title"] == "Protean IR v0.3.0"
+        assert schema["title"] == "Protean IR v0.4.0"
         assert "$defs" in schema
 
 

@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 from protean._deprecation import DEPRECATIONS
 from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index, RawIndex
+from protean.core.value_object import BaseValueObject
 from protean.exceptions import ConfigurationError
 from protean.fields.association import HasMany, HasOne, Reference
 from protean.fields.basic import ValueObjectList
@@ -503,6 +504,24 @@ class IRBuilder:
 
         return result
 
+    def _dict_field_entry(self, content_type: Any) -> dict[str, Any]:
+        """Return the ``kind``/``type`` keys of a ``Dict`` field's IR entry.
+
+        A typed dict adds its value type's short name as ``content_type``.
+        When the value type is a value object, it also adds the value
+        object's FQN as ``target``.
+        """
+        entry: dict[str, Any] = {"kind": "dict", "type": "Dict"}
+        if content_type is None:
+            return entry
+        entry["content_type"] = self._python_type_name(content_type)
+        # The short name in ``content_type`` can be ambiguous across modules,
+        # so a value-object map also carries the FQN that the schema
+        # generators resolve the map's values through.
+        if isinstance(content_type, type) and issubclass(content_type, BaseValueObject):
+            entry["target"] = self._resolved_fqn(content_type)
+        return entry
+
     def _extract_resolved_field(self, field: Any, spec: Any | None) -> dict[str, Any]:
         """Build an IR field dict from a ResolvedField + optional FieldSpec."""
         entry: dict[str, Any] = {}
@@ -521,11 +540,7 @@ class IRBuilder:
             if ct is not None:
                 entry["content_type"] = self._python_type_name(ct)
         elif self._is_dict_type(base_type, python_type):
-            entry["kind"] = "dict"
-            entry["type"] = "Dict"
-            ct = field.content_type
-            if ct is not None:
-                entry["content_type"] = self._python_type_name(ct)
+            entry = self._dict_field_entry(field.content_type)
         else:
             kind = field.field_kind
             entry["kind"] = kind

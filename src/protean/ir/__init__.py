@@ -30,7 +30,7 @@ __all__ = [
     "load_schema",
 ]
 
-SCHEMA_VERSION = "0.3.0"
+SCHEMA_VERSION = "0.4.0"
 SCHEMA_URL = f"https://docs.proteanhq.com/assets/ir/v{SCHEMA_VERSION}/schema.json"
 
 _IR_DIR = Path(__file__).parent

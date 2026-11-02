@@ -92,11 +92,19 @@ class TestFieldKinds:
 
     def test_dict_of_value_objects_field(self, product_fields):
         # A typed Dict(value_type=ValueObject(...)) is a dict whose IR entry
-        # carries the value object's name as its content_type.
+        # carries the value object's name as its content_type and its FQN as
+        # its target.
         f = product_fields["address_book"]
         assert f["kind"] == "dict"
         assert f["type"] == "Dict"
         assert f["content_type"] == "Address"
+        assert f["target"] == "tests.ir.elements.Address"
+
+    def test_untyped_dict_field_has_no_content_type_or_target(self, product_fields):
+        f = product_fields["metadata_field"]
+        assert f["kind"] == "dict"
+        assert "content_type" not in f
+        assert "target" not in f
 
     def test_value_object_field(self, product_fields):
         f = product_fields["shipping_address"]

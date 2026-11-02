@@ -104,7 +104,10 @@ def _field_proto_type(
         content = field.get("content_type")
         return (_TYPE_MAP.get(content, "string") if content else "string"), True
     if kind == "dict":
-        # proto3 map<string, string> is not "repeated"; represented specially.
+        # proto3 map<...> is not "repeated"; represented specially.
+        target = field.get("target")
+        if target:
+            return f"map<string, {resolve(target, referenced)}>", False
         return "map<string, string>", False
     return _scalar_proto_type(field), False
 

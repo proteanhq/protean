@@ -173,6 +173,24 @@ with `$ref` pointers:
 }
 ```
 
+A `Dict` field whose values are a value object, such as
+`Dict(value_type=ValueObject(Address))`, refers to the same `$defs` entry from
+`additionalProperties`:
+
+```json
+{
+  "address_book": {
+    "type": "object",
+    "additionalProperties": { "$ref": "#/$defs/Address" }
+  }
+}
+```
+
+Avro writes the field as a `map` whose `values` is the `Address` record, and
+Protobuf as `map<string, Address>`. An untyped `Dict()` stays a map of untyped
+values: `{"type": "object"}`, `{"type": "map", "values": "string"}` and
+`map<string, string>`.
+
 ### Optional fields
 
 Optional fields use the `anyOf` pattern with `null`:
