@@ -174,8 +174,8 @@ with `$ref` pointers:
 ```
 
 A `Dict` field whose values are a value object, such as
-`Dict(value_type=ValueObject(Address))`, refers to the same `$defs` entry from
-`additionalProperties`:
+`Dict(value_type=ValueObject(Address))`, refers to the value object's `$defs`
+entry from `additionalProperties`:
 
 ```json
 {
@@ -186,10 +186,11 @@ A `Dict` field whose values are a value object, such as
 }
 ```
 
-Avro writes the field as a `map` whose `values` is the `Address` record, and
-Protobuf as `map<string, Address>`. An untyped `Dict()` stays a map of untyped
-values: `{"type": "object"}`, `{"type": "map", "values": "string"}` and
-`map<string, string>`.
+A value object that a `Dict` field and a `ValueObject` field both use gets one
+`$defs` entry. Avro writes the field as a `map` whose `values` is the `Address`
+record, and Protobuf as a `map` whose value type is the `Address` message. An
+untyped `Dict()` stays a map of untyped values: `{"type": "object"}`,
+`{"type": "map", "values": "string"}` and `map<string, string>`.
 
 ### Optional fields
 

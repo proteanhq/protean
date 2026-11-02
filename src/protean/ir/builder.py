@@ -280,6 +280,10 @@ def validate_lint_table(lint_config: Any) -> str | None:
     return None
 
 
+def _is_value_object_class(candidate: Any) -> bool:
+    return isinstance(candidate, type) and issubclass(candidate, BaseValueObject)
+
+
 class IRBuilder:
     """Build the Intermediate Representation for a Protean domain.
 
@@ -504,12 +508,20 @@ class IRBuilder:
 
         return result
 
-    def _dict_field_entry(self, content_type: Any) -> dict[str, Any]:
-        """Return the ``kind``/``type`` keys of a ``Dict`` field's IR entry.
+    def _dict_value_object(self, field: ResolvedField) -> type | None:
+        """Return the value object class a ``Dict`` field's values hold, if any."""
+        python_type: Any = field._python_type
+        if not self._is_dict_type(self._unwrap_type(python_type), python_type):
+            return None
+        content_type = field.content_type
+        return content_type if _is_value_object_class(content_type) else None
 
-        A typed dict adds its value type's short name as ``content_type``.
-        When the value type is a value object, it also adds the value
-        object's FQN as ``target``.
+    def _dict_field_entry(self, content_type: Any) -> dict[str, Any]:
+        """Return the IR entry of a ``Dict`` field.
+
+        The entry always has ``kind`` and ``type``. A typed dict adds its value
+        type's short name as ``content_type``. When the value type is a value
+        object, it also adds the value object's FQN as ``target``.
         """
         entry: dict[str, Any] = {"kind": "dict", "type": "Dict"}
         if content_type is None:
@@ -518,7 +530,7 @@ class IRBuilder:
         # The short name in ``content_type`` can be ambiguous across modules,
         # so a value-object map also carries the FQN that the schema
         # generators resolve the map's values through.
-        if isinstance(content_type, type) and issubclass(content_type, BaseValueObject):
+        if _is_value_object_class(content_type):
             entry["target"] = self._resolved_fqn(content_type)
         return entry
 
@@ -1606,12 +1618,30 @@ class IRBuilder:
             part_of = getattr(getattr(part_of, "meta_", None), "part_of", None)
         return None
 
+    def _embedded_vo_fqn(self, field_obj: Any) -> str | None:
+        """Return the FQN of the value object a field embeds, or ``None``.
+
+        Covers ``ValueObject`` and ``ValueObjectList`` fields and a ``Dict``
+        field whose values are a value object.
+        """
+        if isinstance(field_obj, ValueObject):
+            return self._resolved_fqn(field_obj.value_object_cls)
+        if isinstance(field_obj, ValueObjectList):
+            if isinstance(field_obj.content_type, ValueObject):
+                return self._resolved_fqn(field_obj.content_type.value_object_cls)
+            return fqn(field_obj.content_type)
+        if isinstance(field_obj, ResolvedField):
+            dict_vo = self._dict_value_object(field_obj)
+            if dict_vo is not None:
+                return self._resolved_fqn(dict_vo)
+        return None
+
     def _build_vo_cluster_map(self) -> dict[str, type]:
         """Build a mapping of VO FQN → aggregate class by scanning fields.
 
         Value objects don't get ``aggregate_cluster`` set by the resolver,
         so we derive it from which aggregate/entity embeds them via
-        ``ValueObject`` or ``ValueObjectList`` fields.
+        ``ValueObject``, ``ValueObjectList`` or value-object ``Dict`` fields.
         """
         registry = self._domain._domain_registry
         vo_map: dict[str, type] = {}
@@ -1624,19 +1654,9 @@ class IRBuilder:
                 agg_cls = getattr(owner_cls.meta_, "aggregate_cluster", owner_cls)
 
                 for field_obj in declared_fields(owner_cls).values():
-                    if isinstance(field_obj, ValueObject):
-                        vo_fqn = self._resolved_fqn(field_obj.value_object_cls)
-                        if vo_fqn not in vo_map:
-                            vo_map[vo_fqn] = agg_cls
-                    elif isinstance(field_obj, ValueObjectList):
-                        if isinstance(field_obj.content_type, ValueObject):
-                            vo_fqn = self._resolved_fqn(
-                                field_obj.content_type.value_object_cls
-                            )
-                        else:
-                            vo_fqn = fqn(field_obj.content_type)
-                        if vo_fqn not in vo_map:
-                            vo_map[vo_fqn] = agg_cls
+                    vo_fqn = self._embedded_vo_fqn(field_obj)
+                    if vo_fqn is not None and vo_fqn not in vo_map:
+                        vo_map[vo_fqn] = agg_cls
 
         # Also check VOs that have explicit part_of
         for record in registry._elements.get("VALUE_OBJECT", {}).values():

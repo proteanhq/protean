@@ -702,6 +702,10 @@
         "complexity": 16
       },
       {
+        "name": "IRBuilder::_build_vo_cluster_map",
+        "complexity": 17
+      },
+      {
         "name": "IRBuilder::_diagnose_circular_cluster_dependencies",
         "complexity": 18
       },
@@ -756,10 +760,6 @@
       {
         "name": "IRBuilder::_extract_fields",
         "complexity": 32
-      },
-      {
-        "name": "IRBuilder::_build_vo_cluster_map",
-        "complexity": 33
       },
       {
         "name": "IRBuilder::_diagnose_unraised_event",

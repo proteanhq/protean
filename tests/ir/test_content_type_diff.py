@@ -224,7 +224,7 @@ class TestUnchangedValueTypesAreNotReported:
         cluster = left["clusters"][PRICE_FQN]
         del cluster["aggregate"]["fields"]["tiers"]["target"]
         del cluster["events"][EVENT_FQN]["fields"]["tiers"]["target"]
-        left["contracts"]["events"][0]["fields"]["tiers"].pop("target", None)
+        del left["contracts"]["events"][0]["fields"]["tiers"]["target"]
 
         fields = diff_ir(left, right)["clusters"]["changed"][PRICE_FQN]["aggregate"]
         assert fields["fields"]["changed"]["tiers"] == {

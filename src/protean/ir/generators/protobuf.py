@@ -140,6 +140,26 @@ def _message_body(
     return lines
 
 
+def _local_type_name(
+    ref_name: str, namespace: str, main_name: str, *, nested: bool
+) -> str:
+    """Return how a field names a message defined in the same file.
+
+    ``main_name`` is the file's main message. With ``nested``, the other local
+    messages are defined inside it; otherwise they are its siblings in the
+    ``namespace`` package.
+    """
+    # protoc defines a hidden ``<Field>Entry`` message for each map field and
+    # looks a bare name up from the innermost message out, so a bare
+    # ``LedgerEntry`` can name the hidden message of a ``ledger`` map. The full
+    # name always reaches the real one.
+    if not ref_name.endswith("Entry"):
+        return ref_name
+    if nested and ref_name != main_name:
+        return f".{namespace}.{main_name}.{ref_name}"
+    return f".{namespace}.{ref_name}"
+
+
 def generate_proto_schema(
     element: dict[str, Any],
     *,
@@ -177,7 +197,9 @@ def generate_proto_schema(
         path = import_path(target_fqn) if import_path and not is_self else None
         if not path:
             referenced.add(target_fqn)
-            return ref_name
+            return _local_type_name(
+                ref_name, namespace, name, nested=import_path is not None
+            )
         imports.add(path)
         return f".{module_path(target_fqn) or 'protean'}.{ref_name}"
 
