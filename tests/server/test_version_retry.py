@@ -1457,3 +1457,94 @@ class TestThreeLevelNestedRetry:
 
         attempts = _VERSION_RETRY_DEFAULTS["max_retries"] + 1
         assert runs == {"first": attempts, "second": attempts, "third": attempts}
+
+
+class Wallet(BaseAggregate):
+    owner: String(max_length=50)
+
+
+class WalletOpened(BaseEvent):
+    wallet_id: Identifier(required=True)
+
+
+class OpenWallet(BaseCommand):
+    wallet_id: Identifier(required=True)
+
+
+class FundWallet(BaseCommand):
+    wallet_id: Identifier(required=True)
+
+
+class TestNestedRetryOutboxRows:
+    """Outbox rows a nested handler writes belong to the outer transaction.
+
+    A failed outer attempt rolls them back with everything else, and the
+    retry that succeeds writes them once.
+    """
+
+    @pytest.fixture(autouse=True)
+    def register_wallets(self, test_domain):
+        test_domain.config["enable_outbox"] = True
+        test_domain.config["server"]["default_subscription_type"] = "stream"
+        test_domain.register(Wallet)
+        test_domain.register(WalletOpened, part_of=Wallet)
+        test_domain.register(OpenWallet, part_of=Wallet)
+        test_domain.register(FundWallet, part_of=Wallet)
+
+    def _register_chain(self, test_domain, runs, fail_inner, fail_outer):
+        class WalletHandlers(BaseCommandHandler):
+            @handle(OpenWallet)
+            def open(self, command: OpenWallet) -> None:
+                runs["outer"] += 1
+                current_domain.process(
+                    FundWallet(wallet_id=command.wallet_id), asynchronous=False
+                )
+                if runs["outer"] <= fail_outer:
+                    raise ExpectedVersionError("stale")
+
+            @handle(FundWallet)
+            def fund(self, command: FundWallet) -> None:
+                runs["inner"] += 1
+                if runs["inner"] <= fail_inner:
+                    raise ExpectedVersionError("stale")
+                wallet = Wallet(id=command.wallet_id, owner="o")
+                wallet.raise_(WalletOpened(wallet_id=wallet.id))
+                current_domain.repository_for(Wallet).add(wallet)
+
+        test_domain.register(WalletHandlers, part_of=Wallet)
+        test_domain.init(traverse=False)
+
+    def _outbox_types(self, test_domain) -> list[str]:
+        rows = test_domain._get_outbox_repo("default").find_unprocessed()
+        return [row.type for row in rows]
+
+    @pytest.mark.parametrize(
+        "fail_inner, fail_outer",
+        [(1, 0), (0, 1)],
+        ids=["conflict_in_nested_handler", "conflict_after_nested_handler"],
+    )
+    @patch("protean.utils.mixins.time.sleep")
+    def test_outer_retry_writes_the_nested_outbox_row_once(
+        self, mock_sleep, test_domain, fail_inner, fail_outer
+    ):
+        runs = {"outer": 0, "inner": 0}
+        self._register_chain(test_domain, runs, fail_inner, fail_outer)
+
+        test_domain.process(OpenWallet(wallet_id="w1"), asynchronous=False)
+
+        assert runs["outer"] == 2
+        assert self._outbox_types(test_domain) == [WalletOpened.__type__]
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_a_failed_outer_transaction_leaves_no_nested_outbox_row(
+        self, mock_sleep, test_domain
+    ):
+        runs = {"outer": 0, "inner": 0}
+        self._register_chain(test_domain, runs, fail_inner=0, fail_outer=1_000)
+
+        with pytest.raises(ExpectedVersionError):
+            test_domain.process(OpenWallet(wallet_id="w1"), asynchronous=False)
+
+        assert runs["inner"] == _VERSION_RETRY_DEFAULTS["max_retries"] + 1
+        assert self._outbox_types(test_domain) == []
+        assert test_domain.repository_for(Wallet).get_or_none("w1") is None
