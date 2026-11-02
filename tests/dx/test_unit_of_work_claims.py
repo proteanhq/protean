@@ -176,15 +176,14 @@ def test_a_version_conflict_runs_the_handler_body_up_to_the_total():
         assert domain.repository_for(Order).query.all().total == 0
 
 
-def test_inside_an_outer_unit_of_work_every_run_joins_it():
+def test_inside_an_outer_unit_of_work_the_handler_runs_once():
     domain, Order, _, OrderServices, runs = _domain()
 
     with domain.domain_context():
         with pytest.raises(ExpectedVersionError):
             OrderServices().place_via_handler()
 
-        assert len(runs) == TOTAL_RUNS
-        assert len({id(uow) for uow in runs}) == 1
+        assert len(runs) == 1
         assert domain.repository_for(Order).query.all().total == 0
 
 
