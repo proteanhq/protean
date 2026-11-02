@@ -214,7 +214,7 @@ external Avro consumer:
       "name": "customer",
       "type": "string"
     },
-    { "name": "order_id", "type": { "logicalType": "uuid", "type": "string" } },
+    { "name": "order_id", "type": "string" },
     {
       "default": null,
       "name": "placed_at",

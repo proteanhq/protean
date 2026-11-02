@@ -17,8 +17,9 @@ Conventions:
 - Each element becomes an Avro ``record`` with a ``namespace`` from its module.
 - Optional fields become a ``["null", <type>]`` union with ``"default": null``
   (null first, per the Avro rule that a union default matches the first branch).
-- Date/DateTime/Identifier map to Avro logical types (``date``,
-  ``timestamp-millis``, ``uuid``).
+- Date/DateTime map to Avro logical types (``date``, ``timestamp-millis``).
+- Identifier maps to a plain ``string`` with no logical type, because an
+  identifier can hold any string, not only a UUID.
 - Nested value objects / entities become named records, defined once and
   referenced by fullname (``namespace.Name``) on subsequent use, so a value
   object reused across namespaces stays resolvable (Avro's named-type model).
@@ -45,7 +46,7 @@ _TYPE_MAP: dict[str, Any] = {
     "String": "string",
     "Text": "string",
     "Status": "string",
-    "Identifier": {"type": "string", "logicalType": "uuid"},
+    "Identifier": "string",
     "Integer": "long",
     "Float": "double",
     "Decimal": "string",
