@@ -63,6 +63,9 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+extra_javascript:
+  - javascripts/app-resume.js
+
 hooks:
   - hooks/diagrams.py
   - hooks/docstring_params.py

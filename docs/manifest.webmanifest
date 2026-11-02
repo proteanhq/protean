@@ -1,0 +1,15 @@
+{
+  "name": "Protean Docs",
+  "short_name": "Protean",
+  "description": "Documentation for Protean, a Python framework for event-driven applications built with Domain-Driven Design.",
+  "start_url": "/?launch",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0C0F11",
+  "theme_color": "#0C0F11",
+  "icons": [
+    { "src": "assets/app/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/app/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/app/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

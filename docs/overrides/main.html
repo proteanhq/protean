@@ -1,0 +1,11 @@
+{#-
+  Extends material/templates/base.html.
+
+  The manifest lets a phone install the docs as an app.
+-#}
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <link rel="manifest" href="{{ 'manifest.webmanifest' | url }}">
+{% endblock %}
