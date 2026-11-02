@@ -1320,8 +1320,10 @@ class Engine:
         commit did not land, so a crash cannot leave events permanently
         unpublished. Returns the number of rows repaired.
 
-        Reads only the newest message when it is one of this domain's events
-        and has its row, and the ``limit`` window otherwise. A failure here
+        Only events of event-sourced aggregates are repaired. Reads nothing
+        when no event-sourced aggregate is on the provider, only the newest
+        message when it is such an aggregate's event and has its row, and the
+        ``limit`` window otherwise. A failure here
         must never block the engine from starting. With ``server --workers N``
         it runs once per worker; the reconcile is
         idempotent (the ``(message_id, target_broker)`` unique index rejects
