@@ -1,0 +1,1742 @@
+[
+  {
+    "path": "src/protean/adapters/broker/__init__.py",
+    "file_name": "__init__.py",
+    "functions": [
+      {
+        "name": "Brokers::_initialize",
+        "complexity": 23
+      }
+    ]
+  },
+  {
+    "path": "src/protean/adapters/broker/inline.py",
+    "file_name": "inline.py",
+    "functions": [
+      {
+        "name": "InlineBroker::_cleanup_stale_messages",
+        "complexity": 16
+      }
+    ]
+  },
+  {
+    "path": "src/protean/adapters/broker/redis.py",
+    "file_name": "redis.py",
+    "functions": [
+      {
+        "name": "RedisBroker::_cleanup_stale_consumers",
+        "complexity": 18
+      },
+      {
+        "name": "RedisBroker::_read_blocking_streams",
+        "complexity": 24
+      },
+      {
+        "name": "RedisBroker::_read",
+        "complexity": 33
+      },
+      {
+        "name": "RedisBroker::_read_blocking",
+        "complexity": 37
+      }
+    ]
+  },
+  {
+    "path": "src/protean/adapters/event_store/__init__.py",
+    "file_name": "__init__.py",
+    "functions": [
+      {
+        "name": "EventStore::handlers_for",
+        "complexity": 23
+      }
+    ]
+  },
+  {
+    "path": "src/protean/adapters/repository/elasticsearch.py",
+    "file_name": "elasticsearch.py",
+    "functions": [
+      {
+        "name": "ElasticsearchDAO::_build_filters",
+        "complexity": 24
+      },
+      {
+        "name": "ESProvider::decorate_database_model_class",
+        "complexity": 26
+      },
+      {
+        "name": "ElasticsearchDAO::_filter",
+        "complexity": 30
+      }
+    ]
+  },
+  {
+    "path": "src/protean/adapters/repository/memory.py",
+    "file_name": "memory.py",
+    "functions": [
+      {
+        "name": "MemorySession::commit",
+        "complexity": 18
+      },
+      {
+        "name": "DictDAO::_filter",
+        "complexity": 29
+      },
+      {
+        "name": "DictDAO::_check_unique_indexes",
+        "complexity": 30
+      }
+    ]
+  },
+  {
+    "path": "src/protean/adapters/repository/sqlalchemy.py",
+    "file_name": "sqlalchemy.py",
+    "functions": [
+      {
+        "name": "SADAO::_update",
+        "complexity": 18
+      },
+      {
+        "name": "_mysql_index_key_width",
+        "complexity": 23
+      },
+      {
+        "name": "_resolve_python_type",
+        "complexity": 23
+      },
+      {
+        "name": "_refuse_unstorable_identity",
+        "complexity": 25
+      },
+      {
+        "name": "_make_sa_indexes",
+        "complexity": 26
+      },
+      {
+        "name": "SqlalchemyModel::__init_subclass__",
+        "complexity": 158
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/__init__.py",
+    "file_name": "__init__.py",
+    "functions": [
+      {
+        "name": "main",
+        "complexity": 17
+      },
+      {
+        "name": "server",
+        "complexity": 28
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/check.py",
+    "file_name": "check.py",
+    "functions": [
+      {
+        "name": "check",
+        "complexity": 17
+      },
+      {
+        "name": "_print_rich",
+        "complexity": 27
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/docs.py",
+    "file_name": "docs.py",
+    "functions": [
+      {
+        "name": "_load_domain_snapshot_config",
+        "complexity": 16
+      },
+      {
+        "name": "_generate_handlers",
+        "complexity": 17
+      },
+      {
+        "name": "generate",
+        "complexity": 26
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/dx.py",
+    "file_name": "dx.py",
+    "functions": [
+      {
+        "name": "_apply",
+        "complexity": 18
+      },
+      {
+        "name": "_scan",
+        "complexity": 18
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/hooks.py",
+    "file_name": "hooks.py",
+    "functions": [
+      {
+        "name": "_check_compat_single",
+        "complexity": 16
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/ir.py",
+    "file_name": "ir.py",
+    "functions": [
+      {
+        "name": "_print_check_text",
+        "complexity": 18
+      },
+      {
+        "name": "_print_element_changes",
+        "complexity": 29
+      },
+      {
+        "name": "_print_diff_text",
+        "complexity": 31
+      },
+      {
+        "name": "diff",
+        "complexity": 42
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/new.py",
+    "file_name": "new.py",
+    "functions": [
+      {
+        "name": "run_project_setup",
+        "complexity": 17
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/projection.py",
+    "file_name": "projection.py",
+    "functions": [
+      {
+        "name": "status",
+        "complexity": 22
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/recover.py",
+    "file_name": "recover.py",
+    "functions": [
+      {
+        "name": "recover",
+        "complexity": 107
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/schema.py",
+    "file_name": "schema.py",
+    "functions": [
+      {
+        "name": "write_index_ddl",
+        "complexity": 20
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/subscriptions.py",
+    "file_name": "subscriptions.py",
+    "functions": [
+      {
+        "name": "status",
+        "complexity": 24
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/test.py",
+    "file_name": "test.py",
+    "functions": [
+      {
+        "name": "TestRunner::run_full_suite_with_matrix_first",
+        "complexity": 18
+      },
+      {
+        "name": "_run_pytest_for_marker",
+        "complexity": 19
+      },
+      {
+        "name": "test_adapter",
+        "complexity": 23
+      },
+      {
+        "name": "test",
+        "complexity": 25
+      }
+    ]
+  },
+  {
+    "path": "src/protean/cli/upgrade.py",
+    "file_name": "upgrade.py",
+    "functions": [
+      {
+        "name": "upgrade_check",
+        "complexity": 16
+      },
+      {
+        "name": "_print_rich",
+        "complexity": 17
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/aggregate.py",
+    "file_name": "aggregate.py",
+    "functions": [
+      {
+        "name": "BaseAggregate::_record_event",
+        "complexity": 18
+      },
+      {
+        "name": "_pydantic_element_to_fact_event",
+        "complexity": 31
+      },
+      {
+        "name": "aggregate_factory",
+        "complexity": 34
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/command.py",
+    "file_name": "command.py",
+    "functions": [
+      {
+        "name": "BaseCommand::_build_metadata",
+        "complexity": 35
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/domain_service.py",
+    "file_name": "domain_service.py",
+    "functions": [
+      {
+        "name": "_make_invariant_wrapper",
+        "complexity": 32
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/entity.py",
+    "file_name": "entity.py",
+    "functions": [
+      {
+        "name": "BaseEntity::_update_data",
+        "complexity": 17
+      },
+      {
+        "name": "BaseEntity::__setattr__",
+        "complexity": 29
+      },
+      {
+        "name": "entity_factory",
+        "complexity": 32
+      },
+      {
+        "name": "BaseEntity::_maybe_inject_auto_id",
+        "complexity": 38
+      },
+      {
+        "name": "BaseEntity::_run_invariants",
+        "complexity": 45
+      },
+      {
+        "name": "BaseEntity::__init__",
+        "complexity": 46
+      },
+      {
+        "name": "BaseEntity::model_post_init",
+        "complexity": 46
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/event.py",
+    "file_name": "event.py",
+    "functions": [
+      {
+        "name": "BaseEvent::_build_metadata",
+        "complexity": 32
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/index.py",
+    "file_name": "index.py",
+    "functions": [
+      {
+        "name": "validate_indexes",
+        "complexity": 27
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/projection.py",
+    "file_name": "projection.py",
+    "functions": [
+      {
+        "name": "BaseProjection::__init__",
+        "complexity": 27
+      },
+      {
+        "name": "BaseProjection::model_post_init",
+        "complexity": 33
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/query.py",
+    "file_name": "query.py",
+    "functions": [
+      {
+        "name": "BaseQuery::_convert_vo_descriptors",
+        "complexity": 16
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/repository.py",
+    "file_name": "repository.py",
+    "functions": [
+      {
+        "name": "BaseRepository::_has_changed_child",
+        "complexity": 17
+      },
+      {
+        "name": "BaseRepository::_do_add",
+        "complexity": 19
+      },
+      {
+        "name": "BaseRepository::_sync_children",
+        "complexity": 62
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/unit_of_work.py",
+    "file_name": "unit_of_work.py",
+    "functions": [
+      {
+        "name": "UnitOfWork::_do_commit",
+        "complexity": 69
+      }
+    ]
+  },
+  {
+    "path": "src/protean/core/value_object.py",
+    "file_name": "value_object.py",
+    "functions": [
+      {
+        "name": "_schema_hashes_by_value",
+        "complexity": 22
+      },
+      {
+        "name": "BaseValueObject::_resolve_fieldspecs",
+        "complexity": 28
+      },
+      {
+        "name": "value_object_from_entity",
+        "complexity": 41
+      }
+    ]
+  },
+  {
+    "path": "src/protean/domain/__init__.py",
+    "file_name": "__init__.py",
+    "functions": [
+      {
+        "name": "Domain::configure_logging",
+        "complexity": 18
+      },
+      {
+        "name": "Domain::_traverse",
+        "complexity": 23
+      },
+      {
+        "name": "Domain::_register_element",
+        "complexity": 31
+      }
+    ]
+  },
+  {
+    "path": "src/protean/domain/command_processor.py",
+    "file_name": "command_processor.py",
+    "functions": [
+      {
+        "name": "CommandProcessor::enrich",
+        "complexity": 27
+      },
+      {
+        "name": "CommandProcessor::process",
+        "complexity": 51
+      }
+    ]
+  },
+  {
+    "path": "src/protean/domain/handler_setup.py",
+    "file_name": "handler_setup.py",
+    "functions": [
+      {
+        "name": "HandlerConfigurator::validate_sequential_by",
+        "complexity": 55
+      }
+    ]
+  },
+  {
+    "path": "src/protean/domain/resolver.py",
+    "file_name": "resolver.py",
+    "functions": [
+      {
+        "name": "ElementResolver::assign_aggregate_clusters",
+        "complexity": 25
+      }
+    ]
+  },
+  {
+    "path": "src/protean/domain/validation.py",
+    "file_name": "validation.py",
+    "functions": [
+      {
+        "name": "DomainValidator::_validate_association_fields",
+        "complexity": 18
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ext/mypy_plugin.py",
+    "file_name": "mypy_plugin.py",
+    "functions": [
+      {
+        "name": "_get_kwarg_bool",
+        "complexity": 20
+      },
+      {
+        "name": "_resolve_field_type_for_init",
+        "complexity": 22
+      },
+      {
+        "name": "_synthesize_has_many_methods",
+        "complexity": 48
+      },
+      {
+        "name": "_synthesize_init",
+        "complexity": 62
+      }
+    ]
+  },
+  {
+    "path": "src/protean/fields/association.py",
+    "file_name": "association.py",
+    "functions": [
+      {
+        "name": "HasMany::add",
+        "complexity": 25
+      },
+      {
+        "name": "HasMany::remove",
+        "complexity": 27
+      },
+      {
+        "name": "HasOne::__set__",
+        "complexity": 29
+      }
+    ]
+  },
+  {
+    "path": "src/protean/fields/base.py",
+    "file_name": "base.py",
+    "functions": [
+      {
+        "name": "Field::_load",
+        "complexity": 25
+      }
+    ]
+  },
+  {
+    "path": "src/protean/fields/containers.py",
+    "file_name": "containers.py",
+    "functions": [
+      {
+        "name": "List",
+        "complexity": 23
+      }
+    ]
+  },
+  {
+    "path": "src/protean/fields/resolved.py",
+    "file_name": "resolved.py",
+    "functions": [
+      {
+        "name": "ResolvedField::__init__",
+        "complexity": 21
+      }
+    ]
+  },
+  {
+    "path": "src/protean/fields/spec.py",
+    "file_name": "spec.py",
+    "functions": [
+      {
+        "name": "FieldSpec::resolve_annotated",
+        "complexity": 25
+      },
+      {
+        "name": "FieldSpec::__repr__",
+        "complexity": 28
+      },
+      {
+        "name": "FieldSpec::resolve_field_kwargs",
+        "complexity": 47
+      }
+    ]
+  },
+  {
+    "path": "src/protean/integrations/fastapi/middleware.py",
+    "file_name": "middleware.py",
+    "functions": [
+      {
+        "name": "DomainContextMiddleware::_emit_http_wide_event",
+        "complexity": 18
+      }
+    ]
+  },
+  {
+    "path": "src/protean/integrations/pytest/adapter_conformance.py",
+    "file_name": "adapter_conformance.py",
+    "functions": [
+      {
+        "name": "pytest_collection_modifyitems",
+        "complexity": 18
+      }
+    ]
+  },
+  {
+    "path": "src/protean/integrations/pytest/query_assertions.py",
+    "file_name": "query_assertions.py",
+    "functions": [
+      {
+        "name": "_limit_values",
+        "complexity": 16
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/analysis/dataflow.py",
+    "file_name": "dataflow.py",
+    "functions": [
+      {
+        "name": "_FlowBuilder::_walk_structure",
+        "complexity": 16
+      },
+      {
+        "name": "_FlowBuilder::_step",
+        "complexity": 20
+      },
+      {
+        "name": "_FlowBuilder::_step_simple",
+        "complexity": 25
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/analysis/element_index.py",
+    "file_name": "element_index.py",
+    "functions": [
+      {
+        "name": "_role",
+        "complexity": 18
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/analysis/facts.py",
+    "file_name": "facts.py",
+    "functions": [
+      {
+        "name": "FactCatalog::_collect",
+        "complexity": 19
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/analysis/source_provider.py",
+    "file_name": "source_provider.py",
+    "functions": [
+      {
+        "name": "SourceProvider::_discover_modules",
+        "complexity": 28
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/builder.py",
+    "file_name": "builder.py",
+    "functions": [
+      {
+        "name": "IRBuilder::_check_element_deprecated",
+        "complexity": 16
+      },
+      {
+        "name": "IRBuilder::_diagnose_event_without_data",
+        "complexity": 16
+      },
+      {
+        "name": "IRBuilder::_extract_resilience_policy",
+        "complexity": 16
+      },
+      {
+        "name": "IRBuilder::_diagnose_circular_cluster_dependencies",
+        "complexity": 18
+      },
+      {
+        "name": "IRBuilder::_diagnose_deprecated_imports",
+        "complexity": 18
+      },
+      {
+        "name": "IRBuilder::_apply_suppressions",
+        "complexity": 19
+      },
+      {
+        "name": "IRBuilder::_run_custom_lint_rules",
+        "complexity": 19
+      },
+      {
+        "name": "IRBuilder::_extract_indexes",
+        "complexity": 20
+      },
+      {
+        "name": "IRBuilder::_build_clusters",
+        "complexity": 21
+      },
+      {
+        "name": "IRBuilder::_diagnose_handler_persists_and_calls_out",
+        "complexity": 21
+      },
+      {
+        "name": "IRBuilder::_diagnose_unbounded_indexed_string",
+        "complexity": 21
+      },
+      {
+        "name": "IRBuilder::_build_projections",
+        "complexity": 22
+      },
+      {
+        "name": "IRBuilder::_diagnose_unhandled_events",
+        "complexity": 23
+      },
+      {
+        "name": "IRBuilder::_diagnose_event_handler_foreign_event",
+        "complexity": 24
+      },
+      {
+        "name": "IRBuilder::_diagnose_adapter_calls",
+        "complexity": 25
+      },
+      {
+        "name": "IRBuilder::_diagnose_cross_aggregate_reference",
+        "complexity": 25
+      },
+      {
+        "name": "IRBuilder::_extract_fields",
+        "complexity": 32
+      },
+      {
+        "name": "IRBuilder::_build_vo_cluster_map",
+        "complexity": 33
+      },
+      {
+        "name": "IRBuilder::_diagnose_unraised_event",
+        "complexity": 36
+      },
+      {
+        "name": "IRBuilder::_strongly_connected_components",
+        "complexity": 37
+      },
+      {
+        "name": "IRBuilder::_diagnose_infra_imports",
+        "complexity": 43
+      },
+      {
+        "name": "IRBuilder::_diagnose_unindexed_filter_path",
+        "complexity": 47
+      },
+      {
+        "name": "IRBuilder::_materialize_method_edges",
+        "complexity": 50
+      },
+      {
+        "name": "IRBuilder::_extract_resolved_field",
+        "complexity": 53
+      },
+      {
+        "name": "IRBuilder::_find_deprecated_import_uses",
+        "complexity": 55
+      },
+      {
+        "name": "IRBuilder::_diagnose_unsourced_projection_field",
+        "complexity": 87
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/config.py",
+    "file_name": "config.py",
+    "functions": [
+      {
+        "name": "_parse_config",
+        "complexity": 19
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/diff.py",
+    "file_name": "diff.py",
+    "functions": [
+      {
+        "name": "_apply_reserved_mitigation",
+        "complexity": 16
+      },
+      {
+        "name": "_classify_clusters",
+        "complexity": 19
+      },
+      {
+        "name": "_diff_element",
+        "complexity": 19
+      },
+      {
+        "name": "_apply_upcaster_mitigation",
+        "complexity": 21
+      },
+      {
+        "name": "_classify_replay_hazards",
+        "complexity": 25
+      },
+      {
+        "name": "_classify_field_changes",
+        "complexity": 40
+      },
+      {
+        "name": "_diff_contracts",
+        "complexity": 60
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/generators/clusters.py",
+    "file_name": "clusters.py",
+    "functions": [
+      {
+        "name": "_collect_cross_references",
+        "complexity": 26
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/generators/event_model.py",
+    "file_name": "event_model.py",
+    "functions": [
+      {
+        "name": "_cluster_change_phrases",
+        "complexity": 17
+      },
+      {
+        "name": "generate_event_model_diff",
+        "complexity": 38
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/generators/events.py",
+    "file_name": "events.py",
+    "functions": [
+      {
+        "name": "_collect_referenced_event_fqns",
+        "complexity": 26
+      },
+      {
+        "name": "_render_process_managers",
+        "complexity": 31
+      },
+      {
+        "name": "_render_process_manager_subgraph",
+        "complexity": 32
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/generators/handlers.py",
+    "file_name": "handlers.py",
+    "functions": [
+      {
+        "name": "_render_process_managers",
+        "complexity": 32
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/generators/protobuf.py",
+    "file_name": "protobuf.py",
+    "functions": [
+      {
+        "name": "generate_proto_schema",
+        "complexity": 31
+      }
+    ]
+  },
+  {
+    "path": "src/protean/ir/generators/schema.py",
+    "file_name": "schema.py",
+    "functions": [
+      {
+        "name": "_build_properties",
+        "complexity": 17
+      },
+      {
+        "name": "_field_to_schema",
+        "complexity": 26
+      }
+    ]
+  },
+  {
+    "path": "src/protean/port/broker.py",
+    "file_name": "broker.py",
+    "functions": [
+      {
+        "name": "BaseBroker::publish",
+        "complexity": 20
+      }
+    ]
+  },
+  {
+    "path": "src/protean/port/dao.py",
+    "file_name": "dao.py",
+    "functions": [
+      {
+        "name": "BaseDAO::_claim",
+        "complexity": 33
+      }
+    ]
+  },
+  {
+    "path": "src/protean/port/event_store.py",
+    "file_name": "event_store.py",
+    "functions": [
+      {
+        "name": "BaseEventStore::_resolve_and_load_group",
+        "complexity": 17
+      },
+      {
+        "name": "BaseEventStore::_load_aggregate_at_version",
+        "complexity": 19
+      },
+      {
+        "name": "BaseEventStore::build_causation_tree",
+        "complexity": 27
+      },
+      {
+        "name": "BaseEventStore::verify",
+        "complexity": 27
+      }
+    ]
+  },
+  {
+    "path": "src/protean/scaffold/apply.py",
+    "file_name": "apply.py",
+    "functions": [
+      {
+        "name": "apply_plan",
+        "complexity": 28
+      }
+    ]
+  },
+  {
+    "path": "src/protean/scaffold/create_project.py",
+    "file_name": "create_project.py",
+    "functions": [
+      {
+        "name": "create_project",
+        "complexity": 19
+      }
+    ]
+  },
+  {
+    "path": "src/protean/scaffold/manifest.py",
+    "file_name": "manifest.py",
+    "functions": [
+      {
+        "name": "_derive_domain_name",
+        "complexity": 22
+      }
+    ]
+  },
+  {
+    "path": "src/protean/scaffold/model_parser.py",
+    "file_name": "model_parser.py",
+    "functions": [
+      {
+        "name": "_check_participant",
+        "complexity": 16
+      },
+      {
+        "name": "_validate_read_side",
+        "complexity": 18
+      },
+      {
+        "name": "emit_model",
+        "complexity": 21
+      },
+      {
+        "name": "_parse_constraints",
+        "complexity": 32
+      }
+    ]
+  },
+  {
+    "path": "src/protean/scaffold/slice_generator.py",
+    "file_name": "slice_generator.py",
+    "functions": [
+      {
+        "name": "_validate_names",
+        "complexity": 22
+      },
+      {
+        "name": "_validate",
+        "complexity": 74
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/engine.py",
+    "file_name": "engine.py",
+    "functions": [
+      {
+        "name": "Engine::_setup_signal_handlers",
+        "complexity": 19
+      },
+      {
+        "name": "Engine::_register_handler_subscriptions",
+        "complexity": 20
+      },
+      {
+        "name": "Engine::shutdown",
+        "complexity": 22
+      },
+      {
+        "name": "Engine::run",
+        "complexity": 29
+      },
+      {
+        "name": "Engine::handle_message",
+        "complexity": 30
+      },
+      {
+        "name": "Engine::_wire_components",
+        "complexity": 32
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/observatory/api.py",
+    "file_name": "api.py",
+    "functions": [
+      {
+        "name": "create_api_router",
+        "complexity": 451
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/observatory/metrics.py",
+    "file_name": "metrics.py",
+    "functions": [
+      {
+        "name": "_collect_pool_stats",
+        "complexity": 18
+      },
+      {
+        "name": "_collect_broker_pool_stats",
+        "complexity": 23
+      },
+      {
+        "name": "_register_infrastructure_gauges",
+        "complexity": 53
+      },
+      {
+        "name": "_hand_rolled_metrics",
+        "complexity": 74
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/observatory/routes/domain.py",
+    "file_name": "domain.py",
+    "functions": [
+      {
+        "name": "_build_links",
+        "complexity": 31
+      },
+      {
+        "name": "_build_pm_graphs",
+        "complexity": 43
+      },
+      {
+        "name": "_build_flow_graph",
+        "complexity": 62
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/observatory/routes/handlers.py",
+    "file_name": "handlers.py",
+    "functions": [
+      {
+        "name": "collect_handler_metadata",
+        "complexity": 26
+      },
+      {
+        "name": "collect_per_handler_trace_metrics",
+        "complexity": 26
+      },
+      {
+        "name": "create_handlers_router",
+        "complexity": 32
+      },
+      {
+        "name": "merge_subscription_status",
+        "complexity": 52
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/observatory/routes/infrastructure.py",
+    "file_name": "infrastructure.py",
+    "functions": [
+      {
+        "name": "sanitize_config",
+        "complexity": 21
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/observatory/routes/processes.py",
+    "file_name": "processes.py",
+    "functions": [
+      {
+        "name": "collect_pm_trace_metrics",
+        "complexity": 24
+      },
+      {
+        "name": "create_processes_router",
+        "complexity": 29
+      },
+      {
+        "name": "merge_pm_subscription_status",
+        "complexity": 29
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/observatory/routes/timeline.py",
+    "file_name": "timeline.py",
+    "functions": [
+      {
+        "name": "_group_by_correlation",
+        "complexity": 16
+      },
+      {
+        "name": "build_correlation_response",
+        "complexity": 16
+      },
+      {
+        "name": "_load_traces_for_correlation",
+        "complexity": 17
+      },
+      {
+        "name": "search_traces",
+        "complexity": 25
+      },
+      {
+        "name": "collect_timeline_stats",
+        "complexity": 42
+      },
+      {
+        "name": "collect_all_events",
+        "complexity": 45
+      },
+      {
+        "name": "_build_causation_tree_from_group",
+        "complexity": 48
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/observatory/sse.py",
+    "file_name": "sse.py",
+    "functions": [
+      {
+        "name": "create_sse_endpoint",
+        "complexity": 57
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/outbox_processor.py",
+    "file_name": "outbox_processor.py",
+    "functions": [
+      {
+        "name": "OutboxProcessor::process_batch",
+        "complexity": 22
+      },
+      {
+        "name": "OutboxProcessor::_process_single_message",
+        "complexity": 30
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/subscription/event_store_subscription.py",
+    "file_name": "event_store_subscription.py",
+    "functions": [
+      {
+        "name": "EventStoreSubscription::_gap_safe_batch",
+        "complexity": 16
+      },
+      {
+        "name": "EventStoreSubscription::run_recovery_pass",
+        "complexity": 17
+      },
+      {
+        "name": "EventStoreSubscription::process_batch",
+        "complexity": 37
+      },
+      {
+        "name": "reconstruct_unresolved",
+        "complexity": 38
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/subscription/profiles.py",
+    "file_name": "profiles.py",
+    "functions": [
+      {
+        "name": "SubscriptionConfig::from_profile",
+        "complexity": 18
+      },
+      {
+        "name": "SubscriptionConfig::validate",
+        "complexity": 21
+      },
+      {
+        "name": "build_profile_registry",
+        "complexity": 30
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/subscription/stream_subscription.py",
+    "file_name": "stream_subscription.py",
+    "functions": [
+      {
+        "name": "StreamSubscription::poll",
+        "complexity": 35
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/subscription_status.py",
+    "file_name": "subscription_status.py",
+    "functions": [
+      {
+        "name": "_collect_one_recovery_checkpoint",
+        "complexity": 18
+      },
+      {
+        "name": "_collect_stream_status",
+        "complexity": 20
+      },
+      {
+        "name": "_collect_broker_status",
+        "complexity": 25
+      },
+      {
+        "name": "collect_subscription_statuses",
+        "complexity": 28
+      },
+      {
+        "name": "_collect_partitioned_stream_status",
+        "complexity": 37
+      }
+    ]
+  },
+  {
+    "path": "src/protean/server/supervisor.py",
+    "file_name": "supervisor.py",
+    "functions": [
+      {
+        "name": "_worker_entry",
+        "complexity": 16
+      },
+      {
+        "name": "Supervisor::_monitor",
+        "complexity": 17
+      }
+    ]
+  },
+  {
+    "path": "src/protean/upgrade.py",
+    "file_name": "upgrade.py",
+    "functions": [
+      {
+        "name": "_check_outbox_migrations",
+        "complexity": 21
+      },
+      {
+        "name": "_check_outbox_schema",
+        "complexity": 28
+      }
+    ]
+  },
+  {
+    "path": "src/protean/upgrade_opportunities.py",
+    "file_name": "upgrade_opportunities.py",
+    "functions": [
+      {
+        "name": "_custom_middleware_sites",
+        "complexity": 17
+      },
+      {
+        "name": "_sqlalchemy_text_names",
+        "complexity": 22
+      },
+      {
+        "name": "_scan_scope",
+        "complexity": 28
+      },
+      {
+        "name": "_split_scopes",
+        "complexity": 29
+      },
+      {
+        "name": "_apply_import",
+        "complexity": 38
+      }
+    ]
+  },
+  {
+    "path": "src/protean/upgrade_uow.py",
+    "file_name": "upgrade_uow.py",
+    "functions": [
+      {
+        "name": "_http_names",
+        "complexity": 41
+      }
+    ]
+  },
+  {
+    "path": "src/protean/utils/__init__.py",
+    "file_name": "__init__.py",
+    "functions": [
+      {
+        "name": "_generate_identity",
+        "complexity": 16
+      },
+      {
+        "name": "_derive_element_class",
+        "complexity": 20
+      },
+      {
+        "name": "clone_class",
+        "complexity": 20
+      },
+      {
+        "name": "_prepare_pydantic_namespace",
+        "complexity": 86
+      }
+    ]
+  },
+  {
+    "path": "src/protean/utils/dlq.py",
+    "file_name": "dlq.py",
+    "functions": [
+      {
+        "name": "discover_subscriptions",
+        "complexity": 32
+      }
+    ]
+  },
+  {
+    "path": "src/protean/utils/domain_discovery.py",
+    "file_name": "domain_discovery.py",
+    "functions": [
+      {
+        "name": "find_domain_by_string",
+        "complexity": 18
+      }
+    ]
+  },
+  {
+    "path": "src/protean/utils/eventing.py",
+    "file_name": "eventing.py",
+    "functions": [
+      {
+        "name": "BaseMessageType::_convert_vo_descriptors",
+        "complexity": 16
+      },
+      {
+        "name": "Message::from_cloudevent",
+        "complexity": 16
+      },
+      {
+        "name": "Message::to_domain_object",
+        "complexity": 16
+      },
+      {
+        "name": "Message::_extract_subject",
+        "complexity": 17
+      },
+      {
+        "name": "Message::_resolve_field_aliases",
+        "complexity": 18
+      },
+      {
+        "name": "Message::to_cloudevent",
+        "complexity": 27
+      }
+    ]
+  },
+  {
+    "path": "src/protean/utils/logging.py",
+    "file_name": "logging.py",
+    "functions": [
+      {
+        "name": "_move_redaction_filter_last",
+        "complexity": 17
+      },
+      {
+        "name": "_emit_wide_event",
+        "complexity": 18
+      },
+      {
+        "name": "_extract_aggregate_info",
+        "complexity": 19
+      },
+      {
+        "name": "configure_logging",
+        "complexity": 20
+      }
+    ]
+  },
+  {
+    "path": "src/protean/utils/mixins.py",
+    "file_name": "mixins.py",
+    "functions": [
+      {
+        "name": "HandlerMixin::_handle",
+        "complexity": 16
+      },
+      {
+        "name": "handle::__call__",
+        "complexity": 39
+      }
+    ]
+  },
+  {
+    "path": "src/protean/utils/outbox.py",
+    "file_name": "outbox.py",
+    "functions": [
+      {
+        "name": "_reconcile_outbox",
+        "complexity": 29
+      }
+    ]
+  },
+  {
+    "path": "src/protean/utils/projection_rebuilder.py",
+    "file_name": "projection_rebuilder.py",
+    "functions": [
+      {
+        "name": "_replay_projector",
+        "complexity": 22
+      }
+    ]
+  },
+  {
+    "path": "src/protean/utils/reflection.py",
+    "file_name": "reflection.py",
+    "functions": [
+      {
+        "name": "attributes",
+        "complexity": 16
+      }
+    ]
+  },
+  {
+    "path": "tests/adapters/broker/inline/test_message_timeout.py",
+    "file_name": "test_message_timeout.py",
+    "functions": [
+      {
+        "name": "test_message_timeout_multiple_messages",
+        "complexity": 16
+      }
+    ]
+  },
+  {
+    "path": "tests/adapters/broker/redis/test_cleanup_stale_consumers.py",
+    "file_name": "test_cleanup_stale_consumers.py",
+    "functions": [
+      {
+        "name": "TestCleanupStaleConsumers::test_removes_stale_consumer_with_same_prefix",
+        "complexity": 20
+      }
+    ]
+  },
+  {
+    "path": "tests/adapters/repository/generic/test_claim.py",
+    "file_name": "test_claim.py",
+    "functions": [
+      {
+        "name": "TestClaimNoDoubleClaim::test_no_double_claim_under_contention",
+        "complexity": 16
+      },
+      {
+        "name": "TestClaimHoldBackUnderContention::test_no_row_is_claimed_before_its_earlier_rows_finish",
+        "complexity": 27
+      }
+    ]
+  },
+  {
+    "path": "tests/conftest.py",
+    "file_name": "conftest.py",
+    "functions": [
+      {
+        "name": "pytest_collection_modifyitems",
+        "complexity": 47
+      }
+    ]
+  },
+  {
+    "path": "tests/docs/support.py",
+    "file_name": "support.py",
+    "functions": [
+      {
+        "name": "imported_package_files",
+        "complexity": 24
+      }
+    ]
+  },
+  {
+    "path": "tests/docs/test_docs_src_is_tested.py",
+    "file_name": "test_docs_src_is_tested.py",
+    "functions": [
+      {
+        "name": "loaded_examples",
+        "complexity": 18
+      }
+    ]
+  },
+  {
+    "path": "tests/dx/test_cross_aggregate_assets_redelivery.py",
+    "file_name": "test_cross_aggregate_assets_redelivery.py",
+    "functions": [
+      {
+        "name": "_reaches_another_aggregate",
+        "complexity": 26
+      }
+    ]
+  },
+  {
+    "path": "tests/dx/test_event_command_skill_claims.py",
+    "file_name": "test_event_command_skill_claims.py",
+    "functions": [
+      {
+        "name": "init_methods_that_raise_events",
+        "complexity": 17
+      }
+    ]
+  },
+  {
+    "path": "tests/dx/test_foundation_skill_fields.py",
+    "file_name": "test_foundation_skill_fields.py",
+    "functions": [
+      {
+        "name": "money_problems",
+        "complexity": 16
+      },
+      {
+        "name": "reference_problems",
+        "complexity": 26
+      }
+    ]
+  },
+  {
+    "path": "tests/dx/test_pack_integrity.py",
+    "file_name": "test_pack_integrity.py",
+    "functions": [
+      {
+        "name": "scan_pack",
+        "complexity": 23
+      }
+    ]
+  },
+  {
+    "path": "tests/dx/test_plugin.py",
+    "file_name": "test_plugin.py",
+    "functions": [
+      {
+        "name": "test_relative_links_resolve_inside_the_render",
+        "complexity": 28
+      }
+    ]
+  },
+  {
+    "path": "tests/eval/scoring.py",
+    "file_name": "scoring.py",
+    "functions": [
+      {
+        "name": "_signature_sources",
+        "complexity": 31
+      }
+    ]
+  },
+  {
+    "path": "tests/eval/spec.py",
+    "file_name": "spec.py",
+    "functions": [
+      {
+        "name": "read_spec",
+        "complexity": 17
+      }
+    ]
+  },
+  {
+    "path": "tests/eval/tools.py",
+    "file_name": "tools.py",
+    "functions": [
+      {
+        "name": "_summarize_verify",
+        "complexity": 18
+      }
+    ]
+  },
+  {
+    "path": "tests/ir/test_deprecation_coverage_audit.py",
+    "file_name": "test_deprecation_coverage_audit.py",
+    "functions": [
+      {
+        "name": "TestRegistryIsTheOnlyWarnPath::_uses_bare_primitive",
+        "complexity": 23
+      }
+    ]
+  },
+  {
+    "path": "tests/ir/test_schema_formats.py",
+    "file_name": "test_schema_formats.py",
+    "functions": [
+      {
+        "name": "_parse_proto",
+        "complexity": 18
+      },
+      {
+        "name": "_assert_valid_proto_tree",
+        "complexity": 35
+      }
+    ]
+  },
+  {
+    "path": "tests/ir/test_sequential_by_ir.py",
+    "file_name": "test_sequential_by_ir.py",
+    "functions": [
+      {
+        "name": "_path_to",
+        "complexity": 17
+      }
+    ]
+  },
+  {
+    "path": "tests/logging_isolation.py",
+    "file_name": "logging_isolation.py",
+    "functions": [
+      {
+        "name": "LoggingSnapshot::restore",
+        "complexity": 16
+      }
+    ]
+  },
+  {
+    "path": "tests/support/snippets.py",
+    "file_name": "snippets.py",
+    "functions": [
+      {
+        "name": "run_snippets",
+        "complexity": 23
+      },
+      {
+        "name": "read_include",
+        "complexity": 26
+      }
+    ]
+  },
+  {
+    "path": "tests/test_provider_capability_matrix_is_current.py",
+    "file_name": "test_provider_capability_matrix_is_current.py",
+    "functions": [
+      {
+        "name": "_matrix",
+        "complexity": 16
+      }
+    ]
+  },
+  {
+    "path": "tests/test_test_audit.py",
+    "file_name": "test_test_audit.py",
+    "functions": [
+      {
+        "name": "TestChildPytestCommands::test_every_child_pytest_command_turns_randomly_off",
+        "complexity": 19
+      }
+    ]
+  },
+  {
+    "path": "scripts/build_changelog_page.py",
+    "file_name": "build_changelog_page.py",
+    "functions": [
+      {
+        "name": "parse",
+        "complexity": 20
+      }
+    ]
+  },
+  {
+    "path": "scripts/test_audit.py",
+    "file_name": "test_audit.py",
+    "functions": [
+      {
+        "name": "load_arcsets",
+        "complexity": 18
+      },
+      {
+        "name": "find_duplicates",
+        "complexity": 24
+      }
+    ]
+  }
+]

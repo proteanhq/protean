@@ -211,6 +211,7 @@ dev = [
     "nox>=2026.7.11",
     "bump-my-version>=1.4.1",
     "pyright>=1.1.411",
+    "complexipy>=8.3.0",
 ]
 test = [
     "chardet>=7.4.3,<8",
@@ -418,6 +419,16 @@ markers = [
     "native_json: tests requiring native JSON column support",
     "native_array: tests requiring native array column support",
 ]
+
+[tool.complexipy]
+# Cognitive complexity per function. A function over the limit fails the run
+# unless complexipy-snapshot.json lists it at its current complexity or higher. The
+# snapshot holds the functions that were over the limit when the check arrived.
+# docs/community/quality.md states the rule for a function that fails.
+paths = ["src", "tests", "scripts"]
+max-complexity-allowed = 15
+# Count functions marked `# noqa: complexipy` or `# complexipy: ignore`.
+no-ignore = true
 
 [tool.mypy]
 plugins = ["protean.ext.mypy_plugin"]

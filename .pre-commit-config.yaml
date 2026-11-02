@@ -4,8 +4,10 @@ repos:
     hooks:
       - id: trailing-whitespace
         exclude: ^uv\.lock$
+      # complexipy rewrites its snapshot on every passing run, without a final
+      # newline.
       - id: end-of-file-fixer
-        exclude: ^uv\.lock$
+        exclude: ^(uv\.lock|complexipy-snapshot\.json)$
       - id: check-yaml
         exclude: ^mkdocs\.yml$
       - id: check-added-large-files
@@ -27,3 +29,15 @@ repos:
     rev: 0.8.17
     hooks:
       - id: uv-lock
+
+  # complexipy checks every path in [tool.complexipy] on every commit, the same
+  # run as CI. A commit that changes only the snapshot or the config still
+  # needs the check.
+  - repo: local
+    hooks:
+      - id: complexipy
+        name: complexipy (cognitive complexity)
+        entry: uv run complexipy --failed --color no
+        language: system
+        always_run: true
+        pass_filenames: false

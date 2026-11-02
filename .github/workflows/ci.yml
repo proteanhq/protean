@@ -269,11 +269,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     name: Lint (ruff)
-    # Fast, service-free quality gate. Runs the same ruff lint + format checks
-    # as the pre-commit hook, but in CI where they can't be bypassed (hooks not
-    # installed, `--no-verify`, web edits, bot commits). Format is verified with
-    # `--check`, never applied. Uses the ruff pinned in uv.lock so CI and local
-    # runs stay on the same version.
+    # Fast, service-free quality gate. Runs the same ruff lint + format and
+    # cognitive complexity checks as the pre-commit hooks, but in CI where they
+    # can't be bypassed (hooks not installed, `--no-verify`, web edits, bot
+    # commits). Format is verified with `--check`, never applied. Uses the ruff
+    # and complexipy pinned in uv.lock so CI and local runs stay on the same
+    # version.
     steps:
       - uses: actions/checkout@v7
         with:
@@ -307,6 +308,15 @@ jobs:
 
       - name: Ruff format check
         run: uv run ruff format --check
+
+      # A passing run rewrites complexipy-snapshot.json: a listed function that
+      # became less complex gets its lower value, and one now under the limit
+      # or deleted drops out. The diff check fails the job when the committed
+      # snapshot was not updated to match.
+      - name: Cognitive complexity
+        run: |
+          uv run complexipy --failed --color no
+          git diff --exit-code complexipy-snapshot.json
 
       # Also covered by tests/test_changelog_page_is_current.py, but that runs
       # in the 30-minute matrix. A stale page is a one-command fix, so it is
