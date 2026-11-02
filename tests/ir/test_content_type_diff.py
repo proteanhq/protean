@@ -421,7 +421,7 @@ class TestIrDiffCommand:
         assert breaking.count(_message("unset", "TierPrice")) == 1
         assert breaking.count("value type changed from 'unset' to 'TierPrice'") == 2
 
-    def test_the_same_value_type_exits_2(self, tmp_path):
+    def test_the_same_value_type_exits_3(self, tmp_path):
         result = self._invoke(
             tmp_path,
             _build(published=False, tiers=tier_dict),
@@ -433,4 +433,4 @@ class TestIrDiffCommand:
             ),
         )
 
-        assert result.exit_code == 2, result.output
+        assert result.exit_code == 3, result.output

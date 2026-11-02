@@ -209,7 +209,7 @@ The checker understands three evolution mechanisms:
   declared. The diff checks every `deprecated` block in both IR files before
   comparing them. A malformed block in a hand-written file, such as a version
   written as a number, makes it raise `ConfigurationError` naming the element
-  or field, and `protean ir diff` prints the error and exits 1.
+  or field, and `protean ir diff` prints the error on stderr and exits 2.
 - **Upcaster mitigation**: When an event's `__version__` bumps and a registered
   [upcaster](../../patterns/event-versioning-and-evolution.md) chain covers the
   old→new version path, the schema-transformation changes that make up that
@@ -331,7 +331,7 @@ ordering = "ordering.domain"
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `strictness` | string | `"strict"` | `"strict"` exits non-zero on breaking changes. `"warn"` reports but allows. `"off"` skips checking entirely. |
+| `strictness` | string | `"strict"` | `"strict"` exits non-zero on breaking changes. `"warn"` reports but allows. `"off"` skips the comparison: `ir diff` still loads both sides and exits 2 if either fails to load, then exits 0. |
 | `exclude` | list of strings | `[]` | Fully-qualified names of elements to leave out of the compatibility report. A published event's contract breaks are still checked; see [Published event contracts](#published-event-contracts). |
 
 ### `[compatibility.deprecation]`

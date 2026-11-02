@@ -141,7 +141,7 @@ The exit code is the same as `--format=text` for the same inputs, so a CI gate
 can switch format without changing what it blocks on. The exit code always
 reflects the full IR diff, not the slice view. A real change to an element the
 model does not draw (a contract, entity, value object, or domain setting) still
-exits 1 or 2, even though the slice view prints `No model changes.`. So `No
+exits 1 or 3, even though the slice view prints `No model changes.`. So `No
 model changes.` means the model view found nothing to show, not that the diff
 is empty.
 
@@ -164,9 +164,14 @@ protean ir diff --left baseline.json --right current.json --format=event-model
 
 | Code | Meaning |
 |------|---------|
-| 0 | No changes detected |
+| 0 | No changes detected, breaking changes under `strictness = "warn"`, or checking turned off with `strictness = "off"` |
 | 1 | Breaking changes found |
-| 2 | Non-breaking changes only |
+| 2 | Usage, load or config error: a bad option, an IR that does not load, or a malformed `.protean/config.toml`. The message goes to stderr and no diff is printed |
+| 3 | Non-breaking changes only |
+
+The command checks its options before it reads `.protean/config.toml`, and it
+loads both sides before it reads `strictness`. So a bad command line or an IR
+that does not load exits 2 under every `strictness`, including `"off"`.
 
 **Avro compatibility verdict.** Alongside the breaking/safe classification, the
 diff reports an Avro-style verdict (`BACKWARD`, `FORWARD`, `FULL`, or `NONE`)
