@@ -267,6 +267,9 @@ async def test_event_handler_error_handling(test_domain, caplog):
 
     # Check for specific error messages
     assert any("engine.error_handler_failed" in record.message for record in error_logs)
+    assert "engine.message_failed" in caplog.text
+    assert "Intentional exception for testing" in caplog.text
+    assert "Error in error handler" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -360,3 +363,6 @@ async def test_subscriber_error_handling(test_domain, caplog):
 
     # Broker path uses broker.* prefix for error handler failures
     assert any("broker.error_handler_failed" in record.message for record in error_logs)
+    assert "broker.message_failed" in caplog.text
+    assert "Intentional exception for testing" in caplog.text
+    assert "Error in error handler" in caplog.text

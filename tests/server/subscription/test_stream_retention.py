@@ -6,9 +6,6 @@ broker's ``trim`` is never called, retention on trims the exact stream the batch
 came from, and a trim error is logged and swallowed rather than propagated.
 """
 
-import asyncio
-from unittest.mock import MagicMock
-
 import pytest
 
 from protean import handle
@@ -80,15 +77,14 @@ def _subscription(engine, **kwargs) -> StreamSubscription:
 class TestRetentionMaxlenWiring:
     """retention_maxlen flows from config into the subscription."""
 
-    def test_default_retention_is_none(self, engine, test_domain):
+    @pytest.mark.parametrize(
+        "kwargs, expected", [({}, None), ({"retention_maxlen": 250}, 250)]
+    )
+    def test_constructor_stores_retention(self, engine, test_domain, kwargs, expected):
+        """retention_maxlen defaults to None and stores an explicit value."""
         with test_domain.domain_context():
-            sub = _subscription(engine)
-        assert sub.retention_maxlen is None
-
-    def test_explicit_retention_is_stored(self, engine, test_domain):
-        with test_domain.domain_context():
-            sub = _subscription(engine, retention_maxlen=250)
-        assert sub.retention_maxlen == 250
+            sub = _subscription(engine, **kwargs)
+        assert sub.retention_maxlen == expected
 
     def test_from_config_forwards_retention(self, engine, test_domain):
         """from_config carries retention_maxlen off the SubscriptionConfig."""
@@ -134,8 +130,11 @@ class TestMaybeTrim:
 
         assert recorder.calls == [("account:backfill", 500)]
 
-    async def test_no_trim_when_retention_is_zero(self, engine, test_domain):
-        """retention_maxlen=0 must not call trim.
+    @pytest.mark.parametrize("retention_maxlen", [0, -1])
+    async def test_no_trim_when_retention_not_positive(
+        self, engine, test_domain, retention_maxlen
+    ):
+        """A zero or negative retention_maxlen must not call trim.
 
         validate() rejects 0, but the constructor accepts retention_maxlen
         unchecked, so a direct StreamSubscription(..., retention_maxlen=0) would
@@ -143,18 +142,7 @@ class TestMaybeTrim:
         it. The guard treats a non-positive cap as "retention off".
         """
         with test_domain.domain_context():
-            sub = _subscription(engine, retention_maxlen=0)
-        recorder = _TrimRecorder()
-        sub.broker = recorder
-
-        await sub._maybe_trim("account")
-
-        assert recorder.calls == []
-
-    async def test_no_trim_when_retention_negative(self, engine, test_domain):
-        """A negative retention_maxlen is treated as "retention off"."""
-        with test_domain.domain_context():
-            sub = _subscription(engine, retention_maxlen=-1)
+            sub = _subscription(engine, retention_maxlen=retention_maxlen)
         recorder = _TrimRecorder()
         sub.broker = recorder
 
@@ -208,23 +196,17 @@ class _FakeBroker:
         return 0
 
 
-def _lanes_engine(*, enabled: bool):
-    """A minimal engine whose config toggles priority lanes on or off."""
-    server_config: dict = {}
-    if enabled:
-        server_config["priority_lanes"] = {"enabled": True}
-    engine = MagicMock()
-    engine.domain.config = {"server": server_config}
-    engine.domain.brokers = {"default": MagicMock()}
-    engine.shutting_down = False
-    engine.draining = False
-    engine.emitter = MagicMock()
-    try:
-        engine.loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # Only reached if this helper is ever called outside an async test.
-        engine.loop = asyncio.new_event_loop()
-    return engine
+@pytest.fixture
+def lanes_engine(test_domain):
+    """Return a factory for a real engine with priority lanes on or off."""
+
+    def make(*, enabled: bool) -> Engine:
+        if enabled:
+            test_domain.config["server"]["priority_lanes"] = {"enabled": True}
+        with test_domain.domain_context():
+            return Engine(test_domain, test_mode=True)
+
+    return make
 
 
 def _poll_subscription(engine, **kwargs) -> StreamSubscription:
@@ -249,9 +231,9 @@ class TestPollCallsTrim:
         sub.process_batch = _stop
         await sub.poll()
 
-    async def test_standard_mode_trims_primary_stream(self):
-        """Standard mode trims stream_category after the batch (line 348)."""
-        engine = _lanes_engine(enabled=False)
+    async def test_standard_mode_trims_primary_stream(self, lanes_engine):
+        """Without priority lanes, the subscription trims stream_category after the batch."""
+        engine = lanes_engine(enabled=False)
         sub = _poll_subscription(engine, retention_maxlen=500)
         broker = _FakeBroker({"account": [("m1", {"d": "x"})]})
 
@@ -259,9 +241,9 @@ class TestPollCallsTrim:
 
         assert broker.trim_calls == [("account", 500)]
 
-    async def test_priority_lane_trims_primary_stream(self):
+    async def test_priority_lane_trims_primary_stream(self, lanes_engine):
         """Primary-lane batch trims stream_category."""
-        engine = _lanes_engine(enabled=True)
+        engine = lanes_engine(enabled=True)
         sub = _poll_subscription(engine, retention_maxlen=500)
         broker = _FakeBroker({"account": [("m1", {"d": "x"})]})
 
@@ -269,9 +251,9 @@ class TestPollCallsTrim:
 
         assert broker.trim_calls == [("account", 500)]
 
-    async def test_backfill_lane_trims_backfill_stream(self):
+    async def test_backfill_lane_trims_backfill_stream(self, lanes_engine):
         """Primary empty, backfill has work -> trims the backfill stream."""
-        engine = _lanes_engine(enabled=True)
+        engine = lanes_engine(enabled=True)
         sub = _poll_subscription(engine, retention_maxlen=500)
         # Primary "account" is empty; only the backfill stream yields a batch.
         broker = _FakeBroker({"account:backfill": [("m1", {"d": "x"})]})
@@ -280,9 +262,9 @@ class TestPollCallsTrim:
 
         assert broker.trim_calls == [("account:backfill", 500)]
 
-    async def test_standard_mode_does_not_trim_when_retention_off(self):
+    async def test_standard_mode_does_not_trim_when_retention_off(self, lanes_engine):
         """With retention off, poll() processes a batch but never calls trim."""
-        engine = _lanes_engine(enabled=False)
+        engine = lanes_engine(enabled=False)
         sub = _poll_subscription(engine, retention_maxlen=None)
         broker = _FakeBroker({"account": [("m1", {"d": "x"})]})
 

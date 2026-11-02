@@ -108,40 +108,44 @@ def _make_message_with_extensions(
 
 
 @pytest.mark.asyncio
-async def test_extensions_available_as_g_attributes(test_domain):
-    """Extensions from message metadata are set as g attributes during handler execution."""
+async def test_extensions_available_as_g_attributes_and_cleaned_up(test_domain):
+    """Extensions from message metadata are set as g attributes during handler
+    execution, next to g.message_in_context, and do not leak into the outer
+    domain context afterwards."""
     message = _make_message_with_extensions(
-        {"tenant_id": "acme-corp", "user_id": "user-42", "request_id": "req-abc"}
+        {
+            "tenant_id": "acme-corp",
+            "user_id": "user-42",
+            "request_id": "req-abc",
+            "custom_key": "custom_value",
+        }
     )
 
     engine = Engine(domain=test_domain, test_mode=True)
-    result = await engine.handle_message(ExtensionCapturingHandler, message)
+
+    with test_domain.domain_context():
+        result = await engine.handle_message(ExtensionCapturingHandler, message)
+
+        # After handle_message returns, the inner domain context is popped
+        assert g.get("tenant_id") is None
+        assert g.get("custom_key") is None
+        assert g.get("message_in_context") is None
 
     assert result is True
     assert len(captured_g_attrs) == 1
     assert captured_g_attrs[0]["tenant_id"] == "acme-corp"
     assert captured_g_attrs[0]["user_id"] == "user-42"
     assert captured_g_attrs[0]["request_id"] == "req-abc"
-
-
-@pytest.mark.asyncio
-async def test_message_in_context_still_set_alongside_extensions(test_domain):
-    """g.message_in_context is set correctly even when extensions are propagated."""
-    message = _make_message_with_extensions({"tenant_id": "acme-corp"})
-
-    engine = Engine(domain=test_domain, test_mode=True)
-    await engine.handle_message(ExtensionCapturingHandler, message)
-
-    assert len(captured_g_attrs) == 1
     msg_ctx = captured_g_attrs[0]["message_in_context"]
     assert isinstance(msg_ctx, Message)
     assert msg_ctx.metadata.extensions["tenant_id"] == "acme-corp"
 
 
 @pytest.mark.asyncio
-async def test_empty_extensions_no_issue(test_domain):
-    """Empty extensions dict does not cause errors."""
-    message = _make_message_with_extensions({})
+@pytest.mark.parametrize("extensions", [{}, None], ids=["empty", "default"])
+async def test_no_extensions_no_issue(test_domain, extensions):
+    """An empty or default extensions dict does not cause errors."""
+    message = _make_message_with_extensions(extensions)
 
     engine = Engine(domain=test_domain, test_mode=True)
     result = await engine.handle_message(ExtensionCapturingHandler, message)
@@ -149,36 +153,6 @@ async def test_empty_extensions_no_issue(test_domain):
     assert result is True
     assert len(captured_g_attrs) == 1
     assert captured_g_attrs[0]["tenant_id"] is None
-
-
-@pytest.mark.asyncio
-async def test_no_extensions_no_issue(test_domain):
-    """Message without extensions (default empty dict) works fine."""
-    message = _make_message_with_extensions()  # No custom extensions
-
-    engine = Engine(domain=test_domain, test_mode=True)
-    result = await engine.handle_message(ExtensionCapturingHandler, message)
-
-    assert result is True
-    assert len(captured_g_attrs) == 1
-    assert captured_g_attrs[0]["tenant_id"] is None
-
-
-@pytest.mark.asyncio
-async def test_extensions_cleaned_up_after_processing(test_domain):
-    """Extensions are not leaked into the outer domain context after processing."""
-    message = _make_message_with_extensions(
-        {"tenant_id": "acme-corp", "custom_key": "custom_value"}
-    )
-
-    engine = Engine(domain=test_domain, test_mode=True)
-
-    with test_domain.domain_context():
-        await engine.handle_message(ExtensionCapturingHandler, message)
-        # After handle_message returns, the inner domain context is popped
-        assert g.get("tenant_id") is None
-        assert g.get("custom_key") is None
-        assert g.get("message_in_context") is None
 
 
 @pytest.mark.asyncio
