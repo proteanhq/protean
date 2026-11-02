@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import logging
-from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -48,19 +47,7 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-def test_processing_messages_on_start(test_domain):
-    identifier = str(uuid4())
-    user = User(user_id=identifier)
-    user.raise_(UserLoggedIn(user_id=identifier))
-    test_domain.repository_for(User).add(user)
-
-    engine = Engine(domain=test_domain, test_mode=True)
-    engine.run()
-
-    assert counter == 1
-
-
-def test_that_read_position_is_updated_after_engine_run(test_domain):
+def test_processing_messages_from_beginning_the_first_time(test_domain):
     identifier = str(uuid4())
     user = User(user_id=identifier)
     user.raise_(UserLoggedIn(user_id=identifier))
@@ -72,19 +59,8 @@ def test_that_read_position_is_updated_after_engine_run(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     engine.run()
 
-    messages = test_domain.event_store.store.read("$all")
-    assert len(messages) == 2
-
-
-def test_processing_messages_from_beginning_the_first_time(test_domain):
-    identifier = str(uuid4())
-    user = User(user_id=identifier)
-    user.raise_(UserLoggedIn(user_id=identifier))
-    test_domain.repository_for(User).add(user)
-
-    engine = Engine(domain=test_domain, test_mode=True)
-    engine.run()
-
+    assert counter == 1
+    # The handler's read position is written after the event
     messages = test_domain.event_store.store.read("$all")
     assert len(messages) == 2
 
@@ -95,20 +71,26 @@ def test_processing_messages_from_beginning_the_first_time(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     engine.run()
 
+    # The second engine resumes from the stored position and reprocesses nothing
     messages = test_domain.event_store.store.read("$all")
     assert len(messages) == 2
+    assert counter == 1
 
 
 def test_engine_run_non_test_mode(test_domain, caplog):
-    """Test that engine runs in non-test mode with run_forever."""
+    """In non-test mode the engine runs the loop until shutdown stops it."""
+    test_domain.config["server"]["health"]["port"] = 0
     engine = Engine(domain=test_domain, test_mode=False)
+    engine.loop.call_soon(lambda: engine.loop.create_task(engine.shutdown()))
 
-    with patch.object(engine.loop, "run_forever") as mock_run_forever:
-        with caplog.at_level(logging.INFO, logger="protean.server.engine"):
-            engine.run()
+    with caplog.at_level(logging.INFO, logger="protean.server.engine"):
+        engine.run()
 
-    mock_run_forever.assert_called_once()
-    assert any("engine.started" in record.message for record in caplog.records)
+    messages = [record.message for record in caplog.records]
+    assert "engine.started" in messages
+    assert "engine.shutting_down" in messages
+    assert messages[-1] == "engine.stopped"
+    assert engine.exit_code == 0
 
 
 def test_engine_test_mode_cancels_long_running_tasks(test_domain, caplog):

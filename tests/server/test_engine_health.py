@@ -7,13 +7,14 @@ import os
 import threading
 import time
 from types import MappingProxyType
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.subscriber import BaseSubscriber
 from protean.domain import Domain
 from protean.fields import Identifier, String
 from protean.server.engine import Engine
@@ -25,7 +26,13 @@ from protean.server.health import (
     _parse_request_line,
     _SubscriptionBlockRefresher,
 )
+from protean.server.outbox_processor import OutboxProcessor
+from protean.server.subscription.broker_subscription import BrokerSubscription
+from protean.server.subscription.event_store_subscription import (
+    EventStoreSubscription,
+)
 from protean.server.subscription.profiles import CircuitBreakerState
+from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.server.subscription_status import SubscriptionStatus
 from protean.utils.mixins import handle
 
@@ -47,22 +54,16 @@ async def _readiness(engine, **kwargs):
 
 
 class TestParseRequestLine:
-    def test_parse_get_request(self):
-        data = b"GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n"
-        method, path = _parse_request_line(data)
-        assert method == "GET"
-        assert path == "/healthz"
-
-    def test_parse_post_request(self):
-        data = b"POST /readyz HTTP/1.1\r\n\r\n"
-        method, path = _parse_request_line(data)
-        assert method == "POST"
-        assert path == "/readyz"
-
-    def test_empty_data(self):
-        method, path = _parse_request_line(b"")
-        assert method == ""
-        assert path == ""
+    @pytest.mark.parametrize(
+        "data, expected",
+        [
+            (b"GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n", ("GET", "/healthz")),
+            (b"POST /readyz HTTP/1.1\r\n\r\n", ("POST", "/readyz")),
+            (b"", ("", "")),
+        ],
+    )
+    def test_parse_request_line(self, data, expected):
+        assert _parse_request_line(data) == expected
 
 
 class TestJsonResponse:
@@ -97,16 +98,6 @@ class TestCheckLiveness:
 
 class TestCheckReadiness:
     @pytest.mark.no_test_domain
-    async def test_readiness_ok_with_memory_adapters(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            result = await _readiness(engine)
-            assert result["status"] == "ok"
-            assert result["checks"]["shutting_down"] is False
-
-    @pytest.mark.no_test_domain
     async def test_readiness_unavailable_when_shutting_down(self):
         domain = Domain(name="Test")
         domain.init(traverse=False)
@@ -132,8 +123,9 @@ class TestCheckReadiness:
             assert "shutting_down" not in result["checks"]
 
     @pytest.mark.no_test_domain
-    async def test_readiness_ready_when_not_draining(self):
-        """Negative: with no drain triggered, readiness reports ready."""
+    async def test_readiness_ok_with_memory_adapters(self):
+        """With no shutdown or drain triggered, memory adapters report ready
+        and every component appears in the checks."""
         domain = Domain(name="Test")
         domain.init(traverse=False)
         with domain.domain_context():
@@ -141,16 +133,9 @@ class TestCheckReadiness:
             assert engine.draining is False
             result = await _readiness(engine)
             assert result["status"] == "ok"
-            assert result["checks"]["draining"] is False
-
-    @pytest.mark.no_test_domain
-    async def test_readiness_reports_all_components(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            result = await _readiness(engine)
             checks = result["checks"]
+            assert checks["shutting_down"] is False
+            assert checks["draining"] is False
             assert "providers" in checks
             assert "brokers" in checks
             assert "event_store" in checks
@@ -287,9 +272,10 @@ class TestHealthServerIntegration:
             finally:
                 loop.close()
 
-    def test_healthz_returns_200_ok(self, health_server):
+    @pytest.mark.parametrize("path", ["/healthz", "/livez"])
+    def test_liveness_paths_return_200_ok(self, health_server, path):
         _, _, loop, port = health_server
-        status, body = _parse_http(_fetch_health(loop, port, path="/healthz"))
+        status, body = _parse_http(_fetch_health(loop, port, path=path))
         assert "200 OK" in status
         assert body["status"] == "ok"
 
@@ -306,9 +292,9 @@ class TestHealthServerIntegration:
     def test_readyz_carries_the_subscription_block_over_http(self, health_server):
         """The block survives the real probe path, not just a direct call."""
         engine, hs, loop, port = health_server
-        subscription = MagicMock()
-        subscription.circuit_state = CircuitBreakerState.CLOSED
-        engine._subscriptions["orders-handler"] = subscription
+        engine._subscriptions["orders-handler"] = _breaker_subscription(
+            engine, CircuitBreakerState.CLOSED
+        )
 
         with patch(
             "protean.server.health.collect_subscription_statuses",
@@ -323,12 +309,6 @@ class TestHealthServerIntegration:
         assert subscriptions["details"][0]["lag"] == 4
         assert subscriptions["details"][0]["status"] == "lagging"
         assert subscriptions["details"][0]["circuit_state"] == "closed"
-
-    def test_livez_alias(self, health_server):
-        _, _, loop, port = health_server
-        status, body = _parse_http(_fetch_health(loop, port, path="/livez"))
-        assert "200 OK" in status
-        assert body["status"] == "ok"
 
     def test_readyz_503_when_shutting_down(self, health_server):
         engine, _, loop, port = health_server
@@ -349,37 +329,26 @@ class TestHealthServerIntegration:
         )
         assert "405" in status
 
-    def test_drainz_flips_draining_and_returns_200(self, health_server):
-        """POST /drainz flips engine.draining to True and answers 200."""
-        engine, _, loop, port = health_server
-        assert engine.draining is False
-        status, body = _parse_http(
-            _fetch_health(loop, port, method="POST", path="/drainz")
-        )
-        assert "200 OK" in status
-        assert body["status"] == "draining"
-        assert engine.draining is True
-
-    def test_drainz_reports_the_pid_it_drained(self, health_server):
-        """The response names the process that drained.
+    def test_drainz_drains_this_worker_and_logs_it(self, health_server, caplog):
+        """POST /drainz flips engine.draining to True, answers 200 and names
+        the process that drained.
 
         The flag lives on this process's Engine, so a POST drains one worker.
         Under --workers N the caller has to hit every worker's port, and the pid
-        is how it tells them apart.
+        is how it tells them apart. The drain is also announced on the
+        operational log with the pid: a drain takes a worker out of service, so
+        the record is the audit trail for who went quiet and when.
         """
-        _, _, loop, port = health_server
-        _, body = _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
-        assert body["pid"] == os.getpid()
-
-    def test_drainz_logs_the_drain_request(self, health_server, caplog):
-        """The drain is announced on the operational log with the pid.
-
-        A drain takes a worker out of service, so the record is the audit trail
-        for who went quiet and when.
-        """
-        _, _, loop, port = health_server
+        engine, _, loop, port = health_server
+        assert engine.draining is False
         with caplog.at_level(logging.INFO, logger="protean.server.health"):
-            _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+            status, body = _parse_http(
+                _fetch_health(loop, port, method="POST", path="/drainz")
+            )
+        assert "200 OK" in status
+        assert body["status"] == "draining"
+        assert body["pid"] == os.getpid()
+        assert engine.draining is True
 
         records = [r for r in caplog.records if r.message == "engine.drain_requested"]
         assert len(records) == 1
@@ -407,22 +376,15 @@ class TestHealthServerIntegration:
         # Distinct from the shutting_down payload.
         assert "shutting_down" not in body["checks"]
 
-    def test_healthz_200_while_draining(self, health_server):
+    @pytest.mark.parametrize("path", ["/healthz", "/livez"])
+    def test_liveness_200_while_draining(self, health_server, path):
         """Liveness stays green while draining: healthy, just not taking work."""
         engine, _, loop, port = health_server
         _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
         # Prove the engine is actually draining before asserting liveness stays
         # green: otherwise a 405 no-op on /drainz would make this pass vacuously.
         assert engine.draining is True
-        status, body = _parse_http(_fetch_health(loop, port, path="/healthz"))
-        assert "200 OK" in status
-        assert body["status"] == "ok"
-
-    def test_livez_200_while_draining(self, health_server):
-        engine, _, loop, port = health_server
-        _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
-        assert engine.draining is True
-        status, body = _parse_http(_fetch_health(loop, port, path="/livez"))
+        status, body = _parse_http(_fetch_health(loop, port, path=path))
         assert "200 OK" in status
         assert body["status"] == "ok"
 
@@ -504,27 +466,15 @@ class TestHealthServerIntegration:
 @pytest.mark.no_test_domain
 class TestHealthServerEdgeCases:
     def test_config_fallback_on_broken_config(self):
-        """HealthServer falls back to defaults when config.get raises."""
+        """HealthServer falls back to defaults when the server config is not a
+        table."""
         domain = Domain(name="Test")
         domain.init(traverse=False)
-        original_config = domain.config
-        mock_config = MagicMock()
-        mock_config.get.side_effect = AttributeError("broken")
-        mock_config.__getitem__ = original_config.__getitem__
-        mock_config.__contains__ = original_config.__contains__
-        domain.config = mock_config
 
-        with (
-            domain.domain_context(),
-            patch.object(
-                type(domain),
-                "has_outbox",
-                new_callable=PropertyMock,
-                return_value=False,
-            ),
-        ):
+        with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            hs = engine._health_server
+            domain.config["server"] = "not-a-table"
+            hs = HealthServer(engine)
             assert hs.enabled is True
             assert hs.host == "127.0.0.1"
             assert hs.port == 8080
@@ -635,40 +585,48 @@ class TestHealthServerEdgeCases:
 # ---------------------------------------------------------------------------
 
 
+def _finished_task(outcome):
+    """Run a real task to completion and return it.
+
+    *outcome* is ``"raises"``, ``"cancelled"`` or ``"succeeds"``.
+    """
+
+    async def _body():
+        if outcome == "raises":
+            raise OSError("bind failed")
+        if outcome == "cancelled":
+            await asyncio.sleep(10)
+
+    async def _run():
+        task = asyncio.get_running_loop().create_task(_body())
+        if outcome == "cancelled":
+            await asyncio.sleep(0)
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        return task
+
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(_run())
+    finally:
+        loop.close()
+
+
 @pytest.mark.no_test_domain
 class TestOnHealthServerDone:
     def test_callback_logs_exception(self, caplog):
         """Done callback logs exceptions from the health task."""
-        task = MagicMock()
-        task.cancelled.return_value = False
-        task.exception.return_value = OSError("bind failed")
-
-        import logging
+        task = _finished_task("raises")
 
         with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
             Engine._on_health_server_done(task)
 
         assert any("bind failed" in r.message for r in caplog.records)
 
-    def test_callback_ignores_cancelled_task(self, caplog):
-        """Done callback does nothing for cancelled tasks."""
-        task = MagicMock()
-        task.cancelled.return_value = True
-
-        import logging
-
-        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
-            Engine._on_health_server_done(task)
-
-        assert not any("failed" in r.message for r in caplog.records)
-
-    def test_callback_ignores_successful_task(self, caplog):
-        """Done callback does nothing when task succeeds."""
-        task = MagicMock()
-        task.cancelled.return_value = False
-        task.exception.return_value = None
-
-        import logging
+    @pytest.mark.parametrize("outcome", ["cancelled", "succeeds"])
+    def test_callback_ignores_a_task_that_did_not_fail(self, caplog, outcome):
+        """Done callback does nothing for cancelled or successful tasks."""
+        task = _finished_task(outcome)
 
         with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
             Engine._on_health_server_done(task)
@@ -694,6 +652,23 @@ class HealthUserHandler(BaseEventHandler):
     @handle(HealthUserRegistered)
     def on_registered(self, event: HealthUserRegistered):
         pass
+
+
+class HealthUserSubscriber(BaseSubscriber):
+    def __call__(self, data: dict) -> None:
+        pass
+
+
+def _breaker_subscription(engine, state):
+    """A real stream subscription whose circuit breaker is in *state*."""
+    subscription = StreamSubscription(engine, "test::health_user", HealthUserHandler)
+    subscription.circuit_state = state
+    return subscription
+
+
+def _subscription_without_breaker(engine):
+    """A real event-store subscription, which carries no circuit breaker."""
+    return EventStoreSubscription(engine, "test::health_user", HealthUserHandler)
 
 
 def _status(name, **overrides):
@@ -807,9 +782,9 @@ class TestSubscriptionHealthBlock:
         domain = self._domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            subscription = MagicMock()
-            subscription.circuit_state = CircuitBreakerState.OPEN
-            engine._subscriptions["orders-handler"] = subscription
+            engine._subscriptions["orders-handler"] = _breaker_subscription(
+                engine, CircuitBreakerState.OPEN
+            )
 
             with patch(
                 "protean.server.health.collect_subscription_statuses",
@@ -826,7 +801,7 @@ class TestSubscriptionHealthBlock:
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             # An event-store subscription is live but carries no breaker.
-            engine._subscriptions["es-handler"] = MagicMock(circuit_state=None)
+            engine._subscriptions["es-handler"] = _subscription_without_breaker(engine)
 
             with patch(
                 "protean.server.health.collect_subscription_statuses",
@@ -845,9 +820,9 @@ class TestSubscriptionHealthBlock:
         domain = self._domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            subscription = MagicMock()
-            subscription.circuit_state = CircuitBreakerState.OPEN
-            engine._subscriptions["OrderProcessManager-partitioned"] = subscription
+            engine._subscriptions["OrderProcessManager-partitioned"] = (
+                _breaker_subscription(engine, CircuitBreakerState.OPEN)
+            )
 
             with patch(
                 "protean.server.health.collect_subscription_statuses",
@@ -896,9 +871,9 @@ class TestSubscriptionHealthBlock:
         domain = self._domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            subscription = MagicMock()
-            subscription.circuit_state = CircuitBreakerState.OPEN
-            engine._subscriptions["orders-handler"] = subscription
+            engine._subscriptions["orders-handler"] = _breaker_subscription(
+                engine, CircuitBreakerState.OPEN
+            )
 
             with patch(
                 "protean.server.health.collect_subscription_statuses",
@@ -933,9 +908,16 @@ class TestSubscriptionHealthBlock:
         domain = self._domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            engine._subscriptions["a"] = MagicMock(circuit_state=None)
-            engine._broker_subscriptions["b"] = MagicMock()
-            engine._outbox_processors["c"] = MagicMock()
+            engine._subscriptions["a"] = _subscription_without_breaker(engine)
+            engine._broker_subscriptions["b"] = BrokerSubscription(
+                engine,
+                domain.brokers["default"],
+                "health_user_events",
+                HealthUserSubscriber,
+            )
+            engine._outbox_processors["c"] = OutboxProcessor(
+                engine, "default", "default"
+            )
 
             with patch(
                 "protean.server.health.collect_subscription_statuses",
@@ -950,9 +932,9 @@ class TestSubscriptionHealthBlock:
         domain = self._domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            subscription = MagicMock()
-            subscription.circuit_state = CircuitBreakerState.HALF_OPEN
-            engine._subscriptions["orders-handler"] = subscription
+            engine._subscriptions["orders-handler"] = _breaker_subscription(
+                engine, CircuitBreakerState.HALF_OPEN
+            )
 
             with patch(
                 "protean.server.health.collect_subscription_statuses",
@@ -1024,7 +1006,7 @@ class TestSubscriptionBlockRefresher:
         domain.init(traverse=False)
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            engine._subscriptions["a"] = MagicMock(circuit_state=None)
+            engine._subscriptions["a"] = _subscription_without_breaker(engine)
             refresher = _SubscriptionBlockRefresher(engine)
 
             block = refresher.block
@@ -1241,22 +1223,9 @@ class TestSubscriptionBlockRefresher:
             refresher = _SubscriptionBlockRefresher(engine)
             assert refresher.block["total"] == 0
 
+            # Reading the breaker states off the broken registry fails too,
+            # and the block reports the error instead of raising.
             await refresher._refresh_once()
-            assert refresher.block["collection_error"] is True
-
-    async def test_unreadable_breaker_state_does_not_break_the_block(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            refresher = _SubscriptionBlockRefresher(engine)
-
-            with patch(
-                "protean.server.health._circuit_states",
-                side_effect=RuntimeError("subscription registry is a mess"),
-            ):
-                await refresher._refresh_once()
-
             block = refresher.block
             assert block["collection_error"] is True
             assert block["details"] == []
@@ -1667,18 +1636,12 @@ class TestHandleConnectionErrors:
         writer.close.assert_called_once()
 
     def test_answered_probe_logs_no_disconnect(self, health_server, caplog):
-        _, hs, loop, _ = health_server
-        writer = self._make_mock_writer()
-
-        async def _test():
-            mock_reader = MagicMock()
-            mock_reader.read = AsyncMock(return_value=b"GET /healthz HTTP/1.1\r\n\r\n")
-            await hs._handle_connection(mock_reader, writer)
+        _, _, loop, port = health_server
 
         with caplog.at_level(logging.DEBUG, logger="protean.server.health"):
-            loop.run_until_complete(_test())
+            status, _ = _parse_http(_fetch_health(loop, port, path="/healthz"))
 
-        writer.write.assert_called_once()
+        assert "200 OK" in status
         assert self._disconnect_records(caplog) == []
 
     def test_writer_close_exception_is_suppressed(self, health_server):
@@ -1710,27 +1673,12 @@ class TestHandleConnectionErrors:
         with pytest.raises(RuntimeError, match="bug in close"):
             loop.run_until_complete(_test())
 
-    def test_generic_exception_is_logged(self, health_server, caplog):
-        """Non-network exceptions are logged at debug level."""
-        _, hs, loop, _ = health_server
-
-        import logging
-
-        async def _test():
-            mock_reader = MagicMock()
-            mock_reader.read = AsyncMock(side_effect=ValueError("unexpected"))
-            await hs._handle_connection(mock_reader, self._make_mock_writer())
-
-        with caplog.at_level(logging.DEBUG, logger="protean.server.health"):
-            loop.run_until_complete(_test())
-
-        assert any(
-            "Health server connection error" in r.message for r in caplog.records
-        )
-
-    def test_generic_exception_still_answers_with_503(self, health_server):
-        """An empty reply is indistinguishable from a dead process, so the
-        handler must answer even when response assembly blows up."""
+    def test_generic_exception_is_logged_and_answered_with_503(
+        self, health_server, caplog
+    ):
+        """A non-network exception is logged at debug level. An empty reply is
+        indistinguishable from a dead process, so the handler must still answer
+        when response assembly blows up."""
         _, hs, loop, _ = health_server
         writer = self._make_mock_writer()
 
@@ -1739,7 +1687,12 @@ class TestHandleConnectionErrors:
             mock_reader.read = AsyncMock(side_effect=ValueError("unexpected"))
             await hs._handle_connection(mock_reader, writer)
 
-        loop.run_until_complete(_test())
+        with caplog.at_level(logging.DEBUG, logger="protean.server.health"):
+            loop.run_until_complete(_test())
+
+        assert any(
+            "Health server connection error" in r.message for r in caplog.records
+        )
 
         written = b"".join(call.args[0] for call in writer.write.call_args_list)
         assert written, "handler closed the socket without writing a response"

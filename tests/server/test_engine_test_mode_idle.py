@@ -150,66 +150,6 @@ def test_a_subscription_that_cannot_report_idleness_gets_the_old_wait(
     assert _cycles_run(caplog) == OLD_FIXED_CYCLES
 
 
-class _Loop:
-    """A stand-in poll loop carrying only the idle-tracking attributes."""
-
-    def __init__(
-        self,
-        idle_started: float | None,
-        work_finished: float | None = None,
-        reports_idle: bool = True,
-    ) -> None:
-        self.last_idle_tick_started = idle_started
-        self.last_work_tick_finished = work_finished
-        self.reports_idle = reports_idle
-
-
-class TestIdleCheck:
-    @pytest.fixture
-    def engine(self, test_domain):
-        engine = Engine(domain=test_domain, test_mode=True)
-        engine._subscriptions = {}
-        engine._broker_subscriptions = {}
-        engine._outbox_processors = {}
-        return engine
-
-    def test_idle_when_every_loop_ticked_empty_after_the_last_work(self, engine):
-        engine._subscriptions = {"a": _Loop(5.0, work_finished=4.0)}
-        engine._broker_subscriptions = {"b": _Loop(4.5)}
-        engine._outbox_processors = {"c": _Loop(6.0)}
-        assert engine._test_mode_idle() is True
-
-    def test_idle_when_no_loop_ever_found_work(self, engine):
-        engine._subscriptions = {"a": _Loop(1.0), "b": _Loop(2.0)}
-        assert engine._test_mode_idle() is True
-
-    def test_busy_while_a_loop_last_ticked_before_work_elsewhere_finished(self, engine):
-        # "b" may have read its stream before "a" wrote a message to it.
-        engine._subscriptions = {"a": _Loop(5.0, work_finished=4.0), "b": _Loop(3.0)}
-        assert engine._test_mode_idle() is False
-
-    def test_busy_on_a_tie_with_the_last_work(self, engine):
-        engine._subscriptions = {"a": _Loop(5.0, work_finished=4.0), "b": _Loop(4.0)}
-        assert engine._test_mode_idle() is False
-
-    def test_busy_until_every_loop_has_ticked(self, engine):
-        engine._subscriptions = {"a": _Loop(1.0), "b": _Loop(None)}
-        assert engine._test_mode_idle() is False
-
-    def test_busy_when_a_loop_cannot_report(self, engine):
-        engine._subscriptions = {"a": _Loop(1.0), "b": _Loop(2.0, reports_idle=False)}
-        assert engine._test_mode_idle() is False
-
-    def test_an_object_without_the_flag_counts_as_unable_to_report(self, engine):
-        engine._subscriptions = {"a": SimpleNamespace(last_idle_tick_started=1.0)}
-        assert engine._test_mode_idle() is False
-
-    def test_busy_while_shutting_down(self, engine):
-        engine._subscriptions = {"a": _Loop(1.0)}
-        engine.shutting_down = True
-        assert engine._test_mode_idle() is False
-
-
 class _Recording(BaseSubscription):
     subscriber_name = "recording"
 
@@ -220,13 +160,95 @@ class _Recording(BaseSubscription):
         return 0
 
 
-class TestTickTracking:
-    def test_an_empty_tick_records_when_it_started(self, test_domain):
-        sub = _Recording(Engine(domain=test_domain, test_mode=True))
-        sub._record_tick(3.0, False)
-        assert sub.last_idle_tick_started == 3.0
-        assert sub.last_work_tick_finished is None
+def _loop(
+    engine: Engine,
+    idle_started: float | None,
+    work_finished: float | None = None,
+    reports_idle: bool = True,
+) -> "_Recording":
+    """A real subscription whose idle-tracking attributes are set by hand."""
+    loop = _Recording(engine)
+    loop.last_idle_tick_started = idle_started
+    loop.last_work_tick_finished = work_finished
+    loop.reports_idle = reports_idle
+    return loop
 
+
+class TestIdleCheck:
+    @pytest.mark.parametrize(
+        "subscriptions, broker_subscriptions, outbox_processors, expected",
+        [
+            pytest.param(
+                [(5.0, 4.0)],
+                [(4.5,)],
+                [(6.0,)],
+                True,
+                id="idle-when-every-loop-ticked-empty-after-the-last-work",
+            ),
+            pytest.param(
+                [(1.0,), (2.0,)], [], [], True, id="idle-when-no-loop-ever-found-work"
+            ),
+            # The second loop may have read its stream before the first wrote
+            # a message to it.
+            pytest.param(
+                [(5.0, 4.0), (3.0,)],
+                [],
+                [],
+                False,
+                id="busy-while-a-loop-last-ticked-before-work-elsewhere-finished",
+            ),
+            pytest.param(
+                [(5.0, 4.0), (4.0,)],
+                [],
+                [],
+                False,
+                id="busy-on-a-tie-with-the-last-work",
+            ),
+            pytest.param(
+                [(1.0,), (None,)], [], [], False, id="busy-until-every-loop-has-ticked"
+            ),
+            pytest.param(
+                [(1.0,), (2.0, None, False)],
+                [],
+                [],
+                False,
+                id="busy-when-a-loop-cannot-report",
+            ),
+        ],
+    )
+    def test_idle_check(
+        self,
+        test_domain,
+        subscriptions,
+        broker_subscriptions,
+        outbox_processors,
+        expected,
+    ):
+        engine = Engine(domain=test_domain, test_mode=True)
+        engine._subscriptions = {
+            f"s{i}": _loop(engine, *spec) for i, spec in enumerate(subscriptions)
+        }
+        engine._broker_subscriptions = {
+            f"b{i}": _loop(engine, *spec) for i, spec in enumerate(broker_subscriptions)
+        }
+        engine._outbox_processors = {
+            f"o{i}": _loop(engine, *spec) for i, spec in enumerate(outbox_processors)
+        }
+        assert engine._test_mode_idle() is expected
+
+    def test_an_object_without_the_flag_counts_as_unable_to_report(self, test_domain):
+        engine = Engine(domain=test_domain, test_mode=True)
+        engine._subscriptions = {"a": SimpleNamespace(last_idle_tick_started=1.0)}
+        assert engine._test_mode_idle() is False
+
+    def test_busy_while_shutting_down(self, test_domain):
+        engine = Engine(domain=test_domain, test_mode=True)
+        engine._subscriptions = {"a": _loop(engine, 1.0)}
+        engine.shutting_down = True
+        assert engine._test_mode_idle() is False
+
+
+class TestTickTracking:
     def test_a_tick_with_work_records_when_it_finished(self, test_domain):
         sub = _Recording(Engine(domain=test_domain, test_mode=True))
         with patch("protean.server.subscription.time.monotonic", return_value=9.0):
@@ -234,17 +256,15 @@ class TestTickTracking:
         assert sub.last_work_tick_finished == 9.0
         assert sub.last_idle_tick_started is None
 
-    def test_a_tick_that_cannot_tell_records_nothing(self, test_domain):
-        sub = _Recording(Engine(domain=test_domain, test_mode=True))
-        sub._record_tick(3.0, None)
-        assert sub.last_idle_tick_started is None
-        assert sub.last_work_tick_finished is None
-
     def test_a_tick_that_cannot_tell_forgets_an_earlier_empty_tick(self, test_domain):
         sub = _Recording(Engine(domain=test_domain, test_mode=True))
         sub._record_tick(3.0, False)
+        assert sub.last_idle_tick_started == 3.0
+        assert sub.last_work_tick_finished is None
+
         sub._record_tick(4.0, None)
         assert sub.last_idle_tick_started is None
+        assert sub.last_work_tick_finished is None
 
     async def test_a_tick_override_returning_none_never_counts_as_idle(
         self, test_domain
@@ -373,15 +393,18 @@ class TestStreamReadOutcome:
     def sub(self) -> StreamSubscription:
         return object.__new__(StreamSubscription)
 
-    def test_messages_are_work(self, sub):
-        assert sub._tick_outcome([("1", {})]) is True
-
-    def test_an_empty_read_is_idle(self, sub):
-        assert sub._tick_outcome([]) is False
-
-    def test_an_empty_result_after_a_failed_read_is_unknown(self, sub):
-        sub._read_failed = True
-        assert sub._tick_outcome([]) is None
+    @pytest.mark.parametrize(
+        "messages, read_failed, expected",
+        [
+            pytest.param([("1", {})], False, True, id="messages-are-work"),
+            pytest.param([], False, False, id="an-empty-read-is-idle"),
+            pytest.param([], True, None, id="an-empty-result-after-a-failed-read"),
+        ],
+    )
+    def test_tick_outcome(self, sub, messages, read_failed, expected):
+        if read_failed:
+            sub._read_failed = True
+        assert sub._tick_outcome(messages) is expected
 
     async def test_a_failing_broker_read_marks_the_turn(self, sub):
         sub.broker = SimpleNamespace(

@@ -1,5 +1,6 @@
 import asyncio
-from unittest.mock import MagicMock, patch
+import logging
+from unittest.mock import patch
 
 import pytest
 
@@ -24,13 +25,9 @@ def _register_aggregate(domain, provider="default"):
     domain.register(record_cls, provider=provider)
 
 
-def test_that_engine_can_be_initialized_from_a_domain_object(test_domain):
+def test_engine_initialized_from_a_domain_object_owns_an_idle_loop(test_domain):
     engine = Engine(test_domain)
     assert engine.domain == test_domain
-
-
-def test_loop_initialization_within_engine(test_domain):
-    engine = Engine(test_domain)
     assert engine.loop is not None
     assert isinstance(engine.loop, asyncio.SelectorEventLoop)
     assert engine.loop.is_running() is False
@@ -43,67 +40,31 @@ def test_loop_initialization_within_engine(test_domain):
 class TestEngineObservatoryConfigFallback:
     """Test that Engine falls back to default trace_retention_days on bad config."""
 
+    _MISSING = object()
+
     @pytest.mark.no_test_domain
-    def test_fallback_when_observatory_config_missing(self):
-        """Engine uses default retention when observatory config is absent."""
+    @pytest.mark.parametrize(
+        "observatory_config",
+        [
+            pytest.param(_MISSING, id="observatory-config-missing"),
+            pytest.param(
+                {"trace_retention_days": "not-a-number"}, id="retention-not-an-int"
+            ),
+            pytest.param({"trace_retention_days": float("inf")}, id="retention-inf"),
+            pytest.param("not-a-table", id="observatory-config-not-a-table"),
+        ],
+    )
+    def test_falls_back_to_seven_days(self, observatory_config):
         domain = Domain(name="Test")
         domain.init(traverse=False)
-        # Remove observatory key entirely
-        domain.config.pop("observatory", None)
+        if observatory_config is self._MISSING:
+            domain.config.pop("observatory", None)
+        else:
+            domain.config["observatory"] = observatory_config
 
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             assert engine.emitter._persist is True
-            # Default is 7 days
-            assert engine.emitter._retention_ms == 7 * 86_400_000
-
-    @pytest.mark.no_test_domain
-    def test_fallback_when_trace_retention_is_invalid(self):
-        """Engine uses default retention when trace_retention_days is not a valid int."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        domain.config["observatory"] = {"trace_retention_days": "not-a-number"}
-
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            assert engine.emitter._retention_ms == 7 * 86_400_000
-
-    @pytest.mark.no_test_domain
-    def test_fallback_when_trace_retention_is_inf(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        domain.config["observatory"] = {"trace_retention_days": float("inf")}
-
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            assert engine.emitter._retention_ms == 7 * 86_400_000
-
-    @pytest.mark.no_test_domain
-    def test_fallback_when_config_get_raises_attribute_error(self):
-        """Engine uses default retention when config.get raises AttributeError."""
-        from unittest.mock import PropertyMock, patch
-
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        # Replace config with a mock that raises AttributeError on .get()
-        original_config = domain.config
-        mock_config = MagicMock()
-        mock_config.get.side_effect = AttributeError("broken")
-        # Restore subscriptions and broker lookups to avoid secondary failures
-        mock_config.__getitem__ = original_config.__getitem__
-        mock_config.__contains__ = original_config.__contains__
-        domain.config = mock_config
-
-        with (
-            domain.domain_context(),
-            patch.object(
-                type(domain),
-                "has_outbox",
-                new_callable=PropertyMock,
-                return_value=False,
-            ),
-        ):
-            engine = Engine(domain, test_mode=True)
             assert engine.emitter._retention_ms == 7 * 86_400_000
 
 
@@ -120,19 +81,6 @@ class TestEngineOutboxValidation:
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             assert len(engine._outbox_processors) == 0
-
-    @pytest.mark.no_test_domain
-    def test_engine_starts_normally_with_outbox_and_tables(self):
-        """Engine should start when outbox is enabled and repos are initialised."""
-        domain = Domain(name="Test")
-        domain.config["server"]["default_subscription_type"] = "stream"
-        _register_aggregate(domain)
-        domain.init(traverse=False)
-
-        with domain.domain_context():
-            domain.setup_database()
-            engine = Engine(domain, test_mode=True)
-            assert len(engine._outbox_processors) > 0
 
     @pytest.mark.no_test_domain
     def test_engine_raises_when_outbox_table_missing(self):
@@ -242,6 +190,10 @@ class TestEngineInitializationFailure:
     """The engine closes the event loop it opened when wiring then fails."""
 
     def test_loop_is_closed_when_wiring_raises(self, test_domain):
+        # An outbox that names an unconfigured external broker fails wiring
+        test_domain.config["enable_outbox"] = True
+        test_domain.config["outbox"] = {"external_brokers": ["missing"]}
+
         loops = []
         real_new_event_loop = asyncio.new_event_loop
 
@@ -258,13 +210,26 @@ class TestEngineInitializationFailure:
                 "protean.server.engine.asyncio.new_event_loop",
                 side_effect=_tracked_new_event_loop,
             ),
-            patch(
-                "protean.server.engine.HealthServer",
-                side_effect=RuntimeError("wiring failed"),
-            ),
-            pytest.raises(RuntimeError, match="wiring failed"),
+            pytest.raises(ValueError, match="External broker 'missing'"),
         ):
             Engine(test_domain, test_mode=True)
 
         assert len(loops) == 1
         assert loops[0].is_closed() is True
+
+
+class TestEngineDlqMaintenanceConfig:
+    """DLQ upkeep is optional, so bad DLQ config never stops the engine."""
+
+    def test_engine_starts_without_dlq_upkeep_when_dlq_config_is_not_a_table(
+        self, test_domain, caplog
+    ):
+        test_domain.config["server"]["dlq"] = "on"
+
+        with caplog.at_level(logging.DEBUG, logger="protean.server.engine"):
+            engine = Engine(test_domain, test_mode=True)
+
+        assert engine._dlq_maintenance is None
+        assert any(
+            r.message == "engine.dlq_maintenance_init_skipped" for r in caplog.records
+        )

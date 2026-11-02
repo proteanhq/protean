@@ -6,17 +6,25 @@ from datetime import UTC, datetime
 from protean.server.tracing import MessageTrace
 
 
+def _minimal_trace(**overrides):
+    fields = {
+        "event": "handler.started",
+        "domain": "test",
+        "stream": "test::user",
+        "message_id": "abc-123",
+        "message_type": "UserRegistered",
+        "status": "ok",
+    }
+    fields.update(overrides)
+    return MessageTrace(**fields)
+
+
 class TestMessageTraceCreation:
-    def test_required_fields_with_auto_timestamp(self):
-        """MessageTrace with only required fields; timestamp auto-fills as UTC ISO 8601."""
-        trace = MessageTrace(
-            event="handler.started",
-            domain="test",
-            stream="test::user",
-            message_id="abc-123",
-            message_type="UserRegistered",
-            status="ok",
-        )
+    def test_required_fields_with_defaults(self):
+        """MessageTrace with only required fields: the timestamp auto-fills as
+        timezone-aware ISO 8601, optional fields default to None, and metadata
+        defaults to an empty dict that no other trace shares."""
+        trace = _minimal_trace()
         assert trace.event == "handler.started"
         assert trace.domain == "test"
         assert trace.stream == "test::user"
@@ -33,75 +41,51 @@ class TestMessageTraceCreation:
         assert trace.handler is None
         assert trace.duration_ms is None
         assert trace.error is None
+        assert trace.worker_id is None
+        assert trace.metadata == {}
+        assert isinstance(trace.metadata, dict)
+
+        # No mutable default sharing
+        other = _minimal_trace(event="b", message_id="2")
+        trace.metadata["added"] = True
+        assert "added" not in other.metadata
+
+        # worker_id is null in JSON when not provided
+        assert json.loads(trace.to_json())["worker_id"] is None
 
     def test_all_fields_populated(self):
-        """MessageTrace with all optional fields provided."""
+        """MessageTrace keeps every optional field provided, including an
+        explicit timestamp that auto-fill does not overwrite, and writes them
+        to JSON."""
         trace = MessageTrace(
-            event="handler.completed",
+            event="handler.failed",
             domain="identity",
             stream="identity::customer",
             message_id="uuid-456",
             message_type="CustomerRegistered",
-            status="ok",
+            status="error",
             handler="CustomerProjector",
             duration_ms=12.34,
-            error=None,
+            error="Something broke",
             metadata={"key": "value"},
+            payload={"name": "Alice"},
+            worker_id="CustomerProjector-docker-abc123-7890-ff00ee",
             timestamp="2026-01-01T00:00:00+00:00",
         )
         assert trace.handler == "CustomerProjector"
         assert trace.duration_ms == 12.34
-        assert trace.error is None
+        assert trace.error == "Something broke"
         assert trace.metadata == {"key": "value"}
+        assert trace.worker_id == "CustomerProjector-docker-abc123-7890-ff00ee"
         assert trace.timestamp == "2026-01-01T00:00:00+00:00"
 
-    def test_explicit_timestamp_preserved(self):
-        """Providing a timestamp should not be overwritten by auto-fill."""
-        explicit_ts = "2025-06-15T12:00:00+00:00"
-        trace = MessageTrace(
-            event="handler.started",
-            domain="test",
-            stream="test::user",
-            message_id="abc",
-            message_type="Foo",
-            status="ok",
-            timestamp=explicit_ts,
-        )
-        assert trace.timestamp == explicit_ts
-
-    def test_default_metadata_is_empty_dict(self):
-        """metadata defaults to an empty dict, not None."""
-        trace = MessageTrace(
-            event="handler.started",
-            domain="test",
-            stream="test::user",
-            message_id="abc",
-            message_type="Foo",
-            status="ok",
-        )
-        assert trace.metadata == {}
-        assert isinstance(trace.metadata, dict)
-
-    def test_metadata_default_not_shared_across_instances(self):
-        """Each trace gets its own metadata dict (no mutable default sharing)."""
-        t1 = MessageTrace(
-            event="a",
-            domain="d",
-            stream="s",
-            message_id="1",
-            message_type="T",
-            status="ok",
-        )
-        t2 = MessageTrace(
-            event="b",
-            domain="d",
-            stream="s",
-            message_id="2",
-            message_type="T",
-            status="ok",
-        )
-        t1.metadata["added"] = True
-        assert "added" not in t2.metadata
+        data = json.loads(trace.to_json())
+        assert data["status"] == "error"
+        assert data["error"] == "Something broke"
+        assert data["handler"] == "CustomerProjector"
+        assert data["payload"] == {"name": "Alice"}
+        assert data["worker_id"] == "CustomerProjector-docker-abc123-7890-ff00ee"
+        assert data["timestamp"] == "2026-01-01T00:00:00+00:00"
 
 
 class TestMessageTraceSerialization:
@@ -136,111 +120,9 @@ class TestMessageTraceSerialization:
     def test_to_json_handles_non_serializable_metadata(self):
         """to_json uses default=str for non-JSON-serializable values."""
         now = datetime.now(UTC)
-        trace = MessageTrace(
-            event="handler.started",
-            domain="test",
-            stream="test::user",
-            message_id="abc",
-            message_type="Foo",
-            status="ok",
-            metadata={"time": now},
-        )
+        trace = _minimal_trace(metadata={"time": now})
         # Should not raise
         json_str = trace.to_json()
         data = json.loads(json_str)
         # datetime converted to string
         assert isinstance(data["metadata"]["time"], str)
-
-    def test_to_json_with_error_field(self):
-        """to_json includes error field when present."""
-        trace = MessageTrace(
-            event="handler.failed",
-            domain="test",
-            stream="test::user",
-            message_id="abc",
-            message_type="Foo",
-            status="error",
-            error="Something broke",
-        )
-        data = json.loads(trace.to_json())
-        assert data["error"] == "Something broke"
-        assert data["status"] == "error"
-
-
-class TestMessageTraceWorkerIdField:
-    """Tests for the worker_id field on MessageTrace."""
-
-    def test_worker_id_defaults_to_none(self):
-        """worker_id defaults to None when not provided."""
-        trace = MessageTrace(
-            event="handler.started",
-            domain="test",
-            stream="test::user",
-            message_id="abc",
-            message_type="Foo",
-            status="ok",
-        )
-        assert trace.worker_id is None
-
-    def test_worker_id_set_explicitly(self):
-        """worker_id can be set to a subscription identity string."""
-        trace = MessageTrace(
-            event="handler.completed",
-            domain="test",
-            stream="test::order",
-            message_id="msg-1",
-            message_type="OrderPlaced",
-            status="ok",
-            worker_id="OrderProjector-worker01-12345-ab12cd",
-        )
-        assert trace.worker_id == "OrderProjector-worker01-12345-ab12cd"
-
-    def test_worker_id_serialized_in_json(self):
-        """worker_id appears in JSON output when set."""
-        trace = MessageTrace(
-            event="handler.completed",
-            domain="test",
-            stream="test::order",
-            message_id="msg-1",
-            message_type="OrderPlaced",
-            status="ok",
-            worker_id="CustomerProjector-host1-999-deadbe",
-        )
-        data = json.loads(trace.to_json())
-        assert data["worker_id"] == "CustomerProjector-host1-999-deadbe"
-
-    def test_worker_id_null_in_json_when_not_set(self):
-        """worker_id is null in JSON output when not provided."""
-        trace = MessageTrace(
-            event="handler.started",
-            domain="test",
-            stream="test::user",
-            message_id="abc",
-            message_type="Foo",
-            status="ok",
-        )
-        data = json.loads(trace.to_json())
-        assert data["worker_id"] is None
-
-    def test_worker_id_with_all_other_fields(self):
-        """worker_id works alongside all other optional fields."""
-        trace = MessageTrace(
-            event="handler.failed",
-            domain="identity",
-            stream="identity::customer",
-            message_id="uuid-456",
-            message_type="CustomerRegistered",
-            status="error",
-            handler="CustomerProjector",
-            duration_ms=42.0,
-            error="connection lost",
-            metadata={"attempt": 2},
-            payload={"name": "Alice"},
-            worker_id="CustomerProjector-docker-abc123-7890-ff00ee",
-            timestamp="2026-01-01T00:00:00+00:00",
-        )
-        assert trace.worker_id == "CustomerProjector-docker-abc123-7890-ff00ee"
-        data = json.loads(trace.to_json())
-        assert data["worker_id"] == "CustomerProjector-docker-abc123-7890-ff00ee"
-        assert data["handler"] == "CustomerProjector"
-        assert data["payload"] == {"name": "Alice"}

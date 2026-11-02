@@ -35,6 +35,7 @@ class Deactivate(BaseCommand):
 
 register_calls = []
 activate_calls = []
+handled_errors = []
 
 
 class UserCommandHandler(BaseCommandHandler):
@@ -43,8 +44,13 @@ class UserCommandHandler(BaseCommandHandler):
         register_calls.append(command)
 
     @handle(Activate)
-    def activate(self, command: Activate) -> None:
+    def activate(self, command: Activate) -> str:
         activate_calls.append(command)
+        return f"activated:{command.user_id}"
+
+    @classmethod
+    def handle_error(cls, exc: Exception, message: Message) -> None:
+        handled_errors.append((exc, message))
 
 
 class FailingCommandHandler(BaseCommandHandler):
@@ -68,6 +74,7 @@ def register_elements(test_domain):
 def reset_call_tracking():
     register_calls.clear()
     activate_calls.clear()
+    handled_errors.clear()
     yield
 
 
@@ -80,6 +87,18 @@ class TestCommandDispatcherIdentity:
         )
         assert dispatcher.__name__ == "Commands:test::user:command"
         assert dispatcher.__qualname__ == "Commands:test::user:command"
+
+    def test_new_dispatcher_stores_its_stream_and_map_and_has_resolved_nothing(
+        self, test_domain
+    ):
+        handler_map = {Register.__type__: UserCommandHandler}
+        dispatcher = CommandDispatcher(
+            "test::user:command", handler_map, UserCommandHandler
+        )
+        assert dispatcher._stream_category == "test::user:command"
+        assert dispatcher._handler_map is handler_map
+        assert dispatcher._last_resolved_handler is None
+        assert dispatcher._last_resolved_item is None
 
     def test_module_is_engine(self, test_domain):
         dispatcher = CommandDispatcher(
@@ -129,8 +148,23 @@ class TestCommandDispatcherRouting:
         subscription_key = "commands:test::user:command"
         dispatcher = engine._subscriptions[subscription_key].handler
 
-        dispatcher._handle(message)
+        result = dispatcher._handle(message)
         assert len(activate_calls) == 1
+        assert result == f"activated:{identifier}"
+        assert dispatcher._last_resolved_handler is UserCommandHandler
+
+    def test_routes_a_command_object_passed_without_a_message(self, test_domain):
+        """A command object passed directly is routed without deserialization."""
+        identifier = str(uuid4())
+        command = test_domain._enrich_command(
+            Register(user_id=identifier, email="test@example.com"), True
+        )
+        engine = Engine(domain=test_domain, test_mode=True)
+        dispatcher = engine._subscriptions["commands:test::user:command"].handler
+
+        assert dispatcher.resolve_handler(command) is UserCommandHandler
+        dispatcher._handle(command)
+        assert [c.user_id for c in register_calls] == [identifier]
 
     def test_unknown_command_returns_none_with_warning(self, test_domain, caplog):
         """_handle returns None for unregistered command type."""
@@ -147,6 +181,7 @@ class TestCommandDispatcherRouting:
 
         result = dispatcher._handle(message)
         assert result is None
+        assert dispatcher._last_resolved_handler is None
         assert "No command handler registered" in caplog.text
 
 
@@ -194,8 +229,9 @@ class TestCommandDispatcherErrorHandling:
         message = Message.from_domain_object(enriched)
         dispatcher._handle(message)
 
-        # handle_error should not raise
-        dispatcher.handle_error(Exception("test"), message)
+        exc = Exception("test")
+        dispatcher.handle_error(exc, message)
+        assert handled_errors == [(exc, message)]
 
     def test_handle_error_noop_without_resolution(self, test_domain):
         """handle_error does nothing when _last_resolved_handler is None."""
@@ -205,7 +241,19 @@ class TestCommandDispatcherErrorHandling:
             UserCommandHandler,
         )
         # No previous _handle call, so _last_resolved_handler is None
-        dispatcher.handle_error(Exception("test"), None)  # Should not raise
+        dispatcher.handle_error(Exception("test"), None)
+        assert handled_errors == []
+
+    def test_handle_error_skips_a_handler_without_the_hook(self, test_domain):
+        """handle_error does not call a resolved handler that has no handle_error."""
+
+        class HandlerWithoutHook:
+            pass
+
+        dispatcher = CommandDispatcher("test::user:command", {}, UserCommandHandler)
+        dispatcher._last_resolved_handler = HandlerWithoutHook
+        dispatcher.handle_error(Exception("test"), None)
+        assert handled_errors == []
 
 
 class TestCommandDispatcherCaching:
@@ -223,12 +271,14 @@ class TestCommandDispatcherCaching:
         # Call resolve_handler first (as engine.handle_message does)
         resolved = dispatcher.resolve_handler(message)
         assert resolved is UserCommandHandler
-        assert dispatcher._last_resolved_item is not None
+        cached = dispatcher._last_resolved_item
+        assert isinstance(cached, Register)
+        assert cached.user_id == identifier
 
         # _handle should use cached item
         dispatcher._handle(message)
         assert dispatcher._last_resolved_item is None  # Cleared after use
-        assert len(register_calls) == 1
+        assert register_calls == [cached]
 
 
 class TestEngineGroupsCommandsByStream:

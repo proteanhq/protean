@@ -83,59 +83,45 @@ class CustomConfigHandler(BaseEventHandler):
         dummy(event)
 
 
+def _register_user_event_handler(test_domain):
+    test_domain.register(User, event_sourced=True)
+    test_domain.register(UserRegistered, part_of=User)
+    test_domain.register(UserEventHandler, part_of=User)
+    test_domain.init(traverse=False)
+
+
+def _subscription_for(engine, handler_cls):
+    return engine._subscriptions[f"{handler_cls.__module__}.{handler_cls.__qualname__}"]
+
+
 class TestEngineSubscriptionFactoryIntegration:
     """Tests for Engine integration with SubscriptionFactory."""
 
-    def test_engine_creates_subscription_factory(self, test_domain):
-        """Engine should create a SubscriptionFactory instance."""
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
+    def test_engine_exposes_a_subscription_factory_bound_to_it(self, test_domain):
+        _register_user_event_handler(test_domain)
 
         engine = Engine(test_domain, test_mode=True)
 
-        assert engine._subscription_factory is not None
         assert isinstance(engine._subscription_factory, SubscriptionFactory)
-
-    def test_engine_subscription_factory_property(self, test_domain):
-        """Engine should expose subscription_factory property."""
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
         assert engine.subscription_factory is engine._subscription_factory
-
-    def test_engine_factory_has_engine_reference(self, test_domain):
-        """SubscriptionFactory should have reference to engine."""
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
         assert engine.subscription_factory.engine is engine
 
 
 class TestEngineSubscriptionCreation:
     """Tests for Engine automatic subscription creation."""
 
-    def test_creates_subscription_for_event_handler(self, test_domain):
-        """Engine should create subscription for registered event handler."""
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
+    def test_event_handler_subscription_reads_the_part_of_stream(self, test_domain):
+        """The engine subscribes an event handler to its part_of aggregate's
+        stream and wires the subscription back to the engine and handler."""
+        test_domain.config["server"]["default_subscription_type"] = "stream"
+        _register_user_event_handler(test_domain)
 
         engine = Engine(test_domain, test_mode=True)
 
-        handler_name = f"{UserEventHandler.__module__}.{UserEventHandler.__qualname__}"
-        assert handler_name in engine._subscriptions
-        assert engine._subscriptions[handler_name].handler == UserEventHandler
+        subscription = _subscription_for(engine, UserEventHandler)
+        assert subscription.engine is engine
+        assert subscription.handler == UserEventHandler
+        assert subscription.stream_category == User.meta_.stream_category
 
     def test_creates_subscription_for_command_handler(self, test_domain):
         """Engine should create a CommandDispatcher subscription for registered command handlers."""
@@ -172,40 +158,24 @@ class TestEngineSubscriptionCreation:
 class TestEngineSubscriptionTypeSelection:
     """Tests for subscription type selection via configuration."""
 
-    def test_uses_server_default_subscription_type_stream(self, test_domain):
-        """Engine should create StreamSubscription when server default is stream."""
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
-        handler_name = f"{UserEventHandler.__module__}.{UserEventHandler.__qualname__}"
-        subscription = engine._subscriptions[handler_name]
-
-        assert isinstance(subscription, StreamSubscription)
-
-    def test_uses_server_default_subscription_type_event_store(self, test_domain):
-        """Engine should create EventStoreSubscription when server default is event_store."""
-        test_domain.config["server"]["default_subscription_type"] = "event_store"
-
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
+    @pytest.mark.parametrize(
+        "default_type, expected_cls",
+        [("stream", StreamSubscription), ("event_store", EventStoreSubscription)],
+    )
+    def test_uses_server_default_subscription_type(
+        self, test_domain, default_type, expected_cls
+    ):
+        test_domain.config["server"]["default_subscription_type"] = default_type
+        _register_user_event_handler(test_domain)
 
         engine = Engine(test_domain, test_mode=True)
 
-        handler_name = f"{UserEventHandler.__module__}.{UserEventHandler.__qualname__}"
-        subscription = engine._subscriptions[handler_name]
+        assert isinstance(_subscription_for(engine, UserEventHandler), expected_cls)
 
-        assert isinstance(subscription, EventStoreSubscription)
-
-    def test_handler_subscription_type_overrides_server_default(self, test_domain):
-        """Handler's subscription_type should override server default."""
+    def test_handler_subscription_type_and_stream_override_server_default(
+        self, test_domain
+    ):
+        """Handler's subscription_type and stream_category override the defaults."""
         # Server default is stream
         test_domain.config["server"]["default_subscription_type"] = "stream"
 
@@ -221,13 +191,10 @@ class TestEngineSubscriptionTypeSelection:
 
         engine = Engine(test_domain, test_mode=True)
 
-        handler_name = (
-            f"{ProjectionHandler.__module__}.{ProjectionHandler.__qualname__}"
-        )
-        subscription = engine._subscriptions[handler_name]
-
+        subscription = _subscription_for(engine, ProjectionHandler)
         # Should be EventStoreSubscription despite server default being stream
         assert isinstance(subscription, EventStoreSubscription)
+        assert subscription.stream_category == "$all"
 
 
 class TestEngineSubscriptionProfile:
@@ -248,10 +215,7 @@ class TestEngineSubscriptionProfile:
 
         engine = Engine(test_domain, test_mode=True)
 
-        handler_name = (
-            f"{ProductionEventHandler.__module__}.{ProductionEventHandler.__qualname__}"
-        )
-        subscription = engine._subscriptions[handler_name]
+        subscription = _subscription_for(engine, ProductionEventHandler)
 
         # PRODUCTION profile settings
         assert subscription.messages_per_tick == 100
@@ -264,93 +228,12 @@ class TestEngineSubscriptionProfile:
             "default_subscription_type": "stream",
             "default_subscription_profile": "batch",
         }
-
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
+        _register_user_event_handler(test_domain)
 
         engine = Engine(test_domain, test_mode=True)
-
-        handler_name = f"{UserEventHandler.__module__}.{UserEventHandler.__qualname__}"
-        subscription = engine._subscriptions[handler_name]
 
         # BATCH profile settings
-        assert subscription.messages_per_tick == 500
-
-
-class TestEngineSubscriptionConfig:
-    """Tests for custom subscription_config support."""
-
-    def test_uses_handler_subscription_config(self, test_domain):
-        """Engine should use handler's subscription_config."""
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(
-            CustomConfigHandler,
-            part_of=User,
-            subscription_config={
-                "messages_per_tick": 75,
-                "max_retries": 10,
-            },
-        )
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
-        handler_name = (
-            f"{CustomConfigHandler.__module__}.{CustomConfigHandler.__qualname__}"
-        )
-        subscription = engine._subscriptions[handler_name]
-
-        assert subscription.messages_per_tick == 75
-        assert subscription.max_retries == 10
-
-
-class TestEngineStreamCategoryInference:
-    """Tests for stream category inference."""
-
-    def test_infers_stream_category_from_part_of(self, test_domain):
-        """Engine should infer stream category from handler's part_of aggregate."""
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
-        handler_name = f"{UserEventHandler.__module__}.{UserEventHandler.__qualname__}"
-        subscription = engine._subscriptions[handler_name]
-
-        # Stream category should be inferred from User aggregate
-        assert subscription.stream_category == User.meta_.stream_category
-
-    def test_uses_explicit_stream_category(self, test_domain):
-        """Engine should use handler's explicit stream_category."""
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(
-            ProjectionHandler,
-            stream_category="$all",
-            subscription_type=SubscriptionType.EVENT_STORE,
-        )
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
-        handler_name = (
-            f"{ProjectionHandler.__module__}.{ProjectionHandler.__qualname__}"
-        )
-        subscription = engine._subscriptions[handler_name]
-
-        # Should use explicit stream_category
-        assert subscription.stream_category == "$all"
+        assert _subscription_for(engine, UserEventHandler).messages_per_tick == 500
 
 
 class TestEngineInferStreamCategory:
@@ -374,10 +257,7 @@ class TestEngineInferStreamCategory:
 
     def test_infer_stream_category_from_part_of(self, test_domain):
         """Should infer stream_category from part_of aggregate."""
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
+        _register_user_event_handler(test_domain)
 
         engine = Engine(test_domain, test_mode=True)
         stream_category = engine._infer_stream_category(UserEventHandler)
@@ -393,10 +273,7 @@ class TestEngineInferStreamCategory:
             def handle_event(self, event: UserRegistered) -> None:
                 pass
 
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
+        _register_user_event_handler(test_domain)
 
         engine = Engine(test_domain, test_mode=True)
 
@@ -406,10 +283,7 @@ class TestEngineInferStreamCategory:
 
     def test_infer_stream_category_raises_when_no_meta(self, test_domain):
         """Should raise ValueError when handler has no meta_ attribute."""
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
+        _register_user_event_handler(test_domain)
 
         engine = Engine(test_domain, test_mode=True)
 
@@ -421,76 +295,22 @@ class TestEngineInferStreamCategory:
 
     def test_infer_stream_category_from_part_of_aggregate_meta(self, test_domain):
         """Should infer stream_category from part_of aggregate's meta_ when handler has no explicit stream_category."""
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
 
+        class LocalUserEventHandler(BaseEventHandler):
+            @handle(UserRegistered)
+            def handle_event(self, event: UserRegistered) -> None:
+                pass
+
+        _register_user_event_handler(test_domain)
+        test_domain.register(LocalUserEventHandler, part_of=User)
         engine = Engine(test_domain, test_mode=True)
 
-        # Create a mock handler with meta_ that has no stream_category but has part_of
-        class MockHandlerMeta:
-            stream_category = None
-            part_of = User
+        # Registration copies the aggregate's stream category onto the
+        # handler; clear it so only part_of is left to infer from.
+        LocalUserEventHandler.meta_.stream_category = None
 
-        class MockHandler:
-            __name__ = "MockHandler"
-            meta_ = MockHandlerMeta()
-
-        result = engine._infer_stream_category(MockHandler)
+        result = engine._infer_stream_category(LocalUserEventHandler)
         assert result == User.meta_.stream_category
-
-
-class TestEngineSubscriptionAttributes:
-    """Tests for subscription attributes set by engine."""
-
-    def test_subscription_has_correct_engine_reference(self, test_domain):
-        """Subscription should have correct engine reference."""
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
-        handler_name = f"{UserEventHandler.__module__}.{UserEventHandler.__qualname__}"
-        subscription = engine._subscriptions[handler_name]
-
-        assert subscription.engine is engine
-
-    def test_subscription_has_correct_handler_reference(self, test_domain):
-        """Subscription should have correct handler reference."""
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
-        handler_name = f"{UserEventHandler.__module__}.{UserEventHandler.__qualname__}"
-        subscription = engine._subscriptions[handler_name]
-
-        assert subscription.handler == UserEventHandler
-
-    def test_subscription_has_correct_stream_category(self, test_domain):
-        """Subscription should have correct stream category."""
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
-        handler_name = f"{UserEventHandler.__module__}.{UserEventHandler.__qualname__}"
-        subscription = engine._subscriptions[handler_name]
-
-        assert subscription.stream_category == User.meta_.stream_category
 
 
 class TestEngineConfigPriority:
@@ -506,19 +326,17 @@ class TestEngineConfigPriority:
         test_domain.register(
             CustomConfigHandler,
             part_of=User,
-            subscription_config={"messages_per_tick": 50},
+            subscription_config={"messages_per_tick": 75, "max_retries": 10},
         )
         test_domain.init(traverse=False)
 
         engine = Engine(test_domain, test_mode=True)
 
-        handler_name = (
-            f"{CustomConfigHandler.__module__}.{CustomConfigHandler.__qualname__}"
-        )
-        subscription = engine._subscriptions[handler_name]
+        subscription = _subscription_for(engine, CustomConfigHandler)
 
-        # Handler config (50) should override server config (200)
-        assert subscription.messages_per_tick == 50
+        # Handler config (75) should override server config (200)
+        assert subscription.messages_per_tick == 75
+        assert subscription.max_retries == 10
 
     def test_handler_profile_overrides_server_profile(self, test_domain):
         """Handler subscription_profile should override server default_subscription_profile."""
@@ -536,13 +354,8 @@ class TestEngineConfigPriority:
 
         engine = Engine(test_domain, test_mode=True)
 
-        handler_name = (
-            f"{ProductionEventHandler.__module__}.{ProductionEventHandler.__qualname__}"
-        )
-        subscription = engine._subscriptions[handler_name]
-
         # Handler FAST profile (10) should override server BATCH profile (500)
-        assert subscription.messages_per_tick == 10
+        assert _subscription_for(engine, ProductionEventHandler).messages_per_tick == 10
 
     def test_full_config_priority_chain(self, test_domain):
         """Full priority chain should be respected."""
@@ -568,10 +381,7 @@ class TestEngineConfigPriority:
 
         engine = Engine(test_domain, test_mode=True)
 
-        handler_name = (
-            f"{CustomConfigHandler.__module__}.{CustomConfigHandler.__qualname__}"
-        )
-        subscription = engine._subscriptions[handler_name]
+        subscription = _subscription_for(engine, CustomConfigHandler)
 
         # Handler Meta config (50) > Handler Meta profile (100) > Server handler (300) > Server profile (500)
         assert subscription.messages_per_tick == 50
@@ -614,32 +424,9 @@ class OrderFulfillmentPM(BaseProcessManager):
 class TestEngineProcessManagerSubscriptions:
     """Tests for Engine subscription creation for Process Managers."""
 
-    def test_creates_subscription_for_process_manager(self, test_domain):
-        """Engine should create subscriptions for each PM stream category."""
-        test_domain.register(Order)
-        test_domain.register(OrderPlaced, part_of=Order)
-        test_domain.register(Payment)
-        test_domain.register(PaymentConfirmed, part_of=Payment)
-        test_domain.register(
-            OrderFulfillmentPM,
-            stream_categories=["test::order", "test::payment"],
-        )
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
-        # PM name in registry
-        pm_name = f"{OrderFulfillmentPM.__module__}.{OrderFulfillmentPM.__qualname__}"
-
-        # Should have one subscription per stream category
-        key_order = f"{pm_name}-test::order"
-        key_payment = f"{pm_name}-test::payment"
-
-        assert key_order in engine._subscriptions
-        assert key_payment in engine._subscriptions
-
-    def test_pm_subscription_has_correct_handler(self, test_domain):
-        """PM subscription should reference the PM class as handler."""
+    def test_creates_one_subscription_per_pm_stream_category(self, test_domain):
+        """Engine should create a subscription for each PM stream category,
+        each reading its own stream with the PM class as handler."""
         test_domain.register(Order)
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.register(Payment)
@@ -653,28 +440,7 @@ class TestEngineProcessManagerSubscriptions:
         engine = Engine(test_domain, test_mode=True)
 
         pm_name = f"{OrderFulfillmentPM.__module__}.{OrderFulfillmentPM.__qualname__}"
-        subscription = engine._subscriptions[f"{pm_name}-test::order"]
-
-        assert subscription.handler == OrderFulfillmentPM
-
-    def test_pm_subscription_has_correct_stream_category(self, test_domain):
-        """PM subscription should use the correct stream category."""
-        test_domain.register(Order)
-        test_domain.register(OrderPlaced, part_of=Order)
-        test_domain.register(Payment)
-        test_domain.register(PaymentConfirmed, part_of=Payment)
-        test_domain.register(
-            OrderFulfillmentPM,
-            stream_categories=["test::order", "test::payment"],
-        )
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
-        pm_name = f"{OrderFulfillmentPM.__module__}.{OrderFulfillmentPM.__qualname__}"
-
-        sub_order = engine._subscriptions[f"{pm_name}-test::order"]
-        sub_payment = engine._subscriptions[f"{pm_name}-test::payment"]
-
-        assert sub_order.stream_category == "test::order"
-        assert sub_payment.stream_category == "test::payment"
+        for stream_category in ("test::order", "test::payment"):
+            subscription = engine._subscriptions[f"{pm_name}-{stream_category}"]
+            assert subscription.handler == OrderFulfillmentPM
+            assert subscription.stream_category == stream_category
