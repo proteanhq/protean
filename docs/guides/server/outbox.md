@@ -272,8 +272,9 @@ abandoned:
   `protean outbox discard <id> --reason "..."`, which drops its event for that
   broker. A discarded row stays in the table with the `discarded` status and
   your reason in `last_error`, as a record of what was skipped. Do not delete
-  the row: reconciliation at server start can rebuild it as `pending`, and it
-  would then publish after the key's later rows.
+  the row: when its event belongs to an event-sourced aggregate,
+  reconciliation at server start can rebuild it as `pending`, and it would
+  then publish after the key's later rows.
 - When a row fails in the middle of a batch, the processor puts the later
   rows of its group (same key, stream and lane) from that batch back to `pending` without publishing them. Their
   retry counts do not change.
