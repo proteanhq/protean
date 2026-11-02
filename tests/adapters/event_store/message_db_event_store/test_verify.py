@@ -6,15 +6,14 @@ tests confirm it runs end to end against a real MessageDB store: that ``$all``
 paging and the raw-dict keys (``id``, ``position``, ``global_position``,
 ``stream_name``, ``data``) line up with what the adapter actually returns. The
 clean path is what the adapter produces through its normal write API. The one
-violation asserted here is a NULL ``data`` column, which Message DB allows and
-which the client must hand to ``verify`` instead of failing on it; the other
-violation branches are driven at the port level.
+violation asserted here is a NULL or non-object ``data`` column, which Message
+DB allows and which the client must hand to ``verify`` instead of failing on it;
+the other violation branches are driven at the port level.
 """
 
-from urllib.parse import urlparse
-
-import psycopg2
 import pytest
+
+from protean.adapters.event_store.message_db import _superuser_connection
 
 
 @pytest.mark.message_db
@@ -46,7 +45,17 @@ class TestMessageDBVerify:
         assert report.message_count == 3
         assert report.stream_count == 2
 
-    def test_message_with_null_data_is_reported(self, test_domain):
+    @pytest.mark.parametrize(
+        "body, detail",
+        [
+            (None, "Message data is NULL."),
+            ("[]", "Message data is a list, not an object."),
+        ],
+        ids=["null", "array"],
+    )
+    def test_message_with_null_or_non_object_data_is_reported(
+        self, test_domain, body, detail
+    ):
         store = test_domain.event_store.store
         metadata = {
             "domain": {"kind": "EVENT"},
@@ -55,21 +64,14 @@ class TestMessageDBVerify:
         for n in range(3):
             store._write("test::user-abc", "Registered", {"n": n}, metadata)
 
-        # The ``message_store`` role cannot UPDATE; connect as ``postgres`` the
-        # way the test-suite truncate does.
-        parsed = urlparse(test_domain.config["event_store"]["database_uri"])
-        conn = psycopg2.connect(
-            dbname=parsed.path[1:],
-            user="postgres",
-            port=parsed.port,
-            host=parsed.hostname,
-        )
+        # The ``message_store`` role cannot UPDATE, so connect as ``postgres``.
+        conn = _superuser_connection(test_domain.config["event_store"]["database_uri"])
         try:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "UPDATE message_store.messages SET data = NULL "
+                    "UPDATE message_store.messages SET data = %s::jsonb "
                     "WHERE stream_name = %s AND position = 1",
-                    ("test::user-abc",),
+                    (body, "test::user-abc"),
                 )
             conn.commit()
         finally:
@@ -83,3 +85,4 @@ class TestMessageDBVerify:
         assert violation.kind == store.VERIFY_MALFORMED_MESSAGE
         assert violation.stream == "test::user-abc"
         assert violation.position == 1
+        assert violation.detail == detail

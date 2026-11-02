@@ -443,8 +443,36 @@ def test_message_with_null_data_is_flagged_malformed(missing_key):
     assert violation.detail == "Message data is NULL."
 
 
+@pytest.mark.parametrize(
+    "data, type_name",
+    [([], "list"), ("x", "str"), (0, "int"), (False, "bool")],
+    ids=["array", "string", "number", "boolean"],
+)
+def test_message_with_non_object_data_is_flagged_malformed(data, type_name):
+    # Message DB's ``data`` column is ``jsonb`` and can hold any JSON value. A
+    # body that is not an object is reported, and the row keeps its position.
+    store = _ListStore(
+        [
+            _msg(1, "test::user-abc", 0),
+            _msg(2, "test::user-abc", 1, data=data),
+            _msg(3, "test::user-abc", 2),
+        ]
+    )
+
+    report = store.verify()
+
+    assert report.ok is False
+    assert len(report.violations) == 1
+    violation = report.violations[0]
+    assert violation.kind == BaseEventStore.VERIFY_MALFORMED_MESSAGE
+    assert violation.stream == "test::user-abc"
+    assert violation.position == 1
+    assert violation.detail == f"Message data is a {type_name}, not an object."
+
+
 def test_message_with_empty_dict_data_is_clean():
-    # An empty body is a valid message; only a NULL body is a corruption.
+    # An empty object is a valid body; only a NULL or non-object body is a
+    # corruption.
     store = _ListStore(
         [
             _msg(1, "test::user-abc", 0, data={}),

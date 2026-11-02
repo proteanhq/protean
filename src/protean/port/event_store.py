@@ -1183,15 +1183,22 @@ class BaseEventStore(metaclass=ABCMeta):
                 position=position,
                 detail="Snapshot data is not a dict or its _version is not an integer.",
             )
-        # ``is None``, not falsiness: an empty dict is a valid body.
-        if data is None:
-            return IntegrityViolation(
-                kind=self.VERIFY_MALFORMED_MESSAGE,
-                stream=stream,
-                position=position,
-                detail="Message data is NULL.",
-            )
-        return None
+        # An empty dict is a valid body. Message DB's ``data`` column is
+        # ``jsonb``, so it can also hold an array, string or number, which no
+        # reader can turn into a message.
+        if isinstance(data, dict):
+            return None
+        detail = (
+            "Message data is NULL."
+            if data is None
+            else f"Message data is a {type(data).__name__}, not an object."
+        )
+        return IntegrityViolation(
+            kind=self.VERIFY_MALFORMED_MESSAGE,
+            stream=stream,
+            position=position,
+            detail=detail,
+        )
 
     def verify(self) -> IntegrityReport:
         """Check the store's internal invariants and report every violation.
@@ -1203,15 +1210,16 @@ class BaseEventStore(metaclass=ABCMeta):
         - each stream's ``position`` runs from 0 with no gaps,
         - ``global_position`` strictly increases across the store,
         - message ids are unique,
-        - every row outside a ``:snapshot-`` stream has a body (``data`` is
-          not NULL),
+        - every row outside a ``:snapshot-`` stream has a body that is an
+          object (``data`` is a dict, not NULL, an array or a scalar),
         - each ``:snapshot-`` stream holds a well-formed snapshot whose
           ``_version`` is not past the head of its aggregate stream.
 
         A corrupt row, such as one missing a required field, a message with a
-        NULL body or a snapshot with a non-integer ``_version``, is reported as
-        a violation and never skipped. A NULL body is reported as
-        ``malformed_message`` and still counts as its stream's position.
+        NULL or non-object body or a snapshot with a non-integer ``_version``,
+        is reported as a violation and never skipped. A NULL or non-object body
+        is reported as ``malformed_message`` and still counts as its stream's
+        position.
 
         Returns:
             An `IntegrityReport` of the violations found. ``ok`` is ``True``
