@@ -160,6 +160,71 @@ def _local_type_name(
     return f".{namespace}.{ref_name}"
 
 
+def _map_entry_name(field_name: str) -> str:
+    """Return the name ``protoc`` gives the hidden entry message of a map field."""
+    words = [word for word in field_name.split("_") if word]
+    return "".join(word[0].upper() + word[1:] for word in words) + "Entry"
+
+
+def _declared_name(ref_name: str, main_name: str, entry_names: set[str]) -> str:
+    """Return the name a referenced message is declared under in this file.
+
+    ``entry_names`` holds the hidden entry message names of the main message's
+    map fields, and is empty when referenced messages are siblings of the main
+    message.
+    """
+    # A message nested inside the main one shares its scope with those hidden
+    # entry messages, so a value object named like one of them gets a trailing
+    # underscore. No entry name ends in one.
+    if ref_name != main_name and ref_name in entry_names:
+        return f"{ref_name}_"
+    return ref_name
+
+
+def _referenced_blocks(
+    referenced: set[str],
+    main_name: str,
+    flat: dict[str, dict[str, Any]],
+    resolve: _Resolver,
+    local_name: Callable[[str], str],
+) -> list[list[str]]:
+    """Render the messages of referenced value objects and entities.
+
+    Walks the references transitively in a deterministic order, and renders
+    each message once.
+    """
+    ref_blocks: list[list[str]] = []
+    seen: set[str] = set()
+    queue = sorted(referenced)
+    while queue:
+        target_fqn = queue.pop(0)
+        ref_name = short_name(target_fqn)
+        if ref_name in seen or ref_name == main_name:
+            continue
+        seen.add(ref_name)
+        target = flat.get(target_fqn, {})
+        nested_refs: set[str] = set()
+        ref_blocks.append(
+            _message_body(
+                local_name(ref_name), target.get("fields", {}), resolve, nested_refs
+            )
+        )
+        queue.extend(sorted(nested_refs))
+    return ref_blocks
+
+
+def _nest_blocks(main_block: list[str], ref_blocks: list[list[str]]) -> list[str]:
+    """Return ``main_block`` with ``ref_blocks`` defined inside it."""
+    # Nested inside the main message, a target with no file of its own gets a
+    # name scoped to this message. As a sibling it would be defined again by
+    # every other file in the package that uses it.
+    nested = main_block[:-1]
+    for block in ref_blocks:
+        nested.extend(["", *(f"  {line}" for line in block)])
+    nested.append("}")
+    return nested
+
+
 def generate_proto_schema(
     element: dict[str, Any],
     *,
@@ -186,6 +251,19 @@ def generate_proto_schema(
     namespace = module_path(own_fqn) or "protean"
 
     imports: set[str] = set()
+    nested = import_path is not None
+    entry_names = (
+        {
+            _map_entry_name(fname)
+            for fname, fspec in element.get("fields", {}).items()
+            if fspec.get("kind") == "dict"
+        }
+        if nested
+        else set()
+    )
+
+    def local_name(ref_name: str) -> str:
+        return _declared_name(ref_name, name, entry_names)
 
     def resolve(target_fqn: str, referenced: set[str]) -> str:
         ref_name = short_name(target_fqn)
@@ -198,42 +276,17 @@ def generate_proto_schema(
         if not path:
             referenced.add(target_fqn)
             return _local_type_name(
-                ref_name, namespace, name, nested=import_path is not None
+                local_name(ref_name), namespace, name, nested=nested
             )
         imports.add(path)
         return f".{module_path(target_fqn) or 'protean'}.{ref_name}"
 
     referenced: set[str] = set()
     main_block = _message_body(name, element.get("fields", {}), resolve, referenced)
+    ref_blocks = _referenced_blocks(referenced, name, flat, resolve, local_name)
 
-    # Emit referenced value-object / entity messages (deterministic order,
-    # cycle-safe via a seen set).
-    ref_blocks: list[list[str]] = []
-    seen: set[str] = set()
-    queue = sorted(referenced)
-    while queue:
-        target_fqn = queue.pop(0)
-        ref_name = short_name(target_fqn)
-        if ref_name in seen or ref_name == name:
-            continue
-        seen.add(ref_name)
-        target = flat.get(target_fqn, {})
-        nested_refs: set[str] = set()
-        ref_blocks.append(
-            _message_body(ref_name, target.get("fields", {}), resolve, nested_refs)
-        )
-        queue.extend(sorted(nested_refs))
-
-    if import_path is not None and ref_blocks:
-        # Nested inside the main message, a target with no file of its own gets
-        # a name scoped to this message. As a sibling it would be defined again
-        # by every other file in the package that uses it.
-        nested = [[f"  {line}" for line in block] for block in ref_blocks]
-        main_block = main_block[:-1]
-        for block in nested:
-            main_block.extend(["", *block])
-        main_block.append("}")
-        message_blocks = [main_block]
+    if nested and ref_blocks:
+        message_blocks = [_nest_blocks(main_block, ref_blocks)]
     else:
         message_blocks = [main_block, *ref_blocks]
 

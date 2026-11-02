@@ -897,7 +897,7 @@
     "functions": [
       {
         "name": "generate_proto_schema",
-        "complexity": 31
+        "complexity": 24
       }
     ]
   },

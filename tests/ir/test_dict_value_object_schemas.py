@@ -20,7 +20,7 @@ from protean.fields import Dict, Identifier, Integer, String, ValueObject
 from protean.ir import load_schema
 from protean.ir.diff import classify_changes, diff_ir
 from protean.ir.generators.avro import generate_avro_schema
-from protean.ir.generators.protobuf import generate_proto_schema
+from protean.ir.generators.protobuf import _map_entry_name, generate_proto_schema
 from protean.ir.generators.schema import _build_flat_elements, generate_element_schema
 from protean.ir.generators.schema_writer import write_schemas
 from protean.utils import fqn
@@ -432,6 +432,55 @@ class TestProtobuf:
         assert "  map<string, Y> ys = 1;" in x_text
         assert "  message Y {" in x_text
         assert "  message X {" in y_text
+
+    def test_nested_value_object_named_like_a_map_entry_is_renamed(self, tmp_path):
+        # Book maps to LedgerEntry through ``ledger`` and LedgerEntry refers
+        # back to Book, so Book's file nests LedgerEntry. protoc also defines
+        # ``Book.LedgerEntry`` for the ``ledger`` map, so the nested message
+        # takes another name.
+        entry = {
+            "element_type": "VALUE_OBJECT",
+            "name": "LedgerEntry",
+            "fqn": "app.LedgerEntry",
+            "fields": {"book": {"kind": "value_object", "target": "app.Book"}},
+        }
+        book = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Book",
+            "fqn": "app.Book",
+            "fields": {
+                "ledger": {"kind": "dict", "type": "Dict", "target": "app.LedgerEntry"},
+                "latest": {"kind": "value_object", "target": "app.LedgerEntry"},
+            },
+        }
+        root = {
+            "element_type": "AGGREGATE",
+            "name": "Root",
+            "fqn": "app.Root",
+            "fields": {"id": {"kind": "standard", "type": "Identifier"}},
+        }
+        ir = {
+            "clusters": {
+                "app.Root": {
+                    "aggregate": root,
+                    "value_objects": {"app.Book": book, "app.LedgerEntry": entry},
+                }
+            },
+            "projections": {},
+        }
+        write_schemas(ir, tmp_path, fmt="protobuf")
+        schemas = tmp_path / "schemas" / "Root" / "value_objects"
+        book_text = (schemas / "Book.v1.proto").read_text()
+        assert "import " not in book_text
+        assert "  map<string, LedgerEntry_> ledger = 2;" in book_text
+        assert "  optional LedgerEntry_ latest = 1;" in book_text
+        assert "  message LedgerEntry_ {" in book_text
+        assert "message LedgerEntry {" not in book_text
+
+    def test_map_entry_name_follows_protoc(self):
+        assert _map_entry_name("ledger") == "LedgerEntry"
+        assert _map_entry_name("address_book") == "AddressBookEntry"
+        assert _map_entry_name("_a__b1c") == "AB1cEntry"
 
 
 class TestCompatibility:
