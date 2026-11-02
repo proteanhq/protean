@@ -477,6 +477,57 @@ class TestProtobuf:
         assert "  message LedgerEntry_ {" in book_text
         assert "message LedgerEntry {" not in book_text
 
+    def test_renamed_nested_message_skips_a_name_already_in_use(self, tmp_path):
+        # Book nests both LedgerEntry and a value object already named
+        # LedgerEntry_, so the renamed LedgerEntry takes yet another name.
+        entry = {
+            "element_type": "VALUE_OBJECT",
+            "name": "LedgerEntry",
+            "fqn": "app.LedgerEntry",
+            "fields": {"book": {"kind": "value_object", "target": "app.Book"}},
+        }
+        other = {
+            "element_type": "VALUE_OBJECT",
+            "name": "LedgerEntry_",
+            "fqn": "app.LedgerEntry_",
+            "fields": {"book": {"kind": "value_object", "target": "app.Book"}},
+        }
+        book = {
+            "element_type": "VALUE_OBJECT",
+            "name": "Book",
+            "fqn": "app.Book",
+            "fields": {
+                "ledger": {"kind": "dict", "type": "Dict", "target": "app.LedgerEntry"},
+                "other": {"kind": "value_object", "target": "app.LedgerEntry_"},
+            },
+        }
+        root = {
+            "element_type": "AGGREGATE",
+            "name": "Root",
+            "fqn": "app.Root",
+            "fields": {"id": {"kind": "standard", "type": "Identifier"}},
+        }
+        ir = {
+            "clusters": {
+                "app.Root": {
+                    "aggregate": root,
+                    "value_objects": {
+                        "app.Book": book,
+                        "app.LedgerEntry": entry,
+                        "app.LedgerEntry_": other,
+                    },
+                }
+            },
+            "projections": {},
+        }
+        write_schemas(ir, tmp_path, fmt="protobuf")
+        schemas = tmp_path / "schemas" / "Root" / "value_objects"
+        book_text = (schemas / "Book.v1.proto").read_text()
+        assert "  map<string, LedgerEntry__> ledger = 1;" in book_text
+        assert "  optional LedgerEntry_ other = 2;" in book_text
+        assert book_text.count("  message LedgerEntry_ {") == 1
+        assert book_text.count("  message LedgerEntry__ {") == 1
+
     def test_map_entry_name_follows_protoc(self):
         assert _map_entry_name("ledger") == "LedgerEntry"
         assert _map_entry_name("address_book") == "AddressBookEntry"

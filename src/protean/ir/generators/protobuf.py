@@ -166,19 +166,24 @@ def _map_entry_name(field_name: str) -> str:
     return "".join(word[0].upper() + word[1:] for word in words) + "Entry"
 
 
-def _declared_name(ref_name: str, main_name: str, entry_names: set[str]) -> str:
+def _declared_name(
+    ref_name: str, main_name: str, entry_names: set[str], taken: set[str]
+) -> str:
     """Return the name a referenced message is declared under in this file.
 
     ``entry_names`` holds the hidden entry message names of the main message's
     map fields, and is empty when referenced messages are siblings of the main
-    message.
+    message. ``taken`` holds the names other messages may be declared under.
     """
     # A message nested inside the main one shares its scope with those hidden
-    # entry messages, so a value object named like one of them gets a trailing
-    # underscore. No entry name ends in one.
-    if ref_name != main_name and ref_name in entry_names:
-        return f"{ref_name}_"
-    return ref_name
+    # entry messages, so a value object named like one of them gets trailing
+    # underscores, as many as it takes to clear every other message's name.
+    if ref_name == main_name or ref_name not in entry_names:
+        return ref_name
+    declared = f"{ref_name}_"
+    while declared in taken:
+        declared += "_"
+    return declared
 
 
 def _referenced_blocks(
@@ -262,8 +267,10 @@ def generate_proto_schema(
         else set()
     )
 
+    taken = {name, *entry_names, *(short_name(fqn) for fqn in flat)}
+
     def local_name(ref_name: str) -> str:
-        return _declared_name(ref_name, name, entry_names)
+        return _declared_name(ref_name, name, entry_names, taken)
 
     def resolve(target_fqn: str, referenced: set[str]) -> str:
         ref_name = short_name(target_fqn)
