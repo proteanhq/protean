@@ -1155,6 +1155,51 @@ class BaseEventStore(metaclass=ABCMeta):
             # unique cursor to catch that.
             position = batch[-1]["global_position"] + 1
 
+    def _check_body(
+        self,
+        msg: dict[str, Any],
+        stream: str,
+        position: int,
+        snapshot_version: dict[str, int],
+    ) -> IntegrityViolation | None:
+        """Check one well-formed row's ``data`` and return its violation, if any.
+
+        A snapshot row with a valid ``_version`` records it in
+        ``snapshot_version`` for the head check.
+        """
+        data = msg.get("data")
+        # Track the latest snapshot version per snapshot stream. A snapshot
+        # whose data is not a dict, or whose ``_version`` is missing or not a
+        # plain int (``bool`` is an int subclass, so exclude it), is corrupt:
+        # flag it here rather than silently dropping it from the head check.
+        if self._SNAPSHOT_MARKER in stream:
+            version = data.get("_version") if isinstance(data, dict) else None
+            if isinstance(version, int) and not isinstance(version, bool):
+                snapshot_version[stream] = version
+                return None
+            return IntegrityViolation(
+                kind=self.VERIFY_MALFORMED_SNAPSHOT,
+                stream=stream,
+                position=position,
+                detail="Snapshot data is not a dict or its _version is not an integer.",
+            )
+        # An empty dict is a valid body. Message DB's ``data`` column is
+        # ``jsonb``, so it can also hold an array, string or number, which no
+        # reader can turn into a message.
+        if isinstance(data, dict):
+            return None
+        detail = (
+            "Message data is NULL."
+            if data is None
+            else f"Message data is a {type(data).__name__}, not an object."
+        )
+        return IntegrityViolation(
+            kind=self.VERIFY_MALFORMED_MESSAGE,
+            stream=stream,
+            position=position,
+            detail=detail,
+        )
+
     def verify(self) -> IntegrityReport:
         """Check the store's internal invariants and report every violation.
 
@@ -1165,12 +1210,16 @@ class BaseEventStore(metaclass=ABCMeta):
         - each stream's ``position`` runs from 0 with no gaps,
         - ``global_position`` strictly increases across the store,
         - message ids are unique,
+        - every row outside a ``:snapshot-`` stream has a body that is an
+          object (``data`` is a dict, not NULL, an array or a scalar),
         - each ``:snapshot-`` stream holds a well-formed snapshot whose
           ``_version`` is not past the head of its aggregate stream.
 
-        A corrupt row, such as one missing a required field or a snapshot with
-        a non-integer ``_version``, is reported as a violation and never
-        skipped.
+        A corrupt row, such as one missing a required field, a message with a
+        NULL or non-object body or a snapshot with a non-integer ``_version``,
+        is reported as a violation and never skipped. A NULL or non-object body
+        is reported as ``malformed_message`` and still counts as its stream's
+        position.
 
         Returns:
             An `IntegrityReport` of the violations found. ``ok`` is ``True``
@@ -1222,8 +1271,11 @@ class BaseEventStore(metaclass=ABCMeta):
             # A row missing any required field is itself a corruption. Flag it
             # and move on: the remaining checks need those values, and running
             # them on a half-populated row would either crash or invent a
-            # spurious gap. Only absence is checked: every adapter types its
-            # columns, so a field that is present never has the wrong type.
+            # spurious gap. Only absence is checked: every adapter types these
+            # columns, so a required field that is present never has the wrong
+            # type. ``data`` is not required here: Message DB allows a NULL body,
+            # and the row still holds its position, so it is checked separately
+            # below, after the position bookkeeping.
             missing = [f for f in self._REQUIRED_FIELDS if msg.get(f) is None]
             if missing:
                 violations.append(
@@ -1274,27 +1326,9 @@ class BaseEventStore(metaclass=ABCMeta):
             last_position[stream] = position
             stream_head[stream] = max(stream_head.get(stream, -1), position)
 
-            # Track the latest snapshot version per snapshot stream. A snapshot
-            # whose data is not a dict, or whose ``_version`` is missing or not a
-            # plain int (``bool`` is an int subclass, so exclude it), is corrupt:
-            # flag it here rather than silently dropping it from the head check.
-            if self._SNAPSHOT_MARKER in stream:
-                data = msg.get("data")
-                version = data.get("_version") if isinstance(data, dict) else None
-                if isinstance(version, int) and not isinstance(version, bool):
-                    snapshot_version[stream] = version
-                else:
-                    violations.append(
-                        IntegrityViolation(
-                            kind=self.VERIFY_MALFORMED_SNAPSHOT,
-                            stream=stream,
-                            position=position,
-                            detail=(
-                                "Snapshot data is not a dict or its _version is "
-                                "not an integer."
-                            ),
-                        )
-                    )
+            violation = self._check_body(msg, stream, position, snapshot_version)
+            if violation is not None:
+                violations.append(violation)
 
         # Each snapshot's _version must not exceed its aggregate stream head
         for snap_stream, version in snapshot_version.items():

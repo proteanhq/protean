@@ -25,7 +25,10 @@ protean eventstore verify --domain=my_domain
 It checks these invariants:
 
 - **Rows are well-formed.** Every message carries its `id`, `stream_name`, and
-  `position`.
+  `position`. Every message outside a `:snapshot-` stream also has a body that
+  is a JSON object: Message DB allows a NULL `data` column, or one holding an
+  array, string or number, and `verify` reports such a row as
+  `malformed_message`. An empty object is a valid body.
 - **Position is gapless.** Each stream's `position` runs from 0 without gaps.
 - **Global position is strictly increasing.** `global_position` increases
   store-wide across every message.
@@ -34,8 +37,8 @@ It checks these invariants:
   carries an integer `_version` that stays at or below the head position of its
   aggregate stream.
 
-A corrupt row is reported, not skipped: a missing field or a malformed snapshot
-becomes a violation rather than a silent pass.
+A corrupt row is reported, not skipped: a missing field, a NULL or non-object
+body or a malformed snapshot becomes a violation rather than a silent pass.
 
 **Options**
 

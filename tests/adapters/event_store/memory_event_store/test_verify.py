@@ -107,3 +107,29 @@ def test_snapshot_ahead_of_stream_head_is_caught(test_domain):
     violation = report.violations[0]
     assert violation.kind == store.VERIFY_SNAPSHOT_AHEAD_OF_STREAM
     assert violation.stream == "test::user:snapshot-abc"
+
+
+def test_message_with_null_data_is_caught(test_domain):
+    store = test_domain.event_store.store
+    _seed_two_events(store)
+    store._write(
+        "test::user-abc",
+        "Closed",
+        {"n": 3},
+        _metadata("test::user-abc", "Closed", "m3"),
+    )
+
+    repo = store.domain.repository_for(MemoryMessage)
+    rows = repo._dao.query.order_by("global_position").all().items
+    # Null the body of the middle row (position 1).
+    rows[1].data = None
+    repo.add(rows[1])
+
+    report = store.verify()
+
+    assert report.ok is False
+    assert len(report.violations) == 1
+    violation = report.violations[0]
+    assert violation.kind == store.VERIFY_MALFORMED_MESSAGE
+    assert violation.stream == "test::user-abc"
+    assert violation.position == 1

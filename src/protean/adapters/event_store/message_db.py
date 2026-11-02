@@ -13,27 +13,37 @@ if TYPE_CHECKING:
     from protean.domain import Domain
 
 
-def _truncate_message_store(database_uri: str) -> None:
-    """Empty the Message-DB store at ``database_uri``. Test-harness use only.
+def _superuser_connection(database_uri: str) -> psycopg2.extensions.connection:
+    """Open a ``psycopg2`` connection to ``database_uri`` as ``postgres``.
 
-    Works only against the Postgres instance in the configured Docker container:
-    it connects as the ``postgres`` superuser, which is assumed to have no
-    password. Neither holds in production, so this must never run there. Any
-    change to the connection convention has to be made here, the single place
-    both ``MessageDBStore._data_reset`` and the test-suite reset go through.
+    Test-harness use only. Works only against the Postgres instance in the
+    configured Docker container: it connects as the ``postgres`` superuser, which
+    is assumed to have no password. Neither holds in production, so this must
+    never run there. Any change to the connection convention has to be made
+    here, the single place every superuser connection to the store goes through.
+    The caller closes the connection.
     """
     parsed = urlparse(database_uri)
     # ``parse_qsl`` tolerates odd query strings (a trailing ``&``, an empty
     # segment, a segment with no ``=``) that a hand-rolled ``split`` would choke
-    # on, so a slightly different ``database_uri`` cannot break truncation.
+    # on, so a slightly different ``database_uri`` cannot break the connection.
     query_params = dict(parse_qsl(parsed.query))
-    conn = psycopg2.connect(
+    return psycopg2.connect(
         dbname=parsed.path[1:],
         user="postgres",
         port=parsed.port,
         host=parsed.hostname,
         sslmode=query_params.get("sslmode", "disable"),
     )
+
+
+def _truncate_message_store(database_uri: str) -> None:
+    """Empty the Message-DB store at ``database_uri``. Test-harness use only.
+
+    Connects through :func:`_superuser_connection`; see its docstring for the
+    Docker-only connection convention.
+    """
+    conn = _superuser_connection(database_uri)
     try:
         cursor = conn.cursor()
         cursor.execute("TRUNCATE message_store.messages RESTART IDENTITY;")
@@ -102,15 +112,13 @@ class MessageDBStore(BaseEventStore):
             raise
         return position
 
-    # The message-db client's built-in ``$all`` query is a strict, unordered
-    # ``global_position > position LIMIT n`` — it skips the first position and,
-    # having no ``ORDER BY`` before the ``LIMIT``, returns an arbitrary subset
-    # rather than the lowest-``global_position`` page. Protean's read contract is
-    # an inclusive, ``global_position``-ordered page (subscriptions and outbox
+    # The message-db client's built-in ``$all`` query filters ``global_position >
+    # position``, so it skips the first position. Protean's read contract is an
+    # inclusive, ``global_position``-ordered page (subscriptions and outbox
     # reconciliation page from ``last_global_position + 1``), consistent with
     # category reads (``get_category_messages`` uses ``global_position >= position
-    # ORDER BY global_position ASC``) and the memory adapter, so supply a
-    # corrected statement.
+    # ORDER BY global_position ASC``) and the memory adapter, so supply an
+    # inclusive statement.
     _ALL_STREAM_SQL = (
         "SELECT "
         "id::varchar, stream_name::varchar, type::varchar, position::bigint, "
@@ -158,8 +166,6 @@ class MessageDBStore(BaseEventStore):
         # TODO(subhashb/message-db-py#4): page-in the whole stream only because
         # the message-db client has no category tail-read; replace with a
         # bounded reverse read when it does.
-        # The client's ``$all`` query has no ``ORDER BY``, so pick the newest by
-        # ``global_position`` rather than trusting row order (``messages[-1]``).
         messages = self._read(stream_name, no_of_messages=1_000_000)
         if not messages:
             return None
