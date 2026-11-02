@@ -438,7 +438,7 @@ All possible keys (no single field has all of them):
 | `increment` | Auto-increment flag |
 | `auto_now` | `true` on a `Date` or `DateTime` field that is set to the current time on every save (added in v0.3.0) |
 | `auto_now_add` | `true` on a `Date` or `DateTime` field that is set to the current time on the save that creates the record (added in v0.3.0) |
-| `content_type` | Element type of a `List`, or short name of a typed `Dict`'s value type (on a `Dict` field, added in v0.4.0). A `ValueObjectList` records its value object in `target` instead |
+| `content_type` | Element type of a `List`, or short name of a typed `Dict`'s value type. A `ValueObjectList` records its value object in `target` instead |
 | `auto_generated` | `true` for framework-injected fields |
 | `target` | FQN of the associated element (associations), of a `ValueObjectList`'s value object, or of the value object a `Dict` field's values hold (on a `Dict` field, added in v0.4.0) |
 | `via` | FK field name on the child entity |
