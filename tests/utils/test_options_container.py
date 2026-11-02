@@ -2,7 +2,7 @@
 
 import pytest
 
-from protean.utils.container import Options
+from protean.utils.container import Options, OptionsMixin
 
 
 class TestOptionsEdgeCases:
@@ -27,3 +27,24 @@ class TestOptionsEdgeCases:
         assert merged["key1"] == "val1"
         assert merged["key2"] == "val2"
         assert isinstance(merged, Options)
+
+
+class TestMutableDefaultOptions:
+    def test_mutating_one_class_default_leaves_another_class_unchanged(self):
+        """A list or dict default is copied into each class's ``meta_``, so
+        a change made through one class does not show up in another."""
+
+        class Root(OptionsMixin):
+            _default_options = [("tags", []), ("cfg", {})]
+
+        class First(Root):
+            meta_ = Options()
+
+        class Second(Root):
+            meta_ = Options()
+
+        First.meta_.tags.append("x")
+        First.meta_.cfg["k"] = "v"
+
+        assert Second.meta_.tags == []
+        assert Second.meta_.cfg == {}

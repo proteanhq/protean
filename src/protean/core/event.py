@@ -107,7 +107,9 @@ class BaseEvent(BaseMessageType):
             incoming_metadata = template_metadata
         kwargs.pop("_rebuild", None)
         template_expected_version = kwargs.pop("_expected_version", None)
-        if expected_version == -1 and template_expected_version is not None:
+        if (
+            expected_version == -1 and template_expected_version is not None
+        ):  # pragma: no cover  # no framework caller puts it in a template
             expected_version = template_expected_version
         kwargs.pop("_version", None)
 

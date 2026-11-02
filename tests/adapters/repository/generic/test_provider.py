@@ -6,7 +6,9 @@ and configuration error messages.
 
 import pytest
 
+from protean import Domain
 from protean.adapters.repository import Providers
+from protean.adapters.repository.memory import MemoryProvider, MemorySession
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import String
@@ -355,3 +357,75 @@ class TestConfigurationErrorMessages:
             ),
         ):
             domain.providers._initialize()
+
+
+@pytest.mark.no_test_domain
+class TestProvidersBeforeInit:
+    """`domain.providers` connects to the configured databases on first use."""
+
+    def test_get_connection_before_init_connects_to_the_default_provider(self):
+        domain = Domain(name="Test")
+
+        with domain.domain_context():
+            conn = domain.providers.get_connection()
+
+        assert isinstance(conn, MemorySession)
+        assert list(domain.providers) == ["default", "memory"]
+
+    def test_repository_for_before_init_returns_the_aggregate_repository(self):
+        domain = Domain(name="Test")
+        domain.register(User)
+
+        with domain.domain_context():
+            repository = domain.providers.repository_for(User)
+
+        assert repository.meta_.part_of is User
+        assert list(domain.providers) == ["default", "memory"]
+
+
+@pytest.mark.no_test_domain
+class TestProvidersMapping:
+    """`domain.providers` reads and writes like a mapping of name to provider."""
+
+    def test_a_provider_set_before_init_can_be_read_back(self):
+        domain = Domain(name="Test")
+        provider = MemoryProvider("extra", domain, {"provider": "memory"})
+
+        domain.providers["extra"] = provider
+
+        assert domain.providers["extra"] is provider
+        assert len(domain.providers) == 1
+        assert "extra" in domain.providers
+        assert list(domain.providers) == ["extra"]
+
+    def test_reading_a_missing_provider_before_init_raises_key_error(self):
+        domain = Domain(name="Test")
+
+        with pytest.raises(KeyError):
+            domain.providers["extra"]
+
+    def test_deleting_before_init_raises_assertion_error(self):
+        # TODO(#<bug>): a mapping raises KeyError here; Providers raises AssertionError.
+        # https://github.com/proteanhq/protean/issues/<bug>
+        domain = Domain(name="Test")
+
+        with pytest.raises(AssertionError):
+            del domain.providers["default"]
+
+    def test_deleting_a_provider_after_init_removes_it(self):
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+
+        del domain.providers["default"]
+
+        assert list(domain.providers) == ["memory"]
+
+    def test_deleting_a_missing_provider_after_init_changes_nothing(self):
+        # TODO(#<bug>): a mapping raises KeyError here; Providers passes silently.
+        # https://github.com/proteanhq/protean/issues/<bug>
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+
+        del domain.providers["missing"]
+
+        assert list(domain.providers) == ["default", "memory"]

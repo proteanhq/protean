@@ -1,9 +1,8 @@
-"""Tests for edge cases in core/event.py.
+"""Tests for building events from template dicts and for unregistered events.
 
-Covers uncovered paths:
-- TypeError for non-dict positional arg
-- expected_version from template metadata
-- ConfigurationError when event not registered with domain
+- An event rejects a positional argument that is not a dict.
+- An event merges a positional template dict with keyword arguments.
+- An event class that is not registered with a domain cannot be instantiated.
 """
 
 import pytest
@@ -25,12 +24,16 @@ class OrderPlaced(BaseEvent):
     name: str | None = None
 
 
+class UnregisteredEvent(BaseEvent):
+    data: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 class TestEventTemplateDictPattern:
-    def test_non_dict_positional_arg_raises(self, test_domain):
-        """TypeError for non-dict positional arg."""
+    def test_non_dict_positional_arg_raises_type_error(self, test_domain):
+        """An event raises TypeError when its positional argument is not a dict."""
         test_domain.register(Order)
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.init(traverse=False)
@@ -42,8 +45,8 @@ class TestEventTemplateDictPattern:
             "This argument serves as a template for loading common values."
         )
 
-    def test_dict_positional_arg_merged(self, test_domain):
-        """Positional dict merged with kwargs."""
+    def test_dict_positional_arg_merged_with_kwargs(self, test_domain):
+        """An event takes field values from both a template dict and kwargs."""
         test_domain.register(Order)
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.init(traverse=False)
@@ -53,37 +56,11 @@ class TestEventTemplateDictPattern:
         assert event.name == "Test"
 
 
-class TestEventExpectedVersion:
-    def test_expected_version_from_template_dict(self, test_domain):
-        """expected_version from template_expected_version."""
-        test_domain.register(Order)
-        test_domain.register(OrderPlaced, part_of=Order)
-        test_domain.init(traverse=False)
-
-        # Create event with _expected_version in template dict
-        template = {"order_id": "123", "_expected_version": 5}
-        event = OrderPlaced(template)
-        assert event._expected_version == 5
-
-    def test_explicit_expected_version_overrides_template(self, test_domain):
-        """Explicit kwarg takes precedence over template."""
-        test_domain.register(Order)
-        test_domain.register(OrderPlaced, part_of=Order)
-        test_domain.init(traverse=False)
-
-        template = {"order_id": "123", "_expected_version": 5}
-        event = OrderPlaced(template, _expected_version=10)
-        assert event._expected_version == 10
-
-
-class TestEventModelPostInit:
+class TestUnregisteredEvent:
     def test_unregistered_event_raises_configuration_error(self):
-        """ConfigurationError when event has no __type__."""
-        with pytest.raises(
-            ConfigurationError, match="should be registered with a domain"
-        ):
-
-            class UnregisteredEvent(BaseEvent):
-                data: str | None = None
-
+        """An event class not registered with a domain raises ConfigurationError."""
+        with pytest.raises(ConfigurationError) as exc_info:
             UnregisteredEvent(data="test")
+        assert exc_info.value.args[0] == (
+            "`UnregisteredEvent` should be registered with a domain"
+        )

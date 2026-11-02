@@ -292,29 +292,26 @@ class TestVOSerialization:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Edge cases for coverage
+# Tests: Building without __init__ and re-setting the identifier
 # ---------------------------------------------------------------------------
-class TestVOEdgeCases:
-    def test_model_post_init_without_init_context(self):
-        """Ensure model_post_init handles an empty thread-local stack gracefully.
-
-        This exercises the defensive else branch in model_post_init when
-        the thread-local stack has been consumed or is absent.
-        """
-        from protean.core.projection import _projection_init_context
-
-        view = CustomerView(customer_id="C1", name="Alice")
-        # Clear the thread-local stack, then call model_post_init directly
-        _projection_init_context.stack = []
-        view._initialized = False
-        view.model_post_init(None)
-        # Should not crash; VO remains None
+class TestProjectionBuiltWithModelConstruct:
+    def test_model_construct_leaves_vo_unset(self):
+        """A projection built with model_construct, which skips __init__, has no VO."""
+        view = CustomerView.model_construct(customer_id="C1", name="Alice")
         assert view.billing_address is None
 
+    def test_model_construct_sets_vo_shadow_fields_to_none(self):
+        """A projection built with model_construct has every VO shadow field set to None."""
+        view = CustomerView.model_construct(customer_id="C1", name="Alice")
+        assert view.billing_address_street is None
+        assert view.billing_address_city is None
+        assert view.billing_address_zip_code is None
+
+
+class TestIdentifierReassignment:
     def test_setting_identifier_to_same_value_is_allowed(self):
-        """Setting the identifier field to its current value should not raise."""
+        """Setting the identifier field to its current value does not raise."""
         view = CustomerView(customer_id="C1", name="Alice")
-        # Re-setting the same value should succeed silently
         view.customer_id = "C1"
         assert view.customer_id == "C1"
 

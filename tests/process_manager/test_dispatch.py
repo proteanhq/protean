@@ -4,8 +4,13 @@ from uuid import uuid4
 
 import pytest
 
+from protean.core.event import BaseEvent
 from protean.core.process_manager import _resolve_correlation_value
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError
+from protean.fields import Identifier, String
+from protean.server import Engine
+from protean.utils.globals import current_domain
 
 from .elements import (
     Order,
@@ -19,6 +24,13 @@ from .elements import (
 )
 
 
+class OrderNoteAdded(BaseEvent):
+    """An event on the order stream that OrderFulfillmentPM has no handler for."""
+
+    order_id: Identifier()
+    note: String()
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Order)
@@ -28,6 +40,7 @@ def register_elements(test_domain):
     test_domain.register(PaymentFailed, part_of=Payment)
     test_domain.register(Shipping)
     test_domain.register(ShipmentDelivered, part_of=Shipping)
+    test_domain.register(OrderNoteAdded, part_of=Order)
     test_domain.register(
         OrderFulfillmentPM,
         stream_categories=["test::order", "test::payment", "test::shipping"],
@@ -129,6 +142,25 @@ class TestNonStartEventWithNoPM:
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
         messages = test_domain.event_store.store.read(stream_name)
         assert len(messages) == 0
+
+
+class TestUnhandledEvent:
+    async def test_event_without_a_handler_records_no_transition(self, test_domain):
+        """An event from a subscribed stream with no PM handler leaves no PM state."""
+        order = Order(customer_id="CUST-1", total=100.0)
+        order.raise_(OrderNoteAdded(order_id=str(order.id), note="Gift wrap"))
+        with UnitOfWork():
+            current_domain.repository_for(Order).add(order)
+        message = test_domain.event_store.store.read(
+            f"{Order.meta_.stream_category}-{order.id}"
+        )[0]
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        handled = await engine.handle_message(OrderFulfillmentPM, message)
+
+        pm_stream = f"{OrderFulfillmentPM.meta_.stream_category}-{order.id}"
+        assert handled is True
+        assert test_domain.event_store.store.read(pm_stream) == []
 
 
 class TestFullLifecycle:

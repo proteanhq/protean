@@ -2,6 +2,8 @@
 
 import pytest
 
+from protean import Domain, handle
+from protean.fields.simple import Float, Identifier
 from protean.ir.builder import IRBuilder
 
 from .elements import build_handler_test_domain, build_resilient_handler_test_domain
@@ -357,3 +359,33 @@ class TestRepositoryDatabaseOption:
                     assert repo["database"] == "memory"
                     return
         pytest.fail("OrderMemoryRepository not found")
+
+
+@pytest.mark.no_test_domain
+class TestProcessManagerCorrelateString:
+    """Verify a process manager handler's string correlate is kept in the IR."""
+
+    def test_string_correlate_is_recorded_on_the_handler(self):
+        """A handler declared with correlate="order_id" carries that string."""
+        domain = Domain(name="PMStr", root_path=".")
+
+        @domain.event(part_of="Order")
+        class OrderCreated:
+            order_id = Identifier(required=True)
+
+        @domain.aggregate
+        class Order:
+            total = Float(default=0.0)
+
+        @domain.process_manager(stream_categories=["order"])
+        class SimpleFlow:
+            order_id = Identifier()
+
+            @handle(OrderCreated, start=True, correlate="order_id")
+            def on_created(self, event):
+                pass
+
+        domain.init(traverse=False)
+        ir = IRBuilder(domain).build()
+        pm = next(iter(ir["flows"]["process_managers"].values()))
+        assert pm["handlers"][OrderCreated.__type__]["correlate"] == "order_id"
