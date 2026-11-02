@@ -273,7 +273,7 @@ A release that removes something is the only kind that intentionally breaks user
 For critical bugs discovered after a release:
 
 1. Fix on `main` through normal PR workflow.
-2. Cherry-pick the fix to the corresponding `release/0.X.x` branch. While the patch milestone (such as `0.15.1`) is open and the `release/0.X.x` branch exists, the `Backport` workflow opens the cherry-pick PR when the fix merges, if the fix PR or the issue it closes carries that milestone. Setting the milestone on the PR or the issue after the merge opens it then. A `backport release/0.X.x` label on the PR does the same for a fix with no milestone. A fix for a patch writes its migration note under the patch version in that minor's guide. Both branches have that file, so the note does not conflict. A conflict elsewhere opens the PR as a draft, and the maintainer resolves it.
+2. Cherry-pick the fix to the corresponding `release/0.X.x` branch. While the patch milestone (such as `0.15.1`) is open and the `release/0.X.x` branch exists, the `Backport` workflow opens the cherry-pick PR when the fix merges, if the fix PR or the issue it closes carries that milestone. Setting the milestone on the issue after the merge opens it then. A `backport release/0.X.x` label on the PR does the same for a fix with no milestone. A fix for a patch writes its migration note under the patch version in that minor's guide. Both branches have that file, so the note does not conflict. A conflict elsewhere opens the PR as a draft, and the maintainer resolves it.
 3. Tag a patch version (e.g., `v0.15.1`) on the release branch.
 4. Publish immediately.
 

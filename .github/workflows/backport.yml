@@ -6,24 +6,25 @@ name: Backport
 #
 # - release/0.X.x while a patch milestone 0.X.Y (Y above 0) is open, when the PR
 #   merged to main and it or an issue it closes carries that milestone. Setting
-#   the milestone on the PR or the issue after the merge backports then.
-#   Closing the milestone stops these backports.
+#   the milestone on the issue after the merge backports then. Closing the
+#   milestone stops these backports. The title must be exactly 0.X.Y.
 # - each branch named by a `backport release/0.X.x` label on the PR.
 #
-# .github/scripts/backport.sh decides the targets and the milestone. The backport
-# PR carries the patch milestone that named it, or for a label the lowest open
-# patch milestone of that branch. On a conflict it opens as a draft, and the
-# action comments on the original PR with the steps to finish it. To retry a
-# backport, close its PR unmerged and re-run this workflow.
+# The `find` job decides the targets and skips a branch that does not exist or
+# already has an open or merged backport PR. To retry a backport, close its PR
+# unmerged and re-run this workflow. The backport PR carries the patch milestone
+# that named it, or for a label the lowest open patch milestone of that branch.
+# On a conflict it opens as a draft, and the action comments on the original PR
+# with the steps to finish it.
 #
-# A GitHub App opens the backport PR, because a PR opened with GITHUB_TOKEN starts
-# no workflows and so gets no CI. The App needs write access to contents, issues,
-# pull requests and workflows (to push a fix that edits a workflow). Its client ID
-# and private key are the repository secrets BACKPORT_APP_CLIENT_ID and
-# BACKPORT_APP_PRIVATE_KEY. Without them the job warns and uses GITHUB_TOKEN.
+# The protean-backport GitHub App (secrets BACKPORT_APP_ID and
+# BACKPORT_APP_PRIVATE_KEY) makes every call, because a PR opened with
+# GITHUB_TOKEN starts no workflows and so gets no CI. Its token can push to
+# workflow files, so no step checks out or runs code from the PR's head: the
+# action cherry-picks the merged commit.
 on:
   pull_request_target:
-    types: [closed, labeled, milestoned]
+    types: [closed, labeled]
   issues:
     types: [milestoned]
 
@@ -39,33 +40,133 @@ jobs:
        github.event.pull_request.merged == true &&
        (github.event.pull_request.base.ref == 'main' ||
         contains(join(github.event.pull_request.labels.*.name, '|'), 'backport ')) &&
-       (github.event.action != 'labeled' || startsWith(github.event.label.name, 'backport '))) ||
+       (github.event.action == 'closed' || startsWith(github.event.label.name, 'backport '))) ||
       (github.event_name == 'issues' &&
        github.event.issue.pull_request == null &&
        github.event.issue.state == 'closed' &&
        github.event.milestone.state == 'open')
-    permissions:
-      contents: read
-      issues: read
-      pull-requests: read
     outputs:
       backports: ${{ steps.find.outputs.backports }}
     steps:
-      # pull_request_target and issues both check out the base branch, never the
-      # PR's code.
-      - uses: actions/checkout@v7
+      - uses: actions/create-github-app-token@v2
+        id: app-token
         with:
-          sparse-checkout: .github/scripts
+          app-id: ${{ secrets.BACKPORT_APP_ID }}
+          private-key: ${{ secrets.BACKPORT_APP_PRIVATE_KEY }}
 
+      # Prints one {pr, target, milestone, milestone_title} object per backport;
+      # milestone is the milestone number, 0 for none. Every lookup is a plain
+      # assignment, never a condition, so a failed gh call fails the step instead
+      # of reading as "no backport".
       - name: List backports
         id: find
+        shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           ISSUE: ${{ github.event.issue.number }}
         run: |
-          backports=$(.github/scripts/backport.sh)
+          set -euo pipefail
+          # Without this, set -e does not apply inside $(...), so a failed gh call
+          # there would return its error text as data.
+          shopt -s inherit_errexit
+
+          # The GraphQL queries are single-quoted because $owner and the rest are
+          # GraphQL variables, which gh fills from -f and -F.
+          # shellcheck disable=SC2016
+          closing_prs() {
+            local prs
+            prs=$(gh api graphql -F owner='{owner}' -F name='{repo}' -F issue="$1" -f query='
+              query($owner: String!, $name: String!, $issue: Int!) {
+                repository(owner: $owner, name: $name) {
+                  issue(number: $issue) {
+                    closedByPullRequestsReferences(first: 100, includeClosedPrs: true) {
+                      nodes { number merged baseRefName repository { nameWithOwner } }
+                    }
+                  }
+                }
+              }' --jq '[.data.repository.issue.closedByPullRequestsReferences.nodes[]
+                       | select(.merged and .baseRefName == "main"
+                                and .repository.nameWithOwner == env.GH_REPO)
+                       | .number] | join(" ")')
+            if [[ -z "$prs" ]]; then
+              echo "::warning::Issue #$1 has no merged PR to main that closes it; no backport opened." >&2
+            fi
+            echo "$prs"
+          }
+
+          # One line per candidate: "<branch> <exists> <milestone number> <title>".
+          # shellcheck disable=SC2016
+          candidates() {
+            gh api graphql -F owner='{owner}' -F name='{repo}' -F pr="$1" -f query='
+              query($owner: String!, $name: String!, $pr: Int!) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $pr) {
+                    baseRefName
+                    labels(first: 100) { nodes { name } }
+                    milestone { number title state }
+                    closingIssuesReferences(first: 100) {
+                      nodes { milestone { number title state } }
+                    }
+                  }
+                  milestones(states: OPEN, first: 100) { nodes { number title } }
+                  refs(refPrefix: "refs/heads/release/", first: 100) { nodes { name } }
+                }
+              }' --jq '
+              def patch: test("^[0-9]+\\.[0-9]+\\.[1-9][0-9]*$");
+              def branch: .title | capture("^(?<x>[0-9]+)\\.(?<y>[0-9]+)\\.") | "release/\(.x).\(.y).x";
+              def version: .title | split(".") | map(tonumber);
+              .data.repository as $repo
+              | $repo.pullRequest as $pr
+              | ($repo.milestones.nodes | map(select(.title | patch)) | sort_by(version)) as $open
+              | (if $pr.baseRefName == "main"
+                   then [$pr.milestone] + [$pr.closingIssuesReferences.nodes[].milestone]
+                   else [] end
+                 | map(select(. != null and .state == "OPEN" and (.title | patch)))
+                 | unique_by(.number) | sort_by(version)) as $named
+              | ($repo.refs.nodes | map("release/" + .name)) as $refs
+              | [($named[] | branch),
+                 ($pr.labels.nodes[].name | capture("^backport (?<t>release/[^ ]+)$").t)]
+              | unique[]
+              | . as $t
+              | (([$named[], $open[]] | map(select(branch == $t)) | first)
+                 // {number: 0, title: ""}) as $m
+              | "\($t) \($refs | index($t) != null) \($m.number) \($m.title)"'
+          }
+
+          backports_for() {
+            local pr="$1" lines target exists number title count
+            lines=$(candidates "$pr")
+            while read -r target exists number title; do
+              [[ -n "$target" ]] || continue
+              if [[ "$exists" != "true" ]]; then
+                echo "::warning::#$pr names $target, which does not exist; not backported there." >&2
+                continue
+              fi
+              # The action's branch_name below. A PR closed unmerged does not count.
+              count=$(gh pr list --head "backport-$pr-to-$target" --state all \
+                --json state --jq 'map(select(.state != "CLOSED")) | length')
+              if [[ "$count" != "0" ]]; then
+                echo "#$pr already has a backport PR to $target." >&2
+                continue
+              fi
+              jq -nc --argjson pr "$pr" --arg target "$target" --argjson number "$number" \
+                --arg title "$title" \
+                '{pr: $pr, target: $target, milestone: $number, milestone_title: $title}'
+            done <<<"$lines"
+          }
+
+          if [[ -n "$ISSUE" ]]; then
+            prs=$(closing_prs "$ISSUE")
+          else
+            prs="$PR"
+          fi
+          out=""
+          for pr in $prs; do
+            out+=$(backports_for "$pr")$'\n'
+          done
+          backports=$(jq -sc '.' <<<"$out")
           echo "Backports: $backports"
           echo "backports=$backports" >> "$GITHUB_OUTPUT"
 
@@ -74,11 +175,6 @@ jobs:
     needs: find
     if: needs.find.outputs.backports != '[]'
     runs-on: ubuntu-latest
-    # Used only when the App secrets are missing.
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -86,38 +182,30 @@ jobs:
     # A merge and a milestone change can name the same backport at once.
     concurrency:
       group: backport-${{ matrix.backport.pr }}-${{ matrix.backport.target }}
-    env:
-      APP_CLIENT_ID: ${{ secrets.BACKPORT_APP_CLIENT_ID }}
     steps:
-      - name: Mint the App token
+      - uses: actions/create-github-app-token@v2
         id: app-token
-        if: env.APP_CLIENT_ID != ''
-        uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ env.APP_CLIENT_ID }}
+          app-id: ${{ secrets.BACKPORT_APP_ID }}
           private-key: ${{ secrets.BACKPORT_APP_PRIVATE_KEY }}
 
-      - name: Warn that CI will not run on the backport PR
-        if: env.APP_CLIENT_ID == ''
-        run: echo "::warning::BACKPORT_APP_CLIENT_ID is not set; the backport PR opens with GITHUB_TOKEN and CI does not run on it."
-
-      # The same token pushes the backport branch, so later pushes to the backport
-      # PR also start CI.
+      # The base branch, never the PR's head. The App token pushes the backport
+      # branch, so later pushes to the backport PR also start CI.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          token: ${{ steps.app-token.outputs.token || github.token }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Create backport PR
         id: backport
         uses: korthout/backport-action@v4
         with:
-          github_token: ${{ steps.app-token.outputs.token || github.token }}
+          github_token: ${{ steps.app-token.outputs.token }}
           source_pr_number: ${{ matrix.backport.pr }}
           target_branches: ${{ matrix.backport.target }}
-          # The script reads the labels, so the action must not add more targets.
+          # The find job reads the labels, so the action must not add targets.
           label_pattern: ''
-          # backport.sh looks for an earlier backport PR by this branch name.
+          # The find job looks for an earlier backport PR by this branch name.
           branch_name: backport-${pull_number}-to-${target_branch}
           pull_title: '[Backport ${target_branch}] ${pull_title}'
           pull_description: |-
@@ -127,17 +215,17 @@ jobs:
       - name: Put the patch milestone on the backport PR
         if: steps.backport.outputs.created_pull_numbers != '' && matrix.backport.milestone != 0
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
           CREATED: ${{ steps.backport.outputs.created_pull_numbers }}
           MILESTONE: ${{ matrix.backport.milestone }}
           TITLE: ${{ matrix.backport.milestone_title }}
         run: |
-          gh api -X PATCH "repos/${{ github.repository }}/issues/$CREATED" \
-            -F milestone="$MILESTONE" --silent
+          gh api -X PATCH "repos/$GH_REPO/issues/$CREATED" -F milestone="$MILESTONE" --silent
           echo "Put #$CREATED in milestone $TITLE."
 
       # The action reports a failed cherry-pick, push or PR creation in its
-      # outputs and a comment, and leaves the step green.
+      # outputs and a comment on the original PR, and leaves its step green.
       - name: Fail when the backport PR did not open
         if: steps.backport.outputs.was_successful == 'false'
         env:
