@@ -331,7 +331,7 @@ ordering = "ordering.domain"
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `strictness` | string | `"strict"` | `"strict"` exits non-zero on breaking changes. `"warn"` reports but allows. `"off"` skips the comparison: `ir diff` still loads both sides and exits 2 if either fails to load, then exits 0. |
+| `strictness` | string | `"strict"` | `"strict"` exits non-zero on breaking changes. `"warn"` reports but allows. `"off"` skips the comparison: `ir diff` still checks its options and loads both sides, exits 2 if either step fails, then exits 0. |
 | `exclude` | list of strings | `[]` | Fully-qualified names of elements to leave out of the compatibility report. A published event's contract breaks are still checked; see [Published event contracts](#published-event-contracts). |
 
 ### `[compatibility.deprecation]`

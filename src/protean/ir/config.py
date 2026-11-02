@@ -63,7 +63,12 @@ class CompatConfig:
     domains: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.strictness not in _STRICTNESS_VALUES:
+        # Check the type first: an unhashable value such as a TOML array would
+        # raise TypeError from the set membership test below.
+        if (
+            not isinstance(self.strictness, str)
+            or self.strictness not in _STRICTNESS_VALUES
+        ):
             raise ValueError(
                 f"Invalid strictness value: {self.strictness!r}. "
                 f"Must be one of: {', '.join(sorted(_STRICTNESS_VALUES))}"

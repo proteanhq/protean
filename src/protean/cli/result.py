@@ -22,7 +22,7 @@ records (the :mod:`protean.ir.diagnostics` shape, plain dicts at runtime).
 exit-code convention below (``3`` is its "non-breaking changes only" class) but
 keeps its own ``--format json`` shape, off the envelope. The other commands that
 print ``--json``/``--format json`` (``upgrade-check``, ``ir check``) are not yet
-converged onto either — that is a separate follow-on. Do not read this module as
+converged onto either. That is a separate follow-on. Do not read this module as
 a claim that they already conform.
 
 The envelope is a guarded contract, not just a shape: it ships a pinned,

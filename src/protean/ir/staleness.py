@@ -98,20 +98,24 @@ def load_stored_ir(protean_dir: Path | str) -> tuple[dict[str, Any], Path] | Non
     """Load the stored IR from *protean_dir*/ir.json.
 
     Returns ``(ir_dict, path)`` if found and valid, or ``None`` if the file
-    does not exist.  Raises :exc:`ValueError` if the file exists but is not
-    valid JSON.
+    does not exist.  Raises :exc:`ValueError` if the file exists but cannot
+    be read as UTF-8, is not valid JSON, or is not a JSON object.
     """
     ir_path = Path(protean_dir) / _IR_FILENAME
     if not ir_path.exists():
         return None
     try:
         content = ir_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise ValueError(f"Could not read {ir_path}: {exc}") from exc
     try:
-        return json.loads(content), ir_path
+        data = json.loads(content)
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {ir_path}: {exc}") from exc
+    if isinstance(data, dict):
+        return data, ir_path
+    # ValueError, not TypeError: callers treat ValueError as "ir.json is unusable".
+    raise ValueError(f"{ir_path} is not a JSON object")
 
 
 def check_staleness(

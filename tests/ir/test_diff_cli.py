@@ -3082,6 +3082,24 @@ def _bad_json_file(tmp_path, name="bad.json"):
     return str(path)
 
 
+def _module_file(tmp_path, source):
+    path = tmp_path / "broken_domain.py"
+    path.write_text(source, encoding="utf-8")
+    return str(path)
+
+
+def _raw_file(tmp_path, content, name="raw.json"):
+    path = tmp_path / name
+    path.write_bytes(content)
+    return str(path)
+
+
+def _baseline(protean_dir, content):
+    # Writes the auto-baseline and adds no arguments to the command line.
+    (protean_dir / "ir.json").write_bytes(content)
+    return []
+
+
 # Each case builds the command line from (tmp_path, protean_dir) and names the
 # text the error must print on stderr.
 _ERROR_CASES = {
@@ -3137,6 +3155,35 @@ _ERROR_CASES = {
     "--domain that does not load": (
         lambda t, d: ["-d", "no_such_module_xyz.py", "-r", _good_file(t)],
         "Error loading Protean domain",
+    ),
+    "--domain that raises at import": (
+        lambda t, d: [
+            "-d",
+            _module_file(t, "raise RuntimeError('boom')"),
+            "-r",
+            _good_file(t),
+        ],
+        "Error loading Protean domain: RuntimeError: boom",
+    ),
+    "--domain with a syntax error": (
+        lambda t, d: ["-d", _module_file(t, "def broken(:"), "-r", _good_file(t)],
+        "Error loading Protean domain: SyntaxError",
+    ),
+    "--left file that is not UTF-8": (
+        lambda t, d: ["-l", _raw_file(t, b"\xff\xfe"), "-r", _good_file(t)],
+        "could not read",
+    ),
+    "--left file that is a JSON list": (
+        lambda t, d: ["-l", _raw_file(t, b"[]"), "-r", _good_file(t)],
+        "IR file is not a JSON object",
+    ),
+    "auto-baseline that is a JSON list": (
+        lambda t, d: [*_baseline(d, b"[]"), "-d", "publishing7.py"],
+        "is not a JSON object",
+    ),
+    "auto-baseline that is not UTF-8": (
+        lambda t, d: [*_baseline(d, b"\xff"), "-d", "publishing7.py"],
+        "Could not read",
     ),
 }
 
@@ -3201,10 +3248,16 @@ class TestDiffErrorsExit2:
     def test_error_keeps_stdout_empty_under_json(self, case):
         self._assert_usage_error(self._run(case, extra=("-f", "json")), case)
 
-    def test_malformed_config_exits_2_on_stderr(self):
-        (self._protean_dir / "config.toml").write_text(
-            "{ invalid toml }", encoding="utf-8"
-        )
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "{ invalid toml }",
+            '[compatibility]\nstrictness = "lenient"\n',
+            "[compatibility]\nstrictness = []\n",
+        ],
+    )
+    def test_malformed_config_exits_2_on_stderr(self, content):
+        (self._protean_dir / "config.toml").write_text(content, encoding="utf-8")
         result = runner.invoke(
             app,
             [
@@ -3233,6 +3286,97 @@ class TestDiffErrorsExit2:
         assert result.exit_code == 2
         assert "--base requires --domain" in result.stderr
         assert "config.toml" not in result.stderr
+
+    @pytest.mark.parametrize("strictness", ["strict", "off"])
+    @pytest.mark.parametrize("mode", ["git baseline", "auto-baseline"])
+    def test_domain_load_error_after_a_good_baseline_exits_2(self, mode, strictness):
+        # The baseline loads, so the failure comes from the domain side.
+        (self._protean_dir / "config.toml").write_text(
+            f'[compatibility]\nstrictness = "{strictness}"\n', encoding="utf-8"
+        )
+        args = ["ir", "diff", "--dir", str(self._protean_dir)]
+        args += ["-d", "no_such_module_xyz.py"]
+        if mode == "git baseline":
+            args += ["--base", "HEAD"]
+        else:
+            (self._protean_dir / "ir.json").write_text(
+                json.dumps(_minimal_ir()), encoding="utf-8"
+            )
+        with (
+            patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff ran")),
+            patch("protean.ir.git.load_ir_from_commit", return_value=_minimal_ir()),
+        ):
+            result = runner.invoke(app, args)
+        assert result.exit_code == 2, result.output
+        assert "Error loading Protean domain" in result.stderr
+        assert result.stdout == ""
+
+    @pytest.mark.parametrize("strictness", ["strict", "off"])
+    def test_missing_right_file_after_a_good_domain_exits_2(self, strictness):
+        (self._protean_dir / "config.toml").write_text(
+            f'[compatibility]\nstrictness = "{strictness}"\n', encoding="utf-8"
+        )
+        with patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff ran")):
+            result = runner.invoke(
+                app,
+                [
+                    "ir",
+                    "diff",
+                    "--dir",
+                    str(self._protean_dir),
+                    "-d",
+                    "publishing7.py",
+                    "-r",
+                    str(self._tmp / "missing.json"),
+                ],
+            )
+        assert result.exit_code == 2, result.output
+        assert "file not found or not a regular file" in " ".join(result.stderr.split())
+        assert result.stdout == ""
+
+    @pytest.mark.parametrize(
+        "bad_ir", [{"clusters": []}, {"clusters": {"app.Order": 5}}]
+    )
+    def test_ir_without_the_ir_structure_exits_2(self, bad_ir):
+        left = _write_ir(self._tmp, "bad_shape.json", bad_ir)
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-l",
+                left,
+                "-r",
+                _good_file(self._tmp),
+            ],
+        )
+        assert result.exit_code == 2, result.output
+        assert "does not have the IR structure" in " ".join(result.stderr.split())
+        assert result.stdout == ""
+
+    def test_ir_without_the_ir_structure_exits_0_under_off(self):
+        # Under off the comparison does not run, so only it can reject this IR.
+        (self._protean_dir / "config.toml").write_text(
+            '[compatibility]\nstrictness = "off"\n', encoding="utf-8"
+        )
+        left = _write_ir(self._tmp, "bad_shape.json", {"clusters": []})
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-l",
+                left,
+                "-r",
+                _good_file(self._tmp),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Compatibility checking is disabled" in result.stdout
 
     def test_domain_init_error_exits_2(self):
         with patch("protean.domain.Domain.init", side_effect=RuntimeError("init boom")):

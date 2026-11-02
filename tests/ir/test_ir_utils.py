@@ -1,6 +1,8 @@
 """Tests for the shared IR loading utilities in protean.cli._ir_utils."""
 
 import json
+import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -136,6 +138,53 @@ class TestUsageExit:
         assert "Error generating IR from Protean domain: to_ir failed" in (
             capsys.readouterr().err
         )
+
+    @patch("protean.cli._ir_utils.derive_domain")
+    def test_domain_import_error_exits_2_on_stderr(self, mock_derive, capsys):
+        mock_derive.side_effect = RuntimeError("boom at import")
+        with pytest.raises(Exit) as exc_info:
+            load_domain_ir("my_app.domain", usage_exit=True)
+        assert exc_info.value.exit_code == 2
+        assert "Error loading Protean domain: RuntimeError: boom at import" in (
+            capsys.readouterr().err
+        )
+
+    @patch("protean.cli._ir_utils.derive_domain")
+    def test_domain_import_error_aborts_by_default(self, mock_derive, capsys):
+        mock_derive.side_effect = SyntaxError("bad syntax")
+        with pytest.raises(Abort):
+            load_domain_ir("my_app.domain")
+        assert "Error loading Protean domain: SyntaxError: bad syntax" in (
+            capsys.readouterr().out
+        )
+
+    def test_non_utf8_file_exits_2_on_stderr(self, tmp_path, capsys):
+        path = tmp_path / "binary.json"
+        path.write_bytes(b"\xff\xfe")
+        with pytest.raises(Exit) as exc_info:
+            load_ir_file(str(path), usage_exit=True)
+        assert exc_info.value.exit_code == 2
+        # Rich wraps stderr to the terminal width, so compare without spaces.
+        err = "".join(capsys.readouterr().err.split())
+        assert f"couldnotread{path}" in err
+
+    @pytest.mark.skipif(
+        sys.platform == "win32" or os.geteuid() == 0,
+        reason="file permissions do not block reads on Windows or as root",
+    )
+    def test_unreadable_file_exits_2_on_stderr(self, tmp_path, capsys):
+        path = tmp_path / "locked.json"
+        path.write_text("{}", encoding="utf-8")
+        path.chmod(0)
+        try:
+            with pytest.raises(Exit) as exc_info:
+                load_ir_file(str(path), usage_exit=True)
+        finally:
+            path.chmod(0o600)
+        assert exc_info.value.exit_code == 2
+        err = "".join(capsys.readouterr().err.split())
+        assert f"couldnotread{path}" in err
+        assert "Permissiondenied" in err
 
     @patch("protean.cli._ir_utils.derive_domain")
     def test_as_json_wins_over_usage_exit(self, mock_derive, capsys):

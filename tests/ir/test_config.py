@@ -107,6 +107,11 @@ class TestCompatConfigValidation:
         with pytest.raises(ValueError, match="Invalid strictness value"):
             CompatConfig(strictness="invalid")
 
+    @pytest.mark.parametrize("value", [[], {}, 1])
+    def test_non_string_strictness_raises_value_error(self, value):
+        with pytest.raises(ValueError, match="Invalid strictness value"):
+            CompatConfig(strictness=value)
+
     def test_custom_exclude(self):
         config = CompatConfig(exclude=("myapp.internal.LegacyEvent",))
         assert config.exclude == ("myapp.internal.LegacyEvent",)
@@ -1034,7 +1039,7 @@ class TestDiffCLIExcludeFilter:
         os.chdir(cwd)
 
     def test_excluded_breaking_change_exits_3_not_1(self):
-        """With exclude, breaking changes are filtered; exits 2 (non-breaking)."""
+        """With exclude, breaking changes are filtered; exits 3 (non-breaking)."""
         live_ir = _live_ir_for_test7()
 
         # Create baseline with an extra required field

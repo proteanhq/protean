@@ -152,7 +152,9 @@ class TestSchemaGenerateFromIR:
 
     def test_generate_from_nonexistent_ir_aborts(self):
         result = runner.invoke(app, ["generate", "--ir=/nonexistent/path.json"])
-        assert result.exit_code != 0
+        # The text path keeps the shared loader's exit 1, not ir diff's 2.
+        assert result.exit_code == 1
+        assert "file not found or not a regular file" in result.output
 
     def test_generate_default_output_directory(self, tmp_path: Path, monkeypatch):
         """Without --output, schemas are written to .protean/ under cwd."""

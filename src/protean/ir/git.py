@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, cast
 
 __all__ = ["GitError", "load_ir_from_commit"]
 
@@ -43,7 +43,7 @@ def load_ir_from_commit(
     Raises:
         GitError: If git is not on ``PATH``, the git command fails (unknown
             commit, file missing at that commit, not a git repository), or
-            the file is not valid JSON.
+            the file is not UTF-8 text, not valid JSON, or not a JSON object.
     """
     # Normalize to forward slashes — git show always expects POSIX paths.
     posix_path = PurePosixPath(path).as_posix()
@@ -63,15 +63,19 @@ def load_ir_from_commit(
         raise GitError(
             f"Failed to load '{posix_path}' from commit '{commit}': {stderr}"
         ) from exc
+    except UnicodeDecodeError as exc:
+        raise GitError(
+            f"'{posix_path}' at commit '{commit}' is not UTF-8 text: {exc}"
+        ) from exc
 
     try:
-        # json.loads is typed to return Any (the decoded value can be any JSON
-        # type). The declared return type documents the expected shape; assign
-        # to a typed local to carry that through without a no-any-return error.
-        ir_dict: dict[str, Any] = json.loads(result.stdout)
+        data = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         raise GitError(
             f"Invalid JSON in '{posix_path}' at commit '{commit}': {exc}"
         ) from exc
+    if not isinstance(data, dict):
+        raise GitError(f"'{posix_path}' at commit '{commit}' is not a JSON object")
 
-    return ir_dict
+    # json.loads is typed to return Any; the check above pins it to a dict.
+    return cast("dict[str, Any]", data)

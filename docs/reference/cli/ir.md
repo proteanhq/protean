@@ -170,8 +170,10 @@ protean ir diff --left baseline.json --right current.json --format=event-model
 | 3 | Non-breaking changes only |
 
 The command checks its options before it reads `.protean/config.toml`, and it
-loads both sides before it reads `strictness`. So a bad command line or an IR
-that does not load exits 2 under every `strictness`, including `"off"`.
+loads both sides before it acts on `strictness`. So a bad command line or an IR
+file that cannot be found or parsed exits 2 under every `strictness`, including
+`"off"`. Under `"off"` the comparison does not run, so an IR whose only fault
+is one the comparison finds, such as a malformed `deprecated` block, exits 0.
 
 **Avro compatibility verdict.** Alongside the breaking/safe classification, the
 diff reports an Avro-style verdict (`BACKWARD`, `FORWARD`, `FULL`, or `NONE`)

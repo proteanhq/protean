@@ -135,6 +135,35 @@ class TestLoadIrFromCommit:
         with pytest.raises(GitError, match="Invalid JSON"):
             load_ir_from_commit("HEAD")
 
+    def _commit_raw_ir(self, content: bytes) -> None:
+        env = _init_repo(self.tmp_path)
+        ir_dir = self.tmp_path / ".protean"
+        ir_dir.mkdir()
+        (ir_dir / "ir.json").write_bytes(content)
+        subprocess.run(
+            ["git", "add", "."], cwd=self.tmp_path, capture_output=True, check=True
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "raw ir"],
+            cwd=self.tmp_path,
+            capture_output=True,
+            check=True,
+            env=env,
+        )
+
+    @pytest.mark.parametrize("content", [b"[1]", b"null", b'"text"'])
+    def test_raises_git_error_for_json_that_is_not_an_object(self, content):
+        self._commit_raw_ir(content)
+
+        with pytest.raises(GitError, match="is not a JSON object"):
+            load_ir_from_commit("HEAD")
+
+    def test_raises_git_error_for_bytes_that_are_not_utf8(self):
+        self._commit_raw_ir(b"\xff")
+
+        with pytest.raises(GitError, match="is not UTF-8 text"):
+            load_ir_from_commit("HEAD")
+
     def test_raises_git_error_when_not_a_repo(self, tmp_path, monkeypatch):
         # Use a separate fresh directory that is NOT a git repo
         empty = tmp_path / "norepo"

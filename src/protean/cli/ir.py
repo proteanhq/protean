@@ -185,11 +185,11 @@ def diff(
     4. Git baseline:    --domain my_app --base HEAD
 
     Exit codes (CI-friendly):
-      0 — no changes detected, or breaking changes under strictness=warn,
-          or compatibility checking disabled (strictness=off)
-      1 — breaking changes found
-      2 — usage, load or config error (message on stderr, no diff printed)
-      3 — non-breaking changes only
+      0: no changes detected, or breaking changes under strictness=warn,
+         or compatibility checking disabled (strictness=off)
+      1: breaking changes found
+      2: usage, load or config error (message on stderr, no diff printed)
+      3: non-breaking changes only
     """
     # ------------------------------------------------------------------ #
     # Validate the command line before reading config or loading any IR   #
@@ -257,7 +257,9 @@ def diff(
         baseline_ir = load_ir_file(left, usage_exit=True)
         current_ir = load_ir_file(right, usage_exit=True)
 
-    # Both sides load even when checking is off, so a broken gate still exits 2.
+    # Both sides load even when checking is off, so an input that cannot be
+    # found or parsed still exits 2. The comparison does not run, so an IR
+    # whose content only the comparison rejects passes under off.
     if config.strictness == "off":
         print("[dim]Compatibility checking is disabled (strictness=off).[/dim]")
         raise typer.Exit(code=EXIT_OK)
@@ -265,14 +267,7 @@ def diff(
     # ------------------------------------------------------------------ #
     # Compute diff and classify                                           #
     # ------------------------------------------------------------------ #
-    try:
-        result = diff_ir(baseline_ir, current_ir)
-        report = classify_changes(result, baseline_ir, current_ir)
-    except ConfigurationError as exc:
-        emit_usage_error(
-            as_json=False,
-            message=f"Error: {exc} Fix that IR file by hand, or regenerate it.",
-        )
+    result, report = _compare(baseline_ir, current_ir)
 
     # Filter out excluded elements from the report
     if config.exclude:
@@ -323,6 +318,33 @@ def diff(
         raise typer.Exit(code=EXIT_FAILURE)
     else:
         raise typer.Exit(code=EXIT_DIFF_NON_BREAKING)
+
+
+def _compare(
+    baseline_ir: dict[str, Any], current_ir: dict[str, Any]
+) -> tuple[dict[str, Any], CompatibilityReport]:
+    """Diff and classify two loaded IRs, or exit 2 if either is not a valid IR."""
+    try:
+        result = diff_ir(baseline_ir, current_ir)
+        report = classify_changes(result, baseline_ir, current_ir)
+    except ConfigurationError as exc:
+        emit_usage_error(
+            as_json=False,
+            message=f"Error: {exc} Fix that IR file by hand, or regenerate it.",
+        )
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        # Each loader checks only that an IR is a JSON object. An object of
+        # the wrong shape (a list where a mapping belongs) fails here, and
+        # that is an input error, not a breaking change.
+        emit_usage_error(
+            as_json=False,
+            message=(
+                "Error: could not compare the IR files, one of them does not "
+                f"have the IR structure ({type(exc).__name__}: {exc}). "
+                "Regenerate it with protean ir show."
+            ),
+        )
+    return result, report
 
 
 def _load_ir_from_git(commit: str, protean_dir: str) -> dict[str, Any]:

@@ -98,6 +98,17 @@ command that sets no explicit exit code already conforms.
 | `4` | Check failed: a malformed `[lint]` config, or findings at or above the floor. |
 | `5` | Tests failed. |
 
+**`protean ir diff`** (it follows the codes above, without the envelope):
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | No changes, breaking changes under `strictness = "warn"`, or `strictness = "off"`. |
+| `1` | Breaking changes. |
+| `2` | Usage, load or config error, printed on stderr. |
+| `3` | Non-breaking changes only. |
+
+See [`protean ir diff`](ir.md#protean-ir-diff) for the details.
+
 ## Clean stdout
 
 Under machine-readable output, stdout carries **only** the envelope: exactly

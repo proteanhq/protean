@@ -76,6 +76,16 @@ def load_domain(
             usage_exit=usage_exit,
             exc=exc,
         )
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: importing user code can raise anything
+        # Discovery converts only ImportError to NoDomainException; a module
+        # that raises anything else at import (a SyntaxError, a RuntimeError)
+        # is still a domain that did not load.
+        _abort_load(
+            f"Error loading Protean domain: {type(exc).__name__}: {exc}",
+            as_json=as_json,
+            usage_exit=usage_exit,
+            exc=exc,
+        )
 
     assert derived_domain is not None
 
@@ -120,7 +130,8 @@ def load_ir_file(
 ) -> dict[str, Any]:
     """Load an IR dict from a JSON file.
 
-    Returns the parsed dict. On failure (missing file or invalid JSON) it
+    Returns the parsed dict. On failure (a missing or unreadable file, bytes
+    that are not UTF-8, invalid JSON, or JSON that is not an object) it
     reports a diagnostic and raises ``typer.Abort()`` (or exits with the error
     envelope under ``as_json``, or exits ``2`` with the message on stderr under
     ``usage_exit``).
@@ -134,7 +145,7 @@ def load_ir_file(
         )
     try:
         file_contents = file_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         _abort_load(
             f"could not read {path}: {exc}",
             as_json=as_json,
