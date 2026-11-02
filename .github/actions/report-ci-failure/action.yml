@@ -30,7 +30,7 @@ runs:
 
         # Ensure the label exists (idempotent: --force also updates color/desc).
         gh label create ci-failure --color B60205 \
-          --description "Automated: a CI run on main or nightly failed" --force >/dev/null 2>&1 || true
+          --description "Automated: a CI, docs or nightly run on main failed" --force >/dev/null 2>&1 || true
 
         now="$(date -u '+%Y-%m-%d %H:%M UTC')"
 
@@ -43,7 +43,21 @@ runs:
             --body "$RUN_NAME failed as of $now on $SHA. Run: $RUN_URL"
           echo "Commented on existing issue #$existing"
         else
-          gh issue create --repo "$REPO" --title "$RUN_NAME is failing" --label ci-failure \
-            --body "$(printf '%s failed.\n\n- First seen: %s on %s\n- Run: %s\n\n%s Close it once the run is green again.' "$RUN_NAME" "$now" "$SHA" "$RUN_URL" "$DETAILS")"
-          echo "Opened a new ci-failure issue"
+          url="$(gh issue create --repo "$REPO" --title "$RUN_NAME is failing" --label ci-failure \
+            --body "$(printf '%s failed.\n\n- First seen: %s on %s\n- Run: %s\n\n%s Close it once the run is green again.' "$RUN_NAME" "$now" "$SHA" "$RUN_URL" "$DETAILS")")"
+          created="${url##*/}"
+          echo "Opened ci-failure issue #$created"
+
+          # Two reporters that run at once can both find no open issue and both
+          # open one. The oldest open issue is kept: a reporter whose issue is
+          # newer posts its report there and closes its own issue.
+          oldest="$(gh issue list --repo "$REPO" --label ci-failure --state open \
+            --json number --jq 'map(.number) | min // empty')"
+          if [ -n "$oldest" ] && [ "$oldest" != "$created" ]; then
+            gh issue comment "$oldest" --repo "$REPO" \
+              --body "$RUN_NAME failed as of $now on $SHA. Run: $RUN_URL"
+            gh issue close "$created" --repo "$REPO" --reason "not planned" \
+              --comment "Duplicate of #$oldest, opened by a reporter that ran at the same time."
+            echo "Moved the report to #$oldest and closed #$created"
+          fi
         fi

@@ -8,9 +8,10 @@ on:
     branches: [main]
 
 # One deployment runs at a time and none is cancelled mid-publish. The group
-# holds one waiting run, and a newer push replaces it, so the last deployment is
-# always the newest commit on main. This sits outside ci.yml so a replaced run
-# never marks a CI run as cancelled.
+# holds one waiting run, and a newer push or a re-run replaces it. Each run
+# builds the tip of main when it starts, so a re-run of an old run still
+# publishes the newest docs. This sits outside ci.yml so a replaced run never
+# marks a CI run as cancelled.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -39,6 +40,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Record the deployed commit
+        run: echo "Deploying docs from main at $(git rev-parse HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
