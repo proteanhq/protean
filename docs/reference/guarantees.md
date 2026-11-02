@@ -147,9 +147,13 @@ by its per-stream `position`, and a category or `$all` read pages by
 !!! warning "Interim: not yet a stable contract"
     The event-store append is written first, and the relational and outbox
     commit follows it without a shared transaction. The window between them is
-    closed by a reconciliation sweep at startup: when the newest event has lost
-    its internal outbox row, the sweep rebuilds the rows of every recent event
-    that lost one, including the external-broker rows of a `published` event.
+    closed by a reconciliation sweep at startup for event-sourced aggregates:
+    when the newest event-sourced aggregate's event has lost its internal outbox
+    row, the sweep rebuilds the rows of every recent event-sourced aggregate's
+    event that lost one, including the external-broker rows of a `published`
+    event. A state-based aggregate's event with no outbox row is not rebuilt,
+    because on a transactional provider its aggregate row commits or rolls back
+    together with its outbox rows.
     [ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md) is still
     *Proposed*, and this behavior can change.
 

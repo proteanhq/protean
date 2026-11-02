@@ -101,9 +101,12 @@ truth for event-sourced replay, is the durable anchor.
 This ordering trades an unrecoverable failure for a recoverable one. If the
 process dies between the two writes, the events are durable in the store while
 their outbox rows never committed. The events exist but would never publish.
-That gap is closed by **reconciliation**, which re-derives the missing outbox
-rows from the event store, and runs both automatically on server startup and on
-demand via `protean outbox reconcile`. The full rationale (and why this was
+For an event-sourced aggregate that gap is closed by **reconciliation**, which
+re-derives the missing outbox rows from the event store, and runs both
+automatically on server startup and on demand via `protean outbox reconcile`.
+Reconciliation skips a state-based aggregate's events. Its relational row is its
+state, and that row rolled back together with the outbox rows, so publishing
+the event would report a change that was never saved. The full rationale (and why this was
 chosen over two-phase commit) is in
 [ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md); the
 operational walkthrough is in [Recover from a

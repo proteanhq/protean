@@ -324,11 +324,13 @@ operator action:
 $ protean server --domain=my_domain
 ```
 
-The sweep checks only the newest stored message when that message is one of
-this domain's events and has its row. Otherwise it reads the newest 1,000
+The sweep reads nothing when no event-sourced aggregate is on the provider. It
+checks only the newest stored message when that message is an event-sourced
+aggregate's event and has its row. Otherwise it reads the newest 1,000
 messages.
-This happens on every boot when the store is shared with another domain, or
-when the last write was a command. The sweep never blocks boot (a failure is
+This happens on every boot when the store is shared with another domain, when
+the last write was a command, or when the last write was a state-based
+aggregate's event. The sweep never blocks boot (a failure is
 logged and startup continues), and is safe under `--workers N`, the composite
 unique index on (`message_id`, `target_broker`) makes concurrent sweeps idempotent.
 The startup sweep covers only the `default` provider. Run the CLI with
@@ -349,10 +351,19 @@ $ protean outbox reconcile --provider=analytics --limit=5000 --domain=my_domain
 Reconciled 2 outbox row(s) from the event store.
 ```
 
-Reconciliation repairs only events raised by this domain's aggregates on the
-given provider, so another domain's events in a shared event store, commands,
-process manager transition events, and events of aggregates on other providers
-never get a row.
+Reconciliation repairs only events raised by this domain's event-sourced
+aggregates on the given provider. For an event-sourced aggregate the event store
+holds the aggregate's state, so the event is the saved change. For a state-based
+aggregate the relational row is the state. On a transactional provider that row
+commits or rolls back together with its outbox rows, so a state-based event with
+no outbox row has no saved change behind it. Reconciliation skips it, whether or
+not the aggregate row exists, because publishing it would report a change that
+did not happen. On a provider that keeps writes without a transaction, such as
+Elasticsearch, a lost outbox row behind a saved aggregate row is not repaired.
+
+Another domain's events in a shared event store, commands, process manager
+transition events, and events of aggregates on other providers never get a row
+either.
 
 An event counts as missing only when its internal-broker row is missing. A
 `published` event that is missing gets back one row per broker in

@@ -132,7 +132,10 @@ def reconcile(
 
     Recovers the ADR-0015 crash window: an event appended to the event store
     (the durable anchor) whose relational outbox commit did not land, so the
-    event is durable but would never be published.
+    event is durable but would never be published. Only events of
+    event-sourced aggregates are repaired: a state-based aggregate's row
+    commits or rolls back with its outbox rows, so its event with no row
+    reports a change that was never saved.
     """
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
