@@ -134,7 +134,7 @@ mysql = [
     "cffi>=2.0.0; platform_python_implementation != 'PyPy'",
     "greenlet>=3.2.3,<4; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'",
 ]
-message-db = ["message-db-py>=0.3.4"]
+message-db = ["message-db-py>=0.3.5"]
 flask = ["flask>=3.0.0"]
 # Runtime feature extras, right-sized out of the lean core (ADR-0029). Each
 # gates a feature whose CLI command or import fails with an actionable

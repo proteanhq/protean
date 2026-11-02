@@ -948,11 +948,11 @@
         "complexity": 19
       },
       {
-        "name": "BaseEventStore::build_causation_tree",
-        "complexity": 27
+        "name": "BaseEventStore::verify",
+        "complexity": 19
       },
       {
-        "name": "BaseEventStore::verify",
+        "name": "BaseEventStore::build_causation_tree",
         "complexity": 27
       }
     ]
