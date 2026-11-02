@@ -82,7 +82,8 @@ sequence, and make the relational commit and outbox follow it.
    the missing outbox rows from the event store, exposed two ways: an explicit
    **repair command** operators run on demand, and an **automatic sweep on server
    startup** so that a crash before the relational commit self-heals when the
-   process restarts. Both ship alongside the reorder, not as a later phase. We
+   process restarts (for event-sourced aggregates only, see the amendment
+   below). Both ship alongside the reorder, not as a later phase. We
    accept that this is an interim detection-and-repair surface rather than the
    final guarantee (see the outbox-style write-ahead alternative); the intent is
    to maximize detection and recovery while the larger mechanism is deferred.
