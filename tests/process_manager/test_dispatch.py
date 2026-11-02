@@ -52,7 +52,9 @@ class ParcelPM(BaseProcessManager):
 
 
 @pytest.fixture(autouse=True)
-def register_elements(test_domain):
+def register_elements(test_domain, request):
+    if "no_test_domain" in request.keywords:
+        return
     test_domain.register(Order)
     test_domain.register(OrderPlaced, part_of=Order)
     test_domain.register(Payment)
@@ -184,6 +186,7 @@ class TestUnhandledEvent:
 
 
 class TestDispatchBeforeInit:
+    @pytest.mark.no_test_domain
     def test_dispatch_after_check_without_init_raises_configuration_error(self):
         """``domain.check()`` wires a PM's handlers but sets up no event store,
         so dispatching to the PM raises ConfigurationError."""

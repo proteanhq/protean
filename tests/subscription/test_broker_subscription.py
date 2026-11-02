@@ -141,7 +141,8 @@ async def test_tick_delivers_each_published_message_to_the_subscriber(
 
 
 async def test_tick_acknowledges_delivered_messages(broker, recording_subscription):
-    """A message that ``tick()`` delivered is not delivered again."""
+    """A message that ``tick()`` delivered is acknowledged, so it is neither
+    left in flight nor delivered again."""
     broker.publish("test_stream", {"data": "test1"})
     await recording_subscription.tick()
 
@@ -149,6 +150,8 @@ async def test_tick_acknowledges_delivered_messages(broker, recording_subscripti
 
     assert had_work is False
     assert received == [{"data": "test1"}]
+    group = broker.info()["consumer_groups"][recording_subscription.subscriber_name]
+    assert group["in_flight_messages"] == {"test_stream": 0}
 
 
 async def test_process_batch_warns_when_the_broker_refuses_a_nack(
