@@ -137,7 +137,18 @@ def load_ir_file(
     ``usage_exit``).
     """
     file_path = Path(path)
-    if not file_path.exists() or not file_path.is_file():
+    # Before Python 3.14, is_file() raises PermissionError when a parent
+    # directory is not searchable, so the check sits inside the handler.
+    try:
+        is_regular_file = file_path.is_file()
+    except OSError as exc:
+        _abort_load(
+            f"could not read {path}: {exc}",
+            as_json=as_json,
+            usage_exit=usage_exit,
+            exc=exc,
+        )
+    if not is_regular_file:
         _abort_load(
             f"file not found or not a regular file: {path}",
             as_json=as_json,

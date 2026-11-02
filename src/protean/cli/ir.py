@@ -232,7 +232,9 @@ def diff(
     # ------------------------------------------------------------------ #
     try:
         config = load_config(dir)
-    except ValueError as exc:
+    # OSError: before Python 3.14, the existence check raises PermissionError
+    # when the directory is not searchable.
+    except (ValueError, OSError) as exc:
         emit_usage_error(
             as_json=False, message=f"Error: Invalid .protean/config.toml: {exc}"
         )
@@ -362,7 +364,9 @@ def _load_auto_baseline(protean_dir: str) -> dict[str, Any]:
     """Load .protean/ir.json from disk, or exit 2 if it is missing or invalid."""
     try:
         stored = load_stored_ir(Path(protean_dir))
-    except ValueError as exc:
+    # OSError: before Python 3.14, the existence check raises PermissionError
+    # when the directory is not searchable.
+    except (ValueError, OSError) as exc:
         emit_usage_error(as_json=False, message=f"Error: {exc}")
 
     if stored is None:

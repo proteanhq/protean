@@ -3275,6 +3275,21 @@ class TestDiffErrorsExit2:
         assert "Invalid .protean/config.toml" in result.stderr
         assert result.stdout == ""
 
+    @pytest.mark.parametrize(
+        "target", ["protean.cli.ir.load_config", "protean.cli.ir.load_stored_ir"]
+    )
+    def test_unsearchable_protean_dir_exits_2_on_stderr(self, target):
+        # Before Python 3.14, the existence checks in both loaders raise
+        # PermissionError when the directory is not searchable.
+        with patch(target, side_effect=PermissionError("Permission denied")):
+            result = runner.invoke(
+                app,
+                ["ir", "diff", "--dir", str(self._protean_dir), "-d", "publishing7.py"],
+            )
+        assert result.exit_code == 2, result.output
+        assert "Permission denied" in result.stderr
+        assert result.stdout == ""
+
     def test_argument_errors_are_checked_before_config(self):
         # A malformed config must not hide a bad command line.
         (self._protean_dir / "config.toml").write_text(

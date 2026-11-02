@@ -186,6 +186,20 @@ class TestUsageExit:
         assert f"couldnotread{path}" in err
         assert "Permissiondenied" in err
 
+    def test_unsearchable_parent_exits_2_on_stderr(self, tmp_path, capsys):
+        # Before Python 3.14, is_file() raises PermissionError when a parent
+        # directory is not searchable; simulate it so every version runs this.
+        path = tmp_path / "locked" / "ir.json"
+        with patch(
+            "pathlib.Path.is_file", side_effect=PermissionError("Permission denied")
+        ):
+            with pytest.raises(Exit) as exc_info:
+                load_ir_file(str(path), usage_exit=True)
+        assert exc_info.value.exit_code == 2
+        err = "".join(capsys.readouterr().err.split())
+        assert f"couldnotread{path}" in err
+        assert "Permissiondenied" in err
+
     @patch("protean.cli._ir_utils.derive_domain")
     def test_as_json_wins_over_usage_exit(self, mock_derive, capsys):
         mock_derive.side_effect = NoDomainException("not found")
