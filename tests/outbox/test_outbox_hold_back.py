@@ -20,7 +20,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import Integer, String
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
-from protean.utils.outbox import Outbox, OutboxStatus
+from protean.utils.outbox import PAGE_SIZE, Outbox, OutboxStatus
 
 BASE_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 CATEGORY = "test::counter"
@@ -384,3 +384,233 @@ class TestCleanupKeepsHaltingRows:
 
         remaining = outbox_repo._dao.query.all().items
         assert _labels(remaining) == ["keyed"]
+
+    def test_old_discarded_rows_with_a_partition_key_are_deleted(
+        self, outbox_repo, now
+    ):
+        old_row = _abandoned(_row("old", minute=0))
+        assert old_row.discard("skip", now=now - timedelta(hours=1000)) is True
+        recent_row = _abandoned(_row("recent", minute=1, key="client-2"))
+        assert recent_row.discard("skip", now=now) is True
+        _insert(outbox_repo, old_row, recent_row)
+
+        assert outbox_repo.cleanup_old_discarded(older_than_hours=720) == 1
+
+        remaining = outbox_repo._dao.query.all().items
+        assert _labels(remaining) == ["recent"]
+
+
+def _reload(outbox_repo, label: str) -> Outbox:
+    [row] = outbox_repo.find_all_by_message_id(label)
+    return row
+
+
+@pytest.mark.transactional
+class TestAnOperatorReleasesAHaltedKey:
+    def test_a_discarded_head_lets_the_next_row_through(self, outbox_repo):
+        _insert(outbox_repo, _row("b", minute=1), _abandoned(_row("a", minute=0)))
+        head = _reload(outbox_repo, "a")
+        assert head.discard("poison") is True
+        assert outbox_repo.save_operator_change(
+            head, OutboxStatus.ABANDONED.value, head.max_retries
+        )
+
+        assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["b"]
+        stored = _reload(outbox_repo, "a")
+        assert stored.status == OutboxStatus.DISCARDED.value
+        assert stored.last_error["discard_reason"] == "poison"
+
+    def test_a_discarded_row_without_a_key_is_never_claimed(self, outbox_repo):
+        row = _abandoned(_row("a", minute=0, key=None))
+        assert row.discard("poison") is True
+        _insert(outbox_repo, row)
+
+        assert outbox_repo.claim_batch("worker-1", limit=10) == []
+
+    def test_a_retried_head_is_claimed_with_the_rest_of_its_key(self, outbox_repo):
+        _insert(outbox_repo, _row("b", minute=1), _abandoned(_row("a", minute=0)))
+        head = _reload(outbox_repo, "a")
+        assert head.reset_for_retry() is True
+        assert outbox_repo.save_operator_change(
+            head, OutboxStatus.ABANDONED.value, head.max_retries
+        )
+
+        assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["a", "b"]
+
+    def test_a_retried_row_with_no_retries_is_claimed(self, outbox_repo):
+        row = _abandoned(_row("a", minute=0))
+        row.max_retries = 0
+        row.retry_count = 0
+        _insert(outbox_repo, row)
+        head = _reload(outbox_repo, "a")
+        assert head.reset_for_retry() is True
+        assert outbox_repo.save_operator_change(head, OutboxStatus.ABANDONED.value, 0)
+
+        assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["a"]
+
+    @pytest.mark.parametrize("action", ["retry", "discard"])
+    def test_a_row_a_worker_claimed_after_the_read_is_not_written(
+        self, outbox_repo, now, action
+    ):
+        _insert(
+            outbox_repo,
+            _failed(_row("a", minute=0), next_retry_at=now - timedelta(minutes=1)),
+        )
+        stale = _reload(outbox_repo, "a")
+        assert _labels(outbox_repo.claim_batch("worker-1", limit=10)) == ["a"]
+        changed = stale.reset_for_retry() if action == "retry" else stale.discard("x")
+        assert changed is True
+
+        assert (
+            outbox_repo.save_operator_change(stale, OutboxStatus.FAILED.value, 1)
+            is False
+        )
+
+        stored = _reload(outbox_repo, "a")
+        assert stored.status == OutboxStatus.PROCESSING.value
+        assert stored.locked_by == "worker-1"
+        assert stored.last_error is None
+
+    def test_a_row_that_failed_again_after_the_read_is_not_written(
+        self, outbox_repo, now
+    ):
+        _insert(
+            outbox_repo,
+            _failed(_row("a", minute=0), next_retry_at=now + timedelta(hours=1)),
+        )
+        stale = _reload(outbox_repo, "a")
+        again = _reload(outbox_repo, "a")
+        again.retry_count = 2
+        outbox_repo.add(again)
+        assert stale.discard("x") is True
+
+        assert (
+            outbox_repo.save_operator_change(stale, OutboxStatus.FAILED.value, 1)
+            is False
+        )
+        assert _reload(outbox_repo, "a").status == OutboxStatus.FAILED.value
+
+
+def _halted(outbox_repo) -> list[tuple[str, str, str, str, int]]:
+    return [
+        (
+            key.target_broker,
+            key.partition_key,
+            key.lane,
+            key.head.message_id,
+            key.waiting,
+        )
+        for key in outbox_repo.find_halted()
+    ]
+
+
+@pytest.mark.transactional
+class TestFindHalted:
+    def test_an_abandoned_head_is_listed_with_the_rows_behind_it(self, outbox_repo):
+        _insert(
+            outbox_repo,
+            _row("c", minute=2),
+            _row("b", minute=1),
+            _abandoned(_row("a", minute=0)),
+            _row("other", minute=0, key="client-2"),
+        )
+
+        [key] = outbox_repo.find_halted()
+
+        assert key.stream_category == CATEGORY
+        assert key.head.status == OutboxStatus.ABANDONED.value
+        assert _halted(outbox_repo) == [("default", "client-1", "primary", "a", 2)]
+
+    def test_no_halted_key_lists_nothing(self, outbox_repo, now):
+        _insert(
+            outbox_repo,
+            _row("b", minute=1),
+            _failed(_row("a", minute=0), next_retry_at=now + timedelta(hours=1)),
+        )
+
+        assert outbox_repo.find_halted() == []
+
+    def test_an_abandoned_row_behind_an_earlier_failed_row_is_not_the_head(
+        self, outbox_repo, now
+    ):
+        _insert(
+            outbox_repo,
+            _abandoned(_row("b", minute=1)),
+            _failed(_row("a", minute=0), next_retry_at=now + timedelta(hours=1)),
+        )
+
+        assert outbox_repo.find_halted() == []
+
+    def test_an_abandoned_row_behind_an_earlier_pending_row_is_not_the_head(
+        self, outbox_repo
+    ):
+        _insert(outbox_repo, _abandoned(_row("b", minute=1)), _row("a", minute=0))
+
+        assert outbox_repo.find_halted() == []
+
+    def test_two_abandoned_rows_of_one_key_list_the_key_once(self, outbox_repo):
+        _insert(
+            outbox_repo,
+            _abandoned(_row("b", minute=1)),
+            _abandoned(_row("a", minute=0)),
+        )
+
+        assert _halted(outbox_repo) == [("default", "client-1", "primary", "a", 1)]
+
+    def test_published_and_discarded_rows_are_not_waiting(self, outbox_repo, now):
+        discarded = _abandoned(_row("d", minute=3))
+        assert discarded.discard("skip", now=now) is True
+        _insert(outbox_repo, _row("b", minute=1), discarded)
+        _insert(outbox_repo, _abandoned(_row("a", minute=0)))
+        _publish(outbox_repo, "b")
+        _insert(outbox_repo, _row("c", minute=2))
+
+        assert _halted(outbox_repo) == [("default", "client-1", "primary", "a", 1)]
+
+    def test_an_abandoned_row_without_a_partition_key_is_not_listed(self, outbox_repo):
+        _insert(
+            outbox_repo,
+            _abandoned(_row("no-key", minute=0, key=None)),
+            _abandoned(_row("no-category", minute=0, category=None)),
+        )
+
+        assert outbox_repo.find_halted() == []
+
+    def test_each_broker_is_its_own_group(self, outbox_repo):
+        _insert(
+            outbox_repo,
+            _row("external-b", minute=2, broker="external"),
+            _abandoned(_row("internal-a", minute=1)),
+            _abandoned(_row("external-a", minute=0, broker="external")),
+        )
+
+        assert _halted(outbox_repo) == [
+            ("external", "client-1", "primary", "external-a", 1),
+            ("default", "client-1", "primary", "internal-a", 0),
+        ]
+
+    def test_lanes_enabled_list_each_lane_separately(self, test_domain, outbox_repo):
+        test_domain.config["server"]["priority_lanes"] = {
+            "enabled": True,
+            "threshold": 5,
+        }
+        _insert(
+            outbox_repo,
+            _row("backfill-b", minute=2, priority=0),
+            _abandoned(_row("primary-a", minute=1, priority=10)),
+            _abandoned(_row("backfill-a", minute=0, priority=0)),
+        )
+
+        assert _halted(outbox_repo) == [
+            ("default", "client-1", "backfill", "backfill-a", 1),
+            ("default", "client-1", "primary", "primary-a", 0),
+        ]
+
+    def test_every_halted_key_is_listed_past_one_page(self, outbox_repo):
+        keys = [f"client-{index:03}" for index in range(PAGE_SIZE + 5)]
+        _insert(
+            outbox_repo,
+            *(_abandoned(_row(key, minute=0, key=key)) for key in keys),
+        )
+
+        assert sorted(key.partition_key for key in outbox_repo.find_halted()) == keys

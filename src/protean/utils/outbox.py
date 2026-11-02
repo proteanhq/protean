@@ -16,7 +16,7 @@ from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.exceptions import DeserializationError, ValidationError
 from protean.fields import Auto
-from protean.port.dao import HoldBack
+from protean.port.dao import HoldBack, _earlier_than
 from protean.utils import (
     DomainObjects,
     OptionalStdlibDatetime,
@@ -102,6 +102,7 @@ class OutboxStatus(Enum):
     PUBLISHED = "published"
     FAILED = "failed"
     ABANDONED = "abandoned"  # Max retries exceeded
+    DISCARDED = "discarded"  # Skipped by an operator, kept for audit
 
 
 class ProcessingResult(Enum):
@@ -388,16 +389,56 @@ class Outbox(BaseAggregate):
         self._clear_lock()
 
     def reset_for_retry(self) -> bool:
-        """Reset message status to allow retry (for manual intervention).
+        """Reset a failed or abandoned message so the claim can pick it up again.
+
+        The row goes back to ``PENDING`` with ``retry_count`` at 0, no retry
+        time and no lock, so it gets the full number of attempts again. A row
+        with ``max_retries`` below 1 gets one attempt. ``last_error`` is kept.
+        The claim still takes it only after the earlier rows of its partition
+        key, in priority and commit order.
 
         Returns:
-            True if reset was successful, False if not eligible
+            True if reset was successful, False if the row is not ``FAILED``
+            or ``ABANDONED`` (nothing is changed then)
         """
         if self.status not in [OutboxStatus.FAILED.value, OutboxStatus.ABANDONED.value]:
             return False
 
         self.status = OutboxStatus.PENDING.value
+        self.retry_count = 0
+        # The claim needs ``retry_count < max_retries``, so a row written with
+        # ``max_attempts = 0`` would stay pending and never be claimed.
+        self.max_retries = max(self.max_retries, 1)
         self.next_retry_at = None
+        self._clear_lock()
+        return True
+
+    def discard(self, reason: str, now: datetime | None = None) -> bool:
+        """Skip a failed or abandoned message for good, keeping the row.
+
+        The row becomes ``DISCARDED``. It is never published, and it no longer
+        holds the later rows of its partition key. ``last_error`` keeps its
+        entries and gains ``discarded_at`` and ``discard_reason``.
+
+        Args:
+            reason: Why the operator skipped the message.
+            now: Timestamp to record. Defaults to the active domain's clock.
+
+        Returns:
+            True if the row was discarded, False if it is not ``FAILED`` or
+            ``ABANDONED`` (nothing is changed then)
+        """
+        if self.status not in [OutboxStatus.FAILED.value, OutboxStatus.ABANDONED.value]:
+            return False
+
+        now = _domain_now(now)
+        self.status = OutboxStatus.DISCARDED.value
+        self.last_processed_at = now
+        self.last_error = {
+            **(self.last_error or {}),
+            "discarded_at": now.isoformat(),
+            "discard_reason": reason,
+        }
         self._clear_lock()
         return True
 
@@ -512,7 +553,7 @@ class Outbox(BaseAggregate):
 # - ``correlation_id`` supports trace-oriented lookups.
 # - ``(target_broker, stream_category, partition_key, status)`` backs the
 #   claim's hold-back check, which looks for earlier rows of the same group
-#   that are not yet published.
+#   that are neither published nor discarded.
 OUTBOX_INDEXES = [
     Index(
         "status",
@@ -619,8 +660,9 @@ class OutboxLanes:
         return HoldBack(
             group_by=("target_broker", "stream_category", "partition_key"),
             applies=Q(partition_key__isnull=False) & Q(stream_category__isnull=False),
-            # Every status but PUBLISHED holds the group. An ABANDONED row
-            # halts its key until an operator deals with it.
+            # Every status but PUBLISHED and DISCARDED holds the group. An
+            # ABANDONED row halts its key until an operator retries or
+            # discards it.
             holds=Q(
                 status__in=[
                     OutboxStatus.PENDING.value,
@@ -648,6 +690,23 @@ def commit_order_key(row: "Outbox") -> tuple[Any, ...]:
         row.sequence_number is None,
         row.sequence_number or 0,
     )
+
+
+@dataclass(frozen=True)
+class HaltedKey:
+    """A partition key whose first row that still holds the key is abandoned.
+
+    ``head`` is that abandoned row. It holds ``waiting`` later rows of the
+    same group, which publish once an operator retries or discards it.
+    ``lane`` is ``"primary"`` or ``"backfill"`` (see :class:`OutboxLanes`).
+    """
+
+    target_broker: str
+    stream_category: str
+    partition_key: str
+    lane: str
+    head: "Outbox"
+    waiting: int
 
 
 class OutboxRepository(BaseRepository):
@@ -703,7 +762,8 @@ class OutboxRepository(BaseRepository):
         Readiness and order are the same as for :meth:`claim_batch`. The rows are
         not locked, so use this to inspect the queue and :meth:`claim_batch` to
         process it. The claim's hold-back is not applied, so the list can include a
-        partitioned row that :meth:`claim_batch` will not return yet.
+        partitioned row that :meth:`claim_batch` will not return yet, because an
+        earlier row of its key is not published or discarded.
 
         Args:
             limit: Maximum number of messages to return. ``0`` returns none.
@@ -745,10 +805,10 @@ class OutboxRepository(BaseRepository):
         - its ``target_broker`` matches *target_broker*, when given.
 
         A row with both a ``partition_key`` and a ``stream_category`` is held back
-        while an earlier row of its group is unpublished and not claimed in the
-        same call (ADR-0028). The group is ``(target_broker, stream_category,
-        partition_key, lane)``. The lane comes from *lanes*, or from
-        ``[server.priority_lanes]`` when *lanes* is ``None``. So a failed,
+        while an earlier row of its group is not published or discarded and is
+        not claimed in the same call (ADR-0028). The group is ``(target_broker,
+        stream_category, partition_key, lane)``. The lane comes from *lanes*, or
+        from ``[server.priority_lanes]`` when *lanes* is ``None``. So a failed,
         abandoned or in-flight row stops the later rows of its key, and other keys
         keep flowing.
 
@@ -821,6 +881,113 @@ class OutboxRepository(BaseRepository):
         query = query.order_by("-last_processed_at")
 
         return self._apply_limit_and_execute(query, limit)
+
+    def find_halted(self, lanes: OutboxLanes | None = None) -> list[HaltedKey]:
+        """List the partition keys that an abandoned row halts.
+
+        A key is halted when the earliest row of its group that still holds
+        the group is ``ABANDONED``. The group, the holding statuses and the
+        order are the ones :meth:`claim_batch` uses, so the claim holds every
+        later row of a listed key. A key is listed even when no row waits
+        behind the abandoned one (``waiting`` is 0).
+
+        Args:
+            lanes: The lane split to group rows by. Defaults to
+                ``[server.priority_lanes]`` in domain config, as in
+                :meth:`claim_batch`.
+
+        Returns:
+            One :class:`HaltedKey` per halted group, in the commit order of
+            the abandoned rows. There is no page cap. The scan pages through
+            the rows by offset, so a row whose status changes during the scan
+            can be missed or listed twice.
+        """
+        if lanes is None:
+            lanes = OutboxLanes.from_config(self._dao.domain.config)
+        hold_back = lanes.hold_back()
+        lane_filters: tuple[Q, ...] = hold_back.lanes or (Q(),)
+
+        abandoned_query = self._dao.query.filter(
+            Q(status=OutboxStatus.ABANDONED.value) & hold_back.applies
+        ).order_by(list(_COMMIT_ORDER))
+
+        halted: list[HaltedKey] = []
+        offset = 0
+        while True:
+            page = cast(
+                list[Outbox],
+                abandoned_query.offset(offset)
+                .limit(PAGE_SIZE)
+                .all(with_total=False)
+                .items,
+            )
+            for row in page:
+                lane_index = lanes.lane_index(row)
+                # ``hold_back.applies`` in the query already keeps out rows
+                # with no group.
+                assert lane_index is not None
+                group = (
+                    Q(
+                        target_broker=row.target_broker,
+                        stream_category=row.stream_category,
+                        partition_key=row.partition_key,
+                    )
+                    & hold_back.applies
+                    & lane_filters[lane_index]
+                    & hold_back.holds
+                )
+                earlier = group & _earlier_than(row, hold_back.order)
+                if self._dao.query.filter(earlier).count() > 0:
+                    continue
+                halted.append(
+                    HaltedKey(
+                        target_broker=row.target_broker,
+                        stream_category=cast(str, row.stream_category),
+                        partition_key=cast(str, row.partition_key),
+                        lane="backfill" if lane_index == 1 else "primary",
+                        head=row,
+                        waiting=self._dao.query.filter(group).count() - 1,
+                    )
+                )
+            if len(page) < PAGE_SIZE:
+                break
+            offset += PAGE_SIZE
+        return halted
+
+    def save_operator_change(
+        self, row: Outbox, read_status: str, read_retry_count: int
+    ) -> bool:
+        """Write an operator's retry or discard of ``row``, if the stored row
+        has not changed since it was read.
+
+        ``row`` holds the change made by :meth:`Outbox.reset_for_retry` or
+        :meth:`Outbox.discard`. The write goes through only while the stored
+        row still has ``read_status`` and ``read_retry_count``. A worker that
+        claims a failed row moves it to ``PROCESSING``, and a failed attempt
+        raises ``retry_count``, so either one makes the write match no row.
+        A plain save would pass in that case, because the claim does not bump
+        the row's version, and the worker would then publish a discarded row
+        or a second worker would claim a retried one.
+
+        Returns:
+            True if the row was written, False if it changed in the meantime
+            (nothing is written then)
+        """
+        values = {
+            field: getattr(row, field)
+            for field in (
+                "status",
+                "retry_count",
+                "max_retries",
+                "next_retry_at",
+                "last_processed_at",
+                "last_error",
+                "locked_by",
+                "locked_until",
+            )
+        }
+        guard = Q(id=row.id, status=read_status, retry_count=read_retry_count)
+        return self._dao._update_all(guard, values) > 0
 
     def find_published(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:
         """Find messages that have been successfully published.
@@ -1121,24 +1288,50 @@ class OutboxRepository(BaseRepository):
             batch_size if batch_size is not None else self._cleanup_batch_size(),
         )
 
+    def cleanup_old_discarded(
+        self, older_than_hours: int = 720, batch_size: int | None = None
+    ) -> int:
+        """Delete discarded messages older than *older_than_hours* and return the count.
+
+        Age is measured from ``last_processed_at``. A discarded row no longer
+        holds its partition key, so rows with a ``partition_key`` are deleted
+        too.
+
+        Args:
+            batch_size: Rows to delete per batch. Defaults to
+                ``outbox.cleanup.batch_size`` (5000).
+        """
+        threshold_time = self._dao.domain.clock.now() - timedelta(
+            hours=older_than_hours
+        )
+
+        return self._delete_in_batches(
+            Q(
+                status=OutboxStatus.DISCARDED.value,
+                last_processed_at__lt=threshold_time,
+            ),
+            batch_size if batch_size is not None else self._cleanup_batch_size(),
+        )
+
     def cleanup_old_messages(
         self,
         published_retention_hours: int = 168,
         abandoned_retention_hours: int = 720,
         batch_size: int | None = None,
     ) -> dict[str, int]:
-        """Delete old published and abandoned messages.
+        """Delete old published, abandoned and discarded messages.
 
-        Each status is cleaned as :meth:`cleanup_old_published` and
-        :meth:`cleanup_old_abandoned` do, with its own retention.
+        Each status is cleaned as :meth:`cleanup_old_published`,
+        :meth:`cleanup_old_abandoned` and :meth:`cleanup_old_discarded` do.
+        Discarded messages use ``abandoned_retention_hours``.
 
         Args:
             batch_size: Rows to delete per batch. Defaults to
                 ``outbox.cleanup.batch_size`` (5000).
 
         Returns:
-            The deleted counts under ``"published"``, ``"abandoned"`` and
-            ``"total"``.
+            The deleted counts under ``"published"``, ``"abandoned"``,
+            ``"discarded"`` and ``"total"``.
         """
         published_count = self.cleanup_old_published(
             older_than_hours=published_retention_hours, batch_size=batch_size
@@ -1147,11 +1340,16 @@ class OutboxRepository(BaseRepository):
             older_than_hours=abandoned_retention_hours, batch_size=batch_size
         )
 
-        total_count = published_count + abandoned_count
+        discarded_count = self.cleanup_old_discarded(
+            older_than_hours=abandoned_retention_hours, batch_size=batch_size
+        )
+
+        total_count = published_count + abandoned_count + discarded_count
 
         return {
             "published": published_count,
             "abandoned": abandoned_count,
+            "discarded": discarded_count,
             "total": total_count,
         }
 
@@ -1389,11 +1587,11 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # newest message overall may be foreign, a command, or a transition event.
     # None of those ever get a row, so a missing row for one of them does not
     # mean the last commit crashed.
-    # Cleanup deletes delivered rows and abandoned rows without a partition key
-    # once they pass their retention, and a deleted row looks the same as one
-    # lost in a crash. An event is never older than its row's ``published_at`` or
-    # ``last_processed_at``, so skipping events older than the shorter
-    # retention skips every row cleanup could have deleted.
+    # Cleanup deletes delivered rows, abandoned rows without a partition key
+    # and discarded rows once they pass their retention, and a deleted row
+    # looks the same as one lost in a crash. An event is never older than its
+    # row's ``published_at`` or ``last_processed_at``, so skipping events older
+    # than the shorter retention skips every row cleanup could have deleted.
     cutoff = _cleanup_cutoff(domain, outbox_config)
     qualifying = [
         m

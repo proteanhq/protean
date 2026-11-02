@@ -296,18 +296,22 @@ A category partitioned with
 keeps a key's rows in write order for each target broker and priority lane.
 That is commit order for one aggregate instance, but not always across several
 instances that share a key. A later row is claimed only when every earlier row
-of its key is published or claimed in the same call. An earlier row that is in
+of its key is published, discarded, or claimed in the same call. An earlier row that is in
 flight or failed holds the key, and an abandoned row halts it until an
-operator re-queues the row or marks it published.
+operator retries or discards the row (`protean outbox retry` or
+`protean outbox discard`).
 
 ### Known exceptions {#outbox-exceptions}
 
 - **Redelivery**: A crash after `broker.publish` and before the row is marked
   published delivers the message again.
-- **Abandoned rows**: An `abandoned` row (`OutboxStatus.ABANDONED`) is never
+- **Abandoned rows**: An `abandoned` row (`OutboxStatus.ABANDONED`) is not
   delivered. It is kept for inspection and cleaned up after a retention
   period, except a row with a partition key, which stays because it halts its
-  key.
+  key. An operator can send an abandoned row again with `protean outbox retry`,
+  or skip it with `protean outbox discard`.
+- **Discarded rows**: A discarded row (`OutboxStatus.DISCARDED`) is never
+  delivered. It is cleaned up after the abandoned retention period.
 - **Crash recovery limits**: The sweep rebuilds one row per configured
   external broker for a `published` event, but only when the event's internal
   row is also missing. External rows lost on their own are not rebuilt, and
