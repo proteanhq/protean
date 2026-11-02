@@ -1,7 +1,7 @@
 # Opens or updates the one open `ci-failure` issue. Used by the nightly run
-# (nightly.yml) and the push-to-main run (ci.yml), so a red run on either shows
-# up in one place without anyone watching the Actions tab. The calling job needs
-# `issues: write`.
+# (nightly.yml), the push-to-main run (ci.yml) and the docs deployment
+# (docs.yml), so a red run on any of them shows up in one place without anyone
+# watching the Actions tab. The calling job needs `issues: write`.
 name: "Report CI failure"
 description: "Comment on the open ci-failure issue, or open one."
 
@@ -12,6 +12,10 @@ inputs:
   details:
     description: "One or two sentences for a new issue's body: what the run covers."
     required: true
+  sha:
+    description: "The commit that failed, when it differs from the one that triggered the run."
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -24,13 +28,13 @@ runs:
         RUN_NAME: ${{ inputs.run-name }}
         DETAILS: ${{ inputs.details }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        SHA: ${{ github.sha }}
+        SHA: ${{ inputs.sha || github.sha }}
       run: |
         set -euo pipefail
 
         # Ensure the label exists (idempotent: --force also updates color/desc).
         gh label create ci-failure --color B60205 \
-          --description "Automated: a CI run on main or nightly failed" --force >/dev/null 2>&1 || true
+          --description "Automated: a CI, docs or nightly run on main failed" --force >/dev/null 2>&1 || true
 
         now="$(date -u '+%Y-%m-%d %H:%M UTC')"
 
