@@ -1,11 +1,12 @@
 """Tests for the development Reloader.
 
-The Reloader spawns child processes and watches files, so these tests
-exercise initialization, process lifecycle, signal handling, and the
-watchfiles integration without spawning real worker processes or
-triggering real filesystem events.
+The Reloader spawns child processes and watches files, so these tests replace
+the spawn context, the worker processes and the ``watchfiles`` watcher with
+mocks. The project config, the signal handlers and the reloader's own
+lifecycle are real.
 """
 
+import logging
 import os
 import signal
 import warnings
@@ -13,6 +14,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from watchfiles import PythonFilter
 
 from protean._deprecation import RemovedInProtean020Warning
 from protean.server.reloader import (
@@ -24,9 +26,67 @@ from protean.server.reloader import (
 from protean.server.supervisor import _DRAIN_MARGIN_SECONDS, _worker_entry
 
 
+@pytest.fixture(autouse=True)
+def _restore_signal_handlers():
+    """Put back the handlers that ``Reloader.run()`` installs."""
+    signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+    saved = {sig: signal.getsignal(sig) for sig in signals}
+    yield
+    for sig, handler in saved.items():
+        signal.signal(sig, handler)
+
+
+@pytest.fixture
+def project_config(tmp_path, monkeypatch):
+    """Write a ``domain.toml`` and return its directory, usable as a domain path."""
+    monkeypatch.delenv("DOMAIN_ROOT_PATH", raising=False)
+    monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+
+    def write(text: str) -> str:
+        (tmp_path / "domain.toml").write_text(text)
+        return str(tmp_path)
+
+    return write
+
+
+def _window(value: str) -> str:
+    """A ``domain.toml`` whose ``[server].drain_timeout`` is the TOML literal *value*."""
+    return f"[server]\ndrain_timeout = {value}\n"
+
+
+def _exited_process(exitcode: int = 0) -> MagicMock:
+    """A worker process that has already exited."""
+    process = MagicMock()
+    process.is_alive.return_value = False
+    process.pid = 1234
+    process.exitcode = exitcode
+    return process
+
+
+def _stopping_process() -> MagicMock:
+    """A worker that is alive until it is joined."""
+    process = MagicMock()
+    # ``is_alive`` reports True before the join (to trigger SIGTERM) and
+    # False after, so the kill fallback does not fire.
+    process.is_alive.side_effect = iter([True, False, False])
+    process.pid = 1234
+    process.exitcode = 0
+    return process
+
+
+def _spawn_context() -> MagicMock:
+    """A spawn context whose workers exit as soon as they are stopped."""
+    ctx = MagicMock()
+    ctx.Process.side_effect = lambda **kwargs: _exited_process()
+    return ctx
+
+
 class TestReloaderInit:
-    def test_initialization_with_defaults(self):
-        reloader = Reloader(domain_path="my.domain")
+    @pytest.mark.parametrize(
+        "kwargs", [{}, {"reload_dirs": []}], ids=["omitted", "empty"]
+    )
+    def test_initialization_with_defaults(self, kwargs):
+        reloader = Reloader(domain_path="my.domain", **kwargs)
 
         assert reloader.domain_path == "my.domain"
         assert reloader.test_mode is False
@@ -40,12 +100,13 @@ class TestReloaderInit:
         assert reloader.should_exit.is_set() is False
 
     def test_initialization_with_explicit_args(self, tmp_path):
+        """``reload_dirs`` accepts strings and ``Path`` objects and resolves each."""
         sub = tmp_path / "src"
         sub.mkdir()
 
         reloader = Reloader(
             domain_path="svc.domain",
-            reload_dirs=[str(sub)],
+            reload_dirs=[str(sub), tmp_path / "nested"],
             test_mode=True,
             log_level="DEBUG",
             log_format="json",
@@ -57,28 +118,18 @@ class TestReloaderInit:
         assert reloader.log_level == "DEBUG"
         assert reloader.log_format == "json"
         assert reloader.log_config == {"version": 1}
-        assert reloader.reload_dirs == [sub.resolve()]
-
-    def test_reload_dirs_accepts_path_objects(self, tmp_path):
-        reloader = Reloader(
-            domain_path="svc.domain",
-            reload_dirs=[tmp_path, tmp_path / "nested"],
-        )
-
-        assert reloader.reload_dirs == [
-            tmp_path.resolve(),
-            (tmp_path / "nested").resolve(),
-        ]
-
-    def test_empty_reload_dirs_falls_back_to_cwd(self):
-        reloader = Reloader(domain_path="svc.domain", reload_dirs=[])
-
-        assert reloader.reload_dirs == [Path.cwd().resolve()]
+        assert reloader.reload_dirs == [sub.resolve(), (tmp_path / "nested").resolve()]
 
 
 class TestReloaderProcessLifecycle:
     def test_start_process_spawns_worker_with_correct_args(self):
-        reloader = Reloader(domain_path="my.domain", test_mode=True, log_level="DEBUG")
+        reloader = Reloader(
+            domain_path="my.domain",
+            test_mode=True,
+            log_level="DEBUG",
+            log_format="json",
+            log_config={"version": 1},
+        )
 
         mock_process = MagicMock()
         mock_process.pid = 4242
@@ -90,25 +141,25 @@ class TestReloaderProcessLifecycle:
         reloader._ctx.Process.assert_called_once_with(
             target=_worker_entry,
             args=("my.domain", True, 0, None),
-            kwargs={"log_level": "DEBUG", "log_format": None, "log_config": None},
+            kwargs={
+                "log_level": "DEBUG",
+                "log_format": "json",
+                "log_config": {"version": 1},
+            },
             name="protean-reload-worker",
         )
         mock_process.start.assert_called_once()
         assert reloader.process is mock_process
 
-    def test_stop_process_sends_sigterm_and_joins(self):
+    @pytest.mark.parametrize("kill_error", [None, ProcessLookupError])
+    def test_stop_process_sends_sigterm_and_joins(self, kill_error):
+        """The worker gets SIGTERM and is joined. A worker that already exited
+        (``ProcessLookupError``) does not stop the shutdown."""
         reloader = Reloader(domain_path="my.domain")
-
-        # ``is_alive`` reports True before the join (to trigger SIGTERM) and
-        # False after, so the kill fallback does not fire.
-        alive_states = iter([True, False, False])
-        mock_process = MagicMock()
-        mock_process.is_alive.side_effect = lambda: next(alive_states)
-        mock_process.pid = 1234
-        mock_process.exitcode = 0
+        mock_process = _stopping_process()
         reloader.process = mock_process
 
-        with patch("os.kill") as mock_kill:
+        with patch("os.kill", side_effect=kill_error) as mock_kill:
             reloader._stop_process()
 
         mock_kill.assert_called_once_with(1234, signal.SIGTERM)
@@ -118,26 +169,8 @@ class TestReloaderProcessLifecycle:
 
     def test_stop_process_is_noop_when_no_process(self):
         reloader = Reloader(domain_path="my.domain")
-        # No process attached — should not raise.
+        # No process attached, so this must not raise.
         reloader._stop_process()
-        assert reloader.process is None
-
-    def test_stop_process_tolerates_process_lookup_error(self):
-        reloader = Reloader(domain_path="my.domain")
-
-        alive_states = iter([True, False, False])
-        mock_process = MagicMock()
-        mock_process.is_alive.side_effect = lambda: next(alive_states)
-        mock_process.pid = 1234
-        mock_process.exitcode = 0
-        reloader.process = mock_process
-
-        with patch("os.kill", side_effect=ProcessLookupError):
-            # Should not raise
-            reloader._stop_process()
-
-        mock_process.join.assert_called_once()
-        mock_process.kill.assert_not_called()
         assert reloader.process is None
 
     def test_stop_process_kills_when_timeout_exceeded(self):
@@ -156,12 +189,7 @@ class TestReloaderProcessLifecycle:
 
     def test_stop_process_captures_nonzero_exit_code(self):
         reloader = Reloader(domain_path="my.domain")
-
-        mock_process = MagicMock()
-        mock_process.is_alive.return_value = False
-        mock_process.pid = 1234
-        mock_process.exitcode = 42
-        reloader.process = mock_process
+        reloader.process = _exited_process(exitcode=42)
 
         reloader._stop_process()
 
@@ -169,35 +197,42 @@ class TestReloaderProcessLifecycle:
         assert reloader.process is None
 
     def test_restart_process_stops_then_starts(self):
+        """A restart replaces the worker and clears the previous exit code."""
         reloader = Reloader(domain_path="my.domain")
-        reloader._stop_process = MagicMock()
-        reloader._start_process = MagicMock()
+        reloader._ctx = _spawn_context()
+        old_process = _exited_process(exitcode=7)
+        reloader.process = old_process
 
         reloader._restart_process()
 
-        reloader._stop_process.assert_called_once()
-        reloader._start_process.assert_called_once()
+        old_process.join.assert_called()
+        reloader._ctx.Process.assert_called_once()
+        assert reloader.process is not old_process
+        reloader.process.start.assert_called_once()
+        assert reloader.exit_code == 0
 
     def test_restart_process_does_not_start_when_exiting(self):
         reloader = Reloader(domain_path="my.domain")
-        reloader._stop_process = MagicMock()
-        reloader._start_process = MagicMock()
+        reloader._ctx = _spawn_context()
+        reloader.process = _exited_process()
         reloader.should_exit.set()
 
         reloader._restart_process()
 
-        reloader._stop_process.assert_called_once()
-        reloader._start_process.assert_not_called()
+        reloader._ctx.Process.assert_not_called()
+        assert reloader.process is None
 
-    def test_restart_process_clears_prior_exit_code(self):
-        reloader = Reloader(domain_path="my.domain")
-        reloader._stop_process = MagicMock()
-        reloader._start_process = MagicMock()
-        reloader.exit_code = 7
+    def test_logging_arguments_survive_a_restart(self):
+        reloader = Reloader(domain_path="d", log_format="json")
+        reloader._ctx = _spawn_context()
 
+        reloader._start_process()
         reloader._restart_process()
 
-        assert reloader.exit_code == 0
+        calls = reloader._ctx.Process.call_args_list
+        assert len(calls) == 2
+        for call in calls:
+            assert call.kwargs["kwargs"]["log_format"] == "json"
 
 
 class TestReloaderTerminationBudget:
@@ -208,97 +243,63 @@ class TestReloaderTerminationBudget:
     whenever that window is longer.
     """
 
-    def _reloader_with_window(self, window):
-        """A Reloader whose on-disk config reports *window* as drain_timeout."""
-        reloader = Reloader(domain_path="my.domain")
-        config = {"server": {"drain_timeout": window}}
-        return reloader, patch(
-            "protean.domain.config.Config2.load_from_path", return_value=config
-        )
-
-    def test_budget_covers_a_longer_drain_window(self):
-        reloader, patched = self._reloader_with_window(20)
-        with patched:
-            assert reloader._termination_timeout() == 20 + _DRAIN_MARGIN_SECONDS
-
-    def test_budget_never_shrinks_below_the_default(self):
-        """A short window does not shorten the budget below 10 seconds."""
-        reloader, patched = self._reloader_with_window(2)
-        with patched:
-            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
-
     @pytest.mark.parametrize(
-        "window", ["not-a-number", True, 0, -5, float("nan"), float("inf")]
+        "config, budget",
+        [
+            (_window("20"), 20 + _DRAIN_MARGIN_SECONDS),
+            (_window("2"), float(_SHUTDOWN_TIMEOUT_SECONDS)),
+            (_window('"not-a-number"'), float(_SHUTDOWN_TIMEOUT_SECONDS)),
+            (_window("true"), float(_SHUTDOWN_TIMEOUT_SECONDS)),
+            (_window("0"), float(_SHUTDOWN_TIMEOUT_SECONDS)),
+            (_window("-5"), float(_SHUTDOWN_TIMEOUT_SECONDS)),
+            (_window("nan"), float(_SHUTDOWN_TIMEOUT_SECONDS)),
+            (_window("inf"), float(_SHUTDOWN_TIMEOUT_SECONDS)),
+            ("[server\nnot toml", float(_SHUTDOWN_TIMEOUT_SECONDS)),
+            ("[server]\n", 10 + _DRAIN_MARGIN_SECONDS),
+        ],
+        ids=[
+            "longer-window",
+            "short-window",
+            "string",
+            "boolean",
+            "zero",
+            "negative",
+            "nan",
+            "infinity",
+            "unreadable-config",
+            "missing-window",
+        ],
     )
-    def test_invalid_window_falls_back_to_the_default(self, window):
-        """Values the Engine rejects do not stretch or shrink the budget."""
-        reloader, patched = self._reloader_with_window(window)
-        with patched:
-            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
+    def test_budget_is_the_window_plus_margin_never_below_the_default(
+        self, project_config, config, budget
+    ):
+        """A short window does not shorten the budget below 10 seconds, and
+        values the Engine rejects do not stretch or shrink it. A config that
+        does not read here falls back too; the worker surfaces the real error.
+        A config with no window gets the Engine's default 10-second window."""
+        reloader = Reloader(domain_path=project_config(config))
 
-    def test_unreadable_config_falls_back_to_the_default(self):
-        """The config may not read here; the worker surfaces the real error."""
-        reloader = Reloader(domain_path="my.domain")
-        with patch(
-            "protean.domain.config.Config2.load_from_path",
-            side_effect=ValueError("bad TOML"),
-        ):
-            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
+        assert reloader._termination_timeout() == budget
 
-    def test_missing_drain_timeout_falls_back_to_the_default(self):
-        """A config with no server.drain_timeout uses the default budget."""
-        reloader = Reloader(domain_path="my.domain")
-        with patch(
-            "protean.domain.config.Config2.load_from_path", return_value={"server": {}}
-        ):
-            assert reloader._termination_timeout() == float(_SHUTDOWN_TIMEOUT_SECONDS)
-
-    def test_budget_is_read_fresh_each_call(self):
-        """A domain.toml edit mid-run must be picked up, so the window is read
-        on every call, not cached."""
-        reloader, patched = self._reloader_with_window(20)
-        with patched as mock_load:
-            reloader._termination_timeout()
-            reloader._termination_timeout()
-        assert mock_load.call_count == 2
-
-    def test_start_process_binds_the_budget_from_current_config(self):
-        """_start_process sizes the join budget from the config as it stands,
-        so the worker it spawns is later joined with its own window."""
-        reloader, patched = self._reloader_with_window(20)
-        reloader._ctx = MagicMock()
-        with patched:
-            reloader._start_process()
-        assert reloader._stop_timeout == 20 + _DRAIN_MARGIN_SECONDS
-
-    def test_budget_refreshes_between_worker_generations(self):
+    def test_budget_refreshes_between_worker_generations(self, project_config):
         """A domain.toml change between restarts binds the new window to the
         replacement worker, not the value read when the reloader started."""
-        reloader = Reloader(domain_path="my.domain")
+        reloader = Reloader(domain_path=project_config(_window("20")))
         reloader._ctx = MagicMock()
-        configs = iter(
-            [{"server": {"drain_timeout": 20}}, {"server": {"drain_timeout": 40}}]
-        )
-        with patch(
-            "protean.domain.config.Config2.load_from_path",
-            side_effect=lambda _path: next(configs),
-        ):
-            reloader._start_process()
-            assert reloader._stop_timeout == 20 + _DRAIN_MARGIN_SECONDS
-            reloader._start_process()
-            assert reloader._stop_timeout == 40 + _DRAIN_MARGIN_SECONDS
+
+        reloader._start_process()
+        assert reloader._stop_timeout == 20 + _DRAIN_MARGIN_SECONDS
+
+        project_config(_window("40"))
+        reloader._start_process()
+        assert reloader._stop_timeout == 40 + _DRAIN_MARGIN_SECONDS
 
     def test_stop_process_joins_for_the_bound_budget(self):
         """The join uses the budget bound when the worker started, so a 20s
         drain is not cut at 10 and a later config edit cannot shorten it."""
         reloader = Reloader(domain_path="my.domain")
         reloader._stop_timeout = 20 + _DRAIN_MARGIN_SECONDS
-
-        mock_process = MagicMock()
-        alive_states = iter([True, False, False])
-        mock_process.is_alive.side_effect = lambda: next(alive_states)
-        mock_process.pid = 1234
-        mock_process.exitcode = 0
+        mock_process = _stopping_process()
         reloader.process = mock_process
 
         with patch("os.kill"):
@@ -367,167 +368,129 @@ class TestReloaderConfigSearchRoot:
 class TestReloaderSignalHandling:
     def test_install_signal_handlers(self):
         reloader = Reloader(domain_path="my.domain")
-        original_sigint = signal.getsignal(signal.SIGINT)
-        original_sigterm = signal.getsignal(signal.SIGTERM)
 
-        try:
-            reloader._install_signal_handlers()
-            assert signal.getsignal(signal.SIGINT) == reloader._handle_signal
-            assert signal.getsignal(signal.SIGTERM) == reloader._handle_signal
-        finally:
-            signal.signal(signal.SIGINT, original_sigint)
-            signal.signal(signal.SIGTERM, original_sigterm)
+        reloader._install_signal_handlers()
 
-    def test_sighup_handler_installed(self):
-        reloader = Reloader(domain_path="my.domain")
-        original_sigint = signal.getsignal(signal.SIGINT)
-        original_sigterm = signal.getsignal(signal.SIGTERM)
-        original_sighup = signal.getsignal(signal.SIGHUP)
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            assert signal.getsignal(sig) == reloader._handle_signal
 
-        try:
-            reloader._install_signal_handlers()
-            assert signal.getsignal(signal.SIGHUP) == reloader._handle_signal
-        finally:
-            signal.signal(signal.SIGHUP, original_sighup)
-            signal.signal(signal.SIGINT, original_sigint)
-            signal.signal(signal.SIGTERM, original_sigterm)
-
-    def test_handle_signal_sets_should_exit(self):
+    def test_handle_signal_is_idempotent(self, caplog):
+        """The first signal requests the exit; a second one is ignored."""
         reloader = Reloader(domain_path="my.domain")
 
-        reloader._handle_signal(signal.SIGTERM, None)
+        with caplog.at_level(logging.INFO, logger="protean.server.reloader"):
+            reloader._handle_signal(signal.SIGTERM, None)
+            reloader._handle_signal(signal.SIGINT, None)
 
         assert reloader._shutting_down is True
         assert reloader.should_exit.is_set() is True
+        received = [
+            r.getMessage()
+            for r in caplog.records
+            if r.getMessage().startswith("Reloader received")
+        ]
+        assert received == ["Reloader received SIGTERM, shutting down"]
 
-    def test_handle_signal_is_idempotent(self):
-        reloader = Reloader(domain_path="my.domain")
 
-        reloader._handle_signal(signal.SIGTERM, None)
-        reloader._handle_signal(signal.SIGINT, None)
+def _run(reloader: Reloader, changes=None, watch_side_effect=None) -> MagicMock:
+    """Run *reloader* on a mocked spawn context with a fake watcher.
 
-        # Still exactly one shutdown request.
-        assert reloader._shutting_down is True
-        assert reloader.should_exit.is_set() is True
+    The watcher yields each change set in *changes*. Returns the spawn context.
+    """
+    reloader._ctx = _spawn_context()
+    side_effect = watch_side_effect or (lambda *paths, **kwargs: iter(changes or []))
+    with patch("protean.server.reloader.watch", side_effect=side_effect):
+        reloader.run()
+    return reloader._ctx
 
 
 class TestReloaderRun:
-    def _make_reloader(self):
-        reloader = Reloader(domain_path="my.domain", test_mode=True)
-        reloader._start_process = MagicMock()
-        reloader._restart_process = MagicMock()
-        reloader._shutdown = MagicMock()
-        reloader._install_signal_handlers = MagicMock()
-        return reloader
-
-    def test_run_starts_process_and_installs_signals(self):
-        reloader = self._make_reloader()
-
-        with patch("protean.server.reloader.watch", return_value=iter([])):
-            reloader.run()
-
-        reloader._install_signal_handlers.assert_called_once()
-        reloader._start_process.assert_called_once()
-        reloader._shutdown.assert_called_once()
-
-    def test_run_restarts_on_detected_changes(self):
-        reloader = self._make_reloader()
-        changes = [
-            {(1, "/path/to/domain.py")},
-            {(2, "/path/to/events.py")},
-        ]
-
-        with patch("protean.server.reloader.watch", return_value=iter(changes)):
-            reloader.run()
-
-        assert reloader._restart_process.call_count == 2
-
-    def test_run_skips_empty_change_sets(self):
-        reloader = self._make_reloader()
-        # ``yield_on_timeout=True`` causes watchfiles to yield empty sets
-        # periodically. Those should not trigger a restart.
-        changes = [set(), set()]
-
-        with patch("protean.server.reloader.watch", return_value=iter(changes)):
-            reloader.run()
-
-        reloader._restart_process.assert_not_called()
-
-    def test_run_stops_when_should_exit_set_mid_stream(self):
-        reloader = self._make_reloader()
-
-        def stream():
-            yield {(1, "/path/to/a.py")}
-            reloader.should_exit.set()
-            yield {(1, "/path/to/b.py")}
-
-        with patch("protean.server.reloader.watch", return_value=stream()):
-            reloader.run()
-
-        # Only the first iteration should have caused a restart.
-        assert reloader._restart_process.call_count == 1
-
-    def test_run_passes_reload_dirs_to_watchfiles(self, tmp_path):
+    def test_run_starts_the_worker_and_watches_the_reload_dirs(self, tmp_path):
+        """run() installs the signal handlers, starts the worker, watches the
+        reload dirs with Protean's ignore list, and stops the worker on exit."""
         reloader = Reloader(domain_path="my.domain", reload_dirs=[tmp_path])
-        reloader._start_process = MagicMock()
-        reloader._shutdown = MagicMock()
-        reloader._install_signal_handlers = MagicMock()
-
         captured = {}
 
         def fake_watch(*paths, **kwargs):
             captured["paths"] = paths
             captured["kwargs"] = kwargs
+            assert reloader.process is not None
             return iter([])
 
-        with patch("protean.server.reloader.watch", side_effect=fake_watch):
-            reloader.run()
+        ctx = _run(reloader, watch_side_effect=fake_watch)
 
+        assert signal.getsignal(signal.SIGTERM) == reloader._handle_signal
+        ctx.Process.assert_called_once()
+        assert reloader.process is None
         assert captured["paths"] == (tmp_path.resolve(),)
-        assert captured["kwargs"]["stop_event"] is reloader.should_exit
-        assert captured["kwargs"]["yield_on_timeout"] is True
-        assert captured["kwargs"]["raise_interrupt"] is False
-
-    def test_run_filter_extends_default_ignore_dirs(self, tmp_path):
-        reloader = Reloader(domain_path="my.domain", reload_dirs=[tmp_path])
-        reloader._start_process = MagicMock()
-        reloader._shutdown = MagicMock()
-        reloader._install_signal_handlers = MagicMock()
-
-        captured = {}
-
-        def fake_watch(*paths, **kwargs):
-            captured["filter"] = kwargs["watch_filter"]
-            return iter([])
-
-        with patch("protean.server.reloader.watch", side_effect=fake_watch):
-            reloader.run()
-
-        watch_filter = captured["filter"]
+        kwargs = captured["kwargs"]
+        assert kwargs["stop_event"] is reloader.should_exit
+        assert kwargs["yield_on_timeout"] is True
+        assert kwargs["raise_interrupt"] is False
+        assert kwargs["ignore_permission_denied"] is True
+        ignore_dirs = kwargs["watch_filter"].ignore_dirs
         for extra in _EXTRA_IGNORE_DIRS:
-            assert extra in watch_filter.ignore_dirs
+            assert extra in ignore_dirs
+        for default in PythonFilter().ignore_dirs:
+            assert default in ignore_dirs
+
+    def test_run_restarts_on_detected_changes(self, capsys):
+        reloader = Reloader(domain_path="my.domain", test_mode=True)
+        changes = [
+            {(1, "/path/to/domain.py")},
+            {(2, "/path/to/events.py")},
+        ]
+
+        ctx = _run(reloader, changes)
+
+        # One start plus one restart per change set.
+        assert ctx.Process.call_count == 3
+        out = capsys.readouterr().out
+        assert "Detected change in '/path/to/domain.py', restarting..." in out
+
+    def test_run_skips_empty_change_sets(self):
+        reloader = Reloader(domain_path="my.domain", test_mode=True)
+        # ``yield_on_timeout=True`` causes watchfiles to yield empty sets
+        # periodically. Those should not trigger a restart.
+        ctx = _run(reloader, [set(), set()])
+
+        assert ctx.Process.call_count == 1
+
+    def test_run_stops_when_should_exit_set_mid_stream(self):
+        reloader = Reloader(domain_path="my.domain", test_mode=True)
+
+        def stream(*paths, **kwargs):
+            yield {(1, "/path/to/a.py")}
+            reloader.should_exit.set()
+            yield {(1, "/path/to/b.py")}
+
+        ctx = _run(reloader, watch_side_effect=stream)
+
+        # Only the first change set caused a restart.
+        assert ctx.Process.call_count == 2
 
     def test_run_shuts_down_on_watcher_exception(self):
-        reloader = self._make_reloader()
+        reloader = Reloader(domain_path="my.domain", test_mode=True)
 
         def raising_watch(*args, **kwargs):
             raise RuntimeError("boom")
 
-        with patch("protean.server.reloader.watch", side_effect=raising_watch):
-            with pytest.raises(RuntimeError, match="boom"):
-                reloader.run()
+        with pytest.raises(RuntimeError, match="boom"):
+            _run(reloader, watch_side_effect=raising_watch)
 
-        # ``_shutdown`` must still run on the error path so the inner
-        # process is cleaned up.
-        reloader._shutdown.assert_called_once()
+        # The worker is still stopped on the error path.
+        assert reloader.process is None
 
     def test_shutdown_stops_inner_process(self):
         reloader = Reloader(domain_path="my.domain")
-        reloader._stop_process = MagicMock()
+        process = _exited_process(exitcode=3)
+        reloader.process = process
 
         reloader._shutdown()
 
-        reloader._stop_process.assert_called_once()
+        process.join.assert_called()
+        assert reloader.process is None
+        assert reloader.exit_code == 3
 
 
 class TestDisplayPath:
@@ -539,12 +502,12 @@ class TestDisplayPath:
 
         assert _display_path(str(nested)) == "'src/domain.py'"
 
-    def test_absolute_when_outside_cwd(self, tmp_path):
-        outside = Path("/etc/hosts")
-        rendered = _display_path(str(outside))
-        # Either relative (if cwd happens to contain /etc/hosts, which it
-        # doesn't in practice) or an absolute string wrapped in quotes.
-        assert rendered.startswith("'") and rendered.endswith("'")
+    def test_absolute_when_outside_cwd(self, tmp_path, monkeypatch):
+        (tmp_path / "cwd").mkdir()
+        monkeypatch.chdir(tmp_path / "cwd")
+        outside = tmp_path / "elsewhere" / "domain.py"
+
+        assert _display_path(str(outside)) == f"'{outside}'"
 
 
 def _spawned_kwargs(reloader: Reloader) -> dict[str, object]:
@@ -553,36 +516,6 @@ def _spawned_kwargs(reloader: Reloader) -> dict[str, object]:
     reloader._ctx.Process.return_value.pid = 1
     reloader._start_process()
     return reloader._ctx.Process.call_args.kwargs["kwargs"]
-
-
-class TestReloaderLoggingArguments:
-    def test_logging_arguments_reach_the_worker(self):
-        reloader = Reloader(
-            domain_path="d",
-            log_level="DEBUG",
-            log_format="json",
-            log_config={"version": 1},
-        )
-
-        assert _spawned_kwargs(reloader) == {
-            "log_level": "DEBUG",
-            "log_format": "json",
-            "log_config": {"version": 1},
-        }
-
-    def test_logging_arguments_survive_a_restart(self):
-        reloader = Reloader(domain_path="d", log_format="json")
-        reloader._ctx = MagicMock()
-        reloader._ctx.Process.return_value.is_alive.return_value = False
-        reloader._ctx.Process.return_value.exitcode = 0
-
-        reloader._start_process()
-        reloader._restart_process()
-
-        calls = reloader._ctx.Process.call_args_list
-        assert len(calls) == 2
-        for call in calls:
-            assert call.kwargs["kwargs"]["log_format"] == "json"
 
 
 class TestReloaderLoggingArgumentValidation:
@@ -618,17 +551,11 @@ class TestReloaderDebugDeprecation:
 
         assert _spawned_kwargs(reloader)["log_level"] == "WARNING"
 
-    def test_debug_false_does_not_warn(self):
+    @pytest.mark.parametrize("kwargs", [{"debug": False}, {}], ids=["false", "omitted"])
+    def test_debug_false_or_omitted_does_not_warn(self, kwargs):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            reloader = Reloader(domain_path="d", debug=False)
+            reloader = Reloader(domain_path="d", **kwargs)
 
         assert caught == []
         assert reloader.log_level is None
-
-    def test_omitted_debug_does_not_warn(self):
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            Reloader(domain_path="d")
-
-        assert caught == []

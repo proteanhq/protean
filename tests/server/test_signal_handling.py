@@ -1,6 +1,8 @@
 import asyncio
+import logging
+import os
 import signal
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -11,6 +13,8 @@ from protean.fields import Identifier
 from protean.server.engine import Engine
 from protean.utils import Processing
 from protean.utils.mixins import handle
+
+_SIGNALS = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
 
 
 class User(BaseAggregate):
@@ -36,435 +40,292 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
+@pytest.fixture(autouse=True)
+def original_handlers():
+    """Install a no-op handler for each signal and restore the real ones after.
+
+    A test that sends itself a signal must not end the test run if the
+    engine fails to install its own handler.
+    """
+    saved = {sig: signal.getsignal(sig) for sig in _SIGNALS}
+
+    def ignore(signum, frame):
+        pass
+
+    for sig in _SIGNALS:
+        signal.signal(sig, ignore)
+    yield ignore
+    for sig, handler in saved.items():
+        signal.signal(sig, handler)
+
+
+class _LoopWithoutSignalSupport:
+    """An event loop with no ``add_signal_handler``.
+
+    Every asyncio loop defines the method, so only a third-party loop can
+    lack it.
+    """
+
+    def is_running(self) -> bool:
+        return False
+
+
+def _shutdown_records(caplog) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.getMessage() == "engine.shutting_down"]
+
+
+def _send_sigterm_and_run(engine: Engine) -> None:
+    """Send SIGTERM to this process from inside the engine's running loop.
+
+    The loop runs until the engine's shutdown stops it. A stop scheduled after
+    five seconds keeps a broken handler from hanging the test.
+    """
+    engine.loop.call_soon(os.kill, os.getpid(), signal.SIGTERM)
+    engine.loop.call_later(5, engine.loop.stop)
+    engine.loop.run_forever()
+
+
+def _send_sigterm_and_settle(engine: Engine) -> None:
+    """Send SIGTERM and give the loop a few iterations to react."""
+
+    async def send() -> None:
+        os.kill(os.getpid(), signal.SIGTERM)
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    engine.loop.run_until_complete(send())
+
+
 class TestSignalHandling:
     """Test signal handling functionality across different platforms."""
 
-    def test_signal_handlers_initialization(self, test_domain):
-        """Test that signal handlers are properly initialized."""
-        engine = Engine(domain=test_domain)
-        assert hasattr(engine, "_original_signal_handlers")
-        assert isinstance(engine._original_signal_handlers, dict)
-
-    @patch("platform.system")
-    def test_windows_signal_handling_setup(self, mock_platform, test_domain):
-        """Test signal handler setup on Windows platform."""
-        mock_platform.return_value = "Windows"
-
-        with patch("signal.signal") as mock_signal:
-            engine = Engine(domain=test_domain)
-            engine._setup_signal_handlers()
-
-            # Should call signal.signal for each signal
-            assert mock_signal.call_count >= 3  # SIGHUP, SIGTERM, SIGINT
-
-    @patch("platform.system")
-    def test_unix_signal_handling_setup(self, mock_platform, test_domain):
-        """Test signal handler setup on Unix-like platforms."""
-        mock_platform.return_value = "Linux"
-
+    @patch("platform.system", return_value="Windows")
+    def test_windows_cleanup_restores_original_handlers(
+        self, mock_platform, test_domain
+    ):
         engine = Engine(domain=test_domain)
 
-        with patch.object(engine.loop, "add_signal_handler") as mock_add_handler:
-            engine._setup_signal_handlers()
-
-            # Should call add_signal_handler for each signal
-            assert mock_add_handler.call_count >= 3  # SIGHUP, SIGTERM, SIGINT
-
-    @patch("platform.system")
-    def test_windows_signal_cleanup(self, mock_platform, test_domain):
-        """Test signal handler cleanup on Windows platform."""
-        mock_platform.return_value = "Windows"
-
-        engine = Engine(domain=test_domain)
-
-        # Mock original signal handlers
-        engine._original_signal_handlers = {
-            signal.SIGINT: Mock(),
-            signal.SIGTERM: Mock(),
-        }
-
-        with patch("signal.signal") as mock_signal:
-            engine._cleanup_signal_handlers()
-
-            # Should restore original handlers
-            assert mock_signal.call_count == 2
-
-    @patch("platform.system")
-    def test_unix_signal_cleanup(self, mock_platform, test_domain):
-        """Test signal handler cleanup on Unix-like platforms."""
-        mock_platform.return_value = "Linux"
-
-        engine = Engine(domain=test_domain)
-
-        with patch.object(engine.loop, "remove_signal_handler") as mock_remove_handler:
-            engine._cleanup_signal_handlers()
-
-            # Should remove signal handlers
-            assert mock_remove_handler.call_count >= 3
-
-    @patch("platform.system")
-    def test_signal_handler_exception_handling(self, mock_platform, test_domain):
-        """Test that signal handler setup handles exceptions gracefully."""
-        mock_platform.return_value = "Windows"
-
-        def signal_side_effect(*args):
-            raise OSError("Signal not available")
-
-        with patch("signal.signal", side_effect=signal_side_effect):
-            engine = Engine(domain=test_domain)
-            # Should not raise exception
-            try:
-                engine._setup_signal_handlers()
-                # Should complete without raising exception
-            except Exception as e:
-                pytest.fail(
-                    f"_setup_signal_handlers should handle signal exceptions gracefully: {e}"
-                )
-
-    @patch("platform.system")
-    def test_windows_signal_handler_callback(self, mock_platform, test_domain):
-        """Test that Windows signal handler callback works correctly."""
-        mock_platform.return_value = "Windows"
-
-        engine = Engine(domain=test_domain, test_mode=True)
-
-        # Mock asyncio.run_coroutine_threadsafe to verify it gets called
-        coroutine_called = False
-
-        def mock_run_coroutine_threadsafe(coro, loop):
-            nonlocal coroutine_called
-            coroutine_called = True
-            # Just close the coroutine without actually running it
-            coro.close()
-            return Mock()
-
-        # Capture the signal handler that gets registered
-        captured_handler = None
-
-        def mock_signal_func(sig, handler):
-            nonlocal captured_handler
-            if sig == signal.SIGTERM:  # Capture only SIGTERM handler for testing
-                captured_handler = handler
-            return Mock()
-
-        with (
-            patch(
-                "asyncio.run_coroutine_threadsafe",
-                side_effect=mock_run_coroutine_threadsafe,
-            ),
-            patch("signal.signal", side_effect=mock_signal_func),
-        ):
-            engine._setup_signal_handlers()
-
-            # Simulate signal reception when the loop is "running"
-            if captured_handler:
-                # Mock that the loop is running
-                with patch.object(engine.loop, "is_running", return_value=True):
-                    captured_handler(signal.SIGTERM)
-
-        assert coroutine_called
-
-    def test_signal_attribute_access_in_shutdown(self, test_domain):
-        """Test that shutdown handles signal objects without 'name' attribute."""
-        engine = Engine(domain=test_domain)
-
-        # Test with a signal that has a name attribute
-        with patch.object(engine, "shutting_down", True):
-            try:
-                asyncio.run(engine.shutdown(signal=signal.SIGTERM))
-                # Should not raise exception
-            except Exception as e:
-                pytest.fail(
-                    f"shutdown should handle signals with name attribute gracefully: {e}"
-                )
-
-        # Test with a signal-like object without name attribute
-        class MockSignal:
+        def original(signum, frame):
             pass
 
-        mock_signal = MockSignal()
-        with patch.object(engine, "shutting_down", True):
-            try:
-                asyncio.run(engine.shutdown(signal=mock_signal))
-                # Should not raise exception
-            except Exception as e:
-                pytest.fail(
-                    f"shutdown should handle signals without name attribute gracefully: {e}"
-                )
-
-    @patch("platform.system")
-    def test_fallback_when_add_signal_handler_not_available(
-        self, mock_platform, test_domain
-    ):
-        """Test fallback to signal.signal when add_signal_handler is not available."""
-        mock_platform.return_value = "Linux"  # Normally would use add_signal_handler
-
-        engine = Engine(domain=test_domain)
-
-        # Mock the condition directly in the engine method
-        original_setup = engine._setup_signal_handlers
-
-        def mock_setup():
-            # Force the Windows path by mocking hasattr to return False
-            original_hasattr = hasattr
-
-            def mock_hasattr(obj, name):
-                if name == "add_signal_handler" and obj is engine.loop:
-                    return False
-                return original_hasattr(obj, name)
-
-            import builtins
-
-            builtins.hasattr = mock_hasattr
-            try:
-                original_setup()
-            finally:
-                builtins.hasattr = original_hasattr
-
-        with patch("signal.signal") as mock_signal:
-            try:
-                mock_setup()
-                # Should complete without raising exception
-            except Exception as e:
-                pytest.fail(
-                    f"signal handler setup should work with fallback gracefully: {e}"
-                )
-
-            # Should fall back to signal.signal
-            assert mock_signal.call_count >= 3
-
-    def test_cleanup_during_shutdown(self, test_domain):
-        """Test that signal handlers are cleaned up during shutdown."""
-        engine = Engine(domain=test_domain)
-
-        cleanup_called = False
-        original_cleanup = engine._cleanup_signal_handlers
-
-        def mock_cleanup():
-            nonlocal cleanup_called
-            cleanup_called = True
-            original_cleanup()
-
-        engine._cleanup_signal_handlers = mock_cleanup
-
-        # Run shutdown
-        try:
-            asyncio.run(engine.shutdown())
-            # Should complete without raising exception
-        except Exception as e:
-            pytest.fail(f"shutdown should handle signal cleanup gracefully: {e}")
-
-        assert cleanup_called
-
-    def test_cleanup_during_run_finally_block(self, test_domain):
-        """Test that signal handlers are cleaned up in the finally block of run()."""
-        engine = Engine(domain=test_domain, test_mode=True)
-
-        cleanup_called = False
-        original_cleanup = engine._cleanup_signal_handlers
-
-        def mock_cleanup():
-            nonlocal cleanup_called
-            cleanup_called = True
-            original_cleanup()
-
-        engine._cleanup_signal_handlers = mock_cleanup
-
-        # Run the engine (will exit immediately due to no subscriptions)
-        try:
-            engine.run()
-            # Should complete without raising exception
-        except Exception as e:
-            pytest.fail(f"engine.run() should handle signal cleanup gracefully: {e}")
-
-        assert cleanup_called
-
-    @patch("platform.system")
-    def test_debug_logging_for_signal_setup(self, mock_platform, test_domain, caplog):
-        """Test that debug logging works for signal setup."""
-        mock_platform.return_value = "Windows"
-
-        engine = Engine(domain=test_domain, debug=True)
-
-        with caplog.at_level("DEBUG"):
-            try:
-                engine._setup_signal_handlers()
-                # Should complete without raising exception
-            except Exception as e:
-                pytest.fail(
-                    f"_setup_signal_handlers should handle debug logging gracefully: {e}"
-                )
-
-            assert any(
-                "Using signal.signal() for signal handling" in record.message
-                for record in caplog.records
-            )
-
-    @patch("platform.system")
-    def test_unavailable_signal_handling(self, mock_platform, test_domain, caplog):
-        """Test handling of unavailable signals."""
-        mock_platform.return_value = "Windows"
-
-        def signal_side_effect(sig, handler):
-            if sig == signal.SIGHUP:
-                raise OSError("Signal not available on this platform")
-            return Mock()
-
-        engine = Engine(domain=test_domain, debug=True)
-
-        with patch("signal.signal", side_effect=signal_side_effect):
-            with caplog.at_level("DEBUG"):
-                try:
-                    engine._setup_signal_handlers()
-                    # Should complete without raising exception
-                except Exception as e:
-                    pytest.fail(
-                        f"_setup_signal_handlers should handle unavailable signals gracefully: {e}"
-                    )
-
-                # Should log that SIGHUP is not available
-                assert any(
-                    "Signal" in record.message and "not available" in record.message
-                    for record in caplog.records
-                )
-
-    @patch("platform.system")
-    def test_unix_signal_handler_callback_triggers_shutdown(
-        self, mock_platform, test_domain
-    ):
-        """Test that Unix signal handler callback calls loop.call_soon_threadsafe."""
-        mock_platform.return_value = "Linux"
-
-        engine = Engine(domain=test_domain, test_mode=True)
-
-        # Capture the callbacks passed to add_signal_handler
-        captured_callbacks = {}
-
-        def mock_add_handler(sig, callback):
-            captured_callbacks[sig] = callback
-
-        with patch.object(
-            engine.loop, "add_signal_handler", side_effect=mock_add_handler
-        ):
-            engine._setup_signal_handlers()
-
-        # Verify callback was captured for SIGTERM
-        assert signal.SIGTERM in captured_callbacks
-
-        # Call the captured callback and verify it triggers call_soon_threadsafe
-        with patch.object(engine.loop, "call_soon_threadsafe") as mock_call_soon:
-            captured_callbacks[signal.SIGTERM]()
-            mock_call_soon.assert_called_once()
-
-    @patch("platform.system")
-    def test_unix_signal_handler_skips_when_shutting_down(
-        self, mock_platform, test_domain
-    ):
-        """Test that Unix signal handler callback skips when already shutting down."""
-        mock_platform.return_value = "Linux"
-
-        engine = Engine(domain=test_domain, test_mode=True)
-
-        captured_callbacks = {}
-
-        def mock_add_handler(sig, callback):
-            captured_callbacks[sig] = callback
-
-        with patch.object(
-            engine.loop, "add_signal_handler", side_effect=mock_add_handler
-        ):
-            engine._setup_signal_handlers()
-
-        # Set shutting_down before calling callback
-        engine.shutting_down = True
-
-        with patch.object(engine.loop, "call_soon_threadsafe") as mock_call_soon:
-            captured_callbacks[signal.SIGTERM]()
-            # Should NOT trigger call_soon_threadsafe when already shutting down
-            mock_call_soon.assert_not_called()
-
-    @patch("platform.system")
-    def test_unix_signal_setup_handles_oserror(
-        self, mock_platform, test_domain, caplog
-    ):
-        """Test that Unix signal handler setup handles OSError gracefully."""
-        mock_platform.return_value = "Linux"
-
-        engine = Engine(domain=test_domain, debug=True)
-
-        def add_handler_side_effect(sig, callback):
-            raise OSError("Signal not available on this platform")
-
-        with (
-            patch.object(
-                engine.loop,
-                "add_signal_handler",
-                side_effect=add_handler_side_effect,
-            ),
-            caplog.at_level("DEBUG"),
-        ):
-            engine._setup_signal_handlers()
-
-        assert any("not available" in record.message for record in caplog.records)
-
-    @patch("platform.system")
-    def test_windows_signal_cleanup_handles_oserror(self, mock_platform, test_domain):
-        """Test that Windows signal cleanup handles OSError gracefully."""
-        mock_platform.return_value = "Windows"
-
-        engine = Engine(domain=test_domain)
-
         engine._original_signal_handlers = {
-            signal.SIGINT: Mock(),
-            signal.SIGTERM: Mock(),
+            signal.SIGINT: original,
+            signal.SIGTERM: original,
         }
 
-        with patch("signal.signal", side_effect=OSError("Cannot restore")):
-            # Should not raise - errors are silently ignored during cleanup
+        engine._cleanup_signal_handlers()
+
+        assert signal.getsignal(signal.SIGINT) is original
+        assert signal.getsignal(signal.SIGTERM) is original
+
+    @patch("platform.system", return_value="Windows")
+    def test_windows_signal_cleanup_handles_oserror(self, mock_platform, test_domain):
+        """Errors restoring a handler are ignored during cleanup."""
+        engine = Engine(domain=test_domain)
+        engine._original_signal_handlers = {signal.SIGINT: signal.SIG_DFL}
+
+        with patch("signal.signal", side_effect=OSError("Cannot restore")) as restore:
             engine._cleanup_signal_handlers()
 
-    @patch("platform.system")
-    def test_unix_signal_cleanup_handles_oserror(self, mock_platform, test_domain):
-        """Test that Unix signal cleanup handles OSError gracefully."""
-        mock_platform.return_value = "Linux"
+        restore.assert_called_once_with(signal.SIGINT, signal.SIG_DFL)
 
+    @patch("platform.system", return_value="Linux")
+    def test_unix_signal_cleanup(self, mock_platform, test_domain, original_handlers):
+        """Cleanup removes the loop's handlers, which puts the defaults back."""
+        engine = Engine(domain=test_domain)
+        engine._setup_signal_handlers()
+        assert signal.getsignal(signal.SIGTERM) is not original_handlers
+
+        engine._cleanup_signal_handlers()
+
+        assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL
+        assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+
+    @patch("platform.system", return_value="Linux")
+    def test_unix_signal_cleanup_handles_oserror(self, mock_platform, test_domain):
+        """Errors removing a handler are ignored during cleanup."""
         engine = Engine(domain=test_domain)
 
         with patch.object(
             engine.loop,
             "remove_signal_handler",
             side_effect=OSError("Cannot remove"),
-        ):
-            # Should not raise - errors are silently ignored during cleanup
+        ) as remove:
             engine._cleanup_signal_handlers()
 
-    @patch("platform.system")
-    def test_windows_signal_handler_skips_when_shutting_down(
-        self, mock_platform, test_domain
-    ):
-        """Test that Windows signal handler skips when already shutting down."""
-        mock_platform.return_value = "Windows"
+        assert remove.call_count == len(_SIGNALS)
 
+    @patch("platform.system", return_value="Windows")
+    def test_windows_signal_handler_callback(
+        self, mock_platform, test_domain, original_handlers, caplog
+    ):
+        """On Windows the engine installs a handler for each signal with
+        ``signal.signal``. A signal received while the loop runs shuts the
+        engine down, and the shutdown restores the original handlers."""
         engine = Engine(domain=test_domain, test_mode=True)
 
-        # Capture the signal handler
-        captured_handler = None
+        engine._setup_signal_handlers()
 
-        def mock_signal_func(sig, handler):
-            nonlocal captured_handler
-            if sig == signal.SIGTERM:
-                captured_handler = handler
-            return Mock()
+        assert set(engine._original_signal_handlers) == set(_SIGNALS)
+        for sig in _SIGNALS:
+            assert signal.getsignal(sig) is not original_handlers
 
-        with patch("signal.signal", side_effect=mock_signal_func):
-            engine._setup_signal_handlers()
+        with caplog.at_level(logging.INFO, logger="protean.server.engine"):
+            _send_sigterm_and_run(engine)
 
-        # Set shutting_down before calling callback
+        assert engine.shutting_down is True
+        records = _shutdown_records(caplog)
+        assert len(records) == 1
+        assert records[0].signal == str(int(signal.SIGTERM))
+        assert signal.getsignal(signal.SIGTERM) is original_handlers
+
+    @patch("platform.system", return_value="Windows")
+    def test_windows_signal_handler_skips_when_shutting_down(
+        self, mock_platform, test_domain, caplog
+    ):
+        engine = Engine(domain=test_domain, test_mode=True)
+        engine._setup_signal_handlers()
         engine.shutting_down = True
 
-        with patch("asyncio.run_coroutine_threadsafe") as mock_run_coroutine:
-            with patch.object(engine.loop, "is_running", return_value=True):
-                if captured_handler:
-                    captured_handler(signal.SIGTERM)
-                # Should NOT call run_coroutine_threadsafe when shutting down
-                mock_run_coroutine.assert_not_called()
+        with caplog.at_level(logging.INFO, logger="protean.server.engine"):
+            _send_sigterm_and_settle(engine)
+
+        engine._cleanup_signal_handlers()
+        assert _shutdown_records(caplog) == []
+
+    @pytest.mark.parametrize("platform_name", ["Linux", "Windows"])
+    def test_unavailable_signal_handling(
+        self, test_domain, caplog, original_handlers, platform_name
+    ):
+        """A signal the platform cannot install is logged and skipped; the
+        others are still installed."""
+        engine = Engine(domain=test_domain, debug=True)
+        install_signal = signal.signal
+
+        def signal_side_effect(sig, handler):
+            if sig == signal.SIGHUP:
+                raise OSError("Signal not available on this platform")
+            return install_signal(sig, handler)
+
+        def add_handler_side_effect(sig, callback):
+            raise OSError("Signal not available on this platform")
+
+        with (
+            patch("platform.system", return_value=platform_name),
+            patch("signal.signal", side_effect=signal_side_effect),
+            patch.object(
+                engine.loop, "add_signal_handler", side_effect=add_handler_side_effect
+            ),
+            caplog.at_level(logging.DEBUG, logger="protean.server.engine"),
+        ):
+            engine._setup_signal_handlers()
+
+        messages = [r.getMessage() for r in caplog.records]
+        unavailable = [m for m in messages if "not available" in m]
+        if platform_name == "Windows":
+            assert (
+                "Using signal.signal() for signal handling "
+                "(Windows or unsupported platform)" in messages
+            )
+            assert len(unavailable) == 1
+            assert signal.SIGHUP not in engine._original_signal_handlers
+            assert signal.getsignal(signal.SIGTERM) is not original_handlers
+        else:
+            assert len(unavailable) == len(_SIGNALS)
+
+    @pytest.mark.parametrize(
+        "sig, name",
+        [(signal.SIGTERM, "SIGTERM"), (15, "15"), (None, None)],
+        ids=["signal", "number", "none"],
+    )
+    def test_shutdown_logs_the_signal_name(self, test_domain, caplog, sig, name):
+        """Shutdown names a ``Signals`` member by name and anything else by
+        its string form."""
+        engine = Engine(domain=test_domain)
+
+        with caplog.at_level(logging.INFO, logger="protean.server.engine"):
+            asyncio.run(engine.shutdown(signal=sig))
+
+        records = _shutdown_records(caplog)
+        assert len(records) == 1
+        assert records[0].signal == name
+
+    @patch("platform.system", return_value="Linux")
+    def test_fallback_when_add_signal_handler_not_available(
+        self, mock_platform, test_domain, original_handlers, caplog
+    ):
+        """A loop without ``add_signal_handler`` falls back to ``signal.signal``
+        even off Windows, and cleanup restores the original handlers."""
+        engine = Engine(domain=test_domain, debug=True)
+        engine.loop.close()
+        engine.loop = _LoopWithoutSignalSupport()
+
+        with caplog.at_level(logging.DEBUG, logger="protean.server.engine"):
+            engine._setup_signal_handlers()
+
+        assert set(engine._original_signal_handlers) == set(_SIGNALS)
+        for sig in _SIGNALS:
+            assert signal.getsignal(sig) is not original_handlers
+        assert any(
+            r.getMessage().startswith("Using signal.signal()") for r in caplog.records
+        )
+
+        engine._cleanup_signal_handlers()
+
+        for sig in _SIGNALS:
+            assert signal.getsignal(sig) is original_handlers
+
+    def test_cleanup_during_shutdown(self, test_domain, original_handlers):
+        """Shutdown removes the handlers the engine installed."""
+        engine = Engine(domain=test_domain)
+        engine._setup_signal_handlers()
+        assert signal.getsignal(signal.SIGTERM) is not original_handlers
+
+        asyncio.run(engine.shutdown())
+
+        assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL
+
+    def test_cleanup_during_run_finally_block(self, test_domain):
+        """run() removes the handlers it installed before it returns."""
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        # The engine exits on its own in test mode.
+        engine.run()
+
+        assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL
+        assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+
+    @patch("platform.system", return_value="Linux")
+    def test_unix_signal_handler_callback_triggers_shutdown(
+        self, mock_platform, test_domain, original_handlers, caplog
+    ):
+        """On Unix the engine installs each handler on the loop. A signal
+        received while the loop runs shuts the engine down."""
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        engine._setup_signal_handlers()
+
+        for sig in _SIGNALS:
+            assert signal.getsignal(sig) is not original_handlers
+
+        with caplog.at_level(logging.INFO, logger="protean.server.engine"):
+            _send_sigterm_and_run(engine)
+
+        assert engine.shutting_down is True
+        records = _shutdown_records(caplog)
+        assert len(records) == 1
+        assert records[0].signal == "SIGTERM"
+
+    @patch("platform.system", return_value="Linux")
+    def test_unix_signal_handler_skips_when_shutting_down(
+        self, mock_platform, test_domain, caplog
+    ):
+        engine = Engine(domain=test_domain, test_mode=True)
+        engine._setup_signal_handlers()
+        engine.shutting_down = True
+
+        with caplog.at_level(logging.INFO, logger="protean.server.engine"):
+            _send_sigterm_and_settle(engine)
+
+        engine._cleanup_signal_handlers()
+        assert _shutdown_records(caplog) == []

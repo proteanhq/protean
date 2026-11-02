@@ -1,21 +1,27 @@
 """Tests for the multi-worker Supervisor.
 
-The Supervisor spawns child processes, so these tests exercise initialization,
-validation, signal handling, and shutdown logic without spawning real workers.
+The Supervisor spawns child processes, so these tests replace the spawn
+context and the worker processes with mocks. Everything else, including the
+project config, the log queue listener, the monitor loop and the signal
+handlers, is real.
 """
 
+import itertools
+import json
 import logging
+import logging.handlers
 import os
+import queue
 import signal
 import sys
 import warnings
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
 from protean._deprecation import RemovedInProtean020Warning
-from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.integrations.logging import ProteanRedactionFilter
 from protean.server.reloader import Reloader
@@ -30,6 +36,128 @@ from protean.server.supervisor import (
     _worker_entry,
 )
 from tests.shared import change_working_directory_to
+
+
+@pytest.fixture(autouse=True)
+def _restore_signal_handlers():
+    """Put back the handlers that ``Supervisor.run()`` and the worker's Engine install."""
+    signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+    saved = {sig: signal.getsignal(sig) for sig in signals}
+    yield
+    for sig, handler in saved.items():
+        signal.signal(sig, handler)
+
+
+@pytest.fixture
+def project_config(tmp_path, monkeypatch):
+    """Write a ``domain.toml`` and return its directory, usable as a domain path."""
+    monkeypatch.delenv("DOMAIN_ROOT_PATH", raising=False)
+    monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+
+    def write(text: str) -> str:
+        (tmp_path / "domain.toml").write_text(text)
+        return str(tmp_path)
+
+    return write
+
+
+def _window(value: str) -> str:
+    """A ``domain.toml`` whose ``[server].drain_timeout`` is the TOML literal *value*."""
+    return f"[server]\ndrain_timeout = {value}\n"
+
+
+@pytest.fixture
+def domain_module(tmp_path, monkeypatch):
+    """Write a Python module the worker can load; return its file path.
+
+    Each module gets a unique name, so a module imported by an earlier test
+    is never returned from ``sys.modules``.
+    """
+    monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    names: list[str] = []
+
+    def write(source: str) -> str:
+        name = f"worker_domain_{uuid4().hex}"
+        names.append(name)
+        path = tmp_path / f"{name}.py"
+        path.write_text(source)
+        return str(path)
+
+    yield write
+
+    for name in names:
+        sys.modules.pop(name, None)
+
+
+def _domain_source(config: dict | None = None) -> str:
+    return (
+        "from protean import Domain\n\n"
+        f"domain = Domain(name='Worker', config={config or {}!r})\n"
+    )
+
+
+def _exited_worker(name: str = "worker-0", pid: int = 12345, exitcode: int = 0):
+    """A worker process that has already exited."""
+    worker = MagicMock()
+    worker.is_alive.return_value = False
+    worker.pid = pid
+    worker.name = name
+    worker.exitcode = exitcode
+    return worker
+
+
+def _stuck_worker():
+    """A worker that stays alive through the graceful join."""
+    worker = MagicMock()
+    worker.is_alive.return_value = True
+    worker.pid = 12345
+    worker.name = "worker-0"
+    worker.join.return_value = None
+    return worker
+
+
+def _spawn_context(on_spawn=None) -> MagicMock:
+    """A spawn context whose workers exit as soon as they start.
+
+    The log queue is a real in-process queue, so the supervisor runs a real
+    ``QueueListener`` on it. *on_spawn* runs as each worker is created, and
+    ``ctx.spawned`` lists the workers created.
+    """
+    ctx = MagicMock()
+    ctx.Queue.side_effect = queue.Queue
+    ctx.spawned = []
+
+    def process(**kwargs):
+        if on_spawn is not None:
+            on_spawn()
+        worker = _exited_worker(name=kwargs["name"], pid=4000 + len(ctx.spawned))
+        ctx.spawned.append(worker)
+        return worker
+
+    ctx.Process.side_effect = process
+    return ctx
+
+
+def _run(supervisor: Supervisor, ctx: MagicMock | None = None) -> MagicMock:
+    """Run *supervisor* on a spawn context of exiting workers; return the context.
+
+    ``time.sleep`` is patched so the monitor loop does not wait between polls.
+    """
+    ctx = ctx if ctx is not None else _spawn_context()
+    with (
+        patch("multiprocessing.get_context", return_value=ctx),
+        patch("time.sleep"),
+    ):
+        supervisor.run()
+    return ctx
+
+
+def _spawned_kwargs(supervisor: Supervisor) -> list[dict[str, object]]:
+    """Run the supervisor and return the keyword arguments of each worker."""
+    calls = _run(supervisor).Process.call_args_list
+    assert calls
+    return [call.kwargs["kwargs"] for call in calls]
 
 
 class TestSupervisorInit:
@@ -52,13 +180,10 @@ class TestSupervisorInit:
         assert supervisor.exit_code == 0
         assert supervisor._shutting_down is False
 
-    def test_raises_on_zero_workers(self):
+    @pytest.mark.parametrize("num_workers", [0, -1])
+    def test_raises_on_fewer_than_one_worker(self, num_workers):
         with pytest.raises(ValueError, match="num_workers must be >= 1"):
-            Supervisor(domain_path="d", num_workers=0)
-
-    def test_raises_on_negative_workers(self):
-        with pytest.raises(ValueError, match="num_workers must be >= 1"):
-            Supervisor(domain_path="d", num_workers=-1)
+            Supervisor(domain_path="d", num_workers=num_workers)
 
     def test_defaults(self):
         supervisor = Supervisor(domain_path="d", num_workers=1)
@@ -71,128 +196,54 @@ class TestSupervisorInit:
 class TestSupervisorSignalHandling:
     def test_install_signal_handlers(self):
         supervisor = Supervisor(domain_path="d", num_workers=1)
-        original_sigint = signal.getsignal(signal.SIGINT)
-        original_sigterm = signal.getsignal(signal.SIGTERM)
 
-        try:
-            supervisor._install_signal_handlers()
-            # After installing, signal handlers should be the supervisor's method
-            assert signal.getsignal(signal.SIGINT) == supervisor._handle_signal
-            assert signal.getsignal(signal.SIGTERM) == supervisor._handle_signal
-        finally:
-            # Restore original handlers
-            signal.signal(signal.SIGINT, original_sigint)
-            signal.signal(signal.SIGTERM, original_sigterm)
+        supervisor._install_signal_handlers()
 
-    def test_handle_signal_sets_shutting_down(self):
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            assert signal.getsignal(sig) == supervisor._handle_signal
+
+    def test_handle_signal_is_idempotent(self, caplog):
+        """The first signal starts the shutdown; a second one is ignored."""
         supervisor = Supervisor(domain_path="d", num_workers=1)
-        supervisor._shutdown_workers = MagicMock()
+        supervisor.workers = [_exited_worker()]
 
-        supervisor._handle_signal(signal.SIGTERM, None)
+        with caplog.at_level(logging.INFO, logger="protean.server.supervisor"):
+            supervisor._handle_signal(signal.SIGTERM, None)
+            supervisor._handle_signal(signal.SIGTERM, None)
 
         assert supervisor._shutting_down is True
-        supervisor._shutdown_workers.assert_called_once()
-
-    def test_handle_signal_idempotent(self):
-        """Second signal is ignored when already shutting down."""
-        supervisor = Supervisor(domain_path="d", num_workers=1)
-        supervisor._shutdown_workers = MagicMock()
-
-        supervisor._handle_signal(signal.SIGTERM, None)
-        supervisor._handle_signal(signal.SIGTERM, None)
-
-        # Only called once despite two signals
-        supervisor._shutdown_workers.assert_called_once()
+        assert supervisor.workers == []
+        messages = [r.getMessage() for r in caplog.records]
+        assert messages.count("All workers have been shut down") == 1
 
 
 class TestSupervisorShutdownWorkers:
-    def test_sends_sigterm_to_living_workers(self):
+    @pytest.mark.parametrize("kill_error", [None, ProcessLookupError])
+    def test_sends_sigterm_to_living_workers(self, kill_error):
+        """Each living worker gets SIGTERM. A worker that already exited
+        (``ProcessLookupError``) does not stop the shutdown."""
         supervisor = Supervisor(domain_path="d", num_workers=2)
+        worker1 = _stuck_worker()
+        worker2 = _stuck_worker()
+        worker2.pid = 12346
+        supervisor.workers = [worker1, worker2]
 
-        mock_worker1 = MagicMock()
-        mock_worker1.is_alive.return_value = True
-        mock_worker1.pid = 12345
-        mock_worker1.name = "worker-0"
-
-        mock_worker2 = MagicMock()
-        mock_worker2.is_alive.return_value = True
-        mock_worker2.pid = 12346
-        mock_worker2.name = "worker-1"
-
-        supervisor.workers = [mock_worker1, mock_worker2]
-
-        with patch("os.kill") as mock_kill:
+        with patch("os.kill", side_effect=kill_error) as mock_kill:
             supervisor._shutdown_workers()
 
-            assert mock_kill.call_count == 2
-            mock_kill.assert_any_call(12345, signal.SIGTERM)
-            mock_kill.assert_any_call(12346, signal.SIGTERM)
-
-    def test_handles_process_lookup_error(self):
-        """Shutdown tolerates workers that already exited."""
-        supervisor = Supervisor(domain_path="d", num_workers=1)
-
-        mock_worker = MagicMock()
-        mock_worker.is_alive.return_value = True
-        mock_worker.pid = 99999
-        mock_worker.name = "worker-0"
-        supervisor.workers = [mock_worker]
-
-        with patch("os.kill", side_effect=ProcessLookupError):
-            # Should not raise
-            supervisor._shutdown_workers()
-
-        assert len(supervisor.workers) == 0
-
-    def test_kills_workers_that_exceed_timeout(self):
-        """Workers that don't stop in time get SIGKILL."""
-        supervisor = Supervisor(domain_path="d", num_workers=1)
-
-        mock_worker = MagicMock()
-        mock_worker.is_alive.return_value = True
-        mock_worker.pid = 12345
-        mock_worker.name = "worker-0"
-        # join returns without stopping the worker, is_alive still True
-        mock_worker.join.return_value = None
-
-        supervisor.workers = [mock_worker]
-
-        with patch("os.kill"):
-            supervisor._shutdown_workers()
-
-            mock_worker.kill.assert_called_once()
+        assert mock_kill.call_count == 2
+        mock_kill.assert_any_call(12345, signal.SIGTERM)
+        mock_kill.assert_any_call(12346, signal.SIGTERM)
+        assert supervisor.workers == []
 
     def test_skips_dead_workers(self):
         """Workers that are already dead are not sent signals."""
         supervisor = Supervisor(domain_path="d", num_workers=1)
-
-        mock_worker = MagicMock()
-        mock_worker.is_alive.return_value = False
-        mock_worker.pid = 12345
-        mock_worker.name = "worker-0"
-        supervisor.workers = [mock_worker]
+        supervisor.workers = [_exited_worker()]
 
         with patch("os.kill") as mock_kill:
             supervisor._shutdown_workers()
             mock_kill.assert_not_called()
-
-
-def _config_with_window(window):
-    """Patch the config read so it reports *window* as drain_timeout."""
-    return patch(
-        "protean.domain.config.Config2.load_from_path",
-        return_value={"server": {"drain_timeout": window}},
-    )
-
-
-def _stuck_worker():
-    """A worker that stays alive through the graceful join."""
-    worker = MagicMock()
-    worker.is_alive.return_value = True
-    worker.pid = 12345
-    worker.name = "worker-0"
-    worker.join.return_value = None
-    return worker
 
 
 class TestSupervisorTerminationBudget:
@@ -203,51 +254,60 @@ class TestSupervisorTerminationBudget:
     whenever that window is longer.
     """
 
-    def test_budget_covers_a_longer_drain_window(self):
-        with _config_with_window(45):
-            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 50.0
-
-    @pytest.mark.parametrize("window, budget", [(10, 30.0), (25, 30.0), (26, 31.0)])
-    def test_budget_never_shrinks_below_thirty_seconds(self, window, budget):
-        with _config_with_window(window):
-            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == budget
-
-    def test_missing_drain_timeout_falls_back_to_thirty_seconds(self):
-        with patch(
-            "protean.domain.config.Config2.load_from_path", return_value={"server": {}}
-        ):
-            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
-
     @pytest.mark.parametrize(
-        "window", ["not-a-number", True, 0, -5, float("nan"), float("inf")]
+        "config, budget",
+        [
+            (_window("45"), 50.0),
+            (_window("10"), 30.0),
+            (_window("25"), 30.0),
+            (_window("26"), 31.0),
+            (_window("2_200_000"), 2_200_000 + _DRAIN_MARGIN_SECONDS),
+            ("[server]\n", 30.0),
+            (_window('"not-a-number"'), 30.0),
+            (_window("true"), 30.0),
+            (_window("0"), 30.0),
+            (_window("-5"), 30.0),
+            (_window("nan"), 30.0),
+            (_window("inf"), 30.0),
+            ("[server\nnot toml", 30.0),
+        ],
+        ids=[
+            "longer-window",
+            "default-window",
+            "just-under-floor",
+            "just-over-floor",
+            "long-window-not-capped",
+            "missing-window",
+            "string",
+            "boolean",
+            "zero",
+            "negative",
+            "nan",
+            "infinity",
+            "unreadable-config",
+        ],
     )
-    def test_invalid_window_falls_back_to_thirty_seconds(self, window):
-        with _config_with_window(window):
-            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
+    def test_budget_is_the_window_plus_margin_never_below_thirty_seconds(
+        self, project_config, config, budget
+    ):
+        domain_path = project_config(config)
 
-    def test_long_window_is_not_capped(self):
-        with _config_with_window(2_200_000):
-            assert (
-                _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS)
-                == 2_200_000 + _DRAIN_MARGIN_SECONDS
-            )
+        assert _termination_budget(domain_path, _SHUTDOWN_TIMEOUT_SECONDS) == budget
 
-    def test_unreadable_config_falls_back_to_thirty_seconds(self):
-        with patch(
-            "protean.domain.config.Config2.load_from_path",
-            side_effect=ValueError("bad TOML"),
-        ):
-            assert _termination_budget("my.domain", _SHUTDOWN_TIMEOUT_SECONDS) == 30.0
-
-    def test_waits_the_drain_window_plus_margin_before_sigkill(self, caplog):
+    def test_waits_the_drain_window_plus_margin_before_sigkill(
+        self, project_config, caplog
+    ):
         """With drain_timeout = 45 the worker gets 45 + margin seconds to exit
-        before it is killed, and the warning names that budget."""
-        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        before it is killed, and the warning names that budget. Without a
+        budget bound by run(), the config is read at shutdown."""
+        supervisor = Supervisor(
+            domain_path=project_config(_window("45")), num_workers=1
+        )
+        assert supervisor._shutdown_timeout is None
         worker = _stuck_worker()
         supervisor.workers = [worker]
 
         with (
-            _config_with_window(45),
             patch("os.kill"),
             patch("protean.server.supervisor.time.monotonic", return_value=100.0),
             caplog.at_level(logging.WARNING, logger="protean.server.supervisor"),
@@ -260,85 +320,62 @@ class TestSupervisorTerminationBudget:
         messages = [r.getMessage() for r in caplog.records]
         assert "Worker worker-0 did not stop within 50s timeout, killing" in messages
 
-    @pytest.mark.parametrize("window", [10, "not-a-number"])
+    @pytest.mark.parametrize("window", ["10", '"not-a-number"'])
     @pytest.mark.parametrize("bound", [True, False])
-    def test_default_or_invalid_window_still_waits_thirty_seconds(self, window, bound):
+    def test_default_or_invalid_window_still_waits_thirty_seconds(
+        self, project_config, window, bound
+    ):
         """The default window of 10, or an invalid one, keeps the 30-second
         wait, whether the budget was bound in run() or is read at shutdown."""
-        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        supervisor = Supervisor(
+            domain_path=project_config(_window(window)), num_workers=1
+        )
         worker = _stuck_worker()
 
+        if bound:
+            _run(supervisor)
+        supervisor.workers = [worker]
         with (
-            _config_with_window(window),
-            patch("multiprocessing.get_context", return_value=MagicMock()),
             patch("os.kill"),
             patch("protean.server.supervisor.time.monotonic", return_value=100.0),
         ):
-            if bound:
-                supervisor._monitor = MagicMock()
-                supervisor._install_signal_handlers = MagicMock()
-                supervisor.run()
-            supervisor.workers = [worker]
             supervisor._shutdown_workers()
 
         assert worker.join.call_args_list[0].kwargs["timeout"] == 30.0
         worker.kill.assert_called_once()
 
-    def test_run_binds_the_budget_before_spawning(self):
+    def test_run_binds_the_budget_before_spawning(self, project_config):
         """run() binds the budget from the config the workers will read, before
         the first worker starts."""
-        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        supervisor = Supervisor(
+            domain_path=project_config(_window("45")), num_workers=1
+        )
         budgets_at_spawn = []
 
-        def spawn(*args, **kwargs):
-            budgets_at_spawn.append(supervisor._shutdown_timeout)
-            return MagicMock(pid=12345)
-
-        mock_ctx = MagicMock()
-        mock_ctx.Process.side_effect = spawn
-
-        with (
-            _config_with_window(45),
-            patch("multiprocessing.get_context", return_value=mock_ctx),
-        ):
-            supervisor._monitor = MagicMock()
-            supervisor._install_signal_handlers = MagicMock()
-            supervisor.run()
+        _run(
+            supervisor,
+            _spawn_context(
+                on_spawn=lambda: budgets_at_spawn.append(supervisor._shutdown_timeout)
+            ),
+        )
 
         assert budgets_at_spawn == [50.0]
 
-    def test_bound_budget_ignores_a_later_config_change(self):
+    def test_bound_budget_ignores_a_later_config_change(self, project_config):
         """A config edit after the workers spawned does not shorten the join
         for workers still draining on the window they read at startup."""
-        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
+        supervisor = Supervisor(domain_path=project_config(_window("2")), num_workers=1)
         supervisor._shutdown_timeout = 50.0
         worker = _stuck_worker()
         supervisor.workers = [worker]
 
         with (
-            _config_with_window(2),
             patch("os.kill"),
             patch("protean.server.supervisor.time.monotonic", return_value=100.0),
         ):
             supervisor._shutdown_workers()
 
         assert worker.join.call_args_list[0].kwargs["timeout"] == 50.0
-
-    def test_unbound_budget_is_read_fresh(self):
-        """Shutting down before run() bound a budget reads the config then."""
-        supervisor = Supervisor(domain_path="my.domain", num_workers=1)
-        assert supervisor._shutdown_timeout is None
-        worker = _stuck_worker()
-        supervisor.workers = [worker]
-
-        with (
-            _config_with_window(60),
-            patch("os.kill"),
-            patch("protean.server.supervisor.time.monotonic", return_value=100.0),
-        ):
-            supervisor._shutdown_workers()
-
-        assert worker.join.call_args_list[0].kwargs["timeout"] == 65.0
 
 
 class TestSupervisorReadsTheWorkersConfigFile:
@@ -428,10 +465,14 @@ class TestJoinWithin:
 
 
 class TestSupervisorSignalDuringSpawn:
-    def test_signal_during_spawn_stops_spawning_and_stops_started_workers(self):
+    def test_signal_during_spawn_stops_spawning_and_stops_started_workers(
+        self, project_config
+    ):
         """A signal that lands while workers are spawning stops the loop, and
         the worker started before it is sent SIGTERM rather than left running."""
-        supervisor = Supervisor(domain_path="my.domain", num_workers=3)
+        supervisor = Supervisor(
+            domain_path=project_config(_window("10")), num_workers=3
+        )
         started = []
 
         def spawn(*args, **kwargs):
@@ -443,25 +484,15 @@ class TestSupervisorSignalDuringSpawn:
             supervisor._handle_signal(signal.SIGTERM, None)
             return process
 
-        mock_ctx = MagicMock()
-        mock_ctx.Process.side_effect = spawn
+        ctx = _spawn_context()
+        ctx.Process.side_effect = spawn
 
-        with (
-            _config_with_window(10),
-            patch("multiprocessing.get_context", return_value=mock_ctx),
-            patch("os.kill") as mock_kill,
-            patch(
-                "protean.server.supervisor._build_queue_listener",
-                return_value=MagicMock(),
-            ),
-        ):
-            supervisor._monitor = MagicMock()
-            supervisor._install_signal_handlers = MagicMock()
-            supervisor._guard_event_store_single_writer = MagicMock()
-            supervisor.run()
+        with patch("os.kill") as mock_kill:
+            _run(supervisor, ctx)
 
         assert len(started) == 1
         mock_kill.assert_called_once_with(4000, signal.SIGTERM)
+        assert supervisor.workers == []
 
 
 class TestConfigSearchRoot:
@@ -514,52 +545,47 @@ class TestConfigSearchRoot:
 
 
 class TestSupervisorMonitor:
-    def test_monitor_detects_clean_exit(self):
-        """Monitor detects worker clean exit and removes it."""
+    @pytest.mark.parametrize(
+        "exitcode, exit_code, message",
+        [
+            (0, 0, "Worker worker-0 exited cleanly"),
+            (1, 1, "Worker worker-0 (PID 12345) exited with code 1"),
+        ],
+        ids=["clean-exit", "crash"],
+    )
+    def test_monitor_reaps_exited_worker(self, caplog, exitcode, exit_code, message):
+        """The monitor removes an exited worker. A non-zero exit code sets the
+        supervisor's exit code to 1."""
         supervisor = Supervisor(domain_path="d", num_workers=1)
+        supervisor.workers = [_exited_worker(exitcode=exitcode)]
 
-        mock_worker = MagicMock()
-        mock_worker.is_alive.return_value = False
-        mock_worker.exitcode = 0
-        mock_worker.name = "worker-0"
-        mock_worker.pid = 12345
-        supervisor.workers = [mock_worker]
+        with (
+            patch("time.sleep"),
+            caplog.at_level(logging.INFO, logger="protean.server.supervisor"),
+        ):
+            supervisor._monitor()
 
-        supervisor._monitor()
+        assert supervisor.workers == []
+        assert supervisor.exit_code == exit_code
+        assert message in [r.getMessage() for r in caplog.records]
 
-        assert len(supervisor.workers) == 0
-        assert supervisor.exit_code == 0
-
-    def test_monitor_detects_crash(self):
-        """Monitor sets exit_code=1 when a worker crashes."""
+    def test_monitor_handles_keyboard_interrupt(self, caplog):
+        """Monitor catches KeyboardInterrupt and shuts the workers down."""
         supervisor = Supervisor(domain_path="d", num_workers=1)
+        worker = _exited_worker()
+        worker.is_alive.side_effect = itertools.chain(
+            [KeyboardInterrupt], itertools.repeat(False)
+        )
+        supervisor.workers = [worker]
 
-        mock_worker = MagicMock()
-        mock_worker.is_alive.return_value = False
-        mock_worker.exitcode = 1
-        mock_worker.name = "worker-0"
-        mock_worker.pid = 12345
-        supervisor.workers = [mock_worker]
-
-        supervisor._monitor()
-
-        assert supervisor.exit_code == 1
-
-    def test_monitor_handles_keyboard_interrupt(self):
-        """Monitor catches KeyboardInterrupt and shuts down."""
-        supervisor = Supervisor(domain_path="d", num_workers=1)
-        supervisor._shutdown_workers = MagicMock()
-
-        mock_worker = MagicMock()
-        mock_worker.is_alive.side_effect = KeyboardInterrupt
-        mock_worker.name = "worker-0"
-        mock_worker.pid = 12345
-        supervisor.workers = [mock_worker]
-
-        supervisor._monitor()
+        with caplog.at_level(logging.INFO, logger="protean.server.supervisor"):
+            supervisor._monitor()
 
         assert supervisor._shutting_down is True
-        supervisor._shutdown_workers.assert_called_once()
+        assert supervisor.workers == []
+        assert "All workers have been shut down" in [
+            r.getMessage() for r in caplog.records
+        ]
 
 
 class TestSupervisorMonitorEdgeCases:
@@ -609,90 +635,25 @@ class TestSupervisorMonitorEdgeCases:
 
         assert len(supervisor.workers) == 0
 
-    def test_keyboard_interrupt_when_already_shutting_down(self):
-        """KeyboardInterrupt during shutdown does not call _shutdown_workers again."""
-        supervisor = Supervisor(domain_path="d", num_workers=1)
-        supervisor._shutting_down = True
-        supervisor._shutdown_workers = MagicMock()
-
-        mock_worker = MagicMock()
-        mock_worker.is_alive.side_effect = KeyboardInterrupt
-        mock_worker.name = "worker-0"
-        mock_worker.pid = 12345
-        supervisor.workers = [mock_worker]
-
-        supervisor._monitor()
-
-        # Should NOT call _shutdown_workers since already shutting down
-        supervisor._shutdown_workers.assert_not_called()
-
-
-class TestSupervisorSignalEdgeCases:
-    def test_sighup_handler_installed(self):
-        """SIGHUP handler is installed when available."""
-        supervisor = Supervisor(domain_path="d", num_workers=1)
-        original_sighup = signal.getsignal(signal.SIGHUP)
-
-        try:
-            supervisor._install_signal_handlers()
-            assert signal.getsignal(signal.SIGHUP) == supervisor._handle_signal
-        finally:
-            signal.signal(signal.SIGHUP, original_sighup)
-            signal.signal(signal.SIGINT, signal.default_int_handler)
-            signal.signal(signal.SIGTERM, signal.SIG_DFL)
-
 
 class TestSupervisorRun:
     def test_run_spawns_workers_and_monitors(self):
-        """run() spawns workers and enters the monitor loop."""
+        """run() installs the signal handlers, spawns and starts every worker,
+        and monitors them until they exit."""
         supervisor = Supervisor(domain_path="d", num_workers=2)
 
-        mock_process = MagicMock()
-        mock_process.pid = 12345
+        ctx = _run(supervisor)
 
-        mock_ctx = MagicMock()
-        mock_ctx.Process.return_value = mock_process
-
-        with (
-            patch("multiprocessing.get_context", return_value=mock_ctx),
-            # Multi-worker mode starts a QueueListener — stub it so the
-            # listener's monitor thread does not attempt to poll a
-            # MagicMock queue, which would trigger a thread warning.
-            patch(
-                "protean.server.supervisor._build_queue_listener",
-                return_value=MagicMock(),
-            ),
-        ):
-            supervisor._monitor = MagicMock()
-            # The single-writer guard is exercised on its own below; stub it so
-            # this test can use a placeholder domain path.
-            supervisor._guard_event_store_single_writer = MagicMock()
-            supervisor.run()
-
-            assert mock_ctx.Process.call_count == 2
-            assert mock_process.start.call_count == 2
-            assert len(supervisor.workers) == 2
-            supervisor._monitor.assert_called_once()
-
-    def test_run_installs_signal_handlers(self):
-        """run() installs signal handlers before spawning workers."""
-        supervisor = Supervisor(domain_path="d", num_workers=1)
-
-        mock_process = MagicMock()
-        mock_process.pid = 12345
-
-        mock_ctx = MagicMock()
-        mock_ctx.Process.return_value = mock_process
-
-        with patch("multiprocessing.get_context", return_value=mock_ctx):
-            supervisor._monitor = MagicMock()
-            supervisor._install_signal_handlers = MagicMock()
-            supervisor.run()
-
-            supervisor._install_signal_handlers.assert_called_once()
+        assert ctx.Process.call_count == 2
+        assert [worker.start.call_count for worker in ctx.spawned] == [1, 1]
+        assert supervisor.workers == []
+        assert supervisor.exit_code == 0
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            assert signal.getsignal(sig) == supervisor._handle_signal
 
     def test_run_passes_correct_args_to_worker_entry(self):
-        """run() passes correct arguments to _worker_entry."""
+        """run() passes correct arguments to _worker_entry. A single worker
+        logs directly, so no log queue or listener is created."""
         supervisor = Supervisor(
             domain_path="my.domain",
             num_workers=1,
@@ -701,223 +662,17 @@ class TestSupervisorRun:
             log_format="json",
         )
 
-        mock_process = MagicMock()
-        mock_process.pid = 12345
+        ctx = _run(supervisor)
 
-        mock_ctx = MagicMock()
-        mock_ctx.Process.return_value = mock_process
-
-        with patch("multiprocessing.get_context", return_value=mock_ctx):
-            supervisor._monitor = MagicMock()
-            supervisor.run()
-
-            mock_ctx.Process.assert_called_once_with(
-                target=_worker_entry,
-                args=("my.domain", True, 0, None),
-                kwargs={"log_level": "DEBUG", "log_format": "json", "log_config": None},
-                name="protean-worker-0",
-            )
-
-
-class TestWorkerEntry:
-    def test_worker_entry_success(self):
-        """_worker_entry derives domain, inits, and runs engine."""
-        mock_domain = MagicMock()
-        mock_domain.domain_context.return_value.__enter__ = MagicMock()
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_engine = MagicMock()
-        mock_engine.exit_code = 0
-
-        with (
-            patch(
-                "protean.utils.domain_discovery.derive_domain",
-                return_value=mock_domain,
-            ),
-            patch("protean.server.engine.Engine", return_value=mock_engine),
-            patch("protean.utils.logging.configure_logging"),
-            pytest.raises(SystemExit, match="0"),
-        ):
-            _worker_entry("my.domain", test_mode=True, worker_id=0)
-
-        mock_domain.init.assert_called_once()
-        # Domain-level logging config is applied so worker picks up
-        # [logging].redact, per_logger overrides, etc.
-        mock_domain.configure_logging.assert_called_once_with()
-        mock_engine.run.assert_called_once()
-
-    def test_worker_entry_log_level_propagates_to_domain_config(self):
-        """`log_level` alone forwards only `level` to domain.configure_logging."""
-        mock_domain = MagicMock()
-        mock_domain.domain_context.return_value.__enter__ = MagicMock()
-        mock_domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-        mock_engine = MagicMock()
-        mock_engine.exit_code = 0
-
-        with (
-            patch(
-                "protean.utils.domain_discovery.derive_domain",
-                return_value=mock_domain,
-            ),
-            patch("protean.server.engine.Engine", return_value=mock_engine),
-            patch("protean.utils.logging.configure_logging"),
-            pytest.raises(SystemExit, match="0"),
-        ):
-            _worker_entry("my.domain", test_mode=True, worker_id=0, log_level="DEBUG")
-
-        mock_domain.configure_logging.assert_called_once_with(level="DEBUG")
-
-    def test_worker_entry_domain_derivation_failure(self):
-        """_worker_entry exits with code 1 when domain derivation fails."""
-        with (
-            patch("protean.utils.domain_discovery.derive_domain", return_value=None),
-            patch("protean.utils.logging.configure_logging"),
-            pytest.raises(SystemExit, match="1"),
-        ):
-            _worker_entry("bad.domain", test_mode=False, worker_id=0)
-
-    def test_worker_entry_exception_exits_with_code_1(self):
-        """_worker_entry exits with code 1 on unexpected exception."""
-        with (
-            patch(
-                "protean.utils.domain_discovery.derive_domain",
-                side_effect=RuntimeError("boom"),
-            ),
-            patch("protean.utils.logging.configure_logging"),
-            pytest.raises(SystemExit, match="1"),
-        ):
-            _worker_entry("my.domain", test_mode=False, worker_id=0)
-
-    def test_worker_entry_bootstraps_at_the_given_log_level(self):
-        """The bootstrap logging before the domain loads uses `log_level`."""
-        with (
-            patch("protean.utils.domain_discovery.derive_domain", return_value=None),
-            patch("protean.utils.logging.configure_logging") as mock_configure,
-            pytest.raises(SystemExit),
-        ):
-            _worker_entry("d", test_mode=False, worker_id=0, log_level="DEBUG")
-
-        mock_configure.assert_called_once_with(level="DEBUG")
-
-    def test_worker_entry_bootstraps_at_info_without_a_log_level(self, monkeypatch):
-        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
-        with (
-            patch("protean.utils.domain_discovery.derive_domain", return_value=None),
-            patch("protean.utils.logging.configure_logging") as mock_configure,
-            pytest.raises(SystemExit),
-        ):
-            _worker_entry("d", test_mode=False, worker_id=0)
-
-        mock_configure.assert_called_once_with(level="INFO")
-
-
-def _root_level_at_derive(target=_worker_entry, args=None, kwargs=None) -> int:
-    """Run the worker entry and return the root logger level when the domain loads.
-
-    The fake ``derive_domain`` returns ``None``, so the worker exits right
-    after the level is recorded. ``configure_logging`` is the real one.
-    """
-    seen: dict[str, int] = {}
-
-    def fake_derive(path: str) -> None:
-        seen["level"] = logging.getLogger().level
-
-    with (
-        patch("protean.utils.domain_discovery.derive_domain", side_effect=fake_derive),
-        pytest.raises(SystemExit, match="1"),
-    ):
-        target(*(args or ("d", False, 0)), **(kwargs or {}))
-
-    return seen["level"]
-
-
-class TestWorkerEntryBootstrapLevel:
-    """Before the domain loads, the worker logs at the parent's level."""
-
-    def test_protean_log_level_sets_the_bootstrap_level(self, monkeypatch):
-        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
-
-        assert _root_level_at_derive() == logging.DEBUG
-
-    def test_lowercase_protean_log_level_is_accepted(self, monkeypatch):
-        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "debug")
-
-        assert _root_level_at_derive() == logging.DEBUG
-
-    def test_log_level_flag_wins_over_protean_log_level(self, monkeypatch):
-        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
-
-        level = _root_level_at_derive(kwargs={"log_level": "ERROR"})
-
-        assert level == logging.ERROR
-
-    def test_defaults_to_info_without_flag_or_variable(self, monkeypatch):
-        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
-
-        assert _root_level_at_derive() == logging.INFO
-
-    def test_defaults_to_info_under_development_env(self, monkeypatch):
-        # The PROTEAN_ENV map would pick DEBUG here. With no logging flag, the
-        # parent bootstraps at INFO, so the worker does too.
-        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
-        monkeypatch.setenv("PROTEAN_ENV", "development")
-
-        assert _root_level_at_derive() == logging.INFO
-
-    def test_log_format_alone_resolves_the_level_like_the_parent(self, monkeypatch):
-        # With only --log-format, the parent leaves the level to
-        # PROTEAN_LOG_LEVEL and then the PROTEAN_ENV map.
-        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
-        monkeypatch.setenv("PROTEAN_ENV", "development")
-
-        level = _root_level_at_derive(kwargs={"log_format": "json"})
-
-        assert level == logging.DEBUG
-
-    def test_log_format_reaches_the_bootstrap(self):
-        with (
-            patch("protean.utils.domain_discovery.derive_domain", return_value=None),
-            patch("protean.utils.logging.configure_logging") as mock_configure,
-            pytest.raises(SystemExit),
-        ):
-            _worker_entry("d", test_mode=False, worker_id=0, log_format="json")
-
-        mock_configure.assert_called_once_with(format="json")
-
-    def test_log_level_and_format_both_reach_the_bootstrap(self):
-        with (
-            patch("protean.utils.domain_discovery.derive_domain", return_value=None),
-            patch("protean.utils.logging.configure_logging") as mock_configure,
-            pytest.raises(SystemExit),
-        ):
-            _worker_entry(
-                "d", test_mode=False, worker_id=0, log_level="ERROR", log_format="json"
-            )
-
-        mock_configure.assert_called_once_with(level="ERROR", format="json")
-
-    def test_protean_log_level_does_not_override_log_config(self, monkeypatch):
-        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
-        dict_config = {"version": 1, "root": {"level": "ERROR"}}
-
-        level = _root_level_at_derive(kwargs={"log_config": dict_config})
-
-        assert level == logging.ERROR
-
-    def test_reload_worker_uses_protean_log_level(self, monkeypatch):
-        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
-        reloader = Reloader(domain_path="d")
-        reloader._ctx = MagicMock()
-
-        reloader._start_process()
-
-        call = reloader._ctx.Process.call_args
-        level = _root_level_at_derive(
-            target=call.kwargs["target"],
-            args=call.kwargs["args"],
-            kwargs=call.kwargs["kwargs"],
+        ctx.Process.assert_called_once_with(
+            target=_worker_entry,
+            args=("my.domain", True, 0, None),
+            kwargs={"log_level": "DEBUG", "log_format": "json", "log_config": None},
+            name="protean-worker-0",
         )
-
-        assert level == logging.DEBUG
+        ctx.Queue.assert_not_called()
+        assert supervisor._log_queue is None
+        assert supervisor._queue_listener is None
 
 
 class TestSupervisorEventStoreGuard:
@@ -962,224 +717,322 @@ class TestSupervisorEventStoreGuard:
         assert "OrderEventHandler" in message
         assert "acknowledge_event_store_risk=True" in message
 
-    def test_run_proceeds_with_acknowledgment(self):
-        """acknowledge_event_store_risk=True bypasses the guard entirely."""
-        change_working_directory_to("test31")
-
-        supervisor = Supervisor(
-            domain_path="event_store_domain.py",
-            num_workers=2,
-            acknowledge_event_store_risk=True,
-        )
-
-        mock_process = MagicMock()
-        mock_process.pid = 12345
-        mock_ctx = MagicMock()
-        mock_ctx.Process.return_value = mock_process
-
-        with (
-            patch("multiprocessing.get_context", return_value=mock_ctx),
-            patch(
-                "protean.server.supervisor._build_queue_listener",
-                return_value=MagicMock(),
-            ),
-        ):
-            supervisor._monitor = MagicMock()
-            supervisor.run()
-
-            assert mock_ctx.Process.call_count == 2
-
-    def test_run_proceeds_for_stream_resolved_domain(self):
-        """The real guard runs over a handler resolving to STREAM and passes,
-        so workers are spawned. Guards against a regression that wrongly blocks
+    @pytest.mark.parametrize(
+        "domain_path, num_workers, acknowledge",
+        [
+            ("event_store_domain.py", 2, True),
+            ("stream_domain.py", 2, False),
+            ("event_store_domain.py", 1, False),
+        ],
+        ids=["acknowledged-risk", "stream-subscriptions", "single-worker"],
+    )
+    def test_run_spawns_workers_when_the_guard_passes(
+        self, domain_path, num_workers, acknowledge
+    ):
+        """The guard lets the start proceed when the risk is acknowledged, when
+        every handler resolves to a stream subscription, and for one worker.
+        The stream case guards against a regression that wrongly blocks
         legitimate stream multi-worker deployments."""
         change_working_directory_to("test31")
 
-        supervisor = Supervisor(domain_path="stream_domain.py", num_workers=2)
+        supervisor = Supervisor(
+            domain_path=domain_path,
+            num_workers=num_workers,
+            acknowledge_event_store_risk=acknowledge,
+        )
 
-        mock_process = MagicMock()
-        mock_process.pid = 12345
-        mock_ctx = MagicMock()
-        mock_ctx.Process.return_value = mock_process
+        ctx = _run(supervisor)
 
-        with (
-            patch("multiprocessing.get_context", return_value=mock_ctx),
-            patch(
-                "protean.server.supervisor._build_queue_listener",
-                return_value=MagicMock(),
-            ),
-        ):
-            supervisor._monitor = MagicMock()
-            # Guard is NOT stubbed here — it must run over the real stream
-            # handler and let the start proceed.
-            supervisor.run()
+        assert ctx.Process.call_count == num_workers
 
-            assert mock_ctx.Process.call_count == 2
-
-    def test_run_skips_guard_for_single_worker(self):
-        """A single worker never triggers the guard, even for event-store."""
-        change_working_directory_to("test31")
-
-        supervisor = Supervisor(domain_path="event_store_domain.py", num_workers=1)
-
-        mock_process = MagicMock()
-        mock_process.pid = 12345
-        mock_ctx = MagicMock()
-        mock_ctx.Process.return_value = mock_process
-
-        with patch("multiprocessing.get_context", return_value=mock_ctx):
-            supervisor._monitor = MagicMock()
-            supervisor.run()
-
-            assert mock_ctx.Process.call_count == 1
-
-    def test_guard_tolerates_unimportable_domain(self):
-        """An unimportable domain path is left for the worker to report."""
-        supervisor = Supervisor(domain_path="does.not.exist", num_workers=2)
-
-        # derive_domain raises NoDomainException for an unimportable module;
-        # the guard must swallow it (workers report the real error).
-        supervisor._guard_event_store_single_writer()
-
-    def test_guard_tolerates_domain_less_module(self):
-        """A module with no domain object is left for the worker to report."""
-        supervisor = Supervisor(domain_path="does.not.exist", num_workers=2)
-
-        with patch("protean.utils.domain_discovery.derive_domain", return_value=None):
-            # Should not raise — derivation returning None surfaces per-worker.
-            supervisor._guard_event_store_single_writer()
-
-    def test_guard_tolerates_domain_that_raises_on_import(self):
-        """A domain module raising a hard error at import is deferred to workers.
-
-        A ``SyntaxError`` / import-time ``RuntimeError`` is not a
-        ``NoDomainException``; the guard must still swallow it and let each
-        worker re-derive and report the failure, rather than crash the parent
-        before any worker spawns."""
-        supervisor = Supervisor(domain_path="broken.domain", num_workers=2)
-
-        with patch(
-            "protean.utils.domain_discovery.derive_domain",
-            side_effect=RuntimeError("import blew up"),
-        ):
-            # Must not raise — the failure surfaces per-worker.
-            supervisor._guard_event_store_single_writer()
-
-    def test_guard_tolerates_domain_that_fails_to_init(self):
-        """A domain whose ``init()`` fails (e.g. an unreachable database) is
-        deferred to workers rather than crashing the parent."""
-        supervisor = Supervisor(domain_path="unreachable.domain", num_workers=2)
-
-        mock_domain = MagicMock()
-        mock_domain.init.side_effect = RuntimeError("db unreachable")
-
-        with patch(
-            "protean.utils.domain_discovery.derive_domain",
-            return_value=mock_domain,
-        ):
-            # Must not raise — the failure surfaces per-worker.
-            supervisor._guard_event_store_single_writer()
-
-
-def _mock_domain() -> MagicMock:
-    domain = MagicMock()
-    domain.domain_context.return_value.__enter__ = MagicMock()
-    domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-    return domain
-
-
-def _run_worker_entry(domain: object, **kwargs: object) -> None:
-    """Run ``_worker_entry`` in-process against ``domain`` with Engine patched."""
-    mock_engine = MagicMock()
-    mock_engine.exit_code = 0
-    with (
-        patch("protean.utils.domain_discovery.derive_domain", return_value=domain),
-        patch("protean.server.engine.Engine", return_value=mock_engine),
-        pytest.raises(SystemExit, match="0"),
+    @pytest.mark.parametrize(
+        "source",
+        [
+            None,
+            "raise RuntimeError('import blew up')\n",
+            _domain_source({"databases": {"default": {"provider": "nope"}}}),
+        ],
+        ids=["unimportable", "raises-on-import", "fails-to-init"],
+    )
+    def test_guard_defers_a_domain_it_cannot_load_to_the_workers(
+        self, domain_module, caplog, source
     ):
-        _worker_entry("my.domain", test_mode=True, worker_id=0, **kwargs)
+        """A domain that cannot be imported, raises at import, or fails in
+        ``init()`` (for example, an unknown database) does not crash the
+        parent before any worker spawns. Each worker re-derives the domain and
+        reports the failure."""
+        domain_path = "does.not.exist" if source is None else domain_module(source)
+        supervisor = Supervisor(domain_path=domain_path, num_workers=2)
+
+        with caplog.at_level(logging.DEBUG, logger="protean.server.supervisor"):
+            supervisor._guard_event_store_single_writer()
+
+        skipped = [
+            r
+            for r in caplog.records
+            if r.getMessage().startswith("Event-store single-writer guard skipped")
+        ]
+        assert len(skipped) == 1
+
+    def test_guard_tolerates_domain_less_module(self, tmp_path, monkeypatch, caplog):
+        """When no domain is found, the guard leaves it for the worker to report."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+        monkeypatch.delitem(sys.modules, "domain", raising=False)
+        supervisor = Supervisor(domain_path="", num_workers=2)
+
+        with caplog.at_level(logging.DEBUG, logger="protean.server.supervisor"):
+            supervisor._guard_event_store_single_writer()
+
+        assert caplog.records == []
+
+
+# A worker domain module with no domain. When the worker imports it, it
+# records the root logger's state at that moment next to the module file.
+_PROBE_SOURCE = """\
+import json
+import logging
+import pathlib
+
+_root = logging.getLogger()
+_record = logging.LogRecord("probe", logging.WARNING, "", 0, "probe-line", (), None)
+pathlib.Path(__file__).with_suffix(".json").write_text(
+    json.dumps(
+        {
+            "level": _root.level,
+            "handlers": len(_root.handlers),
+            "lines": [handler.format(_record) for handler in _root.handlers],
+        }
+    )
+)
+"""
+
+
+def _probe(domain_module, target=_worker_entry, args=None, kwargs=None) -> dict:
+    """Run the worker entry on a probe module; return the root logger state
+    when the worker loaded the domain.
+
+    The probe has no domain, so the worker exits with code 1 right after.
+    """
+    path = domain_module(_PROBE_SOURCE)
+    args = (path, False, 0) if args is None else (path, *args[1:])
+    with pytest.raises(SystemExit, match="1"):
+        target(*args, **(kwargs or {}))
+    return json.loads(Path(path).with_suffix(".json").read_text())
+
+
+def _renders_json(state: dict) -> bool:
+    """True when a root handler rendered the probe record as JSON."""
+    for line in state["lines"]:
+        try:
+            if json.loads(line).get("event") == "probe-line":
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _redaction_keys() -> list[set[str]]:
+    root = logging.getLogger()
+    return [f._keys for f in root.filters if isinstance(f, ProteanRedactionFilter)]
+
+
+class TestWorkerEntry:
+    def test_worker_entry_success(self, domain_module):
+        """_worker_entry loads and initializes the domain, applies its logging
+        table, and runs the engine to a clean exit."""
+        path = domain_module(_domain_source({"logging": {"redact": ["secret"]}}))
+
+        with pytest.raises(SystemExit, match="0"):
+            _worker_entry(path, test_mode=True, worker_id=0)
+
+        keys = _redaction_keys()
+        assert len(keys) == 1
+        assert "secret" in keys[0]
+
+    def test_worker_entry_domain_derivation_failure(self, tmp_path, monkeypatch):
+        """_worker_entry exits with code 1 when no domain is found."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+        monkeypatch.delitem(sys.modules, "domain", raising=False)
+
+        with pytest.raises(SystemExit, match="1"):
+            _worker_entry("", test_mode=False, worker_id=0)
+
+
+class TestWorkerEntryBootstrapLevel:
+    """Before the domain loads, the worker logs at the parent's level."""
+
+    @pytest.mark.parametrize("value", ["DEBUG", "debug"])
+    def test_protean_log_level_sets_the_bootstrap_level(
+        self, domain_module, monkeypatch, value
+    ):
+        monkeypatch.setenv("PROTEAN_LOG_LEVEL", value)
+
+        assert _probe(domain_module)["level"] == logging.DEBUG
+
+    def test_log_level_flag_wins_over_protean_log_level(
+        self, domain_module, monkeypatch
+    ):
+        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
+
+        state = _probe(domain_module, kwargs={"log_level": "ERROR"})
+
+        assert state["level"] == logging.ERROR
+
+    def test_defaults_to_info_under_development_env(self, domain_module, monkeypatch):
+        # The PROTEAN_ENV map would pick DEBUG here. With no logging flag, the
+        # parent bootstraps at INFO, so the worker does too.
+        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
+        monkeypatch.setenv("PROTEAN_ENV", "development")
+
+        assert _probe(domain_module)["level"] == logging.INFO
+
+    def test_log_format_alone_resolves_the_level_like_the_parent(
+        self, domain_module, monkeypatch
+    ):
+        # With only --log-format, the parent leaves the level to
+        # PROTEAN_LOG_LEVEL and then the PROTEAN_ENV map.
+        monkeypatch.delenv("PROTEAN_LOG_LEVEL", raising=False)
+        monkeypatch.setenv("PROTEAN_ENV", "development")
+
+        state = _probe(domain_module, kwargs={"log_format": "json"})
+
+        assert state["level"] == logging.DEBUG
+        assert _renders_json(state)
+
+    def test_log_level_and_format_both_reach_the_bootstrap(self, domain_module):
+        state = _probe(
+            domain_module, kwargs={"log_level": "ERROR", "log_format": "json"}
+        )
+
+        assert state["level"] == logging.ERROR
+        assert _renders_json(state)
+
+    def test_protean_log_level_does_not_override_log_config(
+        self, domain_module, monkeypatch
+    ):
+        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
+        dict_config = {"version": 1, "root": {"level": "ERROR"}}
+
+        state = _probe(domain_module, kwargs={"log_config": dict_config})
+
+        assert state["level"] == logging.ERROR
+
+    def test_reload_worker_uses_protean_log_level(self, domain_module, monkeypatch):
+        monkeypatch.setenv("PROTEAN_LOG_LEVEL", "DEBUG")
+        reloader = Reloader(domain_path="d")
+        reloader._ctx = MagicMock()
+
+        reloader._start_process()
+
+        call = reloader._ctx.Process.call_args
+        state = _probe(
+            domain_module,
+            target=call.kwargs["target"],
+            args=call.kwargs["args"],
+            kwargs=call.kwargs["kwargs"],
+        )
+
+        assert state["level"] == logging.DEBUG
 
 
 class TestWorkerEntryLoggingFlags:
     """The worker applies the CLI logging flags the way the parent does."""
 
-    def test_log_level_overrides_logging_table_and_keeps_redaction(self):
-        domain = Domain(
-            name="WorkerLogLevel",
-            config={"logging": {"level": "INFO", "redact": ["secret"]}},
+    def test_log_level_overrides_logging_table_and_keeps_redaction(self, domain_module):
+        path = domain_module(
+            _domain_source({"logging": {"level": "INFO", "redact": ["secret"]}})
         )
 
-        with patch.object(domain, "init"):
-            _run_worker_entry(domain, log_level="DEBUG")
+        with pytest.raises(SystemExit, match="0"):
+            _worker_entry(path, True, 0, log_level="DEBUG")
+
+        assert logging.getLogger().level == logging.DEBUG
+        keys = _redaction_keys()
+        assert len(keys) == 1
+        assert "secret" in keys[0]
+
+    @pytest.mark.parametrize(
+        "flags, level",
+        [
+            ({"log_format": "json"}, logging.INFO),
+            ({"log_level": "WARNING", "log_format": "json"}, logging.WARNING),
+        ],
+        ids=["format-alone", "level-and-format"],
+    )
+    def test_log_format_overrides_the_logging_table(self, domain_module, flags, level):
+        """``log_format`` switches the domain's logging to JSON. A ``log_level``
+        given with it overrides the table's level too."""
+        path = domain_module(_domain_source({"logging": {"level": "INFO"}}))
+
+        with pytest.raises(SystemExit, match="0"):
+            _worker_entry(path, True, 0, **flags)
 
         root = logging.getLogger()
-        assert root.level == logging.DEBUG
-        redaction = [f for f in root.filters if isinstance(f, ProteanRedactionFilter)]
-        assert len(redaction) == 1
-        assert "secret" in redaction[0]._keys
+        assert root.level == level
+        record = logging.LogRecord(
+            "probe", logging.WARNING, "", 0, "probe-line", (), None
+        )
+        lines = [handler.format(record) for handler in root.handlers]
+        assert _renders_json({"lines": lines})
 
-    def test_log_format_is_passed_as_an_override(self):
-        domain = _mock_domain()
+    def test_log_config_is_applied_and_logging_table_is_skipped(self, domain_module):
+        path = domain_module(
+            _domain_source({"logging": {"level": "DEBUG", "redact": ["secret"]}})
+        )
+        log_config = {
+            "version": 1,
+            "handlers": {"null": {"class": "logging.NullHandler"}},
+            "root": {"level": "WARNING", "handlers": ["null"]},
+        }
 
-        with patch("protean.utils.logging.configure_logging"):
-            _run_worker_entry(domain, log_format="json")
-
-        domain.configure_logging.assert_called_once_with(format="json")
-
-    def test_log_level_and_log_format_are_passed_together(self):
-        domain = _mock_domain()
-
-        with patch("protean.utils.logging.configure_logging"):
-            _run_worker_entry(domain, log_level="WARNING", log_format="json")
-
-        domain.configure_logging.assert_called_once_with(level="WARNING", format="json")
-
-    def test_log_config_is_applied_and_logging_table_is_skipped(self):
-        domain = _mock_domain()
-        log_config = {"version": 1, "root": {"level": "WARNING"}}
-
-        _run_worker_entry(domain, log_config=log_config)
+        with pytest.raises(SystemExit, match="0"):
+            _worker_entry(path, True, 0, log_config=log_config)
 
         assert logging.getLogger().level == logging.WARNING
-        domain.configure_logging.assert_not_called()
+        assert _redaction_keys() == []
 
-    def test_empty_log_config_still_skips_logging_table(self):
-        domain = _mock_domain()
+    def test_empty_log_config_is_rejected_by_dict_config(self, domain_module):
+        """An empty ``log_config`` has no ``version`` key, so ``dictConfig``
+        rejects it before the worker loads the domain."""
+        path = domain_module(_domain_source())
 
-        with patch("protean.utils.logging.configure_logging") as mock_configure:
-            _run_worker_entry(domain, log_config={})
+        with pytest.raises(ValueError, match="version"):
+            _worker_entry(path, True, 0, log_config={})
 
-        domain.configure_logging.assert_not_called()
-        mock_configure.assert_called_with(dict_config={})
+    @pytest.mark.parametrize(
+        "log_config", [None, {"version": 1}], ids=["no-log-config", "log-config"]
+    )
+    def test_log_queue_makes_the_queue_handler_the_only_root_handler(
+        self, domain_module, log_config
+    ):
+        path = domain_module(_domain_source())
+        log_queue: queue.Queue = queue.Queue()
 
-    def test_log_config_still_installs_the_queue_handler(self):
-        domain = _mock_domain()
-        log_queue = MagicMock()
+        with pytest.raises(SystemExit, match="0"):
+            _worker_entry(path, True, 0, log_queue, log_config=log_config)
 
-        with (
-            patch("protean.utils.logging.configure_logging"),
-            patch("protean.server.supervisor._install_worker_log_queue") as install,
-        ):
-            _run_worker_entry(domain, log_queue=log_queue, log_config={"version": 1})
+        handlers = logging.getLogger().handlers
+        assert len(handlers) == 1
+        assert isinstance(handlers[0], logging.handlers.QueueHandler)
+        assert handlers[0].queue is log_queue
 
-        install.assert_called_once_with(log_queue)
+    def test_engine_is_built_without_debug(self, domain_module):
+        """``log_level="DEBUG"`` sets the logging level only. The engine is not
+        built in debug mode, so its own logger keeps its level unset."""
+        engine_logger = logging.getLogger("protean.server.engine")
+        assert engine_logger.level == logging.NOTSET
+        path = domain_module(_domain_source())
 
-    def test_engine_is_built_without_debug(self):
-        domain = _mock_domain()
-        mock_engine = MagicMock()
-        mock_engine.exit_code = 0
+        with pytest.raises(SystemExit, match="0"):
+            _worker_entry(path, True, 0, log_level="DEBUG")
 
-        with (
-            patch("protean.utils.domain_discovery.derive_domain", return_value=domain),
-            patch("protean.server.engine.Engine", return_value=mock_engine) as engine,
-            patch("protean.utils.logging.configure_logging"),
-            pytest.raises(SystemExit),
-        ):
-            _worker_entry("my.domain", test_mode=True, worker_id=0, log_level="DEBUG")
+        assert engine_logger.level == logging.NOTSET
 
-        engine.assert_called_once_with(domain, test_mode=True)
-
-    def test_log_config_does_not_silence_the_worker_failure_message(self):
+    def test_log_config_does_not_silence_the_worker_failure_message(
+        self, domain_module
+    ):
         records: list[logging.LogRecord] = []
 
         class _ListHandler(logging.Handler):
@@ -1193,32 +1046,30 @@ class TestWorkerEntryLoggingFlags:
             "handlers": {"capture": {"()": _ListHandler}},
             "root": {"level": "INFO", "handlers": ["capture"]},
         }
-        domain = _mock_domain()
-        domain.init.side_effect = RuntimeError("db unreachable")
+        path = domain_module(
+            _domain_source({"databases": {"default": {"provider": "nope"}}})
+        )
 
-        with (
-            patch("protean.utils.domain_discovery.derive_domain", return_value=domain),
-            pytest.raises(SystemExit, match="1"),
-        ):
-            _worker_entry("my.domain", False, 41, log_config=log_config)
+        with pytest.raises(SystemExit, match="1"):
+            _worker_entry(path, False, 41, log_config=log_config)
 
         assert logging.getLogger("protean.server.worker-41").disabled is False
         failures = [r for r in records if r.getMessage() == "Worker 41 failed"]
         assert len(failures) == 1
         assert failures[0].exc_info is not None
-        assert str(failures[0].exc_info[1]) == "db unreachable"
+        assert isinstance(failures[0].exc_info[1], ConfigurationError)
+        assert "nope" in str(failures[0].exc_info[1])
 
-    def test_log_config_without_root_leaves_no_bootstrap_handler(self):
-        root = logging.getLogger()
+    def test_log_config_without_root_leaves_no_bootstrap_handler(self, domain_module):
         # A spawned worker starts with no root handlers.
-        root.handlers = []
-        domain = _mock_domain()
+        logging.getLogger().handlers = []
 
-        _run_worker_entry(
-            domain, log_config={"version": 1, "disable_existing_loggers": False}
+        state = _probe(
+            domain_module,
+            kwargs={"log_config": {"version": 1, "disable_existing_loggers": False}},
         )
 
-        assert root.handlers == []
+        assert state["handlers"] == 0
 
 
 class TestLoggingArgumentValidation:
@@ -1230,18 +1081,21 @@ class TestLoggingArgumentValidation:
         with pytest.raises(ValueError, match="Invalid log_format 'xml'"):
             Supervisor(domain_path="d", num_workers=1, log_format="xml")
 
-    def test_log_level_is_upper_cased(self):
-        supervisor = Supervisor(domain_path="d", num_workers=1, log_level="debug")
-
-        assert supervisor.log_level == "DEBUG"
-
-    def test_empty_values_count_as_not_given(self):
+    @pytest.mark.parametrize(
+        "log_level, log_format, expected_level, expected_format",
+        [("debug", "json", "DEBUG", "json"), ("", "", None, None)],
+        ids=["upper-cased", "empty-is-not-given"],
+    )
+    def test_logging_arguments_are_normalised(
+        self, log_level, log_format, expected_level, expected_format
+    ):
+        """The level is upper-cased, and empty values count as not given."""
         supervisor = Supervisor(
-            domain_path="d", num_workers=1, log_level="", log_format=""
+            domain_path="d", num_workers=1, log_level=log_level, log_format=log_format
         )
 
-        assert supervisor.log_level is None
-        assert supervisor.log_format is None
+        assert supervisor.log_level == expected_level
+        assert supervisor.log_format == expected_format
 
     def test_empty_log_level_does_not_hide_debug(self):
         with pytest.warns(RemovedInProtean020Warning):
@@ -1250,22 +1104,6 @@ class TestLoggingArgumentValidation:
             )
 
         assert supervisor.log_level == "DEBUG"
-
-
-def _spawned_kwargs(supervisor: Supervisor) -> list[dict[str, object]]:
-    """Run the supervisor with a mocked spawn context; return each Process kwargs."""
-    mock_ctx = MagicMock()
-    mock_ctx.Process.return_value.pid = 1
-    with (
-        patch("multiprocessing.get_context", return_value=mock_ctx),
-        patch("protean.server.supervisor._build_queue_listener"),
-        patch.object(supervisor, "_install_signal_handlers"),
-        patch.object(supervisor, "_monitor"),
-    ):
-        supervisor.run()
-    calls = mock_ctx.Process.call_args_list
-    assert calls
-    return [call.kwargs["kwargs"] for call in calls]
 
 
 class TestSupervisorLoggingArguments:
@@ -1309,17 +1147,11 @@ class TestSupervisorDebugDeprecation:
 
         assert _spawned_kwargs(supervisor)[0]["log_level"] == "WARNING"
 
-    def test_debug_false_does_not_warn(self):
+    @pytest.mark.parametrize("kwargs", [{"debug": False}, {}], ids=["false", "omitted"])
+    def test_debug_false_or_omitted_does_not_warn(self, kwargs):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            supervisor = Supervisor(domain_path="d", num_workers=1, debug=False)
+            supervisor = Supervisor(domain_path="d", num_workers=1, **kwargs)
 
         assert caught == []
         assert supervisor.log_level is None
-
-    def test_omitted_debug_does_not_warn(self):
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            Supervisor(domain_path="d", num_workers=1)
-
-        assert caught == []
