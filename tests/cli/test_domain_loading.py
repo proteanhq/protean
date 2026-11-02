@@ -117,7 +117,7 @@ class TestDomainLoading:
 class TestPrepareImport:
     @pytest.fixture(autouse=True)
     def restore_sys_path(self, monkeypatch):
-        """`prepare_import` inserts the module's parent folder into `sys.path`."""
+        """Give each test its own copy of `sys.path`, which `prepare_import` edits."""
         monkeypatch.setattr(sys, "path", [*sys.path])
 
     def test_current_directory_resolves_to_domain_module(self, tmp_path, monkeypatch):

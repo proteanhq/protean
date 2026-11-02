@@ -98,7 +98,7 @@ class BaseEvent(BaseMessageType):
             merged.update(kwargs)
             kwargs = merged
 
-        # Template dicts (e.g. from to_dict()) may re-introduce _metadata,
+        # Template dicts may carry _metadata (to_dict() includes it),
         # _expected_version, and _version; prefer the explicitly passed
         # keyword args.  _version is an aggregate-internal field and is not
         # part of the event schema, so discard it silently.

@@ -456,8 +456,7 @@ class TestCachesMapping:
             domain.caches["extra"]
 
     def test_deleting_before_init_raises_assertion_error(self):
-        # TODO(#<bug>): a mapping raises KeyError here; Caches raises AssertionError.
-        # https://github.com/proteanhq/protean/issues/<bug>
+        # TODO(#2019): a mapping raises KeyError here; Caches raises AssertionError.
         domain = Domain(name="Test")
 
         with pytest.raises(AssertionError):
@@ -473,8 +472,7 @@ class TestCachesMapping:
         assert len(domain.caches) == 0
 
     def test_deleting_a_missing_cache_after_init_changes_nothing(self):
-        # TODO(#<bug>): a mapping raises KeyError here; Caches passes silently.
-        # https://github.com/proteanhq/protean/issues/<bug>
+        # TODO(#2019): a mapping raises KeyError here; Caches passes silently.
         domain = Domain(name="Test")
         domain.init(traverse=False)
 

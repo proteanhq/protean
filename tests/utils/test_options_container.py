@@ -2,7 +2,10 @@
 
 import pytest
 
-from protean.utils.container import Options, OptionsMixin
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector
+from protean.fields import Identifier
+from protean.utils.container import Options
 
 
 class TestOptionsEdgeCases:
@@ -30,21 +33,29 @@ class TestOptionsEdgeCases:
 
 
 class TestMutableDefaultOptions:
-    def test_mutating_one_class_default_leaves_another_class_unchanged(self):
-        """A list or dict default is copied into each class's ``meta_``, so
-        a change made through one class does not show up in another."""
+    def test_mutating_one_class_default_leaves_another_class_unchanged(
+        self, test_domain
+    ):
+        """A list default is copied into each class's ``meta_``, so a change
+        made through one class does not show up in another."""
 
-        class Root(OptionsMixin):
-            _default_options = [("tags", []), ("cfg", {})]
+        class Ledger(BaseProjection):
+            ledger_id: Identifier(identifier=True)
 
-        class First(Root):
-            meta_ = Options()
+        class FirstProjector(BaseProjector):
+            pass
 
-        class Second(Root):
-            meta_ = Options()
+        class SecondProjector(BaseProjector):
+            pass
 
-        First.meta_.tags.append("x")
-        First.meta_.cfg["k"] = "v"
+        test_domain.register(Ledger)
+        first = test_domain.register(
+            FirstProjector, projector_for=Ledger, stream_categories=["ledger"]
+        )
+        second = test_domain.register(
+            SecondProjector, projector_for=Ledger, stream_categories=["ledger"]
+        )
 
-        assert Second.meta_.tags == []
-        assert Second.meta_.cfg == {}
+        first.meta_.aggregates.append("x")
+
+        assert second.meta_.aggregates == []

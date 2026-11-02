@@ -46,6 +46,7 @@ class TicketPM(BaseProcessManager):
     tags: List(content_type=String, default=list)
     notes: Dict(default=dict)
     status: String(default="new")
+    priority: String(default="normal")
 
     @handle(TicketOpened, start=True, correlate="ticket_id")
     def on_ticket_opened(self, event: TicketOpened) -> None:
@@ -113,6 +114,7 @@ class TestStartingState:
 
         assert state["tags"] == []
         assert state["notes"] == {}
+        assert state["priority"] == "normal"
 
     def test_identifier_field_is_set_to_the_correlation_value(self, test_domain):
         """A started PM's identifier field holds the correlation value."""
@@ -160,6 +162,10 @@ class TestEquality:
 
 
 class TestHash:
+    def test_a_pm_hashes_as_its_identifier_value(self):
+        """A PM with an identifier field has the hash of its identifier value."""
+        assert hash(TicketPM(ticket_id="T-1", status="open")) == hash("T-1")
+
     def test_pms_with_the_same_identifier_collapse_in_a_set(self):
         """PMs hash by identifier, so a set keeps one PM per identifier value."""
         pms = {

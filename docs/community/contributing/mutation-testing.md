@@ -85,7 +85,7 @@ coverage figures below are statement coverage, worked out from the report's
 
 | Target | Module | Test subset | Statement coverage | One run |
 |---|---|---|---|---|
-| `ir-builder` | `src/protean/ir/builder.py` | `tests/ir/test_ir_builder.py` and the six `tests/ir/test_*_extraction.py` files (command and event, database model, description, field, handler, index) | 73.9% (1304 of 1765 statements) | 31 min 6 s |
+| `ir-builder` | `src/protean/ir/builder.py` | `tests/ir/test_ir_builder.py` and the six `tests/ir/test_*_extraction.py` files (command and event, database model, description, field, handler, index) | 79.5% (1397 of 1757 statements) | 31 min 6 s |
 | `ir-diff` | `src/protean/ir/diff.py` | `tests/ir/test_diff.py`, `tests/ir/test_compatibility.py` | 93.2% (618 of 663 statements) | 5 min 1 s |
 | `observatory-api` | `src/protean/server/observatory/api.py` | `tests/server/observatory/test_observatory_api.py`, `tests/server/observatory/test_trace_decoding.py` | 88.3% (564 of 639 statements) | 58 s |
 | `observatory-timeline` | `src/protean/server/observatory/routes/timeline.py` | `tests/server/observatory/test_observatory_timeline_api.py`, `tests/server/observatory/test_trace_search.py` | 93.7% (445 of 475 statements) | 1 min 45 s |
@@ -97,11 +97,9 @@ The run times are the wall-clock time of one `make mutation` run on a laptop
 with an Intel Core i7-1165G7 (4 cores, 8 threads) and 30 GB of RAM, running
 Linux.
 
-Two files were left out to keep the runs short. Adding
-`tests/ir/test_builder_coverage.py` to `ir-builder` raises its coverage to about
-79%, and `ir-builder` is already the slowest target. Adding
+One file was left out to keep the runs short. Adding
 `tests/server/observatory/test_causation_enrichment.py` to
-`observatory-timeline` raises its coverage to about 99%. Add them when the extra
+`observatory-timeline` raises its coverage to about 99%. Add it when the extra
 run time is worth it, and re-measure the counts.
 
 A few things about this environment shape the results for these targets:

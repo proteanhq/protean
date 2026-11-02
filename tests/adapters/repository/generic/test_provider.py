@@ -361,10 +361,11 @@ class TestConfigurationErrorMessages:
 
 @pytest.mark.no_test_domain
 class TestProvidersBeforeInit:
-    """`domain.providers` connects to the configured databases on first use."""
+    """`domain.providers` initializes the configured providers on first use."""
 
-    def test_get_connection_before_init_connects_to_the_default_provider(self):
+    def test_get_connection_before_init_initializes_the_providers(self):
         domain = Domain(name="Test")
+        assert len(domain.providers) == 0
 
         with domain.domain_context():
             conn = domain.providers.get_connection()
@@ -375,6 +376,7 @@ class TestProvidersBeforeInit:
     def test_repository_for_before_init_returns_the_aggregate_repository(self):
         domain = Domain(name="Test")
         domain.register(User)
+        assert len(domain.providers) == 0
 
         with domain.domain_context():
             repository = domain.providers.repository_for(User)
@@ -405,8 +407,7 @@ class TestProvidersMapping:
             domain.providers["extra"]
 
     def test_deleting_before_init_raises_assertion_error(self):
-        # TODO(#<bug>): a mapping raises KeyError here; Providers raises AssertionError.
-        # https://github.com/proteanhq/protean/issues/<bug>
+        # TODO(#2019): a mapping raises KeyError here; Providers raises AssertionError.
         domain = Domain(name="Test")
 
         with pytest.raises(AssertionError):
@@ -421,8 +422,7 @@ class TestProvidersMapping:
         assert list(domain.providers) == ["memory"]
 
     def test_deleting_a_missing_provider_after_init_changes_nothing(self):
-        # TODO(#<bug>): a mapping raises KeyError here; Providers passes silently.
-        # https://github.com/proteanhq/protean/issues/<bug>
+        # TODO(#2019): a mapping raises KeyError here; Providers passes silently.
         domain = Domain(name="Test")
         domain.init(traverse=False)
 

@@ -67,7 +67,7 @@ def failing_subscription(engine, broker):
         "fail_stream",
         FailingSubscriber,
         max_retries=3,
-        # Retry at once: these tests are about the NACK, not the retry delay.
+        # Retry at once, so the test spends no time in the retry delay.
         retry_delay_seconds=0,
     )
 
@@ -88,7 +88,6 @@ async def test_poll_stops_after_the_subscription_shuts_down(recording_subscripti
     await recording_subscription.shutdown()
     await asyncio.wait_for(poll_task, timeout=1.0)
 
-    assert poll_task.done() is True
     assert recording_subscription.keep_going is False
 
 
@@ -99,8 +98,6 @@ async def test_poll_stops_when_the_engine_shuts_down(engine, recording_subscript
 
     engine.shutting_down = True
     await asyncio.wait_for(poll_task, timeout=1.0)
-
-    assert poll_task.done() is True
 
 
 async def test_poll_in_test_mode_delivers_a_message_published_after_it_started(
@@ -160,19 +157,25 @@ async def test_process_batch_warns_when_the_broker_refuses_a_nack(
     """When the broker refuses to NACK a failed message, ``process_batch()``
     logs a warning and counts no success.
 
-    The inline broker refuses a second NACK of a message it already holds for
-    redelivery, so the batch carries the same delivery twice.
+    The inline broker accepts the first NACK of a message and refuses a second
+    NACK while the message waits for redelivery.
     """
     failing_subscription.broker.publish("fail_stream", {"data": "test"})
     [message] = await failing_subscription.get_next_batch_of_messages()
     identifier = message[0]
+    warning = f"[FailingSubscriber] Failed to NACK message {identifier}"
 
     with caplog.at_level(logging.WARNING):
-        result = await failing_subscription.process_batch([message, message])
+        first = await failing_subscription.process_batch([message])
+    assert first == 0
+    assert failing_subscription.retry_counts == {identifier: 1}
+    assert warning not in caplog.text
 
-    assert result == 0
+    with caplog.at_level(logging.WARNING):
+        second = await failing_subscription.process_batch([message])
+    assert second == 0
     assert failing_subscription.retry_counts == {identifier: 2}
-    assert f"[FailingSubscriber] Failed to NACK message {identifier}" in caplog.text
+    assert warning in caplog.text
 
 
 async def test_process_batch_does_not_count_a_message_the_broker_refuses_to_ack(
@@ -181,16 +184,20 @@ async def test_process_batch_does_not_count_a_message_the_broker_refuses_to_ack(
     """When the broker refuses to acknowledge a handled message,
     ``process_batch()`` logs a warning and does not count it as a success.
 
-    The inline broker refuses a second ACK of a message, so the batch carries
-    the same delivery twice: the first counts and the second does not.
+    The inline broker accepts the first ACK of a message and refuses a second.
     """
     recording_subscription.broker.publish("test_stream", {"data": "test"})
     [message] = await recording_subscription.get_next_batch_of_messages()
     identifier = message[0]
+    warning = f"Failed to acknowledge message {identifier}"
 
     with caplog.at_level(logging.WARNING):
-        result = await recording_subscription.process_batch([message, message])
+        first = await recording_subscription.process_batch([message])
+    assert first == 1
+    assert warning not in caplog.text
 
-    assert result == 1
+    with caplog.at_level(logging.WARNING):
+        second = await recording_subscription.process_batch([message])
+    assert second == 0
     assert received == [{"data": "test"}, {"data": "test"}]
-    assert f"Failed to acknowledge message {identifier}" in caplog.text
+    assert warning in caplog.text

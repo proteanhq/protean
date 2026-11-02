@@ -4,13 +4,17 @@ from uuid import uuid4
 
 import pytest
 
+from protean import Domain
+from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
-from protean.core.process_manager import _resolve_correlation_value
+from protean.core.process_manager import BaseProcessManager, _resolve_correlation_value
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.server import Engine
+from protean.testing import given
 from protean.utils.globals import current_domain
+from protean.utils.mixins import handle
 
 from .elements import (
     Order,
@@ -29,6 +33,22 @@ class OrderNoteAdded(BaseEvent):
 
     order_id: Identifier()
     note: String()
+
+
+class Parcel(BaseAggregate):
+    label: String()
+
+
+class ParcelSent(BaseEvent):
+    parcel_id: Identifier()
+
+
+class ParcelPM(BaseProcessManager):
+    parcel_id: Identifier()
+
+    @handle(ParcelSent, start=True, correlate="parcel_id")
+    def on_sent(self, event: ParcelSent) -> None:
+        self.parcel_id = event.parcel_id
 
 
 @pytest.fixture(autouse=True)
@@ -161,6 +181,23 @@ class TestUnhandledEvent:
         pm_stream = f"{OrderFulfillmentPM.meta_.stream_category}-{order.id}"
         assert handled is True
         assert test_domain.event_store.store.read(pm_stream) == []
+
+
+class TestDispatchBeforeInit:
+    def test_dispatch_after_check_without_init_raises_configuration_error(self):
+        """``domain.check()`` wires a PM's handlers but sets up no event store,
+        so dispatching to the PM raises ConfigurationError."""
+        domain = Domain(name="Unstarted")
+        domain.register(Parcel)
+        domain.register(ParcelSent, part_of=Parcel)
+        domain.register(ParcelPM, stream_categories=["unstarted::parcel"])
+        domain.check(traverse=False)
+
+        with domain.domain_context():
+            with pytest.raises(ConfigurationError) as exc:
+                given(ParcelPM, ParcelSent(parcel_id="P-1"))
+
+        assert str(exc.value) == "Event store is not configured"
 
 
 class TestFullLifecycle:

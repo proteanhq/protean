@@ -1,15 +1,19 @@
-"""The Python type the SQLAlchemy adapter reads off a field to pick its column.
+"""The column type the SQLAlchemy adapter picks from a field's Python type.
 
 Fields declared with ``choices`` resolve through a ``Literal`` and are covered
-in ``test_choices_column_mapping.py``. Nothing here opens a connection.
+in ``test_choices_column_mapping.py``. Nothing here opens a connection: the
+providers are built against a memory-backed domain and the DDL is compiled
+offline.
 """
 
 import pytest
+from sqlalchemy.dialects import postgresql, sqlite
 
-from protean.adapters.repository.sqlalchemy import _resolve_python_type
+from protean import Domain
+from protean.adapters.repository.sqlalchemy import PostgresqlProvider, SqliteProvider
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Dict, String
-from protean.utils.reflection import attributes
+from tests.shared import POSTGRES_URI
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -22,19 +26,56 @@ class Profile(BaseAggregate):
     counts: dict[str, int]
 
 
-class TestResolvedPythonType:
-    def test_a_required_string_resolves_to_str(self):
-        assert _resolve_python_type(attributes(Profile)["name"]) is str
+PROVIDERS = {
+    "sqlite": (SqliteProvider, "sqlite:///:memory:", sqlite.dialect()),
+    "postgresql": (PostgresqlProvider, POSTGRES_URI, postgresql.dialect()),
+}
 
-    def test_an_optional_string_resolves_to_str(self):
+
+def column_type(dialect_name, attribute):
+    domain = Domain(
+        name="Column types", config={"databases": {"default": {"provider": "memory"}}}
+    )
+    domain.register(Profile)
+    domain.init(traverse=False)
+    provider_cls, uri, dialect = PROVIDERS[dialect_name]
+    provider = provider_cls(
+        name=dialect_name,
+        domain=domain,
+        conn_info={"provider": dialect_name, "database_uri": uri},
+    )
+    with domain.domain_context():
+        table = provider.construct_database_model_class(Profile).__table__
+    return table.c[attribute].type.compile(dialect=dialect)
+
+
+# A bare dialect name as a parameter id is a test marker the suite skips on.
+on_both = pytest.mark.parametrize(
+    "dialect_name", ["sqlite", "postgresql"], ids=["on-sqlite", "on-postgresql"]
+)
+
+
+class TestColumnTypeFromPythonType:
+    @on_both
+    def test_a_required_string_is_a_sized_varchar(self, dialect_name):
+        assert column_type(dialect_name, "name") == "VARCHAR(50)"
+
+    @on_both
+    def test_an_optional_string_is_a_sized_varchar(self, dialect_name):
         """An optional field is ``str | None``; the ``None`` arm is dropped."""
-        assert _resolve_python_type(attributes(Profile)["nickname"]) is str
+        assert column_type(dialect_name, "nickname") == "VARCHAR(50)"
 
-    def test_a_typed_list_resolves_to_list(self):
-        assert _resolve_python_type(attributes(Profile)["tags"]) is list
+    @pytest.mark.parametrize(
+        ("dialect_name", "expected"),
+        [("sqlite", "JSON"), ("postgresql", "VARCHAR[]")],
+        ids=["on-sqlite", "on-postgresql"],
+    )
+    def test_a_typed_list_is_a_list_column(self, dialect_name, expected):
+        assert column_type(dialect_name, "tags") == expected
 
+    @on_both
     @pytest.mark.parametrize("attribute", ["settings", "counts"])
-    def test_a_dict_field_resolves_to_dict(self, attribute):
-        """``Dict()`` is ``dict | list`` and resolves to its first arm.
-        ``dict[str, int]`` drops its type arguments."""
-        assert _resolve_python_type(attributes(Profile)[attribute]) is dict
+    def test_a_dict_field_is_a_json_column(self, dialect_name, attribute):
+        """``Dict()`` is ``dict | list`` and maps by its first arm.
+        ``dict[str, int]`` maps without its type arguments."""
+        assert column_type(dialect_name, attribute) == "JSON"

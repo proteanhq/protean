@@ -295,14 +295,11 @@ class TestVOSerialization:
 # Tests: Building without __init__ and re-setting the identifier
 # ---------------------------------------------------------------------------
 class TestProjectionBuiltWithModelConstruct:
-    def test_model_construct_leaves_vo_unset(self):
-        """A projection built with model_construct, which skips __init__, has no VO."""
+    def test_model_construct_leaves_the_vo_and_its_shadow_fields_unset(self):
+        """A projection built with model_construct, which skips __init__, has
+        no VO and every VO shadow field set to None."""
         view = CustomerView.model_construct(customer_id="C1", name="Alice")
         assert view.billing_address is None
-
-    def test_model_construct_sets_vo_shadow_fields_to_none(self):
-        """A projection built with model_construct has every VO shadow field set to None."""
-        view = CustomerView.model_construct(customer_id="C1", name="Alice")
         assert view.billing_address_street is None
         assert view.billing_address_city is None
         assert view.billing_address_zip_code is None
