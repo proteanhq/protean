@@ -5,10 +5,15 @@ exhaustively at the port level (``tests/port/test_event_store_verify.py``). Thes
 tests confirm it runs end to end against a real MessageDB store: that ``$all``
 paging and the raw-dict keys (``id``, ``position``, ``global_position``,
 ``stream_name``, ``data``) line up with what the adapter actually returns. The
-clean path is what the adapter can produce through its normal write API, so that
-is what is asserted here; the violation branches are driven at the port level.
+clean path is what the adapter produces through its normal write API. The one
+violation asserted here is a NULL ``data`` column, which Message DB allows and
+which the client must hand to ``verify`` instead of failing on it; the other
+violation branches are driven at the port level.
 """
 
+from urllib.parse import urlparse
+
+import psycopg2
 import pytest
 
 
@@ -40,3 +45,41 @@ class TestMessageDBVerify:
         assert report.violations == ()
         assert report.message_count == 3
         assert report.stream_count == 2
+
+    def test_message_with_null_data_is_reported(self, test_domain):
+        store = test_domain.event_store.store
+        metadata = {
+            "domain": {"kind": "EVENT"},
+            "headers": {"type": "Registered", "stream": "test::user-abc"},
+        }
+        for n in range(3):
+            store._write("test::user-abc", "Registered", {"n": n}, metadata)
+
+        # The ``message_store`` role cannot UPDATE; connect as ``postgres`` the
+        # way the test-suite truncate does.
+        parsed = urlparse(test_domain.config["event_store"]["database_uri"])
+        conn = psycopg2.connect(
+            dbname=parsed.path[1:],
+            user="postgres",
+            port=parsed.port,
+            host=parsed.hostname,
+        )
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE message_store.messages SET data = NULL "
+                    "WHERE stream_name = %s AND position = 1",
+                    ("test::user-abc",),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        report = store.verify()
+
+        assert report.ok is False
+        assert len(report.violations) == 1
+        violation = report.violations[0]
+        assert violation.kind == store.VERIFY_MALFORMED_MESSAGE
+        assert violation.stream == "test::user-abc"
+        assert violation.position == 1

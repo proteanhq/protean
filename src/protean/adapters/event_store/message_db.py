@@ -102,15 +102,13 @@ class MessageDBStore(BaseEventStore):
             raise
         return position
 
-    # The message-db client's built-in ``$all`` query is a strict, unordered
-    # ``global_position > position LIMIT n`` — it skips the first position and,
-    # having no ``ORDER BY`` before the ``LIMIT``, returns an arbitrary subset
-    # rather than the lowest-``global_position`` page. Protean's read contract is
-    # an inclusive, ``global_position``-ordered page (subscriptions and outbox
+    # The message-db client's built-in ``$all`` query filters ``global_position >
+    # position``, so it skips the first position. Protean's read contract is an
+    # inclusive, ``global_position``-ordered page (subscriptions and outbox
     # reconciliation page from ``last_global_position + 1``), consistent with
     # category reads (``get_category_messages`` uses ``global_position >= position
-    # ORDER BY global_position ASC``) and the memory adapter, so supply a
-    # corrected statement.
+    # ORDER BY global_position ASC``) and the memory adapter, so supply an
+    # inclusive statement.
     _ALL_STREAM_SQL = (
         "SELECT "
         "id::varchar, stream_name::varchar, type::varchar, position::bigint, "
@@ -158,8 +156,8 @@ class MessageDBStore(BaseEventStore):
         # TODO(subhashb/message-db-py#4): page-in the whole stream only because
         # the message-db client has no category tail-read; replace with a
         # bounded reverse read when it does.
-        # The client's ``$all`` query has no ``ORDER BY``, so pick the newest by
-        # ``global_position`` rather than trusting row order (``messages[-1]``).
+        # Pick the newest row by ``global_position`` instead of taking the
+        # last row in the list (``messages[-1]``).
         messages = self._read(stream_name, no_of_messages=1_000_000)
         if not messages:
             return None
