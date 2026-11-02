@@ -104,10 +104,11 @@ jobs:
                 repository(owner: $owner, name: $name) {
                   pullRequest(number: $pr) {
                     baseRefName
+                    headRefName
                     labels(first: 100) { nodes { name } }
                     milestone { number title state }
                     closingIssuesReferences(first: 100) {
-                      nodes { milestone { number title state } }
+                      nodes { repository { nameWithOwner } milestone { number title state } }
                     }
                   }
                   milestones(states: OPEN, first: 100) { nodes { number title } }
@@ -121,7 +122,9 @@ jobs:
               | $repo.pullRequest as $pr
               | ($repo.milestones.nodes | map(select(.title | patch)) | sort_by(version)) as $open
               | (if $pr.baseRefName == "main"
-                   then [$pr.milestone] + [$pr.closingIssuesReferences.nodes[].milestone]
+                   then [$pr.milestone]
+                        + [$pr.closingIssuesReferences.nodes[]
+                           | select(.repository.nameWithOwner == env.GH_REPO) | .milestone]
                    else [] end
                  | map(select(. != null and .state == "OPEN" and (.title | patch)))
                  | unique_by(.number) | sort_by(version)) as $named
@@ -129,6 +132,7 @@ jobs:
               | [($named[] | branch),
                  ($pr.labels.nodes[].name | capture("^backport (?<t>release/[^ ]+)$").t)]
               | unique[]
+              | select(. != $pr.headRefName)
               | . as $t
               | (([$named[], $open[]] | map(select(branch == $t)) | first)
                  // {number: 0, title: ""}) as $m
@@ -226,8 +230,10 @@ jobs:
 
       # The action reports a failed cherry-pick, push or PR creation in its
       # outputs and a comment on the original PR, and leaves its step green.
+      # When it rejects the PR outright (merge commits, for one) it comments and
+      # sets no outputs, so anything but 'true' is a failure.
       - name: Fail when the backport PR did not open
-        if: steps.backport.outputs.was_successful == 'false'
+        if: steps.backport.outputs.was_successful != 'true'
         env:
           RESULT: ${{ steps.backport.outputs.was_successful_by_target }}
         run: |
