@@ -2,6 +2,7 @@ import time
 
 import pytest
 
+from protean import Domain
 from protean.adapters.cache.memory import MemoryCache
 from protean.core.projection import BaseProjection
 from protean.fields import Identifier, String
@@ -431,3 +432,50 @@ class TestTTLDictGetTTLOrNone:
         ttl_dict = TTLDict(default_ttl=None)
         ttl_dict["k"] = "v"
         assert ttl_dict.get_ttl_or_none("k") == float("inf")
+
+
+@pytest.mark.no_test_domain
+class TestCachesMapping:
+    """`domain.caches` reads and writes like a mapping of cache name to cache."""
+
+    def test_a_cache_set_before_init_can_be_read_back(self):
+        domain = Domain(name="Test")
+        cache = MemoryCache("extra", domain, {})
+
+        domain.caches["extra"] = cache
+
+        assert domain.caches["extra"] is cache
+        assert len(domain.caches) == 1
+        assert "extra" in domain.caches
+        assert list(domain.caches) == ["extra"]
+
+    def test_reading_a_missing_cache_before_init_raises_key_error(self):
+        domain = Domain(name="Test")
+
+        with pytest.raises(KeyError):
+            domain.caches["extra"]
+
+    def test_deleting_before_init_raises_assertion_error(self):
+        # TODO(#2019): a mapping raises KeyError here; Caches raises AssertionError.
+        domain = Domain(name="Test")
+
+        with pytest.raises(AssertionError):
+            del domain.caches["default"]
+
+    def test_deleting_a_cache_after_init_removes_it(self):
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+
+        del domain.caches["default"]
+
+        assert "default" not in domain.caches
+        assert len(domain.caches) == 0
+
+    def test_deleting_a_missing_cache_after_init_changes_nothing(self):
+        # TODO(#2019): a mapping raises KeyError here; Caches passes silently.
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+
+        del domain.caches["missing"]
+
+        assert list(domain.caches) == ["default"]

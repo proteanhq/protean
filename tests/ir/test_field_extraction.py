@@ -3,7 +3,9 @@
 import pytest
 
 from protean import Domain
-from protean.fields.simple import String
+from protean.fields import ValueObject as VOField
+from protean.fields.basic import ValueObjectList
+from protean.fields.simple import Integer, String
 from protean.ir.builder import IRBuilder
 
 from .elements import (
@@ -437,3 +439,118 @@ class TestHasManyVia:
         f = author_fields["books"]
         assert f["kind"] == "has_many"
         assert "via" not in f
+
+
+# ---------------------------------------------------------------------------
+# Fields read from the built IR: value object lists, required value objects,
+# unique fields and value bounds
+# ---------------------------------------------------------------------------
+
+
+def _aggregate_fields(ir: dict, name: str) -> dict:
+    """Return the field dicts of the aggregate called ``name`` in the IR."""
+    cluster = next(c for c in ir["clusters"].values() if c["aggregate"]["name"] == name)
+    return cluster["aggregate"]["fields"]
+
+
+@pytest.mark.no_test_domain
+class TestValueObjectListField:
+    """Verify ValueObjectList fields are extracted with their element type."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        domain = Domain(name="VOListTest", root_path=".")
+
+        @domain.value_object
+        class Tag:
+            label = String(max_length=50, required=True)
+
+        @domain.aggregate
+        class Article:
+            title = String(max_length=200, required=True)
+            tags = ValueObjectList(VOField(Tag))
+            scores = ValueObjectList(content_type=float)
+
+        domain.init(traverse=False)
+        self.tag_fqn = f"{Tag.__module__}.{Tag.__qualname__}"
+        self.article_fields = _aggregate_fields(IRBuilder(domain).build(), "Article")
+
+    def test_value_object_list_targets_its_value_object(self):
+        """A list of value objects has kind value_object_list and targets the VO."""
+        assert self.article_fields["tags"] == {
+            "kind": "value_object_list",
+            "target": self.tag_fqn,
+        }
+
+    def test_scalar_value_object_list_targets_its_python_type(self):
+        """A ValueObjectList of a scalar type targets the Python type's FQN."""
+        assert self.article_fields["scores"] == {
+            "kind": "value_object_list",
+            "target": "builtins.float",
+        }
+
+
+@pytest.mark.no_test_domain
+class TestRequiredValueObjectField:
+    """Verify a required ValueObject field is marked required in the IR."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        domain = Domain(name="ReqVOTest", root_path=".")
+
+        @domain.value_object
+        class Email:
+            address = String(max_length=255, required=True)
+
+        @domain.aggregate
+        class User:
+            name = String(max_length=100, required=True)
+            email = VOField(Email, required=True)
+
+        domain.init(traverse=False)
+        self.email_fqn = f"{Email.__module__}.{Email.__qualname__}"
+        self.user_fields = _aggregate_fields(IRBuilder(domain).build(), "User")
+
+    def test_required_value_object_field_is_marked_required(self):
+        """A ValueObject field declared required=True carries required: True."""
+        assert self.user_fields["email"]["required"] is True
+
+    def test_required_value_object_field_keeps_value_object_kind(self):
+        """Marking a ValueObject field required keeps its kind and target."""
+        assert self.user_fields["email"]["kind"] == "value_object"
+        assert self.user_fields["email"]["target"] == self.email_fqn
+
+
+@pytest.mark.no_test_domain
+class TestUniqueNonIdentifierField:
+    """Verify unique=True on a non-identifier field is recorded in the IR."""
+
+    def test_unique_non_identifier_field_is_marked_unique(self):
+        """A non-identifier field declared unique=True carries unique: True."""
+        domain = Domain(name="UniqueTest", root_path=".")
+
+        @domain.aggregate
+        class Product:
+            name = String(max_length=100, required=True)
+            sku = String(max_length=50, unique=True)
+
+        domain.init(traverse=False)
+        fields = _aggregate_fields(IRBuilder(domain).build(), "Product")
+        assert fields["sku"]["unique"] is True
+
+
+@pytest.mark.no_test_domain
+class TestMaxValueField:
+    """Verify max_value is extracted from a numeric field."""
+
+    def test_max_value_is_recorded(self):
+        """A field declared with max_value=100 carries max_value: 100."""
+        domain = Domain(name="MaxValTest", root_path=".")
+
+        @domain.aggregate
+        class Rating:
+            score = Integer(min_value=0, max_value=100)
+
+        domain.init(traverse=False)
+        fields = _aggregate_fields(IRBuilder(domain).build(), "Rating")
+        assert fields["score"]["max_value"] == 100

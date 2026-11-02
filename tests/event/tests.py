@@ -232,6 +232,30 @@ class TestDomainEventDefinition:
         )
         assert event.email.address == "alice@example.com"
 
+    def test_event_can_hold_vo_declared_as_annotation(self, test_domain):
+        """`contact: ValueObject(...)` written as an annotation works in events."""
+
+        class Email(BaseValueObject):
+            address: String(max_length=254, required=True)
+
+        class Customer(BaseAggregate):
+            name: String(max_length=50)
+
+        class CustomerCreated(BaseEvent):
+            id: Identifier(identifier=True)
+            name: String(max_length=50)
+            contact: ValueObject(Email, required=True)
+
+        test_domain.register(Customer, event_sourced=True)
+        test_domain.register(Email)
+        test_domain.register(CustomerCreated, part_of=Customer)
+        test_domain.init(traverse=False)
+
+        event = CustomerCreated(
+            id="123", name="Dave", contact=Email(address="dave@example.com")
+        )
+        assert event.contact == Email(address="dave@example.com")
+
     def test_that_domain_event_can_be_reconstructed_from_dict_enclosing_vo(
         self, test_domain
     ):

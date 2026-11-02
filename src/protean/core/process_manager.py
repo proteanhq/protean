@@ -549,7 +549,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         }
 
         transition_cls = cls._transition_event_cls
-        if transition_cls is None:
+        if transition_cls is None:  # pragma: no cover  # wired with the handlers
             raise ConfigurationError(
                 f"Process Manager `{cls.__name__}` has no transition event class. "
                 f"Ensure domain.init() has been called."
@@ -600,7 +600,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
 
         # Write directly to event store
         store = current_domain.event_store.store
-        if store is None:
+        if store is None:  # pragma: no cover  # _load_or_create raised first
             raise ConfigurationError("Event store is not configured")
         store.append(transition_event)
 

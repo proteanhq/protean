@@ -2,6 +2,9 @@
 
 import pytest
 
+from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector
+from protean.fields import Identifier
 from protean.utils.container import Options
 
 
@@ -27,3 +30,34 @@ class TestOptionsEdgeCases:
         assert merged["key1"] == "val1"
         assert merged["key2"] == "val2"
         assert isinstance(merged, Options)
+
+
+class TestMutableDefaultOptions:
+    def test_mutating_one_class_default_leaves_another_class_unchanged(
+        self, test_domain
+    ):
+        """List and dict defaults are copied into each class's ``meta_``, so
+        a change made through one class does not show up in another."""
+
+        class Ledger(BaseProjection):
+            ledger_id: Identifier(identifier=True)
+
+        class FirstProjector(BaseProjector):
+            pass
+
+        class SecondProjector(BaseProjector):
+            pass
+
+        test_domain.register(Ledger)
+        first = test_domain.register(
+            FirstProjector, projector_for=Ledger, stream_categories=["ledger"]
+        )
+        second = test_domain.register(
+            SecondProjector, projector_for=Ledger, stream_categories=["ledger"]
+        )
+
+        first.meta_.aggregates.append("x")
+        first.meta_.subscription_config["k"] = "v"
+
+        assert second.meta_.aggregates == []
+        assert second.meta_.subscription_config == {}

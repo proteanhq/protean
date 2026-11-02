@@ -94,6 +94,56 @@ class TestCommandsWithValueObjects:
         )
         assert cmd.total.amount == 149.99
 
+    def test_command_with_required_vo_declared_as_annotation(self, test_domain):
+        """`email: ValueObject(..., required=True)` written as an annotation."""
+
+        class Email(BaseValueObject):
+            address: String(max_length=254, required=True)
+
+        class Customer(BaseAggregate):
+            name: String(max_length=50)
+
+        class RegisterCustomer(BaseCommand):
+            name: String(max_length=50)
+            email: ValueObject(Email, required=True)
+
+        test_domain.register(Customer, event_sourced=True)
+        test_domain.register(Email)
+        test_domain.register(RegisterCustomer, part_of=Customer)
+        test_domain.init(traverse=False)
+
+        cmd = RegisterCustomer(name="Alice", email=Email(address="alice@example.com"))
+        assert cmd.email == Email(address="alice@example.com")
+
+    @pytest.fixture
+    def create_account(self, test_domain):
+        class Profile(BaseValueObject):
+            bio: String(max_length=200)
+
+        class Profiled(BaseAggregate):
+            name: String(max_length=50)
+
+        class CreateAccount(BaseCommand):
+            name: String(max_length=50)
+            profile: ValueObject(Profile)
+
+        test_domain.register(Profiled, event_sourced=True)
+        test_domain.register(Profile)
+        test_domain.register(CreateAccount, part_of=Profiled)
+        test_domain.init(traverse=False)
+        return CreateAccount, Profile
+
+    def test_optional_vo_declared_as_annotation_defaults_to_none(self, create_account):
+        CreateAccount, _ = create_account
+
+        assert CreateAccount(name="Bob").profile is None
+
+    def test_optional_vo_declared_as_annotation_holds_a_value(self, create_account):
+        CreateAccount, Profile = create_account
+
+        cmd = CreateAccount(name="Carol", profile=Profile(bio="Hello"))
+        assert cmd.profile == Profile(bio="Hello")
+
     def test_command_with_multiple_vos(self, test_domain):
         class Order(BaseAggregate):
             order_id: Identifier(identifier=True)

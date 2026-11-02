@@ -282,6 +282,38 @@ class TestMessageErrorHandling:
         # Should have the correct ID
         assert error.message_id == "known-id-123"
 
+    def test_message_without_header_id_is_reported_by_its_type(self):
+        message = Message(
+            data={"test": "data"},
+            metadata=Metadata(
+                headers=MessageHeaders(
+                    id=None, type="unregistered.event", stream="test-stream"
+                ),
+                domain=DomainMeta(fqn="unregistered.Event", kind="EVENT"),
+            ),
+        )
+
+        with pytest.raises(DeserializationError) as exc_info:
+            message.to_domain_object()
+
+        assert exc_info.value.message_id == "unregistered.event"
+
+    def test_message_of_invalid_kind_without_header_id_is_reported_by_its_type(
+        self,
+    ):
+        message = Message(
+            data={"test": "data"},
+            metadata=Metadata(
+                headers=MessageHeaders(id=None, type="unknown.type"),
+                domain=DomainMeta(fqn="unknown.Type", kind="INVALID_KIND"),
+            ),
+        )
+
+        with pytest.raises(DeserializationError) as exc_info:
+            message.to_domain_object()
+
+        assert exc_info.value.message_id == "unknown.type"
+
     def test_exception_chaining_preserves_original_error(self):
         """Test that DeserializationError preserves the original exception via chaining"""
 

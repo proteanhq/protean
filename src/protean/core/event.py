@@ -98,7 +98,7 @@ class BaseEvent(BaseMessageType):
             merged.update(kwargs)
             kwargs = merged
 
-        # Template dicts (e.g. from to_dict()) may re-introduce _metadata,
+        # Template dicts may carry _metadata (to_dict() includes it),
         # _expected_version, and _version; prefer the explicitly passed
         # keyword args.  _version is an aggregate-internal field and is not
         # part of the event schema, so discard it silently.
@@ -107,7 +107,9 @@ class BaseEvent(BaseMessageType):
             incoming_metadata = template_metadata
         kwargs.pop("_rebuild", None)
         template_expected_version = kwargs.pop("_expected_version", None)
-        if expected_version == -1 and template_expected_version is not None:
+        if (
+            expected_version == -1 and template_expected_version is not None
+        ):  # pragma: no cover  # no framework caller puts it in a template
             expected_version = template_expected_version
         kwargs.pop("_version", None)
 

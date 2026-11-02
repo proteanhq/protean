@@ -179,3 +179,55 @@ def test_process_manager_appears_in_registry(test_domain):
     test_domain.init(traverse=False)
 
     assert len(test_domain.registry.process_managers) == 1
+
+
+def test_abstract_process_manager_cannot_be_instantiated(test_domain):
+    """A PM registered with abstract=True raises NotSupportedError when built."""
+
+    class AbstractPM(BaseProcessManager):
+        some_field: String()
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def on_order(self, event: OrderPlaced) -> None:
+            pass
+
+    test_domain.register(AbstractPM, abstract=True)
+
+    with pytest.raises(NotSupportedError) as exc:
+        AbstractPM(some_field="test")
+
+    assert str(exc.value) == (
+        "AbstractPM class has been marked abstract and cannot be instantiated"
+    )
+
+
+def test_unprefixed_stream_categories_get_the_domain_name_prefix(test_domain):
+    """A stream category without '::' is prefixed with the domain's name."""
+
+    class UnprefixedPM(BaseProcessManager):
+        order_id: Identifier()
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def on_order_placed(self, event: OrderPlaced) -> None:
+            self.order_id = event.order_id
+
+    test_domain.register(UnprefixedPM, stream_categories=["order", "custom::stream"])
+    test_domain.init(traverse=False)
+
+    assert UnprefixedPM.meta_.stream_categories == ["test::order", "custom::stream"]
+
+
+def test_aggregates_option_sets_stream_categories(test_domain):
+    """Without stream_categories, the listed aggregates' stream categories are used."""
+
+    class AggregatesPM(BaseProcessManager):
+        order_id: Identifier()
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def on_order_placed(self, event: OrderPlaced) -> None:
+            self.order_id = event.order_id
+
+    test_domain.register(AggregatesPM, aggregates=[Order, Payment])
+    test_domain.init(traverse=False)
+
+    assert AggregatesPM.meta_.stream_categories == ["test::order", "test::payment"]

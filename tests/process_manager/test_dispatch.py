@@ -4,8 +4,17 @@ from uuid import uuid4
 
 import pytest
 
-from protean.core.process_manager import _resolve_correlation_value
+from protean import Domain
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.process_manager import BaseProcessManager, _resolve_correlation_value
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError
+from protean.fields import Identifier, String
+from protean.server import Engine
+from protean.testing import given
+from protean.utils.globals import current_domain
+from protean.utils.mixins import handle
 
 from .elements import (
     Order,
@@ -19,8 +28,33 @@ from .elements import (
 )
 
 
+class OrderNoteAdded(BaseEvent):
+    """An event on the order stream that OrderFulfillmentPM has no handler for."""
+
+    order_id: Identifier()
+    note: String()
+
+
+class Parcel(BaseAggregate):
+    label: String()
+
+
+class ParcelSent(BaseEvent):
+    parcel_id: Identifier()
+
+
+class ParcelPM(BaseProcessManager):
+    parcel_id: Identifier()
+
+    @handle(ParcelSent, start=True, correlate="parcel_id")
+    def on_sent(self, event: ParcelSent) -> None:
+        self.parcel_id = event.parcel_id
+
+
 @pytest.fixture(autouse=True)
-def register_elements(test_domain):
+def register_elements(test_domain, request):
+    if "no_test_domain" in request.keywords:
+        return
     test_domain.register(Order)
     test_domain.register(OrderPlaced, part_of=Order)
     test_domain.register(Payment)
@@ -28,6 +62,7 @@ def register_elements(test_domain):
     test_domain.register(PaymentFailed, part_of=Payment)
     test_domain.register(Shipping)
     test_domain.register(ShipmentDelivered, part_of=Shipping)
+    test_domain.register(OrderNoteAdded, part_of=Order)
     test_domain.register(
         OrderFulfillmentPM,
         stream_categories=["test::order", "test::payment", "test::shipping"],
@@ -129,6 +164,43 @@ class TestNonStartEventWithNoPM:
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
         messages = test_domain.event_store.store.read(stream_name)
         assert len(messages) == 0
+
+
+class TestUnhandledEvent:
+    async def test_event_without_a_handler_records_no_transition(self, test_domain):
+        """An event from a subscribed stream with no PM handler leaves no PM state."""
+        order = Order(customer_id="CUST-1", total=100.0)
+        order.raise_(OrderNoteAdded(order_id=str(order.id), note="Gift wrap"))
+        with UnitOfWork():
+            current_domain.repository_for(Order).add(order)
+        message = test_domain.event_store.store.read(
+            f"{Order.meta_.stream_category}-{order.id}"
+        )[0]
+        engine = Engine(domain=test_domain, test_mode=True)
+
+        handled = await engine.handle_message(OrderFulfillmentPM, message)
+
+        pm_stream = f"{OrderFulfillmentPM.meta_.stream_category}-{order.id}"
+        assert handled is True
+        assert test_domain.event_store.store.read(pm_stream) == []
+
+
+class TestDispatchBeforeInit:
+    @pytest.mark.no_test_domain
+    def test_dispatch_after_check_without_init_raises_configuration_error(self):
+        """``domain.check()`` wires a PM's handlers but sets up no event store,
+        so dispatching to the PM raises ConfigurationError."""
+        domain = Domain(name="Unstarted")
+        domain.register(Parcel)
+        domain.register(ParcelSent, part_of=Parcel)
+        domain.register(ParcelPM, stream_categories=["unstarted::parcel"])
+        domain.check(traverse=False)
+
+        with domain.domain_context():
+            with pytest.raises(ConfigurationError) as exc:
+                given(ParcelPM, ParcelSent(parcel_id="P-1"))
+
+        assert str(exc.value) == "Event store is not configured"
 
 
 class TestFullLifecycle:
