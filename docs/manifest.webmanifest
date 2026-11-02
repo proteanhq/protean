@@ -1,6 +1,6 @@
 {
   "name": "Protean Docs",
-  "short_name": "Protean",
+  "short_name": "Protean Docs",
   "description": "Documentation for Protean, a Python framework for event-driven applications built with Domain-Driven Design.",
   "start_url": "/?launch",
   "scope": "/",
