@@ -1,7 +1,7 @@
 # Opens or updates the one open `ci-failure` issue. Used by the nightly run
-# (nightly.yml) and the push-to-main run (ci.yml), so a red run on either shows
-# up in one place without anyone watching the Actions tab. The calling job needs
-# `issues: write`.
+# (nightly.yml), the push-to-main run (ci.yml) and the docs deployment
+# (docs.yml), so a red run on any of them shows up in one place without anyone
+# watching the Actions tab. The calling job needs `issues: write`.
 name: "Report CI failure"
 description: "Comment on the open ci-failure issue, or open one."
 
