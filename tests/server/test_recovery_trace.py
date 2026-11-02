@@ -38,11 +38,6 @@ from protean.utils.mixins import handle
 
 
 @pytest.mark.no_test_domain
-def test_inactive_by_default():
-    assert recovery_trace.is_active() is False
-
-
-@pytest.mark.no_test_domain
 def test_record_is_a_noop_when_inactive():
     recovery_trace.record(action="fail", position=1)
     assert recovery_trace.is_active() is False
@@ -465,36 +460,35 @@ def test_position_over_the_cap_is_rejected(tmp_path):
 
 
 @pytest.mark.no_test_domain
-def test_empty_log_is_rejected(tmp_path):
-    log = _write(tmp_path / "empty.jsonl", [])
-    assert recovery_trace_script._to_tla(log, tmp_path / "o.tla") == 2
-
-
-@pytest.mark.no_test_domain
-def test_unknown_action_is_rejected(tmp_path):
-    log = _write(tmp_path / "bad.jsonl", [{"action": "teleport", "position": 1}])
-    assert recovery_trace_script._to_tla(log, tmp_path / "o.tla") == 2
-
-
-@pytest.mark.no_test_domain
-def test_missing_required_field_is_rejected(tmp_path):
-    # Missing "position" must reject cleanly, not raise a KeyError.
-    log = _write(tmp_path / "missing.jsonl", [{"action": "fail"}])
-    assert recovery_trace_script._to_tla(log, tmp_path / "o.tla") == 2
-
-
-@pytest.mark.no_test_domain
-def test_negative_and_float_positions_are_rejected(tmp_path):
-    for bad in (-1, 1.5):
-        log = _write(tmp_path / "nat.jsonl", [{"action": "fail", "position": bad}])
-        assert recovery_trace_script._to_tla(log, tmp_path / "o.tla") == 2, bad
-
-
-@pytest.mark.no_test_domain
-def test_recover_without_boolean_delivered_is_rejected(tmp_path):
-    # The model reads delivered only on a recover, to pin the retry verdict, so a
-    # recover without a boolean is malformed rather than a defaulted value.
-    log = _write(tmp_path / "rec.jsonl", [{"action": "recover", "position": 1}])
+@pytest.mark.parametrize(
+    "content",
+    [
+        "",
+        '{"action": "teleport", "position": 1}\n',
+        # Missing "position" must reject cleanly, not raise a KeyError.
+        '{"action": "fail"}\n',
+        '{"action": "fail", "position": -1}\n',
+        '{"action": "fail", "position": 1.5}\n',
+        # The model reads delivered only on a recover, to pin the retry verdict, so
+        # a recover without a boolean is malformed rather than a defaulted value.
+        '{"action": "recover", "position": 1}\n',
+        '{"action": oops}\n',
+        "42\n",
+    ],
+    ids=[
+        "empty_log",
+        "unknown_action",
+        "missing_required_field",
+        "negative_position",
+        "float_position",
+        "recover_without_boolean_delivered",
+        "invalid_json_line",
+        "non_object_line",
+    ],
+)
+def test_malformed_log_is_rejected(tmp_path, content):
+    log = tmp_path / "bad.jsonl"
+    log.write_text(content, encoding="utf-8")
     assert recovery_trace_script._to_tla(log, tmp_path / "o.tla") == 2
 
 
@@ -507,24 +501,6 @@ def test_non_recover_delivered_defaults_to_false(tmp_path):
     assert recovery_trace_script._to_tla(log, out) == 0
     assert 'action |-> "fail", pos |-> 1, delivered |-> FALSE' in out.read_text(
         encoding="utf-8"
-    )
-
-
-@pytest.mark.no_test_domain
-def test_invalid_json_line_is_rejected(tmp_path):
-    (tmp_path / "broken.jsonl").write_text('{"action": oops}\n', encoding="utf-8")
-    assert (
-        recovery_trace_script._to_tla(tmp_path / "broken.jsonl", tmp_path / "o.tla")
-        == 2
-    )
-
-
-@pytest.mark.no_test_domain
-def test_non_object_line_is_rejected(tmp_path):
-    (tmp_path / "scalar.jsonl").write_text("42\n", encoding="utf-8")
-    assert (
-        recovery_trace_script._to_tla(tmp_path / "scalar.jsonl", tmp_path / "o.tla")
-        == 2
     )
 
 

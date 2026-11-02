@@ -79,9 +79,16 @@ class TestCombinedRead:
         assert trimmed == [sub.stream_category, sub.backfill_stream]
 
     @pytest.mark.asyncio
-    async def test_combined_read_waits_on_both_streams(self, lanes_domain):
+    @pytest.mark.parametrize(
+        "blocking_timeout_ms, expected_timeout_ms", [(5000, 1000), (100, 100)]
+    )
+    async def test_combined_read_waits_on_both_streams(
+        self, lanes_domain, blocking_timeout_ms, expected_timeout_ms
+    ):
+        """The combined read waits on both streams for at most one second, and a
+        shorter blocking timeout is passed through unchanged."""
         sub = _make_stream_subscription(lanes_domain, messages_per_tick=25)
-        sub.blocking_timeout_ms = 5000
+        sub.blocking_timeout_ms = blocking_timeout_ms
         sub.broker.read_blocking_streams = MagicMock(return_value={})
 
         assert await sub._read_lanes_blocking() == ([], [])
@@ -90,23 +97,15 @@ class TestCombinedRead:
         assert kwargs["streams"] == ["test::user", "test::user:backfill"]
         assert kwargs["consumer_group"] == sub.consumer_group
         assert kwargs["consumer_name"] == sub.consumer_name
-        assert kwargs["timeout_ms"] == 1000
+        assert kwargs["timeout_ms"] == expected_timeout_ms
         assert kwargs["count"] == 25
-
-    @pytest.mark.asyncio
-    async def test_short_blocking_timeout_is_passed_through(self, lanes_domain):
-        sub = _make_stream_subscription(lanes_domain)
-        sub.broker.read_blocking_streams = MagicMock(return_value={})
-
-        await sub._read_lanes_blocking()
-
-        assert sub.broker.read_blocking_streams.call_args.kwargs["timeout_ms"] == 100
 
     @pytest.mark.asyncio
     async def test_no_broker_reads_nothing(self, lanes_domain):
         sub = _make_stream_subscription(lanes_domain)
         sub.broker = None
 
+        assert await sub._read_primary_nonblocking() == []
         assert await sub._read_lanes_blocking() == ([], [])
 
     @pytest.mark.asyncio

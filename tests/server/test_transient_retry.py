@@ -13,7 +13,7 @@ The policy is opt-in (disabled by default) and configurable domain-wide via
 import logging
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -38,6 +38,7 @@ from protean.utils.mixins import (
     _transient_backoff_delay,
     handle,
 )
+from protean.utils.telemetry import _DOMAIN_METRICS_KEY, get_domain_metrics
 
 # ---------------------------------------------------------------------------
 # Domain elements shared across tests
@@ -115,6 +116,50 @@ def _enrich(test_domain, name="Jane"):
     return test_domain._enrich_command(command, True)
 
 
+class CustomTransient(Exception):
+    pass
+
+
+@pytest.fixture
+def retried_points(test_domain):
+    """Send the domain's metrics to an in-memory reader.
+
+    Returns a function that lists the ``protean.handler.retried`` data points
+    recorded so far.
+    """
+    from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
+
+    resource = Resource.create({"service.name": test_domain.normalized_name})
+    reader = InMemoryMetricReader()
+    test_domain._otel_meter_provider = SDKMeterProvider(
+        resource=resource, metric_readers=[reader]
+    )
+    test_domain._otel_tracer_provider = SDKTracerProvider(resource=resource)
+    test_domain._otel_init_attempted = True
+    if hasattr(test_domain, _DOMAIN_METRICS_KEY):
+        delattr(test_domain, _DOMAIN_METRICS_KEY)
+
+    def points() -> list:
+        data = reader.get_metrics_data()
+        if data is None:
+            return []
+        return [
+            point
+            for resource_metric in data.resource_metrics
+            for scope_metric in resource_metric.scope_metrics
+            for metric in scope_metric.metrics
+            if metric.name == "protean.handler.retried"
+            for point in metric.data.data_points
+        ]
+
+    yield points
+    if hasattr(test_domain, _DOMAIN_METRICS_KEY):
+        delattr(test_domain, _DOMAIN_METRICS_KEY)
+
+
 # ---------------------------------------------------------------------------
 # Configuration tests
 # ---------------------------------------------------------------------------
@@ -132,11 +177,6 @@ class TestTransientRetryDefaults:
             TimeoutError,
             SendError,
         )
-
-    def test_disabled_by_default_yields_zero_max(self, test_domain):
-        """With the default (disabled) config, no retries are attempted."""
-        cfg = _get_transient_retry_config(None)
-        assert cfg["max_retries"] == 0
 
     def test_domain_config_has_transient_retry_section(self, test_domain):
         section = test_domain.config.get("server", {}).get("transient_retry", {})
@@ -173,17 +213,16 @@ class TestTransientRetryDefaults:
         assert cfg["max_delay_seconds"] == 9.0
         assert cfg["exceptions"] == (OSError,)
 
-    def test_string_enabled_false_stays_disabled(self, test_domain):
-        """A string `"false"` (e.g. from env substitution) must NOT enable retry."""
-        test_domain.config["server"]["transient_retry"]["enabled"] = "false"
+    @pytest.mark.parametrize(
+        "enabled, max_retries",
+        [("false", 0), ("true", 3)],
+    )
+    def test_string_enabled_is_read_as_a_bool(self, test_domain, enabled, max_retries):
+        """A string `"false"` (e.g. from env substitution) must NOT enable retry;
+        a string `"true"` does."""
+        test_domain.config["server"]["transient_retry"]["enabled"] = enabled
         cfg = _get_transient_retry_config(None)
-        assert cfg["max_retries"] == 0
-
-    def test_string_enabled_true_enables(self, test_domain):
-        """A string `"true"` enables retry."""
-        test_domain.config["server"]["transient_retry"]["enabled"] = "true"
-        cfg = _get_transient_retry_config(None)
-        assert cfg["max_retries"] == 3
+        assert cfg["max_retries"] == max_retries
 
     def test_invalid_backoff_raises(self, test_domain):
         test_domain.config["server"]["transient_retry"]["enabled"] = True
@@ -201,9 +240,9 @@ class TestTransientRetryDefaults:
             _get_transient_retry_config(None)
 
     def test_invalid_exception_path_ignored_when_disabled(self, test_domain):
-        """Exceptions are not resolved when retries are off, so the import cost
-        (and any misconfiguration) is never paid on the disabled path."""
-        test_domain.config["server"]["transient_retry"]["enabled"] = False
+        """Retries are off by default, and exceptions are not resolved when
+        retries are off, so the import cost (and any misconfiguration) is never
+        paid on the disabled path."""
         test_domain.config["server"]["transient_retry"]["exceptions"] = [
             "builtins.NoSuchError"
         ]
@@ -223,32 +262,26 @@ class TestTransientRetryDefaults:
         finally:
             _domain_context_stack.push(ctx)
 
-    def test_falls_back_to_defaults_on_a_bad_value(self, test_domain, caplog):
+    @pytest.mark.parametrize(
+        "setting, reason",
+        [
+            ({"max_retries": "many"}, "many"),
+            ({"max_retries": float("inf")}, "infinity"),
+            ({"base_delay_seconds": None}, "NoneType"),
+        ],
+        ids=["not-a-number", "infinite-retries", "missing-delay"],
+    )
+    def test_falls_back_to_defaults_on_a_value_that_does_not_convert(
+        self, test_domain, caplog, setting, reason
+    ):
         """A value that is not a number falls back to (disabled) defaults."""
-        test_domain.config["server"]["transient_retry"] = {
-            "enabled": True,
-            "max_retries": "many",
-        }
+        test_domain.config["server"]["transient_retry"] = {"enabled": True, **setting}
         with caplog.at_level(logging.WARNING, logger="protean.utils.mixins"):
             cfg = _get_transient_retry_config(None)
         assert cfg["max_retries"] == 0
         assert cfg["exceptions"] == (ConnectionError, TimeoutError, SendError)
         assert "Invalid [server.transient_retry] config" in caplog.text
-        assert "many" in caplog.text
-
-    @pytest.mark.parametrize(
-        "setting",
-        [{"max_retries": float("inf")}, {"base_delay_seconds": None}],
-        ids=["infinite-retries", "missing-delay"],
-    )
-    def test_falls_back_to_defaults_on_a_value_that_does_not_convert(
-        self, test_domain, caplog, setting
-    ):
-        test_domain.config["server"]["transient_retry"] = {"enabled": True, **setting}
-        with caplog.at_level(logging.WARNING, logger="protean.utils.mixins"):
-            cfg = _get_transient_retry_config(None)
-        assert cfg["max_retries"] == 0
-        assert "Invalid [server.transient_retry] config" in caplog.text
+        assert reason in caplog.text
 
     @pytest.mark.parametrize("section", ["on", False, 0, ""])
     def test_falls_back_to_defaults_when_section_is_not_a_table(
@@ -261,70 +294,69 @@ class TestTransientRetryDefaults:
         assert "Invalid [server.transient_retry] config" in caplog.text
 
     def test_an_unexpected_config_error_propagates(self, test_domain):
-        with patch.object(
-            type(test_domain.config), "get", side_effect=RuntimeError("boom")
-        ):
-            with pytest.raises(RuntimeError, match="boom"):
-                _get_transient_retry_config(None)
+        """Only conversion and non-table errors fall back; others surface."""
+
+        class BrokenTable(dict):
+            def get(self, *args, **kwargs):
+                raise RuntimeError("boom")
+
+        test_domain.config["server"] = BrokenTable()
+
+        with pytest.raises(RuntimeError, match="boom"):
+            _get_transient_retry_config(None)
 
 
 class TestExceptionResolution:
-    def test_resolves_bare_builtin_name(self):
-        assert _import_exception_type("ConnectionError") is ConnectionError
+    @pytest.mark.parametrize(
+        "path, expected",
+        [
+            ("ConnectionError", ConnectionError),
+            ("builtins.TimeoutError", TimeoutError),
+            ("protean.exceptions.SendError", SendError),
+        ],
+        ids=["bare-builtin", "dotted-builtin", "protean-exception"],
+    )
+    def test_import_exception_type(self, path, expected):
+        assert _import_exception_type(path) is expected
 
-    def test_resolves_dotted_builtin(self):
-        assert _import_exception_type("builtins.TimeoutError") is TimeoutError
+    @pytest.mark.parametrize(
+        "spec, expected",
+        [
+            (ConnectionError, (ConnectionError,)),
+            ([ConnectionError, "builtins.OSError"], (ConnectionError, OSError)),
+            # A lone dotted-path string resolves, rather than iterating chars.
+            ("builtins.OSError", (OSError,)),
+        ],
+        ids=["single-class", "mixed-iterable", "single-dotted-string"],
+    )
+    def test_resolve_exception_types(self, spec, expected):
+        assert _resolve_exception_types(spec) == expected
 
-    def test_resolves_protean_exception(self):
-        assert _import_exception_type("protean.exceptions.SendError") is SendError
-
-    def test_single_class_wrapped_in_tuple(self):
-        assert _resolve_exception_types(ConnectionError) == (ConnectionError,)
-
-    def test_mixed_iterable(self):
-        assert _resolve_exception_types([ConnectionError, "builtins.OSError"]) == (
-            ConnectionError,
-            OSError,
-        )
-
-    def test_single_dotted_string_not_iterated_as_chars(self):
-        """A lone dotted-path string resolves, rather than iterating chars."""
-        assert _resolve_exception_types("builtins.OSError") == (OSError,)
-
-    def test_non_iterable_spec_raises_clear_error(self):
+    @pytest.mark.parametrize("spec", [123, [123]], ids=["non-iterable", "bad-item"])
+    def test_invalid_spec_raises_clear_error(self, spec):
         with pytest.raises(ConfigurationError, match="Invalid transient retry"):
-            _resolve_exception_types(123)
-
-    def test_unknown_path_raises(self):
-        with pytest.raises(ConfigurationError, match="Cannot resolve"):
-            _import_exception_type("builtins.NoSuchError")
+            _resolve_exception_types(spec)
 
     def test_non_exception_path_raises(self):
         with pytest.raises(ConfigurationError, match="not an exception type"):
             _import_exception_type("builtins.dict")
 
-    def test_invalid_spec_type_raises(self):
-        with pytest.raises(ConfigurationError, match="Invalid transient retry"):
-            _resolve_exception_types([123])
-
 
 class TestBackoffStrategies:
-    def test_exponential(self):
-        delays = [
-            _transient_backoff_delay("exponential", i, 0.1, 100) for i in range(4)
-        ]
-        assert delays == pytest.approx([0.1, 0.2, 0.4, 0.8])
-
-    def test_linear(self):
-        delays = [_transient_backoff_delay("linear", i, 0.1, 100) for i in range(4)]
-        assert delays == pytest.approx([0.1, 0.2, 0.3, 0.4])
-
-    def test_fixed(self):
-        delays = [_transient_backoff_delay("fixed", i, 0.1, 100) for i in range(4)]
-        assert delays == pytest.approx([0.1, 0.1, 0.1, 0.1])
-
-    def test_capped_at_max(self):
-        assert _transient_backoff_delay("exponential", 10, 0.5, 1.0) == 1.0
+    @pytest.mark.parametrize(
+        "strategy, base, cap, delays",
+        [
+            ("exponential", 0.1, 100, [0.1, 0.2, 0.4, 0.8]),
+            ("linear", 0.1, 100, [0.1, 0.2, 0.3, 0.4]),
+            ("fixed", 0.1, 100, [0.1, 0.1, 0.1, 0.1]),
+            ("exponential", 0.5, 1.0, [0.5, 1.0, 1.0, 1.0]),
+        ],
+        ids=["exponential", "linear", "fixed", "capped-at-max"],
+    )
+    def test_delays(self, strategy, base, cap, delays):
+        assert [
+            _transient_backoff_delay(strategy, i, base, cap) for i in range(4)
+        ] == pytest.approx(delays)
 
 
 # ---------------------------------------------------------------------------
@@ -333,29 +365,33 @@ class TestBackoffStrategies:
 
 
 class TestTransientRetryBehavior:
+    @pytest.mark.parametrize(
+        "options, domain_enabled, error",
+        [
+            ({"retries": 3}, False, ConnectionError("transient")),
+            ({}, True, ConnectionError("transient")),
+            (
+                {"retries": 2, "retry_exceptions": [CustomTransient]},
+                False,
+                CustomTransient("blip"),
+            ),
+            ({"retries": 2}, False, SendError("gateway blip")),
+            # Transient enabled per-handler; version retry uses domain defaults.
+            ({"retries": 2}, False, ExpectedVersionError("conflict")),
+        ],
+        ids=[
+            "per-handler-retries",
+            "domain-level-enable",
+            "custom-exception-list",
+            "send-error",
+            "version-conflict",
+        ],
+    )
     @patch("protean.utils.mixins.time.sleep")
-    def test_disabled_by_default_propagates(self, mock_sleep, test_domain):
-        """Without opt-in, a transient error is NOT retried."""
-        attempts = 0
-
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempts
-                attempts += 1
-                raise ConnectionError("boom")
-
-        test_domain.register(H, part_of=User)
-        test_domain.init(traverse=False)
-
-        with pytest.raises(ConnectionError):
-            H._handle(_enrich(test_domain))
-
-        assert attempts == 1
-        mock_sleep.assert_not_called()
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_per_handler_retries_then_succeeds(self, mock_sleep, test_domain):
+    def test_retries_then_succeeds(
+        self, mock_sleep, test_domain, options, domain_enabled, error
+    ):
+        test_domain.config["server"]["transient_retry"]["enabled"] = domain_enabled
         attempts = 0
 
         class H(BaseCommandHandler):
@@ -364,9 +400,9 @@ class TestTransientRetryBehavior:
                 nonlocal attempts
                 attempts += 1
                 if attempts == 1:
-                    raise ConnectionError("transient")
+                    raise error
 
-        test_domain.register(H, part_of=User, retries=3)
+        test_domain.register(H, part_of=User, **options)
         test_domain.init(traverse=False)
 
         H._handle(_enrich(test_domain))
@@ -374,8 +410,66 @@ class TestTransientRetryBehavior:
         assert attempts == 2
         mock_sleep.assert_called_once()
 
+    @pytest.mark.parametrize(
+        "options, domain_enabled, error",
+        [
+            # Without opt-in, a transient error is NOT retried.
+            ({}, False, ConnectionError("boom")),
+            ({"retries": 3}, False, ValueError("business rule")),
+            ({"retries": 0}, True, ConnectionError("boom")),
+            # Overriding retry_exceptions drops the default transient set.
+            (
+                {"retries": 2, "retry_exceptions": [CustomTransient]},
+                False,
+                ConnectionError("not in custom list"),
+            ),
+        ],
+        ids=[
+            "disabled-by-default",
+            "non-transient-error",
+            "zero-retries-beats-domain-enable",
+            "custom-list-excludes-defaults",
+        ],
+    )
     @patch("protean.utils.mixins.time.sleep")
-    def test_exhausts_retries_and_raises(self, mock_sleep, test_domain):
+    def test_error_propagates_without_retry(
+        self, mock_sleep, test_domain, options, domain_enabled, error
+    ):
+        test_domain.config["server"]["transient_retry"]["enabled"] = domain_enabled
+        attempts = 0
+
+        class H(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                nonlocal attempts
+                attempts += 1
+                raise error
+
+        test_domain.register(H, part_of=User, **options)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(type(error), match=str(error)):
+            H._handle(_enrich(test_domain))
+
+        assert attempts == 1
+        mock_sleep.assert_not_called()
+
+
+class TestPerHandlerBackoff:
+    @pytest.mark.parametrize(
+        "backoff, base, delays",
+        [
+            ("fixed", 0.25, [0.25, 0.25, 0.25]),
+            ("linear", 0.1, [0.1, 0.2, 0.3]),
+            ("exponential", 0.1, [0.1, 0.2, 0.4]),
+        ],
+    )
+    @patch("protean.utils.mixins.time.sleep")
+    def test_exhausts_retries_with_the_handler_backoff(
+        self, mock_sleep, test_domain, backoff, base, delays
+    ):
+        """The handler's backoff sets the delays, and the last error propagates
+        once the retries run out."""
         attempts = 0
 
         class H(BaseCommandHandler):
@@ -385,203 +479,21 @@ class TestTransientRetryBehavior:
                 attempts += 1
                 raise TimeoutError("still down")
 
-        test_domain.register(H, part_of=User, retries=3)
+        test_domain.register(H, part_of=User, retries=3, backoff=backoff)
         test_domain.init(traverse=False)
+        test_domain.config["server"]["transient_retry"]["base_delay_seconds"] = base
 
         with pytest.raises(TimeoutError, match="still down"):
             H._handle(_enrich(test_domain))
 
         # initial + 3 retries = 4 attempts, 3 sleeps
         assert attempts == 4
-        assert mock_sleep.call_count == 3
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_non_transient_error_propagates_immediately(self, mock_sleep, test_domain):
-        attempts = 0
-
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempts
-                attempts += 1
-                raise ValueError("business rule")
-
-        test_domain.register(H, part_of=User, retries=3)
-        test_domain.init(traverse=False)
-
-        with pytest.raises(ValueError, match="business rule"):
-            H._handle(_enrich(test_domain))
-
-        assert attempts == 1
-        mock_sleep.assert_not_called()
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_zero_retries_disables_even_when_domain_enabled(
-        self, mock_sleep, test_domain
-    ):
-        test_domain.config["server"]["transient_retry"]["enabled"] = True
-
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                raise ConnectionError("boom")
-
-        test_domain.register(H, part_of=User, retries=0)
-        test_domain.init(traverse=False)
-
-        with pytest.raises(ConnectionError):
-            H._handle(_enrich(test_domain))
-
-        mock_sleep.assert_not_called()
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_domain_level_enable_applies_without_per_handler_opt(
-        self, mock_sleep, test_domain
-    ):
-        test_domain.config["server"]["transient_retry"]["enabled"] = True
-        attempts = 0
-
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempts
-                attempts += 1
-                if attempts == 1:
-                    raise ConnectionError("transient")
-
-        test_domain.register(H, part_of=User)
-        test_domain.init(traverse=False)
-
-        H._handle(_enrich(test_domain))
-
-        assert attempts == 2
-        mock_sleep.assert_called_once()
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_per_handler_retry_exceptions_override(self, mock_sleep, test_domain):
-        """A custom exception list retries only the listed types."""
-
-        class CustomTransient(Exception):
-            pass
-
-        attempts = 0
-
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempts
-                attempts += 1
-                if attempts == 1:
-                    raise CustomTransient("blip")
-
-        test_domain.register(
-            H, part_of=User, retries=2, retry_exceptions=[CustomTransient]
-        )
-        test_domain.init(traverse=False)
-
-        H._handle(_enrich(test_domain))
-        assert attempts == 2
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_retry_exceptions_override_excludes_defaults(self, mock_sleep, test_domain):
-        """Overriding retry_exceptions drops the default transient set."""
-
-        class CustomTransient(Exception):
-            pass
-
-        attempts = 0
-
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempts
-                attempts += 1
-                raise ConnectionError("not in custom list")
-
-        test_domain.register(
-            H, part_of=User, retries=2, retry_exceptions=[CustomTransient]
-        )
-        test_domain.init(traverse=False)
-
-        with pytest.raises(ConnectionError):
-            H._handle(_enrich(test_domain))
-        assert attempts == 1  # ConnectionError no longer transient
-        mock_sleep.assert_not_called()
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_send_error_is_transient(self, mock_sleep, test_domain):
-        attempts = 0
-
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempts
-                attempts += 1
-                if attempts == 1:
-                    raise SendError("gateway blip")
-
-        test_domain.register(H, part_of=User, retries=2)
-        test_domain.init(traverse=False)
-
-        H._handle(_enrich(test_domain))
-        assert attempts == 2
-
-
-class TestPerHandlerBackoff:
-    @patch("protean.utils.mixins.time.sleep")
-    def test_fixed_backoff(self, mock_sleep, test_domain):
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                raise ConnectionError("down")
-
-        test_domain.register(H, part_of=User, retries=3, backoff="fixed")
-        test_domain.init(traverse=False)
-        test_domain.config["server"]["transient_retry"]["base_delay_seconds"] = 0.25
-
-        with pytest.raises(ConnectionError):
-            H._handle(_enrich(test_domain))
-
-        delays = [c.args[0] for c in mock_sleep.call_args_list]
-        assert delays == pytest.approx([0.25, 0.25, 0.25])
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_linear_backoff(self, mock_sleep, test_domain):
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                raise ConnectionError("down")
-
-        test_domain.register(H, part_of=User, retries=3, backoff="linear")
-        test_domain.init(traverse=False)
-        test_domain.config["server"]["transient_retry"]["base_delay_seconds"] = 0.1
-
-        with pytest.raises(ConnectionError):
-            H._handle(_enrich(test_domain))
-
-        delays = [c.args[0] for c in mock_sleep.call_args_list]
-        assert delays == pytest.approx([0.1, 0.2, 0.3])
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_exponential_backoff(self, mock_sleep, test_domain):
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                raise ConnectionError("down")
-
-        test_domain.register(H, part_of=User, retries=3, backoff="exponential")
-        test_domain.init(traverse=False)
-        test_domain.config["server"]["transient_retry"]["base_delay_seconds"] = 0.1
-
-        with pytest.raises(ConnectionError):
-            H._handle(_enrich(test_domain))
-
-        delays = [c.args[0] for c in mock_sleep.call_args_list]
-        assert delays == pytest.approx([0.1, 0.2, 0.4])
+        delays_slept = [c.args[0] for c in mock_sleep.call_args_list]
+        assert delays_slept == pytest.approx(delays)
 
 
 # ---------------------------------------------------------------------------
-# Event handler coverage
+# Event handlers retry transient errors
 # ---------------------------------------------------------------------------
 
 
@@ -616,27 +528,6 @@ class TestEventHandlerTransientRetry:
 
 
 class TestVersionAndTransientInteraction:
-    @patch("protean.utils.mixins.time.sleep")
-    def test_version_retry_still_works_when_transient_enabled(
-        self, mock_sleep, test_domain
-    ):
-        attempts = 0
-
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempts
-                attempts += 1
-                if attempts == 1:
-                    raise ExpectedVersionError("conflict")
-
-        # Transient enabled per-handler; version retry uses domain defaults.
-        test_domain.register(H, part_of=User, retries=2)
-        test_domain.init(traverse=False)
-
-        H._handle(_enrich(test_domain))
-        assert attempts == 2
-
     @patch("protean.utils.mixins.time.sleep")
     def test_independent_counters(self, mock_sleep, test_domain):
         """Version and transient retries use separate budgets."""
@@ -703,15 +594,9 @@ class TestFreshUnitOfWorkPerAttempt:
 
 
 class TestTransientRetryMetric:
-    def test_handler_retried_counter_registered(self, test_domain):
-        from protean.utils.telemetry import get_domain_metrics
-
-        metrics = get_domain_metrics(current_domain)
-        assert hasattr(metrics, "handler_retried")
-
     @patch("protean.utils.mixins.time.sleep")
-    def test_retry_records_metric(self, mock_sleep, test_domain):
-        """The retry path increments the counter without raising."""
+    def test_retry_records_metric(self, mock_sleep, test_domain, retried_points):
+        """Each transient retry adds one to ``protean.handler.retried``."""
         recorded = []
 
         class H(BaseCommandHandler):
@@ -724,13 +609,28 @@ class TestTransientRetryMetric:
         test_domain.register(H, part_of=User, retries=2)
         test_domain.init(traverse=False)
 
-        with patch("protean.utils.mixins._record_handler_retry") as rec:
-            H._handle(_enrich(test_domain))
-            assert rec.call_count == 1
+        H._handle(_enrich(test_domain))
 
+        points = retried_points()
+        assert len(points) == 1
+        assert points[0].value == 1
+        assert dict(points[0].attributes) == {
+            "handler_name": "H",
+            "handler_type": "COMMAND_HANDLER",
+            "exception": "ConnectionError",
+        }
+
+    @pytest.mark.parametrize(
+        "error",
+        [None, ValueError("business rule")],
+        ids=["success", "non-transient-error"],
+    )
     @patch("protean.utils.mixins.time.sleep")
-    def test_metric_not_recorded_on_success(self, mock_sleep, test_domain):
-        """Negative path: the counter does NOT fire when no retry happens.
+    def test_metric_not_recorded_without_a_retry(
+        self, mock_sleep, test_domain, retried_points, error
+    ):
+        """Negative path: the counter does NOT fire when no retry happens,
+        even when retries are enabled.
 
         Guards against the `protean.handler.retried` emission drifting beyond
         its stated scope (only actual transient retries).
@@ -739,32 +639,19 @@ class TestTransientRetryMetric:
         class H(BaseCommandHandler):
             @handle(RenameUser)
             def rename(self, command: RenameUser) -> None:
-                pass  # succeeds immediately
+                if error is not None:
+                    raise error
 
         test_domain.register(H, part_of=User, retries=2)
         test_domain.init(traverse=False)
 
-        with patch("protean.utils.mixins._record_handler_retry") as rec:
+        if error is None:
             H._handle(_enrich(test_domain))
-            rec.assert_not_called()
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_metric_not_recorded_for_non_transient_error(self, mock_sleep, test_domain):
-        """Negative path: a non-transient error propagates without a retry
-        metric, even when retries are enabled."""
-
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                raise ValueError("business rule")
-
-        test_domain.register(H, part_of=User, retries=2)
-        test_domain.init(traverse=False)
-
-        with patch("protean.utils.mixins._record_handler_retry") as rec:
+        else:
             with pytest.raises(ValueError):
                 H._handle(_enrich(test_domain))
-            rec.assert_not_called()
+
+        assert retried_points() == []
 
 
 class TestRecordHandlerRetry:
@@ -784,20 +671,32 @@ class TestRecordHandlerRetry:
         finally:
             _domain_context_stack.push(ctx)
 
-    def test_records_without_element_type(self, test_domain):
-        """The `element_type is None` branch labels handler_type 'unknown'."""
-        # Real (no-op) metrics registry; just assert it does not raise.
+    def test_records_without_element_type(self, test_domain, retried_points, caplog):
+        """A handler with no element type is labelled 'unknown', and a recorded
+        metric logs nothing."""
+        caplog.set_level(logging.DEBUG, logger="protean.utils.mixins")
+
         _record_handler_retry(self._Dummy(), ConnectionError("x"))
+
+        points = retried_points()
+        assert len(points) == 1
+        assert dict(points[0].attributes)["handler_type"] == "unknown"
+        assert not [
+            r
+            for r in caplog.records
+            if r.name == "protean.utils.mixins"
+            and r.getMessage().startswith("Could not record the handler retry metric")
+        ]
 
     def test_swallows_metric_errors(self, test_domain, caplog):
         """A failure inside metric recording never propagates, and is logged."""
         caplog.set_level(logging.DEBUG, logger="protean.utils.mixins")
-        with patch(
-            "protean.utils.mixins.get_domain_metrics",
-            side_effect=RuntimeError("metrics down"),
-        ):
-            # Must not raise — metrics must never break the retry path.
-            _record_handler_retry(self._Dummy(), ConnectionError("x"))
+        failing = Mock()
+        failing.add = Mock(side_effect=RuntimeError("metrics down"))
+        get_domain_metrics(test_domain).handler_retried = failing
+
+        # Must not raise — metrics must never break the retry path.
+        _record_handler_retry(self._Dummy(), ConnectionError("x"))
 
         records = [
             r
@@ -808,18 +707,6 @@ class TestRecordHandlerRetry:
         assert len(records) == 1
         assert records[0].levelno == logging.DEBUG
         assert str(records[0].exc_info[1]) == "metrics down"
-
-    def test_recorded_metric_logs_nothing(self, test_domain, caplog):
-        caplog.set_level(logging.DEBUG, logger="protean.utils.mixins")
-
-        _record_handler_retry(self._Dummy(), ConnectionError("x"))
-
-        assert not [
-            r
-            for r in caplog.records
-            if r.name == "protean.utils.mixins"
-            and r.getMessage().startswith("Could not record the handler retry metric")
-        ]
 
 
 # ---------------------------------------------------------------------------
@@ -869,21 +756,22 @@ class TestDeadlineExceededHelper:
         g.message_in_context = _message_with_deadline(test_domain, None)
         assert _deadline_exceeded_after(10.0) is False
 
-    def test_past_deadline_is_exceeded(self, test_domain):
-        past = datetime.now(UTC) - timedelta(seconds=1)
-        g.message_in_context = _message_with_deadline(test_domain, past)
-        assert _deadline_exceeded_after(0.0) is True
-
-    def test_far_future_deadline_not_exceeded(self, test_domain):
-        future = datetime.now(UTC) + timedelta(minutes=5)
-        g.message_in_context = _message_with_deadline(test_domain, future)
-        assert _deadline_exceeded_after(0.1) is False
-
-    def test_deadline_within_backoff_window_is_exceeded(self, test_domain):
-        near = datetime.now(UTC) + timedelta(seconds=1)
-        g.message_in_context = _message_with_deadline(test_domain, near)
-        # Sleeping an hour would start the next attempt well past the deadline.
-        assert _deadline_exceeded_after(3600.0) is True
+    @pytest.mark.parametrize(
+        "offset, delay, exceeded",
+        [
+            (timedelta(seconds=-1), 0.0, True),
+            (timedelta(minutes=5), 0.1, False),
+            # Sleeping an hour would start the next attempt well past the deadline.
+            (timedelta(seconds=1), 3600.0, True),
+        ],
+        ids=["past-deadline", "far-future-deadline", "deadline-within-backoff"],
+    )
+    def test_deadline_against_the_next_attempt(
+        self, test_domain, offset, delay, exceeded
+    ):
+        deadline = datetime.now(UTC) + offset
+        g.message_in_context = _message_with_deadline(test_domain, deadline)
+        assert _deadline_exceeded_after(delay) is exceeded
 
 
 class TestRetryRespectsDeadline:
@@ -892,10 +780,21 @@ class TestRetryRespectsDeadline:
         yield
         g.pop("message_in_context", None)
 
+    @pytest.mark.parametrize(
+        "offset, backoff, base",
+        [
+            (timedelta(seconds=-1), "exponential", None),
+            # Huge backoff so the next attempt would start past the 1s deadline.
+            (timedelta(seconds=1), "fixed", 3600),
+        ],
+        ids=["deadline-passed", "deadline-within-backoff"],
+    )
     @patch("protean.utils.mixins.time.sleep")
-    def test_transient_retry_stops_when_deadline_passed(self, mock_sleep, test_domain):
-        """An already-elapsed deadline suppresses the transient retry."""
-        past = datetime.now(UTC) - timedelta(seconds=1)
+    def test_transient_retry_stops_at_the_deadline(
+        self, mock_sleep, test_domain, offset, backoff, base
+    ):
+        """An elapsed deadline, or a backoff that would push the next attempt
+        past it, suppresses the transient retry."""
         attempts = 0
 
         class H(BaseCommandHandler):
@@ -905,41 +804,17 @@ class TestRetryRespectsDeadline:
                 attempts += 1
                 raise ConnectionError("transient")
 
-        test_domain.register(H, part_of=User, retries=3)
+        test_domain.register(H, part_of=User, retries=3, backoff=backoff)
         test_domain.init(traverse=False)
+        if base is not None:
+            test_domain.config["server"]["transient_retry"]["base_delay_seconds"] = base
 
-        g.message_in_context = _message_with_deadline(test_domain, past)
+        deadline = datetime.now(UTC) + offset
+        g.message_in_context = _message_with_deadline(test_domain, deadline)
         with pytest.raises(ConnectionError):
             H._handle(_enrich(test_domain))
 
         assert attempts == 1  # first attempt only — no retry past the deadline
-        mock_sleep.assert_not_called()
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_transient_retry_stops_when_deadline_within_backoff(
-        self, mock_sleep, test_domain
-    ):
-        """Stops when the backoff would push the next attempt past the deadline."""
-        near = datetime.now(UTC) + timedelta(seconds=1)
-        attempts = 0
-
-        class H(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempts
-                attempts += 1
-                raise ConnectionError("transient")
-
-        test_domain.register(H, part_of=User, retries=3, backoff="fixed")
-        test_domain.init(traverse=False)
-        # Huge backoff so the next attempt would start past the 1s deadline.
-        test_domain.config["server"]["transient_retry"]["base_delay_seconds"] = 3600
-
-        g.message_in_context = _message_with_deadline(test_domain, near)
-        with pytest.raises(ConnectionError):
-            H._handle(_enrich(test_domain))
-
-        assert attempts == 1
         mock_sleep.assert_not_called()
 
     @patch("protean.utils.mixins.time.sleep")

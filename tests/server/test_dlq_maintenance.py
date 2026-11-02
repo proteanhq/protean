@@ -9,9 +9,10 @@ Covers:
 - Graceful handling when no DLQ-capable broker exists
 """
 
+import asyncio
 import contextlib
 import logging
-from unittest.mock import MagicMock, patch
+import os.path
 
 import pytest
 
@@ -19,14 +20,23 @@ from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.exceptions import ConfigurationError
 from protean.fields import String
+from protean.port.broker import BrokerCapabilities
 from protean.server.dlq_maintenance import (
     DLQMaintenanceTask,
     _resolve_callback,
     _retention_hours_to_min_id,
 )
-from protean.utils.dlq import discover_subscriptions
+from protean.server.engine import Engine
+from protean.server.subscription.profiles import (
+    SubscriptionConfig,
+    SubscriptionProfile,
+)
+from protean.utils.dlq import SubscriptionInfo, discover_subscriptions
 from protean.utils.telemetry import get_domain_metrics
+
+_LOGGER = "protean.server.dlq_maintenance"
 
 # ── Domain elements ──────────────────────────────────────────────────────
 
@@ -43,16 +53,21 @@ class DLQMaintHandler(BaseEventHandler):
     pass
 
 
+class DLQMaintOtherHandler(BaseEventHandler):
+    pass
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
 class FakeBroker:
-    """Minimal broker stub supporting DLQ operations for testing."""
+    """Stands in for the Redis broker, the only one that trims a DLQ and reports
+    its depth."""
 
-    def __init__(self) -> None:
-        from protean.port.broker import BrokerCapabilities
-
-        self._capabilities = BrokerCapabilities.DEAD_LETTER_QUEUE
+    def __init__(
+        self, capabilities: BrokerCapabilities = BrokerCapabilities.DEAD_LETTER_QUEUE
+    ) -> None:
+        self._capabilities = capabilities
         self._trim_calls: list[tuple[str, str]] = []
         self._depths: dict[str, int] = {}
         self._trim_returns: dict[str, int] = {}
@@ -69,7 +84,11 @@ class FakeBroker:
 
 
 class FakeSubscription:
-    """Minimal subscription stub with config and dlq_stream."""
+    """A subscription that carries DLQ overrides on its config.
+
+    The engine's own subscriptions expose no ``config``, so only a stand-in can
+    feed per-subscription overrides to the task.
+    """
 
     def __init__(
         self,
@@ -78,16 +97,35 @@ class FakeSubscription:
         dlq_alert_threshold: int | None = None,
     ) -> None:
         self.dlq_stream = dlq_stream
-        self.config = MagicMock()
-        self.config.dlq_retention_hours = dlq_retention_hours
-        self.config.dlq_alert_threshold = dlq_alert_threshold
+        self.config = SubscriptionConfig(
+            dlq_retention_hours=dlq_retention_hours,
+            dlq_alert_threshold=dlq_alert_threshold,
+        )
 
 
-def _setup_domain():
-    """Create and initialize a Domain with handler elements registered."""
+def _setup_domain(dlq_config: dict | None = None):
+    """Create a Domain on the inline broker, with optional ``[server.dlq]``."""
     domain = Domain(__file__, "DLQTest")
     domain.config["brokers"] = {"default": {"provider": "inline"}}
+    if dlq_config is not None:
+        domain.config["server"]["dlq"] = dlq_config
     return domain
+
+
+def _register_handler(domain) -> None:
+    domain.register(DLQMaintAggregate)
+    domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
+    domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
+    domain.init(traverse=False)
+
+
+def _dlq_config(alert_threshold: int = 1000) -> dict:
+    return {
+        "retention_hours": 168,
+        "alert_threshold": alert_threshold,
+        "alert_callback": None,
+        "check_interval_seconds": 60,
+    }
 
 
 def _get_dlq_stream(domain) -> str:
@@ -97,64 +135,67 @@ def _get_dlq_stream(domain) -> str:
     return subs[0].dlq_stream
 
 
+def _messages(caplog, message: str) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.getMessage() == message]
+
+
 # ── Unit tests ───────────────────────────────────────────────────────────
 
 
 class TestRetentionHoursToMinId:
-    def test_returns_millisecond_format(self):
-        min_id = _retention_hours_to_min_id(24)
-        assert min_id.endswith("-0")
-        ts = int(min_id.split("-")[0])
-        assert ts > 0
-
-    def test_larger_retention_gives_smaller_id(self):
+    def test_min_id_is_a_millisecond_cutoff_that_falls_with_retention(self):
         id_7d = _retention_hours_to_min_id(168)
         id_1d = _retention_hours_to_min_id(24)
+
+        assert id_1d.endswith("-0")
+        assert int(id_1d.split("-")[0]) > 0
         assert int(id_7d.split("-")[0]) < int(id_1d.split("-")[0])
 
 
 class TestResolveCallback:
-    def test_none_returns_none(self):
-        assert _resolve_callback(None) is None
-
-    def test_empty_returns_none(self):
-        assert _resolve_callback("") is None
+    @pytest.mark.parametrize(
+        "path",
+        [
+            None,
+            "",
+            "no_such_module.func",
+            "os.path.no_such_attr_xyz",
+            "justafunc",
+            # os.path.sep is a string, not callable
+            "os.path.sep",
+        ],
+        ids=[
+            "none",
+            "empty",
+            "invalid_module",
+            "invalid_attr",
+            "no_dot",
+            "non_callable",
+        ],
+    )
+    def test_unusable_path_returns_none(self, path):
+        assert _resolve_callback(path) is None
 
     def test_valid_import(self):
-        cb = _resolve_callback("os.path.exists")
-        import os.path
-
-        assert cb is os.path.exists
-
-    def test_invalid_module_returns_none(self):
-        assert _resolve_callback("no_such_module.func") is None
-
-    def test_invalid_attr_returns_none(self):
-        assert _resolve_callback("os.path.no_such_attr_xyz") is None
-
-    def test_no_dot_returns_none(self):
-        assert _resolve_callback("justafunc") is None
+        assert _resolve_callback("os.path.exists") is os.path.exists
 
 
 class TestDLQMaintenanceTaskInit:
     @pytest.mark.no_test_domain
     def test_reads_global_config(self):
-        domain = _setup_domain()
-        domain.config["server"]["dlq"] = {
-            "retention_hours": 48,
-            "alert_threshold": 50,
-            "alert_callback": None,
-            "check_interval_seconds": 30,
-        }
+        domain = _setup_domain(
+            {
+                "retention_hours": 48,
+                "alert_threshold": 50,
+                "alert_callback": None,
+                "check_interval_seconds": 30,
+            }
+        )
 
         with domain.domain_context():
             domain.init(traverse=False)
 
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-
-            task = DLQMaintenanceTask(engine)
+            task = DLQMaintenanceTask(Engine(domain, test_mode=True))
 
             assert task.retention_hours == 48
             assert task.alert_threshold == 50
@@ -167,15 +208,14 @@ class TestDLQMaintenanceTaskInit:
         with domain.domain_context():
             domain.init(traverse=False)
 
-            engine = MagicMock()
-            engine.domain = domain
-
-            sub = FakeSubscription(
-                "order:dlq",
-                dlq_retention_hours=24,
-                dlq_alert_threshold=10,
-            )
-            engine._subscriptions = {"order-handler": sub}
+            engine = Engine(domain, test_mode=True)
+            engine._subscriptions = {
+                "order-handler": FakeSubscription(
+                    "order:dlq",
+                    dlq_retention_hours=24,
+                    dlq_alert_threshold=10,
+                )
+            }
 
             task = DLQMaintenanceTask(engine)
 
@@ -188,35 +228,22 @@ class TestDLQMaintenanceCycle:
     @pytest.mark.asyncio
     async def test_trims_old_messages(self):
         """Messages older than retention are trimmed via broker.dlq_trim."""
-        domain = _setup_domain()
-        domain.config["server"]["dlq"] = {
-            "retention_hours": 168,
-            "alert_threshold": 1000,
-            "alert_callback": None,
-            "check_interval_seconds": 60,
-        }
+        domain = _setup_domain(_dlq_config())
 
         with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
+            _register_handler(domain)
 
             dlq_stream = _get_dlq_stream(domain)
             fake_broker = FakeBroker()
             fake_broker._trim_returns[dlq_stream] = 5
 
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-            engine.shutting_down = False
+            engine = Engine(domain, test_mode=True)
             domain.brokers._brokers = {"default": fake_broker}
 
             task = DLQMaintenanceTask(engine)
             await task._maintenance_cycle()
 
             trimmed_streams = [call[0] for call in fake_broker._trim_calls]
-            assert len(trimmed_streams) > 0, "Expected trim to be called"
             assert dlq_stream in trimmed_streams
 
             metrics = get_domain_metrics(domain)
@@ -226,30 +253,19 @@ class TestDLQMaintenanceCycle:
     @pytest.mark.asyncio
     async def test_per_profile_override_honored(self):
         """Per-subscription retention overrides the global default."""
-        domain = _setup_domain()
-        domain.config["server"]["dlq"] = {
-            "retention_hours": 168,
-            "alert_threshold": 1000,
-            "alert_callback": None,
-            "check_interval_seconds": 60,
-        }
+        domain = _setup_domain(_dlq_config())
 
         with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
+            _register_handler(domain)
 
             dlq_stream = _get_dlq_stream(domain)
             fake_broker = FakeBroker()
             fake_broker._trim_returns[dlq_stream] = 3
 
-            engine = MagicMock()
-            engine.domain = domain
-            engine.shutting_down = False
-
-            sub = FakeSubscription(dlq_stream, dlq_retention_hours=24)
-            engine._subscriptions = {"handler": sub}
+            engine = Engine(domain, test_mode=True)
+            engine._subscriptions = {
+                "handler": FakeSubscription(dlq_stream, dlq_retention_hours=24)
+            }
             domain.brokers._brokers = {"default": fake_broker}
 
             task = DLQMaintenanceTask(engine)
@@ -264,41 +280,34 @@ class TestDLQMaintenanceCycle:
 
     @pytest.mark.no_test_domain
     @pytest.mark.asyncio
-    async def test_alert_fires_when_threshold_exceeded(self):
-        """Alert logs warning when depth > threshold."""
-        domain = _setup_domain()
-        domain.config["server"]["dlq"] = {
-            "retention_hours": 168,
-            "alert_threshold": 5,
-            "alert_callback": None,
-            "check_interval_seconds": 60,
-        }
+    @pytest.mark.parametrize(
+        "depth, threshold, alerts",
+        [(10, 5, True), (5, 100, False)],
+        ids=["above_threshold", "below_threshold"],
+    )
+    async def test_alert_fires_only_when_threshold_reached(
+        self, caplog, depth, threshold, alerts
+    ):
+        """A WARNING is logged when the depth reaches the threshold, and only then."""
+        domain = _setup_domain(_dlq_config(alert_threshold=threshold))
 
         with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
+            _register_handler(domain)
 
             dlq_stream = _get_dlq_stream(domain)
             fake_broker = FakeBroker()
-            fake_broker._depths[dlq_stream] = 10
+            fake_broker._depths[dlq_stream] = depth
 
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-            engine.shutting_down = False
+            engine = Engine(domain, test_mode=True)
             domain.brokers._brokers = {"default": fake_broker}
 
             task = DLQMaintenanceTask(engine)
 
-            with patch.object(
-                logging.getLogger("protean.server.dlq_maintenance"),
-                "warning",
-            ) as mock_warn:
+            with caplog.at_level(logging.WARNING, logger=_LOGGER):
                 await task._maintenance_cycle()
-                assert mock_warn.call_count > 0
-                assert "threshold_exceeded" in str(mock_warn.call_args)
+
+        warnings = _messages(caplog, "dlq_maintenance.threshold_exceeded")
+        assert bool(warnings) is alerts
 
     @pytest.mark.no_test_domain
     @pytest.mark.asyncio
@@ -309,28 +318,16 @@ class TestDLQMaintenanceCycle:
         def my_callback(**kwargs):
             callback_calls.append(kwargs)
 
-        domain = _setup_domain()
-        domain.config["server"]["dlq"] = {
-            "retention_hours": 168,
-            "alert_threshold": 5,
-            "alert_callback": None,
-            "check_interval_seconds": 60,
-        }
+        domain = _setup_domain(_dlq_config(alert_threshold=5))
 
         with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
+            _register_handler(domain)
 
             dlq_stream = _get_dlq_stream(domain)
             fake_broker = FakeBroker()
             fake_broker._depths[dlq_stream] = 20
 
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-            engine.shutting_down = False
+            engine = Engine(domain, test_mode=True)
             domain.brokers._brokers = {"default": fake_broker}
 
             task = DLQMaintenanceTask(engine)
@@ -345,39 +342,30 @@ class TestDLQMaintenanceCycle:
 
     @pytest.mark.no_test_domain
     @pytest.mark.asyncio
-    async def test_callback_exception_does_not_crash(self):
+    async def test_callback_exception_does_not_crash(self, caplog):
         """A failing callback is caught and logged, not propagated."""
 
         def bad_callback(**kwargs):
             raise RuntimeError("callback exploded")
 
-        domain = _setup_domain()
-        domain.config["server"]["dlq"] = {
-            "retention_hours": 168,
-            "alert_threshold": 1,
-            "alert_callback": None,
-            "check_interval_seconds": 60,
-        }
+        domain = _setup_domain(_dlq_config(alert_threshold=1))
 
         with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
+            _register_handler(domain)
 
             dlq_stream = _get_dlq_stream(domain)
             fake_broker = FakeBroker()
             fake_broker._depths[dlq_stream] = 10
 
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-            engine.shutting_down = False
+            engine = Engine(domain, test_mode=True)
             domain.brokers._brokers = {"default": fake_broker}
 
             task = DLQMaintenanceTask(engine)
             task.alert_callback = bad_callback
-            await task._maintenance_cycle()
+            with caplog.at_level(logging.ERROR, logger=_LOGGER):
+                await task._maintenance_cycle()
+
+        assert len(_messages(caplog, "dlq_maintenance.callback_failed")) == 1
 
     @pytest.mark.no_test_domain
     @pytest.mark.asyncio
@@ -386,90 +374,32 @@ class TestDLQMaintenanceCycle:
         domain = _setup_domain()
 
         with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
+            _register_handler(domain)
 
-            no_dlq_broker = MagicMock()
-            no_dlq_broker.has_capability.return_value = False
-
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-            engine.shutting_down = False
+            no_dlq_broker = FakeBroker(BrokerCapabilities.RELIABLE_MESSAGING)
+            engine = Engine(domain, test_mode=True)
             domain.brokers._brokers = {"default": no_dlq_broker}
 
             task = DLQMaintenanceTask(engine)
             await task._maintenance_cycle()
 
-    @pytest.mark.no_test_domain
-    @pytest.mark.asyncio
-    async def test_no_alert_when_below_threshold(self):
-        """No alert when DLQ depth is below threshold."""
-        domain = _setup_domain()
-        domain.config["server"]["dlq"] = {
-            "retention_hours": 168,
-            "alert_threshold": 100,
-            "alert_callback": None,
-            "check_interval_seconds": 60,
-        }
-
-        with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
-
-            dlq_stream = _get_dlq_stream(domain)
-            fake_broker = FakeBroker()
-            fake_broker._depths[dlq_stream] = 5
-
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-            engine.shutting_down = False
-            domain.brokers._brokers = {"default": fake_broker}
-
-            task = DLQMaintenanceTask(engine)
-
-            with patch.object(
-                logging.getLogger("protean.server.dlq_maintenance"),
-                "warning",
-            ) as mock_warn:
-                await task._maintenance_cycle()
-                for call in mock_warn.call_args_list:
-                    assert "threshold_exceeded" not in str(call)
-
-
-class TestDLQMaintenanceNonCallableCallback:
-    def test_non_callable_returns_none(self):
-        """_resolve_callback rejects non-callable attributes."""
-        # os.path.sep is a string, not callable
-        result = _resolve_callback("os.path.sep")
-        assert result is None
+            assert no_dlq_broker._trim_calls == []
 
 
 class TestDLQMaintenanceCollectStreams:
     @pytest.mark.no_test_domain
     def test_deduplicates_streams(self):
-        """_collect_unique_dlq_streams removes duplicates."""
+        """Two handlers on one stream category share one DLQ stream, listed once."""
         domain = _setup_domain()
         with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
+            domain.register(DLQMaintOtherHandler, part_of=DLQMaintAggregate)
+            _register_handler(domain)
 
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
+            assert len(discover_subscriptions(domain)) == 2
 
-            task = DLQMaintenanceTask(engine)
-            # Should have at least one unique DLQ stream
-            assert len(task._dlq_streams_unique) > 0
-            # All entries should be unique
-            assert len(task._dlq_streams_unique) == len(set(task._dlq_streams_unique))
+            task = DLQMaintenanceTask(Engine(domain, test_mode=True))
+
+            assert task._dlq_streams_unique == [_get_dlq_stream(domain)]
 
 
 class TestDLQMaintenanceStartAndRun:
@@ -477,23 +407,19 @@ class TestDLQMaintenanceStartAndRun:
     @pytest.mark.asyncio
     async def test_start_creates_named_task(self):
         """start() creates a task with the maintenance loop."""
-        import asyncio
-
         domain = _setup_domain()
         with domain.domain_context():
             domain.init(traverse=False)
 
-            loop = asyncio.get_event_loop()
-            engine = MagicMock()
-            engine.domain = domain
-            engine.loop = loop
-            engine._subscriptions = {}
-            engine.shutting_down = False
+            engine = Engine(domain, test_mode=True)
+            # The engine runs its own loop in production; here the test's loop
+            # stands in so the created task is visible.
+            engine.loop.close()
+            engine.loop = asyncio.get_running_loop()
 
             task = DLQMaintenanceTask(engine)
             await task.start()
 
-            # The loop task should exist
             running_tasks = [
                 t
                 for t in asyncio.all_tasks()
@@ -510,79 +436,57 @@ class TestDLQMaintenanceStartAndRun:
 
     @pytest.mark.no_test_domain
     @pytest.mark.asyncio
-    async def test_run_stops_when_shutting_down(self):
-        """_run exits when engine.shutting_down is set."""
+    async def test_run_survives_a_failed_cycle_and_stops_on_shutdown(self, caplog):
+        """_run logs a failed cycle, runs the next one, and exits once the engine
+        is shutting down."""
         domain = _setup_domain()
         with domain.domain_context():
-            domain.init(traverse=False)
+            _register_handler(domain)
 
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-            engine.shutting_down = False
+            engine = Engine(domain, test_mode=True)
+            checks = 0
+
+            class _DroppingBroker(FakeBroker):
+                """Loses its connection on the first cycle; the engine starts
+                shutting down during the second."""
+
+                def has_capability(self, cap) -> bool:
+                    nonlocal checks
+                    checks += 1
+                    if checks == 1:
+                        raise ConnectionError("connection dropped")
+                    engine.shutting_down = True
+                    return super().has_capability(cap)
+
+            domain.brokers._brokers = {"default": _DroppingBroker()}
 
             task = DLQMaintenanceTask(engine)
-            task.check_interval = 0  # No sleep
+            task.check_interval = 0
 
-            # Simulate shutting_down after first check
-            call_count = 0
+            with caplog.at_level(logging.ERROR, logger=_LOGGER):
+                await task._run()
 
-            async def mock_cycle():
-                nonlocal call_count
-                call_count += 1
-                engine.shutting_down = True
-
-            task._maintenance_cycle = mock_cycle
-            await task._run()
-            # Should have run at most once before stopping
-            assert call_count <= 1
+        assert checks == 2  # Continued after the first failure, then stopped
+        assert len(_messages(caplog, "dlq_maintenance.cycle_failed")) == 1
 
 
 class TestBaseBrokerDefaultMethods:
-    def test_dlq_trim_returns_zero(self, test_domain):
-        """BaseBroker.dlq_trim default returns 0."""
+    def test_dlq_trim_and_depth_default_to_zero(self, test_domain):
+        """BaseBroker.dlq_trim and dlq_depth return 0 by default."""
         broker = test_domain.brokers["default"]
-        result = broker.dlq_trim("some:dlq", "0-0")
-        assert result == 0
-
-    def test_dlq_depth_returns_zero(self, test_domain):
-        """BaseBroker.dlq_depth default returns 0."""
-        broker = test_domain.brokers["default"]
-        result = broker.dlq_depth("some:dlq")
-        assert result == 0
+        assert broker.dlq_trim("some:dlq", "0-0") == 0
+        assert broker.dlq_depth("some:dlq") == 0
 
 
 class TestSubscriptionConfigDLQOverrides:
-    def test_from_profile_passes_dlq_overrides(self):
-        """from_profile correctly passes dlq override values."""
-        from protean.server.subscription.profiles import (
-            SubscriptionConfig,
-            SubscriptionProfile,
-        )
-
-        config = SubscriptionConfig.from_profile(
-            SubscriptionProfile.PRODUCTION,
-            dlq_retention_hours=24,
-            dlq_alert_threshold=50,
-        )
-        assert config.dlq_retention_hours == 24
-        assert config.dlq_alert_threshold == 50
-
     def test_from_profile_defaults_none(self):
         """from_profile leaves dlq overrides as None when not specified."""
-        from protean.server.subscription.profiles import (
-            SubscriptionConfig,
-            SubscriptionProfile,
-        )
-
         config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
         assert config.dlq_retention_hours is None
         assert config.dlq_alert_threshold is None
 
     def test_from_dict_with_dlq_overrides(self):
         """from_dict reads dlq override keys."""
-        from protean.server.subscription.profiles import SubscriptionConfig
-
         config = SubscriptionConfig.from_dict(
             {
                 "dlq_retention_hours": 48,
@@ -592,38 +496,27 @@ class TestSubscriptionConfigDLQOverrides:
         assert config.dlq_retention_hours == 48
         assert config.dlq_alert_threshold == 25
 
-    def test_validation_rejects_negative_retention(self):
-        """Negative dlq_retention_hours raises ConfigurationError."""
-        from protean.exceptions import ConfigurationError
-        from protean.server.subscription.profiles import SubscriptionConfig
+    @pytest.mark.parametrize(
+        "kwargs, message",
+        [
+            ({"dlq_retention_hours": -1}, "dlq_retention_hours must be positive"),
+            ({"dlq_alert_threshold": 0}, "dlq_alert_threshold must be positive"),
+        ],
+        ids=["negative_retention", "zero_threshold"],
+    )
+    def test_validation_rejects_non_positive_values(self, kwargs, message):
+        with pytest.raises(ConfigurationError, match=message):
+            SubscriptionConfig(**kwargs)
 
-        with pytest.raises(
-            ConfigurationError, match="dlq_retention_hours must be positive"
-        ):
-            SubscriptionConfig(dlq_retention_hours=-1)
-
-    def test_validation_rejects_zero_threshold(self):
-        """Zero dlq_alert_threshold raises ConfigurationError."""
-        from protean.exceptions import ConfigurationError
-        from protean.server.subscription.profiles import SubscriptionConfig
-
-        with pytest.raises(
-            ConfigurationError, match="dlq_alert_threshold must be positive"
-        ):
-            SubscriptionConfig(dlq_alert_threshold=0)
-
-    def test_to_dict_includes_dlq_fields(self):
-        """to_dict includes dlq override fields."""
-        from protean.server.subscription.profiles import (
-            SubscriptionConfig,
-            SubscriptionProfile,
-        )
-
+    def test_from_profile_passes_dlq_overrides_into_to_dict(self):
+        """from_profile sets the dlq overrides and to_dict includes them."""
         config = SubscriptionConfig.from_profile(
             SubscriptionProfile.PRODUCTION,
             dlq_retention_hours=72,
             dlq_alert_threshold=200,
         )
+        assert config.dlq_retention_hours == 72
+        assert config.dlq_alert_threshold == 200
         d = config.to_dict()
         assert d["dlq_retention_hours"] == 72
         assert d["dlq_alert_threshold"] == 200
@@ -633,15 +526,10 @@ class TestEngineDLQMaintenanceIntegration:
     @pytest.mark.no_test_domain
     def test_engine_creates_dlq_maintenance_when_enabled(self):
         """Engine creates DLQMaintenanceTask when [server.dlq] enabled = true."""
-        from protean.server.engine import Engine
-
         domain = _setup_domain()
         domain.config["server"]["dlq"]["enabled"] = True
         with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
+            _register_handler(domain)
 
             engine = Engine(domain, test_mode=True)
             assert engine._dlq_maintenance is not None
@@ -650,14 +538,9 @@ class TestEngineDLQMaintenanceIntegration:
     @pytest.mark.no_test_domain
     def test_engine_skips_dlq_maintenance_when_disabled(self):
         """Engine does not create DLQMaintenanceTask when disabled (default)."""
-        from protean.server.engine import Engine
-
         domain = _setup_domain()
         with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
+            _register_handler(domain)
 
             engine = Engine(domain, test_mode=True)
             assert engine._dlq_maintenance is None
@@ -671,86 +554,22 @@ class TestDLQMaintenanceShutdown:
         with domain.domain_context():
             domain.init(traverse=False)
 
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-
-            task = DLQMaintenanceTask(engine)
+            task = DLQMaintenanceTask(Engine(domain, test_mode=True))
             assert task.keep_going is True
             await task.shutdown()
             assert task.keep_going is False
 
 
-class TestDLQMaintenanceSubscriberName:
-    @pytest.mark.no_test_domain
-    def test_subscriber_name(self):
-        domain = _setup_domain()
-        with domain.domain_context():
-            domain.init(traverse=False)
-
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-
-            task = DLQMaintenanceTask(engine)
-            assert task.subscriber_name == "dlq-maintenance"
-
-
-class TestDLQMaintenanceRunExceptionHandling:
-    @pytest.mark.no_test_domain
-    @pytest.mark.asyncio
-    async def test_run_handles_cycle_exception(self):
-        """_run logs and continues when _maintenance_cycle raises."""
-        domain = _setup_domain()
-        with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
-
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-            engine.shutting_down = False
-
-            task = DLQMaintenanceTask(engine)
-            task.check_interval = 0
-
-            call_count = 0
-
-            async def failing_cycle():
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    raise RuntimeError("boom")
-                # Stop after second call
-                task.keep_going = False
-
-            task._maintenance_cycle = failing_cycle
-            await task._run()
-            assert call_count == 2  # Continued after first exception
-
-
 class TestDLQMaintenancePerStreamException:
     @pytest.mark.no_test_domain
     @pytest.mark.asyncio
-    async def test_stream_exception_does_not_abort_cycle(self):
+    async def test_stream_exception_does_not_abort_cycle(self, caplog):
         """An exception on one stream doesn't prevent others from processing."""
-        domain = _setup_domain()
-        domain.config["server"]["dlq"] = {
-            "retention_hours": 168,
-            "alert_threshold": 1000,
-            "alert_callback": None,
-            "check_interval_seconds": 60,
-        }
+        domain = _setup_domain(_dlq_config())
 
         with domain.domain_context():
-            domain.register(DLQMaintAggregate)
-            domain.register(DLQMaintEvent, part_of=DLQMaintAggregate)
-            domain.register(DLQMaintHandler, part_of=DLQMaintAggregate)
-            domain.init(traverse=False)
+            _register_handler(domain)
 
-            # FakeBroker that raises on trim for one stream
             class FailingTrimBroker(FakeBroker):
                 def dlq_trim(self, dlq_stream, min_id):
                     if "fail" in dlq_stream:
@@ -758,47 +577,36 @@ class TestDLQMaintenancePerStreamException:
                     return super().dlq_trim(dlq_stream, min_id)
 
             fake_broker = FailingTrimBroker()
-
-            engine = MagicMock()
-            engine.domain = domain
-            engine._subscriptions = {}
-            engine.shutting_down = False
+            engine = Engine(domain, test_mode=True)
             domain.brokers._brokers = {"default": fake_broker}
 
             task = DLQMaintenanceTask(engine)
-            # Inject two DLQ streams — one will fail, one should succeed
+            # Two DLQ streams: one fails, the other must still be trimmed.
             dlq_stream = _get_dlq_stream(domain)
             task._dlq_streams_unique = ["fail:dlq", dlq_stream]
 
-            # Should complete without raising
-            await task._maintenance_cycle()
+            with caplog.at_level(logging.ERROR, logger=_LOGGER):
+                await task._maintenance_cycle()
+
+        assert [call[0] for call in fake_broker._trim_calls] == [dlq_stream]
+        assert len(_messages(caplog, "dlq_maintenance.stream_maintenance_failed")) == 1
 
 
 class TestDLQStreamsStaticMethod:
-    def test_includes_backfill_when_present(self):
-        """_dlq_streams includes backfill DLQ stream when present."""
-        from protean.utils.dlq import SubscriptionInfo
-
+    @pytest.mark.parametrize(
+        "backfill, expected",
+        [
+            ("orders:backfill:dlq", ["orders:dlq", "orders:backfill:dlq"]),
+            (None, ["orders:dlq"]),
+        ],
+        ids=["backfill_present", "backfill_none"],
+    )
+    def test_lists_the_backfill_stream_only_when_present(self, backfill, expected):
         info = SubscriptionInfo(
             handler_name="TestHandler",
             handler_fqn="test.TestHandler",
             stream_category="orders",
             dlq_stream="orders:dlq",
-            backfill_dlq_stream="orders:backfill:dlq",
+            backfill_dlq_stream=backfill,
         )
-        streams = DLQMaintenanceTask._dlq_streams(info)
-        assert streams == ["orders:dlq", "orders:backfill:dlq"]
-
-    def test_excludes_backfill_when_none(self):
-        """_dlq_streams skips backfill when None."""
-        from protean.utils.dlq import SubscriptionInfo
-
-        info = SubscriptionInfo(
-            handler_name="TestHandler",
-            handler_fqn="test.TestHandler",
-            stream_category="orders",
-            dlq_stream="orders:dlq",
-            backfill_dlq_stream=None,
-        )
-        streams = DLQMaintenanceTask._dlq_streams(info)
-        assert streams == ["orders:dlq"]
+        assert DLQMaintenanceTask._dlq_streams(info) == expected

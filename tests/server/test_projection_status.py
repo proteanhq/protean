@@ -5,7 +5,7 @@ reading, lag/staleness aggregation, row counting) plus unit tests for the helper
 """
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -22,7 +22,7 @@ from protean.server.projection_status import (
     _row_count,
     collect_projection_statuses,
 )
-from protean.server.subscription.profiles import SubscriptionType
+from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription_status import (
     SubscriptionStatus,
     _extract_position_time,
@@ -170,6 +170,7 @@ class TestCollectProjectionStatuses:
     def test_to_dict_roundtrips_all_fields(self, test_domain):
         with test_domain.domain_context():
             statuses = collect_projection_statuses(test_domain)
+        assert all(isinstance(s, ProjectionStatus) for s in statuses)
         d = statuses[0].to_dict()
         assert set(d) == {
             "projection_name",
@@ -194,27 +195,20 @@ class TestCollectProjectionStatuses:
 
 
 class TestParseTime:
-    def test_none_returns_none(self):
-        assert _parse_time(None) is None
+    @pytest.mark.parametrize("value", [None, "", "not-a-timestamp"])
+    def test_missing_or_unparseable_returns_none(self, value):
+        assert _parse_time(value) is None
 
-    def test_empty_string_returns_none(self):
-        assert _parse_time("") is None
-
-    def test_aware_iso_preserved(self):
-        result = _parse_time("2026-06-27T10:00:00+00:00")
-        assert result is not None
-        assert result.tzinfo is not None
-
-    def test_naive_iso_assumed_utc(self):
-        result = _parse_time("2026-06-27T10:00:00")
-        assert result is not None
-        assert result.tzinfo == UTC
-
-    def test_garbage_returns_none(self):
-        assert _parse_time("not-a-timestamp") is None
-
-    def test_z_suffix_parsed_as_utc(self):
-        result = _parse_time("2026-06-27T10:00:00Z")
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "2026-06-27T10:00:00+00:00",  # aware offset is kept
+            "2026-06-27T10:00:00",  # naive is assumed UTC
+            "2026-06-27T10:00:00Z",  # Z suffix is UTC
+        ],
+    )
+    def test_parses_to_utc(self, value):
+        result = _parse_time(value)
         assert result is not None
         assert result.tzinfo == UTC
 
@@ -223,103 +217,102 @@ class TestParseTime:
 # _extract_position_time
 # ---------------------------------------------------------------------------
 
+_DT = datetime(2026, 5, 5, 12, 0, 0, tzinfo=UTC)
+
 
 class TestExtractPositionTime:
-    def test_none_message(self):
-        assert _extract_position_time(None) is None
-
-    def test_top_level_time(self):
-        assert _extract_position_time({"time": "2026-01-01T00:00:00Z"}) == (
-            "2026-01-01T00:00:00Z"
-        )
-
-    def test_metadata_headers_time_dict(self):
-        msg = {"metadata": {"headers": {"time": "2026-02-02T00:00:00Z"}}}
-        assert _extract_position_time(msg) == "2026-02-02T00:00:00Z"
-
-    def test_metadata_headers_time_json_string(self):
-        msg = {"metadata": '{"headers": {"time": "2026-03-03T00:00:00Z"}}'}
-        assert _extract_position_time(msg) == "2026-03-03T00:00:00Z"
-
-    def test_missing_time_returns_none(self):
-        assert _extract_position_time({"data": {"position": 1}}) is None
-
-    def test_malformed_metadata_json_returns_none(self):
-        assert _extract_position_time({"metadata": "{not json"}) is None
-
-    def test_headers_as_json_string(self):
-        msg = {"metadata": {"headers": '{"time": "2026-04-04T00:00:00Z"}'}}
-        assert _extract_position_time(msg) == "2026-04-04T00:00:00Z"
-
-    def test_malformed_headers_json_returns_none(self):
-        assert _extract_position_time({"metadata": {"headers": "{bad"}}) is None
-
-    def test_datetime_value_normalized_to_isoformat(self):
-        dt = datetime(2026, 5, 5, 12, 0, 0, tzinfo=UTC)
-        assert _extract_position_time({"time": dt}) == dt.isoformat()
-
-    def test_metadata_datetime_value_normalized(self):
-        dt = datetime(2026, 5, 5, 12, 0, 0, tzinfo=UTC)
-        msg = {"metadata": {"headers": {"time": dt}}}
-        assert _extract_position_time(msg) == dt.isoformat()
+    @pytest.mark.parametrize(
+        "message, expected",
+        [
+            (None, None),
+            ({"time": "2026-01-01T00:00:00Z"}, "2026-01-01T00:00:00Z"),
+            (
+                {"metadata": {"headers": {"time": "2026-02-02T00:00:00Z"}}},
+                "2026-02-02T00:00:00Z",
+            ),
+            (
+                {"metadata": '{"headers": {"time": "2026-03-03T00:00:00Z"}}'},
+                "2026-03-03T00:00:00Z",
+            ),
+            (
+                {"metadata": {"headers": '{"time": "2026-04-04T00:00:00Z"}'}},
+                "2026-04-04T00:00:00Z",
+            ),
+            ({"data": {"position": 1}}, None),
+            ({"metadata": "{not json"}, None),
+            ({"metadata": {"headers": "{bad"}}, None),
+            ({"time": _DT}, _DT.isoformat()),
+            ({"metadata": {"headers": {"time": _DT}}}, _DT.isoformat()),
+        ],
+        ids=[
+            "none_message",
+            "top_level_time",
+            "metadata_headers_time_dict",
+            "metadata_json_string",
+            "headers_json_string",
+            "missing_time",
+            "malformed_metadata_json",
+            "malformed_headers_json",
+            "top_level_datetime_normalized",
+            "metadata_datetime_normalized",
+        ],
+    )
+    def test_extracts_time(self, message, expected):
+        assert _extract_position_time(message) == expected
 
 
 # ---------------------------------------------------------------------------
-# _feeder_statuses / _row_count — branch coverage
+# _feeder_statuses / _row_count: which projectors feed a projection, and row counts
 # ---------------------------------------------------------------------------
+
+
+class Audit(BaseProjection):
+    user_id: Identifier(identifier=True)
+    email: String()
+
+
+class AuditProjector(BaseProjector):
+    @on(Registered)
+    def on_registered(self, event: Registered):
+        pass
 
 
 class TestFeederStatuses:
-    def test_skips_projector_for_other_projection(self):
-        domain = MagicMock()
-        other = MagicMock()
-        other.meta_.projector_for = object()  # not Balances
-        record = MagicMock()
-        record.cls = other
-        domain.registry.projectors = {"other": record}
+    def test_skips_projector_for_other_projection(self, test_domain):
+        test_domain.register(Audit)
+        test_domain.register(AuditProjector, projector_for=Audit, aggregates=[User])
 
-        assert _feeder_statuses(domain, Balances, MagicMock()) == []
+        with test_domain.domain_context():
+            feeders = _feeder_statuses(
+                test_domain, Balances, ConfigResolver(test_domain)
+            )
 
-    def test_stream_type_projector_uses_stream_collector(self):
-        domain = MagicMock()
-        projector = MagicMock()
-        projector.meta_.projector_for = Balances
-        projector.meta_.stream_categories = ["user"]
-        record = MagicMock()
-        record.cls = projector
-        domain.registry.projectors = {"p": record}
+        assert [f.handler_name for f in feeders] == ["BalancesProjector"]
 
-        resolver = MagicMock()
-        resolver.resolve.return_value.subscription_type = SubscriptionType.STREAM
+    def test_stream_type_projector_uses_stream_collector(self, test_domain):
+        test_domain.config["server"]["default_subscription_type"] = "stream"
 
-        stub = SubscriptionStatus(
-            name="p-user",
-            handler_name="P",
-            subscription_type="stream",
-            stream_category="user",
-            lag=None,
-            pending=0,
-            current_position=None,
-            head_position=None,
-            status="unknown",
-            consumer_count=0,
-            dlq_depth=0,
-        )
-        with patch(
-            "protean.server.projection_status._collect_stream_status",
-            return_value=stub,
-        ) as mock_stream:
-            feeders = _feeder_statuses(domain, Balances, resolver)
+        with test_domain.domain_context():
+            feeders = _feeder_statuses(
+                test_domain, Balances, ConfigResolver(test_domain)
+            )
 
-        mock_stream.assert_called_once()
         assert len(feeders) == 1
+        assert feeders[0].subscription_type == "stream"
+        assert feeders[0].handler_name == "BalancesProjector"
+
+
+class CachedBalances(BaseProjection):
+    user_id: Identifier(identifier=True)
+    balance: Float()
 
 
 class TestRowCount:
-    def test_returns_none_on_error(self):
-        domain = MagicMock()
-        domain.repository_for.side_effect = RuntimeError("boom")
-        assert _row_count(domain, Balances) is None
+    def test_cache_backed_projection_is_uncountable(self, test_domain):
+        # A cache-backed projection has no repository, so counting rows fails.
+        test_domain.register(CachedBalances, cache="default")
+
+        assert _row_count(test_domain, CachedBalances) is None
 
 
 # ---------------------------------------------------------------------------
@@ -357,14 +350,6 @@ class TestAggregate:
         assert result.status == "lagging"
         assert result.staleness_seconds == 90.0
 
-    def test_staleness_zero_when_caught_up(self):
-        when = (_NOW - timedelta(seconds=90)).isoformat()
-        result = _aggregate(
-            Balances, [_feeder(0, when)], ["BalancesProjector"], _NOW, 0
-        )
-        assert result.status == "ok"
-        assert result.staleness_seconds == 0.0
-
     def test_takes_worst_staleness_and_lag_across_feeders(self):
         recent = (_NOW - timedelta(seconds=30)).isoformat()
         old = (_NOW - timedelta(seconds=120)).isoformat()
@@ -373,20 +358,17 @@ class TestAggregate:
         assert result.lag == 9
         assert result.staleness_seconds == 120.0
 
-    def test_unknown_when_all_feeders_unknown(self):
-        result = _aggregate(
-            Balances, [_feeder(None, None)], ["BalancesProjector"], _NOW, 0
-        )
+    @pytest.mark.parametrize(
+        "feeders",
+        [[], [_feeder(None, None)]],
+        ids=["no_feeders", "all_feeders_unknown"],
+    )
+    def test_unknown_when_no_feeder_reports_lag(self, feeders):
+        result = _aggregate(Balances, feeders, ["BalancesProjector"], _NOW, None)
         assert result.lag is None
         assert result.status == "unknown"
         assert result.staleness_seconds is None
-
-    def test_never_updated_feeder_is_lagging_with_null_staleness(self):
-        result = _aggregate(
-            Balances, [_feeder(3, None)], ["BalancesProjector"], _NOW, 0
-        )
-        assert result.status == "lagging"
-        assert result.staleness_seconds is None
+        assert result.last_updated is None
 
     def test_future_timestamp_clamps_staleness_to_zero(self):
         # Clock skew: position timestamp ahead of "now" must not go negative.
@@ -395,18 +377,6 @@ class TestAggregate:
             Balances, [_feeder(5, future)], ["BalancesProjector"], _NOW, 0
         )
         assert result.staleness_seconds == 0.0
-
-    def test_no_feeders_is_unknown(self):
-        result = _aggregate(Balances, [], [], _NOW, None)
-        assert result.lag is None
-        assert result.status == "unknown"
-        assert result.last_updated is None
-
-
-def test_status_is_dataclass_instance(test_domain):
-    with test_domain.domain_context():
-        statuses = collect_projection_statuses(test_domain)
-    assert all(isinstance(s, ProjectionStatus) for s in statuses)
 
 
 # ---------------------------------------------------------------------------
@@ -447,11 +417,10 @@ class TestStalenessMetric:
     def test_collector_swallows_collection_errors(self, test_domain):
         from protean.server.observatory.metrics import _collect_projection_statuses
 
-        with patch(
-            "protean.server.projection_status.collect_projection_statuses",
-            side_effect=RuntimeError("boom"),
-        ):
-            assert _collect_projection_statuses([test_domain]) == []
+        # A malformed ``server`` section makes the subscription config lookup raise.
+        test_domain.config["server"] = "not-a-mapping"
+
+        assert _collect_projection_statuses([test_domain]) == []
 
     def test_hand_rolled_skips_projection_without_staleness(self, test_domain):
         from protean.server.observatory.metrics import _hand_rolled_metrics

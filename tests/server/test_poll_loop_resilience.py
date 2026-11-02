@@ -14,7 +14,8 @@ All four subscription types are covered:
 
 import asyncio
 import logging
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 
@@ -59,6 +60,19 @@ class UserEventHandler(BaseEventHandler):
     @handle(Registered)
     def process_registered(self, event):
         pass
+
+
+fail_once_attempts: list[str] = []
+
+
+class FailOnceEventHandler(BaseEventHandler):
+    """Fails on the first Registered event it sees, then succeeds."""
+
+    @handle(Registered)
+    def process_registered(self, event):
+        fail_once_attempts.append(event.id)
+        if len(fail_once_attempts) == 1:
+            raise RuntimeError("first attempt fails")
 
 
 @pytest.fixture(autouse=True)
@@ -174,8 +188,9 @@ class TestBaseSubscriptionPollResilience:
         assert "validation error" in caplog.text.lower()
 
     @pytest.mark.asyncio
-    async def test_poll_applies_exponential_backoff(self, domain_setup):
-        """Consecutive errors should increase the backoff delay."""
+    async def test_poll_backoff_doubles_caps_and_resets(self, domain_setup):
+        """Consecutive errors double the backoff (1s, 2s, 4s, ...) up to a cap of
+        30 seconds, and a successful tick resets it to 1s."""
         engine = Engine(domain=domain_setup, test_mode=True)
 
         sleep_durations: list[float] = []
@@ -183,10 +198,9 @@ class TestBaseSubscriptionPollResilience:
 
         async def mock_sleep(duration):
             sleep_durations.append(duration)
-            # Don't actually sleep — just record the duration
             await original_sleep(0)
 
-        class RepeatedFailureSubscription(BaseSubscription):
+        class IntermittentFailureSubscription(BaseSubscription):
             def __init__(self, engine):
                 super().__init__(engine, messages_per_tick=10, tick_interval=0)
                 self.subscriber_name = "test-backoff"
@@ -200,54 +214,10 @@ class TestBaseSubscriptionPollResilience:
 
             async def tick(self):
                 self.tick_count += 1
-                if self.tick_count <= 4:
+                # Fail on ticks 1-7, succeed on 8, fail on 9, stop on 10
+                if self.tick_count <= 7 or self.tick_count == 9:
                     raise RuntimeError("persistent error")
-                self.keep_going = False
-
-        sub = RepeatedFailureSubscription(engine)
-
-        with patch("protean.server.subscription.asyncio.sleep", side_effect=mock_sleep):
-            await sub.poll()
-
-        assert sub.tick_count == 5
-        # Backoff sequence: 1s, 2s, 4s, 8s (2^0, 2^1, 2^2, 2^3)
-        assert sleep_durations[0] == 1
-        assert sleep_durations[1] == 2
-        assert sleep_durations[2] == 4
-        assert sleep_durations[3] == 8
-
-    @pytest.mark.asyncio
-    async def test_poll_resets_backoff_on_success(self, domain_setup):
-        """A successful tick should reset the consecutive error counter."""
-        engine = Engine(domain=domain_setup, test_mode=True)
-
-        sleep_durations: list[float] = []
-        original_sleep = asyncio.sleep
-
-        async def mock_sleep(duration):
-            sleep_durations.append(duration)
-            await original_sleep(0)
-
-        class IntermittentFailureSubscription(BaseSubscription):
-            def __init__(self, engine):
-                super().__init__(engine, messages_per_tick=10, tick_interval=0)
-                self.subscriber_name = "test-reset-backoff"
-                self.tick_count = 0
-
-            async def get_next_batch_of_messages(self):
-                return []
-
-            async def process_batch(self, messages):
-                return 0
-
-            async def tick(self):
-                self.tick_count += 1
-                # Fail on ticks 1-2, succeed on 3, fail on 4, stop on 5
-                if self.tick_count in (1, 2):
-                    raise RuntimeError("transient error")
-                elif self.tick_count == 4:
-                    raise RuntimeError("another transient error")
-                elif self.tick_count >= 5:
+                if self.tick_count >= 10:
                     self.keep_going = False
 
         sub = IntermittentFailureSubscription(engine)
@@ -255,52 +225,9 @@ class TestBaseSubscriptionPollResilience:
         with patch("protean.server.subscription.asyncio.sleep", side_effect=mock_sleep):
             await sub.poll()
 
-        assert sub.tick_count == 5
-        # First two failures: backoff 1s, 2s
-        # Then success resets counter
-        # Third failure: backoff resets to 1s (not 4s)
+        assert sub.tick_count == 10
         error_sleeps = [d for d in sleep_durations if d >= 1]
-        assert error_sleeps == [1, 2, 1]
-
-    @pytest.mark.asyncio
-    async def test_poll_backoff_capped_at_30_seconds(self, domain_setup):
-        """Backoff should not exceed 30 seconds."""
-        engine = Engine(domain=domain_setup, test_mode=True)
-
-        sleep_durations: list[float] = []
-        original_sleep = asyncio.sleep
-
-        async def mock_sleep(duration):
-            sleep_durations.append(duration)
-            await original_sleep(0)
-
-        class PersistentFailureSubscription(BaseSubscription):
-            def __init__(self, engine):
-                super().__init__(engine, messages_per_tick=10, tick_interval=0)
-                self.subscriber_name = "test-max-backoff"
-                self.tick_count = 0
-
-            async def get_next_batch_of_messages(self):
-                return []
-
-            async def process_batch(self, messages):
-                return 0
-
-            async def tick(self):
-                self.tick_count += 1
-                if self.tick_count <= 7:
-                    raise RuntimeError("persistent error")
-                self.keep_going = False
-
-        sub = PersistentFailureSubscription(engine)
-
-        with patch("protean.server.subscription.asyncio.sleep", side_effect=mock_sleep):
-            await sub.poll()
-
-        # Backoff: 1, 2, 4, 8, 16, 30, 30 (capped)
-        assert sleep_durations[4] == 16
-        assert sleep_durations[5] == 30
-        assert sleep_durations[6] == 30
+        assert error_sleeps == [1, 2, 4, 8, 16, 30, 30, 1]
 
     @pytest.mark.asyncio
     async def test_poll_handles_cancelled_error(self, domain_setup):
@@ -330,39 +257,15 @@ class TestBaseSubscriptionPollResilience:
 # ---------- Helpers for StreamSubscription tests ----------
 
 
-class FakeBroker:
-    """Minimal broker stub for StreamSubscription tests."""
-
-    def __init__(self):
-        self.acked: list[tuple] = []
-        self.nacked: list[tuple] = []
-        self.published: list[tuple] = []
-
-    def _ensure_group(self, consumer_group, stream):
-        pass
-
-    def ack(self, stream, identifier, consumer_group):
-        self.acked.append((stream, identifier, consumer_group))
-        return True
-
-    def nack(self, stream, identifier, consumer_group):
-        self.nacked.append((stream, identifier, consumer_group))
-        return True
-
-    def publish(self, stream, message):
-        self.published.append((stream, message))
-        return "dlq-id"
-
-
 def _make_stream_subscription(domain_setup) -> StreamSubscription:
-    """Create a StreamSubscription with a FakeBroker for testing poll()."""
+    """Create a StreamSubscription on the domain's inline broker."""
     engine = Engine(domain_setup, test_mode=True)
     sub = StreamSubscription(
         engine=engine,
         stream_category="test_stream",
         handler=UserEventHandler,
     )
-    sub.broker = FakeBroker()
+    sub.broker = domain_setup.brokers["default"]
     return sub
 
 
@@ -375,27 +278,47 @@ class TestStreamSubscriptionPollResilience:
     """
 
     @pytest.mark.asyncio
-    async def test_poll_survives_get_next_batch_exception(self, domain_setup, caplog):
-        """Exception in get_next_batch_of_messages should not crash the loop."""
+    async def test_poll_survives_read_errors_with_resetting_backoff(
+        self, domain_setup, caplog
+    ):
+        """An exception in get_next_batch_of_messages is logged and does not
+        crash the loop. Consecutive errors back off 1s, 2s, 4s, and a successful
+        read resets the backoff to 1s."""
         sub = _make_stream_subscription(domain_setup)
         call_count = 0
+        sleep_durations: list[float] = []
+        original_sleep = asyncio.sleep
 
-        async def failing_get_next_batch():
+        async def mock_sleep(duration):
+            sleep_durations.append(duration)
+            await original_sleep(0)
+
+        async def intermittent_get_next_batch():
             nonlocal call_count
             call_count += 1
-            if call_count == 1:
+            # Fail on 1-3, succeed on 4, fail on 5, stop on 6
+            if call_count <= 3 or call_count == 5:
                 raise ConnectionError("Redis connection lost")
-            sub.keep_going = False
+            if call_count >= 6:
+                sub.keep_going = False
             return []
 
-        sub.get_next_batch_of_messages = failing_get_next_batch
+        sub.get_next_batch_of_messages = intermittent_get_next_batch
 
-        with caplog.at_level(logging.ERROR):
+        with (
+            caplog.at_level(logging.ERROR),
+            patch(
+                "protean.server.subscription.stream_subscription.asyncio.sleep",
+                side_effect=mock_sleep,
+            ),
+        ):
             await sub.poll()
 
-        assert call_count == 2
+        assert call_count == 6
         assert not sub.engine.shutting_down
         assert "Redis connection lost" in caplog.text
+        error_sleeps = [d for d in sleep_durations if d >= 1]
+        assert error_sleeps == [1, 2, 4, 1]
 
     @pytest.mark.asyncio
     async def test_poll_survives_process_batch_exception(self, domain_setup, caplog):
@@ -423,74 +346,6 @@ class TestStreamSubscriptionPollResilience:
         assert call_count == 2
         assert not sub.engine.shutting_down
         assert "Handler exploded" in caplog.text
-
-    @pytest.mark.asyncio
-    async def test_poll_applies_exponential_backoff(self, domain_setup):
-        """Consecutive errors should increase backoff: 1s, 2s, 4s, ... capped at 30s."""
-        sub = _make_stream_subscription(domain_setup)
-        call_count = 0
-        sleep_durations: list[float] = []
-        original_sleep = asyncio.sleep
-
-        async def mock_sleep(duration):
-            sleep_durations.append(duration)
-            await original_sleep(0)
-
-        async def failing_get_next_batch():
-            nonlocal call_count
-            call_count += 1
-            if call_count <= 3:
-                raise RuntimeError("persistent error")
-            sub.keep_going = False
-            return []
-
-        sub.get_next_batch_of_messages = failing_get_next_batch
-
-        with patch(
-            "protean.server.subscription.stream_subscription.asyncio.sleep",
-            side_effect=mock_sleep,
-        ):
-            await sub.poll()
-
-        # 3 errors → backoff sleeps of 1, 2, 4
-        error_sleeps = [d for d in sleep_durations if d >= 1]
-        assert error_sleeps == [1, 2, 4]
-
-    @pytest.mark.asyncio
-    async def test_poll_resets_backoff_on_success(self, domain_setup):
-        """A successful tick should reset the consecutive error counter."""
-        sub = _make_stream_subscription(domain_setup)
-        call_count = 0
-        sleep_durations: list[float] = []
-        original_sleep = asyncio.sleep
-
-        async def mock_sleep(duration):
-            sleep_durations.append(duration)
-            await original_sleep(0)
-
-        async def intermittent_get_next_batch():
-            nonlocal call_count
-            call_count += 1
-            # Fail on 1-2, succeed on 3, fail on 4, stop on 5
-            if call_count in (1, 2):
-                raise RuntimeError("transient error")
-            elif call_count == 4:
-                raise RuntimeError("another transient error")
-            elif call_count >= 5:
-                sub.keep_going = False
-            return []
-
-        sub.get_next_batch_of_messages = intermittent_get_next_batch
-
-        with patch(
-            "protean.server.subscription.stream_subscription.asyncio.sleep",
-            side_effect=mock_sleep,
-        ):
-            await sub.poll()
-
-        # First two failures: 1s, 2s. Success resets. Third failure: 1s (not 4s).
-        error_sleeps = [d for d in sleep_durations if d >= 1]
-        assert error_sleeps == [1, 2, 1]
 
     @pytest.mark.asyncio
     async def test_poll_handles_cancelled_error(self, domain_setup):
@@ -537,8 +392,12 @@ class TestEventStoreSubscriptionPollResilience:
     """
 
     @pytest.mark.asyncio
-    async def test_poll_survives_tick_exception(self, domain_setup, caplog):
-        """Exception in tick() should not crash the loop."""
+    async def test_poll_survives_tick_errors_with_resetting_backoff(
+        self, domain_setup, caplog
+    ):
+        """An exception in tick() is logged and does not crash the loop.
+        Consecutive errors back off 1s, 2s, 4s, and a successful tick resets the
+        backoff to 1s."""
         engine = Engine(domain=domain_setup, test_mode=True)
         sub = EventStoreSubscription(
             engine=engine,
@@ -547,23 +406,74 @@ class TestEventStoreSubscriptionPollResilience:
             tick_interval=0,
         )
         call_count = 0
+        sleep_durations: list[float] = []
+        original_sleep = asyncio.sleep
 
-        async def failing_tick():
+        async def mock_sleep(duration):
+            sleep_durations.append(duration)
+            await original_sleep(0)
+
+        async def intermittent_tick():
             nonlocal call_count
             call_count += 1
-            if call_count == 1:
+            # Fail on 1-3, succeed on 4, fail on 5, stop on 6
+            if call_count <= 3 or call_count == 5:
                 raise ConnectionError("Event store connection lost")
-            sub.keep_going = False
+            if call_count >= 6:
+                sub.keep_going = False
 
-        sub.tick = failing_tick
-        sub.maybe_run_recovery = AsyncMock()
+        sub.tick = intermittent_tick
 
-        with caplog.at_level(logging.ERROR):
+        with (
+            caplog.at_level(logging.ERROR),
+            patch(
+                "protean.server.subscription.event_store_subscription.asyncio.sleep",
+                side_effect=mock_sleep,
+            ),
+        ):
             await sub.poll()
 
-        assert call_count == 2
+        assert call_count == 6
         assert not engine.shutting_down
         assert "Event store connection lost" in caplog.text
+        error_sleeps = [d for d in sleep_durations if d >= 1]
+        assert error_sleeps == [1, 2, 4, 1]
+
+    @pytest.mark.asyncio
+    async def test_recovered_position_counts_as_work(self, domain_setup):
+        """A handler failure in the tick records a failed position. The recovery
+        pass that runs after the same tick retries it with success."""
+        domain_setup.register(FailOnceEventHandler, part_of=User)
+        domain_setup.init(traverse=False)
+        fail_once_attempts.clear()
+
+        user_id = str(uuid4())
+        user = User(id=user_id, email="a@example.com", name="A")
+        user.raise_(Registered(id=user_id, email="a@example.com", name="A"))
+        domain_setup.repository_for(User).add(user)
+
+        engine = Engine(domain=domain_setup, test_mode=True)
+        sub = EventStoreSubscription(
+            engine=engine,
+            stream_category="test::user",
+            handler=FailOnceEventHandler,
+            tick_interval=0,
+        )
+        real_tick = sub.tick
+
+        async def one_tick():
+            sub.keep_going = False
+            return await real_tick()
+
+        sub.tick = one_tick
+        sub.last_work_tick_finished = None
+
+        await sub.poll()
+
+        # One failed attempt in the tick, one successful retry in recovery.
+        assert fail_once_attempts == [user_id, user_id]
+        assert sub._failed_positions == {}
+        assert sub.last_work_tick_finished is not None
 
     @pytest.mark.asyncio
     async def test_poll_survives_recovery_exception(self, domain_setup, caplog):
@@ -598,83 +508,6 @@ class TestEventStoreSubscriptionPollResilience:
         assert "Recovery query failed" in caplog.text
 
     @pytest.mark.asyncio
-    async def test_poll_applies_exponential_backoff(self, domain_setup):
-        """Consecutive errors should increase backoff."""
-        engine = Engine(domain=domain_setup, test_mode=True)
-        sub = EventStoreSubscription(
-            engine=engine,
-            stream_category="user",
-            handler=UserEventHandler,
-            tick_interval=0,
-        )
-        call_count = 0
-        sleep_durations: list[float] = []
-        original_sleep = asyncio.sleep
-
-        async def mock_sleep(duration):
-            sleep_durations.append(duration)
-            await original_sleep(0)
-
-        async def failing_tick():
-            nonlocal call_count
-            call_count += 1
-            if call_count <= 3:
-                raise RuntimeError("persistent error")
-            sub.keep_going = False
-
-        sub.tick = failing_tick
-        sub.maybe_run_recovery = AsyncMock()
-
-        with patch(
-            "protean.server.subscription.event_store_subscription.asyncio.sleep",
-            side_effect=mock_sleep,
-        ):
-            await sub.poll()
-
-        error_sleeps = [d for d in sleep_durations if d >= 1]
-        assert error_sleeps == [1, 2, 4]
-
-    @pytest.mark.asyncio
-    async def test_poll_resets_backoff_on_success(self, domain_setup):
-        """A successful tick should reset the consecutive error counter."""
-        engine = Engine(domain=domain_setup, test_mode=True)
-        sub = EventStoreSubscription(
-            engine=engine,
-            stream_category="user",
-            handler=UserEventHandler,
-            tick_interval=0,
-        )
-        call_count = 0
-        sleep_durations: list[float] = []
-        original_sleep = asyncio.sleep
-
-        async def mock_sleep(duration):
-            sleep_durations.append(duration)
-            await original_sleep(0)
-
-        async def intermittent_tick():
-            nonlocal call_count
-            call_count += 1
-            if call_count in (1, 2):
-                raise RuntimeError("transient error")
-            elif call_count == 4:
-                raise RuntimeError("another transient error")
-            elif call_count >= 5:
-                sub.keep_going = False
-
-        sub.tick = intermittent_tick
-        sub.maybe_run_recovery = AsyncMock()
-
-        with patch(
-            "protean.server.subscription.event_store_subscription.asyncio.sleep",
-            side_effect=mock_sleep,
-        ):
-            await sub.poll()
-
-        error_sleeps = [d for d in sleep_durations if d >= 1]
-        assert error_sleeps == [1, 2, 1]
-
-    @pytest.mark.asyncio
     async def test_poll_handles_cancelled_error(self, domain_setup):
         """CancelledError should break the loop cleanly."""
         engine = Engine(domain=domain_setup, test_mode=True)
@@ -689,7 +522,6 @@ class TestEventStoreSubscriptionPollResilience:
             raise asyncio.CancelledError()
 
         sub.tick = cancel_tick
-        sub.maybe_run_recovery = AsyncMock()
 
         await sub.poll()
         assert not engine.shutting_down
@@ -735,41 +567,18 @@ class TestPollLoopDraining:
         assert sub.batches_fetched == 1
 
     @pytest.mark.asyncio
-    async def test_draining_subscription_never_enters_loop(self, domain_setup):
+    @pytest.mark.parametrize("pauses_on_drain, expected_ticks", [(True, 0), (False, 3)])
+    async def test_drain_pause_follows_pauses_on_drain(
+        self, domain_setup, pauses_on_drain, expected_ticks
+    ):
         """A message subscription (pauses_on_drain default True) does not tick
-        while draining."""
-        engine = Engine(domain=domain_setup, test_mode=True)
-        engine.draining = True
-
-        class NormalSubscription(BaseSubscription):
-            def __init__(self, engine):
-                super().__init__(engine, messages_per_tick=10, tick_interval=0)
-                self.subscriber_name = "test-normal"
-                self.ticks = 0
-
-            async def get_next_batch_of_messages(self):
-                return []
-
-            async def process_batch(self, messages):
-                return 0
-
-            async def tick(self):
-                self.ticks += 1
-
-        sub = NormalSubscription(engine)
-        await sub.poll()
-        assert sub.ticks == 0
-
-    @pytest.mark.asyncio
-    async def test_outbox_keeps_flushing_while_draining(self, domain_setup):
-        """pauses_on_drain=False keeps the loop running while draining; only
-        shutdown (keep_going) stops it. The real outbox opts out this way."""
+        while draining. With pauses_on_drain=False the loop keeps running while
+        draining and only shutdown (keep_going) stops it. The real outbox opts
+        out this way."""
         engine = Engine(domain=domain_setup, test_mode=True)
         engine.draining = True
 
         class FlushingSubscription(BaseSubscription):
-            pauses_on_drain = False
-
             def __init__(self, engine):
                 super().__init__(engine, messages_per_tick=10, tick_interval=0)
                 self.subscriber_name = "test-flushing"
@@ -786,10 +595,10 @@ class TestPollLoopDraining:
                 if self.ticks >= 3:
                     self.keep_going = False
 
+        FlushingSubscription.pauses_on_drain = pauses_on_drain
         sub = FlushingSubscription(engine)
         await sub.poll()
-        # Draining did not stop it: it kept ticking until keep_going was cleared.
-        assert sub.ticks == 3
+        assert sub.ticks == expected_ticks
 
     def test_real_outbox_opts_out_of_drain_pause(self):
         """The shipped OutboxProcessor sets pauses_on_drain = False."""
@@ -802,25 +611,23 @@ class TestPollLoopDraining:
         before the combined read, so no new backfill message is pulled in."""
         sub = _make_stream_subscription(domain_setup)
         sub._lanes_enabled = True
-        combined_reads = 0
+        sub.broker.publish(sub.backfill_stream, {"data": "backfill"})
+        real_read_primary = sub._read_primary_nonblocking
 
         async def empty_primary_then_drain():
             # Primary is empty, and POST /drainz lands while this read is in
             # flight. Nothing is in flight, so the turn must stop here.
+            messages = await real_read_primary()
             sub.engine.draining = True
-            return []
-
-        async def counting_combined_read():
-            nonlocal combined_reads
-            combined_reads += 1
-            return [], []
+            return messages
 
         sub._read_primary_nonblocking = empty_primary_then_drain
-        sub._read_lanes_blocking = counting_combined_read
 
         await sub.poll()
 
-        assert combined_reads == 0
+        # The backfill message was never read, so it is still waiting.
+        waiting = sub.broker.read(sub.backfill_stream, sub.consumer_group, 10)
+        assert [payload["data"] for _, payload in waiting] == ["backfill"]
 
     @pytest.mark.asyncio
     async def test_event_store_skips_recovery_once_draining(self, domain_setup):
@@ -833,23 +640,19 @@ class TestPollLoopDraining:
             handler=UserEventHandler,
             tick_interval=0,
         )
-        recovery_passes = 0
 
         async def tick_then_drain():
             # The normal batch finishes, then POST /drainz lands.
             engine.draining = True
 
-        async def counting_recovery():
-            nonlocal recovery_passes
-            recovery_passes += 1
-            return 0
-
         sub.tick = tick_then_drain
-        sub.maybe_run_recovery = counting_recovery
 
         await sub.poll()
 
-        assert recovery_passes == 0
+        # A recovery pass would have been due (none has run yet), but it was
+        # skipped: the last-recovery time was never set.
+        assert sub.enable_recovery is True
+        assert sub._last_recovery_time == 0.0
 
 
 class TestAFailedTickIsNotIdle:
@@ -925,7 +728,6 @@ class TestAFailedTickIsNotIdle:
             return False
 
         sub.tick = flaky_tick
-        sub.maybe_run_recovery = AsyncMock(return_value=0)
         await sub.poll()
 
         assert seen[1] is not None

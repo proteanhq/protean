@@ -13,7 +13,13 @@ from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
 from protean.utils import Processing
-from protean.utils.eventing import DomainMeta, Message, MessageHeaders, Metadata
+from protean.utils.eventing import (
+    DomainMeta,
+    EventStoreMeta,
+    Message,
+    MessageHeaders,
+    Metadata,
+)
 from protean.utils.mixins import handle
 
 # Global variables to track processing
@@ -395,9 +401,12 @@ def test_broker_messages_continue_processing_after_exceptions(robust_test_domain
 
 
 @pytest.mark.asyncio
-async def test_event_handler_continues_after_exception(robust_test_domain):
-    """Test individual event handler message processing resilience"""
-    engine = Engine(domain=robust_test_domain, test_mode=True)
+@pytest.mark.parametrize("test_mode", [True, False])
+async def test_event_handler_continues_after_exception(robust_test_domain, test_mode):
+    """A failing event handler, and one whose error handler also fails, neither
+    stop the engine: the next message is still processed, and the engine is not
+    shutting down, with or without test_mode."""
+    engine = Engine(domain=robust_test_domain, test_mode=test_mode)
 
     # Create events
     user_id = str(uuid4())
@@ -414,21 +423,31 @@ async def test_event_handler_continues_after_exception(robust_test_domain):
     failing_message = Message.from_domain_object(failing_event)
     successful_message = Message.from_domain_object(successful_event)
 
-    # Process failing message first
+    # Process failing messages first
     await engine.handle_message(FailingEventHandler, failing_message)
+    await engine.handle_message(FailingErrorHandlerEventHandler, failing_message)
 
-    # Process successful message next - this should still work even after the error
+    # Process successful message next - this should still work even after the errors
     await engine.handle_message(SuccessfulEventHandler, successful_message)
 
-    # Verify both messages were processed - this confirms error handling worked
+    # Verify all messages were processed - this confirms error handling worked
     assert event_counter == 1  # Successfully processed EmailSent event
     assert error_counter == 2  # Counted both error and error handler
+    assert error_handler_error_counter == 2  # Handler and failing error handler
+
+    assert not engine.shutting_down
+    assert engine.exit_code == 0
 
 
 @pytest.mark.asyncio
-async def test_broker_message_handling_continues_after_exception(robust_test_domain):
-    """Test individual broker message handling resilience"""
-    engine = Engine(domain=robust_test_domain, test_mode=True)
+@pytest.mark.parametrize("test_mode", [True, False])
+async def test_broker_message_handling_continues_after_exception(
+    robust_test_domain, test_mode
+):
+    """A failing subscriber does not stop the engine: the next broker message is
+    still processed, and the engine is not shutting down, with or without
+    test_mode."""
+    engine = Engine(domain=robust_test_domain, test_mode=test_mode)
 
     # Create broker messages
     failing_message = {"message": "This will fail"}
@@ -443,6 +462,9 @@ async def test_broker_message_handling_continues_after_exception(robust_test_dom
     # Verify both messages were processed - this confirms error handling worked
     assert broker_message_counter == 1  # Successfully processed message
     assert error_counter == 2  # Counted both error and error handler
+
+    assert not engine.shutting_down
+    assert engine.exit_code == 0
 
 
 def test_mixed_error_scenarios(robust_test_domain):
@@ -609,22 +631,7 @@ async def test_subscription_exception_handling_with_position_updates(
     user.register()
     message = Message.from_domain_object(user._events[-1])
 
-    # Mock only update_read_position to track calls
-    original_update_read_position = subscription.update_read_position
-
-    # Create a tracking mock
-    position_updates = []
-
-    async def mock_update_read_position(position):
-        position_updates.append(position)
-        return await original_update_read_position(position)
-
-    # Apply the mock
-    subscription.update_read_position = mock_update_read_position
-
     # Set message's global position for tracking
-    from protean.utils.eventing import EventStoreMeta
-
     # Update metadata with event store position
     metadata_dict = message.metadata.to_dict()
     metadata_dict["event_store"] = EventStoreMeta(position=1, global_position=42)
@@ -639,79 +646,7 @@ async def test_subscription_exception_handling_with_position_updates(
     await subscription.process_batch([message])
 
     # Verify position was updated despite the error
-    assert 42 in position_updates
+    assert subscription.current_position == 42
 
     # Verify error was processed
     assert error_counter >= 1
-
-
-@pytest.mark.asyncio
-async def test_error_handling_directly(robust_test_domain):
-    """Test error handling directly at the engine level without using test_mode"""
-    # Create Engine without test_mode
-    engine = Engine(domain=robust_test_domain, test_mode=False)
-
-    # Create a failing message
-    user_id = str(uuid4())
-    user = User(
-        id=user_id, email="direct@example.com", name="Direct Test", password_hash="hash"
-    )
-    user.register()
-    failing_event = user._events[-1]
-    failing_message = Message.from_domain_object(failing_event)
-
-    # Manually process message - this should not shut down the engine
-    await engine.handle_message(FailingEventHandler, failing_message)
-
-    # Verify the engine is NOT shutting down
-    assert not engine.shutting_down
-    assert engine.exit_code == 0
-
-    # Verify error handling worked
-    assert error_counter >= 1  # Error was counted/handled
-
-
-@pytest.mark.asyncio
-async def test_failing_error_handler_directly(robust_test_domain):
-    """Test that failing error handlers don't crash the engine"""
-    # Create Engine without test_mode
-    engine = Engine(domain=robust_test_domain, test_mode=False)
-
-    # Create a failing message
-    user_id = str(uuid4())
-    user = User(
-        id=user_id, email="direct@example.com", name="Direct Test", password_hash="hash"
-    )
-    user.register()
-    failing_event = user._events[-1]
-    failing_message = Message.from_domain_object(failing_event)
-
-    # Manually process message with a handler that has a failing error handler
-    await engine.handle_message(FailingErrorHandlerEventHandler, failing_message)
-
-    # Verify the engine is NOT shutting down
-    assert not engine.shutting_down
-    assert engine.exit_code == 0
-
-    # Verify error handling worked
-    assert error_handler_error_counter >= 1  # Error handler was called
-
-
-@pytest.mark.asyncio
-async def test_broker_error_handling_directly(robust_test_domain):
-    """Test broker error handling directly at the engine level without using test_mode"""
-    # Create Engine without test_mode
-    engine = Engine(domain=robust_test_domain, test_mode=False)
-
-    # Create a failing broker message
-    failing_message = {"message": "This will fail directly"}
-
-    # Manually process message - this should not shut down the engine
-    await engine.handle_broker_message(FailingSubscriber, failing_message)
-
-    # Verify the engine is NOT shutting down
-    assert not engine.shutting_down
-    assert engine.exit_code == 0
-
-    # Verify error handling worked
-    assert error_counter >= 1  # Error was counted/handled

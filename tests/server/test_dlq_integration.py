@@ -142,6 +142,12 @@ class TestBrokerSubscriptionDLQIntegration:
         assert dlq_payload["_dlq_metadata"]["original_stream"] == "integration_stream"
         assert dlq_payload["_dlq_metadata"]["original_id"] == identifier
 
+        # The subscription marked its (stream, group) owned on the broker, so
+        # the broker does not apply its own retry ceiling.
+        assert f"integration_stream:{sub.subscriber_name}" in (
+            broker._subscription_owned_groups
+        )
+
     @pytest.mark.asyncio
     async def test_successful_processing_no_dlq(self, test_domain):
         """Successful subscriber processing does not produce DLQ messages."""
@@ -255,29 +261,6 @@ class TestBrokerSubscriptionDLQIntegration:
         dlq_ids = [entry[0] for entries in native_dlq.values() for entry in entries]
         assert identifier not in dlq_ids
         assert identifier not in sub.retry_counts
-
-    def test_subscription_marks_its_stream_owned_on_the_broker(self, test_domain):
-        """``BrokerSubscription.__init__`` marks its (stream, group) broker-owned.
-
-        This pins the wiring: without the owned mark the broker keeps its own
-        ceiling and the fix silently no-ops.
-        """
-        engine = Engine(test_domain, test_mode=True)
-        broker = test_domain.brokers["default"]
-
-        from protean.server.subscription.broker_subscription import (
-            BrokerSubscription,
-        )
-
-        sub = BrokerSubscription(
-            engine=engine,
-            broker=broker,
-            stream_name="integration_stream",
-            handler=FailingSubscriber,
-        )
-
-        group_key = f"integration_stream:{sub.subscriber_name}"
-        assert group_key in broker._subscription_owned_groups
 
     def test_broker_direct_group_still_ceilings_to_native_dlq(self, test_domain):
         """A stream consumed directly off the broker keeps its independent ceiling.
@@ -463,25 +446,6 @@ class TestStreamSubscriptionDLQReconciliation:
         test_domain.init(traverse=False)
 
     @pytest.mark.asyncio
-    async def test_initialize_marks_its_stream_owned_on_the_broker(self, test_domain):
-        """``StreamSubscription.initialize`` marks its (stream, group) owned."""
-        from protean.server.subscription.stream_subscription import StreamSubscription
-
-        engine = Engine(test_domain, test_mode=True)
-        sub = StreamSubscription(
-            engine=engine,
-            stream_category="stream_reconcile",
-            handler=AlwaysFailHandler,
-            max_retries=1,
-            retry_delay_seconds=0,
-        )
-        await sub.initialize()
-
-        broker = test_domain.brokers["default"]
-        group_key = f"stream_reconcile:{sub.consumer_group}"
-        assert group_key in broker._subscription_owned_groups
-
-    @pytest.mark.asyncio
     async def test_persistent_dlq_outage_holds_never_native_dlq(
         self, test_domain, monkeypatch
     ):
@@ -504,6 +468,10 @@ class TestStreamSubscriptionDLQReconciliation:
         await sub.initialize()
 
         broker = test_domain.brokers["default"]
+        # initialize() marked the (stream, group) owned on the broker.
+        assert f"stream_reconcile:{sub.consumer_group}" in (
+            broker._subscription_owned_groups
+        )
         monkeypatch.setattr(broker, "_max_retries", 1)
         monkeypatch.setattr(broker, "_retry_delay", 0)
 
@@ -568,38 +536,6 @@ class TestEventStoreSubscriptionIntegration:
         test_domain.init(traverse=False)
 
     @pytest.mark.asyncio
-    async def test_handler_failure_records_failed_position(self, test_domain):
-        """When a handler fails, the position is recorded as failed."""
-        engine = Engine(test_domain, test_mode=True)
-
-        from protean.server.subscription.event_store_subscription import (
-            EventStoreSubscription,
-        )
-
-        sub = EventStoreSubscription(
-            engine=engine,
-            stream_category="dlq_test_aggregate",
-            handler=AlwaysFailHandler,
-            max_retries=2,
-            retry_delay_seconds=0,
-        )
-
-        # Simulate a failed message
-        await sub._record_failed_position(
-            position=42,
-            message_type="DLQTestEvent",
-            message_id="evt-123",
-            stream_name="dlq_test_aggregate-123",
-            stream_position=10,
-        )
-
-        # Check that the failed position is tracked (keyed by global position)
-        assert 42 in sub._failed_positions
-        fp = sub._failed_positions[42]
-        assert fp["stream_position"] == 10
-        assert fp["retry_count"] == 0
-
-    @pytest.mark.asyncio
     async def test_multiple_failures_tracked_independently(self, test_domain):
         """Multiple failed positions are tracked independently."""
         engine = Engine(test_domain, test_mode=True)
@@ -637,6 +573,8 @@ class TestEventStoreSubscriptionIntegration:
         assert 20 in sub._failed_positions
         assert sub._failed_positions[10]["stream_name"] == "dlq_test_aggregate-a"
         assert sub._failed_positions[20]["stream_name"] == "dlq_test_aggregate-b"
+        assert sub._failed_positions[10]["stream_position"] == 5
+        assert sub._failed_positions[10]["retry_count"] == 0
 
 
 # ── Tests: DLQ Discovery across subscription types ──────────────────────
@@ -779,16 +717,6 @@ class TestInlineBrokerDLQOperations:
                 stream, consumer_group, identifier, message, "test_failure"
             )
 
-    def test_dlq_list_returns_entries(self, test_domain):
-        """broker.dlq_list() returns DLQ entries."""
-        broker = test_domain.brokers["default"]
-        self._populate_broker_dlq(broker, "broker_dlq_test", "test_group", count=3)
-
-        entries = broker.dlq_list(["broker_dlq_test:dlq"], limit=10)
-        assert len(entries) == 3
-        assert all(e.stream == "broker_dlq_test" for e in entries)
-        assert all(e.dlq_stream == "broker_dlq_test:dlq" for e in entries)
-
     def test_dlq_inspect_returns_entry(self, test_domain):
         """broker.dlq_inspect() returns a specific entry by ID."""
         broker = test_domain.brokers["default"]
@@ -850,32 +778,24 @@ class TestInlineBrokerDLQOperations:
         remaining = broker.dlq_list(["broker_dlq_test:dlq"], limit=10)
         assert len(remaining) == 0
 
-    def test_dlq_purge_empty_stream(self, test_domain):
-        """Purging an empty DLQ returns 0."""
-        broker = test_domain.brokers["default"]
-        count = broker.dlq_purge("nonexistent:dlq")
-        assert count == 0
+        # A DLQ stream that never held a message purges nothing.
+        assert broker.dlq_purge("nonexistent:dlq") == 0
 
-    def test_dlq_list_with_limit(self, test_domain):
-        """broker.dlq_list() respects the limit parameter."""
-        broker = test_domain.brokers["default"]
-        self._populate_broker_dlq(broker, "broker_dlq_test", "test_group", count=10)
-
-        entries = broker.dlq_list(["broker_dlq_test:dlq"], limit=3)
-        assert len(entries) == 3
-
-    def test_dlq_list_multiple_streams(self, test_domain):
-        """broker.dlq_list() aggregates entries across multiple DLQ streams."""
+    def test_dlq_list_reads_every_stream_up_to_the_limit(self, test_domain):
+        """broker.dlq_list() aggregates entries across DLQ streams and respects
+        the limit."""
         broker = test_domain.brokers["default"]
         self._populate_broker_dlq(broker, "stream_a", "group_a", count=2)
         self._populate_broker_dlq(broker, "stream_b", "group_b", count=3)
 
         entries = broker.dlq_list(["stream_a:dlq", "stream_b:dlq"], limit=100)
         assert len(entries) == 5
+        assert {(e.stream, e.dlq_stream) for e in entries} == {
+            ("stream_a", "stream_a:dlq"),
+            ("stream_b", "stream_b:dlq"),
+        }
 
-        streams = {e.dlq_stream for e in entries}
-        assert "stream_a:dlq" in streams
-        assert "stream_b:dlq" in streams
+        assert len(broker.dlq_list(["stream_a:dlq", "stream_b:dlq"], limit=3)) == 3
 
 
 # ── Tests: Engine Error Resilience ──────────────────────────────────────
@@ -903,20 +823,6 @@ class TestEngineErrorResilience:
         msg = Message.from_domain_object(event)
 
         result = await engine.handle_message(AlwaysFailHandler, msg)
-        assert result is False
-        assert engine.shutting_down is False
-
-    @pytest.mark.asyncio
-    async def test_engine_continues_after_subscriber_failure(self, test_domain):
-        """Engine.handle_broker_message returns False but doesn't crash."""
-        engine = Engine(test_domain, test_mode=True)
-
-        result = await engine.handle_broker_message(
-            FailingSubscriber,
-            {"data": "test"},
-            message_id="fail-1",
-            stream="resilience_test",
-        )
         assert result is False
         assert engine.shutting_down is False
 

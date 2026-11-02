@@ -59,19 +59,15 @@ class TestEngineProcessorsFollowAggregateProviders:
         domain = _with_global_broker(_domain())
         _aggregate(domain, "Order")
 
-        assert _engine_processor_names(domain) == {
-            "outbox-processor-default-to-default",
-            "outbox-processor-default-to-global-external",
-        }
-
-    def test_status_rows_name_exactly_the_engine_processors(self):
-        domain = _with_global_broker(_domain())
-        _aggregate(domain, "Order")
-
         engine_names = _engine_processor_names(domain)
         status_names = [name for name, *_ in _outbox_processor_names(domain)]
 
-        assert len(status_names) == len(engine_names) == 2
+        assert engine_names == {
+            "outbox-processor-default-to-default",
+            "outbox-processor-default-to-global-external",
+        }
+        # The status rows name exactly the engine's processors.
+        assert len(status_names) == 2
         assert set(status_names) == engine_names
 
     def test_an_aggregate_on_memory_gets_memory_processors(self):
