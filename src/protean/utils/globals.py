@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 
+# Non-dunder names that test tools probe on module globals during collection.
+_TOOL_PROBES = frozenset({"_mock_name"})
+
 _domain_ctx_err_msg = """\
 Working outside of domain context.
 This typically means that you attempted to use functionality that needed
@@ -71,10 +74,11 @@ class _ContextLocalProxy(Generic[_T]):
             representation and ordinary attribute access go through it, so
             it may warn.
         quiet_lookup: Resolves dunder attribute lookups (``__test__``,
-            ``__bases__``, ...) and ``__class__``, and must not warn. With no
-            object active, these lookups raise ``AttributeError`` or report
-            the proxy type. Defaults to ``lookup``, so a proxy whose
-            ``lookup`` warns must pass a quiet one.
+            ``__bases__``, ...), ``_mock_name`` and ``__class__``, and must
+            not warn. With no object active, these lookups raise
+            ``AttributeError`` or report the proxy type. Defaults to
+            ``lookup``, so a proxy whose ``lookup`` warns must pass a quiet
+            one.
     """
 
     _lookup: Callable[[], _T | None]
@@ -113,9 +117,10 @@ class _ContextLocalProxy(Generic[_T]):
         # Tools probe module globals for dunders without meaning to use the
         # proxy: pytest collection checks ``__test__``, ``__bases__`` and
         # ``__class__`` on every name a test module imports, so these probes
-        # must not warn. Pytest before 8.4 also reads the non-dunder
+        # must not warn. Pytest 9.2 also reads the non-dunder ``_mock_name``
+        # on each of those names. Pytest before 8.4 reads the non-dunder
         # ``_pytestfixturefunction``, so collection there still warns once.
-        if name.startswith("__") and name.endswith("__"):
+        if (name.startswith("__") and name.endswith("__")) or name in _TOOL_PROBES:
             obj = self._quiet_lookup()
             if obj is None:
                 raise AttributeError(name)

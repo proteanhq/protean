@@ -376,6 +376,15 @@ class TestQuietProbesOutsideContext:
 
     @pytest.mark.no_test_domain
     @pytest.mark.parametrize("proxy", [current_domain, g], ids=["current_domain", "g"])
+    def test_pytest_mock_name_probe_is_silent(self, proxy):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            assert getattr(proxy, "_mock_name", None) is None
+            with pytest.raises(AttributeError, match="_mock_name"):
+                getattr(proxy, "_mock_name")
+
+    @pytest.mark.no_test_domain
+    @pytest.mark.parametrize("proxy", [current_domain, g], ids=["current_domain", "g"])
     def test_dunder_lookup_raises_attribute_error(self, proxy):
         with warnings.catch_warnings():
             warnings.simplefilter("error")
