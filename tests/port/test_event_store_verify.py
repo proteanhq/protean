@@ -415,6 +415,113 @@ def test_malformed_row_still_reports_non_monotonic_global_position():
     ]
 
 
+@pytest.mark.parametrize("missing_key", [False, True], ids=["null", "absent"])
+def test_message_with_null_data_is_flagged_malformed(missing_key):
+    # Message DB allows a NULL body. The row is reported, not skipped, and it
+    # still holds its position: exactly one violation means the next row gets
+    # no position_gap.
+    null_row = _msg(2, "test::user-abc", 1, data=None)
+    if missing_key:
+        del null_row["data"]
+    store = _ListStore(
+        [
+            _msg(1, "test::user-abc", 0),
+            null_row,
+            _msg(3, "test::user-abc", 2),
+        ]
+    )
+
+    report = store.verify()
+
+    assert report.ok is False
+    assert report.message_count == 3
+    assert len(report.violations) == 1
+    violation = report.violations[0]
+    assert violation.kind == BaseEventStore.VERIFY_MALFORMED_MESSAGE
+    assert violation.stream == "test::user-abc"
+    assert violation.position == 1
+    assert violation.detail == "Message data is NULL."
+
+
+@pytest.mark.parametrize(
+    "data, type_name",
+    [([], "list"), ("x", "str"), (0, "int"), (False, "bool")],
+    ids=["array", "string", "number", "boolean"],
+)
+def test_message_with_non_object_data_is_flagged_malformed(data, type_name):
+    # Message DB's ``data`` column is ``jsonb`` and can hold any JSON value. A
+    # body that is not an object is reported, and the row keeps its position.
+    store = _ListStore(
+        [
+            _msg(1, "test::user-abc", 0),
+            _msg(2, "test::user-abc", 1, data=data),
+            _msg(3, "test::user-abc", 2),
+        ]
+    )
+
+    report = store.verify()
+
+    assert report.ok is False
+    assert len(report.violations) == 1
+    violation = report.violations[0]
+    assert violation.kind == BaseEventStore.VERIFY_MALFORMED_MESSAGE
+    assert violation.stream == "test::user-abc"
+    assert violation.position == 1
+    assert violation.detail == f"Message data is a {type_name}, not an object."
+
+
+def test_message_with_empty_dict_data_is_clean():
+    # An empty object is a valid body; only a NULL or non-object body is a
+    # corruption.
+    store = _ListStore(
+        [
+            _msg(1, "test::user-abc", 0, data={}),
+            _msg(2, "test::user-abc", 1, data={}),
+        ]
+    )
+
+    report = store.verify()
+
+    assert report.ok is True
+    assert report.violations == ()
+
+
+def test_snapshot_with_null_data_is_reported_only_as_malformed_snapshot():
+    store = _ListStore(
+        [
+            _msg(1, "test::user-abc", 0),
+            _msg(2, "test::user:snapshot-abc", 0, data=None),
+        ]
+    )
+
+    report = store.verify()
+
+    assert [v.kind for v in report.violations] == [
+        BaseEventStore.VERIFY_MALFORMED_SNAPSHOT
+    ]
+
+
+def test_row_missing_position_with_null_data_reports_only_the_missing_field():
+    store = _ListStore(
+        [
+            {
+                "global_position": 1,
+                "stream_name": "test::user-abc",
+                "id": "a",
+                "data": None,
+            },
+        ]
+    )
+
+    report = store.verify()
+
+    assert len(report.violations) == 1
+    violation = report.violations[0]
+    assert violation.kind == BaseEventStore.VERIFY_MALFORMED_MESSAGE
+    assert "position" in violation.detail
+    assert "NULL" not in violation.detail
+
+
 def test_report_violations_is_an_immutable_tuple():
     violation = IntegrityViolation(kind="x", stream=None, position=None, detail="d")
     # A list passed at construction is stored as a tuple, so a caller cannot
