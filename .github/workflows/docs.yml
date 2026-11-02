@@ -1,0 +1,111 @@
+name: Docs
+
+# Publishes the docs to GitHub Pages on every push to main. On failure the
+# `report-failure` job opens or updates the `ci-failure` issue it shares with
+# ci.yml and nightly.yml.
+on:
+  push:
+    branches: [main]
+
+# One deployment runs at a time and none is cancelled mid-publish. The group
+# holds one waiting run, and a newer push or a re-run replaces it. Each run
+# builds the tip of main when it starts, so a re-run of an old run still
+# publishes the newest docs. This sits outside ci.yml so a replaced run never
+# marks a CI run as cancelled.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Publishes the docs via the GitHub Actions Pages pipeline (build the site,
+  # then deploy the artifact) instead of `mkdocs gh-deploy` to the gh-pages
+  # branch. The legacy branch-based Pages builder proved unreliable (builds
+  # intermittently stuck/errored), freezing the live site on a stale snapshot;
+  # the Actions deployment removes that GitHub-side build step entirely.
+  #
+  # Not gated on `test`: the rendered docs don't depend on the DB integration
+  # matrix, and gating publication on a 30-min (occasionally flaky) suite means
+  # a single flake strands the docs.
+  docs-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      sha: ${{ steps.head.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Record the deployed commit
+        id: head
+        run: |
+          sha="$(git rev-parse HEAD)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying docs from main at $sha" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: 3.x
+
+      - run: echo "cache_id=$(date --utc '+%V')" >> "$GITHUB_ENV"
+
+      - uses: actions/cache@v6
+        with:
+          key: mkdocs-material-${{ env.cache_id }}
+          path: .cache
+          restore-keys: |
+            mkdocs-material-
+
+      - name: Install dependencies
+        run: uv sync --group docs --no-dev
+
+      - name: Build site
+        run: uv run mkdocs build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+  # A job that hits its timeout ends as `cancelled`, not `failure`, so that
+  # counts as red too. A run replaced by a newer push never starts its jobs.
+  # The report names the commit the job checked out, which is newer than the
+  # pushed one when the run waited in the queue or was re-run. A checkout that
+  # failed leaves no commit, and the report falls back to the pushed one.
+  report-failure:
+    needs: [docs-deploy]
+    if: ${{ !cancelled() && (failure() || contains(needs.*.result, 'cancelled')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    name: Report docs failure
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/report-ci-failure
+        with:
+          run-name: Docs on main
+          sha: ${{ needs.docs-deploy.outputs.sha }}
+          details: >-
+            The docs deployment for a push to main failed or ran out of time,
+            so the live docs site may be behind main.

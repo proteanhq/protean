@@ -10,6 +10,7 @@ name: CI
 #   (`Python 3.14 Full`), uploads its coverage and enforces the project floor.
 #   A red run on main opens or updates the `ci-failure` issue.
 # - nightly.yml runs the full suite on every Python.
+# - docs.yml publishes the docs on every push to main.
 #
 # Every required check runs on the PR itself. A `workflow_dispatch` run never
 # counts toward a PR's checks, even when it runs on the PR's head commit.
@@ -20,8 +21,11 @@ on:
     branches: [main, "release/**"]
 
 # A PR's runs share one group, so a new push cancels the run on the old head.
+# Each push to main or a release branch gets its own group, so its run always
+# finishes and never waits on another. The CI badge reports the newest finished
+# run on main, and a cancelled run shows as failing.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -213,10 +217,9 @@ jobs:
   # A red push to main opens or updates the `ci-failure` issue, the same one
   # the nightly run uses. A job that hits its timeout ends as `cancelled`, not
   # `failure`, so that counts as red too. `cancelled()` is true only when the
-  # whole run was cancelled, which is what a newer push to main does, and that
-  # is not reported.
+  # whole run was cancelled by hand, and that is not reported.
   report-main-failure:
-    needs: [test, mypy, lint, dx-pack, docs-deploy]
+    needs: [test, mypy, lint, dx-pack]
     if: ${{ !cancelled() && (failure() || contains(needs.*.result, 'cancelled')) && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -402,60 +405,3 @@ jobs:
           /tmp/pack-venv/bin/protean dx install -p "$proj"
           /tmp/pack-venv/bin/protean dx check -p "$proj"
           echo "dx round-trip OK"
-
-  # Publishes the docs via the GitHub Actions Pages pipeline (build the site,
-  # then deploy the artifact) instead of `mkdocs gh-deploy` to the gh-pages
-  # branch. The legacy branch-based Pages builder proved unreliable (builds
-  # intermittently stuck/errored), freezing the live site on a stale snapshot;
-  # the Actions deployment removes that GitHub-side build step entirely.
-  #
-  # Not gated on `test`: the rendered docs don't depend on the DB integration
-  # matrix, and gating publication on a 30-min (occasionally flaky) suite means
-  # a single flake strands the docs. Runs on main only.
-  docs-deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    # Serialize Pages deployments; never cancel one mid-publish.
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: 3.x
-
-      - run: echo "cache_id=$(date --utc '+%V')" >> "$GITHUB_ENV"
-
-      - uses: actions/cache@v6
-        with:
-          key: mkdocs-material-${{ env.cache_id }}
-          path: .cache
-          restore-keys: |
-            mkdocs-material-
-
-      - name: Install dependencies
-        run: uv sync --group docs --no-dev
-
-      - name: Build site
-        run: uv run mkdocs build
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: site
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
