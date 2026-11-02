@@ -29,7 +29,7 @@ Usage::
 import json
 from dataclasses import asdict
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Any
+from typing import Annotated, Any, NoReturn
 
 import typer
 from rich import print
@@ -289,9 +289,7 @@ def diff(
         # Render the same diff in slice vocabulary. Every loader mode above
         # sets baseline_ir and current_ir, so both snapshots are available and
         # the renderer can judge each side by the side it lives on.
-        typer.echo(
-            generate_event_model_diff(result, left_ir=baseline_ir, right_ir=current_ir)
-        )
+        typer.echo(_render_event_model(result, baseline_ir, current_ir))
     else:
         _print_diff_text(result, report)
         # Only when the (exclusion-filtered) report has classified changes — a
@@ -322,6 +320,9 @@ def diff(
         raise typer.Exit(code=EXIT_DIFF_NON_BREAKING)
 
 
+_IR_SHAPE_ERRORS = (AttributeError, KeyError, TypeError, ValueError)
+
+
 def _compare(
     baseline_ir: dict[str, Any], current_ir: dict[str, Any]
 ) -> tuple[dict[str, Any], CompatibilityReport]:
@@ -334,19 +335,38 @@ def _compare(
             as_json=False,
             message=f"Error: {exc} Fix that IR file by hand, or regenerate it.",
         )
-    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+    except _IR_SHAPE_ERRORS as exc:
         # Each loader checks only that an IR is a JSON object. An object of
         # the wrong shape (a list where a mapping belongs) fails here, and
         # that is an input error, not a breaking change.
-        emit_usage_error(
-            as_json=False,
-            message=(
-                "Error: could not compare the IR files, one of them does not "
-                f"have the IR structure ({type(exc).__name__}: {exc}). "
-                "Regenerate it with protean ir show."
-            ),
-        )
+        _abort_ir_shape(exc)
     return result, report
+
+
+def _render_event_model(
+    result: dict[str, Any], baseline_ir: dict[str, Any], current_ir: dict[str, Any]
+) -> str:
+    """Render the diff in slice vocabulary, or exit 2 if either IR is not valid."""
+    try:
+        return generate_event_model_diff(
+            result, left_ir=baseline_ir, right_ir=current_ir
+        )
+    except _IR_SHAPE_ERRORS as exc:
+        # The renderer reads parts of the IR, such as projectors and events,
+        # that the comparison accepts in any shape.
+        _abort_ir_shape(exc)
+
+
+def _abort_ir_shape(exc: Exception) -> NoReturn:
+    """Exit 2 for an IR that does not have the IR structure."""
+    emit_usage_error(
+        as_json=False,
+        message=(
+            "Error: could not compare the IR files, one of them does not "
+            f"have the IR structure ({type(exc).__name__}: {exc}). "
+            "Regenerate it with protean ir show."
+        ),
+    )
 
 
 def _load_ir_from_git(commit: str, protean_dir: str) -> dict[str, Any]:

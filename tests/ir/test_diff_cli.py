@@ -3371,6 +3371,37 @@ class TestDiffErrorsExit2:
         assert "does not have the IR structure" in " ".join(result.stderr.split())
         assert result.stdout == ""
 
+    @pytest.mark.parametrize(
+        "bad_ir",
+        [
+            _minimal_ir(
+                clusters={"app.Order": dict(_make_cluster("Order"), events=[])}
+            ),
+            _minimal_ir(projections={"app.P": {"projection": {}, "projectors": [1]}}),
+        ],
+    )
+    def test_ir_only_the_event_model_renderer_rejects_exits_2(self, bad_ir):
+        # The comparison accepts these shapes; only the renderer reads them.
+        right = _write_ir(self._tmp, "bad_shape.json", bad_ir)
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-l",
+                _good_file(self._tmp),
+                "-r",
+                right,
+                "--format",
+                "event-model",
+            ],
+        )
+        assert result.exit_code == 2, result.output
+        assert "does not have the IR structure" in " ".join(result.stderr.split())
+        assert result.stdout == ""
+
     def test_ir_without_the_ir_structure_exits_0_under_off(self):
         # Under off the comparison does not run, so only it can reject this IR.
         (self._protean_dir / "config.toml").write_text(
