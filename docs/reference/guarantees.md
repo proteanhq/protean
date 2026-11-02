@@ -170,11 +170,16 @@ commit follows it non-atomically.
     The cross-store atomicity story
     ([ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md)) is marked
     *Proposed*: the window between the event-store append and the relational/outbox
-    commit is closed by a reconciliation sweep on startup. When the newest of the
-    domain's events has lost its internal outbox row, the sweep rebuilds the rows
-    of every recent event that lost its internal row, including the
-    external-broker rows of a `published` event. Treat this as interim; it may
-    change.
+    commit is closed by a reconciliation sweep on startup for event-sourced
+    aggregates. When the newest event-sourced aggregate's event has lost its
+    internal outbox row, the sweep rebuilds the rows of every recent
+    event-sourced aggregate's event that lost its internal row, including the
+    external-broker rows of a `published` event. A state-based aggregate's
+    event with no outbox row is not rebuilt. On a transactional provider its
+    aggregate row commits or rolls back together with its outbox rows. On a
+    provider without transactions, such as Elasticsearch, the row can be saved
+    while its outbox row is lost, and that event stays unpublished. Treat this
+    as interim; it may change.
 
 ---
 
@@ -299,7 +304,7 @@ broker. This decouples the domain commit from broker availability.
 | **Terminal state** | After `max_retries` (default 3) with exponential backoff, a message is marked **`abandoned`** (`OutboxStatus.ABANDONED`): permanently *not* delivered, retained for observability, cleaned up after a retention period. |
 | **Dedup** | Write-side idempotency on `(message_id, target_broker)`; a published event is written once per configured external broker. |
 | **Ordering** | Claimed **by priority**, not per-stream/commit order, so a higher-priority later message can overtake a lower-priority earlier one, and same-priority order is database-dependent. Do not assume end-to-end FIFO through the outbox. |
-| **Crash recovery** | A startup sweep rebuilds outbox rows from the event store (ADR-0015) for recent events whose internal row is missing, including one row per configured external broker for a `published` event. External rows lost on their own are not rebuilt, and events older than the outbox cleanup retention are skipped. |
+| **Crash recovery** | A startup sweep rebuilds outbox rows from the event store (ADR-0015) for recent event-sourced aggregates' events whose internal row is missing, including one row per configured external broker for a `published` event. External rows lost on their own are not rebuilt, and events older than the outbox cleanup retention are skipped. State-based aggregates' events are never rebuilt. On a provider that keeps writes without a transaction, such as Elasticsearch, a state-based aggregate's row can be saved while its outbox row is lost, and that event stays unpublished. |
 
 ---
 

@@ -265,28 +265,30 @@ relational transaction that carries aggregate state and the outbox rows. The
 event store is the durable anchor (see
 [ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md)). This
 closes the corrupting failure where the event store could be left missing a
-committed event, but it leaves a narrow, **recoverable** window: if the process
-dies between the append and the relational commit, the event is durable in the
-store while its outbox row never landed, so the event would never be published.
+committed event, but it leaves a narrow window: if the process dies between
+the append and the relational commit, the event is durable in the store while
+its outbox row never landed, so the event would never be published.
 
-Reconciliation repairs that window by re-deriving the missing outbox rows
-directly from the event store. It runs two ways:
+Reconciliation repairs that window for event-sourced aggregates by re-deriving
+the missing outbox rows directly from the event store. It does not repair
+state-based aggregates' events (see below). It runs two ways:
 
 **Automatically on server startup.** Every `protean server` boot runs a one-time
-sweep before subscriptions start, so a crash self-heals on restart with no
-operator action:
+sweep before subscriptions start, so an event-sourced aggregate's lost row is
+rebuilt on restart with no operator action:
 
 ```bash
 $ protean server --domain=my_domain
 ```
 
-The sweep checks only the newest stored message when that message is one of
-this domain's events and has its row. Otherwise it reads the newest 1,000
-messages.
-This happens on every boot when the store is shared with another domain, or
-when the last write was a command. The sweep never blocks boot (a failure is
-logged and startup continues), and is safe under `--workers N`, the composite
-unique index on (`message_id`, `target_broker`) makes concurrent sweeps idempotent.
+The sweep reads nothing when no event-sourced aggregate is on the provider. It
+checks only the newest stored message when that message is an event-sourced
+aggregate's event and has its row. Otherwise it reads the newest 1,000
+messages. That happens when the newest message is missing its row, belongs to
+another domain sharing the store, is a command, or is a state-based aggregate's
+event. The sweep never blocks boot (a failure is logged and startup continues),
+and is safe under `--workers N`, the composite unique index on (`message_id`,
+`target_broker`) makes concurrent sweeps idempotent.
 The startup sweep covers only the `default` provider. Run the CLI with
 `--provider` for aggregates on other providers.
 
@@ -305,10 +307,20 @@ $ protean outbox reconcile --provider=analytics --limit=5000 --domain=my_domain
 Reconciled 2 outbox row(s) from the event store.
 ```
 
-Reconciliation repairs only events raised by this domain's aggregates on the
-given provider, so another domain's events in a shared event store, commands,
-process manager transition events, and events of aggregates on other providers
-never get a row.
+Reconciliation repairs only events raised by this domain's event-sourced
+aggregates on the given provider. For an event-sourced aggregate the event store
+holds the aggregate's state, so the event is the saved change. For a state-based
+aggregate the relational row is the state. On a transactional provider that row
+commits or rolls back together with its outbox rows, so a state-based event with
+no outbox row has no saved change behind it, and publishing it would report a
+change that did not happen. Reconciliation skips every state-based event,
+whether or not the aggregate row exists. On a provider that keeps writes without
+a transaction, such as Elasticsearch, the aggregate row can be saved while its
+outbox row is lost. That change did happen, and its event stays unpublished.
+
+Another domain's events in a shared event store, commands, process manager
+transition events, and events of aggregates on other providers never get a row
+either.
 
 An event counts as missing only when its internal-broker row is missing. A
 `published` event that is missing gets back one row per broker in
