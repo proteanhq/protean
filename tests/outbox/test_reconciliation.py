@@ -51,17 +51,19 @@ class Withdrawn(BaseEvent):
 class Wallet(BaseAggregate):
     balance = Integer(default=0)
 
+    # Any of these events can be a wallet's first, and a wallet rebuilt from
+    # its events starts with no balance, so each handler treats ``None`` as 0.
     @apply
     def funded(self, event: Funded) -> None:
-        self.balance += event.amount
+        self.balance = (self.balance or 0) + event.amount
 
     @apply
     def credited(self, event: Credited) -> None:
-        self.balance += event.amount
+        self.balance = (self.balance or 0) + event.amount
 
     @apply
     def withdrawn(self, event: Withdrawn) -> None:
-        self.balance -= event.amount
+        self.balance = (self.balance or 0) - event.amount
 
 
 class Account(BaseAggregate):
@@ -71,6 +73,10 @@ class Account(BaseAggregate):
 class Deposited(BaseEvent):
     account_id = Identifier(required=True)
     amount = Integer(required=True)
+
+
+class Audited(BaseEvent):
+    account_id = Identifier(required=True)
 
 
 def _register_wallet_and_account(domain):
@@ -97,7 +103,7 @@ def _make_domain(tmp_path, event_store=None):
 
 
 def _fund(domain):
-    wallet = Wallet(balance=100)
+    wallet = Wallet()
     wallet.raise_(Funded(wallet_id=wallet.id, amount=100))
     domain.repository_for(Wallet).add(wallet)
     return wallet
@@ -666,7 +672,7 @@ class TestReconcilePartitionKey:
     def _fund_keyed(self, domain, key):
         """Raise a funding event whose ``sequential_by`` field differs from the
         aggregate id, so a key read from the wrong field would not match."""
-        wallet = Wallet(balance=100)
+        wallet = Wallet()
         wallet.raise_(Funded(wallet_id=key, amount=100))
         domain.repository_for(Wallet).add(wallet)
         assert key != wallet.id  # precondition
@@ -975,7 +981,7 @@ class CreditWallet(BaseCommand):
 class CreditHandler(BaseCommandHandler):
     @handle(CreditWallet)
     def credit(self, command):
-        wallet = Wallet(balance=command.amount)
+        wallet = Wallet()
         wallet.raise_(Credited(wallet_id=wallet.id, amount=command.amount))
         current_domain.repository_for(Wallet).add(wallet)
 
@@ -1004,7 +1010,7 @@ class TestReconcileExternalBrokers:
         return domain
 
     def _credit(self, domain, key=None):
-        wallet = Wallet(balance=100)
+        wallet = Wallet()
         wallet.raise_(Credited(wallet_id=key or wallet.id, amount=100))
         domain.repository_for(Wallet).add(wallet)
         return domain.event_store.store.read_last_message("$all").metadata.headers.id
@@ -1277,7 +1283,7 @@ class TestReconcileSkipsRowsCleanupMayHaveDeleted:
 
     def _credit_and_lose_rows(self, domain):
         outbox_repo = _create_tables(domain)
-        wallet = Wallet(balance=100)
+        wallet = Wallet()
         wallet.raise_(Credited(wallet_id=wallet.id, amount=100))
         domain.repository_for(Wallet).add(wallet)
         message_id = _newest_message_id(domain)
@@ -1367,28 +1373,72 @@ class TestReconcileSkipsStateBasedAggregates:
     ):
         domain, outbox_repo = domain_and_repo
         account = _deposit(domain)
-        message_id = _newest_message_id(domain)
+        last = domain.event_store.store.read_last_message("$all")
+        message_id = last.metadata.headers.id
         outbox_repo._dao._delete_all()
 
         assert reconcile_outbox(domain) == 0
         assert outbox_repo.find_all_by_message_id(message_id) == []
         saved = domain.repository_for(Account).get(account.id)
         assert saved.balance == 100
-        assert saved._version == 0
+        # ``sequence_id`` is ``<aggregate version>.<event number>``.
+        event_version = int(last.metadata.domain.sequence_id.split(".")[0])
+        assert saved._version == event_version
+
+    def test_published_event_of_a_state_based_aggregate_gets_no_broker_rows(
+        self, tmp_path
+    ):
+        domain = _make_domain_with(
+            tmp_path,
+            (Audited, {"part_of": Account, "published": True}),
+            before_init=_with_external_brokers("ext-a", "ext-b"),
+        )
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            account = Account(balance=100)
+            account.raise_(Audited(account_id=account.id))
+            domain.event_store.store.append(account._events[0])
+            message_id = account._events[0]._metadata.headers.id
+
+            assert reconcile_outbox(domain) == 0
+            assert outbox_repo.find_all_by_message_id(message_id) == []
+            assert outbox_repo._dao.query.all().items == []
 
     def test_event_sourced_event_is_rebuilt_as_pending_without_its_aggregate(
-        self, domain_and_repo
+        self, domain_and_repo, monkeypatch
     ):
-        """The wallet is appended straight to the store: it was never saved
-        through a repository and has no relational table, so the repair cannot
-        rest on reading the aggregate."""
+        """Reconcile rebuilds the row from the stored event alone and never
+        loads the wallet, through its repository or from the event store."""
         domain, outbox_repo = domain_and_repo
-        wallet = Wallet(balance=100)
+        wallet = Wallet()
         wallet.raise_(Funded(wallet_id=wallet.id, amount=100))
         domain.event_store.store.append(wallet._events[0])
         message_id = wallet._events[0]._metadata.headers.id
+        # The wallet can be loaded, so a lookup would succeed if reconcile made one.
+        assert domain.repository_for(Wallet).get(wallet.id).balance == 100
+
+        lookups = []
+        real_repository_for = domain.repository_for
+        real_load_aggregate = domain.event_store.store.load_aggregate
+
+        # The memory event store and the outbox reach their own tables through
+        # ``repository_for`` too, so only a wallet lookup counts.
+        def repository_for_spy(element_cls):
+            if element_cls is Wallet:
+                lookups.append(("repository_for", element_cls))
+            return real_repository_for(element_cls)
+
+        def load_aggregate_spy(*args, **kwargs):
+            lookups.append(("load_aggregate", args))
+            return real_load_aggregate(*args, **kwargs)
+
+        monkeypatch.setattr(domain, "repository_for", repository_for_spy)
+        monkeypatch.setattr(
+            domain.event_store.store, "load_aggregate", load_aggregate_spy
+        )
 
         assert reconcile_outbox(domain) == 1
+        assert lookups == []
         [row] = outbox_repo.find_all_by_message_id(message_id)
         assert row.type == Funded.__type__
         assert row.status == OutboxStatus.PENDING.value
@@ -1447,3 +1497,56 @@ class TestReconcileSkipsStateBasedAggregates:
             assert reconcile_outbox(domain) == 0
             assert reads == []
             assert outbox_repo._dao.query.all().items == []
+
+    def test_provider_with_only_state_based_aggregates_reads_nothing(
+        self, tmp_path, monkeypatch
+    ):
+        """The event-sourced ``Wallet`` is on ``default``, so reconciling
+        ``analytics``, where only a state-based aggregate lives, reads nothing."""
+
+        # Local classes, so registering them state-based leaves the module's
+        # event-sourced ``Report`` untouched.
+        class Note(BaseAggregate):
+            title = String(default="")
+
+        class NoteAdded(BaseEvent):
+            note_id = Identifier(required=True)
+
+        def add_analytics_database(domain):
+            domain.config["databases"]["analytics"] = {
+                "provider": "sqlite",
+                "database_uri": f"sqlite:///{tmp_path / 'analytics.db'}",
+            }
+
+        domain = _make_domain_with(
+            tmp_path,
+            (Note, {"provider": "analytics"}),
+            (NoteAdded, {"part_of": Note}),
+            before_init=add_analytics_database,
+        )
+        with domain.domain_context():
+            _create_tables(domain)
+            provider = domain.providers["analytics"]
+            domain.repository_for(Note)._dao
+            analytics_repo = domain._get_outbox_repo("analytics")
+            analytics_repo._dao
+            provider._metadata.create_all(provider._engine)
+            note = Note(title="Q3")
+            note.raise_(NoteAdded(note_id=note.id))
+            domain.repository_for(Note).add(note)
+            assert len(analytics_repo._dao.query.all().items) == 1
+            analytics_repo._dao._delete_all()
+
+            store = domain.event_store.store
+            reads = []
+            real_read_last_message = store.read_last_message
+
+            def spy(*args, **kwargs):
+                reads.append(args)
+                return real_read_last_message(*args, **kwargs)
+
+            monkeypatch.setattr(store, "read_last_message", spy)
+
+            assert reconcile_outbox(domain, provider_name="analytics") == 0
+            assert reads == []
+            assert analytics_repo._dao.query.all().items == []

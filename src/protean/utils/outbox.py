@@ -1449,8 +1449,8 @@ def _is_repairable_event(domain: Any, message: Any, provider_name: str) -> bool:
 
     The message must qualify under ``_resolve_outboxed_event_class`` and belong
     to an event-sourced aggregate. A state-based aggregate's event does not
-    qualify: its saved change is the relational row, which commits or rolls
-    back with its outbox rows.
+    qualify: its saved change is the relational row, which on a transactional
+    provider commits or rolls back with its outbox rows.
     """
     event_cls = _resolve_outboxed_event_class(domain, message, provider_name)
     return event_cls is not None and bool(
@@ -1600,8 +1600,9 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # already has its internal row, the last unit of work committed fully
     # and there is nothing at the tail to repair. This keeps the startup sweep
     # cheap in the common (no-crash) case. The gap this repairs is the crash
-    # window between the event store append and the outbox commit (ADR-0015),
-    # so it is always at the tail.
+    # window between the event store append and the outbox commit (ADR-0015).
+    # Only the last unit of work can sit in that window, so a lost row hidden
+    # behind a later event-sourced commit that landed is not found here or below.
     if _is_repairable_event(domain, last, provider_name) and _internal_row_exists(
         last.metadata.headers.id
     ):

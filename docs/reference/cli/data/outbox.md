@@ -3,10 +3,10 @@
 The `protean outbox` command group manages the transactional
 [outbox](../../../guides/server/outbox.md). `reconcile` repairs the crash
 window described in
-[ADR-0015](../../../adr/0015-event-store-append-as-durable-anchor.md): an
-event that reached the event store (the durable anchor of the commit) but
-whose relational outbox row never committed, leaving the event durable yet
-unpublished. `halted`, `retry` and `discard` find and release a partition key
+[ADR-0015](../../../adr/0015-event-store-append-as-durable-anchor.md) for
+event-sourced aggregates: an event that reached the event store (the durable
+anchor of the commit) but whose relational outbox row never committed, leaving
+the event durable yet unpublished. `halted`, `retry` and `discard` find and release a partition key
 that an abandoned row has halted.
 
 All commands accept a `--domain` option to specify the domain module path
@@ -34,7 +34,8 @@ state, and on a transactional provider that row commits or rolls back together
 with its outbox rows. A state-based aggregate's event with no outbox row has no
 saved change behind it, so it is skipped whether or not the aggregate row
 exists. On a provider that keeps writes without a transaction, such as
-Elasticsearch, a lost outbox row behind a saved aggregate row is not repaired.
+Elasticsearch, the aggregate row can be saved while its outbox row is lost.
+That change did happen, and its event stays unpublished.
 
 Another domain's events in a shared store, commands, process manager transition
 events, and events of aggregates on other providers never get outbox rows in
@@ -78,8 +79,9 @@ Otherwise the scan first checks the single newest message. When that message
 is an event-sourced aggregate's event and has its row, the scan stops there.
 Otherwise it reads the `--limit` window, finds the newest event-sourced
 aggregate's event in it, and repairs only if that event is missing its row. In
-a store shared with other domains, or when the last write was a command or a
-state-based aggregate's event, every run reads the full window. Reconciliation
+a store shared with other domains, a run reads the full window whenever the
+newest message belongs to another domain. A run also reads the full window
+when the last write was a command or a state-based aggregate's event. Reconciliation
 is idempotent, the composite unique index on (`message_id`, `target_broker`) means running it
 repeatedly, or concurrently with the startup sweep, never duplicates a row.
 
@@ -239,9 +241,9 @@ Outbox row 6f1c2a9e-... is discarded and will not be published.
 
 ## Automatic startup sweep
 
-The same reconciliation runs once automatically when the server boots, so a
-crash before the relational commit self-heals on restart without operator
-action:
+The same reconciliation runs once automatically when the server boots, so an
+event-sourced aggregate's event whose outbox row was lost in a crash before the
+relational commit gets its row back on restart without operator action:
 
 ```bash
 protean server --domain=my_domain
@@ -275,7 +277,9 @@ The commit sequence appends events to the event store *before* committing the
 relational transaction that carries aggregate state and the outbox rows, so the
 event store is the durable anchor. A crash in the window between the two leaves
 events stored but their outbox rows uncommitted. Reconciliation reads those
-events back from the store and re-derives the missing rows. The full rationale,
+events back from the store and re-derives the missing rows of event-sourced
+aggregates' events. It skips state-based aggregates' events, for the reason
+given under [`protean outbox reconcile`](#protean-outbox-reconcile). The full rationale,
 including why this ordering was chosen over two-phase commit, is in
 [ADR-0015: Event-Store Append as the Durable Anchor](../../../adr/0015-event-store-append-as-durable-anchor.md).
 

@@ -1316,11 +1316,11 @@ class Engine:
 
     def _reconcile_outbox_on_startup(self) -> int:
         """Recover the ADR-0015 crash window on startup: create outbox rows for
-        events that are durable in the event store but whose relational outbox
-        commit did not land, so a crash cannot leave events permanently
-        unpublished. Returns the number of rows repaired.
+        event-sourced aggregates' events that are durable in the event store but
+        whose relational outbox commit did not land. Returns the number of rows
+        repaired.
 
-        Only events of event-sourced aggregates are repaired. Reads nothing
+        State-based aggregates' events are not repaired. Reads nothing
         when no event-sourced aggregate is on the provider, only the newest
         message when it is such an aggregate's event and has its row, and the
         ``limit`` window otherwise. A failure here

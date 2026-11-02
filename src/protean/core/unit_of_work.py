@@ -491,9 +491,9 @@ class UnitOfWork:
             # Append events to the event store FIRST, while this UnitOfWork is
             # still the active context, so the event store is the durable anchor
             # of the commit: a crash before the relational commit leaves the
-            # events durable and the outbox/relational state recoverable (via
-            # reconciliation), rather than leaving the store missing a committed
-            # event. See ADR-0015.
+            # events durable, and reconciliation rebuilds the outbox rows of
+            # event-sourced aggregates' events, rather than leaving the store
+            # missing a committed event. See ADR-0015.
             #
             # Appending while the context is active also matters for adapters
             # that back the event store with the relational provider (the

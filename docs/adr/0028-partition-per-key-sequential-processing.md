@@ -574,8 +574,9 @@ earlier row of its group has published.
 - **An abandoned partitioned row halts its key**, matching decision 6 (halt on
   poison) on the consumer side. Cleanup does not delete abandoned rows that
   have a partition key. An operator re-queues the row or marks it published
-  to restart the key. Deleting it is unsafe, because startup reconciliation
-  can rebuild it as `pending` behind the key's later rows.
+  to restart the key. Deleting it is unsafe when its event belongs to an
+  event-sourced aggregate, because startup reconciliation can rebuild it as
+  `pending` behind the key's later rows.
 - **The processor publishes each group's rows in commit order within a batch.**
   When a row fails, the processor puts the group's later rows from that batch
   back to `pending` (`Outbox.release()`), without changing their retry counts.
