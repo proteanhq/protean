@@ -3402,6 +3402,31 @@ class TestDiffErrorsExit2:
         assert "does not have the IR structure" in " ".join(result.stderr.split())
         assert result.stdout == ""
 
+    def test_ir_only_the_text_renderer_rejects_exits_2(self):
+        # The comparison accepts a diagnostic without a message; only the
+        # text renderer reads the message.
+        right = _write_ir(
+            self._tmp,
+            "bad_shape.json",
+            _minimal_ir(diagnostics=[{"code": "X", "element": "app.Order"}]),
+        )
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-l",
+                _good_file(self._tmp),
+                "-r",
+                right,
+            ],
+        )
+        assert result.exit_code == 2, result.output
+        assert "does not have the IR structure" in " ".join(result.stderr.split())
+        assert result.stdout == ""
+
     def test_ir_without_the_ir_structure_exits_0_under_off(self):
         # Under off the comparison does not run, so only it can reject this IR.
         (self._protean_dir / "config.toml").write_text(

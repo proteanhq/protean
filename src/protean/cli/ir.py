@@ -32,7 +32,7 @@ from pathlib import Path, PurePosixPath
 from typing import Annotated, Any, NoReturn
 
 import typer
-from rich import print
+from rich import get_console, print
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
@@ -291,11 +291,7 @@ def diff(
         # the renderer can judge each side by the side it lives on.
         typer.echo(_render_event_model(result, baseline_ir, current_ir))
     else:
-        _print_diff_text(result, report)
-        # Only when the (exclusion-filtered) report has classified changes — a
-        # vacuous FULL beside no schema changes is noise.
-        if report.breaking_changes or report.safe_changes:
-            _print_avro_verdict(report)
+        typer.echo(_render_text(result, report), nl=False)
 
     # ------------------------------------------------------------------ #
     # CI exit codes                                                       #
@@ -355,6 +351,23 @@ def _render_event_model(
         # The renderer reads parts of the IR, such as projectors and events,
         # that the comparison accepts in any shape.
         _abort_ir_shape(exc)
+
+
+def _render_text(result: dict[str, Any], report: CompatibilityReport) -> str:
+    """Render the text diff to a string, or exit 2 if either IR is not valid."""
+    # The renderer reads parts of the IR, such as diagnostic messages, that the
+    # comparison accepts in any shape. Capturing the output keeps a partial
+    # diff off stdout when it fails part-way.
+    try:
+        with get_console().capture() as capture:
+            _print_diff_text(result, report)
+            # Only when the (exclusion-filtered) report has classified changes — a
+            # vacuous FULL beside no schema changes is noise.
+            if report.breaking_changes or report.safe_changes:
+                _print_avro_verdict(report)
+    except _IR_SHAPE_ERRORS as exc:
+        _abort_ir_shape(exc)
+    return capture.get()
 
 
 def _abort_ir_shape(exc: Exception) -> NoReturn:
