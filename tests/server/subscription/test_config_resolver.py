@@ -876,8 +876,8 @@ class TestConfigResolverRetention:
     def test_profile_retention_survives_resolution(
         self, test_domain, profile, expected
     ):
-        """A profile's retention_maxlen reaches the resolved config, and no
-        profile leaves retention off.
+        """A profile's retention_maxlen reaches the resolved config. A handler
+        that names no profile resolves with retention_maxlen None.
 
         The custom `myret` profile sets 42, which differs from every built-in
         default, so seeing 42 proves the value was neither dropped by the

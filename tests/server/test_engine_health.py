@@ -1676,7 +1676,7 @@ class TestHandleConnectionErrors:
     def test_generic_exception_is_logged_and_answered_with_503(
         self, health_server, caplog
     ):
-        """A non-network exception is logged at debug level. An empty reply is
+        """A non-network exception is logged as a warning. An empty reply is
         indistinguishable from a dead process, so the handler must still answer
         when response assembly blows up."""
         _, hs, loop, _ = health_server
@@ -1691,7 +1691,9 @@ class TestHandleConnectionErrors:
             loop.run_until_complete(_test())
 
         assert any(
-            "Health server connection error" in r.message for r in caplog.records
+            "Health server connection error" in r.message
+            and r.levelno == logging.WARNING
+            for r in caplog.records
         )
 
         written = b"".join(call.args[0] for call in writer.write.call_args_list)
