@@ -129,3 +129,15 @@ def test_staleness_gauge_emits_on_scrape(test_domain):
         p for p in points if p.attributes.get("projection") == "Balances"
     )
     assert balances_point.value == 0
+
+
+def test_staleness_gauge_skips_projections_with_no_source_events(test_domain):
+    """A projection whose source stream is empty has no lag and reports no
+    staleness point."""
+    metric_reader = _init_telemetry_in_memory(test_domain)
+
+    _register_infrastructure_gauges([test_domain])
+
+    metric = _get_metric(metric_reader, "protean.projection.staleness_seconds")
+    points = list(metric.data.data_points) if metric is not None else []
+    assert points == []

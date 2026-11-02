@@ -9,7 +9,6 @@ Verifies that:
 
 import json
 from dataclasses import asdict
-from unittest.mock import patch
 
 import pytest
 
@@ -19,7 +18,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.domain import Processing
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.server.tracing import MessageTrace, TraceEmitter
+from protean.server.tracing import TRACE_STREAM, MessageTrace, TraceEmitter
 from protean.utils.eventing import (
     DomainMeta,
     Message,
@@ -28,13 +27,55 @@ from protean.utils.eventing import (
 )
 from protean.utils.mixins import handle
 
+
+class RecordingRedis:
+    """Stands in for the Redis server that TraceEmitter writes traces to."""
+
+    def __init__(self):
+        self.stream_entries = []
+
+    def xadd(self, name, fields, **kwargs):
+        self.stream_entries.append((name, fields))
+
+    def publish(self, channel, message):
+        pass
+
+    def pubsub_numsub(self, channel):
+        return []
+
+    def traces(self):
+        return [
+            json.loads(fields["data"])
+            for name, fields in self.stream_entries
+            if name == TRACE_STREAM
+        ]
+
+
+def _attach_recording_redis(emitter: TraceEmitter) -> RecordingRedis:
+    redis = RecordingRedis()
+    emitter._redis = redis
+    emitter._persist = True
+    emitter._initialized = True
+    return redis
+
+
 # --- MessageTrace dataclass tests ---
 
 
 class TestMessageTraceFields:
     """Verify the MessageTrace dataclass has correlation_id and causation_id."""
 
-    def test_default_values_are_none(self):
+    @pytest.mark.parametrize(
+        "ids, expected",
+        [
+            ({}, (None, None)),
+            (
+                {"correlation_id": "corr-abc", "causation_id": "cause-xyz"},
+                ("corr-abc", "cause-xyz"),
+            ),
+        ],
+    )
+    def test_ids_on_attributes_asdict_and_json(self, ids, expected):
         trace = MessageTrace(
             event="handler.started",
             domain="test",
@@ -42,87 +83,14 @@ class TestMessageTraceFields:
             message_id="msg-1",
             message_type="UserRegistered",
             status="ok",
-        )
-        assert trace.correlation_id is None
-        assert trace.causation_id is None
-
-    def test_explicit_values(self):
-        trace = MessageTrace(
-            event="handler.completed",
-            domain="test",
-            stream="test::user",
-            message_id="msg-1",
-            message_type="UserRegistered",
-            status="ok",
-            correlation_id="corr-abc",
-            causation_id="cause-xyz",
-        )
-        assert trace.correlation_id == "corr-abc"
-        assert trace.causation_id == "cause-xyz"
-
-    def test_asdict_includes_fields(self):
-        trace = MessageTrace(
-            event="handler.started",
-            domain="test",
-            stream="test::user",
-            message_id="msg-1",
-            message_type="UserRegistered",
-            status="ok",
-            correlation_id="corr-abc",
-            causation_id="cause-xyz",
+            **ids,
         )
         d = asdict(trace)
-        assert "correlation_id" in d
-        assert "causation_id" in d
-        assert d["correlation_id"] == "corr-abc"
-        assert d["causation_id"] == "cause-xyz"
-
-    def test_asdict_with_none_values(self):
-        trace = MessageTrace(
-            event="handler.started",
-            domain="test",
-            stream="test::user",
-            message_id="msg-1",
-            message_type="UserRegistered",
-            status="ok",
-        )
-        d = asdict(trace)
-        assert "correlation_id" in d
-        assert "causation_id" in d
-        assert d["correlation_id"] is None
-        assert d["causation_id"] is None
-
-
-class TestMessageTraceJsonSerialization:
-    """Verify JSON serialization includes correlation_id and causation_id."""
-
-    def test_json_with_ids(self):
-        trace = MessageTrace(
-            event="handler.completed",
-            domain="test",
-            stream="test::user",
-            message_id="msg-1",
-            message_type="UserRegistered",
-            status="ok",
-            correlation_id="corr-abc",
-            causation_id="cause-xyz",
-        )
         data = json.loads(trace.to_json())
-        assert data["correlation_id"] == "corr-abc"
-        assert data["causation_id"] == "cause-xyz"
 
-    def test_json_with_none_values(self):
-        trace = MessageTrace(
-            event="handler.started",
-            domain="test",
-            stream="test::user",
-            message_id="msg-1",
-            message_type="UserRegistered",
-            status="ok",
-        )
-        data = json.loads(trace.to_json())
-        assert data["correlation_id"] is None
-        assert data["causation_id"] is None
+        assert (trace.correlation_id, trace.causation_id) == expected
+        assert (d["correlation_id"], d["causation_id"]) == expected
+        assert (data["correlation_id"], data["causation_id"]) == expected
 
 
 # --- TraceEmitter tests ---
@@ -131,83 +99,31 @@ class TestMessageTraceJsonSerialization:
 class TestTraceEmitterEmit:
     """Verify TraceEmitter.emit() accepts and forwards correlation/causation IDs."""
 
-    def test_emit_passes_correlation_id_to_trace(self, test_domain):
-        """Verify that emit() constructs a MessageTrace with the provided IDs."""
+    @pytest.mark.parametrize(
+        "ids, expected",
+        [
+            (
+                {"correlation_id": "corr-123", "causation_id": "cause-456"},
+                ("corr-123", "cause-456"),
+            ),
+            # Omitting the IDs results in None.
+            ({}, (None, None)),
+        ],
+    )
+    def test_emit_writes_ids_to_trace(self, test_domain, ids, expected):
         emitter = TraceEmitter(test_domain)
+        redis = _attach_recording_redis(emitter)
 
-        # Force emitter to think persistence is on and Redis is available
-        emitter._persist = True
-        emitter._initialized = True
+        emitter.emit(
+            event="handler.started",
+            stream="test::user",
+            message_id="msg-1",
+            message_type="UserRegistered",
+            **ids,
+        )
 
-        traces_emitted = []
-
-        # Patch MessageTrace construction to capture what's created
-        original_init = MessageTrace.__init__
-
-        def capturing_init(self_trace, *args, **kwargs):
-            original_init(self_trace, *args, **kwargs)
-            traces_emitted.append(self_trace)
-
-        with patch.object(MessageTrace, "__init__", capturing_init):
-            emitter._redis = type(
-                "FakeRedis",
-                (),
-                {
-                    "xadd": lambda *a, **kw: None,
-                    "publish": lambda *a, **kw: None,
-                    "pubsub_numsub": lambda *a, **kw: [],
-                },
-            )()
-
-            emitter.emit(
-                event="handler.started",
-                stream="test::user",
-                message_id="msg-1",
-                message_type="UserRegistered",
-                correlation_id="corr-123",
-                causation_id="cause-456",
-            )
-
-        assert len(traces_emitted) > 0
-        trace = traces_emitted[0]
-        assert trace.correlation_id == "corr-123"
-        assert trace.causation_id == "cause-456"
-
-    def test_emit_without_ids_defaults_to_none(self, test_domain):
-        """Backward compatibility: omitting IDs results in None."""
-        emitter = TraceEmitter(test_domain)
-        emitter._persist = True
-        emitter._initialized = True
-
-        traces_emitted = []
-        original_init = MessageTrace.__init__
-
-        def capturing_init(self_trace, *args, **kwargs):
-            original_init(self_trace, *args, **kwargs)
-            traces_emitted.append(self_trace)
-
-        with patch.object(MessageTrace, "__init__", capturing_init):
-            emitter._redis = type(
-                "FakeRedis",
-                (),
-                {
-                    "xadd": lambda *a, **kw: None,
-                    "publish": lambda *a, **kw: None,
-                    "pubsub_numsub": lambda *a, **kw: [],
-                },
-            )()
-
-            emitter.emit(
-                event="handler.started",
-                stream="test::user",
-                message_id="msg-1",
-                message_type="UserRegistered",
-            )
-
-        assert len(traces_emitted) > 0
-        trace = traces_emitted[0]
-        assert trace.correlation_id is None
-        assert trace.causation_id is None
+        (trace,) = redis.traces()
+        assert (trace["correlation_id"], trace["causation_id"]) == expected
 
 
 # --- Engine.handle_message integration tests ---
@@ -253,13 +169,7 @@ class TestEngineHandleMessageCorrelation:
 
         engine = Engine(domain=test_domain, test_mode=True)
 
-        # Collect emitted traces
-        emitted = []
-
-        def capturing_emit(*args, **kwargs):
-            emitted.append(kwargs)
-
-        engine.emitter.emit = capturing_emit
+        redis = _attach_recording_redis(engine.emitter)
 
         # Use the actual __type__ that the domain assigned
         event_type = Registered.__type__
@@ -283,6 +193,7 @@ class TestEngineHandleMessageCorrelation:
 
         result = await engine.handle_message(UserEventHandler, message)
         assert result is True
+        emitted = redis.traces()
 
         # Verify we got handler.started and handler.completed
         assert len(emitted) >= 2, f"Expected at least 2 traces, got {len(emitted)}"
@@ -307,12 +218,7 @@ class TestEngineHandleMessageCorrelation:
 
         engine = Engine(domain=test_domain, test_mode=True)
 
-        emitted = []
-
-        def capturing_emit(*args, **kwargs):
-            emitted.append(kwargs)
-
-        engine.emitter.emit = capturing_emit
+        redis = _attach_recording_redis(engine.emitter)
 
         event_type = Registered.__type__
 
@@ -335,6 +241,7 @@ class TestEngineHandleMessageCorrelation:
 
         result = await engine.handle_message(FailingEventHandler, message)
         assert result is False  # Handler failed
+        emitted = redis.traces()
 
         failed = [t for t in emitted if t.get("event") == "handler.failed"]
         assert len(failed) == 1
@@ -351,12 +258,7 @@ class TestEngineHandleMessageCorrelation:
 
         engine = Engine(domain=test_domain, test_mode=True)
 
-        emitted = []
-
-        def capturing_emit(*args, **kwargs):
-            emitted.append(kwargs)
-
-        engine.emitter.emit = capturing_emit
+        redis = _attach_recording_redis(engine.emitter)
 
         event_type = Registered.__type__
 
@@ -378,6 +280,7 @@ class TestEngineHandleMessageCorrelation:
 
         await engine.handle_message(UserEventHandler, message)
 
+        emitted = redis.traces()
         assert len(emitted) >= 2
         started = [t for t in emitted if t.get("event") == "handler.started"]
         assert len(started) == 1

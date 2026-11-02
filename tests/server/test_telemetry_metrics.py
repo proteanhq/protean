@@ -13,10 +13,15 @@ Verifies that:
   telemetry is enabled, and falls back to hand-rolled text otherwise.
 """
 
+import builtins
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from opentelemetry.exporter.prometheus import PrometheusMetricReader
+from opentelemetry.metrics import Observation
+from opentelemetry.sdk.metrics import Counter, Histogram
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -24,18 +29,47 @@ from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from protean.adapters.broker.redis import RedisBroker
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.exceptions import CommandExpiredError
 from protean.fields import Identifier, String
+from protean.server import Engine
+from protean.server.observatory.metrics import (
+    _GAUGES_REGISTERED_KEY,
+    _hand_rolled_metrics,
+    _register_infrastructure_gauges,
+    _scrape_cache,
+    create_metrics_endpoint,
+)
+from protean.server.outbox_processor import OutboxProcessor
+from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
+from protean.utils.outbox import Outbox
 from protean.utils.telemetry import (
     _DOMAIN_METRICS_KEY,
+    _METER_PROVIDER_KEY,
+    _PROMETHEUS_READER_KEY,
+    _TELEMETRY_INIT_KEY,
+    _TRACER_PROVIDER_KEY,
     DomainMetrics,
+    _build_prometheus_reader,
+    _NoOpCounter,
+    _NoOpHistogram,
+    _NoOpMeter,
+    _NoOpObservableGauge,
+    _NoOpObservation,
+    _NoOpSpan,
+    _NoOpTracer,
+    create_observation,
     get_domain_metrics,
+    get_meter,
+    get_prometheus_text,
+    get_tracer,
+    init_telemetry,
     shutdown_telemetry,
 )
 
@@ -151,8 +185,6 @@ def register_elements(test_domain):
 @pytest.fixture(autouse=True)
 def _clear_scrape_cache():
     """Clear the per-scrape metrics cache between tests."""
-    from protean.server.observatory.metrics import _scrape_cache
-
     _scrape_cache.clear()
 
 
@@ -190,34 +222,169 @@ def _get_metric_data_points(metric_reader, name: str) -> list:
     return list(metric.data.data_points)
 
 
+def _metric_names(data) -> set[str]:
+    """Return the names of every metric in a metrics snapshot."""
+    return {
+        metric.name
+        for resource_metric in data.resource_metrics
+        for scope_metric in resource_metric.scope_metrics
+        for metric in scope_metric.metrics
+    }
+
+
+def _points_in(data, name: str) -> list:
+    """Return the data points of metric ``name`` in a metrics snapshot."""
+    for resource_metric in data.resource_metrics:
+        for scope_metric in resource_metric.scope_metrics:
+            for metric in scope_metric.metrics:
+                if metric.name == name:
+                    return list(metric.data.data_points)
+    return []
+
+
+def _register_gauges_and_collect(domain, metric_reader):
+    """Register the infrastructure gauges and return one metrics snapshot."""
+    if hasattr(domain, _GAUGES_REGISTERED_KEY):
+        delattr(domain, _GAUGES_REGISTERED_KEY)
+    _register_infrastructure_gauges([domain])
+    return metric_reader.get_metrics_data()
+
+
+def _enqueue_open_account(test_domain) -> None:
+    """Write one OpenAccount command to its stream without handling it.
+
+    ``AccountCommandHandler`` then trails the stream head, so its lag is a
+    known number, while ``AccountWithEventHandler`` has no messages and an
+    unknown (None) lag.
+    """
+    test_domain.config["command_processing"] = "async"
+    test_domain.process(
+        OpenAccount(account_id=str(uuid4()), name="Queued"),
+        asynchronous=True,
+    )
+
+
+class RedisServer:
+    """Stands in for the Redis server behind a real ``RedisBroker``.
+
+    It answers the commands the broker health check and the Observatory
+    scrape send: PING, INFO, TYPE, XLEN, SCAN, XINFO GROUPS and
+    XINFO CONSUMERS.
+    """
+
+    def __init__(
+        self,
+        info=None,
+        streams=None,
+        groups=None,
+        consumers=None,
+        groups_error=None,
+        consumers_error=None,
+    ):
+        self._info = info or {}
+        self._streams = streams or {}
+        self._groups = groups or []
+        self._consumers = consumers or []
+        self._groups_error = groups_error
+        self._consumers_error = consumers_error
+
+    def ping(self):
+        return True
+
+    def info(self):
+        return self._info
+
+    def type(self, key):
+        return b"stream" if key in self._streams else b"none"
+
+    def xlen(self, key):
+        return self._streams[key]
+
+    def scan(self, cursor=0, count=None, _type=None):
+        return 0, [name.encode() for name in self._streams]
+
+    def xgroup_create(self, stream, group, id=None, mkstream=False):
+        return True
+
+    def xinfo_groups(self, stream):
+        if self._groups_error is not None:
+            raise self._groups_error
+        return self._groups
+
+    def xinfo_consumers(self, stream, group):
+        if self._consumers_error is not None:
+            raise self._consumers_error
+        return self._consumers
+
+
+def _use_redis_broker(monkeypatch, domain, server: RedisServer) -> RedisBroker:
+    """Make a real ``RedisBroker`` talking to ``server`` the default broker."""
+    broker = RedisBroker("default", domain, {"URI": "redis://localhost:6379/0"})
+    broker.redis_instance = server
+    monkeypatch.setitem(domain.brokers, "default", broker)
+    return broker
+
+
+def _fail(*args, **kwargs):
+    raise RuntimeError("broker down")
+
+
 # ---------------------------------------------------------------------------
-# Tests: Command processed counter
+# Tests: Command, handler and UoW metrics
 # ---------------------------------------------------------------------------
 
 
-class TestCommandProcessedCounter:
-    """CommandProcessor.process() increments ``protean.command.processed``."""
+class TestCommandMetrics:
+    """Processing a command records command, handler and UoW metrics."""
 
-    def test_sync_success_increments_counter(self, test_domain, telemetry):
-        _, metric_reader = telemetry
-
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        points = _get_metric_data_points(metric_reader, "protean.command.processed")
-        assert len(points) >= 1
-
-        # Find the ok data point
-        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
-        assert len(ok_points) == 1
-        assert ok_points[0].value == 1
-        assert "OpenAccount" in dict(ok_points[0].attributes)["command_type"]
-
-    def test_sync_error_increments_counter_with_error_status(
+    def test_sync_success_records_command_handler_and_uow_metrics(
         self, test_domain, telemetry
     ):
+        _, metric_reader = telemetry
+
+        for _ in range(3):
+            test_domain.process(
+                OpenAccount(account_id=str(uuid4()), name="Corp"),
+                asynchronous=False,
+            )
+
+        data = metric_reader.get_metrics_data()
+
+        processed = _points_in(data, "protean.command.processed")
+        ok_points = [p for p in processed if dict(p.attributes).get("status") == "ok"]
+        assert len(ok_points) == 1
+        assert ok_points[0].value == 3
+        assert "OpenAccount" in dict(ok_points[0].attributes)["command_type"]
+
+        duration = _points_in(data, "protean.command.duration")
+        ok_points = [p for p in duration if dict(p.attributes).get("status") == "ok"]
+        assert len(ok_points) == 1
+        assert ok_points[0].sum > 0
+        assert ok_points[0].count == 3
+
+        invocations = _points_in(data, "protean.handler.invocations")
+        ok_points = [p for p in invocations if dict(p.attributes).get("status") == "ok"]
+        assert len(ok_points) == 1
+        assert ok_points[0].value == 3
+        assert dict(ok_points[0].attributes)["handler_name"] == "AccountCommandHandler"
+
+        handler_duration = _points_in(data, "protean.handler.duration")
+        ok_points = [
+            p for p in handler_duration if dict(p.attributes).get("status") == "ok"
+        ]
+        assert len(ok_points) == 1
+        assert ok_points[0].sum > 0
+        assert ok_points[0].count == 3
+
+        commits = _points_in(data, "protean.uow.commits")
+        assert sum(p.value for p in commits) >= 3
+
+        # OpenAccount raises no events, so each commit records zero events.
+        events_per_commit = _points_in(data, "protean.uow.events_per_commit")
+        assert len(events_per_commit) >= 1
+        assert sum(p.sum for p in events_per_commit) == 0
+
+    def test_sync_error_records_error_status(self, test_domain, telemetry):
         _, metric_reader = telemetry
 
         with pytest.raises(RuntimeError, match="handler exploded"):
@@ -226,16 +393,29 @@ class TestCommandProcessedCounter:
                 asynchronous=False,
             )
 
-        points = _get_metric_data_points(metric_reader, "protean.command.processed")
-        error_points = [
-            p for p in points if dict(p.attributes).get("status") == "error"
-        ]
-        assert len(error_points) == 1
-        assert error_points[0].value == 1
+        data = metric_reader.get_metrics_data()
 
-    def test_async_path_increments_counter_with_enqueued_status(
-        self, test_domain, telemetry
-    ):
+        def error_points(name):
+            return [
+                p
+                for p in _points_in(data, name)
+                if dict(p.attributes).get("status") == "error"
+            ]
+
+        (processed,) = error_points("protean.command.processed")
+        assert processed.value == 1
+
+        (duration,) = error_points("protean.command.duration")
+        assert duration.sum > 0
+
+        (invocations,) = error_points("protean.handler.invocations")
+        assert invocations.value == 1
+        assert dict(invocations.attributes)["handler_name"] == "FailingCommandHandler"
+
+        (handler_duration,) = error_points("protean.handler.duration")
+        assert handler_duration.sum > 0
+
+    def test_async_path_records_enqueued_status(self, test_domain, telemetry):
         _, metric_reader = telemetry
 
         # Force async processing so the async path is taken
@@ -246,37 +426,23 @@ class TestCommandProcessedCounter:
             asynchronous=True,
         )
 
-        points = _get_metric_data_points(metric_reader, "protean.command.processed")
-        enqueued_points = [
-            p for p in points if dict(p.attributes).get("status") == "enqueued"
+        data = metric_reader.get_metrics_data()
+
+        (processed,) = [
+            p
+            for p in _points_in(data, "protean.command.processed")
+            if dict(p.attributes).get("status") == "enqueued"
         ]
-        assert len(enqueued_points) == 1
-        assert enqueued_points[0].value == 1
+        assert processed.value == 1
 
-    def test_multiple_commands_accumulate(self, test_domain, telemetry):
-        _, metric_reader = telemetry
+        (duration,) = [
+            p
+            for p in _points_in(data, "protean.command.duration")
+            if dict(p.attributes).get("status") == "enqueued"
+        ]
+        assert duration.sum > 0
 
-        for _ in range(3):
-            test_domain.process(
-                OpenAccount(account_id=str(uuid4()), name="Corp"),
-                asynchronous=False,
-            )
-
-        points = _get_metric_data_points(metric_reader, "protean.command.processed")
-        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
-        assert len(ok_points) == 1
-        assert ok_points[0].value == 3
-
-
-# ---------------------------------------------------------------------------
-# Tests: Command expired counter
-# ---------------------------------------------------------------------------
-
-
-class TestCommandExpiredCounter:
-    """An expired command increments ``protean.command.expired``."""
-
-    def test_sync_expiry_increments_counter(self, test_domain, telemetry):
+    def test_sync_expiry_increments_expired_counter(self, test_domain, telemetry):
         _, metric_reader = telemetry
 
         past = datetime.now(UTC) - timedelta(seconds=1)
@@ -291,194 +457,6 @@ class TestCommandExpiredCounter:
         assert len(points) == 1
         assert points[0].value == 1
         assert "OpenAccount" in dict(points[0].attributes)["command_type"]
-
-
-# ---------------------------------------------------------------------------
-# Tests: Command duration histogram
-# ---------------------------------------------------------------------------
-
-
-class TestCommandDurationHistogram:
-    """CommandProcessor.process() records ``protean.command.duration``."""
-
-    def test_sync_success_records_duration(self, test_domain, telemetry):
-        _, metric_reader = telemetry
-
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        points = _get_metric_data_points(metric_reader, "protean.command.duration")
-        assert len(points) >= 1
-
-        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
-        assert len(ok_points) == 1
-        # Duration should be > 0
-        assert ok_points[0].sum > 0
-        assert ok_points[0].count == 1
-
-    def test_sync_error_records_duration(self, test_domain, telemetry):
-        _, metric_reader = telemetry
-
-        with pytest.raises(RuntimeError):
-            test_domain.process(
-                FailingCommand(account_id=str(uuid4())),
-                asynchronous=False,
-            )
-
-        points = _get_metric_data_points(metric_reader, "protean.command.duration")
-        error_points = [
-            p for p in points if dict(p.attributes).get("status") == "error"
-        ]
-        assert len(error_points) == 1
-        assert error_points[0].sum > 0
-
-    def test_async_path_records_duration_with_enqueued_status(
-        self, test_domain, telemetry
-    ):
-        _, metric_reader = telemetry
-
-        # Force async processing so the async path is taken
-        test_domain.config["command_processing"] = "async"
-
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Async Corp"),
-            asynchronous=True,
-        )
-
-        points = _get_metric_data_points(metric_reader, "protean.command.duration")
-        assert len(points) >= 1
-        enqueued_points = [
-            p for p in points if dict(p.attributes).get("status") == "enqueued"
-        ]
-        assert len(enqueued_points) == 1
-        assert enqueued_points[0].sum > 0
-
-
-# ---------------------------------------------------------------------------
-# Tests: Handler invocations counter
-# ---------------------------------------------------------------------------
-
-
-class TestHandlerInvocationsCounter:
-    """HandlerMixin._handle() increments ``protean.handler.invocations``."""
-
-    def test_success_increments_handler_counter(self, test_domain, telemetry):
-        _, metric_reader = telemetry
-
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        points = _get_metric_data_points(metric_reader, "protean.handler.invocations")
-        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
-        assert len(ok_points) >= 1
-        assert ok_points[0].value >= 1
-        assert dict(ok_points[0].attributes)["handler_name"] == "AccountCommandHandler"
-
-    def test_error_increments_handler_counter_with_error(self, test_domain, telemetry):
-        _, metric_reader = telemetry
-
-        with pytest.raises(RuntimeError):
-            test_domain.process(
-                FailingCommand(account_id=str(uuid4())),
-                asynchronous=False,
-            )
-
-        points = _get_metric_data_points(metric_reader, "protean.handler.invocations")
-        error_points = [
-            p for p in points if dict(p.attributes).get("status") == "error"
-        ]
-        assert len(error_points) == 1
-        assert error_points[0].value == 1
-        assert (
-            dict(error_points[0].attributes)["handler_name"] == "FailingCommandHandler"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Tests: Handler duration histogram
-# ---------------------------------------------------------------------------
-
-
-class TestHandlerDurationHistogram:
-    """HandlerMixin._handle() records ``protean.handler.duration``."""
-
-    def test_success_records_handler_duration(self, test_domain, telemetry):
-        _, metric_reader = telemetry
-
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        points = _get_metric_data_points(metric_reader, "protean.handler.duration")
-        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
-        assert len(ok_points) >= 1
-        assert ok_points[0].sum > 0
-        assert ok_points[0].count == 1
-
-    def test_error_records_handler_duration(self, test_domain, telemetry):
-        _, metric_reader = telemetry
-
-        with pytest.raises(RuntimeError):
-            test_domain.process(
-                FailingCommand(account_id=str(uuid4())),
-                asynchronous=False,
-            )
-
-        points = _get_metric_data_points(metric_reader, "protean.handler.duration")
-        error_points = [
-            p for p in points if dict(p.attributes).get("status") == "error"
-        ]
-        assert len(error_points) == 1
-        assert error_points[0].sum > 0
-
-
-# ---------------------------------------------------------------------------
-# Tests: UoW commits counter
-# ---------------------------------------------------------------------------
-
-
-class TestUoWCommitsCounter:
-    """UnitOfWork.commit() increments ``protean.uow.commits``."""
-
-    def test_command_with_repo_increments_uow_commits(self, test_domain, telemetry):
-        _, metric_reader = telemetry
-
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        points = _get_metric_data_points(metric_reader, "protean.uow.commits")
-        assert len(points) >= 1
-        # At least one commit occurred
-        total = sum(p.value for p in points)
-        assert total >= 1
-
-
-# ---------------------------------------------------------------------------
-# Tests: UoW events_per_commit histogram
-# ---------------------------------------------------------------------------
-
-
-class TestUoWEventsPerCommitHistogram:
-    """UnitOfWork.commit() records ``protean.uow.events_per_commit``."""
-
-    def test_command_without_events_records_zero(self, test_domain, telemetry):
-        _, metric_reader = telemetry
-
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="NoEvents"),
-            asynchronous=False,
-        )
-
-        points = _get_metric_data_points(metric_reader, "protean.uow.events_per_commit")
-        # Should have at least one data point
-        assert len(points) >= 1
 
     def test_command_with_events_records_event_count(self, test_domain, telemetry):
         _, metric_reader = telemetry
@@ -503,23 +481,39 @@ class TestUoWEventsPerCommitHistogram:
 class TestDomainMetricsCaching:
     """DomainMetrics is cached per domain and cleaned up on shutdown."""
 
-    def test_get_domain_metrics_returns_same_instance(self, test_domain, telemetry):
+    def test_returns_one_cached_instance_of_real_instruments(
+        self, test_domain, telemetry
+    ):
         m1 = get_domain_metrics(test_domain)
         m2 = get_domain_metrics(test_domain)
+
         assert m1 is m2
         assert isinstance(m1, DomainMetrics)
+        for name in (
+            "command_processed",
+            "handler_invocations",
+            "uow_commits",
+            "outbox_published",
+            "outbox_failed",
+        ):
+            assert isinstance(getattr(m1, name), Counter)
+        for name in (
+            "command_duration",
+            "handler_duration",
+            "uow_events_per_commit",
+            "outbox_latency",
+        ):
+            assert isinstance(getattr(m1, name), Histogram)
 
-    def test_shutdown_clears_cached_metrics(self, test_domain, telemetry):
-        get_domain_metrics(test_domain)
+    def test_shutdown_clears_cache_and_reinit_recreates_metrics(
+        self, test_domain, telemetry
+    ):
+        m1 = get_domain_metrics(test_domain)
         assert hasattr(test_domain, _DOMAIN_METRICS_KEY)
 
         shutdown_telemetry(test_domain)
         assert not hasattr(test_domain, _DOMAIN_METRICS_KEY)
 
-    def test_metrics_recreated_after_shutdown(self, test_domain, telemetry):
-        m1 = get_domain_metrics(test_domain)
-        shutdown_telemetry(test_domain)
-        # Re-init
         _init_telemetry_in_memory(test_domain)
         m2 = get_domain_metrics(test_domain)
         assert m1 is not m2
@@ -535,11 +529,12 @@ class TestNoOpMetrics:
 
     def test_command_succeeds_without_telemetry(self, test_domain):
         """Commands work fine even without OTel initialized."""
+        account_id = str(uuid4())
         result = test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="NoTelemetry"),
+            OpenAccount(account_id=account_id, name="NoTelemetry"),
             asynchronous=False,
         )
-        assert result is not None
+        assert result == {"opened": account_id}
 
     def test_domain_metrics_returns_noop_instruments(self, test_domain):
         """DomainMetrics uses no-op instruments when OTel is not set up."""
@@ -557,187 +552,90 @@ class TestNoOpMetrics:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Metrics endpoint convergence
+# Tests: Metrics endpoint and Prometheus text
 # ---------------------------------------------------------------------------
 
 
-class TestMetricsEndpointConvergence:
+class TestMetricsEndpoint:
     """The /metrics endpoint serves OTel text when telemetry is enabled."""
 
-    def test_fallback_produces_hand_rolled_text(self, test_domain):
-        """Without OTel, _hand_rolled_metrics produces valid Prometheus text."""
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        text = _hand_rolled_metrics([test_domain])
-        assert "protean_outbox_pending_count" in text or "# HELP" in text
-
-    def test_get_prometheus_text_returns_none_without_telemetry(self, test_domain):
-        """get_prometheus_text returns None when no PrometheusMetricReader."""
-        from protean.utils.telemetry import get_prometheus_text
-
-        assert get_prometheus_text(test_domain) is None
-
-    def test_register_infrastructure_gauges_noop_without_provider(self, test_domain):
-        """_register_infrastructure_gauges is a no-op without a meter provider."""
-        from protean.server.observatory.metrics import (
-            _GAUGES_REGISTERED_KEY,
-            _register_infrastructure_gauges,
-        )
-
-        _register_infrastructure_gauges([test_domain])
-        # Should not set the registered flag since no provider
-        assert not getattr(test_domain, _GAUGES_REGISTERED_KEY, False)
-
-    def test_register_infrastructure_gauges_noop_for_empty_list(self):
-        """_register_infrastructure_gauges is a no-op when domains list is empty."""
-        from protean.server.observatory.metrics import _register_infrastructure_gauges
-
-        # Should not raise
-        _register_infrastructure_gauges([])
-
-    def test_register_infrastructure_gauges_with_telemetry(
-        self, test_domain, telemetry
-    ):
-        """_register_infrastructure_gauges registers gauges when telemetry is active."""
-        from protean.server.observatory.metrics import (
-            _GAUGES_REGISTERED_KEY,
-            _register_infrastructure_gauges,
-        )
-
-        _register_infrastructure_gauges([test_domain])
-        assert getattr(test_domain, _GAUGES_REGISTERED_KEY, False) is True
-
-    def test_register_infrastructure_gauges_idempotent(self, test_domain, telemetry):
-        """Calling _register_infrastructure_gauges twice only registers once."""
-        from protean.server.observatory.metrics import (
-            _GAUGES_REGISTERED_KEY,
-            _register_infrastructure_gauges,
-        )
-
-        _register_infrastructure_gauges([test_domain])
-        assert getattr(test_domain, _GAUGES_REGISTERED_KEY, False) is True
-        # Second call should return early due to the flag
-        _register_infrastructure_gauges([test_domain])
-        assert getattr(test_domain, _GAUGES_REGISTERED_KEY, False) is True
-
-    def test_register_gauges_skips_domains_without_init(self, test_domain):
-        """Gauge registration skips domains that never called init_telemetry."""
-        from protean.server.observatory.metrics import (
-            _GAUGES_REGISTERED_KEY,
-            _register_infrastructure_gauges,
-        )
-
-        # Domain has _otel_init_attempted = False (default)
-        _register_infrastructure_gauges([test_domain])
-        assert not getattr(test_domain, _GAUGES_REGISTERED_KEY, False)
-
-    def test_create_metrics_endpoint_returns_callable(self, test_domain):
-        """create_metrics_endpoint returns an async callable."""
-        import asyncio
-
-        from protean.server.observatory.metrics import create_metrics_endpoint
-
+    @pytest.mark.asyncio
+    async def test_endpoint_falls_back_to_hand_rolled_text(self, test_domain):
+        """Without telemetry the endpoint serves hand-rolled Prometheus text."""
         endpoint = create_metrics_endpoint([test_domain])
-        # Call the async endpoint
-        response = asyncio.get_event_loop().run_until_complete(endpoint())
+
+        response = await endpoint()
+
         assert response.status_code == 200
         assert "text/plain" in response.media_type
-
-    def test_create_metrics_endpoint_hand_rolled_fallback(self, test_domain):
-        """Endpoint falls back to hand-rolled text when telemetry is off."""
-        import asyncio
-
-        from protean.server.observatory.metrics import create_metrics_endpoint
-
-        endpoint = create_metrics_endpoint([test_domain])
-        response = asyncio.get_event_loop().run_until_complete(endpoint())
         body = response.body.decode("utf-8")
-        # Hand-rolled text should contain HELP and TYPE annotations
         assert "# HELP protean_outbox_pending_count" in body
+        assert body.endswith("\n")
 
-    def test_create_metrics_endpoint_otel_path(self, test_domain, telemetry):
+    @pytest.mark.asyncio
+    async def test_endpoint_serves_otel_text(self, test_domain, telemetry):
         """Endpoint serves OTel Prometheus text when telemetry is enabled."""
-        import asyncio
-
-        from opentelemetry.exporter.prometheus import PrometheusMetricReader
-
-        from protean.server.observatory.metrics import create_metrics_endpoint
-        from protean.utils.telemetry import _PROMETHEUS_READER_KEY
-
-        # Attach a PrometheusMetricReader to the domain
-        prometheus_reader = PrometheusMetricReader()
-        setattr(test_domain, _PROMETHEUS_READER_KEY, prometheus_reader)
+        setattr(test_domain, _PROMETHEUS_READER_KEY, PrometheusMetricReader())
 
         endpoint = create_metrics_endpoint([test_domain])
-        response = asyncio.get_event_loop().run_until_complete(endpoint())
-        body = response.body.decode("utf-8")
-        # OTel-generated text includes Python GC metrics or our custom ones
-        assert len(body) > 0
+        response = await endpoint()
+
+        assert len(response.body.decode("utf-8")) > 0
         assert "text/plain" in response.media_type
 
-    def test_get_prometheus_text_with_init_and_reader(self, test_domain, telemetry):
-        """get_prometheus_text returns text when domain has init + reader."""
-        from opentelemetry.exporter.prometheus import PrometheusMetricReader
-
-        from protean.utils.telemetry import _PROMETHEUS_READER_KEY, get_prometheus_text
-
-        prometheus_reader = PrometheusMetricReader()
-        setattr(test_domain, _PROMETHEUS_READER_KEY, prometheus_reader)
+    def test_get_prometheus_text_with_reader(self, test_domain, telemetry):
+        setattr(test_domain, _PROMETHEUS_READER_KEY, PrometheusMetricReader())
 
         result = get_prometheus_text(test_domain)
-        assert result is not None
+
         assert isinstance(result, str)
         assert len(result) > 0
 
-    def test_get_prometheus_text_returns_none_for_non_domain(self):
-        """get_prometheus_text returns None for non-domain objects."""
-        from protean.utils.telemetry import get_prometheus_text
+    @pytest.mark.parametrize(
+        "case", ["non_domain", "not_initialized", "initialized_without_reader"]
+    )
+    def test_get_prometheus_text_returns_none(self, test_domain, case):
+        if case == "non_domain":
+            target = object()
+        elif case == "not_initialized":
+            test_domain._otel_init_attempted = False
+            target = test_domain
+        else:
+            _init_telemetry_in_memory(test_domain)
+            assert not hasattr(test_domain, _PROMETHEUS_READER_KEY)
+            target = test_domain
 
-        assert get_prometheus_text(object()) is None
-
-    def test_get_prometheus_text_returns_none_without_reader(
-        self, test_domain, telemetry
-    ):
-        """get_prometheus_text returns None when init_attempted but no reader."""
-        from protean.utils.telemetry import get_prometheus_text
-
-        # telemetry fixture sets _otel_init_attempted = True but no prometheus reader
-        result = get_prometheus_text(test_domain)
-        assert result is None
+        assert get_prometheus_text(target) is None
 
 
 # ---------------------------------------------------------------------------
-# Tests: _hand_rolled_metrics with mock domains
+# Tests: _hand_rolled_metrics
 # ---------------------------------------------------------------------------
 
 
 class TestHandRolledMetrics:
     """Tests for _hand_rolled_metrics using the real test_domain."""
 
-    def test_outbox_and_broker_metrics(self, test_domain):
-        """Hand-rolled metrics render outbox and broker sections."""
-        from unittest.mock import MagicMock, patch
+    def test_outbox_and_broker_metrics(self, test_domain, monkeypatch):
+        """Hand-rolled metrics render outbox and Redis broker sections."""
+        broker = _use_redis_broker(
+            monkeypatch,
+            test_domain,
+            RedisServer(
+                info={
+                    "used_memory": 2048,
+                    "connected_clients": 3,
+                    "instantaneous_ops_per_sec": 100,
+                },
+                streams={"test::stream": 50},
+                groups=[{"name": "TestGroup", "pending": 2}],
+            ),
+        )
+        broker._ensure_group("TestGroup", "test::stream")
 
-        from protean.server.observatory.metrics import _hand_rolled_metrics
+        text = _hand_rolled_metrics([test_domain])
 
-        mock_broker = MagicMock()
-        mock_broker.health_stats.return_value = {
-            "connected": True,
-            "details": {
-                "healthy": True,
-                "used_memory": 2048,
-                "connected_clients": 3,
-                "instantaneous_ops_per_sec": 100,
-                "message_counts": {"total_messages": 50, "in_flight": 2},
-                "streams": {"count": 5},
-                "consumer_groups": {"count": 3},
-            },
-        }
-        with patch.object(test_domain.brokers, "get", return_value=mock_broker):
-            text = _hand_rolled_metrics([test_domain])
-
-        domain_name = test_domain.name
-        assert f'domain="{domain_name}"' in text
+        assert f'domain="{test_domain.name}"' in text
         assert "protean_broker_up 1" in text
         assert "protean_broker_memory_bytes 2048" in text
         assert "protean_broker_connected_clients 3" in text
@@ -745,448 +643,88 @@ class TestHandRolledMetrics:
         assert "protean_stream_messages_total 50" in text
         assert "protean_stream_pending 2" in text
 
-    def test_broker_none_skips_broker_metrics(self, test_domain):
-        """Hand-rolled metrics skip broker section when broker is None."""
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        text = _hand_rolled_metrics([test_domain])
-        assert "protean_outbox_pending_count" in text or "# HELP" in text
-
-    def test_outbox_query_failure_gracefully_handled(self, test_domain):
+    def test_outbox_query_failure_gracefully_handled(self, test_domain, monkeypatch):
         """Hand-rolled metrics handle outbox query failure."""
-        from unittest.mock import patch
-
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        with patch.object(
-            test_domain, "_get_outbox_repo", side_effect=RuntimeError("outbox error")
-        ):
-            text = _hand_rolled_metrics([test_domain])
-        assert "# HELP protean_outbox_pending_count" in text
-
-    def test_broker_query_failure_gracefully_handled(self, test_domain):
-        """Hand-rolled metrics handle broker query failure."""
-        from unittest.mock import patch
-
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        with patch.object(
-            test_domain.brokers, "get", side_effect=RuntimeError("broker down")
-        ):
-            text = _hand_rolled_metrics([test_domain])
-        assert "# HELP protean_outbox_pending_count" in text
-
-    def test_trailing_newline(self, test_domain):
-        """Hand-rolled metrics text ends with newline."""
-        from protean.server.observatory.metrics import _hand_rolled_metrics
+        monkeypatch.setattr(test_domain, "_get_outbox_repo", _fail)
 
         text = _hand_rolled_metrics([test_domain])
-        assert text.endswith("\n")
+
+        assert "# HELP protean_outbox_pending_count" in text
+
+    def test_broker_query_failure_gracefully_handled(self, test_domain, monkeypatch):
+        """Hand-rolled metrics handle broker query failure."""
+        with test_domain.domain_context():
+            broker = test_domain.brokers.get("default")
+        monkeypatch.setattr(broker, "health_stats", _fail)
+
+        text = _hand_rolled_metrics([test_domain])
+
+        assert "# HELP protean_outbox_pending_count" in text
+        assert "protean_broker_up" not in text
 
 
 # ---------------------------------------------------------------------------
-# Tests: ObservableGauge callbacks with telemetry active
-# ---------------------------------------------------------------------------
-
-
-class TestGaugeCallbacks:
-    """Tests for ObservableGauge callback functions."""
-
-    def test_outbox_callback_returns_observations(self, test_domain, telemetry):
-        """Outbox gauge callback returns observations for domain."""
-        _, metric_reader = telemetry
-
-        from protean.server.observatory.metrics import (
-            _GAUGES_REGISTERED_KEY,
-            _register_infrastructure_gauges,
-        )
-
-        # Clean up any prior registration
-        if hasattr(test_domain, _GAUGES_REGISTERED_KEY):
-            delattr(test_domain, _GAUGES_REGISTERED_KEY)
-
-        _register_infrastructure_gauges([test_domain])
-
-        # Force a metric collection which triggers callbacks
-        data = metric_reader.get_metrics_data()
-        assert data is not None
-
-    def test_gauge_callbacks_with_subscription_statuses(self, test_domain, telemetry):
-        """Subscription gauge callbacks execute without error."""
-        _, metric_reader = telemetry
-
-        from protean.server.observatory.metrics import (
-            _GAUGES_REGISTERED_KEY,
-            _register_infrastructure_gauges,
-        )
-
-        if hasattr(test_domain, _GAUGES_REGISTERED_KEY):
-            delattr(test_domain, _GAUGES_REGISTERED_KEY)
-
-        _register_infrastructure_gauges([test_domain])
-
-        # Trigger collection of all gauges
-        data = metric_reader.get_metrics_data()
-        # Find gauge metrics
-        metric_names = set()
-        for rm in data.resource_metrics:
-            for sm in rm.scope_metrics:
-                for m in sm.metrics:
-                    metric_names.add(m.name)
-
-        # At minimum, outbox and broker gauges should be registered
-        assert "protean.outbox.pending_count" in metric_names
-        assert "protean_broker_up" in metric_names
-
-    def test_gauge_callbacks_handle_exceptions(self, test_domain, telemetry):
-        """Gauge callbacks handle exceptions gracefully."""
-        from unittest.mock import patch
-
-        _, metric_reader = telemetry
-
-        from protean.server.observatory.metrics import (
-            _GAUGES_REGISTERED_KEY,
-            _register_infrastructure_gauges,
-        )
-
-        if hasattr(test_domain, _GAUGES_REGISTERED_KEY):
-            delattr(test_domain, _GAUGES_REGISTERED_KEY)
-
-        _register_infrastructure_gauges([test_domain])
-
-        # Patch domain methods to raise, then collect
-        with patch.object(
-            test_domain, "_get_outbox_repo", side_effect=RuntimeError("boom")
-        ):
-            data = metric_reader.get_metrics_data()
-            assert data is not None
-
-
-# ---------------------------------------------------------------------------
-# Tests: Subscription metric fallback in hand-rolled path
+# Tests: Subscription metrics in hand-rolled path
 # ---------------------------------------------------------------------------
 
 
 class TestHandRolledSubscriptionMetrics:
     """Test subscription metrics section in hand-rolled path."""
 
-    @staticmethod
-    def _make_status(
-        handler_name="TestHandler",
-        stream_category="test::stream",
-        subscription_type="stream",
-        lag=5,
-        pending=2,
-        dlq_depth=0,
-        status="ok",
-    ):
-        """Build a SubscriptionStatus for testing."""
-        from protean.server.subscription_status import SubscriptionStatus
-
-        return SubscriptionStatus(
-            name=f"{handler_name}-sub",
-            handler_name=handler_name,
-            subscription_type=subscription_type,
-            stream_category=stream_category,
-            lag=lag,
-            pending=pending,
-            current_position=None,
-            head_position=None,
-            status=status,
-            consumer_count=1,
-            dlq_depth=dlq_depth,
-        )
-
-    def test_subscription_import_failure_handled(self, test_domain):
-        """Hand-rolled path handles subscription_status import failure."""
-        from unittest.mock import patch
-
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        with patch(
-            "protean.server.subscription_status.collect_subscription_statuses",
-            side_effect=ImportError("no module"),
-        ):
-            text = _hand_rolled_metrics([test_domain])
-            assert "# HELP protean_outbox_pending_count" in text
-
     def test_subscription_status_rendering(self, test_domain):
-        """Subscription metrics render correctly with real SubscriptionStatus."""
-        from unittest.mock import patch
+        """Each subscription renders pending, DLQ and status lines; only a
+        known lag renders a consumer_lag line."""
+        _enqueue_open_account(test_domain)
 
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        status = self._make_status()
-
-        with patch(
-            "protean.server.subscription_status.collect_subscription_statuses",
-            return_value=[status],
-        ):
-            text = _hand_rolled_metrics([test_domain])
+        text = _hand_rolled_metrics([test_domain])
 
         assert "protean_subscription_consumer_lag" in text
         assert "protean_subscription_pending_messages" in text
         assert "protean_subscription_dlq_depth" in text
         assert "protean_subscription_status" in text
-        assert 'handler="TestHandler"' in text
+        assert 'handler="AccountCommandHandler"' in text
+        assert 'handler="AccountWithEventHandler"' in text
 
-    def test_subscription_status_with_none_lag(self, test_domain):
-        """Subscription metrics skip lag when it's None."""
-        from unittest.mock import patch
-
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        status = self._make_status(
-            handler_name="Handler",
-            stream_category="stream",
-            lag=None,
-            pending=0,
-            dlq_depth=0,
-            status="error",
+        lag_lines = [
+            line
+            for line in text.split("\n")
+            if line.startswith("protean_subscription_consumer_lag{")
+        ]
+        assert any('handler="AccountCommandHandler"' in line for line in lag_lines)
+        # AccountWithEventHandler's lag is None, so it gets no lag line.
+        assert not any(
+            'handler="AccountWithEventHandler"' in line for line in lag_lines
         )
 
+    @pytest.mark.parametrize(
+        "error", [ImportError("no module"), RuntimeError("connection lost")]
+    )
+    def test_subscription_collection_failure_handled(self, test_domain, error):
+        """A failing subscription collection does not stop the scrape."""
         with patch(
             "protean.server.subscription_status.collect_subscription_statuses",
-            return_value=[status],
+            side_effect=error,
         ):
             text = _hand_rolled_metrics([test_domain])
 
-        assert "protean_subscription_pending_messages" in text
-        assert "protean_subscription_status" in text
+        assert "# HELP protean_outbox_pending_count" in text
 
-    def test_subscription_collection_failure_per_domain(self, test_domain):
-        """Per-domain subscription collection failure is handled gracefully."""
-        from unittest.mock import patch
+    def test_subscription_import_failure(self, test_domain):
+        """Outer except catches import failure gracefully."""
+        original_import = builtins.__import__
 
-        from protean.server.observatory.metrics import _hand_rolled_metrics
+        def failing_import(name, *args, **kwargs):
+            if "subscription_status" in name:
+                raise ImportError(
+                    "No module named 'protean.server.subscription_status'"
+                )
+            return original_import(name, *args, **kwargs)
 
-        with patch(
-            "protean.server.subscription_status.collect_subscription_statuses",
-            side_effect=RuntimeError("connection lost"),
-        ):
+        with patch("builtins.__import__", side_effect=failing_import):
             text = _hand_rolled_metrics([test_domain])
-            assert "# HELP protean_outbox_pending_count" in text
 
-
-# ---------------------------------------------------------------------------
-# Tests: DomainMetrics instrument creation
-# ---------------------------------------------------------------------------
-
-
-class TestDomainMetricsInstruments:
-    """Tests for DomainMetrics attribute creation."""
-
-    def test_domain_metrics_has_all_instruments(self, test_domain, telemetry):
-        """DomainMetrics creates all expected counters and histograms."""
-        metrics = get_domain_metrics(test_domain)
-
-        # Counters
-        assert hasattr(metrics, "command_processed")
-        assert hasattr(metrics, "handler_invocations")
-        assert hasattr(metrics, "uow_commits")
-        assert hasattr(metrics, "outbox_published")
-        assert hasattr(metrics, "outbox_failed")
-
-        # Histograms
-        assert hasattr(metrics, "command_duration")
-        assert hasattr(metrics, "handler_duration")
-        assert hasattr(metrics, "uow_events_per_commit")
-        assert hasattr(metrics, "outbox_latency")
-
-    def test_domain_metrics_uses_real_otel_instruments(self, test_domain, telemetry):
-        """DomainMetrics uses real OTel instruments when provider is set."""
-        from opentelemetry.sdk.metrics import Counter, Histogram
-
-        metrics = get_domain_metrics(test_domain)
-
-        assert isinstance(metrics.command_processed, Counter)
-        assert isinstance(metrics.command_duration, Histogram)
-
-    def test_domain_metrics_cached(self, test_domain, telemetry):
-        """get_domain_metrics returns same instance on repeated calls."""
-        m1 = get_domain_metrics(test_domain)
-        m2 = get_domain_metrics(test_domain)
-        assert m1 is m2
-
-
-# ---------------------------------------------------------------------------
-# Tests: Gauge callback error paths
-# ---------------------------------------------------------------------------
-
-
-class TestGaugeCallbackErrorPaths:
-    """Tests for error handling within ObservableGauge callbacks."""
-
-    def _register_and_collect(self, domain, metric_reader):
-        """Helper to register gauges and trigger collection."""
-        from protean.server.observatory.metrics import (
-            _GAUGES_REGISTERED_KEY,
-            _register_infrastructure_gauges,
-        )
-
-        if hasattr(domain, _GAUGES_REGISTERED_KEY):
-            delattr(domain, _GAUGES_REGISTERED_KEY)
-        _register_infrastructure_gauges([domain])
-        return metric_reader.get_metrics_data()
-
-    def test_broker_up_callback_handles_exception(self, test_domain, telemetry):
-        """Broker up callback returns [Observation(0)] on exception."""
-        from unittest.mock import MagicMock
-
-        _, metric_reader = telemetry
-
-        # Make brokers.get("default") return a broker whose health_stats raises
-        mock_broker = MagicMock()
-        mock_broker.health_stats.side_effect = RuntimeError("broker error")
-        test_domain.brokers = MagicMock()
-        test_domain.brokers.get.return_value = mock_broker
-
-        data = self._register_and_collect(test_domain, metric_reader)
-        # Should complete without crashing — error path returns Observation(0)
-        assert data is not None
-
-    def test_broker_memory_callback_handles_exception(self, test_domain, telemetry):
-        """Broker memory callback returns [Observation(0)] on exception."""
-        from unittest.mock import MagicMock
-
-        _, metric_reader = telemetry
-
-        # Set up broker mock that raises on health_stats
-        mock_broker = MagicMock()
-        mock_broker.health_stats.side_effect = RuntimeError("health check failed")
-        test_domain.brokers = MagicMock()
-        test_domain.brokers.get.return_value = mock_broker
-
-        data = self._register_and_collect(test_domain, metric_reader)
-        assert data is not None
-
-    def test_subscription_lag_callback_handles_exception(self, test_domain, telemetry):
-        """Subscription lag callback handles collect_subscription_statuses failure."""
-        from unittest.mock import patch
-
-        _, metric_reader = telemetry
-
-        with patch(
-            "protean.server.subscription_status.collect_subscription_statuses",
-            side_effect=RuntimeError("subscription error"),
-        ):
-            data = self._register_and_collect(test_domain, metric_reader)
-            assert data is not None
-
-    def test_subscription_pending_callback_handles_exception(
-        self, test_domain, telemetry
-    ):
-        """Subscription pending callback handles failures."""
-        from unittest.mock import patch
-
-        _, metric_reader = telemetry
-
-        with patch(
-            "protean.server.subscription_status.collect_subscription_statuses",
-            side_effect=RuntimeError("pending error"),
-        ):
-            data = self._register_and_collect(test_domain, metric_reader)
-            assert data is not None
-
-    def test_subscription_callbacks_with_statuses(self, test_domain, telemetry):
-        """Subscription callbacks produce observations for valid statuses."""
-        from unittest.mock import patch
-
-        from protean.server.subscription_status import SubscriptionStatus
-
-        _, metric_reader = telemetry
-
-        status = SubscriptionStatus(
-            name="TestHandler-sub",
-            handler_name="TestHandler",
-            subscription_type="stream",
-            stream_category="test::stream",
-            lag=10,
-            pending=3,
-            current_position=None,
-            head_position=None,
-            status="ok",
-            consumer_count=1,
-            dlq_depth=1,
-        )
-
-        with patch(
-            "protean.server.subscription_status.collect_subscription_statuses",
-            return_value=[status],
-        ):
-            data = self._register_and_collect(test_domain, metric_reader)
-
-        metric_names = set()
-        for rm in data.resource_metrics:
-            for sm in rm.scope_metrics:
-                for m in sm.metrics:
-                    metric_names.add(m.name)
-
-        assert "protean.subscription.consumer_lag" in metric_names
-        assert "protean.subscription.pending_messages" in metric_names
-        assert "protean_subscription_dlq_depth" in metric_names
-        assert "protean_subscription_status" in metric_names
-
-    def test_subscription_callback_none_lag_skipped(self, test_domain, telemetry):
-        """Subscription lag callback skips None lag values."""
-        from unittest.mock import patch
-
-        from protean.server.subscription_status import SubscriptionStatus
-
-        _, metric_reader = telemetry
-
-        status = SubscriptionStatus(
-            name="Handler-sub",
-            handler_name="Handler",
-            subscription_type="stream",
-            stream_category="stream",
-            lag=None,
-            pending=0,
-            current_position=None,
-            head_position=None,
-            status="error",
-            consumer_count=1,
-            dlq_depth=0,
-        )
-
-        with patch(
-            "protean.server.subscription_status.collect_subscription_statuses",
-            return_value=[status],
-        ):
-            data = self._register_and_collect(test_domain, metric_reader)
-            assert data is not None
-
-    def test_broker_callbacks_with_healthy_broker(self, test_domain, telemetry):
-        """Broker callbacks return correct observations for healthy broker."""
-        from unittest.mock import MagicMock
-
-        _, metric_reader = telemetry
-
-        mock_broker = MagicMock()
-        mock_broker.health_stats.return_value = {
-            "connected": True,
-            "details": {
-                "healthy": True,
-                "used_memory": 4096,
-                "connected_clients": 5,
-                "instantaneous_ops_per_sec": 200,
-            },
-        }
-        test_domain.brokers = MagicMock()
-        test_domain.brokers.get.return_value = mock_broker
-
-        data = self._register_and_collect(test_domain, metric_reader)
-
-        metric_names = set()
-        for rm in data.resource_metrics:
-            for sm in rm.scope_metrics:
-                for m in sm.metrics:
-                    metric_names.add(m.name)
-
-        assert "protean_broker_up" in metric_names
-        assert "protean_broker_memory_bytes" in metric_names
-        assert "protean_broker_connected_clients" in metric_names
-        assert "protean_broker_ops_per_sec" in metric_names
+        # Should still produce outbox metrics even when subscription import fails
+        assert "# HELP protean_outbox_pending_count" in text
 
 
 # ---------------------------------------------------------------------------
@@ -1197,130 +735,79 @@ class TestGaugeCallbackErrorPaths:
 class TestHandRolledConsumerMetrics:
     """Tests for per-consumer Redis metrics in the hand-rolled path."""
 
-    def _run_with_redis(self, test_domain, mock_redis, streams=None):
-        """Run _hand_rolled_metrics with a mock Redis and return the text."""
-        from unittest.mock import patch
-
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        with (
-            patch(
-                "protean.server.observatory.api._get_redis",
-                return_value=mock_redis,
+    def test_consumer_metrics_skip_malformed_entries(self, test_domain, monkeypatch):
+        """Valid groups and consumers render; non-dict entries and groups
+        without a name are skipped."""
+        _use_redis_broker(
+            monkeypatch,
+            test_domain,
+            RedisServer(
+                streams={"test::stream": 1},
+                groups=[
+                    "not-a-dict",
+                    {"name": None, "pending": 0},
+                    {"name": "TestGroup", "pending": 5},
+                ],
+                consumers=[
+                    "not-a-dict",
+                    {"name": "Consumer1", "pending": 3, "idle": 1000},
+                ],
             ),
-            patch(
-                "protean.server.observatory.api._discover_streams",
-                return_value=streams or ["test::stream"],
-            ),
-        ):
-            return _hand_rolled_metrics([test_domain])
+        )
 
-    def test_consumer_metrics_with_mock_redis(self, test_domain):
-        """Per-consumer metrics render with mock Redis connection."""
-        from unittest.mock import MagicMock
-
-        mock_redis = MagicMock()
-        mock_redis.scan.return_value = (0, [b"test::stream"])
-        mock_redis.xinfo_groups.return_value = [{"name": "TestGroup", "pending": 5}]
-        mock_redis.xinfo_consumers.return_value = [
-            {"name": "Consumer1", "pending": 3, "idle": 1000}
-        ]
-
-        text = self._run_with_redis(test_domain, mock_redis)
+        text = _hand_rolled_metrics([test_domain])
 
         assert "protean_consumer_pending" in text
         assert "protean_consumer_idle_ms" in text
         assert 'consumer="Consumer1"' in text
         assert 'group="TestGroup"' in text
+        assert 'group="None"' not in text
 
-    def test_consumer_metrics_with_bytes_keys(self, test_domain):
+    def test_consumer_metrics_with_bytes_keys(self, test_domain, monkeypatch):
         """Per-consumer metrics handle bytes keys from Redis."""
-        from unittest.mock import MagicMock
+        _use_redis_broker(
+            monkeypatch,
+            test_domain,
+            RedisServer(
+                streams={"test::stream": 1},
+                groups=[{b"name": b"ByteGroup", b"pending": 2}],
+                consumers=[{b"name": b"ByteConsumer", b"pending": 1, b"idle": 500}],
+            ),
+        )
 
-        mock_redis = MagicMock()
-        mock_redis.xinfo_groups.return_value = [{b"name": b"ByteGroup", b"pending": 2}]
-        mock_redis.xinfo_consumers.return_value = [
-            {b"name": b"ByteConsumer", b"pending": 1, b"idle": 500}
-        ]
-
-        text = self._run_with_redis(test_domain, mock_redis)
+        text = _hand_rolled_metrics([test_domain])
 
         assert 'consumer="ByteConsumer"' in text
         assert 'group="ByteGroup"' in text
 
-    def test_consumer_metrics_non_dict_group_skipped(self, test_domain):
-        """Non-dict group entries are silently skipped."""
-        from unittest.mock import MagicMock
+    @pytest.mark.parametrize(
+        "server_kwargs",
+        [
+            {
+                "groups": [{"name": "FailGroup"}],
+                "consumers_error": RuntimeError("connection reset"),
+            },
+            {"groups_error": RuntimeError("timeout")},
+        ],
+        ids=["xinfo_consumers", "xinfo_groups"],
+    )
+    def test_consumer_metrics_redis_error(
+        self, test_domain, monkeypatch, server_kwargs
+    ):
+        """A Redis error while reading groups or consumers does not stop the
+        scrape."""
+        _use_redis_broker(
+            monkeypatch,
+            test_domain,
+            RedisServer(streams={"test::stream": 1}, **server_kwargs),
+        )
 
-        mock_redis = MagicMock()
-        mock_redis.xinfo_groups.return_value = [
-            "not-a-dict",
-            {"name": "ValidGroup", "pending": 0},
-        ]
-        mock_redis.xinfo_consumers.return_value = [
-            {"name": "Consumer1", "pending": 0, "idle": 0}
-        ]
+        text = _hand_rolled_metrics([test_domain])
 
-        text = self._run_with_redis(test_domain, mock_redis)
-        assert 'group="ValidGroup"' in text
-
-    def test_consumer_metrics_empty_group_name_skipped(self, test_domain):
-        """Groups with None/empty name are skipped."""
-        from unittest.mock import MagicMock
-
-        mock_redis = MagicMock()
-        mock_redis.xinfo_groups.return_value = [
-            {"name": None, "pending": 0},
-            {"name": "GoodGroup", "pending": 0},
-        ]
-        mock_redis.xinfo_consumers.return_value = [
-            {"name": "Consumer1", "pending": 0, "idle": 0}
-        ]
-
-        text = self._run_with_redis(test_domain, mock_redis)
-        assert 'group="GoodGroup"' in text
-
-    def test_consumer_metrics_non_dict_consumer_skipped(self, test_domain):
-        """Non-dict consumer entries are skipped."""
-        from unittest.mock import MagicMock
-
-        mock_redis = MagicMock()
-        mock_redis.xinfo_groups.return_value = [{"name": "Group1"}]
-        mock_redis.xinfo_consumers.return_value = [
-            "not-a-dict",
-            {"name": "ValidConsumer", "pending": 0, "idle": 0},
-        ]
-
-        text = self._run_with_redis(test_domain, mock_redis)
-        assert 'consumer="ValidConsumer"' in text
-
-    def test_consumer_metrics_xinfo_consumers_exception(self, test_domain):
-        """xinfo_consumers exception doesn't crash metrics."""
-        from unittest.mock import MagicMock
-
-        mock_redis = MagicMock()
-        mock_redis.xinfo_groups.return_value = [{"name": "FailGroup"}]
-        mock_redis.xinfo_consumers.side_effect = RuntimeError("connection reset")
-
-        text = self._run_with_redis(test_domain, mock_redis)
-        assert "# HELP protean_outbox_pending_count" in text
-
-    def test_consumer_metrics_xinfo_groups_exception(self, test_domain):
-        """xinfo_groups exception doesn't crash metrics."""
-        from unittest.mock import MagicMock
-
-        mock_redis = MagicMock()
-        mock_redis.xinfo_groups.side_effect = RuntimeError("timeout")
-
-        text = self._run_with_redis(test_domain, mock_redis)
         assert "# HELP protean_outbox_pending_count" in text
 
     def test_consumer_metrics_get_redis_failure(self, test_domain):
         """_get_redis failure doesn't crash metrics."""
-        from unittest.mock import patch
-
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
         with patch(
             "protean.server.observatory.api._get_redis",
             side_effect=RuntimeError("import error"),
@@ -1329,23 +816,128 @@ class TestHandRolledConsumerMetrics:
 
         assert "# HELP protean_outbox_pending_count" in text
 
-    def test_consumer_metrics_redis_none(self, test_domain):
-        """No consumer metrics when _get_redis returns None."""
-        from unittest.mock import patch
-
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        with patch(
-            "protean.server.observatory.api._get_redis",
-            return_value=None,
-        ):
-            text = _hand_rolled_metrics([test_domain])
+    def test_no_consumer_metrics_without_redis(self, test_domain):
+        """The inline broker has no Redis connection, so no consumer metrics."""
+        text = _hand_rolled_metrics([test_domain])
 
         assert "protean_consumer_pending" not in text
 
 
 # ---------------------------------------------------------------------------
-# Tests: telemetry.py coverage - init_telemetry, shutdown, etc.
+# Tests: ObservableGauge callbacks with telemetry active
+# ---------------------------------------------------------------------------
+
+
+class TestGaugeCallbacks:
+    """Tests for ObservableGauge callback functions."""
+
+    def test_gauges_report_outbox_and_inline_broker(self, test_domain, telemetry):
+        _, metric_reader = telemetry
+
+        data = _register_gauges_and_collect(test_domain, metric_reader)
+
+        names = _metric_names(data)
+        assert "protean.outbox.pending_count" in names
+        assert "protean_broker_up" in names
+        (outbox,) = _points_in(data, "protean.outbox.pending_count")
+        assert outbox.value == 0
+        (broker_up,) = _points_in(data, "protean_broker_up")
+        assert broker_up.value == 1
+
+    def test_broker_gauges_report_redis_stats(
+        self, test_domain, telemetry, monkeypatch
+    ):
+        _, metric_reader = telemetry
+        _use_redis_broker(
+            monkeypatch,
+            test_domain,
+            RedisServer(
+                info={
+                    "used_memory": 4096,
+                    "connected_clients": 5,
+                    "instantaneous_ops_per_sec": 200,
+                }
+            ),
+        )
+
+        data = _register_gauges_and_collect(test_domain, metric_reader)
+
+        assert [p.value for p in _points_in(data, "protean_broker_up")] == [1]
+        assert [p.value for p in _points_in(data, "protean_broker_memory_bytes")] == [
+            4096
+        ]
+        assert [
+            p.value for p in _points_in(data, "protean_broker_connected_clients")
+        ] == [5]
+        assert [p.value for p in _points_in(data, "protean_broker_ops_per_sec")] == [
+            200
+        ]
+
+    def test_broker_gauges_report_zero_when_health_check_raises(
+        self, test_domain, telemetry, monkeypatch
+    ):
+        _, metric_reader = telemetry
+        with test_domain.domain_context():
+            broker = test_domain.brokers.get("default")
+        monkeypatch.setattr(broker, "health_stats", _fail)
+
+        data = _register_gauges_and_collect(test_domain, metric_reader)
+
+        for name in (
+            "protean_broker_up",
+            "protean_broker_memory_bytes",
+            "protean_broker_connected_clients",
+            "protean_broker_ops_per_sec",
+        ):
+            assert [p.value for p in _points_in(data, name)] == [0]
+
+    def test_outbox_gauge_skips_domain_when_query_raises(
+        self, test_domain, telemetry, monkeypatch
+    ):
+        _, metric_reader = telemetry
+        monkeypatch.setattr(test_domain, "_get_outbox_repo", _fail)
+
+        data = _register_gauges_and_collect(test_domain, metric_reader)
+
+        assert _points_in(data, "protean.outbox.pending_count") == []
+
+    def test_subscription_gauges_report_statuses(self, test_domain, telemetry):
+        """Subscription gauges report every status, and skip a None lag."""
+        _, metric_reader = telemetry
+        _enqueue_open_account(test_domain)
+
+        data = _register_gauges_and_collect(test_domain, metric_reader)
+
+        names = _metric_names(data)
+        assert "protean.subscription.consumer_lag" in names
+        assert "protean.subscription.pending_messages" in names
+        assert "protean_subscription_dlq_depth" in names
+        assert "protean_subscription_status" in names
+
+        lag_handlers = {
+            p.attributes["handler"]
+            for p in _points_in(data, "protean.subscription.consumer_lag")
+        }
+        assert "AccountCommandHandler" in lag_handlers
+        assert "AccountWithEventHandler" not in lag_handlers
+
+    def test_subscription_gauges_empty_when_collection_raises(
+        self, test_domain, telemetry
+    ):
+        _, metric_reader = telemetry
+
+        with patch(
+            "protean.server.subscription_status.collect_subscription_statuses",
+            side_effect=RuntimeError("subscription error"),
+        ):
+            data = _register_gauges_and_collect(test_domain, metric_reader)
+
+        assert _points_in(data, "protean.subscription.consumer_lag") == []
+        assert _points_in(data, "protean.subscription.pending_messages") == []
+
+
+# ---------------------------------------------------------------------------
+# Tests: telemetry init and shutdown
 # ---------------------------------------------------------------------------
 
 
@@ -1354,184 +946,53 @@ class TestTelemetryInitAndShutdown:
 
     def test_init_telemetry_disabled(self, test_domain):
         """init_telemetry returns None when telemetry is disabled."""
-        from protean.utils.telemetry import init_telemetry
-
         result = init_telemetry(test_domain)
         assert result is None
         assert test_domain._otel_init_attempted is True
 
-    def test_init_telemetry_enabled_sets_providers(self, test_domain):
-        """init_telemetry creates providers when telemetry is enabled."""
-        from protean.utils.telemetry import (
-            _METER_PROVIDER_KEY,
-            _PROMETHEUS_READER_KEY,
-            _TRACER_PROVIDER_KEY,
-            init_telemetry,
-        )
-
-        test_domain.config["telemetry"] = {"enabled": True}
-        # Reset init flag
+    @pytest.mark.parametrize(
+        "extra_config, resource_attribute",
+        [
+            ({}, None),
+            ({"service_name": "custom-svc"}, ("service.name", "custom-svc")),
+            (
+                {"resource_attributes": {"deployment.environment": "test"}},
+                ("deployment.environment", "test"),
+            ),
+            ({"exporter": "console"}, None),
+        ],
+        ids=["default", "service_name", "resource_attributes", "console_exporter"],
+    )
+    def test_init_sets_providers_and_shutdown_clears_them(
+        self, test_domain, extra_config, resource_attribute
+    ):
+        test_domain.config["telemetry"] = {"enabled": True, **extra_config}
         test_domain._otel_init_attempted = False
 
         result = init_telemetry(test_domain)
+
         assert result is not None
-        assert getattr(test_domain, _TRACER_PROVIDER_KEY) is not None
+        tracer_provider = getattr(test_domain, _TRACER_PROVIDER_KEY)
+        assert tracer_provider is not None
         assert getattr(test_domain, _METER_PROVIDER_KEY) is not None
-        # PrometheusMetricReader should be attached
         assert hasattr(test_domain, _PROMETHEUS_READER_KEY)
-
-        # Cleanup
-        from protean.utils.telemetry import shutdown_telemetry
-
-        shutdown_telemetry(test_domain)
-
-    def test_shutdown_clears_prometheus_reader(self, test_domain, telemetry):
-        """shutdown_telemetry clears the prometheus reader reference."""
-        from protean.utils.telemetry import (
-            _PROMETHEUS_READER_KEY,
-            shutdown_telemetry,
-        )
-
-        # Set a fake reader
-        setattr(test_domain, _PROMETHEUS_READER_KEY, "fake-reader")
+        if resource_attribute is not None:
+            key, value = resource_attribute
+            assert tracer_provider.resource.attributes[key] == value
+        text = get_prometheus_text(test_domain)
+        assert isinstance(text, str)
 
         shutdown_telemetry(test_domain)
 
         assert not hasattr(test_domain, _PROMETHEUS_READER_KEY)
-
-    def test_shutdown_resets_init_flag(self, test_domain, telemetry):
-        """shutdown_telemetry resets _otel_init_attempted to False."""
-        from protean.utils.telemetry import shutdown_telemetry
-
-        assert test_domain._otel_init_attempted is True
-        shutdown_telemetry(test_domain)
         assert test_domain._otel_init_attempted is False
 
     def test_build_prometheus_reader_returns_reader(self):
         """_build_prometheus_reader returns a PrometheusMetricReader."""
-        from protean.utils.telemetry import _build_prometheus_reader
-
-        reader = _build_prometheus_reader()
-        assert reader is not None
-
-    def test_create_observation_returns_otel_observation(self):
-        """create_observation returns real OTel Observation when available."""
-        from opentelemetry.metrics import Observation
-
-        from protean.utils.telemetry import create_observation
-
-        obs = create_observation(42, {"key": "val"})
-        assert isinstance(obs, Observation)
-
-    def test_init_telemetry_with_custom_service_name(self, test_domain):
-        """init_telemetry uses custom service_name from config."""
-        from protean.utils.telemetry import init_telemetry, shutdown_telemetry
-
-        test_domain.config["telemetry"] = {
-            "enabled": True,
-            "service_name": "custom-svc",
-        }
-        test_domain._otel_init_attempted = False
-
-        result = init_telemetry(test_domain)
-        assert result is not None
-
-        shutdown_telemetry(test_domain)
-
-    def test_get_prometheus_text_returns_text(self, test_domain):
-        """get_prometheus_text returns text when telemetry is initialized."""
-        from protean.utils.telemetry import (
-            get_prometheus_text,
-            init_telemetry,
-            shutdown_telemetry,
-        )
-
-        test_domain.config["telemetry"] = {"enabled": True}
-        test_domain._otel_init_attempted = False
-        init_telemetry(test_domain)
-
-        result = get_prometheus_text(test_domain)
-        # Should return a string (Prometheus text format)
-        assert result is None or isinstance(result, str)
-
-        shutdown_telemetry(test_domain)
-
-    def test_get_prometheus_text_no_reader(self, test_domain):
-        """get_prometheus_text returns None when no reader is set."""
-        from protean.utils.telemetry import (
-            _PROMETHEUS_READER_KEY,
-            _TELEMETRY_INIT_KEY,
-            get_prometheus_text,
-        )
-
-        setattr(test_domain, _TELEMETRY_INIT_KEY, True)
-        # Ensure no reader is set
-        if hasattr(test_domain, _PROMETHEUS_READER_KEY):
-            delattr(test_domain, _PROMETHEUS_READER_KEY)
-
-        result = get_prometheus_text(test_domain)
-        assert result is None
-
-    def test_get_prometheus_text_not_initialized(self, test_domain):
-        """get_prometheus_text returns None when domain not initialized."""
-        from protean.utils.telemetry import get_prometheus_text
-
-        test_domain._otel_init_attempted = False
-        result = get_prometheus_text(test_domain)
-        assert result is None
-
-    def test_shutdown_clears_domain_metrics(self, test_domain, telemetry):
-        """shutdown_telemetry clears cached DomainMetrics."""
-        from protean.utils.telemetry import (
-            _DOMAIN_METRICS_KEY,
-            get_domain_metrics,
-            shutdown_telemetry,
-        )
-
-        # Create and cache domain metrics
-        get_domain_metrics(test_domain)
-        assert hasattr(test_domain, _DOMAIN_METRICS_KEY)
-
-        shutdown_telemetry(test_domain)
-        assert not hasattr(test_domain, _DOMAIN_METRICS_KEY)
-
-    def test_init_telemetry_with_resource_attributes(self, test_domain):
-        """init_telemetry uses custom resource_attributes from config."""
-        from protean.utils.telemetry import init_telemetry, shutdown_telemetry
-
-        test_domain.config["telemetry"] = {
-            "enabled": True,
-            "resource_attributes": {"deployment.environment": "test"},
-        }
-        test_domain._otel_init_attempted = False
-
-        result = init_telemetry(test_domain)
-        assert result is not None
-
-        shutdown_telemetry(test_domain)
-
-    def test_init_telemetry_with_console_exporter(self, test_domain):
-        """init_telemetry works with console exporter."""
-        from protean.utils.telemetry import init_telemetry, shutdown_telemetry
-
-        test_domain.config["telemetry"] = {
-            "enabled": True,
-            "exporter": "console",
-        }
-        test_domain._otel_init_attempted = False
-
-        result = init_telemetry(test_domain)
-        assert result is not None
-
-        shutdown_telemetry(test_domain)
+        assert isinstance(_build_prometheus_reader(), PrometheusMetricReader)
 
     def test_build_prometheus_reader_import_error(self):
         """_build_prometheus_reader returns None when package is missing."""
-        import builtins
-        from unittest.mock import patch
-
-        from protean.utils.telemetry import _build_prometheus_reader
-
         original_import = builtins.__import__
 
         def fail_prometheus(name, *args, **kwargs):
@@ -1545,17 +1006,8 @@ class TestTelemetryInitAndShutdown:
 
     def test_get_prometheus_text_import_error(self, test_domain):
         """get_prometheus_text returns None when prometheus_client is missing."""
-        import builtins
-        from unittest.mock import patch
-
-        from protean.utils.telemetry import (
-            _PROMETHEUS_READER_KEY,
-            _TELEMETRY_INIT_KEY,
-            get_prometheus_text,
-        )
-
         setattr(test_domain, _TELEMETRY_INIT_KEY, True)
-        setattr(test_domain, _PROMETHEUS_READER_KEY, "fake-reader")
+        setattr(test_domain, _PROMETHEUS_READER_KEY, PrometheusMetricReader())
 
         original_import = builtins.__import__
 
@@ -1577,83 +1029,51 @@ class TestTelemetryInitAndShutdown:
 class TestNoOpFallbacks:
     """Tests for no-op classes used when OTEL SDK is not installed."""
 
-    def test_noop_observation(self):
+    @pytest.mark.parametrize(
+        "args, attributes", [((42, {"key": "val"}), {"key": "val"}), ((0,), None)]
+    )
+    def test_noop_observation(self, args, attributes):
         """_NoOpObservation stores value and attributes."""
-        from protean.utils.telemetry import _NoOpObservation
-
-        obs = _NoOpObservation(42, {"key": "val"})
-        assert obs.value == 42
-        assert obs.attributes == {"key": "val"}
-
-    def test_noop_observation_no_attrs(self):
-        """_NoOpObservation works without attributes."""
-        from protean.utils.telemetry import _NoOpObservation
-
-        obs = _NoOpObservation(0)
-        assert obs.value == 0
-        assert obs.attributes is None
+        obs = _NoOpObservation(*args)
+        assert obs.value == args[0]
+        assert obs.attributes == attributes
 
     def test_noop_counter_add(self):
         """_NoOpCounter.add does nothing."""
-        from protean.utils.telemetry import _NoOpCounter
-
         counter = _NoOpCounter()
         counter.add(1)
         counter.add(5, {"key": "val"})
 
     def test_noop_histogram_record(self):
         """_NoOpHistogram.record does nothing."""
-        from protean.utils.telemetry import _NoOpHistogram
-
         hist = _NoOpHistogram()
         hist.record(1.5)
         hist.record(0.1, {"key": "val"})
 
     def test_noop_observable_gauge(self):
         """_NoOpObservableGauge can be instantiated."""
-        from protean.utils.telemetry import _NoOpObservableGauge
+        assert _NoOpObservableGauge() is not None
 
-        gauge = _NoOpObservableGauge()
-        assert gauge is not None
+    @pytest.mark.parametrize(
+        "method, kwargs, expected",
+        [
+            ("create_counter", {}, _NoOpCounter),
+            ("create_histogram", {}, _NoOpHistogram),
+            ("create_up_down_counter", {}, _NoOpCounter),
+            ("create_observable_gauge", {"callbacks": [list]}, _NoOpObservableGauge),
+        ],
+    )
+    def test_noop_meter_creates_noop_instruments(self, method, kwargs, expected):
+        instrument = getattr(_NoOpMeter(), method)("test.instrument", **kwargs)
+        assert isinstance(instrument, expected)
 
-    def test_noop_meter_create_counter(self):
-        """_NoOpMeter.create_counter returns a _NoOpCounter."""
-        from protean.utils.telemetry import _NoOpCounter, _NoOpMeter
-
-        meter = _NoOpMeter()
-        counter = meter.create_counter("test.counter")
-        assert isinstance(counter, _NoOpCounter)
-
-    def test_noop_meter_create_histogram(self):
-        """_NoOpMeter.create_histogram returns a _NoOpHistogram."""
-        from protean.utils.telemetry import _NoOpHistogram, _NoOpMeter
-
-        meter = _NoOpMeter()
-        hist = meter.create_histogram("test.histogram")
-        assert isinstance(hist, _NoOpHistogram)
-
-    def test_noop_meter_create_up_down_counter(self):
-        """_NoOpMeter.create_up_down_counter returns a _NoOpCounter."""
-        from protean.utils.telemetry import _NoOpCounter, _NoOpMeter
-
-        meter = _NoOpMeter()
-        counter = meter.create_up_down_counter("test.up_down_counter")
-        assert isinstance(counter, _NoOpCounter)
-
-    def test_noop_meter_create_observable_gauge(self):
-        """_NoOpMeter.create_observable_gauge returns a _NoOpObservableGauge."""
-        from protean.utils.telemetry import _NoOpMeter, _NoOpObservableGauge
-
-        meter = _NoOpMeter()
-        gauge = meter.create_observable_gauge("test.gauge", callbacks=[list])
-        assert isinstance(gauge, _NoOpObservableGauge)
+    def test_create_observation_returns_otel_observation(self):
+        """create_observation returns real OTel Observation when available."""
+        obs = create_observation(42, {"key": "val"})
+        assert isinstance(obs, Observation)
 
     def test_create_observation_noop_fallback(self):
         """create_observation returns _NoOpObservation when OTEL unavailable."""
-        from unittest.mock import patch
-
-        from protean.utils.telemetry import _NoOpObservation, create_observation
-
         with patch("protean.utils.telemetry._OTEL_AVAILABLE", False):
             obs = create_observation(99, {"a": "b"})
             assert isinstance(obs, _NoOpObservation)
@@ -1661,28 +1081,18 @@ class TestNoOpFallbacks:
 
     def test_get_tracer_noop_fallback(self, test_domain):
         """get_tracer returns _NoOpTracer when OTEL unavailable."""
-        from unittest.mock import patch
-
-        from protean.utils.telemetry import _NoOpTracer, get_tracer
-
         with patch("protean.utils.telemetry._OTEL_AVAILABLE", False):
             tracer = get_tracer(test_domain)
             assert isinstance(tracer, _NoOpTracer)
 
     def test_get_meter_noop_fallback(self, test_domain):
         """get_meter returns _NoOpMeter when OTEL unavailable."""
-        from unittest.mock import patch
-
-        from protean.utils.telemetry import _NoOpMeter, get_meter
-
         with patch("protean.utils.telemetry._OTEL_AVAILABLE", False):
             meter = get_meter(test_domain)
             assert isinstance(meter, _NoOpMeter)
 
     def test_noop_span_context_manager(self):
         """_NoOpSpan supports context manager protocol."""
-        from protean.utils.telemetry import _NoOpSpan
-
         span = _NoOpSpan()
         with span as s:
             assert s is span
@@ -1692,301 +1102,111 @@ class TestNoOpFallbacks:
             s.end()
             assert s.is_recording is False
 
-    def test_noop_tracer_start_span(self):
-        """_NoOpTracer.start_span returns _NoOpSpan."""
-        from protean.utils.telemetry import _NoOpSpan, _NoOpTracer
-
-        tracer = _NoOpTracer()
-        span = tracer.start_span("test")
-        assert isinstance(span, _NoOpSpan)
-
-    def test_noop_tracer_start_as_current_span(self):
-        """_NoOpTracer.start_as_current_span returns _NoOpSpan."""
-        from protean.utils.telemetry import _NoOpSpan, _NoOpTracer
-
-        tracer = _NoOpTracer()
-        span = tracer.start_as_current_span("test")
+    @pytest.mark.parametrize("method", ["start_span", "start_as_current_span"])
+    def test_noop_tracer_returns_noop_span(self, method):
+        span = getattr(_NoOpTracer(), method)("test")
         assert isinstance(span, _NoOpSpan)
 
 
 # ---------------------------------------------------------------------------
-# Tests: hand-rolled subscription import failure
+# Tests: outbox processor metrics
 # ---------------------------------------------------------------------------
 
 
-class TestHandRolledSubscriptionImportFailure:
-    """Test that _hand_rolled_metrics handles subscription_status import failure."""
-
-    def test_subscription_import_failure(self, test_domain):
-        """Outer except catches import failure gracefully."""
-        import builtins
-        from unittest.mock import patch
-
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        original_import = builtins.__import__
-
-        def failing_import(name, *args, **kwargs):
-            if "subscription_status" in name:
-                raise ImportError(
-                    "No module named 'protean.server.subscription_status'"
-                )
-            return original_import(name, *args, **kwargs)
-
-        with (
-            patch("builtins.__import__", side_effect=failing_import),
-            patch(
-                "protean.server.observatory.api._get_redis",
-                return_value=None,
-            ),
-        ):
-            text = _hand_rolled_metrics([test_domain])
-
-        # Should still produce outbox metrics even when subscription import fails
-        assert "# HELP protean_outbox_pending_count" in text
+def _add_outbox_row(domain, created_at: datetime | None = None) -> Outbox:
+    """Store one pending outbox row, optionally with a given ``created_at``."""
+    metadata = Metadata(
+        headers=MessageHeaders(id="msg-1", type="AccountCreated", stream="test-stream"),
+        domain=DomainMeta(stream_category="test-stream"),
+    )
+    row = Outbox.create_message(
+        message_id="msg-1",
+        stream_name="test-stream",
+        message_type="AccountCreated",
+        data={"account_id": "1", "name": "Acme"},
+        metadata=metadata,
+    )
+    if created_at is not None:
+        row.created_at = created_at
+    with domain.domain_context():
+        domain._get_outbox_repo("default").add(row)
+    return row
 
 
-# ---------------------------------------------------------------------------
-# Tests: outbox_processor metrics (unit-level mocking)
-# ---------------------------------------------------------------------------
+async def _new_outbox_processor(domain) -> OutboxProcessor:
+    processor = OutboxProcessor(
+        Engine(domain=domain, test_mode=True), "default", "default"
+    )
+    await processor.initialize()
+    return processor
+
+
+async def _process_one_batch(processor: OutboxProcessor) -> int:
+    messages = await processor.get_next_batch_of_messages()
+    return await processor.process_batch(messages)
 
 
 class TestOutboxProcessorMetrics:
-    """Unit tests for outbox metric recording in OutboxProcessor."""
+    """OutboxProcessor records outbox metrics for each row it publishes."""
 
-    def _make_processor(self):
-        """Helper to build a minimal OutboxProcessor with mocked dependencies."""
-        import datetime
-        from unittest.mock import MagicMock
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "created_at",
+        [
+            datetime.now(UTC) - timedelta(seconds=2),
+            datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=2),
+        ],
+        ids=["aware", "naive"],
+    )
+    async def test_published_row_records_count_and_latency(
+        self, test_domain, telemetry, created_at
+    ):
+        _, metric_reader = telemetry
+        _add_outbox_row(test_domain, created_at=created_at)
 
-        from protean.server.outbox_processor import OutboxProcessor
+        assert await _process_one_batch(await _new_outbox_processor(test_domain)) == 1
 
-        mock_engine = MagicMock()
-        mock_engine.domain.config = {"outbox": {}, "server": {}}
-        mock_engine.domain.brokers = {}
-        mock_engine.domain.normalized_name = "test"
-        # The processor now reads publish time through the domain clock; make the
-        # mocked clock return real UTC time so latency math sees a datetime, not a
-        # MagicMock (matches the pre-seam `datetime.now(UTC)` behaviour).
-        mock_engine.domain.clock.now.side_effect = lambda: datetime.datetime.now(
-            datetime.UTC
-        )
-        mock_engine.emitter = MagicMock()
+        data = metric_reader.get_metrics_data()
+        assert [p.value for p in _points_in(data, "protean.outbox.published")] == [1]
+        (latency,) = _points_in(data, "protean.outbox.latency")
+        assert latency.count == 1
+        assert latency.sum >= 1.0
 
-        processor = OutboxProcessor.__new__(OutboxProcessor)
-        processor.engine = mock_engine
-        processor.is_external = False
-        processor.subscription_id = "test-processor"
-        processor.worker_id = "test-worker"
-        processor.broker = MagicMock()
-        processor._filter_by_broker = False
-        processor._lanes_enabled = False
-        processor.retry_config = {
-            "max_attempts": 3,
-            "base_delay_seconds": 60,
-            "max_backoff_seconds": 3600,
-            "backoff_multiplier": 2,
-            "jitter": True,
-            "jitter_factor": 0.25,
-        }
-        processor.outbox_repo = MagicMock()
-        return processor
+    @pytest.mark.asyncio
+    async def test_publish_failure_records_failed_count(
+        self, test_domain, telemetry, monkeypatch
+    ):
+        _, metric_reader = telemetry
+        _add_outbox_row(test_domain)
+        processor = await _new_outbox_processor(test_domain)
+        monkeypatch.setattr(processor.broker, "publish", _fail)
 
-    def _make_message(self, created_at=None):
-        """Helper to build a mock outbox message."""
-        from unittest.mock import MagicMock
+        assert await _process_one_batch(processor) == 0
 
-        mock_message = MagicMock()
-        mock_message.message_id = "abcd1234-5678"
-        mock_message.id = 1
-        mock_message.stream_name = "test::stream"
-        mock_message.data = {"key": "value"}
-        mock_message.created_at = created_at
-        # A normal (non-partitioned) outbox row; the field defaults to None.
-        # Leaving it a MagicMock would make it truthy and wrongly trip the
-        # partition-key backstop in ``_process_single_message``.
-        mock_message.partition_key = None
-        mock_message.metadata_ = MagicMock()
-        mock_message.metadata_.domain.stream_category = "test::stream"
-        mock_message.metadata_.headers.type = "TestEvent"
-        return mock_message
+        data = metric_reader.get_metrics_data()
+        assert [p.value for p in _points_in(data, "protean.outbox.failed")] == [1]
+        assert _points_in(data, "protean.outbox.published") == []
 
-    def test_process_single_message_success_records_metrics(self):
-        """_process_single_message records outbox_published and latency on success."""
-        import asyncio
-        import datetime
-        from unittest.mock import AsyncMock, MagicMock, patch
+    @pytest.mark.asyncio
+    async def test_row_without_created_at_records_no_latency(
+        self, test_domain, telemetry, monkeypatch
+    ):
+        """The Outbox model always sets ``created_at``, so the processor's
+        guard for a row without one is reached only through a stand-in row."""
+        _, metric_reader = telemetry
+        _add_outbox_row(test_domain)
+        processor = await _new_outbox_processor(test_domain)
+        repo_get = processor.outbox_repo.get
 
-        processor = self._make_processor()
-        created = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=1)
-        mock_message = self._make_message(created_at=created)
-        processor.outbox_repo.get.return_value = mock_message
+        def get_without_created_at(identifier):
+            row = repo_get(identifier)
+            row.__dict__["created_at"] = None
+            return row
 
-        mock_metrics = MagicMock()
+        monkeypatch.setattr(processor.outbox_repo, "get", get_without_created_at)
 
-        with (
-            patch(
-                "protean.server.outbox_processor.get_domain_metrics",
-                return_value=mock_metrics,
-            ),
-            patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer,
-            patch("protean.server.outbox_processor.UnitOfWork") as mock_uow,
-            patch.object(
-                processor,
-                "_publish_message",
-                new_callable=AsyncMock,
-                return_value=(True, None),
-            ),
-        ):
-            mock_span = MagicMock()
-            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(
-                return_value=mock_span
-            )
-            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = (
-                MagicMock(return_value=False)
-            )
-            mock_uow.return_value.__enter__ = MagicMock()
-            mock_uow.return_value.__exit__ = MagicMock(return_value=False)
+        assert await _process_one_batch(processor) == 1
 
-            result = asyncio.get_event_loop().run_until_complete(
-                processor._process_single_message(mock_message)
-            )
-
-        assert result is True
-        mock_metrics.outbox_published.add.assert_called_once_with(1)
-        mock_metrics.outbox_latency.record.assert_called_once()
-
-    def test_process_single_message_failure_records_metrics(self):
-        """_process_single_message records outbox_failed on publish failure."""
-        import asyncio
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        processor = self._make_processor()
-        mock_message = self._make_message()
-        processor.outbox_repo.get.return_value = mock_message
-
-        mock_metrics = MagicMock()
-        publish_error = RuntimeError("broker down")
-
-        with (
-            patch(
-                "protean.server.outbox_processor.get_domain_metrics",
-                return_value=mock_metrics,
-            ),
-            patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer,
-            patch("protean.server.outbox_processor.UnitOfWork") as mock_uow,
-            patch.object(
-                processor,
-                "_publish_message",
-                new_callable=AsyncMock,
-                return_value=(False, publish_error),
-            ),
-        ):
-            mock_span = MagicMock()
-            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(
-                return_value=mock_span
-            )
-            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = (
-                MagicMock(return_value=False)
-            )
-            mock_uow.return_value.__enter__ = MagicMock()
-            mock_uow.return_value.__exit__ = MagicMock(return_value=False)
-
-            result = asyncio.get_event_loop().run_until_complete(
-                processor._process_single_message(mock_message)
-            )
-
-        assert result is False
-        mock_metrics.outbox_failed.add.assert_called_once_with(1)
-
-    def test_process_single_message_no_created_at(self):
-        """_process_single_message skips latency when created_at is missing."""
-        import asyncio
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        processor = self._make_processor()
-        mock_message = self._make_message(created_at=None)
-        processor.outbox_repo.get.return_value = mock_message
-
-        mock_metrics = MagicMock()
-
-        with (
-            patch(
-                "protean.server.outbox_processor.get_domain_metrics",
-                return_value=mock_metrics,
-            ),
-            patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer,
-            patch("protean.server.outbox_processor.UnitOfWork") as mock_uow,
-            patch.object(
-                processor,
-                "_publish_message",
-                new_callable=AsyncMock,
-                return_value=(True, None),
-            ),
-        ):
-            mock_span = MagicMock()
-            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(
-                return_value=mock_span
-            )
-            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = (
-                MagicMock(return_value=False)
-            )
-            mock_uow.return_value.__enter__ = MagicMock()
-            mock_uow.return_value.__exit__ = MagicMock(return_value=False)
-
-            result = asyncio.get_event_loop().run_until_complete(
-                processor._process_single_message(mock_message)
-            )
-
-        assert result is True
-        mock_metrics.outbox_published.add.assert_called_once_with(1)
-        mock_metrics.outbox_latency.record.assert_not_called()
-
-    def test_process_single_message_naive_created_at(self):
-        """_process_single_message handles naive datetime created_at."""
-        import asyncio
-        import datetime
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        processor = self._make_processor()
-        naive_dt = datetime.datetime.now(datetime.UTC).replace(
-            tzinfo=None
-        ) - datetime.timedelta(seconds=2)
-        mock_message = self._make_message(created_at=naive_dt)
-        processor.outbox_repo.get.return_value = mock_message
-
-        mock_metrics = MagicMock()
-
-        with (
-            patch(
-                "protean.server.outbox_processor.get_domain_metrics",
-                return_value=mock_metrics,
-            ),
-            patch("protean.server.outbox_processor.get_tracer") as mock_get_tracer,
-            patch("protean.server.outbox_processor.UnitOfWork") as mock_uow,
-            patch.object(
-                processor,
-                "_publish_message",
-                new_callable=AsyncMock,
-                return_value=(True, None),
-            ),
-        ):
-            mock_span = MagicMock()
-            mock_get_tracer.return_value.start_as_current_span.return_value.__enter__ = MagicMock(
-                return_value=mock_span
-            )
-            mock_get_tracer.return_value.start_as_current_span.return_value.__exit__ = (
-                MagicMock(return_value=False)
-            )
-            mock_uow.return_value.__enter__ = MagicMock()
-            mock_uow.return_value.__exit__ = MagicMock(return_value=False)
-
-            result = asyncio.get_event_loop().run_until_complete(
-                processor._process_single_message(mock_message)
-            )
-
-        assert result is True
-        mock_metrics.outbox_latency.record.assert_called_once()
-        # Latency should be roughly 2 seconds
-        latency = mock_metrics.outbox_latency.record.call_args[0][0]
-        assert latency >= 1.0
+        data = metric_reader.get_metrics_data()
+        assert [p.value for p in _points_in(data, "protean.outbox.published")] == [1]
+        assert _points_in(data, "protean.outbox.latency") == []

@@ -17,16 +17,17 @@ Verifies that:
   ``trace_id`` with new ``parent_id``.
 """
 
-from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from opentelemetry import trace
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import TraceFlags
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -34,6 +35,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
+from protean.server import Engine
 from protean.utils.eventing import (
     Message,
     MessageHeaders,
@@ -120,17 +122,6 @@ EXTERNAL_SPAN_ID = "00f067aa0ba902b7"
 EXTERNAL_TRACEPARENT = f"00-{EXTERNAL_TRACE_ID}-{EXTERNAL_SPAN_ID}-01"
 
 
-class _FakeEngine:
-    """Minimal Engine stand-in for tests that call handle_message() directly."""
-
-    def __init__(self, domain):
-        self.domain = domain
-        self.loop = None
-        self.emitter = Mock()
-        self.shutting_down = False
-        self.draining = False
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -163,37 +154,16 @@ class TestExtractContextFromTraceparent:
     def test_returns_none_when_traceparent_is_none(self):
         assert extract_context_from_traceparent(None) is None
 
-    def test_extracts_trace_id_and_span_id(self):
-        tp = TraceParent.build(EXTERNAL_TRACEPARENT)
+    @pytest.mark.parametrize("flags, sampled", [("01", True), ("00", False)])
+    def test_extracts_ids_and_sampled_flag(self, flags, sampled):
+        tp = TraceParent.build(f"00-{EXTERNAL_TRACE_ID}-{EXTERNAL_SPAN_ID}-{flags}")
         ctx = extract_context_from_traceparent(tp)
         assert ctx is not None
 
-        from opentelemetry import trace
-
-        span = trace.get_current_span(ctx)
-        sc = span.get_span_context()
+        sc = trace.get_current_span(ctx).get_span_context()
         assert f"{sc.trace_id:032x}" == EXTERNAL_TRACE_ID
         assert f"{sc.span_id:016x}" == EXTERNAL_SPAN_ID
-
-    def test_preserves_sampled_flag(self):
-        tp = TraceParent.build(EXTERNAL_TRACEPARENT)
-        ctx = extract_context_from_traceparent(tp)
-
-        from opentelemetry import trace
-        from opentelemetry.trace import TraceFlags
-
-        sc = trace.get_current_span(ctx).get_span_context()
-        assert sc.trace_flags & TraceFlags.SAMPLED
-
-    def test_unsampled_flag(self):
-        tp = TraceParent.build(f"00-{EXTERNAL_TRACE_ID}-{EXTERNAL_SPAN_ID}-00")
-        ctx = extract_context_from_traceparent(tp)
-
-        from opentelemetry import trace
-        from opentelemetry.trace import TraceFlags
-
-        sc = trace.get_current_span(ctx).get_span_context()
-        assert not (sc.trace_flags & TraceFlags.SAMPLED)
+        assert bool(sc.trace_flags & TraceFlags.SAMPLED) is sampled
 
 
 class TestInjectTraceparentFromContext:
@@ -273,23 +243,6 @@ class TestCommandProcessContextExtraction:
 class TestCommandEnrichContextInjection:
     """CommandProcessor.enrich() injects current span as traceparent."""
 
-    def test_enriched_command_carries_traceparent(self, test_domain, span_exporter):
-        uid = str(uuid4())
-        command = RegisterUser(
-            user_id=uid,
-            name="Carol",
-            email="carol@example.com",
-        )
-
-        enriched = test_domain._enrich_command(command, asynchronous=False)
-
-        # The enriched command must have a traceparent injected from the
-        # active enrich span.
-        tp = enriched._metadata.headers.traceparent
-        assert tp is not None
-        assert tp.trace_id is not None
-        assert tp.parent_id is not None
-
     def test_enriched_command_traceparent_matches_enrich_span(
         self, test_domain, span_exporter
     ):
@@ -359,9 +312,7 @@ class TestEventTraceparentInjection:
 class TestRoundTripTracePropagation:
     """Command with external trace → processing → events carry same trace_id."""
 
-    def test_events_share_trace_id_with_incoming_command(
-        self, test_domain, span_exporter
-    ):
+    def test_events_share_trace_id_with_new_parent_id(self, test_domain, span_exporter):
         tp = TraceParent.build(EXTERNAL_TRACEPARENT)
         uid = str(uuid4())
         command = RegisterUser(
@@ -386,30 +337,6 @@ class TestRoundTripTracePropagation:
         assert event_tp is not None
         # The event must carry the same trace_id as the incoming command
         assert event_tp.trace_id == EXTERNAL_TRACE_ID
-
-    def test_events_have_different_parent_id_than_incoming(
-        self, test_domain, span_exporter
-    ):
-        tp = TraceParent.build(EXTERNAL_TRACEPARENT)
-        uid = str(uuid4())
-        command = RegisterUser(
-            user_id=uid,
-            name="Grace",
-            email="grace@example.com",
-            _metadata=Metadata(headers=MessageHeaders(traceparent=tp)),
-        )
-
-        test_domain.process(command, asynchronous=False)
-
-        stream = f"{User.meta_.stream_category}-{uid}"
-        events = test_domain.event_store.store.read(stream)
-
-        user_registered = [
-            e for e in events if e.metadata.headers.type == UserRegistered.__type__
-        ]
-        assert len(user_registered) == 1
-        event_tp = user_registered[0].metadata.headers.traceparent
-        assert event_tp is not None
         # The event's parent_id should be a child span, not the original external span
         assert event_tp.parent_id != EXTERNAL_SPAN_ID
 
@@ -454,16 +381,7 @@ class TestEngineHandleMessageContextExtraction:
 
     @pytest.fixture()
     def engine(self, test_domain, span_exporter):
-        from protean.server.engine import Engine
-
-        engine = _FakeEngine(test_domain)
-        engine.__class__ = type(
-            "TestEngine", (Engine,), {"__init__": lambda self: None}
-        )
-        engine.domain = test_domain
-        engine.emitter = Mock()
-        engine.shutting_down = False
-        return engine
+        return Engine(domain=test_domain, test_mode=True)
 
     def _make_event_message_with_traceparent(self, test_domain):
         """Create an event Message with an external traceparent."""
@@ -543,16 +461,3 @@ class TestNoOpBehavior:
 
         monkeypatch.setattr(tel_mod, "_OTEL_AVAILABLE", False)
         assert inject_traceparent_from_context() is None
-
-    def test_process_works_without_telemetry(self, test_domain):
-        """Command processing works correctly without telemetry enabled."""
-        uid = str(uuid4())
-        result = test_domain.process(
-            RegisterUser(
-                user_id=uid,
-                name="NoTelemetry",
-                email="notel@example.com",
-            ),
-            asynchronous=False,
-        )
-        assert result == {"registered": uid}
