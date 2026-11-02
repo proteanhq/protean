@@ -20,9 +20,11 @@ on:
     branches: [main, "release/**"]
 
 # A PR's runs share one group, so a new push cancels the run on the old head.
+# Runs on main always finish: the CI badge reports the newest finished run,
+# and a cancelled one shows as failing until the next run completes.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
