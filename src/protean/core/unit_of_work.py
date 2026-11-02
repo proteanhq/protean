@@ -353,6 +353,10 @@ class UnitOfWork:
 
             self._do_commit(span)
 
+    def _run_after_commit(self) -> None:
+        for callback in self._after_commit:
+            callback()
+
     def _do_commit(self, span: Any) -> None:
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
         from protean.domain.context import has_domain_context  # noqa: PLC0415
@@ -579,8 +583,7 @@ class UnitOfWork:
                 session.commit()
                 self._advance_next_versions(provider_name)
 
-            for callback in self._after_commit:
-                callback()
+            self._run_after_commit()
 
             # Dispatch messages to their designated broker
             for stream, message, broker_name in self._messages_to_dispatch:

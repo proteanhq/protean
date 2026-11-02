@@ -211,6 +211,11 @@ def _resolve_exception_types(specs: Any) -> tuple[type[BaseException], ...]:
     return tuple(resolved)
 
 
+def _version_retry_limit(cfg: dict[str, Any]) -> int:
+    """Return how many times version retry may re-run a handler; 0 when off."""
+    return int(cfg["max_retries"]) if cfg["enabled"] and cfg["max_retries"] > 0 else 0
+
+
 def _get_transient_retry_config(instance: Any = None) -> dict[str, Any]:
     """Resolve the effective transient-retry policy for a handler.
 
@@ -480,11 +485,7 @@ class handle:
             version_cfg = _get_version_retry_config()
             transient_cfg = _get_transient_retry_config(instance)
 
-            version_max = (
-                version_cfg["max_retries"]
-                if version_cfg["enabled"] and version_cfg["max_retries"] > 0
-                else 0
-            )
+            version_max = _version_retry_limit(version_cfg)
             transient_max = transient_cfg["max_retries"]
             # `except ()` matches nothing, so an empty tuple cleanly disables the
             # transient branch when no policy is active.

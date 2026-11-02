@@ -1455,7 +1455,7 @@
       },
       {
         "name": "handle::__call__",
-        "complexity": 39
+        "complexity": 37
       }
     ]
   },

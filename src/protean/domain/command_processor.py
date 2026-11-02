@@ -47,6 +47,7 @@ from protean.utils.telemetry import (
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.utils.idempotency import IdempotencyStore
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,31 @@ def coerce_timeout(value: Any) -> timedelta:
     raise IncorrectUsageError(
         f"timeout must be a number of seconds or a `datetime.timedelta`, got {value!r}"
     )
+
+
+def _check_idempotency_key(store: IdempotencyStore, key: str) -> dict[str, Any] | None:
+    """Return the recorded outcome for ``key``, or ``None`` if it has none.
+
+    A key recorded earlier in the active transaction counts as a success,
+    though it reaches the store only when that transaction commits.
+    """
+    outer_uow = _uow_stack.top
+    if outer_uow is not None and key in outer_uow._pending_idempotency_results:
+        return {
+            "status": "success",
+            "result": outer_uow._pending_idempotency_results[key],
+        }
+    return store.check(key)
+
+
+def _record_idempotency_success(store: IdempotencyStore, key: str, result: Any) -> None:
+    # Record success once the write is durable. Inside an outer UnitOfWork, a
+    # later failure rolls this command's write back, and a key recorded now
+    # would make the outer retry skip the command.
+    outer_uow = _uow_stack.top
+    if outer_uow is not None:
+        outer_uow._pending_idempotency_results[key] = result
+    run_after_commit(lambda: store.record_success(key, result))
 
 
 def raise_if_expired(
@@ -371,20 +397,7 @@ class CommandProcessor:
             # --- Idempotency: check for existing result ---
             store = domain.idempotency_store
             if idempotency_key and store.is_active:
-                outer_uow = _uow_stack.top
-                existing: dict[str, Any] | None
-                if (
-                    outer_uow is not None
-                    and idempotency_key in outer_uow._pending_idempotency_results
-                ):
-                    existing = {
-                        "status": "success",
-                        "result": outer_uow._pending_idempotency_results[
-                            idempotency_key
-                        ],
-                    }
-                else:
-                    existing = store.check(idempotency_key)
+                existing = _check_idempotency_key(store, idempotency_key)
                 if existing and existing.get("status") == "success":
                     cached_result = existing.get("result")
                     if raise_on_duplicate:
@@ -549,16 +562,8 @@ class CommandProcessor:
                         worker_id="api",
                     )
 
-                    # Record success once the write is durable. Inside an
-                    # outer UnitOfWork, a later failure rolls this command's
-                    # write back, and a key recorded now would make the outer
-                    # retry skip the command.
                     if idempotency_key and store.is_active:
-                        key = idempotency_key
-                        outer_uow = _uow_stack.top
-                        if outer_uow is not None:
-                            outer_uow._pending_idempotency_results[key] = result
-                        run_after_commit(lambda: store.record_success(key, result))
+                        _record_idempotency_success(store, idempotency_key, result)
                     return result
 
             # Async path: record enqueue (actual processing happens later)
