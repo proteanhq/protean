@@ -5,7 +5,18 @@ import pytest
 from protean import Domain
 from protean.exceptions import ConfigurationError
 from protean.fields.simple import String
-from protean.ir.builder import IRBuilder
+from protean.ir.builder import IRBuilder, validate_lint_table
+
+BAD_COMMAND_VERBS = [
+    "adjust",
+    [1],
+    [""],
+    ["void-it"],
+    [True],
+    [["adjust"]],
+    ["İptal"],
+    ["取消"],
+]
 
 
 class TestLintTableConfigValidation:
@@ -83,6 +94,13 @@ class TestLintOptionTypeValidation:
                 {"check_adapter_calls": 1},
                 r"\[lint\]\.check_adapter_calls must be true or false",
             ),
+            *(
+                (
+                    {"command_verbs": bad},
+                    r"\[lint\]\.command_verbs must be a list of non-empty words of ASCII",
+                )
+                for bad in BAD_COMMAND_VERBS
+            ),
         ],
     )
     def test_bad_option_type_raises(self, lint, message):
@@ -135,7 +153,36 @@ class TestLintOptionTypeValidation:
         assert len(ir["clusters"]) == 1
 
 
+class TestCommandVerbsValidation:
+    @pytest.mark.parametrize("bad", BAD_COMMAND_VERBS)
+    def test_bad_command_verbs_are_rejected(self, bad):
+        assert validate_lint_table({"command_verbs": bad}) == (
+            "[lint].command_verbs must be a list of non-empty words of ASCII "
+            "letters, "
+            f"got {bad!r}."
+        )
+
+    @pytest.mark.parametrize("good", [[], ["adjust", "Void"]])
+    def test_good_command_verbs_are_accepted(self, good):
+        assert validate_lint_table({"command_verbs": good}) is None
+
+
 class TestDomainCheckRaisesOnBadLintOption:
+    @pytest.mark.parametrize("bad", BAD_COMMAND_VERBS)
+    def test_bad_command_verbs_raise_from_check(self, bad):
+        domain = Domain(name="CheckBadCommandVerbs", root_path=".")
+        domain.config["lint"] = {"command_verbs": bad}
+
+        @domain.aggregate
+        class Order:
+            name = String(max_length=50)
+
+        with pytest.raises(
+            ConfigurationError,
+            match=r"\[lint\]\.command_verbs must be a list of non-empty words of ASCII",
+        ):
+            domain.check(traverse=False)
+
     def test_bad_option_raises_from_check(self):
         domain = Domain(name="CheckBadLintOption", root_path=".")
         domain.config["lint"] = {"aggregate_size_limit": "0"}

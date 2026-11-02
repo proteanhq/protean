@@ -181,7 +181,7 @@ Instead: Create a new command instance with the values you need.
 
 `check` inspects your commands and reports these diagnostics:
 
-- `COMMAND_NOT_IMPERATIVE`: the command is named in a mood that is not imperative (`OrderPlacement`), so it reads like data or an event. Rename it to a verb-first imperative phrase (`PlaceOrder`).
+- `COMMAND_NOT_IMPERATIVE`: the command is named in a mood that is not imperative (`OrderPlacement`), so it reads like data or an event. Rename it to a verb-first imperative phrase (`PlaceOrder`). If the name already starts with a verb Protean does not know (`AdjustStock`), add the verb to `[lint].command_verbs` in `domain.toml` instead of renaming.
 - `UNUSED_COMMAND`: the command has no registered handler, so nothing processes it. Add a command handler method for it, or remove the command if it is unused.
 
 ## Detailed references

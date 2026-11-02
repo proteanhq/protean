@@ -298,3 +298,64 @@ class TestCommandNotImperative:
         }
         assert any("Closeness" in f for f in flagged)
         assert any("Openness" in f for f in flagged)
+
+
+def _flagged_commands(command_verbs=None, *names):
+    """Build a one-aggregate domain with the named commands and return the
+    names reported as ``COMMAND_NOT_IMPERATIVE``."""
+    domain = Domain(name="CommandNamingProjectVerbs", root_path=".")
+    if command_verbs is not None:
+        domain.config["lint"]["command_verbs"] = command_verbs
+
+    for name in names:
+        command_cls = type(name, (), {"ticket_id": Identifier(identifier=True)})
+        domain.command(part_of="Ticket")(command_cls)
+
+    @domain.aggregate
+    class Ticket:
+        name = String(max_length=50)
+
+    domain.init(traverse=False)
+    ir = IRBuilder(domain).build()
+    commands = sorted(
+        c["name"]
+        for cluster in ir["clusters"].values()
+        for c in cluster["commands"].values()
+    )
+    assert commands == sorted(names)
+    return {
+        d["element"].rsplit(".", 1)[-1]
+        for d in ir["diagnostics"]
+        if d["code"] == "COMMAND_NOT_IMPERATIVE"
+    }
+
+
+class TestProjectCommandVerbs:
+    """``[lint].command_verbs`` adds a project's own verbs to the built-in list."""
+
+    def test_unknown_verb_is_flagged_by_default(self):
+        assert _flagged_commands(None, "AdjustStock") == {"AdjustStock"}
+
+    def test_project_verb_is_accepted(self):
+        assert _flagged_commands(["adjust"], "AdjustStock") == set()
+
+    def test_project_verb_is_matched_case_insensitively(self):
+        assert _flagged_commands(["Adjust"], "AdjustStock") == set()
+
+    def test_empty_list_behaves_as_default(self):
+        assert _flagged_commands([], "AdjustStock") == {"AdjustStock"}
+
+    def test_noun_name_is_still_flagged(self):
+        assert _flagged_commands(["adjust"], "OrderCreation") == {"OrderCreation"}
+        assert _flagged_commands(["void", "reconcile"], "OrderCreation") == {
+            "OrderCreation"
+        }
+
+    def test_project_verb_that_prefixes_a_noun_name_accepts_it(self):
+        assert _flagged_commands(["order"], "OrderCreation") == set()
+
+    def test_project_verb_needs_a_camelcase_boundary(self):
+        assert _flagged_commands(["void"], "VoidInvoice", "Voidance") == {"Voidance"}
+
+    def test_built_in_verbs_still_pass(self):
+        assert _flagged_commands(["adjust"], "PlaceOrder", "AdjustStock") == set()

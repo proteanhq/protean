@@ -313,7 +313,10 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
             "(`OrderCreation`) obscures the intent."
         ),
         fix=(
-            "Rename the command to a verb-first imperative phrase (e.g. `PlaceOrder`)."
+            "Rename the command to a verb-first imperative phrase (e.g. `PlaceOrder`). "
+            "If the name already starts with a verb Protean does not know "
+            "(`AdjustStock`), add the verb to `[lint].command_verbs` in "
+            "`domain.toml`."
         ),
     ),
     DiagnosticCode.CONFIG_AMBIGUOUS_ELEMENT_NAME: CodeMeta(
