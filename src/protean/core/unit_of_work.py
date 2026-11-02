@@ -1,5 +1,6 @@
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Protocol, Self, cast
 
@@ -45,6 +46,21 @@ class _UoWStack(Protocol):
 
 # Typed handle onto the process-wide UnitOfWork context stack.
 _uow_stack = cast(_UoWStack, _uow_context_stack)
+
+
+def run_after_commit(callback: Callable[[], None]) -> None:
+    """Run ``callback`` once the active transaction's writes are durable.
+
+    With no UnitOfWork active, the callback runs now. Otherwise it waits for the
+    outermost UnitOfWork (a nested one is never on the stack) to commit, and is
+    dropped if that transaction rolls back.
+    """
+    outermost = _uow_stack.top
+    if outermost is None:
+        callback()
+    else:
+        outermost._after_commit.append(callback)
+
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +125,15 @@ class UnitOfWork:
         # rolls back, dooming the whole transaction.
         self._nested = False
         self._rollback_only = False
+
+        # Work that must happen only once this transaction's writes are durable
+        # (see ``run_after_commit``). A rollback discards it.
+        self._after_commit: list[Callable[[], None]] = []
+
+        # Results of commands processed inside this transaction, by idempotency
+        # key. Their keys reach the idempotency store only on commit, so a
+        # repeat of the same key before then is caught here instead.
+        self._pending_idempotency_results: dict[str, Any] = {}
 
     @property
     def in_progress(self) -> bool:
@@ -333,6 +358,10 @@ class UnitOfWork:
 
             self._do_commit(span)
 
+    def _run_after_commit(self) -> None:
+        for callback in self._after_commit:
+            callback()
+
     def _do_commit(self, span: Any) -> None:
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
         from protean.domain.context import has_domain_context  # noqa: PLC0415
@@ -485,9 +514,9 @@ class UnitOfWork:
             # Append events to the event store FIRST, while this UnitOfWork is
             # still the active context, so the event store is the durable anchor
             # of the commit: a crash before the relational commit leaves the
-            # events durable and the outbox/relational state recoverable (via
-            # reconciliation), rather than leaving the store missing a committed
-            # event. See ADR-0015.
+            # events durable, and reconciliation rebuilds the outbox rows of
+            # event-sourced aggregates' events, rather than leaving the store
+            # missing a committed event. See ADR-0015.
             #
             # Appending while the context is active also matters for adapters
             # that back the event store with the relational provider (the
@@ -547,6 +576,8 @@ class UnitOfWork:
             for provider_name, session in self._sessions.items():
                 session.commit()
                 self._advance_next_versions(provider_name)
+
+            self._run_after_commit()
 
             # Dispatch messages to their designated broker
             for stream, message, broker_name in self._messages_to_dispatch:
@@ -676,6 +707,8 @@ class UnitOfWork:
         self._messages_to_dispatch = []
         self._identity_map = defaultdict(dict)
         self._saved = set()
+        self._after_commit = []
+        self._pending_idempotency_results = {}
         self._in_progress = False
 
     def rollback(self) -> None:

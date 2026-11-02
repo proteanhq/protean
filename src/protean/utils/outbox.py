@@ -1081,14 +1081,6 @@ def _outbox_provider_names(domain: Any) -> list[str]:
     ]
 
 
-def _is_outboxed_event(domain: Any, message: Any, provider_name: str) -> bool:
-    """Whether the unit of work writes a row for *message* in *provider_name*'s outbox.
-
-    See ``_resolve_outboxed_event_class`` for the rules.
-    """
-    return _resolve_outboxed_event_class(domain, message, provider_name) is not None
-
-
 def _resolve_outboxed_event_class(
     domain: Any, message: Any, provider_name: str
 ) -> "type[BaseEvent] | None":
@@ -1150,6 +1142,29 @@ def _resolve_outboxed_event_class(
     if part_of.meta_.provider != provider_name:
         return None
     return cast("type[BaseEvent]", element_cls)
+
+
+def _is_repairable_event(domain: Any, message: Any, provider_name: str) -> bool:
+    """Whether reconcile may rebuild the outbox rows of *message*.
+
+    The message must qualify under ``_resolve_outboxed_event_class`` and belong
+    to an event-sourced aggregate. A state-based aggregate's event does not
+    qualify: its saved change is the relational row, which on a transactional
+    provider commits or rolls back with its outbox rows.
+    """
+    event_cls = _resolve_outboxed_event_class(domain, message, provider_name)
+    return event_cls is not None and bool(
+        event_cls.meta_.part_of.meta_.is_event_sourced
+    )
+
+
+def _has_event_sourced_aggregate(domain: Any, provider_name: str) -> bool:
+    """Whether a concrete event-sourced aggregate names *provider_name*."""
+    return any(
+        record.cls.meta_.is_event_sourced and record.cls.meta_.provider == provider_name
+        for record in domain.registry.aggregates.values()
+        if not getattr(record.cls.meta_, "abstract", False)
+    )
 
 
 def _rebuilt_partition_key(
@@ -1218,17 +1233,26 @@ def reconcile_outbox(
     it reads the most recent ``limit`` messages of ``$all`` and finds the newest
     such event among them. It repairs only when that event is missing its row.
     ``limit`` counts every message in ``$all``, including ones this function
-    skips.
+    skips. Returns ``0`` when the domain has no outbox, or when no event-sourced
+    aggregate is on ``provider_name``.
 
-    Only events raised by this domain's aggregates on ``provider_name`` are
-    repaired, because those are the only messages the unit of work writes rows
-    for in that provider's outbox. Another domain's events in a shared store,
-    commands, process manager transition events, and events of aggregates on
-    other providers are skipped. Ownership is decided by type string, which
-    starts with the domain name in CamelCase. Domains whose names give the same
-    CamelCase form (``my-domain``, ``my_domain`` and ``My Domain`` all give
-    ``MyDomain``) cannot be told apart. A foreign type mapped with
-    ``register_external_event`` is skipped, even when it maps onto a local event.
+    Only events raised by this domain's event-sourced aggregates on
+    ``provider_name`` are repaired. For an event-sourced aggregate the event
+    store holds the aggregate's state. For a state-based aggregate the
+    relational row is the state, and on a transactional provider that row
+    commits or rolls back together with its outbox rows. A state-based
+    aggregate's event with no outbox row therefore has no saved change behind
+    it, and it is skipped whether or not the aggregate row exists. On a
+    provider that keeps writes without a transaction (Elasticsearch), a lost
+    outbox row behind a saved aggregate row is not repaired.
+
+    Another domain's events in a shared store, commands, process manager
+    transition events, and events of aggregates on other providers are skipped
+    as well. Ownership is decided by type string, which starts with the domain
+    name in CamelCase. Domains whose names give the same CamelCase form
+    (``my-domain``, ``my_domain`` and ``My Domain`` all give ``MyDomain``)
+    cannot be told apart. A foreign type mapped with ``register_external_event``
+    is skipped, even when it maps onto a local event.
 
     A rebuilt row carries the same ``partition_key`` the unit of work would have
     set (ADR-0028). Its ``priority`` is the default, since the original request's
@@ -1258,6 +1282,10 @@ def reconcile_outbox(
     The return value counts rows created, internal and external.
     """
     if not getattr(domain, "has_outbox", False):
+        return 0
+    # Only event-sourced aggregates' events are repaired, so a provider with
+    # none has nothing to repair and skips the read of ``$all``.
+    if not _has_event_sourced_aggregate(domain, provider_name):
         return 0
 
     # Enter the passed domain's context so the event store, repositories, and
@@ -1289,11 +1317,14 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     def _internal_row_exists(message_id: str) -> bool:
         return internal_broker in _existing_brokers(message_id)
 
-    # Fast path: if the newest message is one of this domain's outboxed events
-    # and already has its internal row, the last unit of work committed fully
+    # Fast path: if the newest message is an event reconcile repairs and
+    # already has its internal row, the last unit of work committed fully
     # and there is nothing at the tail to repair. This keeps the startup sweep
-    # cheap in the common (no-crash) case.
-    if _is_outboxed_event(domain, last, provider_name) and _internal_row_exists(
+    # cheap in the common (no-crash) case. The gap this repairs is the crash
+    # window between the event store append and the outbox commit (ADR-0015).
+    # Only the last unit of work can sit in that window, so a lost row hidden
+    # behind a later event-sourced commit that landed is not found here or below.
+    if _is_repairable_event(domain, last, provider_name) and _internal_row_exists(
         last.metadata.headers.id
     ):
         return 0
@@ -1302,10 +1333,10 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     start = max(0, tail - limit + 1)
     messages = store.read("$all", position=start, no_of_messages=limit)
 
-    # Walk back from the tail to the newest message this domain outboxes. The
-    # newest message overall may be foreign, a command, or a transition event.
-    # None of those ever get a row, so a missing row for one of them does not
-    # mean the last commit crashed.
+    # Walk back from the tail to the newest event reconcile repairs. The
+    # newest message overall may be foreign, a command, a transition event, or
+    # a state-based aggregate's event. Reconcile never rebuilds a row for any
+    # of those, so they do not show whether the last commit crashed.
     # Cleanup deletes delivered and abandoned rows once they pass their
     # retention, and a deleted row looks the same as one lost in a crash. An
     # event is never older than its row's ``published_at`` or
@@ -1315,7 +1346,7 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     qualifying = [
         m
         for m in messages
-        if _is_outboxed_event(domain, m, provider_name) and _written_after(m, cutoff)
+        if _is_repairable_event(domain, m, provider_name) and _written_after(m, cutoff)
     ]
     if not qualifying or _internal_row_exists(qualifying[-1].metadata.headers.id):
         return 0

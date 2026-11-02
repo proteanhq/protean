@@ -25,7 +25,10 @@ protean eventstore verify --domain=my_domain
 It checks these invariants:
 
 - **Rows are well-formed.** Every message carries its `id`, `stream_name`, and
-  `position`.
+  `position`. Every message outside a `:snapshot-` stream also has a body that
+  is a JSON object: Message DB allows a NULL `data` column, or one holding an
+  array, string or number, and `verify` reports such a row as
+  `malformed_message`. An empty object is a valid body.
 - **Position is gapless.** Each stream's `position` runs from 0 without gaps.
 - **Global position is strictly increasing.** `global_position` increases
   store-wide across every message.
@@ -34,8 +37,8 @@ It checks these invariants:
   carries an integer `_version` that stays at or below the head position of its
   aggregate stream.
 
-A corrupt row is reported, not skipped: a missing field or a malformed snapshot
-becomes a violation rather than a silent pass.
+A corrupt row is reported, not skipped: a missing field, a NULL or non-object
+body or a malformed snapshot becomes a violation rather than a silent pass.
 
 **Options**
 
@@ -100,12 +103,17 @@ Each violation carries a stable `kind` (`malformed_message`,
 |------|---------|
 | 0 | The store is consistent. |
 | 1 | At least one violation was found. |
-| 2 | Usage or environment error (no or unloadable domain), under `--json`. |
+| 2 | Usage or environment error: no or unloadable domain (under `--json` only), or an event store the command cannot connect to (with or without `--json`). |
 
-Without `--json`, a load error aborts with exit 1, the same as every other
-`protean` command, so exit 1 in human mode covers both a real violation and a
-domain that failed to load. Use `--json` when a script needs to tell the two
-apart.
+Without `--json`, a domain that fails to load aborts with exit 1, the same as
+every other `protean` command, so exit 1 in human mode covers both a real
+violation and a domain load error. Use `--json` when a script needs to tell the
+two apart.
+
+An event store the command cannot connect to exits 2 in both modes. Under `--json`,
+stdout holds one envelope with `status` set to `error` and the connection error
+under `data.error`. Without `--json`, the command prints the connection error as
+one line on stderr.
 
 ## Backup and restore
 

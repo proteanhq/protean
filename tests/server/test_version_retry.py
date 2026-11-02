@@ -1264,3 +1264,287 @@ class TestEdgeCases:
 
         assert attempt_count == 2
         mock_sleep.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Nested handlers: retry happens at the outermost handler only
+# ---------------------------------------------------------------------------
+
+
+class Account(BaseAggregate):
+    name: String(max_length=50)
+
+
+class OpenAccount(BaseCommand):
+    account_id: Identifier(required=True)
+
+
+class WriteAccount(BaseCommand):
+    account_id: Identifier(required=True)
+
+
+class TestNestedHandlerRetry:
+    """A handler that runs inside an active UnitOfWork does not retry in place.
+
+    Its UnitOfWork joins the outer one, so a failed attempt has already marked
+    the whole transaction rollback-only. The conflict propagates, and the
+    outermost handler retries the whole chain in a fresh UnitOfWork.
+    """
+
+    @pytest.fixture(autouse=True)
+    def register_accounts(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(OpenAccount, part_of=Account)
+        test_domain.register(WriteAccount, part_of=Account)
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_conflict_in_nested_handler_is_retried_by_the_outer_handler(
+        self, mock_sleep, test_domain
+    ):
+        outer_runs = 0
+        inner_runs = 0
+
+        class AccountHandlers(BaseCommandHandler):
+            @handle(OpenAccount)
+            def open(self, command: OpenAccount) -> None:
+                nonlocal outer_runs
+                outer_runs += 1
+                current_domain.process(
+                    WriteAccount(account_id=command.account_id), asynchronous=False
+                )
+
+            @handle(WriteAccount)
+            def write(self, command: WriteAccount) -> None:
+                nonlocal inner_runs
+                inner_runs += 1
+                if inner_runs == 1:
+                    raise ExpectedVersionError("stale")
+                current_domain.repository_for(Account).add(
+                    Account(id=command.account_id, name="written")
+                )
+
+        test_domain.register(AccountHandlers, part_of=Account)
+        test_domain.init(traverse=False)
+
+        test_domain.process(OpenAccount(account_id="a1"), asynchronous=False)
+
+        assert inner_runs == 2
+        assert outer_runs == 2
+        account = test_domain.repository_for(Account).get_or_none("a1")
+        assert account is not None
+        assert account.name == "written"
+        mock_sleep.assert_called_once()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_handler_inside_an_open_unit_of_work_does_not_retry(
+        self, mock_sleep, test_domain
+    ):
+        runs = 0
+
+        class AccountHandlers(BaseCommandHandler):
+            @handle(WriteAccount)
+            def write(self, command: WriteAccount) -> None:
+                nonlocal runs
+                runs += 1
+                raise ExpectedVersionError("stale")
+
+        test_domain.register(AccountHandlers, part_of=Account)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ExpectedVersionError):
+            with UnitOfWork():
+                test_domain.process(WriteAccount(account_id="a1"), asynchronous=False)
+
+        assert runs == 1
+        mock_sleep.assert_not_called()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_a_nested_conflict_that_never_clears_is_retried_only_by_the_outer_handler(
+        self, mock_sleep, test_domain
+    ):
+        outer_runs = 0
+        inner_runs = 0
+
+        class AccountHandlers(BaseCommandHandler):
+            @handle(OpenAccount)
+            def open(self, command: OpenAccount) -> None:
+                nonlocal outer_runs
+                outer_runs += 1
+                current_domain.process(
+                    WriteAccount(account_id=command.account_id), asynchronous=False
+                )
+
+            @handle(WriteAccount)
+            def write(self, command: WriteAccount) -> None:
+                nonlocal inner_runs
+                inner_runs += 1
+                raise ExpectedVersionError("stale")
+
+        test_domain.register(AccountHandlers, part_of=Account)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ExpectedVersionError):
+            test_domain.process(OpenAccount(account_id="a1"), asynchronous=False)
+
+        max_retries = _VERSION_RETRY_DEFAULTS["max_retries"]
+        assert outer_runs == max_retries + 1
+        assert inner_runs == max_retries + 1
+        assert mock_sleep.call_count == max_retries
+
+
+class CloseAccount(BaseCommand):
+    account_id: Identifier(required=True)
+
+
+class TestThreeLevelNestedRetry:
+    @pytest.fixture(autouse=True)
+    def register_accounts(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(OpenAccount, part_of=Account)
+        test_domain.register(WriteAccount, part_of=Account)
+        test_domain.register(CloseAccount, part_of=Account)
+
+    def _register_chain(self, test_domain, runs, conflicts):
+        class AccountHandlers(BaseCommandHandler):
+            @handle(CloseAccount)
+            def first(self, command: CloseAccount) -> None:
+                runs["first"] += 1
+                current_domain.process(
+                    OpenAccount(account_id=command.account_id), asynchronous=False
+                )
+
+            @handle(OpenAccount)
+            def second(self, command: OpenAccount) -> None:
+                runs["second"] += 1
+                current_domain.process(
+                    WriteAccount(account_id=command.account_id), asynchronous=False
+                )
+
+            @handle(WriteAccount)
+            def third(self, command: WriteAccount) -> None:
+                runs["third"] += 1
+                if runs["third"] <= conflicts:
+                    raise ExpectedVersionError("stale")
+                current_domain.repository_for(Account).add(
+                    Account(id=command.account_id, name="written")
+                )
+
+        test_domain.register(AccountHandlers, part_of=Account)
+        test_domain.init(traverse=False)
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_a_conflict_two_levels_down_is_retried_by_the_outermost_handler(
+        self, mock_sleep, test_domain
+    ):
+        runs = {"first": 0, "second": 0, "third": 0}
+        self._register_chain(test_domain, runs, conflicts=1)
+
+        test_domain.process(CloseAccount(account_id="a1"), asynchronous=False)
+
+        assert runs == {"first": 2, "second": 2, "third": 2}
+        account = test_domain.repository_for(Account).get_or_none("a1")
+        assert account is not None
+        assert account.name == "written"
+        mock_sleep.assert_called_once()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_retries_are_not_multiplied_across_levels(self, mock_sleep, test_domain):
+        runs = {"first": 0, "second": 0, "third": 0}
+        self._register_chain(test_domain, runs, conflicts=1_000)
+
+        with pytest.raises(ExpectedVersionError):
+            test_domain.process(CloseAccount(account_id="a1"), asynchronous=False)
+
+        attempts = _VERSION_RETRY_DEFAULTS["max_retries"] + 1
+        assert runs == {"first": attempts, "second": attempts, "third": attempts}
+
+
+class Wallet(BaseAggregate):
+    owner: String(max_length=50)
+
+
+class WalletOpened(BaseEvent):
+    wallet_id: Identifier(required=True)
+
+
+class OpenWallet(BaseCommand):
+    wallet_id: Identifier(required=True)
+
+
+class FundWallet(BaseCommand):
+    wallet_id: Identifier(required=True)
+
+
+class TestNestedRetryOutboxRows:
+    """Outbox rows a nested handler writes belong to the outer transaction.
+
+    A failed outer attempt rolls them back with everything else, and the
+    retry that succeeds writes them once.
+    """
+
+    @pytest.fixture(autouse=True)
+    def register_wallets(self, test_domain):
+        test_domain.config["enable_outbox"] = True
+        test_domain.config["server"]["default_subscription_type"] = "stream"
+        test_domain.register(Wallet)
+        test_domain.register(WalletOpened, part_of=Wallet)
+        test_domain.register(OpenWallet, part_of=Wallet)
+        test_domain.register(FundWallet, part_of=Wallet)
+
+    def _register_chain(self, test_domain, runs, fail_inner, fail_outer):
+        class WalletHandlers(BaseCommandHandler):
+            @handle(OpenWallet)
+            def open(self, command: OpenWallet) -> None:
+                runs["outer"] += 1
+                current_domain.process(
+                    FundWallet(wallet_id=command.wallet_id), asynchronous=False
+                )
+                if runs["outer"] <= fail_outer:
+                    raise ExpectedVersionError("stale")
+
+            @handle(FundWallet)
+            def fund(self, command: FundWallet) -> None:
+                runs["inner"] += 1
+                if runs["inner"] <= fail_inner:
+                    raise ExpectedVersionError("stale")
+                wallet = Wallet(id=command.wallet_id, owner="o")
+                wallet.raise_(WalletOpened(wallet_id=wallet.id))
+                current_domain.repository_for(Wallet).add(wallet)
+
+        test_domain.register(WalletHandlers, part_of=Wallet)
+        test_domain.init(traverse=False)
+
+    def _outbox_types(self, test_domain) -> list[str]:
+        rows = test_domain._get_outbox_repo("default").find_unprocessed()
+        return [row.type for row in rows]
+
+    @pytest.mark.parametrize(
+        "fail_inner, fail_outer",
+        [(1, 0), (0, 1)],
+        ids=["conflict_in_nested_handler", "conflict_after_nested_handler"],
+    )
+    @patch("protean.utils.mixins.time.sleep")
+    def test_outer_retry_writes_the_nested_outbox_row_once(
+        self, mock_sleep, test_domain, fail_inner, fail_outer
+    ):
+        runs = {"outer": 0, "inner": 0}
+        self._register_chain(test_domain, runs, fail_inner, fail_outer)
+
+        test_domain.process(OpenWallet(wallet_id="w1"), asynchronous=False)
+
+        assert runs["outer"] == 2
+        assert self._outbox_types(test_domain) == [WalletOpened.__type__]
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_a_failed_outer_transaction_leaves_no_nested_outbox_row(
+        self, mock_sleep, test_domain
+    ):
+        runs = {"outer": 0, "inner": 0}
+        self._register_chain(test_domain, runs, fail_inner=0, fail_outer=1_000)
+
+        with pytest.raises(ExpectedVersionError):
+            test_domain.process(OpenWallet(wallet_id="w1"), asynchronous=False)
+
+        assert runs["inner"] == _VERSION_RETRY_DEFAULTS["max_retries"] + 1
+        assert self._outbox_types(test_domain) == []
+        assert test_domain.repository_for(Wallet).get_or_none("w1") is None

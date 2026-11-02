@@ -2044,14 +2044,14 @@ wheels = [
 
 [[package]]
 name = "message-db-py"
-version = "0.3.4"
+version = "0.3.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "psycopg2" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/aa/36cc296e9c1be337abbd5cacc0a31dbbdba9d61508ac1e351e8d507bdc11/message_db_py-0.3.4.tar.gz", hash = "sha256:b1db0e241db5d1d292fe13b61eb76a347c56edc5c01a792e6f14703947834190", size = 14771, upload-time = "2026-03-17T12:58:58.86Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/e1/277cda0f566c410dffe2d171fb038fc2006c4f39550b90bc5a4300ce9a49/message_db_py-0.3.5.tar.gz", hash = "sha256:4eeecbfb3882c7e4eba3534f7370ef58fb09b05e119e009bd26ad428586bd1d5", size = 14791, upload-time = "2026-10-25T04:25:12.304Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6d/73/04959a13fce705fbc72708861a4c2fe335e041ae5f7dd414eb72aa7cf0af/message_db_py-0.3.4-py3-none-any.whl", hash = "sha256:14210e5b222cdf37b8140e0449f3ab716e966325517b9d23d5c6c5490e07db20", size = 11505, upload-time = "2026-03-17T12:58:59.959Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/79/1e311d6e294e6a9f32b509942aa3817e01a6937a2312c3047b7096f591ef/message_db_py-0.3.5-py3-none-any.whl", hash = "sha256:5a60fe7e6eb2422c687dc28f9f0499b374f6be07af62925a35c23e7fce17626e", size = 11525, upload-time = "2026-10-25T04:25:13.29Z" },
 ]
 
 [[package]]
@@ -2801,7 +2801,7 @@ requires-dist = [
     { name = "jinja2", marker = "extra == 'server'", specifier = ">=3.1.6" },
     { name = "marshmallow", specifier = ">=4.0.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.1.1,<3" },
-    { name = "message-db-py", marker = "extra == 'message-db'", specifier = ">=0.3.4" },
+    { name = "message-db-py", marker = "extra == 'message-db'", specifier = ">=0.3.5" },
     { name = "opentelemetry-api", marker = "extra == 'telemetry'", specifier = ">=1.36.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'telemetry'", specifier = ">=1.36.0" },
     { name = "opentelemetry-exporter-prometheus", marker = "extra == 'telemetry'", specifier = ">=0.57b0" },

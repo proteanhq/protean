@@ -63,11 +63,12 @@ class TestEquivalence:
         assert email != my_org_email
 
     def test_generated_value_object_hash(self):
-        """Test that the entity's hash is based on its identity"""
-        hashed_value = hash(frozenset({"address": "john.doe@gmail.com"}.items()))
-
+        """Test that the value object's hash is based on its field values"""
         email = Email.from_address("john.doe@gmail.com")
-        assert hash(email) == hashed_value
+        other = Email.from_address("jane.doe@gmail.com")
+
+        assert hash(email) == hash(Email.from_address("john.doe@gmail.com"))
+        assert hash(email) != hash(other)
 
     def test_that_two_value_objects_that_are_equal_have_equal_hash(self):
         email1 = Email.from_address("john.doe@gmail.com")
