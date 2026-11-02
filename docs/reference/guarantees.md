@@ -147,9 +147,15 @@ by its per-stream `position`, and a category or `$all` read pages by
 !!! warning "Interim: not yet a stable contract"
     The event-store append is written first, and the relational and outbox
     commit follows it without a shared transaction. The window between them is
-    closed by a reconciliation sweep at startup: when the newest event has lost
-    its internal outbox row, the sweep rebuilds the rows of every recent event
-    that lost one, including the external-broker rows of a `published` event.
+    closed by a reconciliation sweep at startup for event-sourced aggregates:
+    when the newest event-sourced aggregate's event has lost its internal outbox
+    row, the sweep rebuilds the rows of every recent event-sourced aggregate's
+    event that lost one, including the external-broker rows of a `published`
+    event. A state-based aggregate's event with no outbox row is not rebuilt.
+    On a transactional provider its aggregate row commits or rolls back
+    together with its outbox rows. On a provider without transactions, such as
+    Elasticsearch, the row can be saved while its outbox row is lost, and that
+    event stays unpublished.
     [ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md) is still
     *Proposed*, and this behavior can change.
 
@@ -275,7 +281,7 @@ up.
 | **Ordering** | By priority, then write order within a priority |
 | **Deduplication** | One row per `(message_id, target_broker)` |
 | **Terminal state** | `abandoned` after `max_retries` (default 3) with exponential backoff |
-| **Crash recovery** | A startup sweep rebuilds missing internal rows from the event store |
+| **Crash recovery** | A startup sweep rebuilds missing internal rows of event-sourced aggregates' events from the event store |
 
 ### Outbox ordering
 
@@ -316,6 +322,10 @@ operator retries or discards the row (`protean outbox retry` or
   external broker for a `published` event, but only when the event's internal
   row is also missing. External rows lost on their own are not rebuilt, and
   events older than the outbox cleanup retention are skipped (ADR-0015).
+  State-based aggregates' events are never rebuilt. On a provider that keeps
+  writes without a transaction, such as Elasticsearch, a state-based
+  aggregate's row can be saved while its outbox row is lost, and that event
+  stays unpublished.
 
 ---
 

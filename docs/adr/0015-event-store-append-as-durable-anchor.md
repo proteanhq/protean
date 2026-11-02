@@ -82,10 +82,21 @@ sequence, and make the relational commit and outbox follow it.
    the missing outbox rows from the event store, exposed two ways: an explicit
    **repair command** operators run on demand, and an **automatic sweep on server
    startup** so that a crash before the relational commit self-heals when the
-   process restarts. Both ship alongside the reorder, not as a later phase. We
+   process restarts (for event-sourced aggregates only, see the amendment
+   below). Both ship alongside the reorder, not as a later phase. We
    accept that this is an interim detection-and-repair surface rather than the
    final guarantee (see the outbox-style write-ahead alternative); the intent is
    to maximize detection and recovery while the larger mechanism is deferred.
+
+   *Amended (November 2026, #1908): reconciliation rebuilds outbox rows only for
+   events of event-sourced aggregates. For a state-based aggregate the
+   relational row is the state, and on a transactional provider it commits or
+   rolls back with its outbox rows, so its event with no outbox row has no saved
+   change behind it. A crash before the relational commit therefore self-heals
+   on restart only for event-sourced aggregates. On a provider without
+   transactions, such as Elasticsearch, a state-based aggregate's saved change
+   whose outbox row was lost stays unpublished. The commit order above is
+   unchanged.*
 
 ## Consequences
 
@@ -94,8 +105,10 @@ Positive:
 - The event store, the source of truth for event-sourced replay, can no longer be
   left missing a committed event. The corrupting failure mode is eliminated.
 - The remaining failure window (events stored, outbox or relational state not yet
-  committed) is recoverable: the outbox can be re-derived from the event store,
-  and an event-sourced aggregate already reconstructs correctly from the store.
+  committed) is recoverable for event-sourced aggregates: their outbox rows can
+  be re-derived from the event store, and the aggregate already reconstructs
+  correctly from the store. State-based aggregates' events are not re-derived
+  (see the amendment to decision 4).
 - The contract is the same across every event store. Adopting EventStoreDB at
   scale needs no change to the commit ordering, and EventStoreDB's native
   `EventId` idempotency makes the retry path simpler than Message DB's.
@@ -121,7 +134,7 @@ Negative:
   true cross-store atomicity.
 - This is not two-phase commit. A narrow window remains in which events are
   durable but their outbox rows are not yet committed. The design makes that
-  window recoverable rather than lossy; it does not remove it.
+  window recoverable for event-sourced aggregates; it does not remove it.
 
 ## Alternatives Considered
 
