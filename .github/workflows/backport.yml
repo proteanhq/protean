@@ -1,41 +1,147 @@
 name: Backport
 
-# When a merged PR carries a `backport release/0.X.x` label, open a PR that
-# cherry-picks it onto that release branch. Keeps the supported patch line
-# (see SECURITY.md) in sync without relying on a maintainer to remember the
-# cherry-pick. The opened PR still goes through CI on the release branch.
+# Opens a PR that cherry-picks a merged fix onto a release/0.X.x branch, so the
+# supported patch line (see SECURITY.md) keeps the fix without a maintainer
+# remembering the cherry-pick. A merged PR backports to:
+#
+# - release/0.X.x while a patch milestone 0.X.Y (Y above 0) is open, when the PR
+#   merged to main and it or an issue it closes carries that milestone. Setting
+#   the milestone on the PR or the issue after the merge backports then.
+#   Closing the milestone stops these backports.
+# - each branch named by a `backport release/0.X.x` label on the PR.
+#
+# .github/scripts/backport.sh decides the targets and the milestone. The backport
+# PR carries the patch milestone that named it, or for a label the lowest open
+# patch milestone of that branch. On a conflict it opens as a draft, and the
+# action comments on the original PR with the steps to finish it. To retry a
+# backport, close its PR unmerged and re-run this workflow.
+#
+# A GitHub App opens the backport PR, because a PR opened with GITHUB_TOKEN starts
+# no workflows and so gets no CI. The App needs write access to contents, issues,
+# pull requests and workflows (to push a fix that edits a workflow). Its client ID
+# and private key are the repository secrets BACKPORT_APP_CLIENT_ID and
+# BACKPORT_APP_PRIVATE_KEY. Without them the job warns and uses GITHUB_TOKEN.
 on:
   pull_request_target:
-    types: [closed, labeled]
+    types: [closed, labeled, milestoned]
+  issues:
+    types: [milestoned]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
-  backport:
-    name: Backport PR
+  find:
+    name: Find backports
     runs-on: ubuntu-latest
-    # Only act on merged PRs that carry at least one `backport ...` label.
-    # On `closed` (merge): require an existing `backport ` label on the PR.
-    # On `labeled`: require the just-added label to be a `backport ` one.
     if: >
-      github.event.pull_request.merged == true &&
-      (
-        (github.event.action == 'closed' &&
-         contains(join(github.event.pull_request.labels.*.name, '|'), 'backport ')) ||
-        (github.event.action == 'labeled' &&
-         startsWith(github.event.label.name, 'backport '))
-      )
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.merged == true &&
+       (github.event.pull_request.base.ref == 'main' ||
+        contains(join(github.event.pull_request.labels.*.name, '|'), 'backport ')) &&
+       (github.event.action != 'labeled' || startsWith(github.event.label.name, 'backport '))) ||
+      (github.event_name == 'issues' &&
+       github.event.issue.pull_request == null &&
+       github.event.issue.state == 'closed' &&
+       github.event.milestone.state == 'open')
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      backports: ${{ steps.find.outputs.backports }}
     steps:
+      # pull_request_target and issues both check out the base branch, never the
+      # PR's code.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: List backports
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          backports=$(.github/scripts/backport.sh)
+          echo "Backports: $backports"
+          echo "backports=$backports" >> "$GITHUB_OUTPUT"
+
+  backport:
+    name: Backport PR ${{ matrix.backport.pr }} to ${{ matrix.backport.target }}
+    needs: find
+    if: needs.find.outputs.backports != '[]'
+    runs-on: ubuntu-latest
+    # Used only when the App secrets are missing.
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        backport: ${{ fromJSON(needs.find.outputs.backports) }}
+    # A merge and a milestone change can name the same backport at once.
+    concurrency:
+      group: backport-${{ matrix.backport.pr }}-${{ matrix.backport.target }}
+    env:
+      APP_CLIENT_ID: ${{ secrets.BACKPORT_APP_CLIENT_ID }}
+    steps:
+      - name: Mint the App token
+        id: app-token
+        if: env.APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ env.APP_CLIENT_ID }}
+          private-key: ${{ secrets.BACKPORT_APP_PRIVATE_KEY }}
+
+      - name: Warn that CI will not run on the backport PR
+        if: env.APP_CLIENT_ID == ''
+        run: echo "::warning::BACKPORT_APP_CLIENT_ID is not set; the backport PR opens with GITHUB_TOKEN and CI does not run on it."
+
+      # The same token pushes the backport branch, so later pushes to the backport
+      # PR also start CI.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - name: Create backport PR
+        id: backport
         uses: korthout/backport-action@v4
         with:
-          label_pattern: '^backport (?<target>release/[^ ]+)$'
+          github_token: ${{ steps.app-token.outputs.token || github.token }}
+          source_pr_number: ${{ matrix.backport.pr }}
+          target_branches: ${{ matrix.backport.target }}
+          # The script reads the labels, so the action must not add more targets.
+          label_pattern: ''
+          # backport.sh looks for an earlier backport PR by this branch name.
+          branch_name: backport-${pull_number}-to-${target_branch}
           pull_title: '[Backport ${target_branch}] ${pull_title}'
           pull_description: |-
             Automated backport of #${pull_number} to `${target_branch}`.
+          experimental: '{"conflict_resolution": "draft_commit_conflicts"}'
+
+      - name: Put the patch milestone on the backport PR
+        if: steps.backport.outputs.created_pull_numbers != '' && matrix.backport.milestone != 0
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          CREATED: ${{ steps.backport.outputs.created_pull_numbers }}
+          MILESTONE: ${{ matrix.backport.milestone }}
+          TITLE: ${{ matrix.backport.milestone_title }}
+        run: |
+          gh api -X PATCH "repos/${{ github.repository }}/issues/$CREATED" \
+            -F milestone="$MILESTONE" --silent
+          echo "Put #$CREATED in milestone $TITLE."
+
+      # The action reports a failed cherry-pick, push or PR creation in its
+      # outputs and a comment, and leaves the step green.
+      - name: Fail when the backport PR did not open
+        if: steps.backport.outputs.was_successful == 'false'
+        env:
+          RESULT: ${{ steps.backport.outputs.was_successful_by_target }}
+        run: |
+          echo "::error::Backport failed: $RESULT"
+          exit 1
