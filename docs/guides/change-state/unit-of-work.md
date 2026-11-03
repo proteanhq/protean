@@ -144,9 +144,14 @@ effect of an inner transaction, model it explicitly:
 - for a durable side-effect that must survive a rollback (an audit record, say),
   use the outbox or a write outside the UnitOfWork.
 
-One edge to know: an explicit `nested_uow.rollback()` (without an exception) marks
-the whole transaction rollback-only, so the outermost commit rolls everything back
-and logs a warning. Prefer letting an exception propagate instead.
+One edge to know: a nested Unit of Work that fails dooms the whole transaction,
+even when your code catches the error. A common case is a handler that calls
+`domain.process(..., asynchronous=False)`, catches the exception the inner
+handler raised, and carries on. When the outer block then ends normally, its
+commit rolls everything back and raises that same exception, so the caller sees
+the real cause. An explicit `nested_uow.rollback()` with no exception does the
+same and raises `TransactionError`. To avoid this, let the exception propagate,
+or do the work that can fail outside the outer Unit of Work.
 
 See [ADR-0027](../../adr/0027-unit-of-work-is-a-real-transaction.md) for the
 rationale.
