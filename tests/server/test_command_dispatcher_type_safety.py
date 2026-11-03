@@ -10,8 +10,27 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.command_handler import BaseCommandHandler
+from protean.fields import Identifier
 from protean.server.engine import CommandDispatcher
 from protean.utils.eventing import Message
+from protean.utils.mixins import handle
+
+
+class Account(BaseAggregate):
+    id: Identifier(identifier=True)
+
+
+class OpenAccount(BaseCommand):
+    account_id: Identifier()
+
+
+class AccountCommandHandler(BaseCommandHandler):
+    @handle(OpenAccount)
+    def open(self, command: OpenAccount) -> None:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -44,11 +63,15 @@ class TestCommandDispatcherNullSafety:
     """A real Message never deserializes to None, so these tests stand in a
     Message whose ``to_domain_object`` returns None."""
 
-    def _make_dispatcher(self):
-        class SourceHandler:
-            meta_ = None
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(Account)
+        test_domain.register(OpenAccount, part_of=Account)
+        test_domain.register(AccountCommandHandler, part_of=Account)
+        test_domain.init(traverse=False)
 
-        return CommandDispatcher("test::stream", {}, SourceHandler)
+    def _make_dispatcher(self):
+        return CommandDispatcher("test::stream", {}, AccountCommandHandler)
 
     def _message_that_deserializes_to_none(self):
         message = MagicMock(spec=Message)
