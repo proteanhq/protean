@@ -44,9 +44,11 @@ class Caches(MutableMapping[str, BaseCache]):
         self._caches[key] = value
 
     def __delitem__(self, key: str) -> None:
-        assert self._caches is not None
-        if key in self._caches:
-            del self._caches[key]
+        # A mapping raises KeyError for a name that is not configured, before
+        # and after init (#2019).
+        if self._caches is None or key not in self._caches:
+            raise KeyError(key)
+        del self._caches[key]
 
     def close(self) -> None:
         """Close all cache connections and release resources."""

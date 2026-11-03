@@ -406,11 +406,10 @@ class TestProvidersMapping:
         with pytest.raises(KeyError):
             domain.providers["extra"]
 
-    def test_deleting_before_init_raises_assertion_error(self):
-        # TODO(#2019): a mapping raises KeyError here; Providers raises AssertionError.
+    def test_deleting_a_missing_provider_before_init_raises_key_error(self):
         domain = Domain(name="Test")
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(KeyError, match="default"):
             del domain.providers["default"]
 
     def test_deleting_a_provider_after_init_removes_it(self):
@@ -421,11 +420,9 @@ class TestProvidersMapping:
 
         assert list(domain.providers) == ["memory"]
 
-    def test_deleting_a_missing_provider_after_init_changes_nothing(self):
-        # TODO(#2019): a mapping raises KeyError here; Providers passes silently.
+    def test_deleting_a_missing_provider_after_init_raises_key_error(self):
         domain = Domain(name="Test")
         domain.init(traverse=False)
 
-        del domain.providers["missing"]
-
-        assert list(domain.providers) == ["default", "memory"]
+        with pytest.raises(KeyError, match="missing"):
+            del domain.providers["missing"]

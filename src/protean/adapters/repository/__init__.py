@@ -50,9 +50,11 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
         self._providers[key] = value
 
     def __delitem__(self, key: str) -> None:
-        assert self._providers is not None
-        if key in self._providers:
-            del self._providers[key]
+        # A mapping raises KeyError for a name that is not configured, before
+        # and after init (#2019).
+        if self._providers is None or key not in self._providers:
+            raise KeyError(key)
+        del self._providers[key]
 
     def _construct_repository(
         self, part_of: type["OptionsMixin"]
