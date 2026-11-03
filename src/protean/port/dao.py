@@ -1137,13 +1137,16 @@ class BaseDAO(metaclass=ABCMeta):
         """``entity_obj``'s values for ``index``'s fields, keyed by the name
         each field is stored under, or ``None`` when any value is ``None``."""
         entity_fields = fields(self.entity_cls)
+        # The values as the store holds them: a ``Reference`` as its
+        # identifier and a ``Custom`` field serialized, under stored names.
+        stored = self.database_model_cls._entity_to_dict(entity_obj)
         values = {}
         for name in index.fields:
             field_obj = entity_fields.get(name)
-            # ``_count`` matches stored names, which differ from the field
-            # name for a field declared with ``referenced_as``.
+            # An index names either a field or the attribute it is stored
+            # under, and ``_count`` matches stored names.
             stored_name = getattr(field_obj, "attribute_name", None) or name
-            values[stored_name] = getattr(entity_obj, name, None)
+            values[stored_name] = stored.get(stored_name)
         if any(value is None for value in values.values()):
             return None
         return values

@@ -42,6 +42,14 @@ class RenamedKeyRow(BaseAggregate):
     email: String(max_length=50, referenced_as="email_address")
 
 
+class StoredNameKeyRow(BaseAggregate):
+    email: String(max_length=50, referenced_as="email_address")
+
+
+class UniqueFieldKeyRow(BaseAggregate):
+    email: String(max_length=50, unique=True)
+
+
 def _raw_unique_token_indexes():
     # A unique index the framework does not know about: only the database
     # enforces it, so a duplicate reaches the database as an IntegrityError
@@ -67,6 +75,16 @@ def register_elements(test_domain):
     test_domain.register(
         RenamedKeyRow,
         schema_name="generic_renamed_key_row",
+        indexes=[Index("email", unique=True)],
+    )
+    test_domain.register(
+        StoredNameKeyRow,
+        schema_name="generic_stored_name_key_row",
+        indexes=[Index("email_address", unique=True)],
+    )
+    test_domain.register(
+        UniqueFieldKeyRow,
+        schema_name="generic_unique_field_key_row",
         indexes=[Index("email", unique=True)],
     )
     test_domain.init(traverse=False)
@@ -163,6 +181,28 @@ class TestSaveIfAbsent:
         # A count, because the Elasticsearch model cannot load a record whose
         # field is stored under another name.
         assert dao.query.filter(email="a@example.com").count() == 1
+
+    def test_an_index_that_names_the_stored_attribute_is_matched(self, test_domain):
+        dao = _dao(test_domain, StoredNameKeyRow)
+        dao.save(StoredNameKeyRow(email="a@example.com"))
+
+        assert dao.save_if_absent(StoredNameKeyRow(email="a@example.com")) is None
+        assert (
+            BaseDAO.save_if_absent(dao, StoredNameKeyRow(email="a@example.com")) is None
+        )
+        assert dao.query.filter(email="a@example.com").count() == 1
+
+    def test_a_key_field_also_declared_unique_is_skipped(self, test_domain):
+        dao = _dao(test_domain, UniqueFieldKeyRow)
+        first = UniqueFieldKeyRow(email="a@example.com")
+        dao.save(first)
+
+        second = UniqueFieldKeyRow(email="a@example.com")
+
+        assert dao.save_if_absent(second) is None
+        assert second.state_.is_new
+        rows = dao.query.filter(email="a@example.com").all().items
+        assert [r.id for r in rows] == [first.id]
 
 
 @pytest.mark.basic_storage

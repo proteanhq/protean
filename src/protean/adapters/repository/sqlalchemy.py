@@ -63,6 +63,7 @@ from protean.exceptions import (
     ExpectedVersionError,
     IncorrectUsageError,
     ObjectNotFoundError,
+    ValidationError,
 )
 from protean.fields.association import Reference, _ReferenceField
 from protean.fields.basic import ValueObjectList
@@ -1855,6 +1856,8 @@ class SADAO(BaseDAO):
         Raises:
             IntegrityError: The database rejected the write, and this
                 transaction sees no other row that holds the unique key.
+            ValidationError: ``save`` rejected the entity, and this
+                transaction sees no other row that holds the unique key.
         """
         before = self._save_state(entity_obj)
         session = None if self._is_standalone else self._get_session()
@@ -1874,7 +1877,9 @@ class SADAO(BaseDAO):
                 # rolls back the savepoint and not the whole transaction.
                 session.flush()
             return entity_obj
-        except IntegrityError:
+        except (IntegrityError, ValidationError):
+            # ``save`` raises ``ValidationError`` before any INSERT when a key
+            # field is also declared ``unique=True`` and its value is taken.
             if not self._unique_key_taken(entity_obj):
                 raise
             self._forget_save(entity_obj, before)

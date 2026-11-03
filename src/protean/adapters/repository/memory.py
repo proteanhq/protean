@@ -654,8 +654,10 @@ class DictDAO(BaseDAO):
 
         See :meth:`BaseDAO.save_if_absent`. The check and the save run under
         the provider lock. The check reads both the committed store and this
-        session's own writes, so it also sees a row that another session
-        committed after this session started.
+        session's copy of it, so it also sees a row that another session
+        committed after this session started. A row in the session's copy
+        holds its key even when another session has since deleted it, because
+        ``save`` checks the key against that same copy.
 
         Inside a Unit of Work the row is only staged. When another session
         commits a row with the same key before this one commits, the commit
