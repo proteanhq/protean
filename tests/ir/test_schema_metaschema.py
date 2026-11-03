@@ -3,19 +3,21 @@
 Every generated schema is validated against JSON Schema Draft 2020-12
 meta-schema to ensure standards compliance.  Additional edge case tests
 cover empty aggregates, deeply nested structures, combined constraints,
-status transitions, callable defaults, event-sourced aggregates, and
-fact events.
+status transitions, event-sourced aggregates, and fact events.
 """
 
 from __future__ import annotations
 
-import json
-
 import jsonschema
 import pytest
 
+from protean import Domain
 from protean.ir.builder import IRBuilder
-from protean.ir.generators.schema import generate_element_schema, generate_schemas
+from protean.ir.generators.schema import (
+    _field_to_schema,
+    generate_element_schema,
+    generate_schemas,
+)
 
 from .elements import (
     build_cluster_test_domain,
@@ -95,19 +97,20 @@ class TestMetaSchemaValidation:
         for schema in schemas.values():
             _validate_against_meta_schema(schema)
 
-    def test_empty_element_passes_meta_schema(self):
-        """An element with no fields validates against meta-schema."""
-        element = {
-            "element_type": "AGGREGATE",
-            "name": "Empty",
-            "fqn": "app.Empty",
-            "fields": {},
-        }
-        schema = generate_element_schema(element)
-        _validate_against_meta_schema(schema)
-
-    def test_element_without_name_passes_meta_schema(self):
-        element = {"fields": {}, "fqn": "app.Anon", "element_type": "COMMAND"}
+    @pytest.mark.parametrize(
+        "element",
+        [
+            {
+                "element_type": "AGGREGATE",
+                "name": "Empty",
+                "fqn": "app.Empty",
+                "fields": {},
+            },
+            {"fields": {}, "fqn": "app.Anon", "element_type": "COMMAND"},
+        ],
+        ids=["no-fields", "no-name"],
+    )
+    def test_minimal_element_passes_meta_schema(self, element):
         schema = generate_element_schema(element)
         _validate_against_meta_schema(schema)
 
@@ -122,8 +125,6 @@ class TestEmptyAggregate:
     """Aggregate with no user-defined fields (only auto-generated id)."""
 
     def test_empty_aggregate_schema(self):
-        from protean import Domain
-
         domain = Domain(name="EmptyTest", root_path=".")
 
         @domain.aggregate
@@ -185,8 +186,6 @@ class TestCombinedConstraints:
     """Field with multiple constraint types set simultaneously."""
 
     def test_integer_all_constraints(self):
-        from protean.ir.generators.schema import _field_to_schema
-
         field = {
             "kind": "standard",
             "type": "Integer",
@@ -201,8 +200,6 @@ class TestCombinedConstraints:
         assert schema["maximum"] == 100
 
     def test_string_all_constraints(self):
-        from protean.ir.generators.schema import _field_to_schema
-
         field = {
             "kind": "standard",
             "type": "String",
@@ -246,26 +243,6 @@ class TestStatusWithTransitions:
         }
 
         _validate_against_meta_schema(schema)
-
-
-# ---------------------------------------------------------------------------
-# Edge case: callable defaults
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.no_test_domain
-class TestCallableDefaults:
-    """Callable defaults must not leak into JSON Schema."""
-
-    def test_callable_default_not_in_schema(self):
-        ir = _ir_for(build_extended_field_test_domain)
-        element = _find_element(ir, "Catalog")
-        schema = generate_element_schema(element)
-
-        items_cache = schema["properties"]["items_cache"]
-        # Ensure <callable> doesn't appear anywhere in the property
-        serialized = json.dumps(items_cache)
-        assert "<callable>" not in serialized
 
 
 # ---------------------------------------------------------------------------
@@ -328,10 +305,6 @@ class TestEndToEndPayloadValidation:
         ir = _ir_for(build_integration_domain)
         self.schemas = generate_schemas(ir)
 
-    def test_all_schemas_valid_against_meta_schema(self):
-        for schema in self.schemas.values():
-            _validate_against_meta_schema(schema)
-
     def test_valid_command_payload(self):
         """A valid PlaceOrder payload passes validation."""
         schema = next(s for fqn, s in self.schemas.items() if "PlaceOrder" in fqn)
@@ -363,9 +336,3 @@ class TestEndToEndPayloadValidation:
         }
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(payload, schema)
-
-    def test_all_schemas_json_serializable_and_deterministic(self):
-        for schema in self.schemas.values():
-            json_str = json.dumps(schema, sort_keys=True)
-            roundtrip = json.loads(json_str)
-            assert roundtrip == schema

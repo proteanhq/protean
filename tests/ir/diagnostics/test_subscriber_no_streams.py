@@ -23,8 +23,8 @@ class TestSubscriberNoStreams:
 
         # The subscriber factory hard-requires a stream, so a streamless
         # subscriber cannot be registered. It can still appear in materialized
-        # IR (loaded or hand-edited), which is what this info rule guards — null
-        # the stream post-init to exercise that path.
+        # IR (loaded or hand-edited), which is what this info rule guards, so
+        # the test sets the stream to None after init.
         PaymentSubscriber.meta_.stream = None
         ir = IRBuilder(domain).build()
 

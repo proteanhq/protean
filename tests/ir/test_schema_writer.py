@@ -48,34 +48,16 @@ class TestDirectoryStructure:
         self.written = write_schemas(ir, self.output)
         self.schemas_dir = self.output / "schemas"
 
-    def test_schemas_directory_created(self):
-        assert self.schemas_dir.is_dir()
-
-    def test_cluster_directory_exists(self):
-        assert (self.schemas_dir / "Order").is_dir()
-
-    def test_aggregates_subdir(self):
-        assert (self.schemas_dir / "Order" / "aggregates").is_dir()
-
-    def test_entities_subdir(self):
-        assert (self.schemas_dir / "Order" / "entities").is_dir()
-
-    def test_value_objects_subdir(self):
-        assert (self.schemas_dir / "Order" / "value_objects").is_dir()
-
-    def test_aggregate_file_exists(self):
-        agg_file = self.schemas_dir / "Order" / "aggregates" / "Order.v1.json"
-        assert agg_file.is_file()
-
-    def test_entity_file_exists(self):
-        ent_file = self.schemas_dir / "Order" / "entities" / "LineItem.v1.json"
-        assert ent_file.is_file()
-
-    def test_value_object_file_exists(self):
-        vo_file = (
-            self.schemas_dir / "Order" / "value_objects" / "ShippingAddress.v1.json"
-        )
-        assert vo_file.is_file()
+    @pytest.mark.parametrize(
+        "relative_path",
+        [
+            "Order/aggregates/Order.v1.json",
+            "Order/entities/LineItem.v1.json",
+            "Order/value_objects/ShippingAddress.v1.json",
+        ],
+    )
+    def test_element_file_is_written_under_its_cluster_and_kind(self, relative_path):
+        assert (self.schemas_dir / relative_path).is_file()
 
     def test_returns_sorted_paths(self):
         assert self.written == sorted(self.written)
@@ -101,23 +83,17 @@ class TestCommandEventVersioning:
         self.written = write_schemas(ir, self.output)
         self.schemas_dir = self.output / "schemas"
 
-    def test_commands_subdir_exists(self):
-        assert (self.schemas_dir / "Order" / "commands").is_dir()
-
-    def test_events_subdir_exists(self):
-        assert (self.schemas_dir / "Order" / "events").is_dir()
-
-    def test_command_file_versioned(self):
-        cmd_file = self.schemas_dir / "Order" / "commands" / "PlaceOrder.v1.json"
-        assert cmd_file.is_file()
-
-    def test_event_file_versioned(self):
-        evt_file = self.schemas_dir / "Order" / "events" / "OrderPlaced.v1.json"
-        assert evt_file.is_file()
-
-    def test_non_versioned_elements_default_to_v1(self):
-        agg_file = self.schemas_dir / "Order" / "aggregates" / "Order.v1.json"
-        assert agg_file.is_file()
+    @pytest.mark.parametrize(
+        "relative_path",
+        [
+            "Order/commands/PlaceOrder.v1.json",
+            "Order/events/OrderPlaced.v1.json",
+            # An aggregate carries no version and defaults to v1.
+            "Order/aggregates/Order.v1.json",
+        ],
+    )
+    def test_file_name_carries_the_version(self, relative_path):
+        assert (self.schemas_dir / relative_path).is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -136,32 +112,17 @@ class TestMultiClusterDomain:
         self.written = write_schemas(ir, self.output)
         self.schemas_dir = self.output / "schemas"
 
-    def test_order_cluster_exists(self):
-        assert (self.schemas_dir / "Order").is_dir()
-
-    def test_inventory_cluster_exists(self):
-        assert (self.schemas_dir / "Inventory").is_dir()
-
-    def test_shipment_cluster_exists(self):
-        assert (self.schemas_dir / "Shipment").is_dir()
-
-    def test_order_has_commands(self):
-        assert (
-            self.schemas_dir / "Order" / "commands" / "PlaceOrder.v1.json"
-        ).is_file()
-
-    def test_order_has_events(self):
-        assert (self.schemas_dir / "Order" / "events" / "OrderPlaced.v1.json").is_file()
-
-    def test_inventory_has_events(self):
-        assert (
-            self.schemas_dir / "Inventory" / "events" / "StockReserved.v1.json"
-        ).is_file()
-
-    def test_shipment_has_commands(self):
-        assert (
-            self.schemas_dir / "Shipment" / "commands" / "CreateShipment.v1.json"
-        ).is_file()
+    @pytest.mark.parametrize(
+        "relative_path",
+        [
+            "Order/commands/PlaceOrder.v1.json",
+            "Order/events/OrderPlaced.v1.json",
+            "Inventory/events/StockReserved.v1.json",
+            "Shipment/commands/CreateShipment.v1.json",
+        ],
+    )
+    def test_each_cluster_gets_its_own_directory(self, relative_path):
+        assert (self.schemas_dir / relative_path).is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -179,9 +140,6 @@ class TestProjectionsPlacement:
         ir = _ir_for(build_integration_domain)
         self.written = write_schemas(ir, self.output)
         self.schemas_dir = self.output / "schemas"
-
-    def test_projections_directory_exists(self):
-        assert (self.schemas_dir / "projections").is_dir()
 
     def test_projection_file_exists(self):
         proj_file = self.schemas_dir / "projections" / "OrderDashboard.v1.json"
@@ -320,21 +278,15 @@ class TestFileContent:
 class TestWriteIR:
     """Verify ``write_ir()`` writes a valid ``ir.json``."""
 
-    def test_writes_ir_json(self, tmp_path: Path):
-        output = tmp_path / ".protean"
+    def test_writes_ir_json_into_a_new_nested_directory(self, tmp_path: Path):
+        output = tmp_path / "nested" / "deep" / ".protean"
         ir = _ir_for(build_cluster_test_domain)
         path = write_ir(ir, output)
 
         assert path.name == "ir.json"
         assert path.is_file()
-
-    def test_ir_json_is_valid(self, tmp_path: Path):
-        output = tmp_path / ".protean"
-        ir = _ir_for(build_cluster_test_domain)
-        write_ir(ir, output)
-
-        content = (output / "ir.json").read_text()
-        parsed = json.loads(content)
+        assert path.is_absolute()
+        parsed = json.loads(path.read_text())
         assert "clusters" in parsed
         assert "domain" in parsed
 
@@ -360,57 +312,30 @@ class TestWriteIR:
 
         content = (output / "ir.json").read_text()
         assert content == canonical_ir_json(ir) + "\n"
-
-    def test_ir_json_has_trailing_newline(self, tmp_path: Path):
-        output = tmp_path / ".protean"
-        ir = _ir_for(build_cluster_test_domain)
-        write_ir(ir, output)
-
-        content = (output / "ir.json").read_text()
-        assert content.endswith("\n")
-
-    def test_ir_json_sorted_keys(self, tmp_path: Path):
-        output = tmp_path / ".protean"
-        ir = _ir_for(build_cluster_test_domain)
-        write_ir(ir, output)
-
-        content = (output / "ir.json").read_text()
+        # The canonical form is sorted, 2-space indented, with a trailing newline.
         parsed = json.loads(content)
-        reserialized = json.dumps(parsed, indent=2, sort_keys=True) + "\n"
-        assert content == reserialized
-
-    def test_creates_output_dir_if_missing(self, tmp_path: Path):
-        output = tmp_path / "nested" / "deep" / ".protean"
-        ir = _ir_for(build_cluster_test_domain)
-        path = write_ir(ir, output)
-
-        assert path.is_file()
-
-    def test_returns_absolute_path(self, tmp_path: Path):
-        output = tmp_path / ".protean"
-        ir = _ir_for(build_cluster_test_domain)
-        path = write_ir(ir, output)
-
-        assert path.is_absolute()
+        assert content == json.dumps(parsed, indent=2, sort_keys=True) + "\n"
 
 
 # ---------------------------------------------------------------------------
-# Helper function edge cases
+# Unknown FQNs and an empty IR
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.no_test_domain
-class TestHelperEdgeCases:
-    """Cover edge cases in helper functions."""
+class TestUnknownFqnAndEmptyIR:
+    """An unknown FQN maps to no cluster, and an empty IR writes no schema files."""
 
-    def test_cluster_for_fqn_returns_none_for_unknown(self):
-        ir = _ir_for(build_cluster_test_domain)
-        result = _cluster_for_fqn("nonexistent.Unknown", ir)
-        assert result is None
-
-    def test_cluster_for_fqn_empty_ir(self):
-        result = _cluster_for_fqn("any.Fqn", {})
-        assert result is None
+    @pytest.mark.parametrize(
+        "fqn, ir_builder",
+        [
+            ("nonexistent.Unknown", lambda: _ir_for(build_cluster_test_domain)),
+            ("any.Fqn", dict),
+        ],
+        ids=["unknown-fqn", "empty-ir"],
+    )
+    def test_cluster_for_fqn_returns_none(self, fqn, ir_builder):
+        assert _cluster_for_fqn(fqn, ir_builder()) is None
 
     def test_write_schemas_empty_ir(self, tmp_path: Path):
         """Empty IR produces no files."""

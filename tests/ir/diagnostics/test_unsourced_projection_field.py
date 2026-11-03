@@ -36,7 +36,7 @@ def flagged_ir() -> dict:
     """The shared corpus registered as one domain, built once.
 
     Every projection and its projector(s) are registered together so a single
-    build exercises every branch: the four-of-five positive, attribute-write
+    build holds every case: the four-of-five positive, attribute-write
     evidence, the empty-evidence guard, a dynamic ``**kwargs`` construction, the
     identity exemption, the two-projector union, the ``externally_populated``
     opt-out, a fully sourced projection, a write on a handler parameter, a
@@ -173,17 +173,13 @@ class TestUnsourcedProjectionField:
     """The rule flags a projection field no projector write fills, and leaves the
     sourced, dynamically-built, unobservable, and identity fields alone."""
 
-    def test_the_rule_is_active(self, flagged_ir):
-        """A guard so every absence assertion below is non-vacuous: the corpus
-        genuinely produces findings, so a ``field not in ...`` check is a real
-        exclusion, not an empty-list pass."""
-        assert len(_flagged(flagged_ir)) > 0
-
     # ── Positive: four of five written, the fifth flagged by name ────────
 
     def test_unwritten_field_flagged_by_name(self, flagged_ir):
         """``PartialProjector`` writes four fields; ``city`` is flagged, named in
-        the message and carried on the ``field`` key."""
+        the message and carried on the ``field`` key. The four keyword-written
+        fields (``name``, ``email``, ``status``, ``region``) are sourced, so
+        none of them is flagged."""
         assert _fields_for(flagged_ir, catalog.PartialProjection) == ["city"]
         finding = next(
             d
@@ -194,22 +190,15 @@ class TestUnsourcedProjectionField:
         assert finding["level"] == "info"
         assert finding["category"] == "handler_completeness"
 
-    def test_written_fields_not_flagged(self, flagged_ir):
-        """The four keyword-written fields are sourced, so none is flagged."""
-        flagged = _fields_for(flagged_ir, catalog.PartialProjection)
-        for sourced in ("name", "email", "status", "region"):
-            assert sourced not in flagged
-
     # ── Negatives ────────────────────────────────────────────────────────
 
     def test_attribute_write_sources_only_written_fields(self, flagged_ir):
         """``FullProjector`` attribute-writes ``title`` and ``body`` and nothing
-        else, so the attribute-evidence branch sources exactly those two and the
-        unwritten ``subtitle`` and ``author`` are flagged. Emission is in sorted
-        field-name order (``author`` before ``subtitle``), and if the attribute
-        branch were removed the write set would empty and the evidence guard
-        would flag nothing instead, so this pins the branch to a visible
-        outcome."""
+        else, so attribute writes source exactly those two and the unwritten
+        ``subtitle`` and ``author`` are flagged. Emission is in sorted
+        field-name order (``author`` before ``subtitle``). If the rule ignored
+        attribute writes, the write set would be empty and the evidence guard
+        would flag nothing instead."""
         assert _fields_for(flagged_ir, catalog.FullProjection) == [
             "author",
             "subtitle",
@@ -218,7 +207,7 @@ class TestUnsourcedProjectionField:
     def test_externally_populated_projection_opts_out(self, flagged_ir):
         """``ExternalProjection`` is registered ``externally_populated``, so the
         opt-out skips it: ``note`` is unwritten yet not flagged. Without the
-        opt-out branch, ``note`` would be flagged."""
+        opt-out, ``note`` would be flagged."""
         assert fqn(catalog.ExternalProjection) in flagged_ir["projections"]
         assert _fields_for(flagged_ir, catalog.ExternalProjection) == []
 
@@ -242,16 +231,16 @@ class TestUnsourcedProjectionField:
         assert _fields_for(flagged_ir, catalog.IdentityOnlyProjection) == []
         assert "key" not in _fields_for(flagged_ir, catalog.PartialProjection)
 
-    def test_coverage_is_the_union_across_projectors(self, flagged_ir):
-        """``MultiProjectorA`` covers ``alpha`` and ``MultiProjectorB`` covers
-        ``beta``; only ``gamma`` (covered by neither) is flagged. A
+    def test_sourced_fields_are_the_union_across_projectors(self, flagged_ir):
+        """``MultiProjectorA`` writes ``alpha`` and ``MultiProjectorB`` writes
+        ``beta``; only ``gamma`` (written by neither) is flagged. A
         per-projector check would wrongly flag ``alpha`` or ``beta`` too."""
         assert _fields_for(flagged_ir, catalog.MultiProjection) == ["gamma"]
 
     def test_fully_sourced_projection_flags_nothing(self, flagged_ir):
         """``CompleteProjector`` names every non-identity field of
         ``CompleteProjection``, so the projection produces no finding. This is
-        the all-covered negative: unlike the identity-only case it does not lean
+        the all-sourced negative: unlike the identity-only case it does not lean
         on the identity exemption, so a rule that emitted for a sourced field
         would fail here."""
         assert fqn(catalog.CompleteProjection) in flagged_ir["projections"]

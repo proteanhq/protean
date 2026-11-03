@@ -3,6 +3,7 @@
 import copy
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -22,6 +23,32 @@ def _write_ir(tmp_path, filename, ir_dict):
     path = tmp_path / filename
     path.write_text(json.dumps(ir_dict, indent=2), encoding="utf-8")
     return str(path)
+
+
+_TEST7_DOMAIN = str(
+    Path(__file__).parent.parent / "support" / "domains" / "test7" / "publishing7.py"
+)
+
+
+def _commit_ir(repo: Path, ir_dict: dict | list, ir_dir: str = ".protean") -> None:
+    """Create a git repository at *repo* holding *ir_dict* committed as
+    ``<ir_dir>/ir.json``."""
+    env = {
+        **os.environ,
+        "HOME": str(repo),
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@test.com",
+    }
+    (repo / ir_dir).mkdir(parents=True, exist_ok=True)
+    (repo / ir_dir / "ir.json").write_text(json.dumps(ir_dict), encoding="utf-8")
+    for command in (
+        ["git", "init", "-q"],
+        ["git", "add", f"{ir_dir}/ir.json"],
+        ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "baseline"],
+    ):
+        subprocess.run(command, cwd=repo, env=env, capture_output=True, check=True)
 
 
 def _minimal_ir(**overrides):
@@ -122,17 +149,10 @@ class TestDiffJSON:
         result = runner.invoke(
             app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
         )
-        assert result.exit_code in (0, 1, 3)
+        assert result.exit_code in (1, 3)
         parsed = json.loads(result.output)
         assert "summary" in parsed
         assert "clusters" in parsed
-
-    def test_json_has_changes(self, ir_pair):
-        left, right = ir_pair
-        result = runner.invoke(
-            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
-        )
-        parsed = json.loads(result.output)
         assert parsed["summary"]["has_changes"] is True
 
     def test_json_no_changes(self, identical_pair):
@@ -142,25 +162,24 @@ class TestDiffJSON:
         )
         parsed = json.loads(result.output)
         assert parsed["summary"]["has_changes"] is False
+        assert result.exit_code == 0
 
 
 @pytest.mark.no_test_domain
 class TestDiffText:
-    def test_text_output_shows_changes(self, ir_pair):
-        left, right = ir_pair
-        result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert result.exit_code in (1, 3)
-        assert "IR Diff" in result.output
-
     def test_text_output_no_changes(self, identical_pair):
         left, right = identical_pair
         result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
         assert result.exit_code == 0
         assert "No changes" in result.output
+        # With no changes the Avro verdict block is left out.
+        assert "Avro compatibility" not in result.output
 
     def test_text_is_default_format(self, ir_pair):
         left, right = ir_pair
         result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
+        assert result.exit_code in (1, 3)
+        assert "IR Diff" in result.output
         # Default format is text, not JSON
         with pytest.raises(json.JSONDecodeError):
             json.loads(result.output)
@@ -259,29 +278,25 @@ class TestAvroNeutralBreaksAreNamed:
 
 
 @pytest.mark.no_test_domain
-class TestDiffTextCoverage:
-    """Exercise all text output paths for coverage."""
+class TestDiffTextNamesEachKindOfChange:
+    """The text output names each kind of change the diff finds."""
 
-    def test_text_shows_added_cluster(self, tmp_path):
-        left = _write_ir(tmp_path, "left.json", _minimal_ir())
-        right = _write_ir(
-            tmp_path,
-            "right.json",
-            _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
-        )
+    @pytest.mark.parametrize(
+        "left_clusters, right_clusters, exit_code",
+        [
+            ({}, {"app.Order": _make_cluster("Order")}, 3),
+            ({"app.Order": _make_cluster("Order")}, {}, 1),
+        ],
+        ids=["added", "removed"],
+    )
+    def test_text_shows_cluster(
+        self, tmp_path, left_clusters, right_clusters, exit_code
+    ):
+        left = _write_ir(tmp_path, "left.json", _minimal_ir(clusters=left_clusters))
+        right = _write_ir(tmp_path, "right.json", _minimal_ir(clusters=right_clusters))
         result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert result.exit_code == 3
+        assert result.exit_code == exit_code
         assert "Clusters" in result.output
-        assert "Order" in result.output
-
-    def test_text_shows_removed_cluster(self, tmp_path):
-        left = _write_ir(
-            tmp_path,
-            "left.json",
-            _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
-        )
-        right = _write_ir(tmp_path, "right.json", _minimal_ir())
-        result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
         assert "Order" in result.output
 
     def test_text_shows_field_changes(self, tmp_path):
@@ -322,12 +337,6 @@ class TestDiffTextCoverage:
             "stream_category": None,
         }
         right_opts = dict(left_opts, is_event_sourced=True)
-        left = _write_ir(
-            tmp_path,
-            "left.json",
-            _minimal_ir(clusters={"app.Order": _make_cluster("Order", options=None)}),
-        )
-        # Need to set options in the cluster properly
         left_cluster = _make_cluster("Order")
         left_cluster["aggregate"]["options"] = left_opts
         right_cluster = _make_cluster("Order")
@@ -342,16 +351,26 @@ class TestDiffTextCoverage:
         assert "option" in result.output
         assert "is_event_sourced" in result.output
 
-    def test_text_shows_handler_changes(self, tmp_path):
+    @pytest.mark.parametrize(
+        "left_handlers, right_handlers",
+        [
+            ({}, {"Test.OrderPlaced.v1": ["on_placed"]}),
+            ({"Test.OrderPlaced.v1": ["on_placed"]}, {}),
+        ],
+        ids=["added", "removed"],
+    )
+    def test_text_shows_handler_wiring_changes(
+        self, tmp_path, left_handlers, right_handlers
+    ):
         eh_left = {
             "element_type": "EVENT_HANDLER",
             "fqn": "app.OrderHandler",
-            "handlers": {},
+            "handlers": left_handlers,
             "module": "app",
             "name": "OrderHandler",
             "part_of": "app.Order",
         }
-        eh_right = dict(eh_left, handlers={"Test.OrderPlaced.v1": ["on_placed"]})
+        eh_right = dict(eh_left, handlers=right_handlers)
         left_cluster = _make_cluster(
             "Order", event_handlers={"app.OrderHandler": eh_left}
         )
@@ -367,14 +386,29 @@ class TestDiffTextCoverage:
         result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
         assert "handles" in result.output
 
-    def test_text_shows_invariant_changes(self, tmp_path):
+    @pytest.mark.parametrize(
+        "left_invariants, right_invariants, name",
+        [
+            (
+                {"pre": [], "post": []},
+                {"pre": [], "post": ["total_positive"]},
+                "total_positive",
+            ),
+            (
+                {"pre": ["check_stock"], "post": []},
+                {"pre": [], "post": []},
+                "check_stock",
+            ),
+        ],
+        ids=["added", "removed"],
+    )
+    def test_text_shows_invariant_changes(
+        self, tmp_path, left_invariants, right_invariants, name
+    ):
         left_cluster = _make_cluster("Order")
-        left_cluster["aggregate"]["invariants"] = {"pre": [], "post": []}
+        left_cluster["aggregate"]["invariants"] = left_invariants
         right_cluster = _make_cluster("Order")
-        right_cluster["aggregate"]["invariants"] = {
-            "pre": [],
-            "post": ["total_positive"],
-        }
+        right_cluster["aggregate"]["invariants"] = right_invariants
         left = _write_ir(
             tmp_path, "left.json", _minimal_ir(clusters={"app.Order": left_cluster})
         )
@@ -383,40 +417,41 @@ class TestDiffTextCoverage:
         )
         result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
         assert "invariant" in result.output
-        assert "total_positive" in result.output
+        assert name in result.output
 
-    def test_text_shows_breaking_changes(self, tmp_path):
+    @pytest.mark.parametrize(
+        "left_types, right_types, exit_code",
+        [
+            ([], ["Test.OrderPlaced.v1"], 3),
+            (
+                ["Test.OrderPlaced.v1", "Test.OrderShipped.v1"],
+                ["Test.OrderPlaced.v1"],
+                1,
+            ),
+        ],
+        ids=["added", "removed"],
+    )
+    def test_text_shows_contract_changes(
+        self, tmp_path, left_types, right_types, exit_code
+    ):
+        def contracts(types):
+            return {
+                "events": [
+                    {"__type__": t, "fqn": "app." + t.split(".")[1]} for t in types
+                ]
+            }
+
         left = _write_ir(
-            tmp_path,
-            "left.json",
-            _minimal_ir(
-                contracts={
-                    "events": [
-                        {"__type__": "Test.OrderPlaced.v1", "fqn": "app.OrderPlaced"}
-                    ]
-                }
-            ),
+            tmp_path, "left.json", _minimal_ir(contracts=contracts(left_types))
         )
-        right = _write_ir(tmp_path, "right.json", _minimal_ir())
-        result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert "Breaking" in result.output
-
-    def test_text_shows_contract_additions(self, tmp_path):
-        left = _write_ir(tmp_path, "left.json", _minimal_ir())
         right = _write_ir(
-            tmp_path,
-            "right.json",
-            _minimal_ir(
-                contracts={
-                    "events": [
-                        {"__type__": "Test.OrderPlaced.v1", "fqn": "app.OrderPlaced"}
-                    ]
-                }
-            ),
+            tmp_path, "right.json", _minimal_ir(contracts=contracts(right_types))
         )
         result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
+        assert result.exit_code == exit_code
         assert "Contracts" in result.output
         assert "published event" in result.output
+        assert ("Breaking" in result.output) is (exit_code == 1)
 
     def test_text_shows_diagnostic_changes(self, tmp_path):
         left = _write_ir(
@@ -509,74 +544,6 @@ class TestDiffTextCoverage:
         assert "Flows" in result.output
         assert "PaymentSub" in result.output
 
-    def test_text_shows_removed_handler_wiring(self, tmp_path):
-        eh_left = {
-            "element_type": "EVENT_HANDLER",
-            "fqn": "app.OrderHandler",
-            "handlers": {"Test.OrderPlaced.v1": ["on_placed"]},
-            "module": "app",
-            "name": "OrderHandler",
-            "part_of": "app.Order",
-        }
-        eh_right = dict(eh_left, handlers={})
-        left_cluster = _make_cluster(
-            "Order", event_handlers={"app.OrderHandler": eh_left}
-        )
-        right_cluster = _make_cluster(
-            "Order", event_handlers={"app.OrderHandler": eh_right}
-        )
-        left = _write_ir(
-            tmp_path, "left.json", _minimal_ir(clusters={"app.Order": left_cluster})
-        )
-        right = _write_ir(
-            tmp_path, "right.json", _minimal_ir(clusters={"app.Order": right_cluster})
-        )
-        result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert "handles" in result.output
-
-    def test_text_shows_removed_invariant(self, tmp_path):
-        left_cluster = _make_cluster("Order")
-        left_cluster["aggregate"]["invariants"] = {"pre": ["check_stock"], "post": []}
-        right_cluster = _make_cluster("Order")
-        right_cluster["aggregate"]["invariants"] = {"pre": [], "post": []}
-        left = _write_ir(
-            tmp_path, "left.json", _minimal_ir(clusters={"app.Order": left_cluster})
-        )
-        right = _write_ir(
-            tmp_path, "right.json", _minimal_ir(clusters={"app.Order": right_cluster})
-        )
-        result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert "invariant" in result.output
-        assert "check_stock" in result.output
-
-    def test_text_shows_contract_removal(self, tmp_path):
-        left = _write_ir(
-            tmp_path,
-            "left.json",
-            _minimal_ir(
-                contracts={
-                    "events": [
-                        {"__type__": "Test.OrderPlaced.v1", "fqn": "app.OrderPlaced"},
-                        {"__type__": "Test.OrderShipped.v1", "fqn": "app.OrderShipped"},
-                    ]
-                }
-            ),
-        )
-        right = _write_ir(
-            tmp_path,
-            "right.json",
-            _minimal_ir(
-                contracts={
-                    "events": [
-                        {"__type__": "Test.OrderPlaced.v1", "fqn": "app.OrderPlaced"}
-                    ]
-                }
-            ),
-        )
-        result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert "Contracts" in result.output
-        assert "published event" in result.output
-
     def test_text_shows_event_subsection_changes(self, tmp_path):
         """Events added within a cluster show in text output."""
         event = {
@@ -611,94 +578,6 @@ class TestDiffTextCoverage:
         assert "OrderPlaced" in result.output
 
 
-@pytest.mark.no_test_domain
-class TestDiffArgumentValidation:
-    def test_missing_right_aborts(self, tmp_path):
-        left = tmp_path / "left.json"
-        left.write_text("{}")
-        result = runner.invoke(app, ["ir", "diff", "-l", str(left)])
-        assert result.exit_code == 2
-
-    def test_both_left_and_domain_aborts(self, tmp_path):
-        left = tmp_path / "left.json"
-        right = tmp_path / "right.json"
-        left.write_text("{}")
-        right.write_text("{}")
-        result = runner.invoke(
-            app,
-            ["ir", "diff", "-l", str(left), "-d", "some_domain", "-r", str(right)],
-        )
-        assert result.exit_code == 2
-
-    def test_neither_left_nor_domain_aborts(self, tmp_path):
-        right = tmp_path / "right.json"
-        right.write_text("{}")
-        result = runner.invoke(app, ["ir", "diff", "-r", str(right)])
-        assert result.exit_code == 2
-
-    def test_nonexistent_file_aborts(self):
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "diff",
-                "-l",
-                "/nonexistent/left.json",
-                "-r",
-                "/nonexistent/right.json",
-            ],
-        )
-        assert result.exit_code == 2
-
-    def test_invalid_json_aborts(self, tmp_path):
-        left = tmp_path / "left.json"
-        right = tmp_path / "right.json"
-        left.write_text("not json")
-        right.write_text("{}")
-        result = runner.invoke(app, ["ir", "diff", "-l", str(left), "-r", str(right)])
-        assert result.exit_code == 2
-
-    def test_base_without_domain_aborts(self, tmp_path):
-        result = runner.invoke(app, ["ir", "diff", "--base", "HEAD"])
-        assert result.exit_code == 2
-
-    def test_base_with_left_aborts(self, tmp_path):
-        left = tmp_path / "left.json"
-        left.write_text("{}")
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "diff",
-                "--base",
-                "HEAD",
-                "-l",
-                str(left),
-                "-d",
-                "some_domain",
-            ],
-        )
-        assert result.exit_code == 2
-
-    def test_base_with_right_aborts(self, tmp_path):
-        right = tmp_path / "right.json"
-        right.write_text("{}")
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "diff",
-                "--base",
-                "HEAD",
-                "-r",
-                str(right),
-                "-d",
-                "some_domain",
-            ],
-        )
-        assert result.exit_code == 2
-
-
 # ------------------------------------------------------------------
 # CI Exit Codes
 # ------------------------------------------------------------------
@@ -707,15 +586,6 @@ class TestDiffArgumentValidation:
 @pytest.mark.no_test_domain
 class TestDiffExitCodes:
     """CI-friendly exit codes: 0 = no changes, 1 = breaking, 3 = non-breaking."""
-
-    def test_exit_0_when_no_changes(self, tmp_path):
-        ir = _minimal_ir()
-        left = _write_ir(tmp_path, "left.json", ir)
-        right = _write_ir(tmp_path, "right.json", ir)
-        result = runner.invoke(
-            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
-        )
-        assert result.exit_code == 0
 
     def test_exit_1_when_breaking_changes(self, tmp_path):
         """Removing a published event is breaking → exit 1."""
@@ -739,58 +609,6 @@ class TestDiffExitCodes:
             app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
         )
         assert result.exit_code == 1
-
-    def test_exit_3_when_non_breaking_changes_only(self, tmp_path):
-        """Adding a new cluster is safe → exit 3."""
-        left = _write_ir(tmp_path, "left.json", _minimal_ir())
-        right = _write_ir(
-            tmp_path,
-            "right.json",
-            _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
-        )
-        result = runner.invoke(
-            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
-        )
-        assert result.exit_code == 3
-
-    def test_exit_1_for_element_removal(self, tmp_path):
-        """Removing a cluster (aggregate) is breaking → exit 1."""
-        left = _write_ir(
-            tmp_path,
-            "left.json",
-            _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
-        )
-        right = _write_ir(tmp_path, "right.json", _minimal_ir())
-        result = runner.invoke(
-            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
-        )
-        assert result.exit_code == 1
-
-    def test_exit_3_for_added_optional_field(self, tmp_path):
-        """Adding an optional field is safe → exit 3."""
-        left_cluster = _make_cluster("Order", fields={})
-        right_cluster = _make_cluster(
-            "Order",
-            fields={"notes": {"kind": "standard", "type": "String"}},
-        )
-        left = _write_ir(
-            tmp_path, "left.json", _minimal_ir(clusters={"app.Order": left_cluster})
-        )
-        right = _write_ir(
-            tmp_path, "right.json", _minimal_ir(clusters={"app.Order": right_cluster})
-        )
-        result = runner.invoke(
-            app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
-        )
-        assert result.exit_code == 3
-
-    def test_exit_codes_work_with_text_format(self, tmp_path):
-        """Exit codes work for text format too, not just JSON."""
-        ir = _minimal_ir()
-        left = _write_ir(tmp_path, "left.json", ir)
-        right = _write_ir(tmp_path, "right.json", ir)
-        result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert result.exit_code == 0
 
 
 class TestDiffRefusesRemovalVersionWrittenAsANumber:
@@ -1009,22 +827,6 @@ class TestDiffAutoBaseline:
         parsed = json.loads(result.output)
         assert parsed["summary"]["has_changes"] is True
 
-    def test_auto_baseline_aborts_when_no_ir_file(self):
-        # No .protean/ir.json exists
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "diff",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-            ],
-        )
-        assert result.exit_code == 2
-        assert "No materialized IR" in result.output
-
     def test_auto_baseline_aborts_on_invalid_json(self):
         """ValueError from load_stored_ir is caught and produces a clean error."""
         self._protean_dir.mkdir(parents=True)
@@ -1075,12 +877,11 @@ class TestDiffGitBaseline:
     """Git baseline mode: `protean ir diff --domain my_app --base HEAD`."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self):
-        from tests.shared import change_working_directory_to
-
+    def _setup(self, tmp_path):
         self._original_path = sys.path[:]
         self._cwd = Path.cwd()
-        change_working_directory_to("test7")
+        self._repo = tmp_path
+        os.chdir(tmp_path)
         yield
         sys.path[:] = self._original_path
         os.chdir(self._cwd)
@@ -1088,98 +889,47 @@ class TestDiffGitBaseline:
     def _live_ir(self) -> dict:
         from protean.utils.domain_discovery import derive_domain
 
-        domain = derive_domain("publishing7.py")
+        domain = derive_domain(_TEST7_DOMAIN)
         domain.init(traverse=False)
         return IRBuilder(domain).build()
 
+    def _diff(self, *extra):
+        return runner.invoke(
+            app,
+            ["ir", "diff", "-d", _TEST7_DOMAIN, "--base", "HEAD", *extra],
+            env={"COLUMNS": "200"},
+        )
+
     def test_base_head_no_changes(self):
-        """When the baseline IR matches the live domain → exit 0."""
-        live_ir = self._live_ir()
-
-        with patch("protean.ir.git.load_ir_from_commit", return_value=live_ir):
-            result = runner.invoke(
-                app,
-                ["ir", "diff", "-d", "publishing7.py", "--base", "HEAD", "-f", "json"],
-            )
-            parsed = json.loads(result.output)
-            assert parsed["summary"]["has_changes"] is False
-            assert result.exit_code == 0
-
-    def test_base_detects_changes(self):
-        """When the baseline IR differs from live domain → changes detected."""
-        stale_ir = _minimal_ir()  # Minimal IR with no clusters
-
-        with patch("protean.ir.git.load_ir_from_commit", return_value=stale_ir):
-            result = runner.invoke(
-                app,
-                ["ir", "diff", "-d", "publishing7.py", "--base", "HEAD", "-f", "json"],
-            )
-            parsed = json.loads(result.output)
-            assert parsed["summary"]["has_changes"] is True
-
-    def test_base_aborts_on_missing_commit(self):
-        """GitError when loading baseline → non-zero exit."""
-        from protean.ir.git import GitError
-
-        with patch(
-            "protean.ir.git.load_ir_from_commit",
-            side_effect=GitError("commit not found"),
-        ):
-            result = runner.invoke(
-                app,
-                ["ir", "diff", "-d", "publishing7.py", "--base", "nonexistent_ref_xyz"],
-            )
-            assert result.exit_code == 2
+        """When the baseline IR matches the live domain, exit 0."""
+        _commit_ir(self._repo, self._live_ir())
+        result = self._diff("-f", "json")
+        parsed = json.loads(result.output)
+        assert parsed["summary"]["has_changes"] is False
+        assert result.exit_code == 0
 
     def test_base_custom_dir(self):
-        """--dir changes the path passed to load_ir_from_commit."""
-        stale_ir = _minimal_ir()
-
-        with patch(
-            "protean.ir.git.load_ir_from_commit", return_value=stale_ir
-        ) as mock_load:
-            result = runner.invoke(
-                app,
-                [
-                    "ir",
-                    "diff",
-                    "-d",
-                    "publishing7.py",
-                    "--base",
-                    "HEAD",
-                    "--dir",
-                    "custom_ir",
-                    "-f",
-                    "json",
-                ],
-            )
-            parsed = json.loads(result.output)
-            assert "summary" in parsed
-            # Verify that --dir was passed through to the git loader
-            mock_load.assert_called_once()
-            call_args = mock_load.call_args
-            assert "custom_ir" in call_args[0][1]  # path argument
+        """--dir names the directory inside the commit that holds ir.json."""
+        _commit_ir(self._repo, _minimal_ir(), ir_dir="custom_ir")
+        result = self._diff("--dir", "custom_ir", "-f", "json")
+        parsed = json.loads(result.output)
+        assert parsed["summary"]["has_changes"] is True
 
     def test_base_event_model_format(self):
         """--base renders the event-model format over the same git loader."""
-        stale_ir = _minimal_ir()  # empty baseline → live domain adds slices
+        _commit_ir(self._repo, _minimal_ir())  # empty baseline, so slices are added
+        result = self._diff("--format=event-model")
+        assert result.exit_code != 0
+        assert "Model changes:" in result.output
 
-        with patch("protean.ir.git.load_ir_from_commit", return_value=stale_ir):
-            result = runner.invoke(
-                app,
-                [
-                    "ir",
-                    "diff",
-                    "-d",
-                    "publishing7.py",
-                    "--base",
-                    "HEAD",
-                    "--format=event-model",
-                ],
-                env={"COLUMNS": "200"},
-            )
-            assert result.exit_code != 0
-            assert "Model changes:" in result.output
+    def test_base_holding_a_json_list_exits_2(self):
+        _commit_ir(self._repo, [])
+        result = self._diff()
+        assert result.exit_code == 2
+        assert "'.protean/ir.json' at commit 'HEAD' is not a JSON object" in (
+            " ".join(result.stderr.split())
+        )
+        assert result.stdout == ""
 
 
 # ------------------------------------------------------------------
@@ -1225,6 +975,7 @@ class TestAvroVerdictCLI:
         )
         data = json.loads(result.output)
         assert data["compatibility"]["avro_verdict"] == "FULL"
+        assert data["compatibility"]["avro_verdicts"] == {"app.Order": "FULL"}
         assert result.exit_code == 3  # non-breaking changes present
 
     def test_json_verdict_forward_for_added_required_no_default(self, tmp_path):
@@ -1273,24 +1024,6 @@ class TestAvroVerdictCLI:
         # Adding a required field with no default breaks BACKWARD; the
         # explanation line names the direction.
         assert "breaks BACKWARD" in result.output
-
-    def test_json_has_per_element_verdicts(self, tmp_path):
-        left = self._agg_ir(tmp_path, "left.json", {})
-        right = self._agg_ir(
-            tmp_path, "right.json", {"note": {"kind": "standard", "type": "String"}}
-        )
-        result = runner.invoke(
-            app, ["ir", "diff", "-l", left, "-r", right, "--format", "json"]
-        )
-        data = json.loads(result.output)
-        assert data["compatibility"]["avro_verdicts"] == {"app.Order": "FULL"}
-
-    def test_text_no_changes_omits_verdict(self, tmp_path):
-        ir = self._agg_ir(tmp_path, "same.json", {})
-        result = runner.invoke(app, ["ir", "diff", "-l", ir, "-r", ir])
-        assert result.exit_code == 0
-        # No changes → the verdict block is suppressed (vacuously FULL is noise).
-        assert "Avro compatibility" not in result.output
 
     def test_text_full_verdict_notes_breaking_visibility_flip(self, tmp_path):
         # A public→internal flip is breaking but Avro-neutral → FULL with a note.
@@ -1920,36 +1653,8 @@ class TestDiffEventModelClusterChanges:
         assert "slice Order: event OrderShipped removed" in changed
         assert "FactOrder" not in result.output
 
-    def test_an_event_turning_into_a_fact_event_leaves_the_model(self, tmp_path):
-        # The event still exists, so the diff calls it changed. The model draws
-        # it on the left and not on the right, so the slice loses a node, which
-        # reads as removed, with the reason.
-        left_ir = _minimal_ir(
-            clusters={
-                "app.Order": _make_cluster(
-                    "Order",
-                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
-                    events={"app.OrderPlaced": _em_event("OrderPlaced")},
-                )
-            }
-        )
-        right_ir = _minimal_ir(
-            clusters={
-                "app.Order": _make_cluster(
-                    "Order",
-                    commands={"app.PlaceOrder": _em_command("PlaceOrder")},
-                    events={
-                        "app.OrderPlaced": _em_event("OrderPlaced", is_fact_event=True)
-                    },
-                )
-            }
-        )
-        result = self._run(tmp_path, left_ir, right_ir)
-        changed = "\n".join(_changed_lines(result.output))
-        assert "slice Order: event OrderPlaced removed (now a fact event)" in changed
-
     def test_a_fact_event_turning_into_an_event_joins_the_model(self, tmp_path):
-        # The mirror image: the slice gains a node it did not draw before.
+        # The slice gains a node it did not draw before.
         left_ir = _minimal_ir(
             clusters={
                 "app.Order": _make_cluster(
@@ -3050,23 +2755,6 @@ class TestDiffEventModelConsumerTopology:
         assert not any("Proj1" in ln for ln in changed)
 
 
-@pytest.mark.no_test_domain
-class TestDiffFormatValidation:
-    """`ir diff` rejects an unknown --format instead of falling through."""
-
-    def test_bogus_format_is_rejected(self, tmp_path):
-        left = _write_ir(tmp_path, "left.json", _minimal_ir())
-        right = _write_ir(tmp_path, "right.json", _minimal_ir())
-        result = runner.invoke(
-            app,
-            ["ir", "diff", "-l", left, "-r", right, "-f", "bogus"],
-            env={"COLUMNS": "200"},
-        )
-        assert result.exit_code == 2
-        assert "invalid --format" in result.output
-        assert "event-model" in result.output
-
-
 # ------------------------------------------------------------------
 # Errors exit 2 on stderr; results exit 0 / 1 / 3
 # ------------------------------------------------------------------
@@ -3086,6 +2774,19 @@ def _module_file(tmp_path, source):
     path = tmp_path / "broken_domain.py"
     path.write_text(source, encoding="utf-8")
     return str(path)
+
+
+_BROKEN_INIT_SOURCE = """
+from protean import Domain
+from protean.fields import HasMany
+
+domain = Domain(name="BrokenInit")
+
+
+@domain.aggregate
+class Order:
+    lines = HasMany("NoSuchEntity")
+"""
 
 
 def _raw_file(tmp_path, content, name="raw.json"):
@@ -3128,6 +2829,10 @@ _ERROR_CASES = {
         lambda t, d: ["--base", "HEAD", "-d", "publishing7.py", "-l", _good_file(t)],
         "--base cannot be combined with --left/--right",
     ),
+    "--base with --right": (
+        lambda t, d: ["--base", "HEAD", "-d", "publishing7.py", "-r", _good_file(t)],
+        "--base cannot be combined with --left/--right",
+    ),
     "--left with --domain": (
         lambda t, d: ["-l", _good_file(t), "-r", _good_file(t), "-d", "x"],
         "--left and --domain are mutually exclusive",
@@ -3142,7 +2847,7 @@ _ERROR_CASES = {
     ),
     "invalid --format": (
         lambda t, d: ["-l", _good_file(t), "-r", _good_file(t), "-f", "bogus"],
-        "invalid --format: 'bogus'",
+        "invalid --format: 'bogus'. Choose from: text, json, event-model",
     ),
     "missing auto-baseline": (
         lambda t, d: ["-d", "publishing7.py"],
@@ -3150,7 +2855,7 @@ _ERROR_CASES = {
     ),
     "--base commit that does not exist": (
         lambda t, d: ["-d", "publishing7.py", "--base", "no_such_ref_xyz"],
-        "commit not found",
+        "from commit 'no_such_ref_xyz'",
     ),
     "--domain that does not load": (
         lambda t, d: ["-d", "no_such_module_xyz.py", "-r", _good_file(t)],
@@ -3190,8 +2895,8 @@ _ERROR_CASES = {
 
 @pytest.mark.no_test_domain
 class TestDiffErrorsExit2:
-    """Every usage, load or config error exits 2 with its message on stderr,
-    prints no diff on stdout, and never runs the diff, at every strictness."""
+    """Every usage, load or config error exits 2 with its message on stderr
+    and prints no diff on stdout, at every strictness."""
 
     @pytest.fixture(autouse=True)
     def _setup(self, tmp_path):
@@ -3208,8 +2913,6 @@ class TestDiffErrorsExit2:
         os.chdir(cwd)
 
     def _run(self, case, strictness=None, extra=()):
-        from protean.ir.git import GitError
-
         build, _ = _ERROR_CASES[case]
         if strictness is not None:
             (self._protean_dir / "config.toml").write_text(
@@ -3223,14 +2926,7 @@ class TestDiffErrorsExit2:
             *extra,
             *build(self._tmp, self._protean_dir),
         ]
-        with (
-            patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff ran")),
-            patch(
-                "protean.ir.git.load_ir_from_commit",
-                side_effect=GitError("commit not found"),
-            ),
-        ):
-            return runner.invoke(app, args)
+        return runner.invoke(app, args)
 
     def _assert_usage_error(self, result, case):
         _, message = _ERROR_CASES[case]
@@ -3309,19 +3005,17 @@ class TestDiffErrorsExit2:
         (self._protean_dir / "config.toml").write_text(
             f'[compatibility]\nstrictness = "{strictness}"\n', encoding="utf-8"
         )
-        args = ["ir", "diff", "--dir", str(self._protean_dir)]
-        args += ["-d", "no_such_module_xyz.py"]
         if mode == "git baseline":
-            args += ["--base", "HEAD"]
+            _commit_ir(self._tmp, _minimal_ir())
+            os.chdir(self._tmp)
+            args = ["ir", "diff", "--dir", ".protean", "--base", "HEAD"]
         else:
             (self._protean_dir / "ir.json").write_text(
                 json.dumps(_minimal_ir()), encoding="utf-8"
             )
-        with (
-            patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff ran")),
-            patch("protean.ir.git.load_ir_from_commit", return_value=_minimal_ir()),
-        ):
-            result = runner.invoke(app, args)
+            args = ["ir", "diff", "--dir", str(self._protean_dir)]
+        args += ["-d", "no_such_module_xyz.py"]
+        result = runner.invoke(app, args)
         assert result.exit_code == 2, result.output
         assert "Error loading Protean domain" in result.stderr
         assert result.stdout == ""
@@ -3331,20 +3025,19 @@ class TestDiffErrorsExit2:
         (self._protean_dir / "config.toml").write_text(
             f'[compatibility]\nstrictness = "{strictness}"\n', encoding="utf-8"
         )
-        with patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff ran")):
-            result = runner.invoke(
-                app,
-                [
-                    "ir",
-                    "diff",
-                    "--dir",
-                    str(self._protean_dir),
-                    "-d",
-                    "publishing7.py",
-                    "-r",
-                    str(self._tmp / "missing.json"),
-                ],
-            )
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-d",
+                "publishing7.py",
+                "-r",
+                str(self._tmp / "missing.json"),
+            ],
+        )
         assert result.exit_code == 2, result.output
         assert "file not found or not a regular file" in " ".join(result.stderr.split())
         assert result.stdout == ""
@@ -3449,25 +3142,28 @@ class TestDiffErrorsExit2:
         assert result.exit_code == 0, result.output
         assert "Compatibility checking is disabled" in result.stdout
 
-    def test_domain_init_error_exits_2(self):
-        with patch("protean.domain.Domain.init", side_effect=RuntimeError("init boom")):
-            result = runner.invoke(
-                app,
-                [
-                    "ir",
-                    "diff",
-                    "--dir",
-                    str(self._protean_dir),
-                    "-d",
-                    "publishing7.py",
-                    "-r",
-                    _good_file(self._tmp),
-                ],
-            )
-        assert result.exit_code == 2
-        assert "Error initialising Protean domain: init boom" in " ".join(
-            result.stderr.split()
+    def test_domain_init_error_exits_2(self, monkeypatch):
+        # The aggregate names an entity that does not exist, so init fails.
+        monkeypatch.delitem(sys.modules, "broken_domain", raising=False)
+        domain_file = _module_file(self._tmp, _BROKEN_INIT_SOURCE)
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-d",
+                domain_file,
+                "-r",
+                _good_file(self._tmp),
+            ],
         )
+        sys.modules.pop("broken_domain", None)
+        assert result.exit_code == 2
+        stderr = " ".join(result.stderr.split())
+        assert "Error initialising Protean domain" in stderr
+        assert "NoSuchEntity" in stderr
         assert result.stdout == ""
 
 
@@ -3523,18 +3219,3 @@ class TestDiffResultCodesAcrossFormats:
         )
         assert result.exit_code == expected, result.output
         assert result.stderr == ""
-
-    def test_off_exits_0_on_a_breaking_change_without_diffing(self, tmp_path):
-        protean_dir = tmp_path / ".protean"
-        protean_dir.mkdir()
-        (protean_dir / "config.toml").write_text(
-            '[compatibility]\nstrictness = "off"\n', encoding="utf-8"
-        )
-        left, right = self._pair(tmp_path, "breaking")
-        with patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff ran")):
-            result = runner.invoke(
-                app,
-                ["ir", "diff", "--dir", str(protean_dir), "-l", left, "-r", right],
-            )
-        assert result.exit_code == 0, result.output
-        assert "Compatibility checking is disabled" in result.stdout

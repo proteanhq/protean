@@ -1,8 +1,10 @@
 """Tests for the IR generator base utilities.
 
-Covers: mermaid_escape, mermaid_fence, short_name, module_path,
-field_type_label, field_summary, sanitize_mermaid_id.
+Checks mermaid_escape, mermaid_fence, short_name, module_path,
+field_type_label, field_summary and sanitize_mermaid_id.
 """
+
+import pytest
 
 from protean.ir.generators.base import (
     field_summary,
@@ -20,47 +22,26 @@ from protean.ir.generators.base import (
 
 
 class TestMermaidEscape:
-    def test_plain_text_unchanged(self):
-        assert mermaid_escape("Order") == "Order"
-
-    def test_empty_string(self):
-        assert mermaid_escape("") == ""
-
-    def test_brackets_escaped(self):
-        result = mermaid_escape("dict[str, int]")
-        assert result == '"dict[str, int]"'
-
-    def test_curly_braces_escaped(self):
-        result = mermaid_escape("{value}")
-        assert result == '"{value}"'
-
-    def test_parens_escaped(self):
-        result = mermaid_escape("func(x)")
-        assert result == '"func(x)"'
-
-    def test_angle_brackets_escaped(self):
-        result = mermaid_escape("List<int>")
-        assert result == '"List<int>"'
-
-    def test_pipe_escaped(self):
-        result = mermaid_escape("A | B")
-        assert result == '"A | B"'
-
-    def test_hash_escaped(self):
-        result = mermaid_escape("item #1")
-        assert result == '"item #1"'
-
-    def test_ampersand_escaped(self):
-        result = mermaid_escape("A & B")
-        assert result == '"A & B"'
-
-    def test_embedded_quotes_escaped(self):
-        result = mermaid_escape('say "hello"')
-        assert result == '"say #quot;hello#quot;"'
-
-    def test_multiple_special_chars(self):
-        result = mermaid_escape("A[B]{C}")
-        assert result == '"A[B]{C}"'
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            pytest.param("Order", "Order", id="plain_text_unchanged"),
+            pytest.param("", "", id="empty_string"),
+            pytest.param("dict[str, int]", '"dict[str, int]"', id="brackets"),
+            pytest.param("{value}", '"{value}"', id="curly_braces"),
+            pytest.param("func(x)", '"func(x)"', id="parens"),
+            pytest.param("List<int>", '"List<int>"', id="angle_brackets"),
+            pytest.param("A | B", '"A | B"', id="pipe"),
+            pytest.param("item #1", '"item #1"', id="hash"),
+            pytest.param("A & B", '"A & B"', id="ampersand"),
+            pytest.param(
+                'say "hello"', '"say #quot;hello#quot;"', id="embedded_quotes"
+            ),
+            pytest.param("A[B]{C}", '"A[B]{C}"', id="multiple_special_chars"),
+        ],
+    )
+    def test_quotes_text_with_mermaid_special_characters(self, text, expected):
+        assert mermaid_escape(text) == expected
 
 
 # ------------------------------------------------------------------
@@ -69,9 +50,29 @@ class TestMermaidEscape:
 
 
 class TestMermaidFence:
-    def test_basic_fence(self):
-        result = mermaid_fence("graph LR\n  A --> B")
-        assert result == "```mermaid\ngraph LR\n  A --> B\n```"
+    @pytest.mark.parametrize(
+        "body, expected",
+        [
+            pytest.param(
+                "graph LR\n  A --> B",
+                "```mermaid\ngraph LR\n  A --> B\n```",
+                id="basic_fence",
+            ),
+            pytest.param("", "```mermaid\n\n```", id="empty_body"),
+            pytest.param(
+                "A --> B\n```\nC --> D",
+                "````mermaid\nA --> B\n```\nC --> D\n````",
+                id="body_with_backticks_uses_longer_fence",
+            ),
+            pytest.param(
+                "A --> B\n`````\nC --> D",
+                "``````mermaid\nA --> B\n`````\nC --> D\n``````",
+                id="body_with_long_backtick_run",
+            ),
+        ],
+    )
+    def test_fence_is_longer_than_any_backtick_run_in_body(self, body, expected):
+        assert mermaid_fence(body) == expected
 
     def test_fence_with_title(self):
         result = mermaid_fence("graph TD\n  X --> Y", title="My Diagram")
@@ -79,56 +80,37 @@ class TestMermaidFence:
         assert "```mermaid" in result
         assert result.endswith("```")
 
-    def test_empty_body(self):
-        result = mermaid_fence("")
-        assert result == "```mermaid\n\n```"
-
-    def test_body_with_backticks_uses_longer_fence(self):
-        body = "A --> B\n```\nC --> D"
-        result = mermaid_fence(body)
-        assert result.startswith("````mermaid\n")
-        assert result.endswith("\n````")
-
-    def test_body_with_long_backtick_run(self):
-        body = "A --> B\n`````\nC --> D"
-        result = mermaid_fence(body)
-        assert result.startswith("``````mermaid\n")
-        assert result.endswith("\n``````")
-
 
 # ------------------------------------------------------------------
-# short_name
+# short_name and module_path
 # ------------------------------------------------------------------
 
 
 class TestShortName:
-    def test_fqn(self):
-        assert short_name("ecommerce.ordering.Order") == "Order"
-
-    def test_already_short(self):
-        assert short_name("Order") == "Order"
-
-    def test_empty_string(self):
-        assert short_name("") == ""
-
-    def test_single_dot(self):
-        assert short_name("a.B") == "B"
-
-
-# ------------------------------------------------------------------
-# module_path
-# ------------------------------------------------------------------
+    @pytest.mark.parametrize(
+        "fqn, expected",
+        [
+            pytest.param("ecommerce.ordering.Order", "Order", id="fqn"),
+            pytest.param("Order", "Order", id="already_short"),
+            pytest.param("", "", id="empty_string"),
+            pytest.param("a.B", "B", id="single_dot"),
+        ],
+    )
+    def test_returns_last_dotted_segment(self, fqn, expected):
+        assert short_name(fqn) == expected
 
 
 class TestModulePath:
-    def test_fqn(self):
-        assert module_path("ecommerce.ordering.Order") == "ecommerce.ordering"
-
-    def test_no_module(self):
-        assert module_path("Order") == ""
-
-    def test_single_dot(self):
-        assert module_path("a.B") == "a"
+    @pytest.mark.parametrize(
+        "fqn, expected",
+        [
+            pytest.param("ecommerce.ordering.Order", "ecommerce.ordering", id="fqn"),
+            pytest.param("Order", "", id="no_module"),
+            pytest.param("a.B", "a", id="single_dot"),
+        ],
+    )
+    def test_returns_everything_before_last_dot(self, fqn, expected):
+        assert module_path(fqn) == expected
 
 
 # ------------------------------------------------------------------
@@ -137,59 +119,64 @@ class TestModulePath:
 
 
 class TestFieldTypeLabel:
-    def test_standard_string(self):
-        assert field_type_label({"kind": "standard", "type": "String"}) == "String"
-
-    def test_auto(self):
-        assert field_type_label({"kind": "auto"}) == "Auto"
-
-    def test_value_object(self):
-        result = field_type_label({"kind": "value_object", "target": "app.Address"})
-        assert result == "Address"
-
-    def test_has_one(self):
-        result = field_type_label({"kind": "has_one", "target": "app.Profile"})
-        assert result == "Profile"
-
-    def test_reference(self):
-        result = field_type_label({"kind": "reference", "target": "app.User"})
-        assert result == "User"
-
-    def test_has_many(self):
-        result = field_type_label({"kind": "has_many", "target": "app.OrderItem"})
-        assert result == "OrderItem[]"
-
-    def test_value_object_list(self):
-        result = field_type_label({"kind": "value_object_list", "target": "app.Tag"})
-        assert result == "List[Tag]"
-
-    def test_list_with_content_type(self):
-        result = field_type_label(
-            {"kind": "list", "type": "List", "content_type": "String"}
-        )
-        assert result == "List[String]"
-
-    def test_list_without_content_type(self):
-        result = field_type_label({"kind": "list", "type": "List"})
-        assert result == "List"
-
-    def test_dict(self):
-        assert field_type_label({"kind": "dict", "type": "Dict"}) == "Dict"
-
-    def test_missing_kind_defaults_to_standard(self):
-        assert field_type_label({"type": "Float"}) == "Float"
-
-    def test_missing_type_returns_question_mark(self):
-        assert field_type_label({"kind": "standard"}) == "?"
-
-    def test_has_many_missing_target(self):
-        assert field_type_label({"kind": "has_many"}) == "?[]"
-
-    def test_value_object_missing_target(self):
-        assert field_type_label({"kind": "value_object"}) == "value_object"
-
-    def test_value_object_list_missing_target(self):
-        assert field_type_label({"kind": "value_object_list"}) == "List[?]"
+    @pytest.mark.parametrize(
+        "field, expected",
+        [
+            pytest.param(
+                {"kind": "standard", "type": "String"}, "String", id="standard_string"
+            ),
+            pytest.param({"kind": "auto"}, "Auto", id="auto"),
+            pytest.param(
+                {"kind": "value_object", "target": "app.Address"},
+                "Address",
+                id="value_object",
+            ),
+            pytest.param(
+                {"kind": "has_one", "target": "app.Profile"}, "Profile", id="has_one"
+            ),
+            pytest.param(
+                {"kind": "reference", "target": "app.User"}, "User", id="reference"
+            ),
+            pytest.param(
+                {"kind": "has_many", "target": "app.OrderItem"},
+                "OrderItem[]",
+                id="has_many",
+            ),
+            pytest.param(
+                {"kind": "value_object_list", "target": "app.Tag"},
+                "List[Tag]",
+                id="value_object_list",
+            ),
+            pytest.param(
+                {"kind": "list", "type": "List", "content_type": "String"},
+                "List[String]",
+                id="list_with_content_type",
+            ),
+            pytest.param(
+                {"kind": "list", "type": "List"}, "List", id="list_without_content_type"
+            ),
+            pytest.param({"kind": "dict", "type": "Dict"}, "Dict", id="dict"),
+            pytest.param(
+                {"type": "Float"}, "Float", id="missing_kind_defaults_to_standard"
+            ),
+            pytest.param(
+                {"kind": "standard"}, "?", id="missing_type_returns_question_mark"
+            ),
+            pytest.param({"kind": "has_many"}, "?[]", id="has_many_missing_target"),
+            pytest.param(
+                {"kind": "value_object"},
+                "value_object",
+                id="value_object_missing_target",
+            ),
+            pytest.param(
+                {"kind": "value_object_list"},
+                "List[?]",
+                id="value_object_list_missing_target",
+            ),
+        ],
+    )
+    def test_label_for_field_kind(self, field, expected):
+        assert field_type_label(field) == expected
 
 
 # ------------------------------------------------------------------
@@ -198,32 +185,46 @@ class TestFieldTypeLabel:
 
 
 class TestFieldSummary:
-    def test_simple_field(self):
-        assert field_summary({"kind": "standard", "type": "Integer"}) == "Integer"
-
-    def test_required_field(self):
-        result = field_summary({"kind": "standard", "type": "String", "required": True})
-        assert result == "String (required)"
-
-    def test_identifier_field(self):
-        result = field_summary({"kind": "auto", "identifier": True})
-        assert result == "Auto (identifier)"
-
-    def test_identifier_suppresses_required_and_unique(self):
-        result = field_summary(
-            {"kind": "auto", "identifier": True, "required": True, "unique": True}
-        )
-        assert result == "Auto (identifier)"
-
-    def test_unique_field(self):
-        result = field_summary({"kind": "standard", "type": "String", "unique": True})
-        assert result == "String (unique)"
-
-    def test_required_and_unique(self):
-        result = field_summary(
-            {"kind": "standard", "type": "String", "required": True, "unique": True}
-        )
-        assert result == "String (required, unique)"
+    @pytest.mark.parametrize(
+        "field, expected",
+        [
+            pytest.param(
+                {"kind": "standard", "type": "Integer"}, "Integer", id="simple_field"
+            ),
+            pytest.param(
+                {"kind": "standard", "type": "String", "required": True},
+                "String (required)",
+                id="required_field",
+            ),
+            pytest.param(
+                {"kind": "auto", "identifier": True},
+                "Auto (identifier)",
+                id="identifier_field",
+            ),
+            pytest.param(
+                {"kind": "auto", "identifier": True, "required": True, "unique": True},
+                "Auto (identifier)",
+                id="identifier_suppresses_required_and_unique",
+            ),
+            pytest.param(
+                {"kind": "standard", "type": "String", "unique": True},
+                "String (unique)",
+                id="unique_field",
+            ),
+            pytest.param(
+                {
+                    "kind": "standard",
+                    "type": "String",
+                    "required": True,
+                    "unique": True,
+                },
+                "String (required, unique)",
+                id="required_and_unique",
+            ),
+        ],
+    )
+    def test_summary_lists_type_and_flags(self, field, expected):
+        assert field_summary(field) == expected
 
 
 # ------------------------------------------------------------------
@@ -232,26 +233,19 @@ class TestFieldSummary:
 
 
 class TestSanitizeMermaidId:
-    def test_fqn(self):
-        assert (
-            sanitize_mermaid_id("ecommerce.ordering.Order")
-            == "ecommerce_ordering_Order"
-        )
-
-    def test_already_clean(self):
-        assert sanitize_mermaid_id("Order") == "Order"
-
-    def test_hyphens_and_spaces(self):
-        assert sanitize_mermaid_id("my-app order") == "my_app_order"
-
-    def test_multiple_specials_collapsed(self):
-        assert sanitize_mermaid_id("a..b") == "a_b"
-
-    def test_leading_trailing_stripped(self):
-        assert sanitize_mermaid_id(".Order.") == "Order"
-
-    def test_empty_string_returns_fallback(self):
-        assert sanitize_mermaid_id("") == "node"
-
-    def test_only_special_chars_returns_fallback(self):
-        assert sanitize_mermaid_id("...") == "node"
+    @pytest.mark.parametrize(
+        "raw, expected",
+        [
+            pytest.param(
+                "ecommerce.ordering.Order", "ecommerce_ordering_Order", id="fqn"
+            ),
+            pytest.param("Order", "Order", id="already_clean"),
+            pytest.param("my-app order", "my_app_order", id="hyphens_and_spaces"),
+            pytest.param("a..b", "a_b", id="multiple_specials_collapsed"),
+            pytest.param(".Order.", "Order", id="leading_trailing_stripped"),
+            pytest.param("", "node", id="empty_string_returns_fallback"),
+            pytest.param("...", "node", id="only_special_chars_returns_fallback"),
+        ],
+    )
+    def test_replaces_non_identifier_characters(self, raw, expected):
+        assert sanitize_mermaid_id(raw) == expected

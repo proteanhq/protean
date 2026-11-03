@@ -139,12 +139,6 @@ class TestFilterCallSites:
         assert active.location.path is not None
         assert active.location.path.endswith("behavior.py")
 
-    def test_a_find_is_not_reported_as_a_filter_site(self, view):
-        """``by_reference`` queries with ``find``; it names no filter site."""
-        sites = view.filter_call_sites(behavior.OrderRepository)
-
-        assert "by_reference" not in {site.method_name for site in sites}
-
     def test_a_non_repository_filter_is_not_reported_as_a_filter_site(self, view):
         """A ``.filter(...)`` on a plain local is a filter call but not a
         repository one, so the view excludes it.

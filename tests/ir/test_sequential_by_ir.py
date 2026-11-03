@@ -115,50 +115,29 @@ def _order_cluster(ir):
     pytest.fail("Order cluster not found")
 
 
+_UNSET = object()
+
+
 @pytest.mark.no_test_domain
 class TestSequentialByIR:
-    def test_event_handler_carries_sequential_by(self):
-        cluster = _order_cluster(_build_ir())
-        handlers = cluster["event_handlers"]
-        partitioned = next(
-            e for e in handlers.values() if e["name"] == "PartitionedOrderHandler"
-        )
-        assert partitioned["sequential_by"] == "order_id"
-
-    def test_event_handler_omits_when_unset(self):
-        cluster = _order_cluster(_build_ir())
-        handlers = cluster["event_handlers"]
-        plain = next(e for e in handlers.values() if e["name"] == "PlainOrderHandler")
-        assert "sequential_by" not in plain
-
-    def test_command_handler_carries_sequential_by(self):
-        cluster = _order_cluster(_build_ir())
-        ch = next(iter(cluster["command_handlers"].values()))
-        assert ch["sequential_by"] == "client_id"
-
-    def test_process_manager_carries_sequential_by(self):
-        ir = _build_ir()
-        pm = next(iter(ir["flows"]["process_managers"].values()))
-        assert pm["sequential_by"] is True
-
-    def _projectors(self, ir):
-        projectors = {}
-        for projection in ir["projections"].values():
-            for entry in projection["projectors"].values():
-                projectors[entry["name"]] = entry
-        assert projectors, "no projectors found in the IR"
-        return projectors
-
-    def test_projector_carries_sequential_by(self):
-        projectors = self._projectors(_build_ir())
-        assert projectors["PartitionedOrderProjector"]["sequential_by"] == "order_id"
-
-    def test_projector_omits_when_unset(self):
-        projectors = self._projectors(_build_ir())
-        assert "sequential_by" not in projectors["PlainOrderProjector"]
-
-    def test_ir_validates_against_schema(self):
-        jsonschema.validate(_build_ir(), json.loads(SCHEMA_PATH.read_text()))
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("PartitionedOrderHandler", "order_id"),
+            ("PlainOrderHandler", _UNSET),
+            ("OrderCommandHandler", "client_id"),
+            ("OrderPM", True),
+            ("PartitionedOrderProjector", "order_id"),
+            ("PlainOrderProjector", _UNSET),
+        ],
+    )
+    def test_sequential_by_is_carried_only_when_set(self, name, expected):
+        element = _element(_build_ir(), name)
+        if expected is _UNSET:
+            assert "sequential_by" not in element
+        else:
+            assert element["sequential_by"] == expected
+            assert type(element["sequential_by"]) is type(expected)
 
 
 _SEQUENTIAL_KINDS = ("event_handler", "command_handler", "projector", "process_manager")

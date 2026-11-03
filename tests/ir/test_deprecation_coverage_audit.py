@@ -437,8 +437,8 @@ class TestRuntimeArm:
             _RUNTIME_TRIGGERS[slug]()
 
 
-class TestNegativeCoverage:
-    """Guard the new rules against false positives."""
+class TestNoFalsePositives:
+    """The deprecation rules stay silent on code that uses no deprecated API."""
 
     def test_clean_domain_emits_no_new_deprecation_codes(self) -> None:
         domain = Domain(name="CleanDomain", root_path=".")
@@ -473,7 +473,7 @@ class TestNegativeCoverage:
 
 class TestImportScanForms:
     """Direct tests of the static AST scan across every import form it accepts,
-    so each detection branch is exercised without a registered-element module."""
+    run on source text with no registered-element module."""
 
     @staticmethod
     def _scan(src: str) -> list[tuple[str, str]]:

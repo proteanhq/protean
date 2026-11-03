@@ -1,5 +1,7 @@
 """Diagnostics: TestUnboundedIndexedString."""
 
+import pytest
+
 from protean import Domain
 from protean.core.index import Index
 from protean.core.value_object import BaseValueObject
@@ -16,7 +18,8 @@ def _unbounded_findings(ir: dict) -> list[dict]:
 
 class TestUnboundedIndexedString:
     """UNBOUNDED_INDEXED_STRING flags string fields that are both indexed and
-    unbounded — the DDL is unportable across engines."""
+    unbounded, because that index DDL does not work on every database
+    engine."""
 
     def test_indexed_text_field_flagged(self):
         domain = Domain(name="UnboundedText", root_path=".")
@@ -35,14 +38,20 @@ class TestUnboundedIndexedString:
         assert finding["element"] == fqn(Note)
         assert finding["category"] == "persistence"
         assert finding["level"] == "warning"
-        # Message names the aggregate, the index, and the unbounded type.
+        # Message names the aggregate, the index, and the unbounded type. An
+        # index declared without a name shows as a placeholder.
         assert "Note" in finding["message"]
         assert "body" in finding["message"]
         assert "`Text`" in finding["message"]
+        assert "`(unnamed)`" in finding["message"]
+        # The finding carries a non-empty rule and a field-specific suggestion.
+        assert finding["rule"]["rationale"]
+        assert finding["rule"]["fix"]
+        assert "body" in finding["suggestion"]
 
     def test_indexed_string_max_length_none_flagged(self):
-        """``String(max_length=None)`` is the residual unbounded ``String``
-        path — the extractor emits no ``max_length`` key, so it fires."""
+        """``String(max_length=None)`` is an unbounded ``String``: the
+        extractor emits no ``max_length`` key, so the rule fires."""
         domain = Domain(name="UnboundedStringNone", root_path=".")
 
         @domain.aggregate(indexes=[Index("code")])
@@ -100,9 +109,9 @@ class TestUnboundedIndexedString:
         assert "`ix_post_body_created`" in messages
 
     def test_repeated_field_in_one_index_yields_single_finding(self):
-        """A field named twice in the *same* index is one occurrence — the
-        rule dedupes within an index so a degenerate ``Index("body", "body")``
-        does not double-count."""
+        """A field named twice in the *same* index is one occurrence. The rule
+        removes repeats within an index, so ``Index("body", "body")`` does not
+        count the field twice."""
         domain = Domain(name="RepeatedField", root_path=".")
 
         @domain.aggregate(indexes=[Index("body", "body")])
@@ -115,20 +124,6 @@ class TestUnboundedIndexedString:
         findings = _unbounded_findings(ir)
         assert len(findings) == 1, findings
         assert findings[0]["field"] == "body"
-
-    def test_unnamed_index_renders_placeholder(self):
-        domain = Domain(name="Unnamed", root_path=".")
-
-        @domain.aggregate(indexes=[Index("body")])
-        class Note:
-            body = Text()
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        findings = _unbounded_findings(ir)
-        assert len(findings) == 1, findings
-        assert "`(unnamed)`" in findings[0]["message"]
 
     def test_named_index_renders_its_name(self):
         domain = Domain(name="Named", root_path=".")
@@ -143,24 +138,6 @@ class TestUnboundedIndexedString:
         findings = _unbounded_findings(ir)
         assert len(findings) == 1, findings
         assert "`ix_note_body`" in findings[0]["message"]
-
-    def test_schema_conformance(self):
-        """The finding carries the diagnostic schema surface: category, a non-empty
-        rule, and a field-specific suggestion."""
-        domain = Domain(name="Schema", root_path=".")
-
-        @domain.aggregate(indexes=[Index("body")])
-        class Note:
-            body = Text()
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        finding = _unbounded_findings(ir)[0]
-        assert finding["category"] == "persistence"
-        assert finding["rule"]["rationale"]
-        assert finding["rule"]["fix"]
-        assert "body" in finding["suggestion"]
 
     def test_suppress_checks_removes_finding(self):
         """Per-element ``suppress_checks`` resolves against the aggregate FQN
@@ -179,40 +156,23 @@ class TestUnboundedIndexedString:
 
         assert _unbounded_findings(ir) == []
 
-    # ── Negative matrix — each asserts no finding and no exception ──
-
-    def test_indexed_bounded_string_not_flagged(self):
-        domain = Domain(name="Bounded", root_path=".")
-
-        @domain.aggregate(indexes=[Index("slug")])
-        class Article:
-            slug = String(max_length=120)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        assert _unbounded_findings(ir) == []
-
-    def test_indexed_default_string_not_flagged(self):
-        """Default ``String()`` carries ``max_length=255`` and must NOT fire —
-        the regression guard against flagging every default string."""
-        domain = Domain(name="DefaultString", root_path=".")
-
-        @domain.aggregate(indexes=[Index("slug")])
-        class Article:
-            slug = String()
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        assert _unbounded_findings(ir) == []
-
-    def test_indexed_integer_not_flagged(self):
-        domain = Domain(name="IntIndex", root_path=".")
-
-        @domain.aggregate(indexes=[Index("count")])
-        class Tally:
-            count = Integer()
+    @pytest.mark.parametrize(
+        "make_field",
+        [
+            lambda: String(max_length=120),
+            lambda: String(),
+            lambda: Integer(),
+        ],
+        ids=["bounded-string", "default-string", "integer"],
+    )
+    def test_indexed_bounded_field_not_flagged(self, make_field):
+        """An indexed field with a length limit, or of a non-string type, is
+        not flagged. Default ``String()`` carries ``max_length=255``, so it
+        must not fire either: flagging every default string was a past
+        regression."""
+        domain = Domain(name="BoundedIndexed", root_path=".")
+        aggregate_cls = type("Article", (), {"slug": make_field()})
+        domain.aggregate(indexes=[Index("slug")])(aggregate_cls)
 
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
@@ -284,7 +244,7 @@ class TestUnboundedIndexedString:
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 
-        # Scope limit: an unbounded VO attribute is not covered by this rule.
+        # Scope limit: this rule does not check an unbounded VO attribute.
         assert _unbounded_findings(ir) == []
 
     def test_abstract_aggregate_not_flagged(self):

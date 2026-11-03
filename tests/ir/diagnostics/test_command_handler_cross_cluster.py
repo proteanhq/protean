@@ -43,9 +43,9 @@ class TestCommandHandlerCrossCluster:
         # The framework forbids a command handler from targeting another
         # cluster's command (handler_setup validates command/handler part_of
         # equality), so this cannot come from registration. It can appear in
-        # materialized IR loaded from an older or hand-edited source — the state
-        # the diagnostic guards — so inject the foreign command type into the
-        # handler map to exercise that path.
+        # materialized IR loaded from an older or hand-edited source, which is
+        # the state the diagnostic guards, so the test adds the foreign command
+        # type to the handler map.
         method = next(iter(OrderCommandHandler._handlers[PlaceOrder.__type__]))
         OrderCommandHandler._handlers[DispatchShipment.__type__].add(method)
 

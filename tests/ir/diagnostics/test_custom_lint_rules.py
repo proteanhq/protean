@@ -2,8 +2,8 @@
 
 import logging
 
-from protean import Domain
-from protean.fields.simple import String
+import pytest
+
 from protean.ir.builder import IRBuilder
 from tests.ir.diagnostics._helpers import (
     _FIXTURES,
@@ -34,13 +34,47 @@ class TestCustomLintRules:
         assert len(custom_b) == 1
         assert custom_b[0]["level"] == "info"
 
-    def test_empty_rule_adds_nothing(self):
-        domain = _build_domain_with_rules([f"{_FIXTURES}.empty_rule"])
+    @pytest.mark.parametrize(
+        ("rule", "code"),
+        [
+            ("empty_rule", "CUSTOM_CHECK"),
+            ("missing_keys_rule", "PARTIAL"),
+            ("bad_level_rule", "BAD_LEVEL"),
+            ("error_level_rule", "CUSTOM_ERROR"),
+        ],
+        ids=[
+            "rule-returns-nothing",
+            "finding-missing-required-keys",
+            "finding-with-unknown-level",
+            "finding-with-error-level",
+        ],
+    )
+    def test_rule_adds_no_invalid_finding(self, rule, code):
+        """An empty rule adds nothing, and a finding that lacks required keys or
+        uses a level other than ``info`` or ``warning`` is dropped. Custom rules
+        cannot use ``error``, which is reserved for the domain validator."""
+        domain = _build_domain_with_rules([f"{_FIXTURES}.{rule}"])
         ir = IRBuilder(domain).build()
 
-        # Only built-in diagnostics should be present
         codes = [d["code"] for d in ir["diagnostics"]]
-        assert "CUSTOM_CHECK" not in codes
+        assert code not in codes
+
+    @pytest.mark.parametrize(
+        "rule_path",
+        [
+            f"{_FIXTURES}.bad_return_type",
+            f"{_FIXTURES}.non_dict_item_rule",
+            "norule",
+        ],
+        ids=["returns-a-string", "returns-a-non-dict-item", "path-without-a-module"],
+    )
+    def test_unusable_rule_does_not_break_the_build(self, rule_path):
+        """A rule that returns something other than a list of dicts, or a rule
+        path with no module part, is skipped and the build still returns its
+        diagnostics list."""
+        domain = _build_domain_with_rules([rule_path])
+        ir = IRBuilder(domain).build()
+        assert isinstance(ir["diagnostics"], list)
 
     def test_raising_rule_is_skipped(self, caplog):
         """A rule that throws an exception is logged and skipped."""
@@ -54,40 +88,7 @@ class TestCustomLintRules:
             for r in caplog.records
         )
 
-        # Should not crash — built-in diagnostics still present
-        assert isinstance(ir["diagnostics"], list)
-
-    def test_bad_return_type_is_skipped(self):
-        domain = _build_domain_with_rules([f"{_FIXTURES}.bad_return_type"])
-        ir = IRBuilder(domain).build()
-        assert isinstance(ir["diagnostics"], list)
-
-    def test_missing_keys_skipped(self):
-        domain = _build_domain_with_rules([f"{_FIXTURES}.missing_keys_rule"])
-        ir = IRBuilder(domain).build()
-
-        # The invalid item should not appear
-        codes = [d["code"] for d in ir["diagnostics"]]
-        assert "PARTIAL" not in codes
-
-    def test_bad_level_skipped(self):
-        domain = _build_domain_with_rules([f"{_FIXTURES}.bad_level_rule"])
-        ir = IRBuilder(domain).build()
-
-        codes = [d["code"] for d in ir["diagnostics"]]
-        assert "BAD_LEVEL" not in codes
-
-    def test_error_level_rejected_for_custom_rules(self):
-        """Custom rules cannot use 'error' level — errors are DomainValidator's domain."""
-        domain = _build_domain_with_rules([f"{_FIXTURES}.error_level_rule"])
-        ir = IRBuilder(domain).build()
-
-        codes = [d["code"] for d in ir["diagnostics"]]
-        assert "CUSTOM_ERROR" not in codes
-
-    def test_non_dict_item_skipped(self):
-        domain = _build_domain_with_rules([f"{_FIXTURES}.non_dict_item_rule"])
-        ir = IRBuilder(domain).build()
+        # The build does not crash and still returns its diagnostics.
         assert isinstance(ir["diagnostics"], list)
 
     def test_import_failure_skipped(self, caplog):
@@ -102,26 +103,6 @@ class TestCustomLintRules:
             and "ModuleNotFoundError" in r.getMessage()
             for r in caplog.records
         )
-        assert isinstance(ir["diagnostics"], list)
-
-    def test_invalid_dotted_path_skipped(self):
-        """A rule path without dots (no module) is logged and skipped."""
-        domain = _build_domain_with_rules(["norule"])
-        ir = IRBuilder(domain).build()
-        assert isinstance(ir["diagnostics"], list)
-
-    def test_no_rules_configured(self):
-        """No [lint] rules config means no custom rules run."""
-        domain = Domain(name="NoRulesTest", root_path=".")
-
-        @domain.aggregate
-        class Item:
-            name = String(max_length=50)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        # Should have only built-in diagnostics
         assert isinstance(ir["diagnostics"], list)
 
     def test_multiple_rules_all_run(self):

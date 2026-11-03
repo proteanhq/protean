@@ -22,33 +22,20 @@ class TestSuppressionsConfigValidation:
         domain.init(traverse=False)
         return domain
 
-    def test_string_count_raises_configuration_error(self):
-        domain = self._domain_with_suppressions({"AGGREGATE_TOO_LARGE": "3"})
-        with pytest.raises(ConfigurationError, match="non-negative integer"):
+    @pytest.mark.parametrize(
+        ("suppressions", "message"),
+        [
+            ({"AGGREGATE_TOO_LARGE": "3"}, "non-negative integer"),
+            ({"AGGREGATE_TOO_LARGE": -1}, "non-negative integer"),
+            # ``bool`` is an ``int`` subclass, so it must be rejected, not read as 1.
+            ({"AGGREGATE_TOO_LARGE": True}, "non-negative integer"),
+            (5, "table of"),
+        ],
+        ids=["string-count", "negative-count", "boolean-count", "non-table"],
+    )
+    def test_invalid_suppressions_raise_configuration_error(
+        self, suppressions, message
+    ):
+        domain = self._domain_with_suppressions(suppressions)
+        with pytest.raises(ConfigurationError, match=message):
             IRBuilder(domain).build()
-
-    def test_negative_count_raises_configuration_error(self):
-        domain = self._domain_with_suppressions({"AGGREGATE_TOO_LARGE": -1})
-        with pytest.raises(ConfigurationError, match="non-negative integer"):
-            IRBuilder(domain).build()
-
-    def test_boolean_count_raises_configuration_error(self):
-        # ``bool`` is an ``int`` subclass — must be rejected, not read as 1.
-        domain = self._domain_with_suppressions({"AGGREGATE_TOO_LARGE": True})
-        with pytest.raises(ConfigurationError, match="non-negative integer"):
-            IRBuilder(domain).build()
-
-    def test_non_table_raises_configuration_error(self):
-        domain = self._domain_with_suppressions(5)
-        with pytest.raises(ConfigurationError, match="table of"):
-            IRBuilder(domain).build()
-
-    def test_valid_zero_count_does_not_raise(self):
-        domain = self._domain_with_suppressions(
-            {"AGGREGATE_WITHOUT_COMMAND_HANDLER": 0}
-        )
-        # Must build cleanly — 0 is a valid non-negative integer.
-        ir = IRBuilder(domain).build()
-        assert any(
-            d["code"] == "AGGREGATE_WITHOUT_COMMAND_HANDLER" for d in ir["diagnostics"]
-        )

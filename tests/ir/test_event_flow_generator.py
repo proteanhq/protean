@@ -1,7 +1,8 @@
 """Tests for the event flow diagram generator.
 
-Covers: generate_event_flow_diagram, cluster subgraphs, command/event
-node shapes, handler edges, process managers, projectors, and edge cases.
+Checks generate_event_flow_diagram, generate_cluster_event_flow and
+generate_downstream_consumers_diagram: cluster subgraphs, command and event
+node shapes, handler edges, process managers, projectors, and empty input.
 """
 
 import pytest
@@ -13,7 +14,7 @@ from protean.ir.generators.events import (
 )
 
 # ------------------------------------------------------------------
-# Fixtures — composable IR builders
+# Fixtures: composable IR builders
 # ------------------------------------------------------------------
 
 
@@ -112,13 +113,15 @@ def _event_handler(fqn: str, handlers: dict) -> dict:
 
 
 class TestEmptyIR:
-    def test_empty_clusters(self):
-        result = generate_event_flow_diagram(_ir())
-        assert result == "flowchart LR"
-
-    def test_missing_clusters_key(self):
-        result = generate_event_flow_diagram({})
-        assert result == "flowchart LR"
+    @pytest.mark.parametrize(
+        "ir",
+        [
+            pytest.param(_ir(), id="empty_clusters"),
+            pytest.param({}, id="missing_clusters_key"),
+        ],
+    )
+    def test_no_clusters_renders_bare_header(self, ir):
+        assert generate_event_flow_diagram(ir) == "flowchart LR"
 
 
 # ------------------------------------------------------------------
@@ -446,9 +449,9 @@ class TestProjectors:
 
     def test_projector_node_with_projection_label(self, ir_with_projector):
         result = generate_event_flow_diagram(ir_with_projector)
-        # Label should show "ProjectorName → ProjectionName"
-        assert "OrderDashboardProjector" in result
-        assert "OrderDashboard" in result
+        assert (
+            "proj_app_OrderDashboardProjector[OrderDashboardProjector → OrderDashboard]"
+        ) in result
 
     def test_event_to_projector_edges(self, ir_with_projector):
         result = generate_event_flow_diagram(ir_with_projector)
@@ -569,11 +572,6 @@ class TestFullIntegration:
         result = generate_event_flow_diagram(ordering_ir)
         assert result.startswith("flowchart LR")
 
-    def test_both_subgraphs_present(self, ordering_ir):
-        result = generate_event_flow_diagram(ordering_ir)
-        assert "subgraph app_Order" in result
-        assert "subgraph app_Payment" in result
-
     def test_all_commands_present(self, ordering_ir):
         result = generate_event_flow_diagram(ordering_ir)
         assert "PlaceOrder" in result
@@ -586,20 +584,6 @@ class TestFullIntegration:
         assert "OrderCancelled" in result
         assert "PaymentConfirmed" in result
 
-    def test_pm_connected(self, ordering_ir):
-        result = generate_event_flow_diagram(ordering_ir)
-        assert "FulfillmentPM" in result
-        assert "pm_app_FulfillmentPM" in result
-
-    def test_projector_connected(self, ordering_ir):
-        result = generate_event_flow_diagram(ordering_ir)
-        assert "DashboardProjector" in result
-
-    def test_event_handler_connected(self, ordering_ir):
-        result = generate_event_flow_diagram(ordering_ir)
-        assert "OrderNotifier" in result
-        assert "evt_app_OrderPlaced --> eh_app_OrderNotifier" in result
-
 
 # ------------------------------------------------------------------
 # Per-cluster event flow
@@ -607,14 +591,19 @@ class TestFullIntegration:
 
 
 class TestClusterEventFlow:
-    def test_empty_ir(self):
-        result = generate_cluster_event_flow({}, "app.Order")
-        assert result == "flowchart TD"
-
-    def test_unknown_cluster(self):
-        clusters = {"app.Order": _cluster("app.Order")}
-        result = generate_cluster_event_flow(_ir(clusters=clusters), "app.Missing")
-        assert result == "flowchart TD"
+    @pytest.mark.parametrize(
+        "ir, cluster_fqn",
+        [
+            pytest.param({}, "app.Order", id="empty_ir"),
+            pytest.param(
+                _ir(clusters={"app.Order": _cluster("app.Order")}),
+                "app.Missing",
+                id="unknown_cluster",
+            ),
+        ],
+    )
+    def test_missing_cluster_renders_bare_header(self, ir, cluster_fqn):
+        assert generate_cluster_event_flow(ir, cluster_fqn) == "flowchart TD"
 
     def test_single_cluster_flow(self):
         clusters = {
@@ -711,14 +700,18 @@ class TestClusterEventFlow:
 
 
 class TestDownstreamConsumers:
-    def test_empty_ir(self):
-        result = generate_downstream_consumers_diagram({})
-        assert result == "flowchart LR"
-
-    def test_no_downstream(self):
-        clusters = {"app.Order": _cluster("app.Order")}
-        result = generate_downstream_consumers_diagram(_ir(clusters=clusters))
-        assert result == "flowchart LR"
+    @pytest.mark.parametrize(
+        "ir",
+        [
+            pytest.param({}, id="empty_ir"),
+            pytest.param(
+                _ir(clusters={"app.Order": _cluster("app.Order")}),
+                id="no_downstream",
+            ),
+        ],
+    )
+    def test_no_consumers_renders_bare_header(self, ir):
+        assert generate_downstream_consumers_diagram(ir) == "flowchart LR"
 
     def test_event_handlers_included(self):
         clusters = {

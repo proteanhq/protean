@@ -48,7 +48,7 @@ def flagged_ir() -> dict:
     ``Order`` carries a single-column ``Index("status")`` and a composite
     ``Index("channel", "region")``; ``Account`` carries no index but a ``unique``
     email. The repositories and the application service filter across the whole
-    field surface, so a single build exercises every covered/flagged branch.
+    field surface, so one build holds every indexed and every flagged case.
     """
     domain = Domain(name="UnindexedFilterPath", root_path=CORPUS_ROOT)
     domain.register(
@@ -66,13 +66,7 @@ class TestUnindexedFilterPath:
     """The rule flags a filtered field no declared index covers, and leaves the
     covered and unresolvable ones alone."""
 
-    def test_the_rule_is_active(self, flagged_ir):
-        """A guard so every absence assertion below is non-vacuous: the corpus
-        genuinely produces findings, so a ``method not in ...`` check is a real
-        exclusion, not an empty-list pass."""
-        assert len(_flagged(flagged_ir)) > 0
-
-    # ── Covered fields — no finding ──────────────────────────────────────
+    # ── Indexed fields: no finding ───────────────────────────────────────
 
     def test_indexed_field_not_flagged(self, flagged_ir):
         """A filter on the leading (only) column of ``Index("status")`` is
@@ -84,15 +78,15 @@ class TestUnindexedFilterPath:
         assert "filter_leading_composite" not in _flagged_methods(flagged_ir)
 
     def test_identity_get_not_flagged(self, flagged_ir):
-        """A ``get`` on the identifier field is covered — every backend indexes
-        the primary key."""
+        """A ``get`` on the identifier field is covered, because every backend
+        indexes the primary key."""
         assert "get_identity" not in _flagged_methods(flagged_ir)
 
     def test_unique_field_not_flagged(self, flagged_ir):
         """A filter on a ``unique`` field is covered by the unique constraint."""
         assert "filter_unique" not in _flagged_methods(flagged_ir)
 
-    # ── Flagged fields — one finding per uncovered call-site ─────────────
+    # ── Flagged fields: one finding per uncovered call-site ──────────────
 
     def test_plain_field_flagged(self, flagged_ir):
         """A repository filter on a non-indexed field is flagged, attributed to
@@ -108,6 +102,10 @@ class TestUnindexedFilterPath:
         assert finding["level"] == "warning"
         assert "Order" in finding["message"]
         assert "name" in finding["message"]
+        # The finding carries a non-empty rule and a field-specific suggestion.
+        assert finding["rule"]["rationale"]
+        assert finding["rule"]["fix"]
+        assert "name" in finding["suggestion"]
 
     def test_nonleading_composite_column_flagged(self, flagged_ir):
         """A filter on a non-leading column of a composite index alone is not
@@ -142,13 +140,13 @@ class TestUnindexedFilterPath:
 
     def test_operator_lookup_on_indexed_base_not_flagged(self, flagged_ir):
         """An operator lookup on an indexed base field (``status__in``) strips
-        to the covered ``status``, so it is not flagged — stripping must not
-        over-emit on a covered column."""
+        to the covered ``status``, so it is not flagged. Removing the suffix
+        must not report a covered column."""
         assert "filter_indexed_operator_lookup" not in _flagged_methods(flagged_ir)
 
     def test_second_aggregate_attributed(self, flagged_ir):
         """A finding on a different aggregate is attributed to its own FQN, not
-        leaked onto the first — the join is per-aggregate."""
+        to the first one: the rule joins each aggregate on its own."""
         account = [
             d for d in _flagged(flagged_ir) if d["element"] == fqn(catalog.Account)
         ]
@@ -158,22 +156,35 @@ class TestUnindexedFilterPath:
 
     def test_application_service_filter_path_found(self, flagged_ir):
         """Whole-package scope: a filter path in an application service that
-        references the aggregate class by name joins to that aggregate."""
+        references the aggregate class by name joins to that aggregate.
+
+        The message names the call site: the FQN of the element where the
+        query is written (the application service), the method, and the source
+        line. The ``element`` key names the aggregate the finding is attributed
+        to. The message holds no absolute path, so the content-checksummed IR
+        is the same on every machine."""
         findings = [
             d for d in _flagged(flagged_ir) if _method_of(d) == "by_plain_field"
         ]
         assert len(findings) == 1, findings
-        assert findings[0]["element"] == fqn(catalog.Order)
-        assert findings[0]["field"] == "name"
+        finding = findings[0]
+        assert finding["element"] == fqn(catalog.Order)
+        assert finding["field"] == "name"
+        match = _CALLSITE_RE.search(finding["message"])
+        assert match, finding["message"]
+        assert match.group("fqn") == fqn(catalog.OrderService)
+        assert match.group("method") == "by_plain_field"
+        assert int(match.group(3)) > 0
+        assert "/" not in finding["message"], "no absolute path in the message"
 
     def test_one_finding_per_call_site(self, flagged_ir):
         """Two ``filter`` call-sites on the same field yield two findings, not
-        one deduped — parity with the sibling per-occurrence persistence rule."""
+        one. The sibling persistence rule also reports each occurrence."""
         findings = [d for d in _flagged(flagged_ir) if _method_of(d) == "filter_twice"]
         assert len(findings) == 2, findings
         assert all(d["field"] == "name" for d in findings)
 
-    # ── Unresolvable / dynamic paths — skipped, no false positive ────────
+    # ── Unresolvable / dynamic paths: skipped, no false positive ─────────
 
     def test_dynamic_filter_not_flagged(self, flagged_ir):
         """``filter(**kwargs)`` names no field, so it self-skips."""
@@ -189,47 +200,11 @@ class TestUnindexedFilterPath:
         an unresolvable receiver is not joined."""
         assert "by_variable" not in _flagged_methods(flagged_ir)
 
-    # ── Cross-cutting shape ──────────────────────────────────────────────
-
-    def test_finding_reports_the_call_site_location(self, flagged_ir):
-        """The message names the enclosing element FQN, the method, and the
-        source line — stable across machines (no absolute path) so it does not
-        pollute the content-checksummed IR — so a reviewer can find the query.
-
-        The app-service finding pins that the *source* element (where the query
-        is written) is named distinctly from the ``element`` FQN (the aggregate
-        the finding is attributed to)."""
-        finding = next(
-            d for d in _flagged(flagged_ir) if _method_of(d) == "by_plain_field"
-        )
-        match = _CALLSITE_RE.search(finding["message"])
-        assert match, finding["message"]
-        assert match.group("fqn") == fqn(catalog.OrderService)
-        assert match.group("method") == "by_plain_field"
-        assert int(match.group(3)) > 0
-        # The query lives on the application service, not on the aggregate the
-        # finding is attributed to.
-        assert finding["element"] == fqn(catalog.Order)
-        assert "/" not in finding["message"], "no absolute path in the message"
-
-    def test_finding_carries_the_enriched_schema(self, flagged_ir):
-        """The diagnostic schema surface: category, a non-empty rule, and a
-        field-specific suggestion."""
-        finding = next(
-            d
-            for d in _flagged(flagged_ir)
-            if _method_of(d) == "filter_plain" and d["element"] == fqn(catalog.Order)
-        )
-        assert finding["category"] == "persistence"
-        assert finding["rule"]["rationale"]
-        assert finding["rule"]["fix"]
-        assert "name" in finding["suggestion"]
-
     def test_no_message_carries_an_absolute_path(self, flagged_ir):
         """Diagnostics are part of the content-checksummed IR, so a message must
-        not embed the absolute source path the substrate carries — that would
-        make a committed baseline machine-specific and break cross-machine
-        staleness."""
+        not embed the absolute source path the substrate carries. That path
+        would make a committed baseline differ per machine and break the
+        staleness check across machines."""
         findings = _flagged(flagged_ir)
         assert len(findings) > 0
         for finding in findings:
@@ -277,8 +252,8 @@ class TestUnindexedFilterPathSuppression:
         return IRBuilder(domain).build()
 
     def test_control_domain_has_the_finding(self):
-        """Without suppression the plain-field filter is flagged — the control
-        the suppression assertions below are measured against."""
+        """Without suppression the plain-field filter is flagged. The
+        suppression tests below compare against this result."""
         ir = self._order_with_plain_filter("SuppressControl")
         assert any(d["field"] == "name" for d in _flagged(ir))
 
@@ -344,8 +319,8 @@ class TestUnindexedFilterPathBoundary:
 
     def test_abstract_aggregate_target_not_flagged(self):
         """An abstract aggregate emits no table, so a filter path joined to one
-        is not flagged — consistent with the sibling persistence rule's abstract
-        skip."""
+        is not flagged. The sibling persistence rule skips abstract aggregates
+        the same way."""
         domain = Domain(name="AbstractTarget", root_path=CORPUS_ROOT)
         domain.register(catalog.Order, abstract=True)
         domain.register(catalog.OrderRepository, part_of=catalog.Order)
@@ -355,8 +330,9 @@ class TestUnindexedFilterPathBoundary:
 
     def test_raw_index_does_not_cover_a_filtered_field(self):
         """A ``RawIndex`` carries opaque DDL and no ``fields`` key, so it never
-        contributes a covered column — a filter on the field it happens to index
-        is still flagged (the rule reads only structured ``Index`` columns)."""
+        contributes a covered column. A filter on the field it happens to index
+        is still flagged, because the rule reads only structured ``Index``
+        columns."""
         domain = Domain(name="RawIndexTarget", root_path=CORPUS_ROOT)
         domain.register(
             catalog.Order,
@@ -388,7 +364,7 @@ def scalar_scope_ir() -> dict:
 
 class TestUnindexedFilterPathScalarScope:
     """A filter naming a non-scalar field (a value object, an association) is
-    outside the rule's scalar scope and left alone — the rule cannot suggest an
+    outside the rule's scalar scope and left alone: the rule cannot suggest an
     ``Index`` on a name that maps to no single column."""
 
     def test_scalar_filter_is_the_positive_control(self, scalar_scope_ir):

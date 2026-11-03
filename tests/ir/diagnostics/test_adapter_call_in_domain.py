@@ -1,5 +1,7 @@
 """Diagnostics: TestAdapterCallInDomain."""
 
+import pytest
+
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
@@ -17,31 +19,12 @@ class TestAdapterCallInDomain:
     """ADAPTER_CALL_IN_DOMAIN (opt-in) flags a domain element whose method body
     calls a statically-resolved ``protean.adapters.*`` symbol."""
 
-    def test_on_path_flags_resolved_adapter_call(self):
-        """A method reaching an adapter through ``import protean`` attribute
-        access is flagged with the enriched diagnostic shape."""
-        domain = _build_adapter_call_domain("AdapterOn", {"check_adapter_calls": True})
-        ir = IRBuilder(domain).build()
-
-        agg_fqn = fqn(adapter_call_domain.AdapterCallOrder)
-        findings = [d for d in _adapter_findings(ir) if d["element"] == agg_fqn]
-        assert len(findings) == 1
-        d = findings[0]
-        assert d["level"] == "warning"
-        assert d["category"] == "bounded_context"
-        assert d["element"] == agg_fqn
-        assert "provision" in d["message"]
-        assert "protean.adapters.broker.inline.InlineBroker" in d["message"]
-        assert d["rule"]["rationale"]
-        assert d["rule"]["fix"]
-        assert d["suggestion"] == d["rule"]["fix"]
-
     def test_this_rule_catches_what_the_import_rule_misses(self):
         """The positive fixture reaches the adapter through ``import protean``
         attribute access. INFRA_IMPORT_IN_DOMAIN's module-level name-prefix check
         does not see it (no top-level ``protean.adapters`` import), so with both
-        rules on only ADAPTER_CALL_IN_DOMAIN fires — proving the call-site rule's
-        incremental value, not just its overlap."""
+        rules on only ADAPTER_CALL_IN_DOMAIN fires. The call-site rule finds
+        something the import rule does not."""
         domain = _build_adapter_call_domain(
             "AdapterUnique",
             {"check_adapter_calls": True, "check_infra_imports": True},
@@ -54,134 +37,73 @@ class TestAdapterCallInDomain:
         assert "INFRA_IMPORT_IN_DOMAIN" not in codes
 
     def test_default_off_emits_nothing(self):
-        """With the flag absent the method returns immediately — no body is
+        """With the flag absent the method returns immediately: no body is
         parsed, no diagnostic emitted, even though the method calls an adapter."""
         domain = _build_adapter_call_domain("AdapterOff")
         ir = IRBuilder(domain).build()
 
         assert _adapter_findings(ir) == []
 
-    def test_unresolved_callee_is_not_flagged(self):
-        """The conservative half: an adapter reached through a fetched
-        local-variable receiver does not statically resolve, so it is skipped
-        rather than guessed at.
+    @pytest.mark.parametrize(
+        "silent",
+        [
+            adapter_call_domain.InjectedReceiverOrder,
+            adapter_call_domain.CleanOrder,
+            adapter_call_domain.SiblingPrefixOrder,
+        ],
+        ids=[
+            "adapter-on-a-fetched-local-receiver",
+            "self-rooted-dao-call-and-non-adapter-call",
+            "callee-in-a-sibling-package-with-the-same-prefix",
+        ],
+    )
+    def test_call_that_does_not_resolve_to_an_adapter_is_not_flagged(self, silent):
+        """The rule flags only a call that statically resolves into the
+        ``protean.adapters`` package. It skips an adapter reached through a
+        fetched local-variable receiver (it cannot resolve, so it is not
+        guessed at), a self-rooted DAO call, a resolved call to a non-adapter
+        such as ``protean.utils.fqn``, and a callee in ``protean.adaptersfoo``,
+        which shares the string prefix but is a different package.
 
-        A firing control (``AdapterCallOrder``) is co-registered so the assertion
-        fails if the rule is inactive: the control must fire while the
-        unresolved element stays silent — an empty finding list would mean the
-        rule never ran, not that it correctly skipped."""
+        ``AdapterCallOrder`` is registered beside each case and must still be
+        flagged, so an empty result cannot pass when the rule did not run."""
         domain = _build_adapter_call_domain(
-            "AdapterUnresolved",
+            "AdapterSilent",
             {"check_adapter_calls": True},
-            elements=(
-                adapter_call_domain.AdapterCallOrder,
-                adapter_call_domain.InjectedReceiverOrder,
-            ),
+            elements=(adapter_call_domain.AdapterCallOrder, silent),
         )
         ir = IRBuilder(domain).build()
 
         flagged = {d["element"] for d in _adapter_findings(ir)}
         assert flagged == {fqn(adapter_call_domain.AdapterCallOrder)}
-        assert fqn(adapter_call_domain.InjectedReceiverOrder) not in flagged
+        assert fqn(silent) not in flagged
 
-    def test_function_local_import_adapter_call_is_flagged(self):
-        """``LocalImportOrder.provision`` imports the adapter inside the method
-        under an alias and calls it. The method's own import resolves the call,
-        so the rule flags it with the adapter's FQN."""
+    @pytest.mark.parametrize(
+        "element",
+        [adapter_call_domain.LocalImportOrder, adapter_call_domain.AdapterCallMoney],
+        ids=["aggregate-with-function-local-import-alias", "value-object"],
+    )
+    def test_adapter_call_is_flagged_with_the_adapter_fqn(self, element):
+        """The rule flags an adapter call bound by an aliased import inside the
+        method, and it flags any registered element type, so a value object's
+        method that calls an adapter is flagged like an aggregate's. The
+        message names the method and the adapter's FQN."""
         domain = _build_adapter_call_domain(
-            "AdapterLocalImport",
+            "AdapterFlagged",
             {"check_adapter_calls": True},
-            elements=(adapter_call_domain.LocalImportOrder,),
+            elements=(element,),
         )
         ir = IRBuilder(domain).build()
 
-        agg_fqn = fqn(adapter_call_domain.LocalImportOrder)
-        findings = [d for d in _adapter_findings(ir) if d["element"] == agg_fqn]
-        assert len(findings) == 1
-        assert "provision" in findings[0]["message"]
-        assert "protean.adapters.broker.inline.InlineBroker" in findings[0]["message"]
-
-    def test_non_registered_class_is_out_of_scope(self):
-        """A class with an identical adapter call that is never registered is
-        never visited — the rule is domain-scoped.
-
-        The firing control proves the rule is active; ``UnregisteredHelper``
-        (same module, same adapter call, never registered) must not appear."""
-        domain = _build_adapter_call_domain(
-            "AdapterScope",
-            {"check_adapter_calls": True},
-            elements=(adapter_call_domain.AdapterCallOrder,),
-        )
-        ir = IRBuilder(domain).build()
-
-        flagged = {d["element"] for d in _adapter_findings(ir)}
-        assert flagged == {fqn(adapter_call_domain.AdapterCallOrder)}
-        helper_fqn = fqn(adapter_call_domain.UnregisteredHelper)
-        assert helper_fqn not in flagged
-
-    def test_clean_self_rooted_call_is_not_flagged(self):
-        """A self-rooted repository/DAO call (``self._dao.filter(...)``) resolves
-        to no FQN, and a resolved non-adapter call (``protean.utils.fqn``) names
-        no adapter, so neither is over-flagged.
-
-        The firing control (``AdapterCallOrder``) is co-registered so the test
-        exercises a live rule: it must fire while ``CleanOrder`` stays silent."""
-        domain = _build_adapter_call_domain(
-            "AdapterClean",
-            {"check_adapter_calls": True},
-            elements=(
-                adapter_call_domain.AdapterCallOrder,
-                adapter_call_domain.CleanOrder,
-            ),
-        )
-        ir = IRBuilder(domain).build()
-
-        flagged = {d["element"] for d in _adapter_findings(ir)}
-        assert flagged == {fqn(adapter_call_domain.AdapterCallOrder)}
-        assert fqn(adapter_call_domain.CleanOrder) not in flagged
-
-    def test_sibling_prefix_callee_is_not_flagged(self):
-        """The dot-boundary guard: a callee resolving to ``protean.adaptersfoo``
-        shares the ``protean.adapters`` string prefix but is a different package.
-        ``startswith("protean.adapters.")`` (with the dot) must reject it.
-
-        A firing control is co-registered: dropping the ``+ "."`` from the guard
-        would wrongly flag the sibling, so the test fails if the boundary check
-        regresses."""
-        domain = _build_adapter_call_domain(
-            "AdapterSibling",
-            {"check_adapter_calls": True},
-            elements=(
-                adapter_call_domain.AdapterCallOrder,
-                adapter_call_domain.SiblingPrefixOrder,
-            ),
-        )
-        ir = IRBuilder(domain).build()
-
-        flagged = {d["element"] for d in _adapter_findings(ir)}
-        assert flagged == {fqn(adapter_call_domain.AdapterCallOrder)}
-        assert fqn(adapter_call_domain.SiblingPrefixOrder) not in flagged
-
-    def test_value_object_element_is_flagged(self):
-        """The rule is element-type-agnostic: it fires on any registered element
-        bucket, not only aggregates. A value object whose own method calls an
-        adapter is flagged just like an aggregate."""
-        domain = _build_adapter_call_domain(
-            "AdapterValueObject",
-            {"check_adapter_calls": True},
-            elements=(adapter_call_domain.AdapterCallMoney,),
-        )
-        ir = IRBuilder(domain).build()
-
-        vo_fqn = fqn(adapter_call_domain.AdapterCallMoney)
-        findings = [d for d in _adapter_findings(ir) if d["element"] == vo_fqn]
+        element_fqn = fqn(element)
+        findings = [d for d in _adapter_findings(ir) if d["element"] == element_fqn]
         assert len(findings) == 1
         assert "provision" in findings[0]["message"]
         assert "protean.adapters.broker.inline.InlineBroker" in findings[0]["message"]
 
     def test_multi_site_emits_one_per_call_in_source_order(self):
         """A method with two adapter calls emits two diagnostics, in source
-        order — the second (Redis, later line) after the first (inline)."""
+        order: the second (Redis, later line) after the first (inline)."""
         domain = _build_adapter_call_domain(
             "AdapterMulti",
             {"check_adapter_calls": True},
@@ -257,7 +179,7 @@ class TestAdapterCallInDomain:
 
     def test_duplicate_fqn_is_scanned_once(self):
         """Two classes sharing a fully-qualified name (same module and name,
-        different element buckets) are scanned once — the ``seen`` guard dedupes
+        different element buckets) are scanned once. The ``seen`` guard dedupes
         by FQN, so the source's adapter call is flagged a single time, not
         twice."""
         domain = Domain(name="AdapterDup", root_path=".")
@@ -285,7 +207,7 @@ class TestAdapterCallInDomain:
 
     def test_unresolvable_module_fails_open(self):
         """An element whose ``__module__`` resolves to no source file yields
-        empty facts — the rule emits nothing and the build is not aborted."""
+        empty facts. The rule emits nothing and the build is not aborted."""
         domain = Domain(name="AdapterFailOpen", root_path=".")
         domain.config["lint"] = {"check_adapter_calls": True}
         broken = type(
@@ -316,10 +238,10 @@ class TestAdapterCallInDomain:
         ]
 
     def test_emitted_diagnostic_matches_the_frozen_expectation(self):
-        """The full emitted payload for the positive fixture — code, element,
-        level, message and rule text — pinned verbatim.
+        """The full emitted payload for the positive fixture (code, element,
+        level, message and rule text), pinned verbatim.
 
-        A characterization test: any later change to how call-sites are located
+        Any later change to how call-sites are located
         or messaged shows up as a diff here instead of passing silently."""
         domain = _build_adapter_call_domain(
             "AdapterFrozen", {"check_adapter_calls": True}

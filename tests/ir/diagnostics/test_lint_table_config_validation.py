@@ -20,29 +20,18 @@ BAD_COMMAND_VERBS = [
 
 
 class TestLintTableConfigValidation:
-    """``[lint]`` itself must be a table — non-CLI entry points (``protean
+    """``[lint]`` itself must be a table. Non-CLI entry points (``protean
     generate``, materialize hooks, staleness detection) build the IR directly
     without going through ``protean check``'s validation, so the builder must
     reject a malformed ``[lint]`` before any ``[lint]``-scoped rule reads it."""
 
-    def test_non_table_lint_raises_configuration_error(self):
+    @pytest.mark.parametrize("lint", [5, "not-a-table"], ids=["integer", "string"])
+    def test_non_table_lint_raises_configuration_error(self, lint):
+        """The guard fires before *any* rule reads ``[lint]``. The
+        ``aggregate_size_limit`` rule reads it before the suppression stage, so
+        a guard placed only before suppressions would let it through."""
         domain = Domain(name="BadLintTable", root_path=".")
-        domain.config["lint"] = 5
-
-        @domain.aggregate
-        class Order:
-            name = String(max_length=50)
-
-        domain.init(traverse=False)
-        with pytest.raises(ConfigurationError, match=r"\[lint\] must be a table"):
-            IRBuilder(domain).build()
-
-    def test_non_table_lint_raises_before_aggregate_size_limit_read(self):
-        """``aggregate_size_limit`` runs before the suppression
-        stage in ``_collect_diagnostics`` — the guard must fire before *any*
-        rule reads ``[lint]``, not just before ``_apply_suppressions``."""
-        domain = Domain(name="BadLintTableEarly", root_path=".")
-        domain.config["lint"] = "not-a-table"
+        domain.config["lint"] = lint
 
         @domain.aggregate
         class Order:
@@ -212,17 +201,16 @@ class TestDomainCheckRaisesOnBadLintOption:
         ):
             domain.check(traverse=False)
 
-    def test_other_ir_build_failure_is_reported_as_an_error(self, monkeypatch):
+    def test_other_ir_build_failure_is_reported_as_an_error(self):
+        """An aggregate whose ``__doc__`` is not a string makes the IR build
+        raise. ``check`` reports the failure as an error instead of raising
+        it."""
         domain = Domain(name="CheckIRBuildFails", root_path=".")
 
         @domain.aggregate
         class Order:
+            __doc__ = 5
             name = String(max_length=50)
-
-        def _fail() -> dict:
-            raise RuntimeError("IR build failed")
-
-        monkeypatch.setattr(domain, "to_ir", _fail)
 
         result = domain.check(traverse=False)
 
@@ -230,9 +218,12 @@ class TestDomainCheckRaisesOnBadLintOption:
         assert result["diagnostics"] == []
         assert result["errors"] == [
             {
-                "code": "RuntimeError",
+                "code": "AttributeError",
                 "element": "to_ir",
                 "level": "error",
-                "message": "Could not build the IR: RuntimeError: IR build failed",
+                "message": (
+                    "Could not build the IR: AttributeError: 'int' object has "
+                    "no attribute 'strip'"
+                ),
             }
         ]

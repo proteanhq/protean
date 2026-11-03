@@ -16,9 +16,6 @@ def _example_files():
 
 @pytest.mark.no_test_domain
 class TestExamplesExist:
-    def test_examples_directory_exists(self):
-        assert EXAMPLES_DIR.exists()
-
     def test_at_least_two_examples(self):
         examples = list(EXAMPLES_DIR.glob("*.json"))
         assert len(examples) >= 2
@@ -27,11 +24,6 @@ class TestExamplesExist:
 @pytest.mark.no_test_domain
 class TestExampleStructure:
     """Validate examples have the expected top-level keys and metadata."""
-
-    @pytest.mark.parametrize("example_path", list(_example_files()))
-    def test_example_is_valid_json(self, example_path: Path):
-        data = json.loads(example_path.read_text(encoding="utf-8"))
-        assert isinstance(data, dict)
 
     @pytest.mark.parametrize("example_path", list(_example_files()))
     def test_example_has_required_keys(self, example_path: Path):

@@ -68,24 +68,22 @@ class TestBuilder:
         assert prop["default"] == "1.23"
         jsonschema.validate(prop["default"], prop)
 
-    def test_bare_decimal_carries_neither_key(self):
-        ir = _build(x=Decimal())
+    @pytest.mark.parametrize(
+        ("spec", "expected"),
+        [
+            (Decimal(), {"kind": "standard", "type": "Decimal"}),
+            (
+                Decimal(precision=10),
+                {"kind": "standard", "type": "Decimal", "precision": 10},
+            ),
+            (Custom(decimal.Decimal), {"kind": "custom", "type": "Decimal"}),
+        ],
+        ids=["bare-decimal", "precision-alone", "custom-decimal"],
+    )
+    def test_decimal_records_only_the_keys_it_declares(self, spec, expected):
+        ir = _build(x=spec)
 
-        assert _field(ir, "x") == {"kind": "standard", "type": "Decimal"}
-
-    def test_precision_alone_is_recorded_alone(self):
-        ir = _build(x=Decimal(precision=10))
-
-        assert _field(ir, "x") == {
-            "kind": "standard",
-            "type": "Decimal",
-            "precision": 10,
-        }
-
-    def test_custom_decimal_records_decimal(self):
-        ir = _build(x=Custom(decimal.Decimal))
-
-        assert _field(ir, "x") == {"kind": "custom", "type": "Decimal"}
+        assert _field(ir, "x") == expected
 
     def test_other_numeric_and_string_fields_carry_no_precision(self):
         ir = _build(f=Float(max_value=10), s=String(max_length=20))
@@ -142,17 +140,27 @@ class TestDecimalBounds:
         assert type(field["max_value"]) is str
         _validate(ir)
 
-    def test_trailing_zero_is_kept(self):
-        ir = _build(x=Decimal(min_value=decimal.Decimal("0.010")))
+    @pytest.mark.parametrize(
+        ("key", "written"),
+        [("min_value", "0.010"), ("max_value", "1E+2")],
+        ids=["trailing-zero", "exponent-form"],
+    )
+    def test_decimal_bound_keeps_its_written_form(self, key, written):
+        ir = _build(x=Decimal(**{key: decimal.Decimal(written)}))
 
-        assert _field(ir, "x")["min_value"] == "0.010"
+        assert _field(ir, "x")[key] == written
         _validate(ir)
 
-    def test_decimal_bound_on_a_float_field_is_a_float(self):
-        ir = _build(x=Float(min_value=decimal.Decimal("0.5")))
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [(decimal.Decimal("0.5"), 0.5), (decimal.Decimal(2), 2.0)],
+        ids=["fractional", "integral"],
+    )
+    def test_decimal_bound_on_a_float_field_is_a_float(self, value, expected):
+        ir = _build(x=Float(min_value=value))
 
         bound = _field(ir, "x")["min_value"]
-        assert bound == 0.5
+        assert bound == expected
         assert type(bound) is float
         _validate(ir)
 
@@ -199,33 +207,17 @@ class TestDecimalBounds:
         assert type(bound) is type(expected)
         _validate(ir)
 
-    def test_custom_decimal_field_writes_its_bound_as_a_string(self):
-        ir = _build(x=Custom(decimal.Decimal, min_value=decimal.Decimal("1.50")))
+    @pytest.mark.parametrize(
+        ("key", "written"),
+        [("min_value", "1.50"), ("max_value", "9.90")],
+    )
+    def test_custom_decimal_field_writes_its_bound_as_a_string(self, key, written):
+        ir = _build(x=Custom(decimal.Decimal, **{key: decimal.Decimal(written)}))
 
         field = _field(ir, "x")
         assert field["kind"] == "custom"
         assert field["type"] == "Decimal"
-        assert field["min_value"] == "1.50"
-        _validate(ir)
-
-    def test_exponent_form_is_kept(self):
-        ir = _build(x=Decimal(max_value=decimal.Decimal("1E+2")))
-
-        assert _field(ir, "x")["max_value"] == "1E+2"
-        _validate(ir)
-
-    def test_integral_decimal_bound_on_a_float_field_is_a_float(self):
-        ir = _build(x=Float(min_value=decimal.Decimal(2)))
-
-        bound = _field(ir, "x")["min_value"]
-        assert bound == 2.0
-        assert type(bound) is float
-        _validate(ir)
-
-    def test_custom_decimal_field_writes_its_max_value_as_a_string(self):
-        ir = _build(x=Custom(decimal.Decimal, max_value=decimal.Decimal("9.90")))
-
-        assert _field(ir, "x")["max_value"] == "9.90"
+        assert field[key] == written
         _validate(ir)
 
     def test_string_bound_on_an_integer_field_is_written_as_an_int(self):
@@ -322,28 +314,6 @@ class TestSchemaValidation:
 
 
 class TestJsonSchemaGenerator:
-    def test_decimal_with_precision_and_scale(self):
-        ir = _build(x=Decimal(precision=19, scale=4, required=True))
-
-        schema = generate_element_schema(_aggregate(ir))
-
-        assert schema["properties"]["x"] == {
-            "pattern": DECIMAL_PATTERN,
-            "type": "string",
-            "x-precision": 19,
-            "x-scale": 4,
-        }
-
-    def test_bare_decimal_has_no_precision_keys(self):
-        ir = _build(x=Decimal(required=True))
-
-        schema = generate_element_schema(_aggregate(ir))
-
-        assert schema["properties"]["x"] == {
-            "pattern": DECIMAL_PATTERN,
-            "type": "string",
-        }
-
     def test_numeric_bounds_are_left_off_a_decimal(self):
         ir = _build(x=Decimal(min_value=0, max_value=100, required=True))
         assert _field(ir, "x")["max_value"] == 100
@@ -356,12 +326,14 @@ class TestJsonSchemaGenerator:
     @pytest.mark.parametrize(
         ("kwargs", "expected"),
         [
+            ({"precision": 19, "scale": 4}, {"x-precision": 19, "x-scale": 4}),
+            ({}, {}),
             ({"precision": 10}, {"x-precision": 10}),
             ({"scale": 2}, {"x-scale": 2}),
         ],
-        ids=["precision-only", "scale-only"],
+        ids=["precision-and-scale", "bare", "precision-only", "scale-only"],
     )
-    def test_each_shape_key_is_written_alone(self, kwargs, expected):
+    def test_each_shape_key_is_written_when_declared(self, kwargs, expected):
         ir = _build(x=Decimal(required=True, **kwargs))
 
         prop = generate_element_schema(_aggregate(ir))["properties"]["x"]
@@ -444,16 +416,11 @@ class TestAvroGenerator:
 
     @pytest.mark.parametrize(
         "kwargs",
-        [{"precision": 2, "scale": 4}, {"precision": 0}],
-        ids=["scale-above-precision", "zero-precision"],
+        [{"precision": 2, "scale": 4}, {"precision": 0}, {"scale": 2}],
+        ids=["scale-above-precision", "zero-precision", "no-precision"],
     )
     def test_a_shape_avro_cannot_hold_is_a_string(self, kwargs):
         ir = _build(x=Decimal(required=True, **kwargs))
-
-        assert self._avro_field(ir, "x") == "string"
-
-    def test_decimal_without_precision_is_a_string(self):
-        ir = _build(x=Decimal(scale=2, required=True))
 
         assert self._avro_field(ir, "x") == "string"
 
@@ -667,25 +634,23 @@ class TestDiff:
         assert report.breaking_changes == []
         assert report.safe_changes == []
 
-    def test_rename_that_narrows_precision_is_breaking(self):
+    @pytest.mark.parametrize(
+        ("renamed", "delta"),
+        [
+            ({"precision": 10, "scale": 2}, "precision from 19 to 10"),
+            ({"precision": 19, "scale": 4}, "scale from 2 to 4"),
+        ],
+        ids=["narrows-precision", "changes-scale"],
+    )
+    def test_rename_with_a_breaking_shape_change_is_breaking(self, renamed, delta):
         report = _report(
             _build(x=Decimal(precision=19, scale=2)),
-            _build(amount=Decimal(precision=10, scale=2, renamed_from="x")),
+            _build(amount=Decimal(renamed_from="x", **renamed)),
         )
 
         assert _kinds(report.breaking_changes) == ["field_type_changed"]
         assert "field_renamed" not in _kinds(report.safe_changes)
-        assert "(precision from 19 to 10)" in report.breaking_changes[0].message
-
-    def test_rename_that_changes_scale_is_breaking(self):
-        report = _report(
-            _build(x=Decimal(precision=19, scale=2)),
-            _build(amount=Decimal(precision=19, scale=4, renamed_from="x")),
-        )
-
-        assert _kinds(report.breaking_changes) == ["field_type_changed"]
-        assert "field_renamed" not in _kinds(report.safe_changes)
-        assert "(scale from 2 to 4)" in report.breaking_changes[0].message
+        assert f"({delta})" in report.breaking_changes[0].message
 
     def test_rename_that_widens_precision_reports_both(self):
         report = _report(

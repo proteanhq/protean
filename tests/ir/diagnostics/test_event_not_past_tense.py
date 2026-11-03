@@ -70,10 +70,10 @@ class TestEventNotPastTense:
 
         An auto-generated event ending in ``-ing`` is framework-synthesized,
         not user-named, so it is skipped; the user-defined gerund event
-        alongside it is flagged. This is the only branch of the guard that can
-        be exercised behaviourally — fact events are always named
+        alongside it is flagged. Only the ``auto_generated`` half of the guard
+        shows in behaviour: fact events are always named
         ``<Aggregate>FactEvent`` and never end in ``-ing``, so the
-        ``is_fact_event`` half is untestable defensive code. Reverting the
+        ``is_fact_event`` half is defensive code no domain can trigger. Reverting the
         guard turns the ``OrderSyncing`` assertion red.
         """
         from protean.core.event import BaseEvent

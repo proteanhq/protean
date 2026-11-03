@@ -28,31 +28,45 @@ from protean.utils.mixins import handle, read
 class TestNormalizeDeprecated:
     """Tests for the ``_normalize_deprecated`` helper."""
 
-    def test_none_returns_none(self) -> None:
-        assert _normalize_deprecated(None) is None
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            pytest.param(None, None, id="none"),
+            pytest.param(False, None, id="false"),
+            pytest.param("0.15", {"since": "0.15"}, id="string_shorthand"),
+            pytest.param({"since": "0.15"}, {"since": "0.15"}, id="dict_with_since"),
+            pytest.param(
+                {"since": "0.15", "removal": "0.18"},
+                {"since": "0.15", "removal": "0.18"},
+                id="dict_with_since_and_removal",
+            ),
+            pytest.param(
+                {"since": "0.15", "removal": None},
+                {"since": "0.15"},
+                id="removal_none_means_no_removal_version",
+            ),
+            pytest.param(
+                {"since": "0.15", "removal": "0.18", "note": "Use NewEvent"},
+                {"since": "0.15", "removal": "0.18"},
+                id="extra_keys_dropped",
+            ),
+        ],
+    )
+    def test_returns_normalized_block(
+        self, value: object, expected: dict[str, str] | None
+    ) -> None:
+        assert _normalize_deprecated(value) == expected
 
-    def test_false_returns_none(self) -> None:
-        assert _normalize_deprecated(False) is None
-
-    def test_string_shorthand(self) -> None:
-        result = _normalize_deprecated("0.15")
-        assert result == {"since": "0.15"}
-
-    def test_dict_with_since(self) -> None:
-        result = _normalize_deprecated({"since": "0.15"})
-        assert result == {"since": "0.15"}
-
-    def test_dict_with_since_and_removal(self) -> None:
-        result = _normalize_deprecated({"since": "0.15", "removal": "0.18"})
-        assert result == {"since": "0.15", "removal": "0.18"}
-
-    def test_dict_missing_since_raises(self) -> None:
-        with pytest.raises(ConfigurationError, match="'since' key"):
-            _normalize_deprecated({"removal": "0.18"})
-
-    def test_invalid_type_raises(self) -> None:
-        with pytest.raises(ConfigurationError, match="Invalid `deprecated`"):
-            _normalize_deprecated(42)
+    @pytest.mark.parametrize(
+        ("value", "match"),
+        [
+            pytest.param({"removal": "0.18"}, "'since' key", id="dict_missing_since"),
+            pytest.param(42, "Invalid `deprecated`", id="invalid_type"),
+        ],
+    )
+    def test_invalid_value_raises(self, value: object, match: str) -> None:
+        with pytest.raises(ConfigurationError, match=match):
+            _normalize_deprecated(value)
 
     @pytest.mark.parametrize(
         ("value", "key"),
@@ -74,10 +88,6 @@ class TestNormalizeDeprecated:
         assert f'"{key}": "0.20"' in message
         assert "0.20 arrives as 0.2" in message
 
-    def test_removal_none_means_no_removal_version(self) -> None:
-        result = _normalize_deprecated({"since": "0.15", "removal": None})
-        assert result == {"since": "0.15"}
-
     @pytest.mark.parametrize("version", [True, ["0", "20"]])
     def test_value_that_is_not_a_number_gets_no_number_hint(
         self, version: object
@@ -88,13 +98,6 @@ class TestNormalizeDeprecated:
         message = str(exc_info.value)
         assert f"is {version!r}, which is not a string" in message
         assert "trailing zeros" not in message
-
-    def test_extra_keys_ignored(self) -> None:
-        """Extra keys beyond since/removal are silently dropped."""
-        result = _normalize_deprecated(
-            {"since": "0.15", "removal": "0.18", "note": "Use NewEvent"}
-        )
-        assert result == {"since": "0.15", "removal": "0.18"}
 
 
 # =====================================================================
@@ -110,26 +113,26 @@ class TestElementDeprecatedOption:
     def setup_domain(self) -> None:
         self.domain = Domain(name="TestDeprecated")
 
-    def test_aggregate_deprecated_shorthand(self) -> None:
-        @self.domain.aggregate(deprecated="0.15")
+    @pytest.mark.parametrize(
+        ("options", "expected"),
+        [
+            pytest.param({"deprecated": "0.15"}, {"since": "0.15"}, id="shorthand"),
+            pytest.param(
+                {"deprecated": {"since": "0.15", "removal": "0.18"}},
+                {"since": "0.15", "removal": "0.18"},
+                id="full",
+            ),
+            pytest.param({}, None, id="not_deprecated"),
+        ],
+    )
+    def test_aggregate_deprecated(
+        self, options: dict[str, object], expected: dict[str, str] | None
+    ) -> None:
+        @self.domain.aggregate(**options)
         class Order:
             pass
 
-        assert Order.meta_.deprecated == {"since": "0.15"}
-
-    def test_aggregate_deprecated_full(self) -> None:
-        @self.domain.aggregate(deprecated={"since": "0.15", "removal": "0.18"})
-        class Order:
-            pass
-
-        assert Order.meta_.deprecated == {"since": "0.15", "removal": "0.18"}
-
-    def test_aggregate_not_deprecated(self) -> None:
-        @self.domain.aggregate
-        class Order:
-            pass
-
-        assert Order.meta_.deprecated is None
+        assert Order.meta_.deprecated == expected
 
     def test_event_deprecated(self) -> None:
         @self.domain.aggregate
@@ -206,17 +209,22 @@ class TestElementDeprecatedOption:
 class TestFieldDeprecated:
     """Test the ``deprecated`` parameter on fields."""
 
-    def test_string_field_deprecated_shorthand(self) -> None:
-        field = String(deprecated="0.15")
-        assert field.deprecated == {"since": "0.15"}
-
-    def test_string_field_deprecated_full(self) -> None:
-        field = String(deprecated={"since": "0.15", "removal": "0.18"})
-        assert field.deprecated == {"since": "0.15", "removal": "0.18"}
-
-    def test_string_field_not_deprecated(self) -> None:
-        field = String()
-        assert field.deprecated is None
+    @pytest.mark.parametrize(
+        ("options", "expected"),
+        [
+            pytest.param({"deprecated": "0.15"}, {"since": "0.15"}, id="shorthand"),
+            pytest.param(
+                {"deprecated": {"since": "0.15", "removal": "0.18"}},
+                {"since": "0.15", "removal": "0.18"},
+                id="full",
+            ),
+            pytest.param({}, None, id="not_deprecated"),
+        ],
+    )
+    def test_string_field_deprecated(
+        self, options: dict[str, object], expected: dict[str, str] | None
+    ) -> None:
+        assert String(**options).deprecated == expected
 
     def test_invalid_deprecated_raises(self) -> None:
         with pytest.raises(ConfigurationError, match="'since' key"):
@@ -238,17 +246,23 @@ class TestFieldDeprecated:
 class TestFieldSpecDeprecated:
     """Test the ``deprecated`` parameter on FieldSpec."""
 
-    def test_fieldspec_deprecated_shorthand(self) -> None:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            pytest.param("0.15", {"since": "0.15"}, id="shorthand"),
+            pytest.param(
+                {"since": "0.15", "removal": "0.18"},
+                {"since": "0.15", "removal": "0.18"},
+                id="full",
+            ),
+        ],
+    )
+    def test_fieldspec_deprecated(
+        self, value: str | dict[str, str], expected: dict[str, str]
+    ) -> None:
         from protean.fields.spec import FieldSpec
 
-        fs = FieldSpec(str, deprecated="0.15")
-        assert fs.deprecated == {"since": "0.15"}
-
-    def test_fieldspec_deprecated_full(self) -> None:
-        from protean.fields.spec import FieldSpec
-
-        fs = FieldSpec(str, deprecated={"since": "0.15", "removal": "0.18"})
-        assert fs.deprecated == {"since": "0.15", "removal": "0.18"}
+        assert FieldSpec(str, deprecated=value).deprecated == expected
 
     def test_fieldspec_deprecated_in_json_schema_extra(self) -> None:
         from protean.fields.spec import FieldSpec
@@ -350,30 +364,25 @@ class TestNormalizerParity:
             class OrderPlaced:
                 pass
 
-    def test_deprecated_true_raises_actionable_message_for_field(self) -> None:
+    def test_deprecated_true_raises_actionable_message(self) -> None:
         with pytest.raises(ConfigurationError, match="Invalid `deprecated`"):
             String(deprecated=True)
 
-    def test_deprecated_true_raises_actionable_message_for_element(self) -> None:
         with pytest.raises(ConfigurationError, match="Invalid `deprecated`"):
 
             @self.domain.aggregate(deprecated=True)
             class Order:
                 pass
 
-    def test_deprecated_false_returns_none_for_field(self) -> None:
-        assert String(deprecated=False).deprecated is None
-
-    def test_deprecated_false_returns_none_for_fieldspec(self) -> None:
+    def test_deprecated_false_returns_none_everywhere(self) -> None:
         from protean.fields.spec import FieldSpec
 
-        assert FieldSpec(str, deprecated=False).deprecated is None
-
-    def test_deprecated_false_returns_none_for_element(self) -> None:
         @self.domain.aggregate(deprecated=False)
         class Order:
             pass
 
+        assert String(deprecated=False).deprecated is None
+        assert FieldSpec(str, deprecated=False).deprecated is None
         assert Order.meta_.deprecated is None
 
     def test_fieldspec_missing_since_raises_actionable_message(self) -> None:
@@ -544,7 +553,9 @@ class TestIRBuilderSupersededBy:
 
         return ir["clusters"][get_fqn(cls)]
 
-    def test_superseded_by_class_emitted_as_fqn(self) -> None:
+    def test_superseded_by_class_emitted_as_fqn_and_named_in_diagnostic(
+        self,
+    ) -> None:
         from protean.utils import fqn as get_fqn
 
         @self.domain.aggregate
@@ -572,6 +583,15 @@ class TestIRBuilderSupersededBy:
         )
         assert placed["superseded_by"] == get_fqn(OrderConfirmed)
 
+        dep_diags = [
+            d
+            for d in ir["diagnostics"]
+            if d["code"] == "DEPRECATED_ELEMENT" and "OrderPlaced" in d["message"]
+        ]
+        assert len(dep_diags) == 1
+        assert "superseded by" in dep_diags[0]["message"]
+        assert "OrderConfirmed" in dep_diags[0]["message"]
+
     def test_superseded_by_string_emitted_verbatim(self) -> None:
         @self.domain.aggregate
         class Order:
@@ -592,7 +612,7 @@ class TestIRBuilderSupersededBy:
         placed = next(iter(cluster["events"].values()))
         assert placed["superseded_by"] == "OrderConfirmed"
 
-    def test_no_superseded_by_key_when_unset(self) -> None:
+    def test_no_successor_in_ir_or_diagnostic_when_unset(self) -> None:
         @self.domain.aggregate
         class Order:
             pass
@@ -607,47 +627,6 @@ class TestIRBuilderSupersededBy:
         cluster = self._find_cluster(ir, Order)
         placed = next(iter(cluster["events"].values()))
         assert "superseded_by" not in placed
-
-    def test_diagnostic_names_the_successor(self) -> None:
-        @self.domain.aggregate
-        class Order:
-            pass
-
-        @self.domain.event(part_of=Order)
-        class OrderConfirmed:
-            pass
-
-        @self.domain.event(
-            part_of=Order,
-            deprecated={"since": "0.15", "removal": "0.18"},
-            superseded_by=OrderConfirmed,
-        )
-        class OrderPlaced:
-            pass
-
-        self.domain.init(traverse=False)
-        ir = IRBuilder(self.domain).build()
-
-        dep_diags = [
-            d
-            for d in ir["diagnostics"]
-            if d["code"] == "DEPRECATED_ELEMENT" and "OrderPlaced" in d["message"]
-        ]
-        assert len(dep_diags) == 1
-        assert "superseded by" in dep_diags[0]["message"]
-        assert "OrderConfirmed" in dep_diags[0]["message"]
-
-    def test_diagnostic_omits_successor_when_unset(self) -> None:
-        @self.domain.aggregate
-        class Order:
-            pass
-
-        @self.domain.event(part_of=Order, deprecated="0.15")
-        class OrderPlaced:
-            pass
-
-        self.domain.init(traverse=False)
-        ir = IRBuilder(self.domain).build()
 
         dep_diags = [d for d in ir["diagnostics"] if d["code"] == "DEPRECATED_ELEMENT"]
         assert len(dep_diags) == 1
@@ -748,38 +727,48 @@ class TestIRDiagnosticsDeprecated:
 class TestClassifyRemoval:
     """Tests for ``_classify_removal`` in the diff engine."""
 
-    def test_no_deprecation_is_unexpected(self) -> None:
-        assert _classify_removal(None) == "unexpected_removal"
-
-    def test_deprecated_no_removal_version_is_premature(self) -> None:
-        assert _classify_removal({"since": "0.15"}) == "premature_removal"
-
-    def test_deprecated_with_removal_no_current_is_premature(self) -> None:
-        assert (
-            _classify_removal({"since": "0.15", "removal": "0.18"})
-            == "premature_removal"
+    @pytest.mark.parametrize(
+        ("deprecated", "current_version", "expected"),
+        [
+            pytest.param(None, None, "unexpected_removal", id="no_deprecation"),
+            pytest.param(
+                {"since": "0.15"}, None, "premature_removal", id="no_removal_version"
+            ),
+            pytest.param(
+                {"since": "0.15", "removal": "0.18"},
+                None,
+                "premature_removal",
+                id="removal_without_current_version",
+            ),
+            pytest.param(
+                {"since": "0.15", "removal": "0.18"},
+                "0.16",
+                "premature_removal",
+                id="current_before_removal",
+            ),
+            pytest.param(
+                {"since": "0.15", "removal": "0.18"},
+                "0.18",
+                "expected_removal",
+                id="current_at_removal",
+            ),
+            pytest.param(
+                {"since": "0.15", "removal": "0.18"},
+                "0.19",
+                "expected_removal",
+                id="current_after_removal",
+            ),
+        ],
+    )
+    def test_classifies_removal(
+        self,
+        deprecated: dict[str, str] | None,
+        current_version: str | None,
+        expected: str,
+    ) -> None:
+        assert _classify_removal(deprecated, current_version=current_version) == (
+            expected
         )
-
-    def test_current_before_removal_is_premature(self) -> None:
-        result = _classify_removal(
-            {"since": "0.15", "removal": "0.18"},
-            current_version="0.16",
-        )
-        assert result == "premature_removal"
-
-    def test_current_at_removal_is_expected(self) -> None:
-        result = _classify_removal(
-            {"since": "0.15", "removal": "0.18"},
-            current_version="0.18",
-        )
-        assert result == "expected_removal"
-
-    def test_current_after_removal_is_expected(self) -> None:
-        result = _classify_removal(
-            {"since": "0.15", "removal": "0.18"},
-            current_version="0.19",
-        )
-        assert result == "expected_removal"
 
     def test_versions_that_cannot_be_ordered_are_premature(self) -> None:
         # ``"1.x"`` parses to ``(1, "x")``; comparing ``0`` with ``"x"`` raises
@@ -1070,6 +1059,7 @@ class TestDiffIRDeprecation:
         expected = result["contracts"].get("expected_removals", [])
         assert len(expected) == 1
         assert expected[0]["classification"] == "expected_removal"
+        assert result["summary"]["has_breaking_changes"] is False
 
     def test_remove_deprecated_field_before_removal_is_breaking(self) -> None:
         left = self._make_ir(
@@ -1149,22 +1139,6 @@ class TestDiffIRDeprecation:
         assert len(breaking) == 1
         assert breaking[0]["type"] == "contract_type_changed"
 
-    def test_summary_no_breaking_when_expected_removal(self) -> None:
-        left = self._make_ir(
-            [
-                {
-                    "fqn": "app.OrderPlaced",
-                    "type": "App.OrderPlaced.v1",
-                    "fields": {},
-                    "deprecated": {"since": "0.15", "removal": "0.18"},
-                }
-            ]
-        )
-        right = self._make_ir([])
-
-        result = diff_ir(left, right, current_version="0.18")
-        assert result["summary"]["has_breaking_changes"] is False
-
 
 # =====================================================================
 # _parse_version_tuple
@@ -1174,18 +1148,17 @@ class TestDiffIRDeprecation:
 class TestParseVersionTuple:
     """Tests for ``_parse_version_tuple`` in the diff engine."""
 
-    def test_two_segment(self) -> None:
-        assert _parse_version_tuple("0.15") == (0, 15)
-
-    def test_three_segment(self) -> None:
-        assert _parse_version_tuple("1.2.3") == (1, 2, 3)
-
-    def test_non_numeric_segment(self) -> None:
-        result = _parse_version_tuple("1.2.3rc1")
-        assert result == (1, 2, "3rc1")
-
-    def test_leading_trailing_whitespace(self) -> None:
-        assert _parse_version_tuple("  0.15  ") == (0, 15)
+    @pytest.mark.parametrize(
+        ("version", "expected"),
+        [
+            pytest.param("0.15", (0, 15), id="two_segment"),
+            pytest.param("1.2.3", (1, 2, 3), id="three_segment"),
+            pytest.param("1.2.3rc1", (1, 2, "3rc1"), id="non_numeric_segment"),
+            pytest.param("  0.15  ", (0, 15), id="leading_trailing_whitespace"),
+        ],
+    )
+    def test_parses_version(self, version: str, expected: tuple) -> None:
+        assert _parse_version_tuple(version) == expected
 
     def test_comparison_ordering(self) -> None:
         assert _parse_version_tuple("0.17") < _parse_version_tuple("0.18")

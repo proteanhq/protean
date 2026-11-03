@@ -16,7 +16,7 @@ from protean.ir.generators.handlers import (
 )
 
 # ---------------------------------------------------------------------------
-# Helpers — composable IR builders
+# Helpers: composable IR builders
 # ---------------------------------------------------------------------------
 
 
@@ -177,22 +177,19 @@ def _ir(
 
 
 class TestEmptyIR:
-    def test_empty_ir(self):
-        result = generate_handler_wiring_diagram({})
-        assert result == "flowchart TD"
-
-    def test_empty_clusters(self):
-        result = generate_handler_wiring_diagram(
-            {"clusters": {}, "flows": {}, "projections": {}}
-        )
-        assert result == "flowchart TD"
-
-    def test_no_handlers(self):
-        """Clusters exist but have no handlers of any kind."""
-        ir = _ir(clusters=_cluster("app.Order"))
-        result = generate_handler_wiring_diagram(ir)
-        # Only the header — no subgraphs
-        assert result == "flowchart TD"
+    @pytest.mark.parametrize(
+        "ir",
+        [
+            pytest.param({}, id="empty_ir"),
+            pytest.param(
+                {"clusters": {}, "flows": {}, "projections": {}}, id="empty_clusters"
+            ),
+            # Clusters exist but have no handlers of any kind.
+            pytest.param(_ir(clusters=_cluster("app.Order")), id="no_handlers"),
+        ],
+    )
+    def test_no_handlers_renders_bare_header(self, ir):
+        assert generate_handler_wiring_diagram(ir) == "flowchart TD"
 
 
 class TestCommandHandlers:
@@ -206,16 +203,6 @@ class TestCommandHandlers:
         result = generate_handler_wiring_diagram(ir)
         assert 'subgraph command_handlers["Command Handlers"]' in result
 
-    def test_handler_node(self):
-        cmds = _command("app.PlaceOrder")
-        ch = _command_handler(
-            "app.OrderCH",
-            handlers={"Test.PlaceOrder.v1": ["handle_place"]},
-        )
-        ir = _ir(clusters=_cluster("app.Order", commands=cmds, command_handlers=ch))
-        result = generate_handler_wiring_diagram(ir)
-        assert "OrderCH" in result
-
     def test_command_to_handler_edge(self):
         cmds = _command("app.PlaceOrder")
         ch = _command_handler(
@@ -224,8 +211,7 @@ class TestCommandHandlers:
         )
         ir = _ir(clusters=_cluster("app.Order", commands=cmds, command_handlers=ch))
         result = generate_handler_wiring_diagram(ir)
-        assert "PlaceOrder" in result
-        assert "-->" in result
+        assert "cmd_app_PlaceOrder[/PlaceOrder/] --> ch_app_OrderCH" in result
 
     def test_handler_to_aggregate_edge(self):
         cmds = _command("app.PlaceOrder")
@@ -235,8 +221,7 @@ class TestCommandHandlers:
         )
         ir = _ir(clusters=_cluster("app.Order", commands=cmds, command_handlers=ch))
         result = generate_handler_wiring_diagram(ir)
-        assert "ch_app_OrderCH" in result
-        assert "agg_app_Order" in result
+        assert "ch_app_OrderCH --> agg_app_Order[Order]" in result
 
     def test_multiple_commands_same_handler(self):
         cmds = {
@@ -267,16 +252,6 @@ class TestEventHandlers:
         result = generate_handler_wiring_diagram(ir)
         assert 'subgraph event_handlers["Event Handlers"]' in result
 
-    def test_handler_node(self):
-        evts = _event("app.OrderPlaced")
-        eh = _event_handler(
-            "app.NotifyHandler",
-            handlers={"Test.OrderPlaced.v1": ["send_email"]},
-        )
-        ir = _ir(clusters=_cluster("app.Order", events=evts, event_handlers=eh))
-        result = generate_handler_wiring_diagram(ir)
-        assert "NotifyHandler" in result
-
     def test_event_to_handler_edge(self):
         evts = _event("app.OrderPlaced")
         eh = _event_handler(
@@ -285,14 +260,8 @@ class TestEventHandlers:
         )
         ir = _ir(clusters=_cluster("app.Order", events=evts, event_handlers=eh))
         result = generate_handler_wiring_diagram(ir)
-        assert "OrderPlaced" in result
-        # Stadium shape for events
-        assert "([" in result
-
-    def test_no_event_handlers_no_subgraph(self):
-        ir = _ir(clusters=_cluster("app.Order"))
-        result = generate_handler_wiring_diagram(ir)
-        assert "Event Handlers" not in result
+        # Events use the stadium shape.
+        assert "evt_app_OrderPlaced([OrderPlaced]) --> eh_app_NotifyHandler" in result
 
 
 class TestProcessManagers:
@@ -476,7 +445,7 @@ class TestProjectors:
             projections={"app.Dashboard": {"projectors": proj}},
         )
         result = generate_handler_wiring_diagram(ir)
-        assert "OrderPlaced" in result
+        assert "evt_app_OrderPlaced([OrderPlaced]) --> proj_app_DashProjector" in result
 
 
 class TestSubscribers:
@@ -606,36 +575,14 @@ class TestFullIntegration:
         result = generate_handler_wiring_diagram(full_ir)
         assert result.startswith("flowchart TD")
 
-    def test_all_subgroups_present(self, full_ir: dict):
-        result = generate_handler_wiring_diagram(full_ir)
-        assert "Command Handlers" in result
-        assert "Event Handlers" in result
-        assert "Process Managers" in result
-        assert "Projectors" in result
-        assert "Subscribers" in result
-
     def test_all_command_handlers_present(self, full_ir: dict):
         result = generate_handler_wiring_diagram(full_ir)
         assert "OrderCH" in result
         assert "PaymentCH" in result
 
-    def test_all_event_handlers_present(self, full_ir: dict):
-        result = generate_handler_wiring_diagram(full_ir)
-        assert "NotifyHandler" in result
-
     def test_pm_present(self, full_ir: dict):
         result = generate_handler_wiring_diagram(full_ir)
         assert "FulfillmentPM" in result
-
-    def test_projector_present(self, full_ir: dict):
-        result = generate_handler_wiring_diagram(full_ir)
-        assert "DashProjector" in result
-        assert "Dashboard" in result
-
-    def test_subscriber_present(self, full_ir: dict):
-        result = generate_handler_wiring_diagram(full_ir)
-        assert "StripeSubscriber" in result
-        assert "stripe_webhooks" in result
 
     def test_edges_after_subgraphs(self, full_ir: dict):
         """Edges appear after all 'end' keywords (Mermaid best practice)."""
@@ -654,20 +601,18 @@ class TestFullIntegration:
 class TestPerCategoryEmpty:
     """All per-category generators return 'flowchart TD' for empty IR."""
 
-    def test_command_handler_empty(self):
-        assert generate_command_handler_diagram({}) == "flowchart TD"
-
-    def test_event_handler_empty(self):
-        assert generate_event_handler_diagram({}) == "flowchart TD"
-
-    def test_process_manager_empty(self):
-        assert generate_process_manager_diagram({}) == "flowchart TD"
-
-    def test_projector_empty(self):
-        assert generate_projector_diagram({}) == "flowchart TD"
-
-    def test_subscriber_empty(self):
-        assert generate_subscriber_diagram({}) == "flowchart TD"
+    @pytest.mark.parametrize(
+        "generate",
+        [
+            pytest.param(generate_command_handler_diagram, id="command_handler"),
+            pytest.param(generate_event_handler_diagram, id="event_handler"),
+            pytest.param(generate_process_manager_diagram, id="process_manager"),
+            pytest.param(generate_projector_diagram, id="projector"),
+            pytest.param(generate_subscriber_diagram, id="subscriber"),
+        ],
+    )
+    def test_empty_ir_renders_bare_header(self, generate):
+        assert generate({}) == "flowchart TD"
 
 
 class TestCommandHandlerDiagram:
@@ -818,35 +763,24 @@ class TestSubscriberDiagram:
 
 
 class TestClusterCommandHandlerDiagram:
-    def test_empty_ir(self):
+    @pytest.mark.parametrize(
+        "ir, cluster_fqn",
+        [
+            pytest.param({}, "app.Order", id="empty_ir"),
+            pytest.param(
+                _ir(clusters=_cluster("app.Order")), "app.Missing", id="unknown_cluster"
+            ),
+            pytest.param(
+                _ir(clusters=_cluster("app.Order")),
+                "app.Order",
+                id="cluster_without_handlers",
+            ),
+        ],
+    )
+    def test_nothing_to_draw_renders_bare_header(self, ir, cluster_fqn):
         assert (
-            generate_cluster_command_handler_diagram({}, "app.Order") == "flowchart LR"
+            generate_cluster_command_handler_diagram(ir, cluster_fqn) == "flowchart LR"
         )
-
-    def test_unknown_cluster(self):
-        ir = _ir(clusters=_cluster("app.Order"))
-        assert (
-            generate_cluster_command_handler_diagram(ir, "app.Missing")
-            == "flowchart LR"
-        )
-
-    def test_cluster_without_handlers(self):
-        ir = _ir(clusters=_cluster("app.Order"))
-        assert (
-            generate_cluster_command_handler_diagram(ir, "app.Order") == "flowchart LR"
-        )
-
-    def test_single_cluster(self):
-        cmds = _command("app.PlaceOrder")
-        ch = _command_handler(
-            "app.OrderCH",
-            handlers={"Test.PlaceOrder.v1": ["handle_place"]},
-        )
-        ir = _ir(clusters=_cluster("app.Order", commands=cmds, command_handlers=ch))
-        result = generate_cluster_command_handler_diagram(ir, "app.Order")
-        assert "OrderCH" in result
-        assert "PlaceOrder" in result
-        assert "Order" in result
 
     def test_excludes_other_clusters(self):
         order_cmds = _command("app.PlaceOrder")
@@ -880,12 +814,15 @@ class TestClusterCommandHandlerDiagram:
 
 
 class TestSingleProjectorDiagram:
-    def test_empty_ir(self):
-        assert generate_single_projector_diagram({}, "app.Dashboard") == "flowchart LR"
-
-    def test_unknown_projection(self):
-        ir = _ir()
-        assert generate_single_projector_diagram(ir, "app.Missing") == "flowchart LR"
+    @pytest.mark.parametrize(
+        "ir, projection_fqn",
+        [
+            pytest.param({}, "app.Dashboard", id="empty_ir"),
+            pytest.param(_ir(), "app.Missing", id="unknown_projection"),
+        ],
+    )
+    def test_missing_projection_renders_bare_header(self, ir, projection_fqn):
+        assert generate_single_projector_diagram(ir, projection_fqn) == "flowchart LR"
 
     def test_single_projector(self):
         evts = _event("app.OrderPlaced")

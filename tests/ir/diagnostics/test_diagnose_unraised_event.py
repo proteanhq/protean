@@ -30,6 +30,8 @@ def _domain(name: str) -> Domain:
 
 class TestUnraisedEventIsFlagged:
     def test_an_event_no_method_raises_is_flagged(self):
+        """``Account.open`` raises ``Opened`` and nothing raises ``Closed``, so
+        only ``Closed`` is flagged."""
         domain = _domain("UnraisedPositive")
         domain.register(m.Account)
         domain.register(m.Opened, part_of=m.Account)
@@ -63,7 +65,8 @@ class TestUnraisedEventIsFlagged:
     def test_a_published_unraised_event_stays_in_scope(self):
         """UNHANDLED_EVENT skips published events as intentionally external; this
         rule keeps them, because a published event is still produced in the
-        domain and should be raised by some method."""
+        domain and should be raised by some method. ``Dispatched``, which
+        ``Order.dispatch`` raises, is not flagged."""
         domain = _domain("UnraisedPublished")
         domain.register(m.Order)
         domain.register(m.Dispatched, part_of=m.Order)
@@ -116,14 +119,6 @@ class TestUnraisedEventIsFlagged:
 
 
 class TestTheRuleStaysSilent:
-    def test_a_self_raised_event_is_not_flagged(self):
-        domain = _domain("UnraisedSelf")
-        domain.register(m.Account)
-        domain.register(m.Opened, part_of=m.Account)
-        domain.init(traverse=False)
-
-        assert _findings(IRBuilder(domain).build(), CODE) == []
-
     def test_the_factory_idiom_raise_is_recognized(self):
         """``user.raise_(Registered(...))`` inside a classmethod leaves the
         receiver role ``UNKNOWN``. The rule keys on the ``raise_`` name and the
@@ -156,17 +151,6 @@ class TestTheRuleStaysSilent:
 
         assert elements == [fqn(j.Flagged)]
         assert fqn(event) not in elements
-
-    def test_a_published_raised_event_is_not_flagged(self):
-        domain = _domain("UnraisedPublishedRaised")
-        domain.register(m.Order)
-        domain.register(m.Dispatched, part_of=m.Order)
-        domain.init(traverse=False)
-
-        findings = _findings(IRBuilder(domain).build(), CODE)
-
-        assert fqn(m.Dispatched) not in [d["element"] for d in findings]
-        assert findings == []
 
     def test_an_entity_method_raise_is_recognized(self):
         """The rule scans entity methods too: ``BasketLine.add`` raises
