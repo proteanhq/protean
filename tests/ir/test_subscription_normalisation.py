@@ -6,6 +6,7 @@ lower-case name.
 """
 
 import json
+from enum import Enum
 from typing import Any
 
 import jsonschema
@@ -148,6 +149,33 @@ class TestSubscriptionOptionSpelling:
 
         for subscription in subscriptions.values():
             assert subscription == {"config": {}, "profile": None, "type": None}
+
+    def test_empty_strings_are_recorded_as_null(self):
+        subscriptions = _build_subscriptions("", "")
+
+        for subscription in subscriptions.values():
+            assert subscription == {"config": {}, "profile": None, "type": None}
+
+    def test_unknown_type_is_recorded_lower_cased(self):
+        subscriptions = _build_subscriptions(sub_type="Kafka")
+
+        for subscription in subscriptions.values():
+            assert subscription["type"] == "kafka"
+
+    def test_enum_value_is_lower_cased(self):
+        class Speed(Enum):
+            FAST = "Fast"
+
+        subscriptions = _build_subscriptions(sub_profile=Speed.FAST)
+
+        for subscription in subscriptions.values():
+            assert subscription["profile"] == "fast"
+
+    def test_other_value_is_recorded_as_lower_cased_text(self):
+        subscriptions = _build_subscriptions(sub_profile=False)
+
+        for subscription in subscriptions.values():
+            assert subscription["profile"] == "false"
 
 
 @pytest.mark.no_test_domain

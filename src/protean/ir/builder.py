@@ -1106,13 +1106,13 @@ class IRBuilder:
 
         Handler Meta takes either the enum member or its name as a string, so
         both spellings record the same IR value. An unknown string is recorded
-        as declared, lower-cased.
+        as declared, lower-cased. An empty string counts as unset, as it does
+        at runtime. Any other value is recorded as ``str(value).lower()``.
         """
-        if value is None:
+        name = value.value if isinstance(value, Enum) else value
+        if name is None:
             return None
-        if isinstance(value, Enum):
-            return str(value.value)
-        return str(value).lower()
+        return str(name).lower() or None
 
     def _extract_command_handler(
         self, cls: type[_ElementCls], record: Any
