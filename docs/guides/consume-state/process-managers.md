@@ -268,7 +268,8 @@ Process managers support the same subscription configuration as
 
 - **`subscription_type`**: `"stream"` or `"event_store"`
 - **`subscription_profile`**: `"production"`, `"fast"`, `"batch"`, `"debug"`,
-  `"projection"`
+  `"projection"`, or the name of a
+  [custom profile](../../reference/server/configuration.md#custom-profiles)
 - **`subscription_config`**: Dictionary of specific configuration options
 
 See [Server → Configuration](../../reference/server/configuration.md) for details.

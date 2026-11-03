@@ -29,8 +29,8 @@ Command Handlers are defined with the `Domain.command_handler` decorator:
 | `backoff` | `str` | `None` | Backoff strategy between retries: `"exponential"`, `"linear"`, or `"fixed"`. `None` defers to config. |
 | `retry_exceptions` | exception types or dotted-path strings | `None` | Which exceptions count as transient. `None` uses the configured default (`ConnectionError`, `TimeoutError`, `SendError`). |
 | `sequential_by` | `str` | `None` | Name of an attribute on every command this handler handles. Registration checks that every handled command has the attribute. Commands do not go through the outbox yet, so they are not split by this value. See [Sequential processing](../../reference/server/sequential-by.md) for what the option does on a command handler today. |
-| `subscription_type` | `SubscriptionType` | `None` | Subscription type for the server's subscription. `None` uses the default. |
-| `subscription_profile` | `SubscriptionProfile` | `None` | Subscription profile preset. `None` uses the default. |
+| `subscription_type` | `SubscriptionType` or `str` | `None` | Subscription type for the server's subscription, as the enum member or its name, such as `"stream"`. `None` uses the default. |
+| `subscription_profile` | `SubscriptionProfile` or `str` | `None` | Subscription profile preset, as the enum member or a profile name. A name can be a built-in profile or a [custom profile](../../reference/server/configuration.md#custom-profiles). `None` uses the default. |
 | `subscription_config` | `dict` | `{}` | Custom subscription settings that override the type and profile defaults. |
 | `suppress_checks` | tuple of `str` | `()` | Diagnostic codes `protean check` should not report for this handler. |
 
