@@ -217,6 +217,23 @@ class TestUnchangedValueTypesAreNotReported:
         assert _breaks(left, right) == []
         assert _contract_breaks(left, right) == []
 
+    def test_a_baseline_without_the_dict_target_is_not_a_break(self):
+        # An IR written before the dict ``target`` key existed shows the
+        # field as changed once, and the change is not breaking.
+        left, right = _build(tiers=tier_dict), _build(tiers=tier_dict)
+        cluster = left["clusters"][PRICE_FQN]
+        del cluster["aggregate"]["fields"]["tiers"]["target"]
+        del cluster["events"][EVENT_FQN]["fields"]["tiers"]["target"]
+        del left["contracts"]["events"][0]["fields"]["tiers"]["target"]
+
+        fields = diff_ir(left, right)["clusters"]["changed"][PRICE_FQN]["aggregate"]
+        assert fields["fields"]["changed"]["tiers"] == {
+            "target": {"left": None, "right": "shop.TierPrice"}
+        }
+        assert _breaks(left, right) == []
+        assert _breaks(left, right, fqn=EVENT_FQN) == []
+        assert _contract_breaks(left, right) == []
+
     def test_a_list_of_decimal_with_the_same_content_type_gives_no_entry(self):
         left = _build(tiers=lambda _vos: List(content_type=Decimal))
         right = _build(

@@ -57,6 +57,21 @@ _TYPE_MAP: dict[str, dict[str, Any]] = {
 # ---------------------------------------------------------------------------
 
 
+def _dict_schema(field: dict[str, Any]) -> dict[str, Any]:
+    """Return the JSON Schema for a ``dict`` field.
+
+    A dict whose values are a value object refers to it from
+    ``additionalProperties``; any other dict is a plain object.
+    """
+    target = field.get("target")
+    if not target:
+        return {"type": "object"}
+    return {
+        "additionalProperties": {"$ref": f"#/$defs/{short_name(target)}"},
+        "type": "object",
+    }
+
+
 def _field_to_schema(field: dict[str, Any]) -> dict[str, Any]:
     """Convert a single IR field dict to a JSON Schema property dict.
 
@@ -106,7 +121,7 @@ def _field_to_schema(field: dict[str, Any]) -> dict[str, Any]:
         return dict(sorted(schema.items()))
 
     if kind == "dict":
-        return {"type": "object"}
+        return _dict_schema(field)
 
     # Auto fields: integer when increment is set, string otherwise
     if kind == "auto" or ir_type == "Auto":
@@ -158,8 +173,9 @@ def _collect_defs(
     """Recursively collect ``$defs`` for referenced value objects and entities.
 
     Walks the fields looking for ``value_object``, ``value_object_list``,
-    ``has_one``, and ``has_many`` kinds, then builds a schema for each
-    referenced element and includes it in ``$defs``.
+    ``has_one``, and ``has_many`` kinds, and ``dict`` fields whose values are
+    a value object, then builds a schema for each referenced element and
+    includes it in ``$defs``.
 
     A shared ``_visited`` set (keyed by target FQN) prevents infinite
     recursion on cyclic references and avoids expanding the same
@@ -169,7 +185,9 @@ def _collect_defs(
         _visited = set()
 
     defs: dict[str, dict[str, Any]] = {}
-    ref_kinds = ("value_object", "value_object_list", "has_one", "has_many")
+    # A dict field only carries a ``target`` when its values are a value
+    # object; an untyped dict has none and is skipped below.
+    ref_kinds = ("value_object", "value_object_list", "has_one", "has_many", "dict")
 
     for field in fields.values():
         kind = field.get("kind")

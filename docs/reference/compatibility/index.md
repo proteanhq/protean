@@ -95,8 +95,8 @@ shows as `unset`. An untyped `List()` records `Any` and shows as `Any`. A
 field renamed with `renamed_from` whose value type also changes reports
 `field_type_changed` in place of `field_renamed`.
 
-The IR records only the value type's name, so a change that keeps the name is
-not reported. These changes give no entry:
+The check compares only the value type's name, so a change that keeps the name
+is not reported. These changes give no entry:
 
 - A value object swapped for another value object with the same class name
   from a different module.

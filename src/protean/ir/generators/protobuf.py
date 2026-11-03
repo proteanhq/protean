@@ -104,7 +104,10 @@ def _field_proto_type(
         content = field.get("content_type")
         return (_TYPE_MAP.get(content, "string") if content else "string"), True
     if kind == "dict":
-        # proto3 map<string, string> is not "repeated"; represented specially.
+        # proto3 map<...> is not "repeated"; represented specially.
+        target = field.get("target")
+        if target:
+            return f"map<string, {resolve(target, referenced)}>", False
         return "map<string, string>", False
     return _scalar_proto_type(field), False
 
@@ -137,6 +140,96 @@ def _message_body(
     return lines
 
 
+def _local_type_name(
+    ref_name: str, namespace: str, main_name: str, *, nested: bool
+) -> str:
+    """Return how a field names a message defined in the same file.
+
+    ``main_name`` is the file's main message. With ``nested``, the other local
+    messages are defined inside it; otherwise they are its siblings in the
+    ``namespace`` package.
+    """
+    # protoc defines a hidden ``<Field>Entry`` message for each map field and
+    # looks a bare name up from the innermost message out, so a bare
+    # ``LedgerEntry`` can name the hidden message of a ``ledger`` map. The full
+    # name always reaches the real one.
+    if not ref_name.endswith("Entry"):
+        return ref_name
+    if nested and ref_name != main_name:
+        return f".{namespace}.{main_name}.{ref_name}"
+    return f".{namespace}.{ref_name}"
+
+
+def _map_entry_name(field_name: str) -> str:
+    """Return the name ``protoc`` gives the hidden entry message of a map field."""
+    words = [word for word in field_name.split("_") if word]
+    return "".join(word[0].upper() + word[1:] for word in words) + "Entry"
+
+
+def _declared_name(
+    ref_name: str, main_name: str, entry_names: set[str], taken: set[str]
+) -> str:
+    """Return the name a referenced message is declared under in this file.
+
+    ``entry_names`` holds the hidden entry message names of the main message's
+    map fields, and is empty when referenced messages are siblings of the main
+    message. ``taken`` holds the names other messages may be declared under.
+    """
+    # A message nested inside the main one shares its scope with those hidden
+    # entry messages, so a value object named like one of them gets trailing
+    # underscores, as many as it takes to clear every other message's name.
+    if ref_name == main_name or ref_name not in entry_names:
+        return ref_name
+    declared = f"{ref_name}_"
+    while declared in taken:
+        declared += "_"
+    return declared
+
+
+def _referenced_blocks(
+    referenced: set[str],
+    main_name: str,
+    flat: dict[str, dict[str, Any]],
+    resolve: _Resolver,
+    local_name: Callable[[str], str],
+) -> list[list[str]]:
+    """Render the messages of referenced value objects and entities.
+
+    Walks the references transitively in a deterministic order, and renders
+    each message once.
+    """
+    ref_blocks: list[list[str]] = []
+    seen: set[str] = set()
+    queue = sorted(referenced)
+    while queue:
+        target_fqn = queue.pop(0)
+        ref_name = short_name(target_fqn)
+        if ref_name in seen or ref_name == main_name:
+            continue
+        seen.add(ref_name)
+        target = flat.get(target_fqn, {})
+        nested_refs: set[str] = set()
+        ref_blocks.append(
+            _message_body(
+                local_name(ref_name), target.get("fields", {}), resolve, nested_refs
+            )
+        )
+        queue.extend(sorted(nested_refs))
+    return ref_blocks
+
+
+def _nest_blocks(main_block: list[str], ref_blocks: list[list[str]]) -> list[str]:
+    """Return ``main_block`` with ``ref_blocks`` defined inside it."""
+    # Nested inside the main message, a target with no file of its own gets a
+    # name scoped to this message. As a sibling it would be defined again by
+    # every other file in the package that uses it.
+    nested = main_block[:-1]
+    for block in ref_blocks:
+        nested.extend(["", *(f"  {line}" for line in block)])
+    nested.append("}")
+    return nested
+
+
 def generate_proto_schema(
     element: dict[str, Any],
     *,
@@ -163,6 +256,21 @@ def generate_proto_schema(
     namespace = module_path(own_fqn) or "protean"
 
     imports: set[str] = set()
+    nested = import_path is not None
+    entry_names = (
+        {
+            _map_entry_name(fname)
+            for fname, fspec in element.get("fields", {}).items()
+            if fspec.get("kind") == "dict"
+        }
+        if nested
+        else set()
+    )
+
+    taken = {name, *entry_names, *(short_name(fqn) for fqn in flat)}
+
+    def local_name(ref_name: str) -> str:
+        return _declared_name(ref_name, name, entry_names, taken)
 
     def resolve(target_fqn: str, referenced: set[str]) -> str:
         ref_name = short_name(target_fqn)
@@ -174,41 +282,18 @@ def generate_proto_schema(
         path = import_path(target_fqn) if import_path and not is_self else None
         if not path:
             referenced.add(target_fqn)
-            return ref_name
+            return _local_type_name(
+                local_name(ref_name), namespace, name, nested=nested
+            )
         imports.add(path)
         return f".{module_path(target_fqn) or 'protean'}.{ref_name}"
 
     referenced: set[str] = set()
     main_block = _message_body(name, element.get("fields", {}), resolve, referenced)
+    ref_blocks = _referenced_blocks(referenced, name, flat, resolve, local_name)
 
-    # Emit referenced value-object / entity messages (deterministic order,
-    # cycle-safe via a seen set).
-    ref_blocks: list[list[str]] = []
-    seen: set[str] = set()
-    queue = sorted(referenced)
-    while queue:
-        target_fqn = queue.pop(0)
-        ref_name = short_name(target_fqn)
-        if ref_name in seen or ref_name == name:
-            continue
-        seen.add(ref_name)
-        target = flat.get(target_fqn, {})
-        nested_refs: set[str] = set()
-        ref_blocks.append(
-            _message_body(ref_name, target.get("fields", {}), resolve, nested_refs)
-        )
-        queue.extend(sorted(nested_refs))
-
-    if import_path is not None and ref_blocks:
-        # Nested inside the main message, a target with no file of its own gets
-        # a name scoped to this message. As a sibling it would be defined again
-        # by every other file in the package that uses it.
-        nested = [[f"  {line}" for line in block] for block in ref_blocks]
-        main_block = main_block[:-1]
-        for block in nested:
-            main_block.extend(["", *block])
-        main_block.append("}")
-        message_blocks = [main_block]
+    if nested and ref_blocks:
+        message_blocks = [_nest_blocks(main_block, ref_blocks)]
     else:
         message_blocks = [main_block, *ref_blocks]
 

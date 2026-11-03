@@ -702,6 +702,10 @@
         "complexity": 16
       },
       {
+        "name": "IRBuilder::_build_vo_cluster_map",
+        "complexity": 17
+      },
+      {
         "name": "IRBuilder::_diagnose_circular_cluster_dependencies",
         "complexity": 18
       },
@@ -758,10 +762,6 @@
         "complexity": 32
       },
       {
-        "name": "IRBuilder::_build_vo_cluster_map",
-        "complexity": 33
-      },
-      {
         "name": "IRBuilder::_diagnose_unraised_event",
         "complexity": 36
       },
@@ -783,7 +783,7 @@
       },
       {
         "name": "IRBuilder::_extract_resolved_field",
-        "complexity": 53
+        "complexity": 51
       },
       {
         "name": "IRBuilder::_find_deprecated_import_uses",
@@ -897,7 +897,7 @@
     "functions": [
       {
         "name": "generate_proto_schema",
-        "complexity": 31
+        "complexity": 24
       }
     ]
   },

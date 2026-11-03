@@ -59,8 +59,8 @@ Every IR document has the same shape:
 
 ```json
 {
-  "$schema": "https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json",
-  "ir_version": "0.3.0",
+  "$schema": "https://docs.proteanhq.com/assets/ir/v0.4.0/schema.json",
+  "ir_version": "0.4.0",
   "generated_at": "2026-03-01T12:00:00Z",
   "checksum": "sha256:a1b2c3...",
 
@@ -149,7 +149,7 @@ breaking changes automatically.
 ## The `$schema` URI
 
 The `$schema` field names the schema version and the URL it is published at,
-`https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json`. The same JSON Schema
+`https://docs.proteanhq.com/assets/ir/v0.4.0/schema.json`. The same JSON Schema
 ships with the Protean package at `protean.ir.SCHEMA_PATH`, so validation needs
 no network access.
 

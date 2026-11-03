@@ -121,8 +121,8 @@ clear it.
 
 ```json
 {
-  "$schema": "https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json",
-  "ir_version": "0.3.0",
+  "$schema": "https://docs.proteanhq.com/assets/ir/v0.4.0/schema.json",
+  "ir_version": "0.4.0",
   "generated_at": "2026-03-01T12:00:00Z",
   "checksum": "sha256:a1b2c3...",
 
@@ -438,9 +438,9 @@ All possible keys (no single field has all of them):
 | `increment` | Auto-increment flag |
 | `auto_now` | `true` on a `Date` or `DateTime` field that is set to the current time on every save (added in v0.3.0) |
 | `auto_now_add` | `true` on a `Date` or `DateTime` field that is set to the current time on the save that creates the record (added in v0.3.0) |
-| `content_type` | Element type of a `List`, or value type of a typed `Dict`. A `ValueObjectList` records its value object in `target` instead |
+| `content_type` | Element type of a `List`, or short name of a typed `Dict`'s value type. A `ValueObjectList` records its value object in `target` instead |
 | `auto_generated` | `true` for framework-injected fields |
-| `target` | FQN of the associated element (associations) |
+| `target` | FQN of the associated element (associations), of a `ValueObject` or `ValueObjectList` field's value object, or of the value object a `Dict` field's values hold (on a `Dict` field, added in v0.4.0) |
 | `via` | FK field name on the child entity |
 | `linked_attribute` | Identity field on the reference target |
 
@@ -839,11 +839,11 @@ checksum. The expected workflow: upgrade → regenerate IR → review diff → c
 
 ## JSON Schema
 
-The complete JSON Schema (Draft 2020-12) for IR v0.3.0 is available at:
+The complete JSON Schema (Draft 2020-12) for IR v0.4.0 is available at:
 
 - **In the package**: `protean.ir.SCHEMA_PATH`
-  (`src/protean/ir/schema/v0.3.0/schema.json`)
-- **Canonical URL**: `https://docs.proteanhq.com/assets/ir/v0.3.0/schema.json`,
+  (`src/protean/ir/schema/v0.4.0/schema.json`)
+- **Canonical URL**: `https://docs.proteanhq.com/assets/ir/v0.4.0/schema.json`,
   also available as `protean.ir.SCHEMA_URL`
 
 ### Reference Examples
