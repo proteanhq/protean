@@ -196,7 +196,7 @@ The two differ on every dimension:
 | **Ordering** | Breadth-first chain order (ADR-0016) | Per-category contiguous `global_position`; `$all` in `global_position` order |
 | **Consistency** | Read-your-writes for the projection | Eventual |
 | **Retry / recovery** | None | Retried up to `max_retries` on a recovery pass |
-| **Terminal state** | Propagates to the caller | `Exhausted`: position dropped, no DLQ |
+| **Terminal state** | Propagates to the caller | `Exhausted`: position dropped, listed by `protean eventstore dlq` |
 
 The defaults quoted below (`position_update_interval` 10, `max_retries` 3,
 `recovery_interval_seconds` 30, `gap_timeout_seconds` 5) are the base profile;
@@ -219,9 +219,13 @@ re-delivers up to that many messages. Handlers must tolerate duplicates.
 **Failure handling and terminal state.** A failed message is retried up to
 `max_retries` (default 3) on a `recovery_interval_seconds` cadence (default
 30). On exhaustion the position is marked **`Exhausted`** and dropped from
-tracking (a `handler.failed` event is emitted). There is **no dead-letter queue
-for event-store subscriptions**; a DLQ applies only to broker/stream
-subscriptions.
+tracking (a `handler.failed` event is emitted). The `Exhausted` record is
+written to the subscription's `failed-*` stream, and the position stays
+exhausted until a replay or purge writes a later record for it.
+[`protean eventstore dlq`](cli/data/eventstore-dlq.md) lists, inspects, replays
+and purges these positions. The subscription status counts them as
+`dlq_depth`. Broker and stream subscriptions use dead-letter queue streams
+instead; see [Dead-letter queues](../guides/server/dead-letter-queues.md).
 
 !!! note "Recovery of a failed message is crash-safe"
     With recovery enabled (the default), the failure is recorded to the recovery

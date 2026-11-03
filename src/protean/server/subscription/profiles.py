@@ -40,6 +40,9 @@ class SubscriptionType(Enum):
             - Event replay
             - Development/debugging
             - Single-worker scenarios
+
+            It records exhausted positions in a ``failed-*`` stream instead
+            of a broker dead letter queue.
     """
 
     STREAM = "stream"

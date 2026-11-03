@@ -156,8 +156,10 @@ failures:
     `[server.dlq]` values to every handler. The dead-letter queue also needs a
     stream subscription. A handler with no profile, like `AuditHandler`
     above, uses `server.default_subscription_type`. That is `"event_store"`
-    unless you change it, and an event store subscription has no dead-letter
-    queue.
+    unless you change it. An event store subscription has no `{stream}:dlq`
+    stream: it records exhausted positions in its `failed-*` stream, and
+    [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md)
+    lists and clears them.
 
 For discovery, inspection, and replay of individual DLQ messages, see
 [Dead Letter Queues](./dead-letter-queues.md).

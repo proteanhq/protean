@@ -33,7 +33,11 @@ from protean.server.subscription.event_store_subscription import (
 )
 from protean.server.subscription.profiles import SubscriptionType
 from protean.utils import ensure_utc_aware, fqn
-from protean.utils.dlq import failed_positions_stream, recovery_checkpoint_stream
+from protean.utils.dlq import (
+    exhausted_records,
+    failed_positions_stream,
+    recovery_checkpoint_stream,
+)
 from protean.utils.eventing import MessageType
 from protean.utils.outbox import _outbox_provider_names
 
@@ -241,6 +245,13 @@ def _collect_event_store_status(
 
             lag_seconds = _lag_seconds(lag, last_updated, domain.clock.now())
 
+            # A failed-stream read fault costs only the depth, not the row.
+            try:
+                dlq_depth = len(exhausted_records(store, failed_stream))
+            except Exception as exc:  # noqa: BLE001 - status probe: depth falls back to 0
+                logger.debug("Could not read DLQ depth of %s: %r", failed_stream, exc)
+                dlq_depth = 0
+
             return SubscriptionStatus(
                 name=name,
                 handler_name=handler_cls.__name__,
@@ -252,7 +263,7 @@ def _collect_event_store_status(
                 head_position=str(head_position),
                 status=status,
                 consumer_count=0,
-                dlq_depth=0,
+                dlq_depth=dlq_depth,
                 last_updated=last_updated,
                 lag_seconds=lag_seconds,
                 position_stream=position_stream,
