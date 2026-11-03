@@ -75,15 +75,21 @@ statements written inside one method body, and the returned
   ``lambda`` or ``class`` binds nothing for the method.
 - A name a method-local import binds resolves to that import's FQN for a use
   after the first such import, by ``(line, col)``. A use at or before it
-  resolves to ``None``: Python treats the name as local for the whole function,
-  so the module binding would be wrong there.
+  resolves to ``None``: unless the method declares it ``global``, Python treats
+  the name as local for the whole function, so the module binding would be
+  wrong there.
 - A method-local binding shadows a module-level binding of the same name.
 - Two method-local imports that give a name different FQNs leave it ``None``.
-  So does a relative import that escapes the top-level package, and any other
-  binding of the name in the body (an assignment, a ``for``/``with``/``except``
-  target, a walrus, a ``del``, a nested ``def`` or ``class``). Two imports with
-  the same FQN still bind it. A parameter of the same name is bound before the
-  body runs, so a use after the import still gets the import's FQN.
+  So does a relative import that escapes the top-level package, a ``global`` or
+  ``nonlocal`` declaration of the name, and any other binding of the name in the
+  body (an assignment, a ``for``/``with``/``except`` target, a walrus, a ``del``,
+  a nested ``def`` or ``class``, a ``nonlocal`` rebinding from a nested ``def``,
+  a walrus in a nested scope's decorators, defaults or bases). Two imports with
+  the same FQN still bind it.
+- A parameter of the same name leaves it ``None`` too, unless the first import
+  of the name is a statement of the body itself, outside any ``if``, ``try``,
+  loop or ``with``. That import always runs, so it replaces the argument for
+  every later use.
 - A name no method-local import binds resolves through the module table.
 
 Classification predicates
@@ -242,16 +248,26 @@ class SymbolResolver:
         """
         bindings: dict[str, _LocalBinding] = {}
         rebound: set[str] = set()
+        # Names whose first import is a statement of the body itself: it always
+        # runs before any later use, so it replaces a parameter of that name.
+        always_run: dict[str, _Position] = {}
+        top_level = {id(statement) for statement in method.body}
         stack: list[ast.AST] = list(reversed(method.body))
         while stack:
             node = stack.pop()
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 self._bind_local_import(bindings, module, node)
+                if id(node) in top_level:
+                    for name in _imported_names(node):
+                        always_run.setdefault(name, _position_of(node))
                 continue
-            rebound.update(_bound_names(node))
-            if isinstance(node, NESTED_SCOPES):
-                continue
-            stack.extend(ast.iter_child_nodes(node))
+            rebound.update(_rebinding_names(node))
+            stack.extend(_parts_in_method_scope(node))
+        for name in _parameter_names(method) & bindings.keys():
+            if always_run.get(name) != bindings[name].position:
+                # The first import may not run, so a use after it can still see
+                # the argument the caller passed.
+                rebound.add(name)
         for name in rebound & bindings.keys():
             # The name is also bound to a value this static scope cannot follow,
             # so no single FQN is right for every use after the import.
@@ -467,8 +483,8 @@ def _assigned_names(target: ast.expr) -> list[str]:
 def _imported_names(node: ast.Import | ast.ImportFrom) -> list[str]:
     """The names an import statement binds in the scope it runs in.
 
-    A ``*`` import is a syntax error inside a function, so the method-local
-    imports this reads never carry one.
+    The compiler rejects a ``*`` import inside a function, but ``ast.parse``
+    accepts one. It yields the name ``*``, which never matches a use-site root.
     """
     names: list[str] = []
     for alias in node.names:
@@ -485,9 +501,10 @@ def _bound_names(node: ast.AST) -> list[str]:
     """The plain names one node binds other than by an import.
 
     Covers every ``Store`` or ``Del`` name (assignment, augmented and annotated
-    assignment, ``for``/``with``/comprehension targets, a walrus, ``del``), an
-    ``except ... as`` name, a ``match`` capture, and the name of a nested ``def``,
-    ``async def`` or ``class``.
+    assignment, ``for``/``with`` targets, a walrus, ``del``), an ``except ... as``
+    name, a ``match`` capture, and the name of a nested ``def``, ``async def`` or
+    ``class``. A comprehension target binds only inside the comprehension, but it
+    is counted too: the result is a miss, never a wrong FQN.
     """
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
         return [node.name]
@@ -500,6 +517,81 @@ def _bound_names(node: ast.AST) -> list[str]:
     if isinstance(node, ast.MatchMapping):
         return [node.rest] if node.rest else []
     return []
+
+
+def _rebinding_names(node: ast.AST) -> list[str]:
+    """The names one non-import node in a method body binds for the method.
+
+    Adds to :func:`_bound_names` a ``global`` or ``nonlocal`` declaration, after
+    which the import binds an outer name that a use on a path skipping the
+    import still sees, and a ``nonlocal`` declaration inside a nested scope.
+    """
+    names = _bound_names(node)
+    if isinstance(node, (ast.Global, ast.Nonlocal)):
+        names.extend(node.names)
+    if isinstance(node, NESTED_SCOPES):
+        names.extend(_nonlocal_names(node))
+    return names
+
+
+def _parts_in_method_scope(node: ast.AST) -> list[ast.AST]:
+    """The child nodes of ``node`` that run in the method's own scope.
+
+    All children of an ordinary node. Of a nested scope node, only the parts
+    evaluated where it is defined, so a walrus in one binds the method's name.
+    """
+    if isinstance(node, NESTED_SCOPES):
+        return list(_enclosing_scope_parts(node))
+    return list(ast.iter_child_nodes(node))
+
+
+def _parameter_names(method: FunctionNode) -> set[str]:
+    """Every name ``method`` binds as a parameter, ``*args`` and ``**kwargs`` too."""
+    args = method.args
+    params = [*args.posonlyargs, *args.args, *args.kwonlyargs]
+    params.extend(arg for arg in (args.vararg, args.kwarg) if arg is not None)
+    return {param.arg for param in params}
+
+
+def _enclosing_scope_parts(
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef,
+) -> list[ast.expr]:
+    """The parts of a nested scope node that run in the scope enclosing it.
+
+    Decorators, argument defaults and annotations, a return annotation, and a
+    class's bases and keywords.
+    """
+    parts: list[ast.expr] = []
+    if isinstance(node, ast.ClassDef):
+        parts.extend(node.decorator_list)
+        parts.extend(node.bases)
+        parts.extend(keyword.value for keyword in node.keywords)
+        return parts
+    args = node.args
+    parts.extend(args.defaults)
+    parts.extend(default for default in args.kw_defaults if default is not None)
+    if isinstance(node, ast.Lambda):
+        return parts
+    parts.extend(node.decorator_list)
+    every_arg = [*args.posonlyargs, *args.args, *args.kwonlyargs]
+    every_arg.extend(arg for arg in (args.vararg, args.kwarg) if arg is not None)
+    parts.extend(arg.annotation for arg in every_arg if arg.annotation is not None)
+    if node.returns is not None:
+        parts.append(node.returns)
+    return parts
+
+
+def _nonlocal_names(node: ast.AST) -> list[str]:
+    """The names a ``nonlocal`` statement anywhere inside ``node`` declares.
+
+    Such a name may be the method's own, rebound from the nested scope. One
+    that names a scope in between is counted too, which costs a miss only.
+    """
+    names: list[str] = []
+    for inner in ast.walk(node):
+        if isinstance(inner, ast.Nonlocal):
+            names.extend(inner.names)
+    return names
 
 
 def _position_of(node: ast.AST) -> _Position:

@@ -48,10 +48,12 @@ the deterministic side of ADR-0019. A callee bound by an import written inside
 the method (`from protean.adapters... import X`) resolves for every use after
 that import, so the rule flags it like one bound at module level. When the
 method body also binds that name in another way (for example an assignment, a
-loop target, a nested `def` or a `del`), or imports it a second time from a
-different object, the rule cannot tell which binding a call sees, so it skips
-every call through that name. A parameter of the same name does not count:
-Python binds the parameter before the body runs, and the import replaces it.
+loop target, a nested `def`, a `del` or a `global` declaration), or imports it a
+second time from a different object, the rule does not resolve such a call, so
+it skips every call through that name. A parameter of the same name counts as
+another binding too, unless the import is a statement of the method body
+itself, outside any `if`, `try`, loop or `with`. That import always runs, so it
+replaces the argument for every later use.
 
 Because it reads only an element's own top-level methods, it does **not** see
 an adapter call that sits in a method inherited from a non-registered base or

@@ -73,6 +73,9 @@ projector carries, and the branch it drives:
   those keys in as fields and the rule cannot see them, so the field set is
   unknowable and the projection is disabled — nothing is flagged even though
   ``first`` and ``second`` are never named.
+- ``LocalImportProjector`` imports ``remote.RemoteProjection`` inside its
+  handler and constructs it with ``headline`` only. The import resolves the
+  construction, so ``byline`` is flagged.
 """
 
 from protean import current_domain
@@ -494,3 +497,17 @@ class TemplateProjector(BaseProjector):
         data = {"first": event.name, "second": event.email}
         record = TemplateProjection(data, key=event.thing_id)
         current_domain.repository_for(TemplateProjection).add(record)
+
+
+# ── Positive: the projection is imported inside the handler ────────────────
+
+
+class LocalImportProjector(BaseProjector):
+    @on(ThingHappened)
+    def on_thing_happened(self, event: ThingHappened) -> None:
+        """Import the projection inside the handler and construct it with
+        ``headline`` only; ``byline`` is never sourced."""
+        from .remote import RemoteProjection
+
+        record = RemoteProjection(key=event.thing_id, headline=event.name)
+        current_domain.repository_for(RemoteProjection).add(record)

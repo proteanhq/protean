@@ -549,6 +549,141 @@ class TestMethodScope:
 
         assert scope.resolve(self._use(method, "Closed")) == "acme.events.Closed"
 
+    @pytest.mark.parametrize(
+        "signature",
+        ["Closed", "Closed, /", "*, Closed", "*Closed", "**Closed"],
+    )
+    def test_a_parameter_with_a_conditional_import_leaves_it_unresolved(
+        self, tmp_path, signature
+    ):
+        """When the import may not run, a later use can still see the argument
+        the caller passed, so no single FQN is right for it."""
+        _, scope, method = self._scope(
+            tmp_path,
+            f"""
+            def run(self, {signature}):
+                if self.on:
+                    from acme.events import Closed
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_parameter_with_an_import_in_a_try_leaves_it_unresolved(self, tmp_path):
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run(self, Closed=None):
+                try:
+                    from acme.events import Closed
+                except ImportError:
+                    pass
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_parameter_with_a_later_unconditional_import_leaves_it_unresolved(
+        self, tmp_path
+    ):
+        """The first import is conditional, so a use between it and the
+        unconditional one can still see the argument."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run(self, Closed=None):
+                if self.on:
+                    from acme.events import Closed
+                early = Closed
+                from acme.events import Closed
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    @pytest.mark.parametrize("keyword", ["global", "nonlocal"])
+    def test_a_declared_outer_name_leaves_it_unresolved(self, tmp_path, keyword):
+        """The import then binds the outer name, which a path that skips the
+        import still sees."""
+        _, scope, method = self._scope(
+            tmp_path,
+            f"""
+            from acme.legacy import Closed
+
+            def run(self):
+                {keyword} Closed
+                if self.on:
+                    from acme.events import Closed
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    @pytest.mark.parametrize(
+        "nested",
+        [
+            "def helper(x=(Closed := 1)): pass",
+            "f = lambda x=(Closed := 2): x",
+            "@(Closed := staticmethod)\n                def helper(): pass",
+            "class Helper((Closed := object)): pass",
+            "class Helper(metaclass=(Closed := type)): pass",
+            "def helper(x: (Closed := int)): pass",
+            "def helper() -> (Closed := int): pass",
+        ],
+    )
+    def test_a_walrus_in_a_nested_scope_header_leaves_it_unresolved(
+        self, tmp_path, nested
+    ):
+        """Decorators, defaults, annotations, bases and keywords run in the
+        method's own scope, so a walrus in one rebinds the method's name."""
+        _, scope, method = self._scope(
+            tmp_path,
+            f"""
+            def run():
+                from acme.events import Closed
+                {nested}
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_nonlocal_rebinding_in_a_nested_def_leaves_it_unresolved(self, tmp_path):
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme.events import Closed
+                def helper():
+                    nonlocal Closed
+                    import json as Closed
+                helper()
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_star_import_binds_no_use_site(self, tmp_path):
+        """``ast.parse`` accepts a ``*`` import in a function. It binds no name
+        a use site can carry, so other names keep their resolution."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            from acme.legacy import Closed
+
+            def run():
+                from os import *
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) == "acme.legacy.Closed"
+
     def test_a_computed_use_site_resolves_to_none(self, tmp_path):
         _, scope, method = self._scope(
             tmp_path,

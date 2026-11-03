@@ -838,7 +838,7 @@ class TestMethodLocalImports:
             """
         )
 
-        assert _callee_fqns(tmp_path, source)[-1] == "acme.events.Closed"
+        assert _callee_fqns(tmp_path, source) == ["acme.events.Closed"]
 
     def test_two_imports_with_different_fqns_leave_the_name_unresolved(self, tmp_path):
         fqns = _callee_fqns(
@@ -875,7 +875,49 @@ class TestMethodLocalImports:
             """,
         )
 
-        assert fqns[-1] == "acme.events.Closed"
+        assert fqns == ["acme.events.Closed"]
+
+    def test_a_use_between_two_conflicting_imports_does_not_resolve(self, tmp_path):
+        """The name is unresolved for every use after the first of two
+        conflicting imports, not only for a use after both."""
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            class Service:
+                def run(self):
+                    from acme.events import Closed
+
+                    Closed()
+                    from acme.legacy import Closed
+
+                    Closed()
+            """,
+        )
+
+        assert fqns == [None, None]
+
+    def test_a_rebound_receiver_root_has_no_role(self, tmp_path):
+        """A receiver rooted on a rebound local import resolves to nothing, so
+        it is not recognized as a repository."""
+        catalog, index = _walked_catalog(
+            _make_pkg(
+                tmp_path,
+                """
+                class Service:
+                    def run(self):
+                        from acme import repos
+
+                        repos = self.factory
+                        repos.orders.find(status="open")
+                """,
+            )
+        )
+        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
+
+        find = next(c for c in facts.calls if c.method == "find")
+
+        assert find.receiver_fqn is None
+        assert find.receiver_role is ReceiverRole.UNKNOWN
 
     @pytest.mark.parametrize(
         "rebind",

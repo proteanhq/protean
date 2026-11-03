@@ -13,6 +13,7 @@ import pytest
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String
+from protean.ir.analysis import FactCatalog
 from protean.ir.builder import IRBuilder
 from protean.ir.diagnostics import REGISTRY, DiagnosticCode
 from protean.utils import fqn
@@ -104,8 +105,10 @@ class TestUnraisedEventIsFlagged:
             domain.register(event, part_of=m.Journal)
         domain.init(traverse=False)
 
+        flag_facts = FactCatalog(domain).element_facts(m.Journal)["flag"]
         findings = _findings(IRBuilder(domain).build(), CODE)
 
+        assert [c.fqn for c in flag_facts.constructions] == [fqn(j.Flagged)]
         assert [d["element"] for d in findings] == [fqn(j.Flagged)]
 
     def test_it_is_advisory_rather_than_a_warning(self):

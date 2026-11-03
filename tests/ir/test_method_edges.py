@@ -17,7 +17,9 @@ from protean.ir import load_schema
 from protean.ir.analysis import BehavioralView
 from protean.ir.builder import IRBuilder
 from protean.utils import fqn
+from tests.ir.support import journal_events as j
 from tests.ir.support import method_edges_domain as m
+from tests.ir.support import unraised_event_domain as journal
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -104,6 +106,25 @@ class TestRaises:
     def test_entity_raises_are_recorded(self, ir):
         entity = ir["clusters"][_fq("Order")]["entities"][_fq("OrderLine")]
         assert entity["method_edges"] == {"adjust": {"raises": [_fq("LineAdjusted")]}}
+
+    def test_an_event_imported_inside_the_method_is_recorded(self):
+        """Each ``Journal`` method imports its event inside its body: an
+        absolute, a relative and an aliased import. ``flag`` constructs its
+        event without raising it, so it has no edge."""
+        domain = Domain(name="MethodEdgesLocalImport", root_path=".")
+        domain.register(journal.Journal)
+        for event in (j.Voided, j.Reversed, j.Archived, j.Flagged):
+            domain.register(event, part_of=journal.Journal)
+        domain.init(traverse=False)
+
+        ir = IRBuilder(domain).build()
+        edges = ir["clusters"][fqn(journal.Journal)]["aggregate"]["method_edges"]
+
+        assert edges == {
+            "void": {"raises": [fqn(j.Voided)]},
+            "reverse": {"raises": [fqn(j.Reversed)]},
+            "archive": {"raises": [fqn(j.Archived)]},
+        }
 
 
 class TestInvokes:
