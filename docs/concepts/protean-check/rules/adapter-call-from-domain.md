@@ -47,10 +47,11 @@ callee cannot be resolved is **skipped, never guessed at**, keeping the rule on
 the deterministic side of ADR-0019. A callee bound by an import written inside
 the method (`from protean.adapters... import X`) resolves for every use after
 that import, so the rule flags it like one bound at module level. When the
-method also binds that name in any other way (for example an assignment, a
-loop target or a `del`), or imports it a second time from a different object,
-the rule cannot tell which binding a call sees, so it skips every call through
-that name.
+method body also binds that name in another way (for example an assignment, a
+loop target, a nested `def` or a `del`), or imports it a second time from a
+different object, the rule cannot tell which binding a call sees, so it skips
+every call through that name. A parameter of the same name does not count:
+Python binds the parameter before the body runs, and the import replaces it.
 
 Because it reads only an element's own top-level methods, it does **not** see
 an adapter call that sits in a method inherited from a non-registered base or
