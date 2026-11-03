@@ -79,7 +79,7 @@ def test_processing_messages_from_beginning_the_first_time(test_domain):
 
 def test_engine_run_non_test_mode(test_domain, caplog):
     """In non-test mode the engine runs the loop until shutdown stops it."""
-    test_domain.config["server"]["health"]["port"] = 0
+    test_domain.config["server"]["health"]["enabled"] = False
     engine = Engine(domain=test_domain, test_mode=False)
     engine.loop.call_soon(lambda: engine.loop.create_task(engine.shutdown()))
 
