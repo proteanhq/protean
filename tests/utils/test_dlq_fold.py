@@ -60,3 +60,19 @@ def test_records_without_position_or_type_are_skipped(test_domain):
 
 def test_missing_stream_is_empty(test_domain):
     assert exhausted_records(test_domain.event_store.store, FAILED_STREAM) == {}
+
+
+def test_records_past_the_first_read_page_are_folded(test_domain):
+    """The fold reads the whole stream, not one capped page of it."""
+    store = test_domain.event_store.store
+    page = 1000  # The default page size of ``read`` and ``read_all``.
+    _record(store, 1, FailedPositionStatus.EXHAUSTED)
+    for position in range(2, page + 2):
+        _record(store, position, FailedPositionStatus.FAILED)
+    # Both records sit past the first page.
+    _record(store, 1, FailedPositionStatus.RESOLVED)
+    _record(store, 5000, FailedPositionStatus.EXHAUSTED)
+
+    records = exhausted_records(store, FAILED_STREAM)
+
+    assert list(records) == [5000]

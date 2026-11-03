@@ -28,7 +28,10 @@ each subscription type.
     StreamSubscription (Redis Streams) and BrokerSubscription route
     failed messages to `{stream}:dlq` streams. EventStoreSubscription
     uses a recovery-pass model instead. Failed positions are retried from the
-    event store rather than copied to a DLQ.
+    event store rather than copied to a DLQ. A position that runs out of
+    retries is recorded as `Exhausted` in the subscription's `failed-*`
+    stream; [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md)
+    lists, replays and purges these positions.
 
 ---
 

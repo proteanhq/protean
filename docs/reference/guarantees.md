@@ -200,7 +200,7 @@ A failed message is retried up to `max_retries` times, every
 `recovery_interval_seconds`. After the last retry its position is marked
 `Exhausted`, dropped from tracking, and a `handler.failed` event is emitted.
 The `Exhausted` record is written to the subscription's `failed-*` stream, and
-the position stays exhausted until it is replayed or purged. [`protean eventstore dlq`](cli/data/eventstore-dlq.md)
+the position stays exhausted until a replay or purge writes a later record for it. [`protean eventstore dlq`](cli/data/eventstore-dlq.md)
 lists, inspects, replays and purges these positions. The subscription status
 counts them as `dlq_depth`. Broker and stream subscriptions use dead-letter
 queue streams instead; see [Dead-letter queues](#dead-letter-queues).
