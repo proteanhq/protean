@@ -81,7 +81,9 @@ statements written inside one method body, and the returned
 - Two method-local imports that give a name different FQNs leave it ``None``.
   So does a relative import that escapes the top-level package, and any other
   binding of the name in the body (an assignment, a ``for``/``with``/``except``
-  target, a walrus, a ``del``). Two imports with the same FQN still bind it.
+  target, a walrus, a ``del``, a nested ``def`` or ``class``). Two imports with
+  the same FQN still bind it. A parameter of the same name is bound before the
+  body runs, so a use after the import still gets the import's FQN.
 - A name no method-local import binds resolves through the module table.
 
 Classification predicates
@@ -243,12 +245,12 @@ class SymbolResolver:
         stack: list[ast.AST] = list(reversed(method.body))
         while stack:
             node = stack.pop()
-            if isinstance(node, NESTED_SCOPES):
-                continue
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 self._bind_local_import(bindings, module, node)
-            else:
-                rebound.update(_bound_names(node))
+                continue
+            rebound.update(_bound_names(node))
+            if isinstance(node, NESTED_SCOPES):
+                continue
             stack.extend(ast.iter_child_nodes(node))
         for name in rebound & bindings.keys():
             # The name is also bound to a value this static scope cannot follow,
@@ -484,8 +486,11 @@ def _bound_names(node: ast.AST) -> list[str]:
 
     Covers every ``Store`` or ``Del`` name (assignment, augmented and annotated
     assignment, ``for``/``with``/comprehension targets, a walrus, ``del``), an
-    ``except ... as`` name, and a ``match`` capture.
+    ``except ... as`` name, a ``match`` capture, and the name of a nested ``def``,
+    ``async def`` or ``class``.
     """
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return [node.name]
     if isinstance(node, ast.Name):
         return [node.id] if isinstance(node.ctx, (ast.Store, ast.Del)) else []
     if isinstance(node, ast.ExceptHandler):

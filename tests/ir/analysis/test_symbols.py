@@ -515,6 +515,40 @@ class TestMethodScope:
             "run": "pkg.mod.run",
         }
 
+    @pytest.mark.parametrize("keyword", ["def", "async def", "class"])
+    def test_a_nested_definition_of_the_name_leaves_it_unresolved(
+        self, tmp_path, keyword
+    ):
+        """A nested ``def`` or ``class`` named like the import rebinds the name
+        in the method, so no single FQN is right for the use after both."""
+        body = "pass" if keyword == "class" else "return None"
+        _, scope, method = self._scope(
+            tmp_path,
+            f"""
+            def run():
+                from acme.events import Closed
+                {keyword} Closed():
+                    {body}
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_parameter_of_the_same_name_does_not_block_the_import(self, tmp_path):
+        """A parameter is bound before the body runs, so the import after it
+        rebinds the name and a later use gets the import's FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run(Closed):
+                from acme.events import Closed
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) == "acme.events.Closed"
+
     def test_a_computed_use_site_resolves_to_none(self, tmp_path):
         _, scope, method = self._scope(
             tmp_path,
