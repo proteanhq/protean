@@ -157,7 +157,11 @@ class UnitOfWork:
                 outermost = _uow_stack.top
                 if outermost is not None and outermost._rollback_cause is None:
                     outermost._rollback_cause = exc_val
-            self.rollback()
+            # An explicit commit or rollback inside the block may have ended the
+            # transaction already. A second rollback would raise
+            # InvalidOperationError and hide the exception in flight.
+            if self._in_progress:
+                self.rollback()
             return False  # re-raise the original exception
 
         try:

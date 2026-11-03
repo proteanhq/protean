@@ -184,6 +184,23 @@ class TestOuterCommitOfADoomedTransaction:
         assert type(caught[0]) is LookupError
         assert caught[0].args == ("cause",)
 
+    def test_explicit_commit_inside_the_outer_block_raises_the_cause(self, test_domain):
+        repo = test_domain.repository_for(Person)
+        err = RuntimeError("inner")
+        with pytest.raises(RuntimeError) as excinfo:
+            with UnitOfWork() as uow:
+                repo.add(Person(first_name="A", last_name="X"))
+                try:
+                    with UnitOfWork():
+                        raise err
+                except RuntimeError:
+                    pass
+                uow.commit()
+
+        assert excinfo.value is err
+        assert _count(test_domain) == 0
+        assert _uow_context_stack.top is None
+
     def test_a_doomed_instance_commits_normally_when_reused(self, test_domain):
         repo = test_domain.repository_for(Person)
         uow = UnitOfWork()
