@@ -44,7 +44,9 @@ managers, subscribers, in fqn order, and reads the methods **defined in each
 element's own class body**. It is deliberately **conservative**: it flags a
 call only when the callee **statically resolves** under `protean.adapters`. A call whose
 callee cannot be resolved is **skipped, never guessed at**, keeping the rule on
-the deterministic side of ADR-0019.
+the deterministic side of ADR-0019. A callee bound by an import written inside
+the method (`from protean.adapters... import X`) resolves for every use after
+that import, so the rule flags it like one bound at module level.
 
 Because it reads only an element's own top-level methods, it does **not** see
 an adapter call that sits in a method inherited from a non-registered base or
@@ -55,9 +57,6 @@ flag:
 
 - **A class that is not a registered domain element**: Only registered elements
   are visited, so a plain helper class calling an adapter is out of scope.
-- **A function-local import**: `from protean.adapters... import X` inside a
-  method binds a name the module symbol table does not carry, so the call does
-  not resolve.
 - **A fetched or injected receiver**: An adapter held in a local variable
   (`broker = self.brokers["default"]; broker.publish(...)`) or reached through
   `current_domain.providers[...]` has an unresolvable receiver root.

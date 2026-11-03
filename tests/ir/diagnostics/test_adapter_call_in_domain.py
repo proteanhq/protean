@@ -62,20 +62,19 @@ class TestAdapterCallInDomain:
         assert _adapter_findings(ir) == []
 
     def test_unresolved_callee_is_not_flagged(self):
-        """The conservative half: an adapter reached through a function-local
-        import, or a fetched local-variable receiver, does not statically
-        resolve, so it is skipped rather than guessed at.
+        """The conservative half: an adapter reached through a fetched
+        local-variable receiver does not statically resolve, so it is skipped
+        rather than guessed at.
 
         A firing control (``AdapterCallOrder``) is co-registered so the assertion
-        fails if the rule is inactive: the control must fire while the two
-        unresolved elements stay silent — an empty finding list would mean the
+        fails if the rule is inactive: the control must fire while the
+        unresolved element stays silent — an empty finding list would mean the
         rule never ran, not that it correctly skipped."""
         domain = _build_adapter_call_domain(
             "AdapterUnresolved",
             {"check_adapter_calls": True},
             elements=(
                 adapter_call_domain.AdapterCallOrder,
-                adapter_call_domain.LocalImportOrder,
                 adapter_call_domain.InjectedReceiverOrder,
             ),
         )
@@ -83,8 +82,24 @@ class TestAdapterCallInDomain:
 
         flagged = {d["element"] for d in _adapter_findings(ir)}
         assert flagged == {fqn(adapter_call_domain.AdapterCallOrder)}
-        assert fqn(adapter_call_domain.LocalImportOrder) not in flagged
         assert fqn(adapter_call_domain.InjectedReceiverOrder) not in flagged
+
+    def test_function_local_import_adapter_call_is_flagged(self):
+        """``LocalImportOrder.provision`` imports the adapter inside the method
+        under an alias and calls it. The method's own import resolves the call,
+        so the rule flags it with the adapter's FQN."""
+        domain = _build_adapter_call_domain(
+            "AdapterLocalImport",
+            {"check_adapter_calls": True},
+            elements=(adapter_call_domain.LocalImportOrder,),
+        )
+        ir = IRBuilder(domain).build()
+
+        agg_fqn = fqn(adapter_call_domain.LocalImportOrder)
+        findings = [d for d in _adapter_findings(ir) if d["element"] == agg_fqn]
+        assert len(findings) == 1
+        assert "provision" in findings[0]["message"]
+        assert "protean.adapters.broker.inline.InlineBroker" in findings[0]["message"]
 
     def test_non_registered_class_is_out_of_scope(self):
         """A class with an identical adapter call that is never registered is

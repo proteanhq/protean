@@ -38,7 +38,9 @@ Per-module symbol table
 Only the module's top-level statements are read, so a name bound solely inside a
 conditional or a function body is conservatively absent from the table (it
 resolves to ``None``, never to a wrong FQN). A ``*`` import binds no name and a
-relative import that escapes binds none.
+relative import that escapes binds none. :meth:`resolve` and :meth:`symbols`
+keep this module-only meaning; method-local imports are read only through a
+:class:`MethodScope`.
 
 Shadowing: the last binding in source order wins
 ------------------------------------------------
@@ -61,6 +63,26 @@ Use-site resolution
   FQN;
 - anything else — a call result, a subscript, ``self.x`` (its root ``self`` is
   never in the table) — is ``None``.
+
+Method-local imports
+--------------------
+:meth:`SymbolResolver.method_scope` reads the ``import`` and ``from ... import``
+statements written inside one method body, and the returned
+:class:`MethodScope` resolves use sites in that body:
+
+- An import anywhere in the body counts, including inside ``if``, ``try``,
+  ``with``, ``for`` and ``while``. One inside a nested ``def``, ``async def``,
+  ``lambda`` or ``class`` binds nothing for the method.
+- A name a method-local import binds resolves to that import's FQN for a use
+  after the first such import, by ``(line, col)``. A use at or before it
+  resolves to ``None``: Python treats the name as local for the whole function,
+  so the module binding would be wrong there.
+- A method-local binding shadows a module-level binding of the same name.
+- Two method-local imports that give a name different FQNs leave it ``None``.
+  So does a relative import that escapes the top-level package, and any other
+  binding of the name in the body (an assignment, a ``for``/``with``/``except``
+  target, a walrus, a ``del``). Two imports with the same FQN still bind it.
+- A name no method-local import binds resolves through the module table.
 
 Classification predicates
 -------------------------
@@ -88,18 +110,73 @@ from __future__ import annotations
 
 import ast
 import os
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from protean.ir.analysis.source_provider import SourceProvider
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.ir.analysis.element_index import FunctionNode
 
 #: Module-level statements that bind a name to a definition in this module.
 #: A class, a function, or an ``async def`` at module scope binds its own name
 #: to ``<module>.<name>``. Bindings are applied in source order, so whichever of
 #: a definition and a same-named import comes last is the one that stands.
 _DEF_NODES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+#: Scopes a walk of one method body does not descend into: a name bound or a
+#: call made inside one of these belongs to that nested callable, not to the
+#: method enclosing it.
+NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+
+#: A ``(line, col)`` source position, as the AST records it on a node.
+_Position = tuple[int, int]
+
+
+@dataclass(frozen=True, slots=True)
+class _LocalBinding:
+    """A name bound by a method-local import.
+
+    ``position`` is that of the first import that binds it. ``fqn`` is ``None``
+    when the method's bindings of the name disagree or cannot be resolved.
+    """
+
+    position: _Position
+    fqn: str | None
+
+
+class MethodScope:
+    """Resolve use sites in one method body, method-local imports included.
+
+    Built by :meth:`SymbolResolver.method_scope`. A name with no method-local
+    import resolves exactly as :meth:`SymbolResolver.resolve` resolves it.
+    """
+
+    def __init__(
+        self,
+        resolver: SymbolResolver,
+        module: str,
+        bindings: dict[str, _LocalBinding],
+    ) -> None:
+        self._resolver = resolver
+        self._module = module
+        self._bindings = bindings
+
+    def resolve(self, node: ast.expr) -> str | None:
+        """The FQN a use-site expression in this method names, or ``None``.
+
+        Accepts the same shapes as :meth:`SymbolResolver.resolve`.
+        """
+        parts = _dotted_parts(node)
+        if parts is None:
+            return None
+        binding = self._bindings.get(parts[0])
+        if binding is None:
+            return self._resolver.resolve(self._module, node)
+        if binding.fqn is None or _position_of(node) <= binding.position:
+            return None
+        return ".".join([binding.fqn, *parts[1:]])
 
 
 class SymbolResolver:
@@ -153,6 +230,56 @@ class SymbolResolver:
             table = self._build_table(module)
             self._tables[module] = table
         return table
+
+    def method_scope(self, module: str, method: FunctionNode) -> MethodScope:
+        """The scope that resolves use sites in ``method``, a body in ``module``.
+
+        Reads the imports written in the method body, outside any nested scope.
+        The module's own table is not changed: :meth:`resolve` and
+        :meth:`symbols` still answer from module-level bindings only.
+        """
+        bindings: dict[str, _LocalBinding] = {}
+        rebound: set[str] = set()
+        stack: list[ast.AST] = list(reversed(method.body))
+        while stack:
+            node = stack.pop()
+            if isinstance(node, NESTED_SCOPES):
+                continue
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                self._bind_local_import(bindings, module, node)
+            else:
+                rebound.update(_bound_names(node))
+            stack.extend(ast.iter_child_nodes(node))
+        for name in rebound & bindings.keys():
+            # The name is also bound to a value this static scope cannot follow,
+            # so no single FQN is right for every use after the import.
+            bindings[name] = _LocalBinding(bindings[name].position, None)
+        return MethodScope(self, module, bindings)
+
+    def _bind_local_import(
+        self,
+        bindings: dict[str, _LocalBinding],
+        module: str,
+        node: ast.Import | ast.ImportFrom,
+    ) -> None:
+        """Merge one method-local import statement into ``bindings``."""
+        table: dict[str, str] = {}
+        if isinstance(node, ast.Import):
+            self._bind_import(table, node)
+        else:
+            self._bind_import_from(table, module, node)
+        here = _position_of(node)
+        for name in _imported_names(node):
+            # A name the import binds but the table lacks came from a relative
+            # import that escaped: it is still local, with no FQN.
+            fqn = table.get(name)
+            position = here
+            existing = bindings.get(name)
+            if existing is not None:
+                position = min(here, existing.position)
+                if existing.fqn != fqn:
+                    fqn = None
+            bindings[name] = _LocalBinding(position, fqn)
 
     # ------------------------------------------------------------------
     # Classification
@@ -333,6 +460,46 @@ def _assigned_names(target: ast.expr) -> list[str]:
             names.extend(_assigned_names(element))
         return names
     return []
+
+
+def _imported_names(node: ast.Import | ast.ImportFrom) -> list[str]:
+    """The names an import statement binds in the scope it runs in.
+
+    A ``*`` import is a syntax error inside a function, so the method-local
+    imports this reads never carry one.
+    """
+    names: list[str] = []
+    for alias in node.names:
+        if alias.asname:
+            names.append(alias.asname)
+        elif isinstance(node, ast.Import):
+            names.append(alias.name.split(".", 1)[0])
+        else:
+            names.append(alias.name)
+    return names
+
+
+def _bound_names(node: ast.AST) -> list[str]:
+    """The plain names one node binds other than by an import.
+
+    Covers every ``Store`` or ``Del`` name (assignment, augmented and annotated
+    assignment, ``for``/``with``/comprehension targets, a walrus, ``del``), an
+    ``except ... as`` name, and a ``match`` capture.
+    """
+    if isinstance(node, ast.Name):
+        return [node.id] if isinstance(node.ctx, (ast.Store, ast.Del)) else []
+    if isinstance(node, ast.ExceptHandler):
+        return [node.name] if node.name else []
+    if isinstance(node, (ast.MatchAs, ast.MatchStar)):
+        return [node.name] if node.name else []
+    if isinstance(node, ast.MatchMapping):
+        return [node.rest] if node.rest else []
+    return []
+
+
+def _position_of(node: ast.AST) -> _Position:
+    """A node's ``(line, col)`` source position."""
+    return (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))
 
 
 def _is_package_init(origin: str) -> bool:

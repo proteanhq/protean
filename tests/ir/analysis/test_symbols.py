@@ -425,6 +425,110 @@ class TestUseSiteResolution:
         assert resolver.resolve("pkg.mod", _use_site("registry['k'].bar")) is None
 
 
+class TestMethodScope:
+    @staticmethod
+    def _scope(tmp_path, source):
+        """The resolver and the scope of ``run``, the first function in ``mod``."""
+        resolver = _walked_resolver(_make_pkg(tmp_path, {"mod.py": source}))
+        tree = resolver._provider.tree("pkg.mod")
+        method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        return resolver, resolver.method_scope("pkg.mod", method), method
+
+    @staticmethod
+    def _use(method, text):
+        """The first use site in ``method`` whose source text is ``text``."""
+        return next(
+            n
+            for n in ast.walk(method)
+            if isinstance(n, (ast.Name, ast.Attribute))
+            and ast.unparse(n) == text
+            and isinstance(n.ctx, ast.Load)
+        )
+
+    def test_a_plain_import_binds_its_top_name(self, tmp_path):
+        """``import acme.events`` binds ``acme``; a later attribute walk off it
+        reconstructs the rest of the FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                import acme.events
+                return acme.events.Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "acme.events.Closed")) == (
+            "acme.events.Closed"
+        )
+
+    def test_a_use_on_the_same_line_after_the_import_resolves(self, tmp_path):
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme.events import Closed; return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) == "acme.events.Closed"
+
+    def test_each_name_keeps_the_position_of_its_own_first_import(self, tmp_path):
+        """``Closed`` is first imported above the use of ``Opened``, but
+        ``Opened`` is first imported below it, so that use stays unresolved."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme.events import Closed
+                early = Opened
+                from acme.events import Closed, Opened
+                return Opened
+            """,
+        )
+        uses = [
+            n for n in ast.walk(method) if isinstance(n, ast.Name) and n.id == "Opened"
+        ]
+        uses.sort(key=lambda n: n.lineno)
+
+        assert [scope.resolve(n) for n in uses] == [None, "acme.events.Opened"]
+
+    def test_the_module_table_is_untouched(self, tmp_path):
+        """The scope reads the method's imports without adding them to the
+        module table, so ``resolve(module, node)`` keeps its module-only
+        meaning for every other caller."""
+        resolver, scope, method = self._scope(
+            tmp_path,
+            """
+            from acme.legacy import Closed
+
+            def run():
+                from acme.events import Closed
+                return Closed
+            """,
+        )
+        use = self._use(method, "Closed")
+
+        assert scope.resolve(use) == "acme.events.Closed"
+        assert resolver.resolve("pkg.mod", use) == "acme.legacy.Closed"
+        assert resolver.symbols("pkg.mod") == {
+            "Closed": "acme.legacy.Closed",
+            "run": "pkg.mod.run",
+        }
+
+    def test_a_computed_use_site_resolves_to_none(self, tmp_path):
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme import factory
+                return factory().bar
+            """,
+        )
+        use = next(n for n in ast.walk(method) if isinstance(n, ast.Attribute))
+
+        assert scope.resolve(use) is None
+
+
 class TestClassification:
     def test_framework_symbols_are_recognised(self):
         resolver = SymbolResolver(Domain(name="Empty", root_path=""))
