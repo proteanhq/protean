@@ -277,6 +277,8 @@ messages are consumed when running the [Protean server](../../concepts/async-pro
     - `"batch"`: High-volume batch processing
     - `"debug"`: Development and debugging
     - `"projection"`: Building read models (uses event_store type)
+    - The name of a [custom profile](../../reference/server/configuration.md#custom-profiles)
+      defined under `[server.profiles]`
 
 - **`subscription_config`**: Dictionary of specific configuration options:
     - `messages_per_tick`: Messages to process per batch

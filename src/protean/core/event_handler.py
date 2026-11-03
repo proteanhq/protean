@@ -82,8 +82,8 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
     | ``source_stream`` | ``str`` | Optional source stream filter for origin filtering. |
     | ``stream_category`` | ``str`` | The stream category to subscribe to. Defaults to aggregate's category. |
     | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing. |
-    | ``subscription_type`` | ``str`` | The subscription type (STREAM or EVENT_STORE). |
-    | ``subscription_profile`` | ``str`` | A predefined profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION). |
+    | ``subscription_type`` | ``SubscriptionType`` or ``str`` | The subscription type (STREAM or EVENT_STORE), as the enum member or its name. |
+    | ``subscription_profile`` | ``SubscriptionProfile`` or ``str`` | A built-in profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION) as the enum member or its name, or a custom profile name from ``[server.profiles]``. |
     | ``subscription_config`` | ``dict`` | Custom configuration overrides that take precedence over profile defaults. |
     | ``retries`` | ``int`` | Maximum retries when the handler fails with a transient exception. Overrides the domain's ``server.transient_retry`` setting; ``None`` uses that setting. |
     | ``backoff`` | ``str`` | Delay strategy between transient retries: ``"exponential"``, ``"linear"`` or ``"fixed"``. ``None`` uses the domain setting. |
@@ -154,8 +154,8 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
         # category, broker capability). ``None`` disables partitioning.
         ("sequential_by", None),
         # Subscription configuration options
-        ("subscription_type", None),  # SubscriptionType enum or None for default
-        ("subscription_profile", None),  # SubscriptionProfile enum or None
+        ("subscription_type", None),  # SubscriptionType or its name; None = default
+        ("subscription_profile", None),  # SubscriptionProfile or name; None = default
         ("subscription_config", {}),  # Dict of custom config overrides
         ("suppress_checks", ()),
     ]
