@@ -18,10 +18,12 @@ or stage tree — lives under ``data``; ``diagnostics`` carries the diagnostic
 records (the :mod:`protean.ir.diagnostics` shape, plain dicts at runtime).
 
 ``check``, ``verify``, ``events catalog``, ``subscriptions status``, and
-``projection status`` emit this envelope today. The other commands that print
-``--json``/``--format json`` (``upgrade-check``, ``ir diff``, ``ir check``) are
-not yet converged onto it — that is a separate follow-on. Do not read this module
-as a claim that they already conform.
+``projection status`` emit this envelope today. ``ir diff`` follows the
+exit-code convention below (``3`` is its "non-breaking changes only" class) but
+keeps its own ``--format json`` shape, off the envelope. The other commands that
+print ``--json``/``--format json`` (``upgrade-check``, ``ir check``) are not yet
+converged onto either. That is a separate follow-on. Do not read this module as
+a claim that they already conform.
 
 The envelope is a guarded contract, not just a shape: it ships a pinned,
 versioned JSON Schema at :data:`SCHEMA_PATH`, mirroring the IR precedent at

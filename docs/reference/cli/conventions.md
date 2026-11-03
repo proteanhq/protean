@@ -12,9 +12,12 @@ follow them for their
 envelope, with the exit codes below. Their human (non-`--json`) output keeps its
 historical shape, so a load failure there still exits `1`. `eventstore verify`
 follows the same `--json` contracts, and in both modes it exits `2` when it
-cannot connect to the event store. The other commands
-that print JSON (`upgrade-check`, `ir diff`, `ir check`) predate the contracts
-and are **not yet converged**: their exit codes and output shapes still differ.
+cannot connect to the event store. `ir diff` follows the exit-code convention:
+`2` for a usage, load or config error, printed on stderr, and `3` for its own
+"non-breaking changes only" result. Its `--format json` output keeps its own
+shape and does not use the envelope. The other commands that print JSON
+(`upgrade-check`, `ir check`) predate the contracts and are **not yet
+converged**: their exit codes and output shapes still differ.
 
 ## The result envelope
 
@@ -94,6 +97,17 @@ command that sets no explicit exit code already conforms.
 | `3` | Init failed: the domain was found but did not initialize. |
 | `4` | Check failed: a malformed `[lint]` config, or findings at or above the floor. |
 | `5` | Tests failed. |
+
+**`protean ir diff`** (it follows the codes above, without the envelope):
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | No changes, breaking changes under `strictness = "warn"`, or `strictness = "off"`. |
+| `1` | Breaking changes. |
+| `2` | Usage, load or config error, printed on stderr. |
+| `3` | Non-breaking changes only. |
+
+See [`protean ir diff`](ir.md#protean-ir-diff) for the details.
 
 ## Clean stdout
 

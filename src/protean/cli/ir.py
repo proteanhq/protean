@@ -29,15 +29,16 @@ Usage::
 import json
 from dataclasses import asdict
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Any
+from typing import Annotated, Any, NoReturn
 
 import typer
-from rich import print
+from rich import get_console, print
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
+from protean.cli.result import EXIT_FAILURE, EXIT_OK, emit_usage_error
 from protean.exceptions import ConfigurationError, NoDomainException
 from protean.ir.config import load_config
 from protean.ir.constants import canonical_ir_json
@@ -57,6 +58,10 @@ from protean.ir.staleness import (
 )
 
 app = typer.Typer(no_args_is_help=True)
+
+# ``ir diff``'s command-specific exit class: the diff found only non-breaking
+# changes. ``0``-``2`` follow the CLI-wide convention in ``protean.cli.result``.
+EXIT_DIFF_NON_BREAKING = 3
 
 
 @app.callback()
@@ -180,56 +185,59 @@ def diff(
     4. Git baseline:    --domain my_app --base HEAD
 
     Exit codes (CI-friendly):
-      0 — no changes detected
-      1 — breaking changes found
-      2 — non-breaking changes only
+      0: no changes detected, or breaking changes under strictness=warn,
+         or compatibility checking disabled (strictness=off)
+      1: breaking changes found
+      2: usage, load or config error (message on stderr, no diff printed)
+      3: non-breaking changes only
     """
     # ------------------------------------------------------------------ #
-    # Validate --format before any load or generation                      #
+    # Validate the command line before reading config or loading any IR   #
     # ------------------------------------------------------------------ #
     if format not in ("text", "json", "event-model"):
-        print(
-            f"[red]Error:[/red] invalid --format: {format!r}. "
-            "Choose from: text, json, event-model"
+        emit_usage_error(
+            as_json=False,
+            message=(
+                f"Error: invalid --format: {format!r}. "
+                "Choose from: text, json, event-model"
+            ),
         )
-        raise typer.Abort()
+
+    if base and not domain:
+        emit_usage_error(as_json=False, message="Error: --base requires --domain")
+
+    if base and (left or right):
+        emit_usage_error(
+            as_json=False,
+            message="Error: --base cannot be combined with --left/--right",
+        )
+
+    if left and domain:
+        emit_usage_error(
+            as_json=False, message="Error: --left and --domain are mutually exclusive"
+        )
+
+    if left and not right:
+        emit_usage_error(
+            as_json=False, message="Error: --right is required when using --left"
+        )
+
+    if not left and not domain:
+        emit_usage_error(
+            as_json=False, message="Error: provide either --left or --domain"
+        )
 
     # ------------------------------------------------------------------ #
     # Load config                                                          #
     # ------------------------------------------------------------------ #
     try:
         config = load_config(dir)
-    except ValueError as exc:
-        print(f"[red]Error:[/red] Invalid .protean/config.toml: {exc}")
-        raise typer.Abort() from exc
-
-    # If compatibility checking is disabled, skip entirely
-    if config.strictness == "off":
-        print("[dim]Compatibility checking is disabled (strictness=off).[/dim]")
-        raise typer.Exit(code=0)
-
-    # ------------------------------------------------------------------ #
-    # Validate argument combinations                                      #
-    # ------------------------------------------------------------------ #
-    if base and not domain:
-        print("[red]Error:[/red] --base requires --domain")
-        raise typer.Abort()
-
-    if base and (left or right):
-        print("[red]Error:[/red] --base cannot be combined with --left/--right")
-        raise typer.Abort()
-
-    if left and domain:
-        print("[red]Error:[/red] --left and --domain are mutually exclusive")
-        raise typer.Abort()
-
-    if left and not right:
-        print("[red]Error:[/red] --right is required when using --left")
-        raise typer.Abort()
-
-    if not left and not domain:
-        print("[red]Error:[/red] provide either --left or --domain")
-        raise typer.Abort()
+    # OSError: before Python 3.14, the existence check raises PermissionError
+    # when the directory is not searchable.
+    except (ValueError, OSError) as exc:
+        emit_usage_error(
+            as_json=False, message=f"Error: Invalid .protean/config.toml: {exc}"
+        )
 
     # ------------------------------------------------------------------ #
     # Load IRs based on mode                                              #
@@ -237,32 +245,31 @@ def diff(
     if base:
         # Mode 4: git baseline — load IR from a commit
         baseline_ir = _load_ir_from_git(base, dir)
-        current_ir = load_domain_ir(domain)
+        current_ir = load_domain_ir(domain, usage_exit=True)
     elif domain and not right:
         # Mode 3: auto-baseline — load .protean/ir.json as baseline
         baseline_ir = _load_auto_baseline(dir)
-        current_ir = load_domain_ir(domain)
+        current_ir = load_domain_ir(domain, usage_exit=True)
     elif domain and right:
         # Mode 2: domain (left) vs file (right)
-        baseline_ir = load_domain_ir(domain)
-        current_ir = load_ir_file(right)
+        baseline_ir = load_domain_ir(domain, usage_exit=True)
+        current_ir = load_ir_file(right, usage_exit=True)
     else:
         # Mode 1: explicit files
-        baseline_ir = load_ir_file(left)
-        current_ir = load_ir_file(right)
+        baseline_ir = load_ir_file(left, usage_exit=True)
+        current_ir = load_ir_file(right, usage_exit=True)
+
+    # Both sides load even when checking is off, so an input that cannot be
+    # found or parsed still exits 2. The comparison does not run, so an IR
+    # whose content only the comparison rejects passes under off.
+    if config.strictness == "off":
+        print("[dim]Compatibility checking is disabled (strictness=off).[/dim]")
+        raise typer.Exit(code=EXIT_OK)
 
     # ------------------------------------------------------------------ #
     # Compute diff and classify                                           #
     # ------------------------------------------------------------------ #
-    try:
-        result = diff_ir(baseline_ir, current_ir)
-        report = classify_changes(result, baseline_ir, current_ir)
-    except ConfigurationError as exc:
-        print(
-            f"[red]Error:[/red] {escape(str(exc))} "
-            "Fix that IR file by hand, or regenerate it."
-        )
-        raise typer.Abort() from exc
+    result, report = _compare(baseline_ir, current_ir)
 
     # Filter out excluded elements from the report
     if config.exclude:
@@ -282,67 +289,129 @@ def diff(
         # Render the same diff in slice vocabulary. Every loader mode above
         # sets baseline_ir and current_ir, so both snapshots are available and
         # the renderer can judge each side by the side it lives on.
-        typer.echo(
-            generate_event_model_diff(result, left_ir=baseline_ir, right_ir=current_ir)
-        )
+        typer.echo(_render_event_model(result, baseline_ir, current_ir))
     else:
-        _print_diff_text(result, report)
-        # Only when the (exclusion-filtered) report has classified changes — a
-        # vacuous FULL beside no schema changes is noise.
-        if report.breaking_changes or report.safe_changes:
-            _print_avro_verdict(report)
+        typer.echo(_render_text(result, report), nl=False)
 
     # ------------------------------------------------------------------ #
     # CI exit codes                                                       #
     # ------------------------------------------------------------------ #
     summary = result.get("summary", {})
     if not summary.get("has_changes", False):
-        raise typer.Exit(code=0)
+        raise typer.Exit(code=EXIT_OK)
     elif report.is_breaking:
         if config.strictness == "warn":
             print(
                 "[yellow]Warning:[/yellow] Breaking changes detected "
                 "(strictness=warn, not blocking)."
             )
-            raise typer.Exit(code=0)
-        raise typer.Exit(code=1)
+            raise typer.Exit(code=EXIT_OK)
+        raise typer.Exit(code=EXIT_FAILURE)
     elif summary.get("has_breaking_changes", False):
         # Contract-level breaking changes from diff (not in report)
         if config.strictness == "warn":
-            raise typer.Exit(code=0)
-        raise typer.Exit(code=1)
+            raise typer.Exit(code=EXIT_OK)
+        raise typer.Exit(code=EXIT_FAILURE)
     else:
-        raise typer.Exit(code=2)
+        raise typer.Exit(code=EXIT_DIFF_NON_BREAKING)
+
+
+_IR_SHAPE_ERRORS = (AttributeError, KeyError, TypeError, ValueError)
+
+
+def _compare(
+    baseline_ir: dict[str, Any], current_ir: dict[str, Any]
+) -> tuple[dict[str, Any], CompatibilityReport]:
+    """Diff and classify two loaded IRs, or exit 2 if either is not a valid IR."""
+    try:
+        result = diff_ir(baseline_ir, current_ir)
+        report = classify_changes(result, baseline_ir, current_ir)
+    except ConfigurationError as exc:
+        emit_usage_error(
+            as_json=False,
+            message=f"Error: {exc} Fix that IR file by hand, or regenerate it.",
+        )
+    except _IR_SHAPE_ERRORS as exc:
+        # Each loader checks only that an IR is a JSON object. An object of
+        # the wrong shape (a list where a mapping belongs) fails here, and
+        # that is an input error, not a breaking change.
+        _abort_ir_shape(exc)
+    return result, report
+
+
+def _render_event_model(
+    result: dict[str, Any], baseline_ir: dict[str, Any], current_ir: dict[str, Any]
+) -> str:
+    """Render the diff in slice vocabulary, or exit 2 if either IR is not valid."""
+    try:
+        return generate_event_model_diff(
+            result, left_ir=baseline_ir, right_ir=current_ir
+        )
+    except _IR_SHAPE_ERRORS as exc:
+        # The renderer reads parts of the IR, such as projectors and events,
+        # that the comparison accepts in any shape.
+        _abort_ir_shape(exc)
+
+
+def _render_text(result: dict[str, Any], report: CompatibilityReport) -> str:
+    """Render the text diff to a string, or exit 2 if either IR is not valid."""
+    # The renderer reads parts of the IR, such as diagnostic messages, that the
+    # comparison accepts in any shape. Capturing the output keeps a partial
+    # diff off stdout when it fails part-way.
+    try:
+        with get_console().capture() as capture:
+            _print_diff_text(result, report)
+            # Only when the (exclusion-filtered) report has classified changes — a
+            # vacuous FULL beside no schema changes is noise.
+            if report.breaking_changes or report.safe_changes:
+                _print_avro_verdict(report)
+    except _IR_SHAPE_ERRORS as exc:
+        _abort_ir_shape(exc)
+    return capture.get()
+
+
+def _abort_ir_shape(exc: Exception) -> NoReturn:
+    """Exit 2 for an IR that does not have the IR structure."""
+    emit_usage_error(
+        as_json=False,
+        message=(
+            "Error: could not compare the IR files, one of them does not "
+            f"have the IR structure ({type(exc).__name__}: {exc}). "
+            "Regenerate it with protean ir show."
+        ),
+    )
 
 
 def _load_ir_from_git(commit: str, protean_dir: str) -> dict[str, Any]:
-    """Load .protean/ir.json from a git commit, or abort on error."""
+    """Load .protean/ir.json from a git commit, or exit 2 on error."""
     from protean.ir.git import load_ir_from_commit  # noqa: PLC0415
 
     ir_path = PurePosixPath(protean_dir, "ir.json").as_posix()
     try:
         return load_ir_from_commit(commit, ir_path)
     except GitError as exc:
-        print(f"[red]Error:[/red] {exc}")
-        raise typer.Abort() from exc
+        emit_usage_error(as_json=False, message=f"Error: {exc}")
 
 
 def _load_auto_baseline(protean_dir: str) -> dict[str, Any]:
-    """Load .protean/ir.json from disk, or abort if not found."""
+    """Load .protean/ir.json from disk, or exit 2 if it is missing or invalid."""
     try:
         stored = load_stored_ir(Path(protean_dir))
-    except ValueError as exc:
-        print(f"[red]Error:[/red] {exc}")
-        raise typer.Abort() from exc
+    # OSError: before Python 3.14, the existence check raises PermissionError
+    # when the directory is not searchable.
+    except (ValueError, OSError) as exc:
+        emit_usage_error(as_json=False, message=f"Error: {exc}")
 
     if stored is None:
-        print(
-            f"[red]Error:[/red] No materialized IR found in '{protean_dir}/ir.json'.\n"
-            "  Run [bold]protean ir show --domain <module> --canonical > "
-            f"{protean_dir}/ir.json[/bold] to generate one,\n"
-            "  or use --left/--right to specify files explicitly."
+        emit_usage_error(
+            as_json=False,
+            message=(
+                f"Error: No materialized IR found in '{protean_dir}/ir.json'.\n"
+                "  Run protean ir show --domain <module> --canonical > "
+                f"{protean_dir}/ir.json to generate one,\n"
+                "  or use --left/--right to specify files explicitly."
+            ),
         )
-        raise typer.Abort()
     ir_dict, _ = stored
     return ir_dict
 

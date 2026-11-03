@@ -216,6 +216,8 @@ Add a compatibility check step to your CI workflow:
 ```
 
 The command exits with code 1 on breaking changes, which fails the CI step.
+It exits 3 when it finds only non-breaking changes, which also fails the step.
+Allow exit code 3 if safe changes should pass.
 
 ### pytest warning filters
 
@@ -261,10 +263,13 @@ protean ir diff --domain myapp.domain --base HEAD
 protean ir diff --left baseline.json --right current.json
 ```
 
-Exit codes: 0 (no changes), 1 (breaking changes), 2 (non-breaking only).
+Exit codes: 0 (no changes), 1 (breaking changes), 2 (usage, load or config
+error, printed on stderr), 3 (non-breaking only).
 
 When `strictness = "warn"`, breaking changes are reported but the exit code
-is 0. When `strictness = "off"`, the command exits 0 immediately.
+is 0. When `strictness = "off"`, the command still checks its options and
+loads both sides, and exits 2 if either fails. It then exits 0 without
+comparing them.
 
 ### Avro compatibility verdict
 

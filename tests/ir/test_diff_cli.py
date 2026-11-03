@@ -122,7 +122,7 @@ class TestDiffJSON:
         result = runner.invoke(
             app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
         )
-        assert result.exit_code in (0, 1, 2)
+        assert result.exit_code in (0, 1, 3)
         parsed = json.loads(result.output)
         assert "summary" in parsed
         assert "clusters" in parsed
@@ -149,7 +149,7 @@ class TestDiffText:
     def test_text_output_shows_changes(self, ir_pair):
         left, right = ir_pair
         result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert result.exit_code in (1, 2)
+        assert result.exit_code in (1, 3)
         assert "IR Diff" in result.output
 
     def test_text_output_no_changes(self, identical_pair):
@@ -270,7 +270,7 @@ class TestDiffTextCoverage:
             _minimal_ir(clusters={"app.Order": _make_cluster("Order")}),
         )
         result = runner.invoke(app, ["ir", "diff", "-l", left, "-r", right])
-        assert result.exit_code in (1, 2)
+        assert result.exit_code == 3
         assert "Clusters" in result.output
         assert "Order" in result.output
 
@@ -617,7 +617,7 @@ class TestDiffArgumentValidation:
         left = tmp_path / "left.json"
         left.write_text("{}")
         result = runner.invoke(app, ["ir", "diff", "-l", str(left)])
-        assert result.exit_code != 0
+        assert result.exit_code == 2
 
     def test_both_left_and_domain_aborts(self, tmp_path):
         left = tmp_path / "left.json"
@@ -628,13 +628,13 @@ class TestDiffArgumentValidation:
             app,
             ["ir", "diff", "-l", str(left), "-d", "some_domain", "-r", str(right)],
         )
-        assert result.exit_code != 0
+        assert result.exit_code == 2
 
     def test_neither_left_nor_domain_aborts(self, tmp_path):
         right = tmp_path / "right.json"
         right.write_text("{}")
         result = runner.invoke(app, ["ir", "diff", "-r", str(right)])
-        assert result.exit_code != 0
+        assert result.exit_code == 2
 
     def test_nonexistent_file_aborts(self):
         result = runner.invoke(
@@ -648,7 +648,7 @@ class TestDiffArgumentValidation:
                 "/nonexistent/right.json",
             ],
         )
-        assert result.exit_code != 0
+        assert result.exit_code == 2
 
     def test_invalid_json_aborts(self, tmp_path):
         left = tmp_path / "left.json"
@@ -656,11 +656,11 @@ class TestDiffArgumentValidation:
         left.write_text("not json")
         right.write_text("{}")
         result = runner.invoke(app, ["ir", "diff", "-l", str(left), "-r", str(right)])
-        assert result.exit_code != 0
+        assert result.exit_code == 2
 
     def test_base_without_domain_aborts(self, tmp_path):
         result = runner.invoke(app, ["ir", "diff", "--base", "HEAD"])
-        assert result.exit_code != 0
+        assert result.exit_code == 2
 
     def test_base_with_left_aborts(self, tmp_path):
         left = tmp_path / "left.json"
@@ -678,7 +678,7 @@ class TestDiffArgumentValidation:
                 "some_domain",
             ],
         )
-        assert result.exit_code != 0
+        assert result.exit_code == 2
 
     def test_base_with_right_aborts(self, tmp_path):
         right = tmp_path / "right.json"
@@ -696,7 +696,7 @@ class TestDiffArgumentValidation:
                 "some_domain",
             ],
         )
-        assert result.exit_code != 0
+        assert result.exit_code == 2
 
 
 # ------------------------------------------------------------------
@@ -706,7 +706,7 @@ class TestDiffArgumentValidation:
 
 @pytest.mark.no_test_domain
 class TestDiffExitCodes:
-    """CI-friendly exit codes: 0 = no changes, 1 = breaking, 2 = non-breaking."""
+    """CI-friendly exit codes: 0 = no changes, 1 = breaking, 3 = non-breaking."""
 
     def test_exit_0_when_no_changes(self, tmp_path):
         ir = _minimal_ir()
@@ -740,8 +740,8 @@ class TestDiffExitCodes:
         )
         assert result.exit_code == 1
 
-    def test_exit_2_when_non_breaking_changes_only(self, tmp_path):
-        """Adding a new cluster is safe → exit 2."""
+    def test_exit_3_when_non_breaking_changes_only(self, tmp_path):
+        """Adding a new cluster is safe → exit 3."""
         left = _write_ir(tmp_path, "left.json", _minimal_ir())
         right = _write_ir(
             tmp_path,
@@ -751,7 +751,7 @@ class TestDiffExitCodes:
         result = runner.invoke(
             app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
         )
-        assert result.exit_code == 2
+        assert result.exit_code == 3
 
     def test_exit_1_for_element_removal(self, tmp_path):
         """Removing a cluster (aggregate) is breaking → exit 1."""
@@ -766,8 +766,8 @@ class TestDiffExitCodes:
         )
         assert result.exit_code == 1
 
-    def test_exit_2_for_added_optional_field(self, tmp_path):
-        """Adding an optional field is safe → exit 2."""
+    def test_exit_3_for_added_optional_field(self, tmp_path):
+        """Adding an optional field is safe → exit 3."""
         left_cluster = _make_cluster("Order", fields={})
         right_cluster = _make_cluster(
             "Order",
@@ -782,7 +782,7 @@ class TestDiffExitCodes:
         result = runner.invoke(
             app, ["ir", "diff", "-l", left, "-r", right, "-f", "json"]
         )
-        assert result.exit_code == 2
+        assert result.exit_code == 3
 
     def test_exit_codes_work_with_text_format(self, tmp_path):
         """Exit codes work for text format too, not just JSON."""
@@ -828,7 +828,8 @@ class TestDiffRefusesRemovalVersionWrittenAsANumber:
         return result, " ".join(result.output.split())
 
     def _assert_refused(self, result, output, subject, side="left"):
-        assert result.exit_code == 1
+        assert result.exit_code == 2
+        assert result.stdout == ""
         assert not isinstance(result.exception, ConfigurationError)
         assert (
             f"Error: The `removal` version of {subject} in the {side} IR is 0.2"
@@ -1021,7 +1022,7 @@ class TestDiffAutoBaseline:
                 str(self._protean_dir),
             ],
         )
-        assert result.exit_code != 0
+        assert result.exit_code == 2
         assert "No materialized IR" in result.output
 
     def test_auto_baseline_aborts_on_invalid_json(self):
@@ -1039,7 +1040,7 @@ class TestDiffAutoBaseline:
                 str(self._protean_dir),
             ],
         )
-        assert result.exit_code != 0
+        assert result.exit_code == 2
         assert "Invalid JSON" in result.output
 
     def test_auto_baseline_text_output(self):
@@ -1128,7 +1129,7 @@ class TestDiffGitBaseline:
                 app,
                 ["ir", "diff", "-d", "publishing7.py", "--base", "nonexistent_ref_xyz"],
             )
-            assert result.exit_code != 0
+            assert result.exit_code == 2
 
     def test_base_custom_dir(self):
         """--dir changes the path passed to load_ir_from_commit."""
@@ -1224,7 +1225,7 @@ class TestAvroVerdictCLI:
         )
         data = json.loads(result.output)
         assert data["compatibility"]["avro_verdict"] == "FULL"
-        assert result.exit_code == 2  # non-breaking changes present
+        assert result.exit_code == 3  # non-breaking changes present
 
     def test_json_verdict_forward_for_added_required_no_default(self, tmp_path):
         left = self._agg_ir(tmp_path, "left.json", {})
@@ -3061,6 +3062,479 @@ class TestDiffFormatValidation:
             ["ir", "diff", "-l", left, "-r", right, "-f", "bogus"],
             env={"COLUMNS": "200"},
         )
-        assert result.exit_code != 0
+        assert result.exit_code == 2
         assert "invalid --format" in result.output
         assert "event-model" in result.output
+
+
+# ------------------------------------------------------------------
+# Errors exit 2 on stderr; results exit 0 / 1 / 3
+# ------------------------------------------------------------------
+
+
+def _good_file(tmp_path, name="good.json"):
+    return _write_ir(tmp_path, name, _minimal_ir())
+
+
+def _bad_json_file(tmp_path, name="bad.json"):
+    path = tmp_path / name
+    path.write_text("not json", encoding="utf-8")
+    return str(path)
+
+
+def _module_file(tmp_path, source):
+    path = tmp_path / "broken_domain.py"
+    path.write_text(source, encoding="utf-8")
+    return str(path)
+
+
+def _raw_file(tmp_path, content, name="raw.json"):
+    path = tmp_path / name
+    path.write_bytes(content)
+    return str(path)
+
+
+def _baseline(protean_dir, content):
+    # Writes the auto-baseline and adds no arguments to the command line.
+    (protean_dir / "ir.json").write_bytes(content)
+    return []
+
+
+# Each case builds the command line from (tmp_path, protean_dir) and names the
+# text the error must print on stderr.
+_ERROR_CASES = {
+    "unknown option": (lambda t, d: ["--no-such-flag"], "No such option"),
+    "missing --left file": (
+        lambda t, d: ["-l", str(t / "missing.json"), "-r", _good_file(t)],
+        "file not found or not a regular file",
+    ),
+    "unreadable file (a directory)": (
+        lambda t, d: ["-l", str(t), "-r", _good_file(t)],
+        "file not found or not a regular file",
+    ),
+    "invalid JSON on the left": (
+        lambda t, d: ["-l", _bad_json_file(t), "-r", _good_file(t)],
+        "invalid JSON in",
+    ),
+    "invalid JSON on the right": (
+        lambda t, d: ["-l", _good_file(t), "-r", _bad_json_file(t)],
+        "invalid JSON in",
+    ),
+    "--base without --domain": (
+        lambda t, d: ["--base", "HEAD"],
+        "--base requires --domain",
+    ),
+    "--base with --left": (
+        lambda t, d: ["--base", "HEAD", "-d", "publishing7.py", "-l", _good_file(t)],
+        "--base cannot be combined with --left/--right",
+    ),
+    "--left with --domain": (
+        lambda t, d: ["-l", _good_file(t), "-r", _good_file(t), "-d", "x"],
+        "--left and --domain are mutually exclusive",
+    ),
+    "--left without --right": (
+        lambda t, d: ["-l", _good_file(t)],
+        "--right is required when using --left",
+    ),
+    "neither --left nor --domain": (
+        lambda t, d: ["-r", _good_file(t)],
+        "provide either --left or --domain",
+    ),
+    "invalid --format": (
+        lambda t, d: ["-l", _good_file(t), "-r", _good_file(t), "-f", "bogus"],
+        "invalid --format: 'bogus'",
+    ),
+    "missing auto-baseline": (
+        lambda t, d: ["-d", "publishing7.py"],
+        "No materialized IR found",
+    ),
+    "--base commit that does not exist": (
+        lambda t, d: ["-d", "publishing7.py", "--base", "no_such_ref_xyz"],
+        "commit not found",
+    ),
+    "--domain that does not load": (
+        lambda t, d: ["-d", "no_such_module_xyz.py", "-r", _good_file(t)],
+        "Error loading Protean domain",
+    ),
+    "--domain that raises at import": (
+        lambda t, d: [
+            "-d",
+            _module_file(t, "raise RuntimeError('boom')"),
+            "-r",
+            _good_file(t),
+        ],
+        "Error loading Protean domain: RuntimeError: boom",
+    ),
+    "--domain with a syntax error": (
+        lambda t, d: ["-d", _module_file(t, "def broken(:"), "-r", _good_file(t)],
+        "Error loading Protean domain: SyntaxError",
+    ),
+    "--left file that is not UTF-8": (
+        lambda t, d: ["-l", _raw_file(t, b"\xff\xfe"), "-r", _good_file(t)],
+        "could not read",
+    ),
+    "--left file that is a JSON list": (
+        lambda t, d: ["-l", _raw_file(t, b"[]"), "-r", _good_file(t)],
+        "IR file is not a JSON object",
+    ),
+    "auto-baseline that is a JSON list": (
+        lambda t, d: [*_baseline(d, b"[]"), "-d", "publishing7.py"],
+        "is not a JSON object",
+    ),
+    "auto-baseline that is not UTF-8": (
+        lambda t, d: [*_baseline(d, b"\xff"), "-d", "publishing7.py"],
+        "Could not read",
+    ),
+}
+
+
+@pytest.mark.no_test_domain
+class TestDiffErrorsExit2:
+    """Every usage, load or config error exits 2 with its message on stderr,
+    prints no diff on stdout, and never runs the diff, at every strictness."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, tmp_path):
+        from tests.shared import change_working_directory_to
+
+        original_path = sys.path[:]
+        cwd = Path.cwd()
+        change_working_directory_to("test7")
+        self._tmp = tmp_path
+        self._protean_dir = tmp_path / ".protean"
+        self._protean_dir.mkdir()
+        yield
+        sys.path[:] = original_path
+        os.chdir(cwd)
+
+    def _run(self, case, strictness=None, extra=()):
+        from protean.ir.git import GitError
+
+        build, _ = _ERROR_CASES[case]
+        if strictness is not None:
+            (self._protean_dir / "config.toml").write_text(
+                f'[compatibility]\nstrictness = "{strictness}"\n', encoding="utf-8"
+            )
+        args = [
+            "ir",
+            "diff",
+            "--dir",
+            str(self._protean_dir),
+            *extra,
+            *build(self._tmp, self._protean_dir),
+        ]
+        with (
+            patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff ran")),
+            patch(
+                "protean.ir.git.load_ir_from_commit",
+                side_effect=GitError("commit not found"),
+            ),
+        ):
+            return runner.invoke(app, args)
+
+    def _assert_usage_error(self, result, case):
+        _, message = _ERROR_CASES[case]
+        assert result.exit_code == 2, result.output
+        assert isinstance(result.exception, SystemExit)
+        assert message in " ".join(result.stderr.split())
+        assert result.stdout == ""
+
+    @pytest.mark.parametrize("strictness", [None, "strict", "warn", "off"])
+    @pytest.mark.parametrize("case", list(_ERROR_CASES))
+    def test_error_exits_2_on_stderr(self, case, strictness):
+        self._assert_usage_error(self._run(case, strictness), case)
+
+    @pytest.mark.parametrize("case", list(_ERROR_CASES))
+    def test_error_keeps_stdout_empty_under_json(self, case):
+        self._assert_usage_error(self._run(case, extra=("-f", "json")), case)
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "{ invalid toml }",
+            '[compatibility]\nstrictness = "lenient"\n',
+            "[compatibility]\nstrictness = []\n",
+        ],
+    )
+    def test_malformed_config_exits_2_on_stderr(self, content):
+        (self._protean_dir / "config.toml").write_text(content, encoding="utf-8")
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-l",
+                _good_file(self._tmp),
+                "-r",
+                _good_file(self._tmp),
+            ],
+        )
+        assert result.exit_code == 2
+        assert "Invalid .protean/config.toml" in result.stderr
+        assert result.stdout == ""
+
+    @pytest.mark.parametrize(
+        "target", ["protean.cli.ir.load_config", "protean.cli.ir.load_stored_ir"]
+    )
+    def test_unsearchable_protean_dir_exits_2_on_stderr(self, target):
+        # Before Python 3.14, the existence checks in both loaders raise
+        # PermissionError when the directory is not searchable.
+        with patch(target, side_effect=PermissionError("Permission denied")):
+            result = runner.invoke(
+                app,
+                ["ir", "diff", "--dir", str(self._protean_dir), "-d", "publishing7.py"],
+            )
+        assert result.exit_code == 2, result.output
+        assert "Permission denied" in result.stderr
+        assert result.stdout == ""
+
+    def test_argument_errors_are_checked_before_config(self):
+        # A malformed config must not hide a bad command line.
+        (self._protean_dir / "config.toml").write_text(
+            "{ invalid toml }", encoding="utf-8"
+        )
+        result = runner.invoke(
+            app, ["ir", "diff", "--dir", str(self._protean_dir), "--base", "HEAD"]
+        )
+        assert result.exit_code == 2
+        assert "--base requires --domain" in result.stderr
+        assert "config.toml" not in result.stderr
+
+    @pytest.mark.parametrize("strictness", ["strict", "off"])
+    @pytest.mark.parametrize("mode", ["git baseline", "auto-baseline"])
+    def test_domain_load_error_after_a_good_baseline_exits_2(self, mode, strictness):
+        # The baseline loads, so the failure comes from the domain side.
+        (self._protean_dir / "config.toml").write_text(
+            f'[compatibility]\nstrictness = "{strictness}"\n', encoding="utf-8"
+        )
+        args = ["ir", "diff", "--dir", str(self._protean_dir)]
+        args += ["-d", "no_such_module_xyz.py"]
+        if mode == "git baseline":
+            args += ["--base", "HEAD"]
+        else:
+            (self._protean_dir / "ir.json").write_text(
+                json.dumps(_minimal_ir()), encoding="utf-8"
+            )
+        with (
+            patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff ran")),
+            patch("protean.ir.git.load_ir_from_commit", return_value=_minimal_ir()),
+        ):
+            result = runner.invoke(app, args)
+        assert result.exit_code == 2, result.output
+        assert "Error loading Protean domain" in result.stderr
+        assert result.stdout == ""
+
+    @pytest.mark.parametrize("strictness", ["strict", "off"])
+    def test_missing_right_file_after_a_good_domain_exits_2(self, strictness):
+        (self._protean_dir / "config.toml").write_text(
+            f'[compatibility]\nstrictness = "{strictness}"\n', encoding="utf-8"
+        )
+        with patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff ran")):
+            result = runner.invoke(
+                app,
+                [
+                    "ir",
+                    "diff",
+                    "--dir",
+                    str(self._protean_dir),
+                    "-d",
+                    "publishing7.py",
+                    "-r",
+                    str(self._tmp / "missing.json"),
+                ],
+            )
+        assert result.exit_code == 2, result.output
+        assert "file not found or not a regular file" in " ".join(result.stderr.split())
+        assert result.stdout == ""
+
+    @pytest.mark.parametrize(
+        "bad_ir", [{"clusters": []}, {"clusters": {"app.Order": 5}}]
+    )
+    def test_ir_without_the_ir_structure_exits_2(self, bad_ir):
+        left = _write_ir(self._tmp, "bad_shape.json", bad_ir)
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-l",
+                left,
+                "-r",
+                _good_file(self._tmp),
+            ],
+        )
+        assert result.exit_code == 2, result.output
+        assert "does not have the IR structure" in " ".join(result.stderr.split())
+        assert result.stdout == ""
+
+    @pytest.mark.parametrize(
+        "bad_ir",
+        [
+            _minimal_ir(
+                clusters={"app.Order": dict(_make_cluster("Order"), events=[])}
+            ),
+            _minimal_ir(projections={"app.P": {"projection": {}, "projectors": [1]}}),
+        ],
+    )
+    def test_ir_only_the_event_model_renderer_rejects_exits_2(self, bad_ir):
+        # The comparison accepts these shapes; only the renderer reads them.
+        right = _write_ir(self._tmp, "bad_shape.json", bad_ir)
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-l",
+                _good_file(self._tmp),
+                "-r",
+                right,
+                "--format",
+                "event-model",
+            ],
+        )
+        assert result.exit_code == 2, result.output
+        assert "does not have the IR structure" in " ".join(result.stderr.split())
+        assert result.stdout == ""
+
+    def test_ir_only_the_text_renderer_rejects_exits_2(self):
+        # The comparison accepts a diagnostic without a message; only the
+        # text renderer reads the message.
+        right = _write_ir(
+            self._tmp,
+            "bad_shape.json",
+            _minimal_ir(diagnostics=[{"code": "X", "element": "app.Order"}]),
+        )
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-l",
+                _good_file(self._tmp),
+                "-r",
+                right,
+            ],
+        )
+        assert result.exit_code == 2, result.output
+        assert "does not have the IR structure" in " ".join(result.stderr.split())
+        assert result.stdout == ""
+
+    def test_ir_without_the_ir_structure_exits_0_under_off(self):
+        # Under off the comparison does not run, so only it can reject this IR.
+        (self._protean_dir / "config.toml").write_text(
+            '[compatibility]\nstrictness = "off"\n', encoding="utf-8"
+        )
+        left = _write_ir(self._tmp, "bad_shape.json", {"clusters": []})
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(self._protean_dir),
+                "-l",
+                left,
+                "-r",
+                _good_file(self._tmp),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Compatibility checking is disabled" in result.stdout
+
+    def test_domain_init_error_exits_2(self):
+        with patch("protean.domain.Domain.init", side_effect=RuntimeError("init boom")):
+            result = runner.invoke(
+                app,
+                [
+                    "ir",
+                    "diff",
+                    "--dir",
+                    str(self._protean_dir),
+                    "-d",
+                    "publishing7.py",
+                    "-r",
+                    _good_file(self._tmp),
+                ],
+            )
+        assert result.exit_code == 2
+        assert "Error initialising Protean domain: init boom" in " ".join(
+            result.stderr.split()
+        )
+        assert result.stdout == ""
+
+
+@pytest.mark.no_test_domain
+class TestDiffResultCodesAcrossFormats:
+    """The result code is the same for text, json and event-model output."""
+
+    def _pair(self, tmp_path, kind):
+        cluster = {"app.Order": _make_cluster("Order")}
+        if kind == "none":
+            left_ir, right_ir = _minimal_ir(), _minimal_ir()
+        elif kind == "breaking":
+            left_ir, right_ir = _minimal_ir(clusters=cluster), _minimal_ir()
+        else:
+            left_ir, right_ir = _minimal_ir(), _minimal_ir(clusters=cluster)
+        return (
+            _write_ir(tmp_path, "left.json", left_ir),
+            _write_ir(tmp_path, "right.json", right_ir),
+        )
+
+    @pytest.mark.parametrize("format", ["text", "json", "event-model"])
+    @pytest.mark.parametrize(
+        "kind, strictness, expected",
+        [
+            ("none", "strict", 0),
+            ("breaking", "strict", 1),
+            ("non_breaking", "strict", 3),
+            ("breaking", "warn", 0),
+            ("non_breaking", "warn", 3),
+        ],
+    )
+    def test_result_code(self, tmp_path, format, kind, strictness, expected):
+        protean_dir = tmp_path / ".protean"
+        protean_dir.mkdir()
+        (protean_dir / "config.toml").write_text(
+            f'[compatibility]\nstrictness = "{strictness}"\n', encoding="utf-8"
+        )
+        left, right = self._pair(tmp_path, kind)
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "--dir",
+                str(protean_dir),
+                "-l",
+                left,
+                "-r",
+                right,
+                "-f",
+                format,
+            ],
+        )
+        assert result.exit_code == expected, result.output
+        assert result.stderr == ""
+
+    def test_off_exits_0_on_a_breaking_change_without_diffing(self, tmp_path):
+        protean_dir = tmp_path / ".protean"
+        protean_dir.mkdir()
+        (protean_dir / "config.toml").write_text(
+            '[compatibility]\nstrictness = "off"\n', encoding="utf-8"
+        )
+        left, right = self._pair(tmp_path, "breaking")
+        with patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff ran")):
+            result = runner.invoke(
+                app,
+                ["ir", "diff", "--dir", str(protean_dir), "-l", left, "-r", right],
+            )
+        assert result.exit_code == 0, result.output
+        assert "Compatibility checking is disabled" in result.stdout

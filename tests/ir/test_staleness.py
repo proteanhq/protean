@@ -98,6 +98,19 @@ class TestLoadStoredIr:
         result = load_stored_ir(missing)
         assert result is None
 
+    @pytest.mark.parametrize("content", ["[]", "null", "5"])
+    def test_raises_for_json_that_is_not_an_object(self, tmp_path, content):
+        (tmp_path / "ir.json").write_text(content, encoding="utf-8")
+
+        with pytest.raises(ValueError, match="is not a JSON object"):
+            load_stored_ir(tmp_path)
+
+    def test_raises_for_bytes_that_are_not_utf8(self, tmp_path):
+        (tmp_path / "ir.json").write_bytes(b"\xff\xfe")
+
+        with pytest.raises(ValueError, match=r"Could not read .*ir\.json"):
+            load_stored_ir(tmp_path)
+
     def test_raises_for_unreadable_file(self, tmp_path):
         # Make ir.json a directory so read_text raises IsADirectoryError (OSError subclass)
         ir_dir = tmp_path / "ir.json"

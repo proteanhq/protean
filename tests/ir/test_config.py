@@ -107,6 +107,11 @@ class TestCompatConfigValidation:
         with pytest.raises(ValueError, match="Invalid strictness value"):
             CompatConfig(strictness="invalid")
 
+    @pytest.mark.parametrize("value", [[], {}, 1])
+    def test_non_string_strictness_raises_value_error(self, value):
+        with pytest.raises(ValueError, match="Invalid strictness value"):
+            CompatConfig(strictness=value)
+
     def test_custom_exclude(self):
         config = CompatConfig(exclude=("myapp.internal.LegacyEvent",))
         assert config.exclude == ("myapp.internal.LegacyEvent",)
@@ -392,9 +397,39 @@ class TestDiffCLIWithConfig:
         os.chdir(cwd)
 
     def test_diff_exits_0_when_strictness_off(self):
+        # The baseline lacks a field the live domain has: a change exists, and
+        # strictness=off must still exit 0 without running the diff.
+        baseline_ir = json.loads(json.dumps(_live_ir_for_test7()))
+        baseline_ir["checksum"] = "sha256:modified_baseline_off"
+        for cluster in baseline_ir.get("clusters", {}).values():
+            cluster["aggregate"]["fields"]["extra_required_field"] = {
+                "type": "String",
+                "required": True,
+                "unique": False,
+                "identifier": False,
+            }
+            break
+        _write_config(self._protean_dir, '[compatibility]\nstrictness = "off"\n')
+        _write_ir(self._protean_dir, baseline_ir)
+
+        with patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff_ir ran")):
+            result = runner.invoke(
+                app,
+                [
+                    "ir",
+                    "diff",
+                    "--domain",
+                    "publishing7.py",
+                    "--dir",
+                    str(self._protean_dir),
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        assert "disabled" in result.stdout.lower()
+
+    def test_diff_exits_2_when_strictness_off_and_baseline_missing(self):
         _write_config(self._protean_dir, '[compatibility]\nstrictness = "off"\n')
 
-        # Even without valid IR files, strictness=off should exit 0
         result = runner.invoke(
             app,
             [
@@ -406,8 +441,9 @@ class TestDiffCLIWithConfig:
                 str(self._protean_dir),
             ],
         )
-        assert result.exit_code == 0
-        assert "disabled" in result.output.lower()
+        assert result.exit_code == 2
+        assert "No materialized IR" in result.stderr
+        assert "disabled" not in result.output.lower()
 
     def test_diff_warn_mode_exits_0_on_breaking(self):
         """With strictness=warn, breaking changes print warning but exit 0."""
@@ -659,7 +695,9 @@ class TestDiffCLIConfigError:
                 str(self._protean_dir),
             ],
         )
-        assert result.exit_code != 0
+        assert result.exit_code == 2
+        assert "Invalid .protean/config.toml" in result.stderr
+        assert result.stdout == ""
 
 
 @pytest.mark.no_test_domain
@@ -1000,8 +1038,8 @@ class TestDiffCLIExcludeFilter:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_excluded_breaking_change_exits_2_not_1(self):
-        """With exclude, breaking changes are filtered; exits 2 (non-breaking)."""
+    def test_excluded_breaking_change_exits_3_not_1(self):
+        """With exclude, breaking changes are filtered; exits 3 (non-breaking)."""
         live_ir = _live_ir_for_test7()
 
         # Create baseline with an extra required field
@@ -1035,8 +1073,8 @@ class TestDiffCLIExcludeFilter:
                 str(self._protean_dir),
             ],
         )
-        # Breaking change was excluded, so exit code should be 2 (non-breaking)
-        assert result.exit_code == 2
+        # Breaking change was excluded, so exit code should be 3 (non-breaking)
+        assert result.exit_code == 3
 
 
 # ---------------------------------------------------------------------------
