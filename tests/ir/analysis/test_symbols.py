@@ -550,6 +550,21 @@ class TestMethodScope:
 
         assert scope.resolve(self._use(method, "Closed")) == "acme.events.Closed"
 
+    def test_a_walrus_in_a_bare_annotation_target_leaves_it_unresolved(self, tmp_path):
+        """``cache[(Closed := factory)]: int`` evaluates its subscript target,
+        so the walrus rebinds the name and the later use has no single FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run(cache, factory):
+                from acme.events import Closed
+                cache[(Closed := factory)]: int
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
     def test_an_annotated_assignment_of_the_name_leaves_it_unresolved(self, tmp_path):
         """``Closed: type = ...`` rebinds the name, so the later use has no
         single FQN."""

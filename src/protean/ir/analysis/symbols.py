@@ -539,12 +539,18 @@ def _parts_in_method_scope(node: ast.AST) -> list[ast.AST]:
 
     All children of an ordinary node. Of a nested scope node, only the parts
     evaluated where it is defined, so a walrus in one binds the method's name.
-    Of a bare annotation (``x: int`` with no value), only the annotation: its
-    target is a ``Store`` name, but nothing is bound to it at runtime.
+    Of a bare annotation of a plain name (``x: int`` with no value), only the
+    annotation: its target is a ``Store`` name, but nothing is bound to it at
+    runtime. An attribute or subscript target is still evaluated, so a walrus
+    inside it binds the method's name.
     """
     if isinstance(node, NESTED_SCOPES):
         return list(_enclosing_scope_parts(node))
-    if isinstance(node, ast.AnnAssign) and node.value is None:
+    if (
+        isinstance(node, ast.AnnAssign)
+        and node.value is None
+        and isinstance(node.target, ast.Name)
+    ):
         return [node.annotation]
     return list(ast.iter_child_nodes(node))
 
