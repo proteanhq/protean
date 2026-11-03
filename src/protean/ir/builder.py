@@ -1066,9 +1066,24 @@ class IRBuilder:
         sub_config = getattr(cls.meta_, "subscription_config", {})
         return {
             "config": sub_config if sub_config else {},
-            "profile": sub_profile.value if sub_profile else None,
-            "type": sub_type.value if sub_type else None,
+            "profile": self._subscription_option_name(sub_profile),
+            "type": self._subscription_option_name(sub_type),
         }
+
+    @staticmethod
+    def _subscription_option_name(value: Any) -> str | None:
+        """Return a subscription option's lower-case name, or ``None`` if unset.
+
+        Handler Meta takes either the enum member or its name as a string, so
+        both spellings record the same IR value. An unknown string is recorded
+        as declared, lower-cased. An empty string is recorded as ``None``, the
+        same as an unset option. Any other value is recorded as
+        ``str(value).lower()``.
+        """
+        name = value.value if isinstance(value, Enum) else value
+        if name is None:
+            return None
+        return str(name).lower() or None
 
     def _extract_command_handler(
         self, cls: type[_ElementCls], record: Any

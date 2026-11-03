@@ -193,8 +193,8 @@ Receives commands and orchestrates aggregate state changes. Uses
 |--------|---------|-------------|
 | **`part_of`** | — | **Required.** Target aggregate class |
 | `stream_category` | from aggregate | Message stream category |
-| `subscription_type` | `None` | Subscription behavior enum |
-| `subscription_profile` | `None` | Subscription profile enum |
+| `subscription_type` | `None` | `SubscriptionType` member or its name as a string, such as `"stream"` |
+| `subscription_profile` | `None` | `SubscriptionProfile` member, or a profile name as a string: a built-in name or a [custom profile](../server/configuration.md#custom-profiles) |
 | `subscription_config` | `{}` | Custom subscription configuration |
 | `sequential_by` | `None` | Field name on every command this handler handles. Registration checks the field exists on each command and marks the handler's stream category as partitioned. See [Sequential processing](../server/sequential-by.md) |
 | `timeout` | `None` | Default deadline in seconds for commands this handler processes. Falls back to `command_default_timeout`; an explicit deadline on `domain.process()` wins over both |
@@ -217,8 +217,8 @@ both synchronous and asynchronous processing.
 | `part_of` | — | Source aggregate class. Registration fails unless `part_of` or `stream_category` is set |
 | `source_stream` | `None` | Custom event stream source |
 | `stream_category` | from aggregate | Message stream category |
-| `subscription_type` | `None` | Subscription behavior enum |
-| `subscription_profile` | `None` | Subscription profile enum |
+| `subscription_type` | `None` | `SubscriptionType` member or its name as a string, such as `"stream"` |
+| `subscription_profile` | `None` | `SubscriptionProfile` member, or a profile name as a string: a built-in name or a [custom profile](../server/configuration.md#custom-profiles) |
 | `subscription_config` | `{}` | Custom subscription configuration |
 | `sequential_by` | `None` | Field name whose value partitions the stream, so events sharing a value are processed one at a time. See [Sequential processing](../server/sequential-by.md) |
 | `retries` | `None` | Maximum retries when the handler fails with a transient exception. Overrides the domain's `server.transient_retry` setting; `None` uses that setting |
@@ -292,8 +292,8 @@ explicitly target a projection and can listen to multiple stream categories.
 | `projector_for` | `None` | Target projection class |
 | `aggregates` | `[]` | Aggregate classes whose events to consume |
 | `stream_categories` | derived from `aggregates` | Stream categories to subscribe to |
-| `subscription_type` | `None` | Subscription behavior enum |
-| `subscription_profile` | `None` | Subscription profile enum |
+| `subscription_type` | `None` | `SubscriptionType` member or its name as a string, such as `"stream"` |
+| `subscription_profile` | `None` | `SubscriptionProfile` member, or a profile name as a string: a built-in name or a [custom profile](../server/configuration.md#custom-profiles) |
 | `subscription_config` | `{}` | Custom subscription configuration |
 | `sequential_by` | `None` | Field name on each handled event whose value partitions that event's stream, so events sharing a value are processed one at a time. See [Sequential processing](../server/sequential-by.md) |
 | `idempotent` | `False` | Track processed event IDs so a redelivered event is applied once. Costs a lookup and a write per event; leave it off when the projection's writes are naturally idempotent (a full overwrite) rather than incremental (a counter) |
@@ -321,8 +321,8 @@ maintaining its own state to orchestrate multi-step workflows.
 | `stream_category` | `snake_case(cls)` | Message stream category |
 | `aggregates` | `[]` | Aggregate classes whose events to consume |
 | `stream_categories` | derived from `aggregates` | Stream categories to subscribe to |
-| `subscription_type` | `None` | Subscription behavior enum |
-| `subscription_profile` | `None` | Subscription profile enum |
+| `subscription_type` | `None` | `SubscriptionType` member or its name as a string, such as `"stream"` |
+| `subscription_profile` | `None` | `SubscriptionProfile` member, or a profile name as a string: a built-in name or a [custom profile](../server/configuration.md#custom-profiles) |
 | `subscription_config` | `{}` | Custom subscription configuration |
 | `sequential_by` | `None` | Field name whose value partitions the stream, so events sharing a value are processed one at a time. See [Sequential processing](../server/sequential-by.md) |
 

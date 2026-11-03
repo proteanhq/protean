@@ -500,12 +500,14 @@ Present on command handlers, event handlers, projectors, and process managers:
 
 | Key | Values | Description |
 |-----|--------|-------------|
-| `type` | `"stream"`, `"event_store"`, `null` | Subscription mechanism. `null` = framework default |
-| `profile` | `"production"`, `"fast"`, `"batch"`, `"debug"`, `"projection"`, `null` | Configuration preset. `null` = framework default |
+| `type` | `"stream"`, `"event_store"`, `null` | Subscription mechanism, in lower case. `null` = framework default |
+| `profile` | `"production"`, `"fast"`, `"batch"`, `"debug"`, `"projection"`, a custom profile name, `null` | Configuration preset, in lower case. `null` = framework default |
 | `config` | dict | Handler-specific overrides. Empty `{}` = no overrides |
 
 The subscription block is always fully present. Unlike sparse field attributes,
 `null` here means "use framework defaults", a semantically meaningful value.
+The `0.3.0` schema accepts only the built-in profile names, so an IR that
+records a custom profile name fails schema validation.
 
 ### Process Manager Handler Map
 
