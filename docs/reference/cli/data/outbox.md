@@ -81,9 +81,15 @@ Otherwise it reads the `--limit` window, finds the newest event-sourced
 aggregate's event in it, and repairs only if that event is missing its row. In
 a store shared with other domains, a run reads the full window whenever the
 newest message belongs to another domain. A run also reads the full window
-when the last write was a command or a state-based aggregate's event. Reconciliation
-is idempotent, the composite unique index on (`message_id`, `target_broker`) means running it
-repeatedly, or concurrently with the startup sweep, never duplicates a row.
+when the last write was a command or a state-based aggregate's event.
+
+Reconciliation is idempotent. The composite unique index on (`message_id`,
+`target_broker`) means that running it repeatedly, or at the same time as the
+startup sweep, never duplicates a row. A run is also safe while commands are
+committing. When a run and a committing command try to write the same row,
+whichever writes it first keeps it and the other skips its copy. The command
+still commits either way. The count that `reconcile` prints covers only the rows this run
+wrote.
 
 A `published` event also gets back one row per broker in
 `[outbox].external_brokers`, with the same `partition_key` as its internal row.
@@ -252,7 +258,8 @@ protean server --domain=my_domain
 The sweep is gated on the outbox being enabled, reads the store as described
 above, and can never block startup. A failure during
 the sweep is logged and boot continues. With `--workers N` it runs once per
-worker; the idempotent index makes the overlap safe. The sweep covers only the
+worker. The unique index makes the overlap safe, and a sweep that runs while
+a command is committing does not make that command fail. The sweep covers only the
 `default` provider. Run `protean outbox reconcile --provider=<name>` for
 aggregates on other providers.
 

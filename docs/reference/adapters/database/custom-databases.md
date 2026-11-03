@@ -63,6 +63,15 @@ underscored internals:
 | `_raw(query, data)` | Execute a raw query |
 | `has_table()` | Check if the entity's table/collection exists |
 
+`BaseDAO` also provides `save_if_absent(entity, apply_hooks=True)`. It saves
+the entity unless another row already holds its unique key, and returns `None`
+in that case. The unique key is the fields of each `Index` declared with
+`unique=True` and no `where` predicate. The outbox writes its rows through this
+method. The default checks with `_count`, then saves, so two writers that check
+at the same moment can both save, and the store's own unique index rejects the
+second. Override it when your store can make the check and the write one step,
+for example with a conditional insert or a savepoint.
+
 ### 3. DatabaseModel
 
 **Extends**: `protean.core.database_model.BaseDatabaseModel`

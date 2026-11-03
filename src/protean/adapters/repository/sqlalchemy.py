@@ -46,7 +46,7 @@ from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.dialects.mysql import mariadb as mariadb_dialect
 from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL, make_url
-from sqlalchemy.exc import ArgumentError, DatabaseError
+from sqlalchemy.exc import ArgumentError, DatabaseError, IntegrityError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.pool import QueuePool
@@ -73,6 +73,7 @@ from protean.port.dao import BaseDAO, BaseLookup, HoldBack
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
 from protean.utils import (
     Database,
+    DomainObjects,
     IdentityStrategy,
     IdentityType,
     _fully_qualified_name,
@@ -1833,6 +1834,78 @@ class SADAO(BaseDAO):
         self._commit_if_standalone(conn)
 
         return model_obj
+
+    def save_if_absent(
+        self, entity_obj: typing.Any, *, apply_hooks: bool = True
+    ) -> typing.Any:
+        """Save ``entity_obj`` unless another row already holds its unique key.
+
+        See :meth:`BaseDAO.save_if_absent`. The database's unique index decides
+        a race between two writers. Inside a Unit of Work the write runs in a
+        savepoint, so a rejected write rolls back only the savepoint and the
+        rest of the transaction carries on.
+
+        Raises:
+            IntegrityError: The database rejected the write, and no other row
+                holds the unique key, so the cause is another constraint.
+        """
+        before = self._save_state(entity_obj)
+        try:
+            if self._is_standalone:
+                return self.save(entity_obj, apply_hooks=apply_hooks)
+
+            session = self._get_session()
+            self._begin_sqlite_transaction(session)
+            with session.begin_nested():
+                self.save(entity_obj, apply_hooks=apply_hooks)
+                # Run the INSERT now, inside the savepoint, so a rejection
+                # rolls back the savepoint and not the whole transaction.
+                session.flush()
+            return entity_obj
+        except IntegrityError:
+            if not self._unique_key_taken(entity_obj):
+                raise
+            self._forget_save(entity_obj, before)
+            return None
+
+    def _begin_sqlite_transaction(self, session: Session) -> None:
+        """Open the transaction on a SQLite connection that has none yet."""
+        if session.get_bind().dialect.name != "sqlite":
+            return
+        dbapi_connection = session.connection().connection.dbapi_connection
+        # The ``sqlite3`` driver opens a transaction only at the first INSERT,
+        # UPDATE or DELETE. A savepoint opened before that becomes the outer
+        # transaction, and releasing it commits the row, so a later rollback
+        # of the Unit of Work could not undo it.
+        if dbapi_connection is not None and not getattr(
+            dbapi_connection, "in_transaction", True
+        ):
+            dbapi_connection.execute("BEGIN")
+
+    def _save_state(self, entity_obj: typing.Any) -> tuple[bool, int | None, bool]:
+        """Capture what :meth:`_forget_save` restores: whether the entity is
+        new, an aggregate's version, and whether the Unit of Work tracks it."""
+        if entity_obj.element_type != DomainObjects.AGGREGATE:
+            return entity_obj.state_.is_new, None, False
+        return (
+            entity_obj.state_.is_new,
+            entity_obj._version,
+            self._tracked_in_uow(entity_obj) is entity_obj,
+        )
+
+    def _forget_save(
+        self, entity_obj: typing.Any, before: tuple[bool, int | None, bool]
+    ) -> None:
+        """Undo what ``save`` changed on ``entity_obj``, for a write the
+        database then rejected."""
+        was_new, version, was_tracked = before
+        if was_new:
+            entity_obj.state_.mark_new()
+        if version is None:
+            return
+        entity_obj._version = version
+        if current_uow and not was_tracked:
+            current_uow._discard_from_identity_map(entity_obj)
 
     def _update(
         self, model_obj: typing.Any, expected_version: int | None = None

@@ -182,6 +182,13 @@ class UnitOfWork:
         if saved:
             self._saved.add((provider_name, *key))
 
+    def _discard_from_identity_map(self, aggregate: Any) -> None:
+        """Stop tracking ``aggregate``, for a save the store rejected."""
+        provider_name = aggregate.meta_.provider
+        key = self._identity_key(aggregate)
+        self._identity_map[provider_name].pop(key, None)
+        self._saved.discard((provider_name, *key))
+
     def _items_to_commit(self) -> list[tuple[str, Any]]:
         """The instances whose events this transaction commits, each with the
         name of its provider.
@@ -558,9 +565,11 @@ class UnitOfWork:
 
             # Save the outbox rows while this UnitOfWork is still the active
             # context, so they enlist in its sessions and commit with them. Their
-            # hooks already ran when they were built.
+            # hooks already ran when they were built. A reconcile sweep that
+            # runs after the append can write a row first. That row is kept,
+            # and this commit skips its own copy instead of failing.
             for outbox_repo, outbox_row in outbox_rows:
-                outbox_repo._dao.save(outbox_row, apply_hooks=False)
+                outbox_repo._dao.save_if_absent(outbox_row, apply_hooks=False)
 
             # Exit the UnitOfWork context: the relational commit below (and any
             # further operations) are no longer part of this transaction. Guard

@@ -1,16 +1,19 @@
 import datetime
 import logging
+import operator
 from abc import ABCMeta, abstractmethod
 from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import reduce
 from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from protean._deprecation import deprecated_from_registry
 from protean.core.aggregate import BaseAggregate, _pre_persist_change
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
+from protean.core.index import Index
 from protean.core.queryset import QuerySet, ResultSet
 from protean.exceptions import (
     ObjectNotFoundError,
@@ -1072,6 +1075,75 @@ class BaseDAO(metaclass=ABCMeta):
                 + (f" (at {location})" if location else "")
             )
             raise
+
+    def save_if_absent(self, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
+        """Save ``entity_obj`` unless another row already holds its unique key.
+
+        The unique key is the values of the fields of each ``Index`` declared
+        with ``unique=True`` and no ``where`` predicate. This method does not
+        check an index with a ``None`` among those values, and leaves such a
+        row to the database's own rule for NULLs. When the entity declares no
+        such index, this is :meth:`save`.
+
+        This default checks for the key, then saves. Two writers that check at
+        the same moment can both save, so the store's own unique index decides
+        the race. An adapter can override it with a check that holds under
+        concurrency, such as a savepoint, a lock or a conditional insert.
+
+        Args:
+            entity_obj: The entity to persist.
+            apply_hooks: Passed to :meth:`save`.
+
+        Returns:
+            The saved entity, or ``None`` when another row holds the unique key.
+            Nothing is written in that case.
+        """
+        if self._unique_key_taken(entity_obj):
+            return None
+        return self.save(entity_obj, apply_hooks=apply_hooks)
+
+    def _unique_key_criteria(self, entity_obj: Any) -> Q | None:
+        """Match the other rows that share a unique key with ``entity_obj``.
+
+        Returns ``None`` when ``entity_obj`` has no unique key, as defined in
+        :meth:`save_if_absent`. The row stored under ``entity_obj``'s own
+        identifier never matches.
+        """
+        groups = [
+            Q(**values)
+            for index in self._unique_key_indexes()
+            if (values := self._key_values(entity_obj, index)) is not None
+        ]
+        if not groups:
+            return None
+
+        criteria = reduce(operator.or_, groups)
+        id_f = id_field(self.entity_cls)
+        assert id_f is not None and id_f.field_name is not None
+        return criteria & ~Q(**{id_f.field_name: getattr(entity_obj, id_f.field_name)})
+
+    def _unique_key_indexes(self) -> list[Index]:
+        """The entity's ``Index`` declarations with ``unique=True`` and no
+        ``where`` predicate."""
+        return [
+            index
+            for index in getattr(self.entity_cls.meta_, "indexes", ()) or ()
+            if isinstance(index, Index) and index.unique and index.where is None
+        ]
+
+    @staticmethod
+    def _key_values(entity_obj: Any, index: Index) -> dict[str, Any] | None:
+        """``entity_obj``'s values for ``index``'s fields, or ``None`` when
+        any of them is ``None``."""
+        values = {name: getattr(entity_obj, name, None) for name in index.fields}
+        if any(value is None for value in values.values()):
+            return None
+        return values
+
+    def _unique_key_taken(self, entity_obj: Any) -> bool:
+        """Whether another stored row shares a unique key with ``entity_obj``."""
+        criteria = self._unique_key_criteria(entity_obj)
+        return criteria is not None and self._count(criteria) > 0
 
     @deprecated_from_registry("dao_update")
     def update(
