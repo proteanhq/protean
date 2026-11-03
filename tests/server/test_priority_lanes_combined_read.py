@@ -165,10 +165,18 @@ class TestCombinedRead:
         _publish(sub, [_payload("ok")])
         _publish(sub, [_payload("ok")], stream=sub.backfill_stream)
 
+        sub.last_work_tick_finished = None
+
         task = asyncio.create_task(sub.poll())
-        await asyncio.sleep(0.05)
-        task.cancel()
-        await task  # poll() swallows CancelledError and returns
+        try:
+            # The read runs in a worker thread, so wait for the work tick it
+            # records rather than for a fixed time.
+            async with asyncio.timeout(5):
+                while sub.last_work_tick_finished is None:
+                    await asyncio.sleep(0.01)
+        finally:
+            task.cancel()
+            await task  # poll() swallows CancelledError and returns
 
         # The standard read took the primary message; the backfill message
         # was never read, so it is still there to read.
