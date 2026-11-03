@@ -6,7 +6,7 @@ entries of the reply are processed first, then the backfill entries, each batch
 with its own stream.
 """
 
-from unittest.mock import MagicMock
+import asyncio
 
 import pytest
 
@@ -17,6 +17,9 @@ from tests.server.test_circuit_breaker import (
     ToggleEventHandler,
     User,
     _make_stream_subscription,
+    _payload,
+    _publish,
+    _read,
 )
 
 
@@ -34,24 +37,50 @@ PRIMARY_MESSAGE = ("1-0", {"lane": "primary"})
 BACKFILL_MESSAGE = ("2-0", {"lane": "backfill"})
 
 
-def _lanes_subscription(domain, combined_reply, **overrides):
-    """A lanes-mode subscription whose primary read is empty and whose combined
-    read returns ``combined_reply``. ``process_batch`` records each call and
-    stops the loop after the turn."""
+class ScriptedLanesBroker:
+    """Returns fixed replies to the two lanes reads and records each combined read.
+
+    These tests need replies the inline broker never gives. The inline broker
+    returns a waiting primary message from the non-blocking primary read, so its
+    combined read never holds primary entries; on Redis they appear when a
+    message lands on the primary stream between the two reads. A Redis reply
+    can also hold ``None`` for a stream.
+    """
+
+    def __init__(self, combined_reply=None, primary_reply=()):
+        self.combined_reply = combined_reply or {}
+        self.primary_reply = list(primary_reply)
+        self.combined_reads: list[dict] = []
+        self.trimmed: list[str] = []
+
+    def read_blocking(self, **kwargs):
+        return list(self.primary_reply)
+
+    def read_blocking_streams(self, **kwargs):
+        self.combined_reads.append(kwargs)
+        return self.combined_reply
+
+    def trim(self, stream, maxlen):
+        self.trimmed.append(stream)
+        return 0
+
+
+def _lanes_subscription(domain, combined_reply, primary_reply=(), **overrides):
+    """A lanes-mode subscription on a ``ScriptedLanesBroker``.
+
+    ``process_batch`` records each batch and its stream, and stops the loop
+    after the turn.
+    """
     sub = _make_stream_subscription(domain, **overrides)
     sub._lanes_enabled = True
-    sub.broker.read_blocking_streams = MagicMock(return_value=combined_reply)
+    sub.broker = ScriptedLanesBroker(combined_reply, primary_reply)
     sub.batches = []
-
-    async def empty_primary():
-        return []
 
     async def recording_process_batch(messages, stream=None):
         sub.batches.append((messages, stream))
         sub.keep_going = False
         return len(messages)
 
-    sub._read_primary_nonblocking = empty_primary
     sub.process_batch = recording_process_batch
     return sub
 
@@ -75,8 +104,7 @@ class TestCombinedRead:
             ([BACKFILL_MESSAGE], sub.backfill_stream),
         ]
         # Each stream is trimmed after its own batch.
-        trimmed = [call.args[0] for call in sub.broker.trim.call_args_list]
-        assert trimmed == [sub.stream_category, sub.backfill_stream]
+        assert sub.broker.trimmed == [sub.stream_category, sub.backfill_stream]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -87,13 +115,12 @@ class TestCombinedRead:
     ):
         """The combined read waits on both streams for at most one second, and a
         shorter blocking timeout is passed through unchanged."""
-        sub = _make_stream_subscription(lanes_domain, messages_per_tick=25)
+        sub = _lanes_subscription(lanes_domain, {}, messages_per_tick=25)
         sub.blocking_timeout_ms = blocking_timeout_ms
-        sub.broker.read_blocking_streams = MagicMock(return_value={})
 
         assert await sub._read_lanes_blocking() == ([], [])
 
-        kwargs = sub.broker.read_blocking_streams.call_args.kwargs
+        [kwargs] = sub.broker.combined_reads
         assert kwargs["streams"] == ["test::user", "test::user:backfill"]
         assert kwargs["consumer_group"] == sub.consumer_group
         assert kwargs["consumer_name"] == sub.consumer_name
@@ -110,44 +137,43 @@ class TestCombinedRead:
 
     @pytest.mark.asyncio
     async def test_primary_entries_skip_the_combined_read(self, lanes_domain):
-        sub = _lanes_subscription(lanes_domain, {})
-
-        async def primary_with_entries():
-            return [PRIMARY_MESSAGE]
-
-        sub._read_primary_nonblocking = primary_with_entries
+        sub = _lanes_subscription(lanes_domain, {}, primary_reply=[PRIMARY_MESSAGE])
 
         await sub.poll()
 
         assert sub.batches == [([PRIMARY_MESSAGE], sub.stream_category)]
-        sub.broker.read_blocking_streams.assert_not_called()
+        assert sub.broker.combined_reads == []
 
     @pytest.mark.asyncio
-    async def test_failed_combined_read_marks_the_read_failed(self, lanes_domain):
-        sub = _lanes_subscription(lanes_domain, {})
-        sub.broker.read_blocking_streams = MagicMock(
-            side_effect=RuntimeError("broker down")
-        )
+    async def test_failed_combined_read_marks_the_read_failed(
+        self, lanes_domain, monkeypatch
+    ):
+        sub = _make_stream_subscription(lanes_domain)
+        sub._lanes_enabled = True
+
+        def broker_down(**kwargs):
+            raise RuntimeError("broker down")
+
+        monkeypatch.setattr(sub.broker, "read_blocking_streams", broker_down)
 
         assert await sub._read_lanes_blocking() == ([], [])
         assert sub._read_failed is True
-        assert sub.batches == []
 
     @pytest.mark.asyncio
     async def test_lanes_off_never_uses_the_combined_read(self, lanes_domain):
         sub = _make_stream_subscription(lanes_domain)
-        sub.broker.read_blocking_streams = MagicMock(return_value={})
+        _publish(sub, [_payload("ok")])
+        _publish(sub, [_payload("ok")], stream=sub.backfill_stream)
 
-        def read_then_stop(**kwargs):
-            sub.keep_going = False
-            return []
+        task = asyncio.create_task(sub.poll())
+        await asyncio.sleep(0.05)
+        task.cancel()
+        await task  # poll() swallows CancelledError and returns
 
-        sub.broker.read_blocking = MagicMock(side_effect=read_then_stop)
-
-        await sub.poll()
-
-        sub.broker.read_blocking.assert_called_once()
-        sub.broker.read_blocking_streams.assert_not_called()
+        # The standard read took the primary message; the backfill message
+        # was never read, so it is still there to read.
+        assert _read(sub) == []
+        assert len(_read(sub, stream=sub.backfill_stream)) == 1
 
 
 class TestCombinedReadTickOutcome:
@@ -205,7 +231,7 @@ class TestBackfillAfterPrimaryBatch:
 
         await sub.poll()
 
-        assert sub.broker.read_blocking_streams.call_args.kwargs["count"] == 1
+        assert sub.broker.combined_reads[-1]["count"] == 1
         # The backfill entry is already delivered to this consumer, and the
         # consumer name changes on restart, so it is processed now rather than
         # left pending where no later read would find it.

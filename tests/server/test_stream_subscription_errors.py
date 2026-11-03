@@ -22,6 +22,7 @@ from protean.fields import Identifier, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.eventing import Message
+from tests.server.test_trace_correlation import _attach_recording_redis
 
 # ── Domain elements ─────────────────────────────────────────────────────
 
@@ -276,49 +277,46 @@ class TestPriorityLanesDLQ:
 class TestTraceEvents:
     """Verify trace event emission for ack, nack, and DLQ.
 
-    The trace emitter publishes to Redis, so each test replaces it with a mock
-    and reads the calls.
+    The engine's real trace emitter writes to Redis, so each test gives it a
+    Redis stand-in and reads the traces it recorded.
     """
 
     @pytest.mark.asyncio
     async def test_message_nacked_trace_on_retry(self, test_domain, broker):
         """message.nacked trace emitted when retrying."""
         sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=3)
-        sub.engine.emitter = MagicMock()
+        redis = _attach_recording_redis(sub.engine.emitter)
         identifier = _deliver(sub, {"data": "x"})
 
         await sub.handle_failed_message(identifier, {"data": "x"})
 
-        sub.engine.emitter.emit.assert_called_once()
-        kwargs = sub.engine.emitter.emit.call_args.kwargs
-        assert kwargs["event"] == "message.nacked"
-        assert kwargs["stream"] == "test_stream"
-        assert kwargs["message_id"] == identifier
-        assert kwargs["status"] == "retry"
-        assert kwargs["metadata"]["retry_count"] == 1
-        assert kwargs["metadata"]["max_retries"] == 3
+        [trace] = redis.traces()
+        assert trace["event"] == "message.nacked"
+        assert trace["stream"] == "test_stream"
+        assert trace["message_id"] == identifier
+        assert trace["status"] == "retry"
+        assert trace["metadata"]["retry_count"] == 1
+        assert trace["metadata"]["max_retries"] == 3
 
     @pytest.mark.asyncio
     async def test_message_dlq_trace_on_exhaustion(self, test_domain, broker):
         """message.dlq trace emitted when moved to DLQ."""
         sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=1)
-        sub.engine.emitter = MagicMock()
+        redis = _attach_recording_redis(sub.engine.emitter)
         identifier = _deliver(sub, {"data": "x"})
 
         await sub.handle_failed_message(identifier, {"data": "x"})
 
-        calls = sub.engine.emitter.emit.call_args_list
-        assert len(calls) == 1
-        kwargs = calls[0].kwargs
-        assert kwargs["event"] == "message.dlq"
-        assert kwargs["stream"] == "test_stream"
-        assert kwargs["metadata"]["dlq_stream"] == "test_stream:dlq"
+        [trace] = redis.traces()
+        assert trace["event"] == "message.dlq"
+        assert trace["stream"] == "test_stream"
+        assert trace["metadata"]["dlq_stream"] == "test_stream:dlq"
 
     @pytest.mark.asyncio
     async def test_message_acked_trace_on_success(self, test_domain, broker):
         """message.acked trace emitted on successful ACK."""
         sub = _make_subscription(test_domain, SucceedingHandler)
-        sub.engine.emitter = MagicMock()
+        redis = _attach_recording_redis(sub.engine.emitter)
         msg = Message.from_domain_object(
             StreamTestEvent(test_id=str(uuid4()), message="test")
         )
@@ -326,11 +324,10 @@ class TestTraceEvents:
 
         await sub._acknowledge_message(identifier, message=msg, stream="test_stream")
 
-        sub.engine.emitter.emit.assert_called_once()
-        kwargs = sub.engine.emitter.emit.call_args.kwargs
-        assert kwargs["event"] == "message.acked"
-        assert kwargs["stream"] == "test_stream"
-        assert kwargs["handler"] == "SucceedingHandler"
+        [trace] = redis.traces()
+        assert trace["event"] == "message.acked"
+        assert trace["stream"] == "test_stream"
+        assert trace["handler"] == "SucceedingHandler"
 
 
 # ── Tests: Deserialization → DLQ ─────────────────────────────────────────

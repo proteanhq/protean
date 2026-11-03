@@ -22,7 +22,7 @@ These tests cover:
 
 import asyncio
 import time
-from unittest.mock import MagicMock, Mock
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -48,6 +48,7 @@ from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.eventing import Message
 from protean.utils.mixins import handle
 from protean.utils.telemetry import _DOMAIN_METRICS_KEY
+from tests.server.test_trace_correlation import RecordingRedis, _attach_recording_redis
 
 _METRIC = "protean.subscription.circuit_breaker.state"
 
@@ -90,19 +91,9 @@ class ToggleEventHandler(BaseEventHandler):
 # ---------------------------------------------------------------------------
 
 
-def _engine(domain) -> Engine:
-    """A real test-mode Engine whose trace emitter records instead of publishing.
-
-    The real emitter publishes to Redis, which these tests do not run.
-    """
-    engine = Engine(domain, test_mode=True)
-    engine.emitter = Mock()
-    return engine
-
-
 def _make_stream_subscription(test_domain, handler_cls=ToggleEventHandler, **overrides):
-    """Create a StreamSubscription on a real engine with a mock Redis broker."""
-    engine = _engine(test_domain)
+    """Create a StreamSubscription on a real engine and the domain's broker."""
+    engine = Engine(test_domain, test_mode=True)
     sub = StreamSubscription(
         engine=engine,
         stream_category="test::user",
@@ -117,23 +108,34 @@ def _make_stream_subscription(test_domain, handler_cls=ToggleEventHandler, **ove
             "circuit_breaker_reset_seconds", 60
         ),
     )
-    broker = MagicMock()
-    broker.ack = MagicMock(return_value=True)
-    broker.nack = MagicMock(return_value=True)
-    broker.publish = MagicMock()
-    sub.broker = broker
+    sub.broker = test_domain.brokers["default"]
     for key, value in overrides.items():
         setattr(sub, key, value)
     return sub
 
 
-def _message(name: str) -> tuple[str, dict]:
-    """Build a serialized ``(id, payload)`` tuple. ``name="fail"`` fails."""
+def _payload(name: str) -> dict:
+    """Build a serialized ``Registered`` event. ``name="fail"`` fails."""
     identifier = str(uuid4())
     user = User(id=identifier, email="test@example.com", name=name)
     user.raise_(Registered(id=identifier, email="test@example.com", name=name))
-    message = Message.from_domain_object(user._events[-1])
-    return (identifier, message.to_dict())
+    return Message.from_domain_object(user._events[-1]).to_dict()
+
+
+def _publish(sub, payloads: list[dict], stream: str | None = None) -> None:
+    for payload in payloads:
+        sub.broker.publish(stream or sub.stream_category, payload)
+
+
+def _read(sub, stream: str | None = None, count: int = 50) -> list[tuple[str, dict]]:
+    """Read the waiting messages on ``stream`` as the subscription's group."""
+    return sub.broker.read(stream or sub.stream_category, sub.consumer_group, count)
+
+
+def _deliver(sub, *names: str) -> list[tuple[str, dict]]:
+    """Publish one event per name and read them back as the subscription."""
+    _publish(sub, [_payload(name) for name in names])
+    return _read(sub)
 
 
 def _init_telemetry_in_memory(domain):
@@ -165,12 +167,17 @@ def _points_for_state(metric_reader, state: str) -> list:
     ]
 
 
-def _circuit_emit_events(emitter) -> list:
-    """Return the circuit-breaker trace event names emitted on ``emitter``."""
+def _record_traces(sub) -> RecordingRedis:
+    """Make the engine's real trace emitter write its traces to a recorder."""
+    return _attach_recording_redis(sub.engine.emitter)
+
+
+def _circuit_trace_events(redis: RecordingRedis) -> list[str]:
+    """Return the circuit-breaker trace event names the emitter wrote."""
     return [
-        call.kwargs.get("event")
-        for call in emitter.emit.call_args_list
-        if str(call.kwargs.get("event", "")).startswith("subscription.circuit_breaker")
+        trace["event"]
+        for trace in redis.traces()
+        if trace["event"].startswith("subscription.circuit_breaker")
     ]
 
 
@@ -201,33 +208,34 @@ class TestCircuitBreakerOpens:
     @pytest.mark.asyncio
     async def test_opens_after_threshold_consecutive_failures(self, domain, threshold):
         sub = _make_stream_subscription(domain, circuit_breaker_threshold=threshold)
+        redis = _record_traces(sub)
 
-        batch = [_message("fail") for _ in range(threshold)]
+        batch = _deliver(sub, *["fail"] * threshold)
         await sub.process_batch(batch, stream="test::user")
 
         assert sub.circuit_state == CircuitBreakerState.OPEN
         assert sub.consecutive_handler_failures == threshold
         assert sub.circuit_opened_at is not None
-        assert "subscription.circuit_breaker.opened" in _circuit_emit_events(
-            sub.engine.emitter
-        )
+        assert "subscription.circuit_breaker.opened" in _circuit_trace_events(redis)
 
     @pytest.mark.asyncio
     async def test_stays_closed_below_threshold(self, domain):
         metric_reader = _init_telemetry_in_memory(domain)
         sub = _make_stream_subscription(domain, circuit_breaker_threshold=3)
+        redis = _record_traces(sub)
 
-        batch = [_message("fail") for _ in range(2)]
+        batch = _deliver(sub, "fail", "fail")
         await sub.process_batch(batch, stream="test::user")
 
         assert sub.circuit_state == CircuitBreakerState.CLOSED
         assert sub.consecutive_handler_failures == 2
         assert _points_for_state(metric_reader, "opened") == []
-        assert _circuit_emit_events(sub.engine.emitter) == []
+        assert _circuit_trace_events(redis) == []
 
     @pytest.mark.asyncio
     async def test_open_gate_pauses_reads_inside_reset_window(self, domain):
         sub = _make_stream_subscription(domain, circuit_breaker_reset_seconds=30)
+        _publish(sub, [_payload("ok")])
         # Force OPEN with the window almost — but not yet — elapsed, so the gate
         # sleeps a short slice and skips the read.
         sub.circuit_state = CircuitBreakerState.OPEN
@@ -237,8 +245,8 @@ class TestCircuitBreakerOpens:
 
         assert permitted is False
         assert sub.circuit_state == CircuitBreakerState.OPEN
-        sub.broker.read_blocking.assert_not_called()
-        sub.broker.ack.assert_not_called()
+        # The waiting message was never read, so it is still there to read.
+        assert len(_read(sub)) == 1
 
     @pytest.mark.asyncio
     async def test_closed_gate_permits_reads(self, domain):
@@ -266,7 +274,7 @@ class TestCircuitBreakerOpens:
         monkeypatch.setattr(stream_subscription_module, "asyncio", _AsyncioProxy())
 
         sub = _make_stream_subscription(domain, circuit_breaker_reset_seconds=300)
-        sub.broker.read_blocking = MagicMock(return_value=[])
+        _publish(sub, [_payload("ok")])
         sub.circuit_state = CircuitBreakerState.OPEN
         sub.circuit_opened_at = time.monotonic()  # full window ahead, no probe
 
@@ -276,7 +284,8 @@ class TestCircuitBreakerOpens:
         await task  # poll() swallows CancelledError and returns
 
         assert len(slept) >= 2  # the loop came back to the gate after a skip
-        sub.broker.read_blocking.assert_not_called()
+        # poll() never read the waiting message, so it is still there to read.
+        assert len(_read(sub)) == 1
         assert sub.circuit_state == CircuitBreakerState.OPEN
 
 
@@ -291,13 +300,7 @@ class TestCircuitBreakerResetsOnSuccess:
         sub = _make_stream_subscription(domain, circuit_breaker_threshold=3)
 
         # 2 fails, a success (resets), then 2 more fails: never 3 in a row.
-        batch = [
-            _message("fail"),
-            _message("fail"),
-            _message("ok"),
-            _message("fail"),
-            _message("fail"),
-        ]
+        batch = _deliver(sub, "fail", "fail", "ok", "fail", "fail")
         await sub.process_batch(batch, stream="test::user")
 
         assert sub.circuit_state == CircuitBreakerState.CLOSED
@@ -313,6 +316,7 @@ class TestCircuitBreakerHalfOpen:
     @pytest.mark.asyncio
     async def test_open_transitions_to_half_open_after_reset(self, domain):
         sub = _make_stream_subscription(domain, circuit_breaker_reset_seconds=5)
+        redis = _record_traces(sub)
         sub.circuit_state = CircuitBreakerState.OPEN
         # Opened well beyond the reset window.
         sub.circuit_opened_at = time.monotonic() - 10
@@ -321,9 +325,7 @@ class TestCircuitBreakerHalfOpen:
 
         assert permitted is True
         assert sub.circuit_state == CircuitBreakerState.HALF_OPEN
-        assert "subscription.circuit_breaker.half_open" in _circuit_emit_events(
-            sub.engine.emitter
-        )
+        assert "subscription.circuit_breaker.half_open" in _circuit_trace_events(redis)
 
     @pytest.mark.parametrize(
         "state, count",
@@ -333,42 +335,44 @@ class TestCircuitBreakerHalfOpen:
     @pytest.mark.asyncio
     async def test_standard_read_batch_size(self, domain, state, count):
         sub = _make_stream_subscription(domain, messages_per_tick=25)
-        sub.broker.read_blocking = MagicMock(return_value=[])
+        _publish(sub, [_payload("ok") for _ in range(30)])
 
         sub.circuit_state = state
-        await sub.get_next_batch_of_messages()
+        messages = await sub.get_next_batch_of_messages()
 
-        assert sub.broker.read_blocking.call_args.kwargs["count"] == count
+        assert len(messages) == count
 
     @pytest.mark.asyncio
     async def test_half_open_primary_lane_reads_single_message(self, domain):
         sub = _make_stream_subscription(domain, messages_per_tick=25)
-        sub.broker.read_blocking = MagicMock(return_value=[])
+        _publish(sub, [_payload("ok") for _ in range(3)])
 
         sub.circuit_state = CircuitBreakerState.HALF_OPEN
-        await sub._read_primary_nonblocking()
+        messages = await sub._read_primary_nonblocking()
 
-        assert sub.broker.read_blocking.call_args.kwargs["count"] == 1
+        assert len(messages) == 1
 
     @pytest.mark.asyncio
     async def test_half_open_combined_lanes_read_single_message(self, domain):
         sub = _make_stream_subscription(domain, messages_per_tick=25)
-        sub.broker.read_blocking_streams = MagicMock(return_value={})
+        _publish(sub, [_payload("ok") for _ in range(3)])
+        _publish(sub, [_payload("ok") for _ in range(3)], stream=sub.backfill_stream)
 
         sub.circuit_state = CircuitBreakerState.HALF_OPEN
-        await sub._read_lanes_blocking()
+        primary, backfill = await sub._read_lanes_blocking()
 
-        assert sub.broker.read_blocking_streams.call_args.kwargs["count"] == 1
+        assert (len(primary), len(backfill)) == (1, 1)
 
     @pytest.mark.asyncio
     async def test_half_open_success_closes(self, domain):
         metric_reader = _init_telemetry_in_memory(domain)
         sub = _make_stream_subscription(domain)
+        redis = _record_traces(sub)
         sub.circuit_state = CircuitBreakerState.HALF_OPEN
         sub.circuit_opened_at = time.monotonic() - 100
         sub.consecutive_handler_failures = 5
 
-        await sub.process_batch([_message("ok")], stream="test::user")
+        await sub.process_batch(_deliver(sub, "ok"), stream="test::user")
 
         assert sub.circuit_state == CircuitBreakerState.CLOSED
         assert sub.consecutive_handler_failures == 0
@@ -376,9 +380,9 @@ class TestCircuitBreakerHalfOpen:
         closed = _points_for_state(metric_reader, "closed")
         assert len(closed) == 1
         assert closed[0].value == 1
-        assert "subscription.circuit_breaker.closed" in _circuit_emit_events(
-            sub.engine.emitter
-        )
+        assert "subscription.circuit_breaker.closed" in _circuit_trace_events(redis)
+        # The probe message was acked.
+        assert "message.acked" in [trace["event"] for trace in redis.traces()]
 
     @pytest.mark.asyncio
     async def test_half_open_failure_reopens_and_restarts_timer(self, domain):
@@ -387,7 +391,7 @@ class TestCircuitBreakerHalfOpen:
         old_opened_at = time.monotonic() - 100
         sub.circuit_opened_at = old_opened_at
 
-        await sub.process_batch([_message("fail")], stream="test::user")
+        await sub.process_batch(_deliver(sub, "fail"), stream="test::user")
 
         assert sub.circuit_state == CircuitBreakerState.OPEN
         assert sub.circuit_opened_at is not None
@@ -406,11 +410,12 @@ class TestCircuitBreakerIgnoresDeserializationFailures:
 
         # Payloads that fail Message.deserialize are DLQ'd and skipped before
         # any handler runs, so they are not handler-outcome failures.
-        batch = [(str(uuid4()), {"garbage": "value"}) for _ in range(5)]
-        await sub.process_batch(batch, stream="test::user")
+        _publish(sub, [{"garbage": "value"} for _ in range(5)])
+        await sub.process_batch(_read(sub), stream="test::user")
 
         assert sub.circuit_state == CircuitBreakerState.CLOSED
         assert sub.consecutive_handler_failures == 0
+        assert len(_read(sub, stream=sub.dlq_stream)) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -508,7 +513,7 @@ class TestCircuitBreakerConfigResolution:
         config = SubscriptionConfig(
             circuit_breaker_threshold=6, circuit_breaker_reset_seconds=18
         )
-        engine = _engine(test_domain)
+        engine = Engine(test_domain, test_mode=True)
         sub = StreamSubscription.from_config(
             engine, "test::user", ToggleEventHandler, config
         )
@@ -560,7 +565,7 @@ class TestCircuitBreakerMetrics:
         metric_reader = _init_telemetry_in_memory(domain)
         sub = _make_stream_subscription(domain, circuit_breaker_threshold=5)
 
-        await sub.process_batch([_message("ok"), _message("fail")], stream="test::user")
+        await sub.process_batch(_deliver(sub, "ok", "fail"), stream="test::user")
 
         data = metric_reader.get_metrics_data()
         names = [
@@ -578,8 +583,9 @@ class TestCircuitBreakerMetrics:
         # subsequent failure while already OPEN.
         metric_reader = _init_telemetry_in_memory(domain)
         sub = _make_stream_subscription(domain, circuit_breaker_threshold=3)
+        redis = _record_traces(sub)
 
-        batch = [_message("fail") for _ in range(3 + 4)]  # trip + 4 more
+        batch = _deliver(sub, *["fail"] * (3 + 4))  # trip + 4 more
         await sub.process_batch(batch, stream="test::user")
 
         opened = _points_for_state(metric_reader, "opened")
@@ -587,9 +593,7 @@ class TestCircuitBreakerMetrics:
         assert opened[0].value == 1  # a single .add, not one per post-trip failure
         assert dict(opened[0].attributes)["subscription"] == "ToggleEventHandler"
         assert (
-            _circuit_emit_events(sub.engine.emitter).count(
-                "subscription.circuit_breaker.opened"
-            )
+            _circuit_trace_events(redis).count("subscription.circuit_breaker.opened")
             == 1
         )
         assert sub.circuit_state == CircuitBreakerState.OPEN
@@ -608,7 +612,7 @@ class TestCircuitBreakerMetrics:
         boom.add = Mock(side_effect=RuntimeError("exporter down"))
         metrics.subscription_circuit_breaker_state = boom
 
-        await sub.process_batch([_message("fail")], stream="test::user")
+        await sub.process_batch(_deliver(sub, "fail"), stream="test::user")
 
         assert sub.circuit_state == CircuitBreakerState.OPEN
         boom.add.assert_called_once()

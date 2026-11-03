@@ -19,6 +19,7 @@ from protean.domain import Processing
 from protean.server import Engine
 from protean.server.subscription.broker_subscription import BrokerSubscription
 from protean.utils import fqn
+from tests.server.test_trace_correlation import _attach_recording_redis
 
 # ── Domain elements ─────────────────────────────────────────────────────
 
@@ -329,8 +330,8 @@ class TestConfiguration:
 class TestTraceEvents:
     """Verify trace event emission on retry and DLQ.
 
-    The trace emitter publishes to Redis, so each test replaces it with a mock
-    and reads the calls.
+    The engine's real trace emitter writes to Redis, so each test gives it a
+    Redis stand-in and reads the traces it recorded.
     """
 
     async def test_nacked_trace_emitted_on_retry(self, test_domain, broker):
@@ -341,19 +342,18 @@ class TestTraceEvents:
             retry_delay_seconds=0,
             max_retries=3,
         )
-        sub.engine.emitter = MagicMock()
+        redis = _attach_recording_redis(sub.engine.emitter)
         identifier = broker.publish("fail_stream", {"data": "test"})
 
         await _deliver(sub)
 
-        sub.engine.emitter.emit.assert_called_once()
-        call_kwargs = sub.engine.emitter.emit.call_args
-        assert call_kwargs.kwargs["event"] == "message.nacked"
-        assert call_kwargs.kwargs["stream"] == "fail_stream"
-        assert call_kwargs.kwargs["message_id"] == identifier
-        assert call_kwargs.kwargs["status"] == "retry"
-        assert call_kwargs.kwargs["metadata"]["retry_count"] == 1
-        assert call_kwargs.kwargs["metadata"]["max_retries"] == 3
+        [trace] = redis.traces()
+        assert trace["event"] == "message.nacked"
+        assert trace["stream"] == "fail_stream"
+        assert trace["message_id"] == identifier
+        assert trace["status"] == "retry"
+        assert trace["metadata"]["retry_count"] == 1
+        assert trace["metadata"]["max_retries"] == 3
 
     async def test_dlq_trace_emitted_on_exhaustion(self, test_domain, broker):
         _register_and_init(test_domain, AlwaysFailingSubscriber, "fail_stream")
@@ -363,18 +363,16 @@ class TestTraceEvents:
             retry_delay_seconds=0,
             max_retries=1,
         )
-        sub.engine.emitter = MagicMock()
+        redis = _attach_recording_redis(sub.engine.emitter)
         broker.publish("fail_stream", {"data": "test"})
 
         await _deliver(sub)
 
         # Should emit message.dlq
-        emit_calls = sub.engine.emitter.emit.call_args_list
-        assert len(emit_calls) == 1
-        call_kwargs = emit_calls[0].kwargs
-        assert call_kwargs["event"] == "message.dlq"
-        assert call_kwargs["stream"] == "fail_stream"
-        assert call_kwargs["metadata"]["dlq_stream"] == "fail_stream:dlq"
+        [trace] = redis.traces()
+        assert trace["event"] == "message.dlq"
+        assert trace["stream"] == "fail_stream"
+        assert trace["metadata"]["dlq_stream"] == "fail_stream:dlq"
 
 
 class TestNACKFailure:
