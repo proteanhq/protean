@@ -565,6 +565,22 @@ class TestMethodScope:
 
         assert scope.resolve(self._use(method, "Closed")) is None
 
+    @pytest.mark.parametrize("target", ["count", "self.count"])
+    def test_a_walrus_in_an_annotation_keeps_the_import(self, tmp_path, target):
+        """Python never evaluates a local variable's annotation, so a walrus
+        inside one binds nothing and a later use keeps the import's FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            f"""
+            def run(self, factory):
+                from acme.events import Closed
+                {target}: (Closed := factory)
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) == "acme.events.Closed"
+
     def test_an_annotated_assignment_of_the_name_leaves_it_unresolved(self, tmp_path):
         """``Closed: type = ...`` rebinds the name, so the later use has no
         single FQN."""
