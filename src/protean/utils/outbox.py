@@ -1167,6 +1167,19 @@ def _has_event_sourced_aggregate(domain: Any, provider_name: str) -> bool:
     )
 
 
+def _published_external_brokers(
+    domain: Any, message: Any, provider_name: str, external_brokers: list[str]
+) -> list[str]:
+    """The external brokers that should hold a row for ``message``: all of
+    ``external_brokers`` when its event class is ``published``, else none."""
+    if not external_brokers:
+        return []
+    event_cls = _resolve_outboxed_event_class(domain, message, provider_name)
+    if event_cls is None or not getattr(event_cls.meta_, "published", False):
+        return []
+    return external_brokers
+
+
 def _rebuilt_partition_key(
     message: Any, partition_keys: dict[str, str], backfill_suffix: str
 ) -> str | None:
@@ -1222,8 +1235,8 @@ def _written_after(message: Any, cutoff: datetime) -> bool:
 def reconcile_outbox(
     domain: Any, provider_name: str = "default", limit: int = 1000
 ) -> int:
-    """Create outbox rows for events that are durable in the event store but have
-    no outbox row, and return how many were created.
+    """Create outbox rows for events that are in the event store but have no
+    outbox row, and return how many rows this call wrote.
 
     This closes the residual crash window from ADR-0015: an event appended to the
     event store (the durable anchor) whose relational outbox commit did not land.
@@ -1279,7 +1292,17 @@ def reconcile_outbox(
     left unrepaired for longer than that retention is not repaired. An event
     with no stored time is also skipped, because its age is unknown.
 
-    The return value counts rows created, internal and external.
+    The sweep can run beside another sweep, and beside a live unit of work
+    that has appended its events and not yet saved their outbox rows. Both
+    write through ``save_if_absent``, so whichever saves a row first keeps it
+    and the other skips its copy. On SQLite a sweep can instead fail with
+    ``database is locked`` while the unit of work holds the write lock.
+    Elasticsearch has no unique index, so two writers that save the same row
+    at the same moment can both keep a row.
+
+    The return value counts the rows this call wrote, internal and external.
+    It leaves out a row skipped because a row with the same ``message_id`` and
+    ``target_broker`` was already saved.
     """
     if not getattr(domain, "has_outbox", False):
         return 0
@@ -1389,18 +1412,15 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
 
             # The unit of work writes one row per external broker for a
             # ``published`` event, all in the same commit as the internal row.
-            target_brokers = [internal_broker]
-            event_cls = _resolve_outboxed_event_class(domain, message, provider_name)
-            if (
-                external_brokers
-                and event_cls is not None
-                and getattr(event_cls.meta_, "published", False)
-            ):
-                target_brokers.extend(
-                    broker
-                    for broker in external_brokers
-                    if broker not in existing_brokers[message_id]
+            # Neither the ``published`` flag nor ``external_brokers`` is stored
+            # with the event, so both come from the current settings.
+            target_brokers = [internal_broker] + [
+                broker
+                for broker in _published_external_brokers(
+                    domain, message, provider_name, external_brokers
                 )
+                if broker not in existing_brokers[message_id]
+            ]
 
             for target_broker in target_brokers:
                 outbox_message = Outbox.create_message(
@@ -1418,7 +1438,9 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                     outbox_message.mark_abandoned(
                         abandon_reason, cause="Invalid partition key"
                     )
-                outbox_repo._dao.save(outbox_message)
-                created += 1
+                # A live unit of work, or another sweep, may write this row
+                # after the check above. Its row is kept and this one skipped.
+                if outbox_repo._dao.save_if_absent(outbox_message) is not None:
+                    created += 1
 
     return created
