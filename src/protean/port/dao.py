@@ -4,11 +4,7 @@ import operator
 from abc import ABCMeta, abstractmethod
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-<<<<<<< HEAD
-=======
-from dataclasses import dataclass
 from functools import reduce
->>>>>>> 994ac628 (Let an outbox reconcile sweep run beside a live unit of work (#2043))
 from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from protean._deprecation import deprecated_from_registry

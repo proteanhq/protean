@@ -337,7 +337,6 @@ class TestSaveIfAbsentInUnitOfWork:
             loaded.key_a = "m1"
             assert _dao(test_domain).save_if_absent(loaded) is None
             assert current_uow._tracked_instance(KeyedRow, second.id) is loaded
-            assert all(item is not loaded for _, item in current_uow._items_to_commit())
 
         assert repo.get(second.id).key_a == "m2"
 

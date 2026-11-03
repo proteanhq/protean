@@ -1235,13 +1235,8 @@ def _written_after(message: Any, cutoff: datetime) -> bool:
 def reconcile_outbox(
     domain: Any, provider_name: str = "default", limit: int = 1000
 ) -> int:
-<<<<<<< HEAD
-    """Create outbox rows for events that are durable in the event store but have
-    no outbox row, and return how many were created.
-=======
     """Create outbox rows for events that are in the event store but have no
     outbox row, and return how many rows this call wrote.
->>>>>>> 994ac628 (Let an outbox reconcile sweep run beside a live unit of work (#2043))
 
     This closes the residual crash window from ADR-0015: an event appended to the
     event store (the durable anchor) whose relational outbox commit did not land.
@@ -1417,26 +1412,12 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
 
             # The unit of work writes one row per external broker for a
             # ``published`` event, all in the same commit as the internal row.
-<<<<<<< HEAD
-            target_brokers = [internal_broker]
-            event_cls = _resolve_outboxed_event_class(domain, message, provider_name)
-            if (
-                external_brokers
-                and event_cls is not None
-                and getattr(event_cls.meta_, "published", False)
-            ):
-                target_brokers.extend(
-                    broker
-                    for broker in external_brokers
-                    if broker not in existing_brokers[message_id]
-=======
             # Neither the ``published`` flag nor ``external_brokers`` is stored
             # with the event, so both come from the current settings.
             target_brokers = [internal_broker] + [
                 broker
                 for broker in _published_external_brokers(
                     domain, message, provider_name, external_brokers
->>>>>>> 994ac628 (Let an outbox reconcile sweep run beside a live unit of work (#2043))
                 )
                 if broker not in existing_brokers[message_id]
             ]

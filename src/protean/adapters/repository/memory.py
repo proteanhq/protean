@@ -628,18 +628,8 @@ class DictDAO(BaseDAO):
     ) -> None:
         """Enforce declared ``Index(unique=True)`` constraints in memory.
 
-<<<<<<< HEAD
-        Relational adapters get this for free from the DDL they render; the
-        in-memory store renders no DDL, so the check is replicated here to keep
-        memory mode a faithful stand-in for uniqueness invariants.
-        It guards the row-at-a-time write paths (``_create`` and ``_update``,
-        which back ``repository.add``/``save``); the bulk paths (``_update_all``
-        and ``_claim``/``update_all``, which delegate to it) are not covered,
-        matching their role as low-level escape hatches.
-=======
         Uses the rules of :meth:`_unique_index_collision`. ``_update_all`` and
         ``_claim`` do not run this check.
->>>>>>> 994ac628 (Let an outbox reconcile sweep run beside a live unit of work (#2043))
 
         Partial unique indexes (``Index(..., unique=True, where=...)``) are
         advisory here and left unenforced, mirroring how the memory provider
