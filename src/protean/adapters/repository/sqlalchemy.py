@@ -1894,30 +1894,35 @@ class SADAO(BaseDAO):
         ):
             dbapi_connection.execute("BEGIN")
 
-    def _save_state(self, entity_obj: typing.Any) -> tuple[bool, int | None, bool]:
+    def _save_state(
+        self, entity_obj: typing.Any
+    ) -> tuple[bool, int | None, bool, bool]:
         """Capture what :meth:`_forget_save` restores: whether the entity is
-        new, an aggregate's version, and whether the Unit of Work tracks it."""
+        new, an aggregate's version, whether the Unit of Work tracks it, and
+        whether the Unit of Work has already saved it."""
         if entity_obj.element_type != DomainObjects.AGGREGATE:
-            return entity_obj.state_.is_new, None, False
+            return entity_obj.state_.is_new, None, False, False
+        was_tracked = self._tracked_in_uow(entity_obj) is entity_obj
         return (
             entity_obj.state_.is_new,
             entity_obj._version,
-            self._tracked_in_uow(entity_obj) is entity_obj,
+            was_tracked,
+            was_tracked and current_uow._is_saved(entity_obj),
         )
 
     def _forget_save(
-        self, entity_obj: typing.Any, before: tuple[bool, int | None, bool]
+        self, entity_obj: typing.Any, before: tuple[bool, int | None, bool, bool]
     ) -> None:
         """Undo what ``save`` changed on ``entity_obj``, for a write the
         database then rejected."""
-        was_new, version, was_tracked = before
+        was_new, version, was_tracked, was_saved = before
         if was_new:
             entity_obj.state_.mark_new()
         if version is None:
             return
         entity_obj._version = version
-        if current_uow and not was_tracked:
-            current_uow._discard_from_identity_map(entity_obj)
+        if current_uow and not was_saved:
+            current_uow._discard_from_identity_map(entity_obj, keep_tracked=was_tracked)
 
     def _update(
         self, model_obj: typing.Any, expected_version: int | None = None

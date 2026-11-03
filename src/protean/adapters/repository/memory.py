@@ -193,13 +193,16 @@ class MemorySession:
         self,
         schema: str,
         identifier: typing.Any,
-        key_taken: typing.Callable[[dict[typing.Any, typing.Any]], bool],
+        key_taken: typing.Callable[
+            [dict[str, typing.Any], dict[typing.Any, typing.Any]], bool
+        ],
     ) -> None:
         """Make the commit drop the written record ``identifier`` when
         ``key_taken`` finds a live record that holds its unique key.
 
-        ``key_taken`` receives the live records of ``schema`` that this
-        session neither wrote nor deleted.
+        ``key_taken`` receives the record as this session last wrote it, and
+        the live records of ``schema`` that this session neither wrote nor
+        deleted.
         """
         self._db["if_absent"][(schema, identifier)] = key_taken
 
@@ -222,7 +225,7 @@ class MemorySession:
                 for record_id, record in live.get(schema, {}).items()
                 if (schema, record_id) not in ops
             }
-            if key_taken(others):
+            if key_taken(self._db["data"][schema][identifier], others):
                 del ops[(schema, identifier)]
                 self._db["data"][schema].pop(identifier, None)
 
@@ -672,6 +675,11 @@ class DictDAO(BaseDAO):
                 self._unique_index_collision(model_obj, records, identifier) is not None
             )
 
+        def staged_key_taken(
+            record: dict[str, typing.Any], records: dict[typing.Any, typing.Any]
+        ) -> bool:
+            return self._unique_index_collision(record, records, None) is not None
+
         provider = cast(MemoryProvider, self.provider)
         with conn._db["lock"]:
             # This session's own copy holds the rows it wrote or deleted, so
@@ -687,7 +695,15 @@ class DictDAO(BaseDAO):
                 return None
             saved = self.save(entity_obj, apply_hooks=apply_hooks)
             if not self._is_standalone:
-                conn.write_if_absent(self.schema_name, identifier, key_taken)
+                # Register under the identifier ``save`` assigned, which an
+                # ``Auto(increment=True)`` field only has after the save. The
+                # commit checks the record as last written, after the hooks
+                # and any later save in this session.
+                conn.write_if_absent(
+                    self.schema_name,
+                    getattr(saved, id_fld.field_name),
+                    staged_key_taken,
+                )
             return saved
 
     def _create(self, model_obj: typing.Any) -> typing.Any:

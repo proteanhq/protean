@@ -255,6 +255,21 @@ class TestSaveIfAbsentInUnitOfWork:
         rows = _rows_with_key(test_domain, "m1", "internal")
         assert [r.note for r in rows] == ["committed first"]
 
+    def test_a_skipped_update_leaves_a_loaded_aggregate_unsaved(self, test_domain):
+        repo = test_domain.repository_for(KeyedRow)
+        _dao(test_domain).save(KeyedRow(key_a="m1", key_b="internal", note="first"))
+        second = KeyedRow(key_a="m2", key_b="internal", note="second")
+        _dao(test_domain).save(second)
+
+        with UnitOfWork():
+            loaded = repo.get(second.id)
+            loaded.key_a = "m1"
+            assert _dao(test_domain).save_if_absent(loaded) is None
+            assert current_uow._tracked_instance(KeyedRow, second.id) is loaded
+            assert all(item is not loaded for _, item in current_uow._items_to_commit())
+
+        assert repo.get(second.id).key_a == "m2"
+
     def test_writes_a_row_whose_key_this_unit_of_work_freed(self, test_domain):
         repo = test_domain.repository_for(KeyedRow)
         first = KeyedRow(key_a="m1", key_b="internal", note="first")
