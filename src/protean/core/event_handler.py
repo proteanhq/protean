@@ -81,15 +81,9 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
     | ``part_of`` | ``type`` | The aggregate this handler is associated with. |
     | ``source_stream`` | ``str`` | Optional source stream filter for origin filtering. |
     | ``stream_category`` | ``str`` | The stream category to subscribe to. Defaults to aggregate's category. |
-<<<<<<< HEAD
     | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing (ADR-0028). |
-    | ``subscription_type`` | ``str`` | The subscription type (STREAM or EVENT_STORE). |
-    | ``subscription_profile`` | ``str`` | A predefined profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION). |
-=======
-    | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing. |
     | ``subscription_type`` | ``SubscriptionType`` or ``str`` | The subscription type (STREAM or EVENT_STORE), as the enum member or its name. |
     | ``subscription_profile`` | ``SubscriptionProfile`` or ``str`` | A built-in profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION) as the enum member or its name, or a custom profile name from ``[server.profiles]``. |
->>>>>>> 326b35fe (Build the IR when a handler sets a subscription option as a string (#2096))
     | ``subscription_config`` | ``dict`` | Custom configuration overrides that take precedence over profile defaults. |
 
     Configuration Priority (highest to lowest):

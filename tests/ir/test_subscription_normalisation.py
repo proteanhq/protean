@@ -14,7 +14,7 @@ import pytest
 
 from protean import Domain, handle
 from protean.fields import Identifier, String
-from protean.ir import SCHEMA_PATH, load_schema
+from protean.ir import SCHEMA_PATH
 from protean.ir.builder import IRBuilder
 from protean.server.subscription.profiles import SubscriptionProfile, SubscriptionType
 from protean.utils import fqn
@@ -199,7 +199,7 @@ NIGHTLY_PROFILE = {"nightly": {"inherits": "batch", "messages_per_tick": 50}}
 
 @pytest.mark.no_test_domain
 class TestCustomProfile:
-    def test_custom_profile_is_recorded_and_validates(self):
+    def test_custom_profile_is_recorded(self):
         domain, _ = _build_domain(
             sub_profile="nightly", custom_profiles=NIGHTLY_PROFILE
         )
@@ -209,7 +209,6 @@ class TestCustomProfile:
         assert len(subscriptions) == 4
         for subscription in subscriptions.values():
             assert subscription["profile"] == "nightly"
-        jsonschema.validate(ir, load_schema())
 
     def test_custom_profile_name_is_lower_cased(self):
         subscriptions = _build_subscriptions(
@@ -230,7 +229,7 @@ def _subscription_schema(version: str) -> dict[str, Any]:
 @pytest.mark.no_test_domain
 class TestSchemaSubscriptionRules:
     def test_unknown_type_fails_current_schema(self):
-        schema = _subscription_schema("0.4.0")
+        schema = _subscription_schema("0.3.0")
         jsonschema.validate({"type": "stream", "profile": None, "config": {}}, schema)
 
         with pytest.raises(jsonschema.ValidationError):

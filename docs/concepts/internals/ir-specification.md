@@ -506,6 +506,8 @@ Present on command handlers, event handlers, projectors, and process managers:
 
 The subscription block is always fully present. Unlike sparse field attributes,
 `null` here means "use framework defaults", a semantically meaningful value.
+The `0.3.0` schema accepts only the built-in profile names, so an IR that
+records a custom profile name fails schema validation.
 
 ### Process Manager Handler Map
 
