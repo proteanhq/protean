@@ -200,3 +200,33 @@ class TestOuterCommitOfADoomedTransaction:
 
         assert _count(test_domain) == 1
         assert _uow_context_stack.top is None
+
+    def test_the_cause_is_dropped_when_the_outer_block_raises(self, test_domain):
+        uow = UnitOfWork()
+        with pytest.raises(KeyError):
+            with uow:
+                try:
+                    with UnitOfWork():
+                        raise RuntimeError("inner")
+                except RuntimeError:
+                    pass
+                assert isinstance(uow._rollback_cause, RuntimeError)
+                raise KeyError("outer")
+
+        assert uow._rollback_cause is None
+        assert uow.in_progress is False
+
+    def test_the_cause_is_dropped_by_a_manual_rollback(self, test_domain):
+        uow = UnitOfWork()
+        uow.start()
+        try:
+            with UnitOfWork():
+                raise RuntimeError("inner")
+        except RuntimeError:
+            pass
+        assert isinstance(uow._rollback_cause, RuntimeError)
+
+        uow.rollback()
+
+        assert uow._rollback_cause is None
+        assert uow.in_progress is False

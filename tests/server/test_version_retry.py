@@ -1094,6 +1094,72 @@ class TestNestedHandlerRetry:
         assert account.name == "written"
         mock_sleep.assert_called_once()
 
+    def _register_catching_handlers(self, test_domain, inner_error, **options):
+        runs = {"outer": 0, "inner": 0}
+
+        class AccountHandlers(BaseCommandHandler):
+            @handle(OpenAccount)
+            def open(self, command: OpenAccount) -> None:
+                runs["outer"] += 1
+                with contextlib.suppress(type(inner_error)):
+                    current_domain.process(
+                        WriteAccount(account_id=command.account_id),
+                        asynchronous=False,
+                    )
+
+            @handle(WriteAccount)
+            def write(self, command: WriteAccount) -> None:
+                runs["inner"] += 1
+                if runs["inner"] == 1:
+                    raise inner_error
+                current_domain.repository_for(Account).add(
+                    Account(id=command.account_id, name="written")
+                )
+
+        test_domain.register(AccountHandlers, part_of=Account, **options)
+        test_domain.init(traverse=False)
+        return runs
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_a_caught_nested_error_in_retry_exceptions_is_retried(
+        self, mock_sleep, test_domain
+    ):
+        runs = self._register_catching_handlers(
+            test_domain,
+            ConnectionError("lost"),
+            retries=2,
+            retry_exceptions=[ConnectionError],
+        )
+
+        test_domain.process(OpenAccount(account_id="a1"), asynchronous=False)
+
+        assert runs == {"outer": 2, "inner": 2}
+        account = test_domain.repository_for(Account).get_or_none("a1")
+        assert account is not None
+        assert account.name == "written"
+        mock_sleep.assert_called_once()
+
+    @patch("protean.utils.mixins.time.sleep")
+    def test_a_caught_nested_error_in_server_transient_retry_is_retried(
+        self, mock_sleep, test_domain
+    ):
+        test_domain.config["server"]["transient_retry"].update(
+            {
+                "enabled": True,
+                "max_retries": 2,
+                "exceptions": ["builtins.TimeoutError"],
+            }
+        )
+        runs = self._register_catching_handlers(test_domain, TimeoutError("slow"))
+
+        test_domain.process(OpenAccount(account_id="a1"), asynchronous=False)
+
+        assert runs == {"outer": 2, "inner": 2}
+        account = test_domain.repository_for(Account).get_or_none("a1")
+        assert account is not None
+        assert account.name == "written"
+        mock_sleep.assert_called_once()
+
     @patch("protean.utils.mixins.time.sleep")
     def test_a_caught_nested_error_outside_the_retry_policy_propagates(
         self, mock_sleep, test_domain

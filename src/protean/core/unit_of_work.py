@@ -359,9 +359,8 @@ class UnitOfWork:
         if self._rollback_only:
             # A nested participant rolled back, dooming the whole transaction. Roll
             # back instead of committing; nothing is persisted or dispatched.
-            # Take the cause off the instance so it does not keep the exception
-            # and its traceback alive after this transaction ends.
-            cause, self._rollback_cause = self._rollback_cause, None
+            # Read the cause first: ``rollback()`` clears it.
+            cause = self._rollback_cause
             self.rollback()
             if cause is not None:
                 raise cause
@@ -792,6 +791,10 @@ class UnitOfWork:
         # cannot pop a parent UnitOfWork off the stack.
         if _uow_stack.top is self:
             _uow_stack.pop()
+
+        # The transaction ends here, so drop the participant's exception and the
+        # traceback it holds.
+        self._rollback_cause = None
 
         self._settle_versions_on_rollback()
 
