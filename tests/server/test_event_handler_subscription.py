@@ -72,50 +72,42 @@ def setup_event_loop():
     asyncio.set_event_loop(None)
 
 
-def test_event_subscriptions(test_domain):
-    test_domain.register(User, event_sourced=True)
-    test_domain.register(Registered, part_of=User)
-    test_domain.register(Activated, part_of=User)
-    test_domain.register(UserEventHandler, part_of=User)
-    test_domain.init(traverse=False)
-    engine = Engine(test_domain, test_mode=True)
-
-    assert len(engine._subscriptions) == 1
-    assert fqn(UserEventHandler) in engine._subscriptions
-    assert engine._subscriptions[fqn(UserEventHandler)].stream_category == "test::user"
-
-
-def test_origin_stream_category_in_subscription(test_domain):
-    test_domain.register(User, event_sourced=True)
-    test_domain.register(Sent, part_of=User)
-    test_domain.register(EmailEventHandler, part_of=User, source_stream="test::email")
-    test_domain.init(traverse=False)
-
-    engine = Engine(test_domain, test_mode=True)
-
-    assert len(engine._subscriptions) == 1
-    assert engine._subscriptions[fqn(EmailEventHandler)].stream_category == "test::user"
-    assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream == "test::email"
-
-
-def test_that_stream_name_overrides_the_derived_stream_name_from_owning_aggregate(
-    test_domain,
+@pytest.mark.parametrize(
+    "handler, events, options, stream_category, origin_stream",
+    [
+        (UserEventHandler, [Registered, Activated], {}, "test::user", None),
+        (
+            EmailEventHandler,
+            [Sent],
+            {"source_stream": "test::email"},
+            "test::user",
+            "test::email",
+        ),
+        (
+            EmailEventHandler,
+            [Sent],
+            {"stream_category": "test::identity", "source_stream": "test::email"},
+            "test::identity",
+            "test::email",
+        ),
+    ],
+    ids=["derived_from_aggregate", "source_stream", "stream_category_override"],
+)
+def test_event_handler_subscription(
+    test_domain, handler, events, options, stream_category, origin_stream
 ):
+    """The engine creates one subscription per event handler, on the stream
+    derived from the owning aggregate unless stream_category overrides it,
+    with source_stream as the origin stream."""
     test_domain.register(User, event_sourced=True)
-    test_domain.register(Sent, part_of=User)
-    test_domain.register(
-        EmailEventHandler,
-        part_of=User,
-        stream_category="test::identity",
-        source_stream="test::email",
-    )
+    for event in events:
+        test_domain.register(event, part_of=User)
+    test_domain.register(handler, part_of=User, **options)
     test_domain.init(traverse=False)
 
     engine = Engine(test_domain, test_mode=True)
 
-    assert len(engine._subscriptions) == 1
-    assert (
-        engine._subscriptions[fqn(EmailEventHandler)].stream_category
-        == "test::identity"
-    )
-    assert engine._subscriptions[fqn(EmailEventHandler)].origin_stream == "test::email"
+    assert list(engine._subscriptions) == [fqn(handler)]
+    subscription = engine._subscriptions[fqn(handler)]
+    assert subscription.stream_category == stream_category
+    assert subscription.origin_stream == origin_stream

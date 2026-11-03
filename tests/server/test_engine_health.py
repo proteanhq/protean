@@ -1,19 +1,23 @@
 """Tests for the Engine health check HTTP server."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import threading
 import time
+from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.subscriber import BaseSubscriber
 from protean.domain import Domain
 from protean.fields import Identifier, String
 from protean.server.engine import Engine
@@ -25,9 +29,17 @@ from protean.server.health import (
     _parse_request_line,
     _SubscriptionBlockRefresher,
 )
+from protean.server.outbox_processor import OutboxProcessor
+from protean.server.subscription.broker_subscription import BrokerSubscription
+from protean.server.subscription.event_store_subscription import (
+    EventStoreSubscription,
+)
 from protean.server.subscription.profiles import CircuitBreakerState
+from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.server.subscription_status import SubscriptionStatus
+from protean.utils import fqn
 from protean.utils.mixins import handle
+from tests.shared import FrozenClock
 
 
 async def _readiness(engine, **kwargs):
@@ -47,22 +59,16 @@ async def _readiness(engine, **kwargs):
 
 
 class TestParseRequestLine:
-    def test_parse_get_request(self):
-        data = b"GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n"
-        method, path = _parse_request_line(data)
-        assert method == "GET"
-        assert path == "/healthz"
-
-    def test_parse_post_request(self):
-        data = b"POST /readyz HTTP/1.1\r\n\r\n"
-        method, path = _parse_request_line(data)
-        assert method == "POST"
-        assert path == "/readyz"
-
-    def test_empty_data(self):
-        method, path = _parse_request_line(b"")
-        assert method == ""
-        assert path == ""
+    @pytest.mark.parametrize(
+        "data, expected",
+        [
+            (b"GET /healthz HTTP/1.1\r\nHost: localhost\r\n\r\n", ("GET", "/healthz")),
+            (b"POST /readyz HTTP/1.1\r\n\r\n", ("POST", "/readyz")),
+            (b"", ("", "")),
+        ],
+    )
+    def test_parse_request_line(self, data, expected):
+        assert _parse_request_line(data) == expected
 
 
 class TestJsonResponse:
@@ -97,16 +103,6 @@ class TestCheckLiveness:
 
 class TestCheckReadiness:
     @pytest.mark.no_test_domain
-    async def test_readiness_ok_with_memory_adapters(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            result = await _readiness(engine)
-            assert result["status"] == "ok"
-            assert result["checks"]["shutting_down"] is False
-
-    @pytest.mark.no_test_domain
     async def test_readiness_unavailable_when_shutting_down(self):
         domain = Domain(name="Test")
         domain.init(traverse=False)
@@ -132,8 +128,9 @@ class TestCheckReadiness:
             assert "shutting_down" not in result["checks"]
 
     @pytest.mark.no_test_domain
-    async def test_readiness_ready_when_not_draining(self):
-        """Negative: with no drain triggered, readiness reports ready."""
+    async def test_readiness_ok_with_memory_adapters(self):
+        """With no shutdown or drain triggered, memory adapters report ready
+        and every component appears in the checks."""
         domain = Domain(name="Test")
         domain.init(traverse=False)
         with domain.domain_context():
@@ -141,16 +138,9 @@ class TestCheckReadiness:
             assert engine.draining is False
             result = await _readiness(engine)
             assert result["status"] == "ok"
-            assert result["checks"]["draining"] is False
-
-    @pytest.mark.no_test_domain
-    async def test_readiness_reports_all_components(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            result = await _readiness(engine)
             checks = result["checks"]
+            assert checks["shutting_down"] is False
+            assert checks["draining"] is False
             assert "providers" in checks
             assert "brokers" in checks
             assert "event_store" in checks
@@ -243,6 +233,26 @@ def _parse_http(response: bytes) -> tuple[str, dict]:
     return status_line, json.loads(body)
 
 
+@contextlib.contextmanager
+def _serving(domain):
+    """Run a HealthServer for *domain* and yield its engine, server, loop and port.
+
+    *domain* must be initialised. The server listens on a free port and is
+    stopped on exit.
+    """
+    domain.config["server"]["health"]["port"] = 0
+    with domain.domain_context():
+        engine = Engine(domain, test_mode=True)
+        hs = engine._health_server
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(hs.start())
+        try:
+            yield engine, hs, loop, hs._server.sockets[0].getsockname()[1]
+        finally:
+            loop.run_until_complete(hs.stop())
+            loop.close()
+
+
 @pytest.fixture
 def health_server():
     """Yield a running HealthServer with its event loop and port.
@@ -251,20 +261,8 @@ def health_server():
     """
     domain = Domain(name="Test")
     domain.init(traverse=False)
-    domain.config["server"]["health"]["port"] = 0
-    ctx = domain.domain_context()
-    ctx.__enter__()
-    engine = Engine(domain, test_mode=True)
-    hs = engine._health_server
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(hs.start())
-    port = hs._server.sockets[0].getsockname()[1]
-
-    yield engine, hs, loop, port
-
-    loop.run_until_complete(hs.stop())
-    loop.close()
-    ctx.__exit__(None, None, None)
+    with _serving(domain) as running:
+        yield running
 
 
 @pytest.mark.no_test_domain
@@ -287,9 +285,10 @@ class TestHealthServerIntegration:
             finally:
                 loop.close()
 
-    def test_healthz_returns_200_ok(self, health_server):
+    @pytest.mark.parametrize("path", ["/healthz", "/livez"])
+    def test_liveness_paths_return_200_ok(self, health_server, path):
         _, _, loop, port = health_server
-        status, body = _parse_http(_fetch_health(loop, port, path="/healthz"))
+        status, body = _parse_http(_fetch_health(loop, port, path=path))
         assert "200 OK" in status
         assert body["status"] == "ok"
 
@@ -303,17 +302,16 @@ class TestHealthServerIntegration:
         assert "event_store" in body["checks"]
         assert "caches" in body["checks"]
 
-    def test_readyz_carries_the_subscription_block_over_http(self, health_server):
+    def test_readyz_carries_the_subscription_block_over_http(self):
         """The block survives the real probe path, not just a direct call."""
-        engine, hs, loop, port = health_server
-        subscription = MagicMock()
-        subscription.circuit_state = CircuitBreakerState.CLOSED
-        engine._subscriptions["orders-handler"] = subscription
+        domain = _handler_domain()
+        with _serving(domain) as (engine, hs, loop, port):
+            engine._subscriptions[HANDLER] = _breaker_subscription(
+                engine, CircuitBreakerState.CLOSED
+            )
+            _write_events(domain, 5)
+            _set_lag(domain, 4)
 
-        with patch(
-            "protean.server.health.collect_subscription_statuses",
-            return_value=[_status("orders-handler", lag=4, status="lagging")],
-        ):
             loop.run_until_complete(hs._subscriptions._refresh_once())
             status, body = _parse_http(_fetch_health(loop, port, path="/readyz"))
 
@@ -324,12 +322,6 @@ class TestHealthServerIntegration:
         assert subscriptions["details"][0]["status"] == "lagging"
         assert subscriptions["details"][0]["circuit_state"] == "closed"
 
-    def test_livez_alias(self, health_server):
-        _, _, loop, port = health_server
-        status, body = _parse_http(_fetch_health(loop, port, path="/livez"))
-        assert "200 OK" in status
-        assert body["status"] == "ok"
-
     def test_readyz_503_when_shutting_down(self, health_server):
         engine, _, loop, port = health_server
         engine.shutting_down = True
@@ -337,49 +329,26 @@ class TestHealthServerIntegration:
         assert "503 Service Unavailable" in status
         assert body["status"] == "unavailable"
 
-    def test_unknown_path_returns_404(self, health_server):
-        _, _, loop, port = health_server
-        status, _ = _parse_http(_fetch_health(loop, port, path="/unknown"))
-        assert "404" in status
-
-    def test_post_returns_405(self, health_server):
-        _, _, loop, port = health_server
-        status, _ = _parse_http(
-            _fetch_health(loop, port, method="POST", path="/healthz")
-        )
-        assert "405" in status
-
-    def test_drainz_flips_draining_and_returns_200(self, health_server):
-        """POST /drainz flips engine.draining to True and answers 200."""
-        engine, _, loop, port = health_server
-        assert engine.draining is False
-        status, body = _parse_http(
-            _fetch_health(loop, port, method="POST", path="/drainz")
-        )
-        assert "200 OK" in status
-        assert body["status"] == "draining"
-        assert engine.draining is True
-
-    def test_drainz_reports_the_pid_it_drained(self, health_server):
-        """The response names the process that drained.
+    def test_drainz_drains_this_worker_and_logs_it(self, health_server, caplog):
+        """POST /drainz flips engine.draining to True, answers 200 and names
+        the process that drained.
 
         The flag lives on this process's Engine, so a POST drains one worker.
         Under --workers N the caller has to hit every worker's port, and the pid
-        is how it tells them apart.
+        is how it tells them apart. The drain is also announced on the
+        operational log with the pid: a drain takes a worker out of service, so
+        the record is the audit trail for who went quiet and when.
         """
-        _, _, loop, port = health_server
-        _, body = _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
-        assert body["pid"] == os.getpid()
-
-    def test_drainz_logs_the_drain_request(self, health_server, caplog):
-        """The drain is announced on the operational log with the pid.
-
-        A drain takes a worker out of service, so the record is the audit trail
-        for who went quiet and when.
-        """
-        _, _, loop, port = health_server
+        engine, _, loop, port = health_server
+        assert engine.draining is False
         with caplog.at_level(logging.INFO, logger="protean.server.health"):
-            _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+            status, body = _parse_http(
+                _fetch_health(loop, port, method="POST", path="/drainz")
+            )
+        assert "200 OK" in status
+        assert body["status"] == "draining"
+        assert body["pid"] == os.getpid()
+        assert engine.draining is True
 
         records = [r for r in caplog.records if r.message == "engine.drain_requested"]
         assert len(records) == 1
@@ -407,22 +376,15 @@ class TestHealthServerIntegration:
         # Distinct from the shutting_down payload.
         assert "shutting_down" not in body["checks"]
 
-    def test_healthz_200_while_draining(self, health_server):
+    @pytest.mark.parametrize("path", ["/healthz", "/livez"])
+    def test_liveness_200_while_draining(self, health_server, path):
         """Liveness stays green while draining: healthy, just not taking work."""
         engine, _, loop, port = health_server
         _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
         # Prove the engine is actually draining before asserting liveness stays
         # green: otherwise a 405 no-op on /drainz would make this pass vacuously.
         assert engine.draining is True
-        status, body = _parse_http(_fetch_health(loop, port, path="/healthz"))
-        assert "200 OK" in status
-        assert body["status"] == "ok"
-
-    def test_livez_200_while_draining(self, health_server):
-        engine, _, loop, port = health_server
-        _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
-        assert engine.draining is True
-        status, body = _parse_http(_fetch_health(loop, port, path="/livez"))
+        status, body = _parse_http(_fetch_health(loop, port, path=path))
         assert "200 OK" in status
         assert body["status"] == "ok"
 
@@ -504,27 +466,15 @@ class TestHealthServerIntegration:
 @pytest.mark.no_test_domain
 class TestHealthServerEdgeCases:
     def test_config_fallback_on_broken_config(self):
-        """HealthServer falls back to defaults when config.get raises."""
+        """HealthServer falls back to defaults when the server config is not a
+        table."""
         domain = Domain(name="Test")
         domain.init(traverse=False)
-        original_config = domain.config
-        mock_config = MagicMock()
-        mock_config.get.side_effect = AttributeError("broken")
-        mock_config.__getitem__ = original_config.__getitem__
-        mock_config.__contains__ = original_config.__contains__
-        domain.config = mock_config
 
-        with (
-            domain.domain_context(),
-            patch.object(
-                type(domain),
-                "has_outbox",
-                new_callable=PropertyMock,
-                return_value=False,
-            ),
-        ):
+        with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            hs = engine._health_server
+            domain.config["server"] = "not-a-table"
+            hs = HealthServer(engine)
             assert hs.enabled is True
             assert hs.host == "127.0.0.1"
             assert hs.port == 8080
@@ -635,40 +585,48 @@ class TestHealthServerEdgeCases:
 # ---------------------------------------------------------------------------
 
 
+def _finished_task(outcome):
+    """Run a real task to completion and return it.
+
+    *outcome* is ``"raises"``, ``"cancelled"`` or ``"succeeds"``.
+    """
+
+    async def _body():
+        if outcome == "raises":
+            raise OSError("bind failed")
+        if outcome == "cancelled":
+            await asyncio.sleep(10)
+
+    async def _run():
+        task = asyncio.get_running_loop().create_task(_body())
+        if outcome == "cancelled":
+            await asyncio.sleep(0)
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        return task
+
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(_run())
+    finally:
+        loop.close()
+
+
 @pytest.mark.no_test_domain
 class TestOnHealthServerDone:
     def test_callback_logs_exception(self, caplog):
         """Done callback logs exceptions from the health task."""
-        task = MagicMock()
-        task.cancelled.return_value = False
-        task.exception.return_value = OSError("bind failed")
-
-        import logging
+        task = _finished_task("raises")
 
         with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
             Engine._on_health_server_done(task)
 
         assert any("bind failed" in r.message for r in caplog.records)
 
-    def test_callback_ignores_cancelled_task(self, caplog):
-        """Done callback does nothing for cancelled tasks."""
-        task = MagicMock()
-        task.cancelled.return_value = True
-
-        import logging
-
-        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
-            Engine._on_health_server_done(task)
-
-        assert not any("failed" in r.message for r in caplog.records)
-
-    def test_callback_ignores_successful_task(self, caplog):
-        """Done callback does nothing when task succeeds."""
-        task = MagicMock()
-        task.cancelled.return_value = False
-        task.exception.return_value = None
-
-        import logging
+    @pytest.mark.parametrize("outcome", ["cancelled", "succeeds"])
+    def test_callback_ignores_a_task_that_did_not_fail(self, caplog, outcome):
+        """Done callback does nothing for cancelled or successful tasks."""
+        task = _finished_task(outcome)
 
         with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
             Engine._on_health_server_done(task)
@@ -696,6 +654,82 @@ class HealthUserHandler(BaseEventHandler):
         pass
 
 
+class HealthUserAuditHandler(BaseEventHandler):
+    @handle(HealthUserRegistered)
+    def on_registered(self, event: HealthUserRegistered):
+        pass
+
+
+class HealthUserSubscriber(BaseSubscriber):
+    def __call__(self, data: dict) -> None:
+        pass
+
+
+# The collector names an event handler's row by the handler's registry key,
+# and the engine keys its live subscription the same way.
+HANDLER = fqn(HealthUserHandler)
+AUDIT_HANDLER = fqn(HealthUserAuditHandler)
+
+# A fixed instant for position writes, so ``lag_seconds`` is an exact number.
+_POSITION_TIME = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+
+def _handler_domain(*handlers):
+    """An initialised domain whose event handlers read the HealthUser stream.
+
+    Registers ``HealthUserHandler`` when no handler is given.
+    """
+    domain = Domain(name="Test")
+    domain.register(HealthUser)
+    domain.register(HealthUserRegistered, part_of=HealthUser)
+    for handler in handlers or (HealthUserHandler,):
+        domain.register(handler, part_of=HealthUser)
+    domain.init(traverse=False)
+    return domain
+
+
+def _write_events(domain, count):
+    """Append *count* events to the HealthUser stream category."""
+    store = domain.event_store.store
+    category = HealthUser.meta_.stream_category
+    for n in range(count):
+        store._write(
+            f"{category}-1",
+            "HealthUserRegistered",
+            {"n": n},
+            {"headers": {"id": str(uuid4()), "type": "HealthUserRegistered"}},
+        )
+
+
+def _set_lag(domain, lag, lag_seconds=0.0, handler=HealthUserHandler):
+    """Leave *handler* *lag* events behind the stream head, *lag_seconds* old.
+
+    Writes the handler's read position at ``head - lag``, stamped at a fixed
+    instant, then sets the domain clock *lag_seconds* past that instant. The
+    real collector then reports ``lag`` and, when ``lag > 0``, ``lag_seconds``.
+    """
+    store = domain.event_store.store
+    category = HealthUser.meta_.stream_category
+    head = store.stream_head_position(category)
+    domain.clock = FrozenClock(_POSITION_TIME)
+    store._write(
+        f"position-{fqn(handler)}-{category}", "Read", {"position": head - lag}
+    )
+    domain.clock = FrozenClock(_POSITION_TIME + timedelta(seconds=lag_seconds))
+
+
+def _breaker_subscription(engine, state):
+    """A real stream subscription whose circuit breaker is in *state*."""
+    subscription = StreamSubscription(engine, "test::health_user", HealthUserHandler)
+    subscription.circuit_state = state
+    return subscription
+
+
+def _subscription_without_breaker(engine):
+    """A real event-store subscription, which carries no circuit breaker."""
+    return EventStoreSubscription(engine, "test::health_user", HealthUserHandler)
+
+
 def _status(name, **overrides):
     """Build a SubscriptionStatus with sensible defaults for the fields
     the readiness block does not exercise."""
@@ -718,7 +752,15 @@ def _status(name, **overrides):
 
 @pytest.mark.no_test_domain
 class TestSubscriptionHealthBlock:
-    """The readiness probe reports per-subscription lag, status and breaker state."""
+    """The readiness probe reports per-subscription lag, status and breaker state.
+
+    Each test except the collection-failure test runs the real status
+    collector against the memory event store, in the worker thread the probe
+    uses. The collector enters its own
+    ``domain_context()`` there, while the test sets the context up on the event
+    loop. A handler's lag is the stream head minus its stored read position, so
+    the tests write events and a position to set it.
+    """
 
     def _domain(self):
         domain = Domain(name="Test")
@@ -727,57 +769,40 @@ class TestSubscriptionHealthBlock:
 
     async def test_block_reports_lag_and_status_per_subscription(self):
         """A subscription with known lag surfaces that lag in the block."""
-        domain = self._domain()
+        domain = _handler_domain(HealthUserHandler, HealthUserAuditHandler)
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            collected = [
-                _status("orders-handler", lag=7, pending=2, status="lagging"),
-                _status("audit-handler", handler_name="AuditHandler", lag=0),
-            ]
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=collected,
-            ):
-                result = await _readiness(engine)
+            _write_events(domain, 10)
+            _set_lag(domain, 7)
+            _set_lag(domain, 0, handler=HealthUserAuditHandler)
+
+            result = await _readiness(engine)
 
             details = result["checks"]["subscriptions"]["details"]
             assert len(details) == 2
 
             by_name = {d["name"]: d for d in details}
-            assert by_name["orders-handler"]["lag"] == 7
-            assert by_name["orders-handler"]["pending"] == 2
-            assert by_name["orders-handler"]["status"] == "lagging"
-            assert by_name["orders-handler"]["handler_name"] == "OrderProjector"
-            assert by_name["orders-handler"]["stream_category"] == "order"
-            assert by_name["audit-handler"]["lag"] == 0
-            assert by_name["audit-handler"]["status"] == "ok"
+            assert by_name[HANDLER]["lag"] == 7
+            assert by_name[HANDLER]["pending"] == 0
+            assert by_name[HANDLER]["status"] == "lagging"
+            assert by_name[HANDLER]["handler_name"] == "HealthUserHandler"
+            assert by_name[HANDLER]["stream_category"] == "test::health_user"
+            assert by_name[AUDIT_HANDLER]["lag"] == 0
+            assert by_name[AUDIT_HANDLER]["status"] == "ok"
 
     async def test_lag_seconds_survives_position_field_strip(self):
         """``lag_seconds`` is health data, so it survives the cursor strip while
         ``last_updated`` (a position field) is dropped."""
-        domain = self._domain()
+        domain = _handler_domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[
-                    _status(
-                        "orders-handler",
-                        lag=5,
-                        lag_seconds=12.5,
-                        last_updated="2026-01-01T12:00:00Z",
-                        position_stream="position-OrderProjector-order",
-                        recovery_checkpoint_stream=(
-                            "recovery-checkpoint-OrderProjector-order"
-                        ),
-                        failed_positions_stream="failed-OrderProjector-order",
-                        status="lagging",
-                    )
-                ],
-            ):
-                result = await _readiness(engine)
+            _write_events(domain, 5)
+            _set_lag(domain, 5, lag_seconds=12.5)
+
+            result = await _readiness(engine)
 
             detail = result["checks"]["subscriptions"]["details"][0]
+            assert detail["status"] == "lagging"
             assert detail["lag_seconds"] == 12.5
             # The position cursor is stripped; the seconds-behind is kept.
             assert "last_updated" not in detail
@@ -788,78 +813,37 @@ class TestSubscriptionHealthBlock:
             assert "failed_positions_stream" not in detail
 
     async def test_unknown_lag_is_reported_as_null_not_zero(self):
-        """An unreachable backend must not be reported as zero lag."""
-        domain = self._domain()
+        """A stream with no head to measure against must not read as zero lag."""
+        domain = _handler_domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[_status("orders-handler", lag=None, status="unknown")],
-            ):
-                result = await _readiness(engine)
+
+            # No event has been written, so the store has no head position.
+            result = await _readiness(engine)
 
             detail = result["checks"]["subscriptions"]["details"][0]
             assert detail["lag"] is None
             assert detail["status"] == "unknown"
-
-    async def test_circuit_breaker_state_merged_from_live_subscription(self):
-        """Breaker state comes off the engine's live subscription objects."""
-        domain = self._domain()
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            subscription = MagicMock()
-            subscription.circuit_state = CircuitBreakerState.OPEN
-            engine._subscriptions["orders-handler"] = subscription
-
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[_status("orders-handler")],
-            ):
-                result = await _readiness(engine)
-
-            detail = result["checks"]["subscriptions"]["details"][0]
-            assert detail["circuit_state"] == "open"
-
-    async def test_circuit_state_absent_when_subscription_has_no_breaker(self):
-        """Subscriptions without a breaker are not given a fabricated state."""
-        domain = self._domain()
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            # An event-store subscription is live but carries no breaker.
-            engine._subscriptions["es-handler"] = MagicMock(circuit_state=None)
-
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[_status("es-handler", subscription_type="event_store")],
-            ):
-                result = await _readiness(engine)
-
-            detail = result["checks"]["subscriptions"]["details"][0]
-            assert "circuit_state" not in detail
 
     async def test_breaker_with_no_matching_status_is_still_reported(self):
         """A ``sequential_by`` process manager is keyed ``{name}-partitioned``
         by the engine but reported per stream category by the status
         collector, so its breaker matches no status entry. It must still
         surface rather than vanish."""
-        domain = self._domain()
+        domain = _handler_domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            subscription = MagicMock()
-            subscription.circuit_state = CircuitBreakerState.OPEN
-            engine._subscriptions["OrderProcessManager-partitioned"] = subscription
+            engine._subscriptions["OrderProcessManager-partitioned"] = (
+                _breaker_subscription(engine, CircuitBreakerState.OPEN)
+            )
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[_status("OrderProcessManager-order")],
-            ):
-                result = await _readiness(engine)
+            result = await _readiness(engine)
 
             details = result["checks"]["subscriptions"]["details"]
             by_name = {d["name"]: d for d in details}
 
             # The collector's entry is present, carrying lag but no breaker.
-            assert "circuit_state" not in by_name["OrderProcessManager-order"]
+            assert "circuit_state" not in by_name[HANDLER]
 
             # The orphaned breaker is reported rather than silently dropped.
             orphan = by_name["OrderProcessManager-partitioned"]
@@ -874,17 +858,16 @@ class TestSubscriptionHealthBlock:
 
     async def test_lagging_subscription_does_not_make_engine_unready(self):
         """Lag is informational: it must never pull the pod out of service."""
-        domain = self._domain()
+        domain = _handler_domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[_status("orders-handler", lag=9999, status="lagging")],
-            ):
-                result = await _readiness(engine)
+            _write_events(domain, 50)
+            _set_lag(domain, 50)
+
+            result = await _readiness(engine)
 
             # The lag was seen and reported...
-            assert result["checks"]["subscriptions"]["details"][0]["lag"] == 9999
+            assert result["checks"]["subscriptions"]["details"][0]["lag"] == 50
             assert (
                 result["checks"]["subscriptions"]["details"][0]["status"] == "lagging"
             )
@@ -892,22 +875,22 @@ class TestSubscriptionHealthBlock:
             assert result["status"] == "ok"
 
     async def test_open_circuit_breaker_does_not_make_engine_unready(self):
-        """An open breaker pauses one handler; the engine is still ready."""
-        domain = self._domain()
+        """An open breaker pauses one handler; the engine is still ready.
+
+        Breaker state comes off the engine's live subscription objects.
+        """
+        domain = _handler_domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            subscription = MagicMock()
-            subscription.circuit_state = CircuitBreakerState.OPEN
-            engine._subscriptions["orders-handler"] = subscription
+            engine._subscriptions[HANDLER] = _breaker_subscription(
+                engine, CircuitBreakerState.OPEN
+            )
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[_status("orders-handler")],
-            ):
-                result = await _readiness(engine)
+            result = await _readiness(engine)
 
             # The open breaker was seen and reported...
             detail = result["checks"]["subscriptions"]["details"][0]
+            assert detail["name"] == HANDLER
             assert detail["circuit_state"] == "open"
             # ...and deliberately not allowed to change the verdict.
             assert result["status"] == "ok"
@@ -917,6 +900,8 @@ class TestSubscriptionHealthBlock:
         domain = self._domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
+            # The collector turns every backend error into an "unknown" row, so
+            # a real store cannot make it raise; the patch stands in for that.
             with patch(
                 "protean.server.health.collect_subscription_statuses",
                 side_effect=RuntimeError("redis is down"),
@@ -933,77 +918,20 @@ class TestSubscriptionHealthBlock:
         domain = self._domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            engine._subscriptions["a"] = MagicMock(circuit_state=None)
-            engine._broker_subscriptions["b"] = MagicMock()
-            engine._outbox_processors["c"] = MagicMock()
-
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[],
-            ):
-                result = await _readiness(engine)
-
-            assert result["checks"]["subscriptions"]["total"] == 3
-
-    async def test_block_is_json_serialisable(self):
-        """The probe writes JSON, so every value in the block must encode."""
-        domain = self._domain()
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            subscription = MagicMock()
-            subscription.circuit_state = CircuitBreakerState.HALF_OPEN
-            engine._subscriptions["orders-handler"] = subscription
-
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[_status("orders-handler", lag=3, status="lagging")],
-            ):
-                result = await _readiness(engine)
-
-            encoded = json.loads(json.dumps(result))
-            assert (
-                encoded["checks"]["subscriptions"]["details"][0]["circuit_state"]
-                == "half_open"
+            engine._subscriptions["a"] = _subscription_without_breaker(engine)
+            engine._broker_subscriptions["b"] = BrokerSubscription(
+                engine,
+                domain.brokers["default"],
+                "health_user_events",
+                HealthUserSubscriber,
+            )
+            engine._outbox_processors["c"] = OutboxProcessor(
+                engine, "default", "default"
             )
 
-
-@pytest.mark.no_test_domain
-class TestSubscriptionHealthAgainstRealDomain:
-    """Exercise the real collector through the worker thread, unpatched.
-
-    The rest of the block's tests patch ``collect_subscription_statuses`` to pin
-    lag values.  This one does not: it proves the collection runs to completion
-    in the worker thread against a live domain, producing a real, serialisable
-    row.  The collector enters its own ``domain_context()`` inside that worker,
-    which is the part most likely to break silently, since the context is
-    established on the event loop here in the test body.
-    """
-
-    async def test_real_handler_appears_in_the_block(self):
-        domain = Domain(name="Test")
-        domain.register(HealthUser)
-        domain.register(HealthUserRegistered, part_of=HealthUser)
-        domain.register(HealthUserHandler, part_of=HealthUser)
-        domain.init(traverse=False)
-
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
             result = await _readiness(engine)
 
-            block = result["checks"]["subscriptions"]
-            assert "collection_error" not in block
-            assert block["total"] >= 1
-
-            names = [d["handler_name"] for d in block["details"]]
-            assert "HealthUserHandler" in names
-
-            detail = next(
-                d for d in block["details"] if d["handler_name"] == "HealthUserHandler"
-            )
-            assert detail["stream_category"].endswith("health_user")
-            assert detail["status"] in {"ok", "lagging", "unknown"}
-            # Serialisable straight out of the real collector.
-            json.dumps(result)
+            assert result["checks"]["subscriptions"]["total"] == 3
 
 
 @pytest.mark.no_test_domain
@@ -1024,7 +952,7 @@ class TestSubscriptionBlockRefresher:
         domain.init(traverse=False)
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            engine._subscriptions["a"] = MagicMock(circuit_state=None)
+            engine._subscriptions["a"] = _subscription_without_breaker(engine)
             refresher = _SubscriptionBlockRefresher(engine)
 
             block = refresher.block
@@ -1081,18 +1009,18 @@ class TestSubscriptionBlockRefresher:
 
     async def test_a_failed_refresh_keeps_the_previous_block(self):
         """An error the block builder cannot absorb must not wipe good data."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
+        domain = _handler_domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             refresher = _SubscriptionBlockRefresher(engine)
+            _write_events(domain, 3)
+            _set_lag(domain, 3)
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[_status("orders-handler", lag=3, status="lagging")],
-            ):
-                await refresher._refresh_once()
+            await refresher._refresh_once()
+            assert refresher.block["details"][0]["lag"] == 3
 
+            # Every error inside the collection is already caught and reported
+            # in the block, so only a patch can make the refresh itself raise.
             with patch(
                 "protean.server.health._snapshot_and_collect",
                 side_effect=RuntimeError("collection blew up"),
@@ -1101,23 +1029,6 @@ class TestSubscriptionBlockRefresher:
 
             # The good data survives rather than being replaced by nothing.
             assert refresher.block["details"][0]["lag"] == 3
-
-    async def test_a_collector_error_is_reported_not_hidden(self):
-        """A backend that errors is surfaced, not papered over with old data."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            refresher = _SubscriptionBlockRefresher(engine)
-
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                side_effect=RuntimeError("redis is down"),
-            ):
-                await refresher._refresh_once()
-
-            assert refresher.block["collection_error"] is True
-            assert refresher.block["details"] == []
 
     async def test_block_reports_its_age_once_refreshes_stop_landing(self):
         domain = Domain(name="Test")
@@ -1129,11 +1040,7 @@ class TestSubscriptionBlockRefresher:
                 engine, interval=2.0, clock=lambda: clock[0]
             )
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[_status("orders-handler")],
-            ):
-                await refresher._refresh_once()
+            await refresher._refresh_once()
 
             # Within a few intervals, still considered current.
             clock[0] += 5.0
@@ -1148,39 +1055,43 @@ class TestSubscriptionBlockRefresher:
     async def test_the_loop_keeps_refreshing(self):
         """The background loop must iterate, not collect once and stop.
 
-        Waits on the collector's own call count rather than on elapsed time, so
-        the test is deterministic under load instead of racing a sleep.
+        Waits for the block to show lag written after the first refresh landed,
+        rather than on elapsed time, so the test is deterministic under load
+        instead of racing a sleep.
         """
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        calls = []
+        domain = _handler_domain()
 
-        def _collect(_domain):
-            calls.append(1)
-            return []
+        def _lag():
+            details = refresher.block["details"]
+            return details[0]["lag"] if details else None
 
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             refresher = _SubscriptionBlockRefresher(engine, interval=0.01)
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                side_effect=_collect,
-            ):
-                await refresher.start()
-                try:
-                    for _ in range(500):
-                        if len(calls) >= 2:
-                            break
-                        await asyncio.sleep(0.01)
-                finally:
-                    await refresher.stop()
+            await refresher.start()
+            try:
+                for _ in range(500):
+                    if "collection_pending" not in refresher.block:
+                        break
+                    await asyncio.sleep(0.01)
+                # A completed refresh is adopted, so the block is real by now.
+                assert "collection_pending" not in refresher.block
+                assert _lag() is None
 
-            assert len(calls) >= 2, (
-                f"refresher ran {len(calls)} collection(s); the loop is not repeating"
+                # Only a later refresh can see this lag.
+                _write_events(domain, 3)
+                _set_lag(domain, 3)
+                for _ in range(500):
+                    if _lag() == 3:
+                        break
+                    await asyncio.sleep(0.01)
+            finally:
+                await refresher.stop()
+
+            assert _lag() == 3, (
+                "the refresher did not collect again; the loop is not repeating"
             )
-            # A completed refresh is adopted, so the block is real by now.
-            assert "collection_pending" not in refresher.block
 
     async def test_start_is_idempotent_and_stop_cancels(self):
         domain = Domain(name="Test")
@@ -1209,24 +1120,26 @@ class TestSubscriptionBlockRefresher:
 
     async def test_refresh_runs_off_the_event_loop(self):
         """The blocking read must not execute on the loop thread."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        seen = {}
+        domain = _handler_domain()
+        seen = []
 
-        def _collect(_domain):
-            seen["thread"] = threading.current_thread()
-            return []
+        class _ThreadRecordingClock(FrozenClock):
+            # The collector reads the domain clock once per event-store row,
+            # on whichever thread runs the collection.
+            def now(self):
+                seen.append(threading.current_thread())
+                return super().now()
 
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             refresher = _SubscriptionBlockRefresher(engine)
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                side_effect=_collect,
-            ):
-                await refresher._refresh_once()
+            domain.clock = _ThreadRecordingClock(_POSITION_TIME)
 
-        assert seen["thread"] is not threading.current_thread()
+            await refresher._refresh_once()
+
+        assert refresher.block["details"][0]["name"] == HANDLER
+        assert seen
+        assert threading.current_thread() not in seen
 
     async def test_a_broken_engine_does_not_break_the_block(self):
         """Even the cheap in-memory reads are guarded: the probe answers."""
@@ -1241,22 +1154,9 @@ class TestSubscriptionBlockRefresher:
             refresher = _SubscriptionBlockRefresher(engine)
             assert refresher.block["total"] == 0
 
+            # Reading the breaker states off the broken registry fails too,
+            # and the block reports the error instead of raising.
             await refresher._refresh_once()
-            assert refresher.block["collection_error"] is True
-
-    async def test_unreadable_breaker_state_does_not_break_the_block(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            refresher = _SubscriptionBlockRefresher(engine)
-
-            with patch(
-                "protean.server.health._circuit_states",
-                side_effect=RuntimeError("subscription registry is a mess"),
-            ):
-                await refresher._refresh_once()
-
             block = refresher.block
             assert block["collection_error"] is True
             assert block["details"] == []
@@ -1277,11 +1177,15 @@ class TestLagDrainRate:
     The rate is the change in ``lag_seconds`` per second, computed by the
     refresher because it is the only place that holds a window.  Negative means
     draining; positive means falling behind; ``null`` until two windows land.
+
+    The real collector reads ``lag_seconds`` off the memory event store: the
+    domain clock minus the time of the handler's last read position.
     """
 
     def _domain(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
+        domain = _handler_domain()
+        with domain.domain_context():
+            _write_events(domain, 5)
         return domain
 
     def _refresher(self, engine, clock):
@@ -1289,14 +1193,13 @@ class TestLagDrainRate:
         # number, not something that depends on wall-clock jitter.
         return _SubscriptionBlockRefresher(engine, interval=2.0, clock=lambda: clock[0])
 
-    def _series_collector(self, name, lag_seconds_series):
-        """A collector that returns *name* with the next ``lag_seconds`` value."""
-        values = iter(lag_seconds_series)
+    async def _refresh_with(self, refresher, domain, lag_seconds):
+        """Refresh once with the handler 5 events and *lag_seconds* behind."""
+        _set_lag(domain, 5, lag_seconds=lag_seconds)
+        await refresher._refresh_once()
 
-        def _collect(_domain):
-            return [_status(name, lag=5, lag_seconds=next(values), status="lagging")]
-
-        return _collect
+    def _rate(self, refresher):
+        return refresher.block["details"][0]["lag_drain_rate"]
 
     async def test_draining_lag_yields_a_negative_rate(self):
         """AC1: lag falling across windows gives a negative rate."""
@@ -1306,29 +1209,19 @@ class TestLagDrainRate:
             engine = Engine(domain, test_mode=True)
             refresher = self._refresher(engine, clock)
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                side_effect=self._series_collector(
-                    "orders-handler", [20.0, 16.0, 12.0]
-                ),
-            ):
-                # One sample: a rate is meaningless, so it stays null.
-                await refresher._refresh_once()
-                assert refresher.block["details"][0]["lag_drain_rate"] is None
+            # One sample: a rate is meaningless, so it stays null.
+            await self._refresh_with(refresher, domain, 20.0)
+            assert self._rate(refresher) is None
 
-                # Two samples 2s apart, 20 → 16: slope is -2.0 lag-seconds/second.
-                clock[0] += 2.0
-                await refresher._refresh_once()
-                assert refresher.block["details"][0]["lag_drain_rate"] == pytest.approx(
-                    -2.0
-                )
+            # Two samples 2s apart, 20 → 16: slope is -2.0 lag-seconds/second.
+            clock[0] += 2.0
+            await self._refresh_with(refresher, domain, 16.0)
+            assert self._rate(refresher) == pytest.approx(-2.0)
 
-                # A third on the same line holds the slope at -2.0.
-                clock[0] += 2.0
-                await refresher._refresh_once()
-                assert refresher.block["details"][0]["lag_drain_rate"] == pytest.approx(
-                    -2.0
-                )
+            # A third on the same line holds the slope at -2.0.
+            clock[0] += 2.0
+            await self._refresh_with(refresher, domain, 12.0)
+            assert self._rate(refresher) == pytest.approx(-2.0)
 
     async def test_steady_caught_up_lag_yields_a_zero_rate(self):
         """AC2 (negative test): a caught-up subscription reports 0, never a
@@ -1338,18 +1231,14 @@ class TestLagDrainRate:
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             refresher = self._refresher(engine, clock)
+            _set_lag(domain, 0)
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                side_effect=self._series_collector(
-                    "orders-handler", [0.0, 0.0, 0.0, 0.0]
-                ),
-            ):
-                rates = []
-                for _ in range(4):
-                    await refresher._refresh_once()
-                    rates.append(refresher.block["details"][0]["lag_drain_rate"])
-                    clock[0] += 2.0
+            rates = []
+            for _ in range(4):
+                await refresher._refresh_once()
+                assert refresher.block["details"][0]["lag_seconds"] == 0.0
+                rates.append(self._rate(refresher))
+                clock[0] += 2.0
 
             # First is null (one sample); the rest are exactly zero, never a
             # fabricated non-zero rate.
@@ -1365,18 +1254,14 @@ class TestLagDrainRate:
             engine = Engine(domain, test_mode=True)
             refresher = self._refresher(engine, clock)
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                side_effect=self._series_collector("orders-handler", [4.0, 8.0, 12.0]),
-            ):
-                await refresher._refresh_once()
-                clock[0] += 2.0
-                await refresher._refresh_once()
-                clock[0] += 2.0
-                await refresher._refresh_once()
+            await self._refresh_with(refresher, domain, 4.0)
+            clock[0] += 2.0
+            await self._refresh_with(refresher, domain, 8.0)
+            clock[0] += 2.0
+            await self._refresh_with(refresher, domain, 12.0)
 
             # 4 → 8 → 12 over 2s steps: +2.0 lag-seconds/second.
-            assert refresher.block["details"][0]["lag_drain_rate"] == pytest.approx(2.0)
+            assert self._rate(refresher) == pytest.approx(2.0)
 
     async def test_state_is_bounded_by_the_sample_window(self):
         """AC3: state cannot grow with runtime; the window is a bounded deque."""
@@ -1385,49 +1270,37 @@ class TestLagDrainRate:
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             refresher = self._refresher(engine, clock)
+            _set_lag(domain, 5, lag_seconds=9.0)
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[
-                    _status("orders-handler", lag=5, lag_seconds=9.0, status="lagging")
-                ],
-            ):
-                # Far more refreshes than the window can hold.
-                for _ in range(100):
-                    await refresher._refresh_once()
-                    clock[0] += 2.0
+            # Far more refreshes than the window can hold.
+            for _ in range(100):
+                await refresher._refresh_once()
+                clock[0] += 2.0
 
-            window = refresher._samples["orders-handler"]
+            window = refresher._samples[HANDLER]
             assert window.maxlen == 30
             assert len(window) == 30
 
     async def test_unknown_lag_stays_null_and_records_no_sample(self):
         """A row whose ``lag_seconds`` is unknown gets a null rate and no
         sample: a 0 sample would later read as a real drained rate."""
-        domain = self._domain()
+        domain = _handler_domain()
         clock = [1000.0]
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             refresher = self._refresher(engine, clock)
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[
-                    _status(
-                        "orders-handler",
-                        lag=None,
-                        lag_seconds=None,
-                        status="unknown",
-                    )
-                ],
-            ):
-                await refresher._refresh_once()
-                clock[0] += 2.0
-                await refresher._refresh_once()
+            # No event has been written, so the lag cannot be measured.
+            await refresher._refresh_once()
+            clock[0] += 2.0
+            await refresher._refresh_once()
 
-            assert refresher.block["details"][0]["lag_drain_rate"] is None
+            detail = refresher.block["details"][0]
+            assert detail["status"] == "unknown"
+            assert detail["lag_seconds"] is None
+            assert detail["lag_drain_rate"] is None
             # No sample was recorded, so the name never enters the window map.
-            assert "orders-handler" not in refresher._samples
+            assert HANDLER not in refresher._samples
 
     async def test_a_gap_in_readable_lag_restarts_the_window(self):
         """A subscription whose lag goes unreadable and comes back starts a
@@ -1439,50 +1312,32 @@ class TestLagDrainRate:
             engine = Engine(domain, test_mode=True)
             refresher = self._refresher(engine, clock)
 
-            def _collect(_domain):
-                return [_status("orders-handler", lag=5, lag_seconds=20.0)]
+            await self._refresh_with(refresher, domain, 20.0)
+            clock[0] += 2.0
+            await self._refresh_with(refresher, domain, 20.0)
+            assert self._rate(refresher) == 0.0
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                side_effect=_collect,
-            ):
-                await refresher._refresh_once()
-                clock[0] += 2.0
-                await refresher._refresh_once()
-            assert refresher.block["details"][0]["lag_drain_rate"] == 0.0
-
-            # The backend goes unreadable for a long stretch.
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[
-                    _status(
-                        "orders-handler", lag=None, lag_seconds=None, status="unknown"
-                    )
-                ],
-            ):
-                clock[0] += 2.0
-                await refresher._refresh_once()
-            assert refresher.block["details"][0]["lag_drain_rate"] is None
-            assert "orders-handler" not in refresher._samples
+            # The store loses every event, so the lag goes unreadable.
+            domain.event_store.store._data_reset()
+            clock[0] += 2.0
+            await refresher._refresh_once()
+            assert refresher.block["details"][0]["lag_seconds"] is None
+            assert self._rate(refresher) is None
+            assert HANDLER not in refresher._samples
 
             # Readings return an hour later.  The first one has nothing to
             # compare against, so it reads null rather than a slope smeared
             # across the outage.
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                side_effect=self._series_collector("orders-handler", [10.0, 8.0]),
-            ):
-                clock[0] += 3600.0
-                await refresher._refresh_once()
-                assert refresher.block["details"][0]["lag_drain_rate"] is None
+            _write_events(domain, 5)
+            clock[0] += 3600.0
+            await self._refresh_with(refresher, domain, 10.0)
+            assert self._rate(refresher) is None
 
-                clock[0] += 2.0
-                await refresher._refresh_once()
+            clock[0] += 2.0
+            await self._refresh_with(refresher, domain, 8.0)
 
             # The slope comes from the two post-gap readings only.
-            assert refresher.block["details"][0]["lag_drain_rate"] == pytest.approx(
-                -1.0
-            )
+            assert self._rate(refresher) == pytest.approx(-1.0)
 
     async def test_a_row_without_a_name_gets_a_null_rate(self):
         """A row with no usable name cannot key a window, so it is annotated
@@ -1507,43 +1362,40 @@ class TestLagDrainRate:
             engine = Engine(domain, test_mode=True)
             refresher = self._refresher(engine, clock)
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                side_effect=self._series_collector("orders-handler", [20.0, 16.0]),
-            ):
-                await refresher._refresh_once()
-                await refresher._refresh_once()
+            await self._refresh_with(refresher, domain, 20.0)
+            await self._refresh_with(refresher, domain, 16.0)
 
             # Two samples share one instant, so the slope is undefined, not 0.
-            assert refresher.block["details"][0]["lag_drain_rate"] is None
+            assert self._rate(refresher) is None
 
     async def test_a_dropped_subscription_is_pruned_from_the_window(self):
         """A subscription that vanishes from the collector output no longer
         holds a window, so the key set cannot grow with churn."""
-        domain = self._domain()
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
         clock = [1000.0]
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
             refresher = self._refresher(engine, clock)
 
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[
-                    _status("orders-handler", lag=5, lag_seconds=9.0, status="lagging"),
-                    _status("audit-handler", lag=1, lag_seconds=3.0, status="lagging"),
-                ],
-            ):
-                await refresher._refresh_once()
+            refresher._annotate_lag_drain_rates(
+                {
+                    "total": 2,
+                    "details": [
+                        {"name": "orders-handler", "lag_seconds": 9.0},
+                        {"name": "audit-handler", "lag_seconds": 3.0},
+                    ],
+                }
+            )
             assert "audit-handler" in refresher._samples
 
             clock[0] += 2.0
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[
-                    _status("orders-handler", lag=5, lag_seconds=7.0, status="lagging")
-                ],
-            ):
-                await refresher._refresh_once()
+            refresher._annotate_lag_drain_rates(
+                {
+                    "total": 1,
+                    "details": [{"name": "orders-handler", "lag_seconds": 7.0}],
+                }
+            )
 
             assert "orders-handler" in refresher._samples
             assert "audit-handler" not in refresher._samples
@@ -1598,15 +1450,12 @@ class TestLagDrainRate:
         domain = self._domain()
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                return_value=[
-                    _status("orders-handler", lag=5, lag_seconds=9.0, status="lagging")
-                ],
-            ):
-                result = await _readiness(engine)
+            _set_lag(domain, 5, lag_seconds=9.0)
+
+            result = await _readiness(engine)
 
             detail = result["checks"]["subscriptions"]["details"][0]
+            assert detail["lag_seconds"] == 9.0
             assert "lag_drain_rate" in detail
             assert detail["lag_drain_rate"] is None
 
@@ -1667,18 +1516,12 @@ class TestHandleConnectionErrors:
         writer.close.assert_called_once()
 
     def test_answered_probe_logs_no_disconnect(self, health_server, caplog):
-        _, hs, loop, _ = health_server
-        writer = self._make_mock_writer()
-
-        async def _test():
-            mock_reader = MagicMock()
-            mock_reader.read = AsyncMock(return_value=b"GET /healthz HTTP/1.1\r\n\r\n")
-            await hs._handle_connection(mock_reader, writer)
+        _, _, loop, port = health_server
 
         with caplog.at_level(logging.DEBUG, logger="protean.server.health"):
-            loop.run_until_complete(_test())
+            status, _ = _parse_http(_fetch_health(loop, port, path="/healthz"))
 
-        writer.write.assert_called_once()
+        assert "200 OK" in status
         assert self._disconnect_records(caplog) == []
 
     def test_writer_close_exception_is_suppressed(self, health_server):
@@ -1710,27 +1553,12 @@ class TestHandleConnectionErrors:
         with pytest.raises(RuntimeError, match="bug in close"):
             loop.run_until_complete(_test())
 
-    def test_generic_exception_is_logged(self, health_server, caplog):
-        """Non-network exceptions are logged at debug level."""
-        _, hs, loop, _ = health_server
-
-        import logging
-
-        async def _test():
-            mock_reader = MagicMock()
-            mock_reader.read = AsyncMock(side_effect=ValueError("unexpected"))
-            await hs._handle_connection(mock_reader, self._make_mock_writer())
-
-        with caplog.at_level(logging.DEBUG, logger="protean.server.health"):
-            loop.run_until_complete(_test())
-
-        assert any(
-            "Health server connection error" in r.message for r in caplog.records
-        )
-
-    def test_generic_exception_still_answers_with_503(self, health_server):
-        """An empty reply is indistinguishable from a dead process, so the
-        handler must answer even when response assembly blows up."""
+    def test_generic_exception_is_logged_and_answered_with_503(
+        self, health_server, caplog
+    ):
+        """A non-network exception is logged as a warning. An empty reply is
+        indistinguishable from a dead process, so the handler must still answer
+        when response assembly blows up."""
         _, hs, loop, _ = health_server
         writer = self._make_mock_writer()
 
@@ -1739,7 +1567,14 @@ class TestHandleConnectionErrors:
             mock_reader.read = AsyncMock(side_effect=ValueError("unexpected"))
             await hs._handle_connection(mock_reader, writer)
 
-        loop.run_until_complete(_test())
+        with caplog.at_level(logging.DEBUG, logger="protean.server.health"):
+            loop.run_until_complete(_test())
+
+        assert any(
+            "Health server connection error" in r.message
+            and r.levelno == logging.WARNING
+            for r in caplog.records
+        )
 
         written = b"".join(call.args[0] for call in writer.write.call_args_list)
         assert written, "handler closed the socket without writing a response"

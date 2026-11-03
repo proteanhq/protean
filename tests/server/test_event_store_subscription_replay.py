@@ -221,6 +221,7 @@ class TestReplayExhausted:
         assert _latest_status(sub, 1) == FailedPositionStatus.EXHAUSTED.value
 
         record = _exhausted_record(sub, 1)
+        sub.current_position = 5  # a cursor well past the failure
         # The operator has fixed the fault; the handler now succeeds.
         ToggleHandler.should_fail = False
         ToggleHandler.calls = 0
@@ -242,6 +243,8 @@ class TestReplayExhausted:
         assert _latest_status(sub, 1) == FailedPositionStatus.RESOLVED.value
         # A resolved position is not tracked on restart.
         assert 1 not in _rebuild(sub)
+        # Replay does not move the read cursor.
+        assert sub.current_position == 5
 
     def test_replay_that_fails_again_reopens_and_survives_rebuild(self, test_domain):
         sub = _subscription(test_domain)
@@ -277,30 +280,6 @@ class TestReplayExhausted:
         unresolved = _rebuild(sub)
         assert 1 in unresolved
         assert unresolved[1]["retry_count"] == 0
-
-    def test_replay_does_not_move_the_read_cursor(self, test_domain):
-        sub = _subscription(test_domain)
-        msg = _make_message(global_position=1, stream_position=0)
-        _write_event_to_store(test_domain, msg)
-        _drive_to_exhaustion(sub, msg)
-        record = _exhausted_record(sub, 1)
-
-        sub.current_position = 5  # a cursor well past the failure
-        ToggleHandler.should_fail = False
-
-        asyncio.run(
-            sub.replay_exhausted(
-                msg,
-                1,
-                message_type=msg.metadata.headers.type,
-                message_id=msg.metadata.headers.id,
-                stream_name=record.data.get("stream_name"),
-                stream_position=record.data.get("stream_position"),
-                retry_count=record.data.get("retry_count", 0),
-            )
-        )
-
-        assert sub.current_position == 5
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -637,24 +616,18 @@ class TestReplayExpiredCommand:
         # Still terminal: a rebuild does not pick the position up again.
         assert 1 not in _rebuild(sub)
 
-    def test_replay_dispatches_a_command_whose_deadline_is_ahead(self, test_domain):
+    @pytest.mark.parametrize(
+        "deadline",
+        [NOW + timedelta(minutes=5), NOW],
+        ids=["deadline_ahead", "deadline_is_now"],
+    )
+    def test_replay_dispatches_a_command_whose_deadline_has_not_passed(
+        self, test_domain, deadline
+    ):
+        """A deadline ahead of now, or equal to now, has not passed yet."""
         test_domain.clock = FrozenClock(NOW)
         sub = _command_subscription(test_domain)
-        message = _exhausted_command(
-            test_domain, sub, deadline=NOW + timedelta(minutes=5)
-        )
-
-        outcome = _replay(sub, message)
-
-        assert outcome is ReplayOutcome.RESOLVED
-        assert ToggleCommandHandler.calls == 1
-        assert _latest_status(sub, 1) == FailedPositionStatus.RESOLVED.value
-
-    def test_replay_dispatches_a_command_whose_deadline_is_now(self, test_domain):
-        """A deadline equal to now has not passed yet."""
-        test_domain.clock = FrozenClock(NOW)
-        sub = _command_subscription(test_domain)
-        message = _exhausted_command(test_domain, sub, deadline=NOW)
+        message = _exhausted_command(test_domain, sub, deadline=deadline)
 
         outcome = _replay(sub, message)
 

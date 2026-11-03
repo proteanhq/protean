@@ -11,14 +11,31 @@ Verifies that:
 - Everything is no-op when OTEL is not configured.
 """
 
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
 
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
+from protean.domain import Domain
+from protean.fields import Identifier, String
 from protean.port.provider import BaseProvider
+from protean.server.observatory.metrics import (
+    _collect_broker_pool_stats,
+    _collect_pool_stats,
+    _collect_subscription_statuses,
+    _hand_rolled_metrics,
+    _register_infrastructure_gauges,
+    _scrape_cache,
+)
+from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
+from protean.utils.mixins import handle
+from protean.utils.outbox import Outbox
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,29 +73,6 @@ def _get_metric_data_points(metric_reader, name: str) -> list:
     return list(metric.data.data_points)
 
 
-def _make_mock_domain(name: str = "test") -> MagicMock:
-    """Create a mock Domain for unit tests."""
-    mock = MagicMock()
-    mock.name = name
-    mock.normalized_name = name.lower().replace(" ", "_")
-    mock.domain_context.return_value.__enter__ = MagicMock(return_value=None)
-    mock.domain_context.return_value.__exit__ = MagicMock(return_value=False)
-    return mock
-
-
-def _make_mock_provider(
-    name: str = "default",
-    database: str = "postgresql",
-    pool_stats_data: dict | None = None,
-) -> MagicMock:
-    """Create a mock Provider with pool_stats."""
-    provider = MagicMock()
-    provider.name = name
-    provider.__database__ = database
-    provider.pool_stats.return_value = pool_stats_data or {}
-    return provider
-
-
 _GAUGES_KEY = "_otel_infra_gauges_registered"
 
 
@@ -86,6 +80,116 @@ def _clean_gauges(domain):
     """Remove gauge registration sentinel from domain."""
     if hasattr(domain, _GAUGES_KEY):
         delattr(domain, _GAUGES_KEY)
+
+
+@pytest.fixture(autouse=True)
+def _clear_scrape_cache():
+    _scrape_cache.clear()
+    yield
+    _scrape_cache.clear()
+
+
+@pytest.fixture
+def sqlite_domain(tmp_path):
+    """A domain whose default database is a file-backed SQLite provider.
+
+    SQLAlchemy gives a file database a ``QueuePool``, so the provider reports
+    real pool counters.
+    """
+    pytest.importorskip("sqlalchemy")
+    domain = Domain(name="Pool")
+    domain.config["databases"]["default"] = {
+        "provider": "sqlite",
+        "database_uri": f"sqlite:///{tmp_path / 'pool.db'}",
+    }
+    domain.init(traverse=False)
+    yield domain
+    with domain.domain_context():
+        domain.providers["default"]._engine.dispose()
+
+
+class RedisPool:
+    """Stands in for a Redis client's connection pool."""
+
+    def __init__(self, created: int, available: int, max_connections: int):
+        self._created_connections = created
+        self._available_connections = [object() for _ in range(available)]
+        self.max_connections = max_connections
+
+
+class RedisClient:
+    """Stands in for the Redis client a Redis broker holds."""
+
+    def __init__(self, pool: RedisPool):
+        self.connection_pool = pool
+
+
+class UnreachableRedisClient:
+    """Stands in for a Redis client whose pool cannot be read."""
+
+    @property
+    def connection_pool(self):
+        raise ConnectionError("redis unreachable")
+
+
+def _attach_redis(monkeypatch, domain, client) -> None:
+    """Give the domain's default broker a Redis client stand-in."""
+    with domain.domain_context():
+        broker = domain.brokers.get("default")
+    monkeypatch.setattr(broker, "redis_instance", client, raising=False)
+
+
+class Order(BaseAggregate):
+    name = String()
+
+
+class OrderPlaced(BaseEvent):
+    id = Identifier()
+
+
+class OrderEventHandler(BaseEventHandler):
+    @handle(OrderPlaced)
+    def on_placed(self, event: OrderPlaced) -> None:
+        pass
+
+
+def _outbox_domain(rows: dict[str, int]) -> Domain:
+    """A domain with the outbox enabled and ``rows`` outbox rows per status."""
+    domain = Domain(name="Backpressure")
+    domain.config["enable_outbox"] = True
+    domain.config["server"] = {"default_subscription_type": "stream"}
+    domain.register(Order)
+    domain.register(OrderPlaced, part_of=Order)
+    domain.init(traverse=False)
+
+    metadata = Metadata(
+        headers=MessageHeaders(
+            id="bp-test", type="OrderPlaced", time=datetime.now(UTC), stream="s"
+        ),
+        domain=DomainMeta(
+            fqn="tests.OrderPlaced",
+            kind="event",
+            origin_stream="order-1",
+            version="1.0",
+            sequence_id="1",
+        ),
+    )
+    with domain.domain_context():
+        repo = domain._get_outbox_repo("default")
+        n = 0
+        for row_status, count in rows.items():
+            for _ in range(count):
+                row = Outbox.create_message(
+                    message_id=f"row-{n}",
+                    stream_name="order-1",
+                    message_type="OrderPlaced",
+                    data={},
+                    metadata=metadata,
+                )
+                row.status = row_status
+                repo.add(row)
+                n += 1
+    return domain
 
 
 # ---------------------------------------------------------------------------
@@ -96,8 +200,11 @@ def _clean_gauges(domain):
 class TestBaseProviderPoolStats:
     """BaseProvider.pool_stats() returns empty dict by default."""
 
-    def test_default_returns_empty_dict(self):
-        assert BaseProvider.pool_stats(MagicMock()) == {}
+    def test_memory_provider_inherits_empty_pool_stats(self, test_domain):
+        provider = test_domain.providers["default"]
+
+        assert type(provider).pool_stats is BaseProvider.pool_stats
+        assert provider.pool_stats() == {}
 
     def test_pool_stats_is_not_abstract(self):
         """pool_stats is a concrete method, not abstract."""
@@ -112,86 +219,53 @@ class TestBaseProviderPoolStats:
 class TestSAProviderPoolStats:
     """SAProvider.pool_stats() reads pool counters from the SQLAlchemy engine."""
 
-    @pytest.fixture(autouse=True)
-    def _require_sqlalchemy(self):
-        pytest.importorskip("sqlalchemy")
-
-    def test_returns_pool_counters(self):
+    def test_returns_pool_counters(self, sqlite_domain):
         """pool_stats returns size, checked_out, overflow, checked_in."""
-        from protean.adapters.repository.sqlalchemy import SAProvider
+        with sqlite_domain.domain_context():
+            provider = sqlite_domain.providers["default"]
+            pool = provider._engine.pool
 
-        mock_pool = MagicMock()
-        mock_pool.size.return_value = 5
-        mock_pool.checkedout.return_value = 2
-        mock_pool.overflow.return_value = 1
-        mock_pool.checkedin.return_value = 3
+            with provider._engine.connect():
+                result = provider.pool_stats()
+                expected = {
+                    "size": pool.size(),
+                    "checked_out": 1,
+                    "overflow": pool.overflow(),
+                    "checked_in": pool.checkedin(),
+                }
 
-        provider = MagicMock(spec=SAProvider)
-        provider._engine = MagicMock()
-        provider._engine.pool = mock_pool
+        assert result == expected
+        assert result["size"] == 5
 
-        result = SAProvider.pool_stats(provider)
+    @pytest.mark.parametrize("remove", [False, True], ids=["none", "missing"])
+    def test_returns_empty_without_engine(self, sqlite_domain, remove):
+        """pool_stats returns {} when _engine is None or does not exist."""
+        with sqlite_domain.domain_context():
+            provider = sqlite_domain.providers["default"]
+        engine = provider._engine
+        if remove:
+            del provider._engine
+        else:
+            provider._engine = None
 
-        assert result == {
-            "size": 5,
-            "checked_out": 2,
-            "overflow": 1,
-            "checked_in": 3,
-        }
+        assert provider.pool_stats() == {}
 
-    def test_returns_empty_when_no_engine(self):
-        """pool_stats returns {} when _engine is None."""
-        from protean.adapters.repository.sqlalchemy import SAProvider
+        provider._engine = engine
 
-        provider = MagicMock(spec=SAProvider)
-        provider._engine = None
+    def test_returns_empty_for_pool_without_counters(self, sqlite_domain):
+        """pool_stats returns {} for a pool that exposes no counters."""
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import NullPool
 
-        result = SAProvider.pool_stats(provider)
-        assert result == {}
+        with sqlite_domain.domain_context():
+            provider = sqlite_domain.providers["default"]
+        engine = provider._engine
+        provider._engine = create_engine("sqlite://", poolclass=NullPool)
 
-    def test_returns_empty_for_sqlite_pool(self):
-        """pool_stats returns {} for SingletonThreadPool (SQLite)."""
-        from protean.adapters.repository.sqlalchemy import SAProvider
+        assert provider.pool_stats() == {}
 
-        mock_pool = MagicMock()
-        # SingletonThreadPool doesn't have size/checkedout methods
-        del mock_pool.size
-        del mock_pool.checkedout
-        del mock_pool.overflow
-        del mock_pool.checkedin
-
-        provider = MagicMock(spec=SAProvider)
-        provider._engine = MagicMock()
-        provider._engine.pool = mock_pool
-
-        result = SAProvider.pool_stats(provider)
-        assert result == {}
-
-    def test_returns_empty_when_engine_missing_attr(self):
-        """pool_stats returns {} when _engine attr doesn't exist."""
-        from protean.adapters.repository.sqlalchemy import SAProvider
-
-        provider = MagicMock(spec=SAProvider)
-        del provider._engine
-
-        result = SAProvider.pool_stats(provider)
-        assert result == {}
-
-
-# ---------------------------------------------------------------------------
-# MemoryProvider.pool_stats() tests
-# ---------------------------------------------------------------------------
-
-
-class TestMemoryProviderPoolStats:
-    """Memory provider inherits the default empty pool_stats."""
-
-    def test_returns_empty_dict(self):
-        from protean.adapters.repository.memory import MemoryProvider
-
-        provider = MagicMock(spec=MemoryProvider)
-        result = BaseProvider.pool_stats(provider)
-        assert result == {}
+        provider._engine.dispose()
+        provider._engine = engine
 
 
 # ---------------------------------------------------------------------------
@@ -202,94 +276,48 @@ class TestMemoryProviderPoolStats:
 class TestCollectPoolStats:
     """_collect_pool_stats extracts pool data from all domain providers."""
 
-    @pytest.fixture(autouse=True)
-    def _clear_cache(self):
-        from protean.server.observatory.metrics import _scrape_cache
+    def test_collects_from_provider_with_stats(self, sqlite_domain):
+        result = _collect_pool_stats([sqlite_domain])
 
-        _scrape_cache.clear()
-
-    def test_collects_from_provider_with_stats(self):
-        from protean.server.observatory.metrics import _collect_pool_stats
-
-        provider = _make_mock_provider(
-            pool_stats_data={
-                "size": 5,
-                "checked_out": 2,
-                "overflow": 0,
-                "checked_in": 3,
-            }
-        )
-        domain = _make_mock_domain()
-        domain.providers = MagicMock()
-        domain.providers._providers = {"default": provider}
-
-        result = _collect_pool_stats([domain])
         assert len(result) == 1
         name, db_type, stats = result[0]
         assert name == "default"
-        assert db_type == "postgresql"
+        assert db_type == "sqlite"
         assert stats["size"] == 5
-        assert stats["checked_out"] == 2
+        assert stats["checked_out"] == 0
 
-    def test_skips_provider_with_empty_stats(self):
-        from protean.server.observatory.metrics import _collect_pool_stats
+    def test_skips_provider_with_empty_stats(self, test_domain):
+        assert _collect_pool_stats([test_domain]) == []
 
-        provider = _make_mock_provider(pool_stats_data={})
-        domain = _make_mock_domain()
-        domain.providers = MagicMock()
-        domain.providers._providers = {"default": provider}
+    def test_handles_domain_exception(self, sqlite_domain, monkeypatch):
+        with sqlite_domain.domain_context():
+            provider = sqlite_domain.providers["default"]
 
-        result = _collect_pool_stats([domain])
-        assert len(result) == 0
+        def _fail():
+            raise RuntimeError("boom")
 
-    def test_handles_domain_exception(self):
-        from protean.server.observatory.metrics import _collect_pool_stats
+        monkeypatch.setattr(provider, "pool_stats", _fail)
 
-        domain = _make_mock_domain()
-        domain.domain_context.side_effect = RuntimeError("boom")
-
-        result = _collect_pool_stats([domain])
-        assert result == []
+        assert _collect_pool_stats([sqlite_domain]) == []
 
     def test_handles_none_providers(self):
-        from protean.server.observatory.metrics import _collect_pool_stats
+        domain = Domain(name="Uninitialized")
+        assert domain.providers._providers is None
 
-        domain = _make_mock_domain()
-        domain.providers = MagicMock()
-        domain.providers._providers = None
-
-        result = _collect_pool_stats([domain])
-        assert result == []
+        assert _collect_pool_stats([domain]) == []
 
 
 class TestCollectBrokerPoolStats:
     """_collect_broker_pool_stats reads Redis connection pool state."""
 
-    @pytest.fixture(autouse=True)
-    def _clear_cache(self):
-        from protean.server.observatory.metrics import _scrape_cache
+    def test_collects_active_connections(self, test_domain, monkeypatch):
+        _attach_redis(
+            monkeypatch,
+            test_domain,
+            RedisClient(RedisPool(created=5, available=2, max_connections=10)),
+        )
 
-        _scrape_cache.clear()
-
-    def test_collects_active_connections(self):
-        from protean.server.observatory.metrics import _collect_broker_pool_stats
-
-        pool = MagicMock()
-        pool._created_connections = 5
-        pool._available_connections = [MagicMock(), MagicMock()]
-        pool.max_connections = 10
-
-        redis_inst = MagicMock()
-        redis_inst.connection_pool = pool
-
-        broker = MagicMock()
-        broker.redis_instance = redis_inst
-
-        domain = _make_mock_domain()
-        domain.brokers = MagicMock()
-        domain.brokers._brokers = {"default": broker}
-
-        result = _collect_broker_pool_stats([domain])
+        result = _collect_broker_pool_stats([test_domain])
         assert len(result) == 1
         name, active, available, max_conn = result[0]
         assert name == "default"
@@ -297,73 +325,37 @@ class TestCollectBrokerPoolStats:
         assert available == 2
         assert max_conn == 10
 
-    def test_skips_broker_without_redis_instance(self):
-        from protean.server.observatory.metrics import _collect_broker_pool_stats
+    def test_skips_broker_without_redis_instance(self, test_domain):
+        assert _collect_broker_pool_stats([test_domain]) == []
 
-        broker = MagicMock(spec=[])  # no redis_instance attr
+    def test_handles_exception(self, test_domain, monkeypatch):
+        _attach_redis(monkeypatch, test_domain, UnreachableRedisClient())
 
-        domain = _make_mock_domain()
-        domain.brokers = MagicMock()
-        domain.brokers._brokers = {"default": broker}
-
-        result = _collect_broker_pool_stats([domain])
-        assert result == []
-
-    def test_handles_exception(self):
-        from protean.server.observatory.metrics import _collect_broker_pool_stats
-
-        domain = _make_mock_domain()
-        domain.domain_context.side_effect = RuntimeError("fail")
-
-        result = _collect_broker_pool_stats([domain])
-        assert result == []
+        assert _collect_broker_pool_stats([test_domain]) == []
 
 
 class TestCollectSubscriptionStatuses:
     """_collect_subscription_statuses gathers subscription data from all domains."""
 
-    @pytest.fixture(autouse=True)
-    def _clear_cache(self):
-        from protean.server.observatory.metrics import _scrape_cache
-
-        _scrape_cache.clear()
-
     def test_collects_statuses(self):
-        from protean.server.observatory.metrics import _collect_subscription_statuses
+        domain = _outbox_domain({"pending": 3, "failed": 1})
 
-        mock_status = MagicMock()
-        mock_status.handler_name = "TestHandler"
-        mock_status.stream_category = "test::events"
-        mock_status.subscription_type = "stream"
-        mock_status.lag = 10
-        mock_status.pending = 3
-        mock_status.dlq_depth = 1
-        mock_status.status = "ok"
-
-        domain = _make_mock_domain()
-
-        with patch(
-            "protean.server.subscription_status.collect_subscription_statuses",
-            return_value=[mock_status],
-        ):
-            result = _collect_subscription_statuses([domain])
+        result = _collect_subscription_statuses([domain])
 
         assert len(result) == 1
         d, s = result[0]
-        assert d.name == "test"
-        assert s.lag == 10
+        assert d is domain
+        assert s.handler_name == "OutboxProcessor"
+        assert s.lag == 3
         assert s.pending == 3
+        assert s.dlq_depth == 1
 
-    def test_handles_exception(self):
-        from protean.server.observatory.metrics import _collect_subscription_statuses
-
-        domain = _make_mock_domain()
-
+    def test_handles_exception(self, test_domain):
         with patch(
             "protean.server.subscription_status.collect_subscription_statuses",
             side_effect=RuntimeError("boom"),
         ):
-            result = _collect_subscription_statuses([domain])
+            result = _collect_subscription_statuses([test_domain])
 
         assert result == []
 
@@ -376,66 +368,45 @@ class TestCollectSubscriptionStatuses:
 class TestDBPoolOTELGauges:
     """DB pool observable gauges produce measurements with correct attributes."""
 
-    def test_pool_gauges_produce_measurements(self, test_domain):
-        metric_reader = _init_telemetry_in_memory(test_domain)
-        _clean_gauges(test_domain)
+    def test_pool_gauges_produce_measurements(self, sqlite_domain):
+        metric_reader = _init_telemetry_in_memory(sqlite_domain)
+        _register_infrastructure_gauges([sqlite_domain])
 
-        from protean.server.observatory.metrics import _register_infrastructure_gauges
+        with sqlite_domain.domain_context():
+            provider = sqlite_domain.providers["default"]
+            with provider._engine.connect():
+                data = metric_reader.get_metrics_data()
+                # Read the pool after the scrape: other gauges may open and
+                # return connections while it runs.
+                expected = provider.pool_stats()
 
-        fake_stats = [
-            (
-                "default",
-                "postgresql",
-                {"size": 5, "checked_out": 2, "overflow": 1, "checked_in": 3},
-            )
-        ]
+        points = {
+            metric.name: list(metric.data.data_points)
+            for rm in data.resource_metrics
+            for sm in rm.scope_metrics
+            for metric in sm.metrics
+        }
+        size = points["protean.db.pool_size"]
+        assert len(size) >= 1
+        assert size[0].value == 5
+        attrs = dict(size[0].attributes)
+        assert attrs["provider_name"] == "default"
+        assert attrs["database_type"] == "sqlite"
+        assert points["protean.db.pool_checked_out"][0].value == 1
+        assert points["protean.db.pool_overflow"][0].value == expected["overflow"]
+        assert points["protean.db.pool_checked_in"][0].value == expected["checked_in"]
 
-        with patch(
-            "protean.server.observatory.metrics._collect_pool_stats",
-            return_value=fake_stats,
-        ):
-            _register_infrastructure_gauges([test_domain])
-
-            points = _get_metric_data_points(metric_reader, "protean.db.pool_size")
-            assert len(points) >= 1
-            assert points[0].value == 5
-            attrs = dict(points[0].attributes)
-            assert attrs["provider_name"] == "default"
-            assert attrs["database_type"] == "postgresql"
-
-            points = _get_metric_data_points(
-                metric_reader, "protean.db.pool_checked_out"
-            )
-            assert len(points) >= 1
-            assert points[0].value == 2
-
-            points = _get_metric_data_points(metric_reader, "protean.db.pool_overflow")
-            assert len(points) >= 1
-            assert points[0].value == 1
-
-            points = _get_metric_data_points(
-                metric_reader, "protean.db.pool_checked_in"
-            )
-            assert len(points) >= 1
-            assert points[0].value == 3
-
-        _clean_gauges(test_domain)
+        _clean_gauges(sqlite_domain)
 
     def test_pool_gauges_empty_when_no_stats(self, test_domain):
         metric_reader = _init_telemetry_in_memory(test_domain)
         _clean_gauges(test_domain)
 
-        from protean.server.observatory.metrics import _register_infrastructure_gauges
+        _register_infrastructure_gauges([test_domain])
 
-        with patch(
-            "protean.server.observatory.metrics._collect_pool_stats",
-            return_value=[],
-        ):
-            _register_infrastructure_gauges([test_domain])
-
-            # With empty results, the gauge still exists but has no data points
-            points = _get_metric_data_points(metric_reader, "protean.db.pool_size")
-            assert len(points) == 0
+        # The memory provider has no pool, so the gauge has no data points.
+        points = _get_metric_data_points(metric_reader, "protean.db.pool_size")
+        assert len(points) == 0
 
         _clean_gauges(test_domain)
 
@@ -443,26 +414,23 @@ class TestDBPoolOTELGauges:
 class TestBrokerPoolOTELGauges:
     """Broker pool observable gauge produces active connection measurements."""
 
-    def test_broker_pool_gauge_produces_measurement(self, test_domain):
+    def test_broker_pool_gauge_produces_measurement(self, test_domain, monkeypatch):
         metric_reader = _init_telemetry_in_memory(test_domain)
         _clean_gauges(test_domain)
+        _attach_redis(
+            monkeypatch,
+            test_domain,
+            RedisClient(RedisPool(created=10, available=6, max_connections=10)),
+        )
 
-        from protean.server.observatory.metrics import _register_infrastructure_gauges
+        _register_infrastructure_gauges([test_domain])
 
-        fake_data = [("default", 4, 6, 10)]
-
-        with patch(
-            "protean.server.observatory.metrics._collect_broker_pool_stats",
-            return_value=fake_data,
-        ):
-            _register_infrastructure_gauges([test_domain])
-
-            points = _get_metric_data_points(
-                metric_reader, "protean.broker.pool_active_connections"
-            )
-            assert len(points) >= 1
-            assert points[0].value == 4
-            assert dict(points[0].attributes)["broker_name"] == "default"
+        points = _get_metric_data_points(
+            metric_reader, "protean.broker.pool_active_connections"
+        )
+        assert len(points) >= 1
+        assert points[0].value == 4
+        assert dict(points[0].attributes)["broker_name"] == "default"
 
         _clean_gauges(test_domain)
 
@@ -473,8 +441,6 @@ class TestBackpressureOTELGauges:
     def test_outbox_gauge_produces_pending_total(self, test_domain):
         metric_reader = _init_telemetry_in_memory(test_domain)
         _clean_gauges(test_domain)
-
-        from protean.server.observatory.metrics import _register_infrastructure_gauges
 
         _register_infrastructure_gauges([test_domain])
 
@@ -487,80 +453,31 @@ class TestBackpressureOTELGauges:
 
         _clean_gauges(test_domain)
 
-    def test_subscription_lag_gauge_produces_measurement(self, test_domain):
-        metric_reader = _init_telemetry_in_memory(test_domain)
-        _clean_gauges(test_domain)
+    def test_subscription_lag_pending_dlq_and_status_gauges(self):
+        domain = _outbox_domain(
+            {"pending": 5, "processing": 2, "failed": 3, "abandoned": 4}
+        )
+        metric_reader = _init_telemetry_in_memory(domain)
 
-        from protean.server.observatory.metrics import _register_infrastructure_gauges
+        _register_infrastructure_gauges([domain])
 
-        mock_status = MagicMock()
-        mock_status.handler_name = "UserHandler"
-        mock_status.stream_category = "test::user"
-        mock_status.subscription_type = "stream"
-        mock_status.lag = 15
-        mock_status.pending = 5
-        mock_status.dlq_depth = 2
-        mock_status.status = "ok"
+        def _value(name):
+            points = _get_metric_data_points(metric_reader, name)
+            assert len(points) == 1
+            return points[0]
 
-        fake_collected = [(test_domain, mock_status)]
+        lag = _value("protean.subscription.consumer_lag")
+        assert lag.value == 7  # pending + processing
+        attrs = dict(lag.attributes)
+        assert attrs["handler"] == "OutboxProcessor"
+        assert attrs["stream"] == "default → default"
 
-        with patch(
-            "protean.server.observatory.metrics._collect_subscription_statuses",
-            return_value=fake_collected,
-        ):
-            _register_infrastructure_gauges([test_domain])
+        assert _value("protean.subscription.pending_messages").value == 5
+        assert _value("protean_subscription_dlq_depth").value == 7  # failed + abandoned
+        # The status is "lagging", which is not "ok".
+        assert _value("protean_subscription_status").value == 0
 
-            points = _get_metric_data_points(
-                metric_reader, "protean.subscription.consumer_lag"
-            )
-            assert len(points) >= 1
-            assert points[0].value == 15
-            attrs = dict(points[0].attributes)
-            assert attrs["handler"] == "UserHandler"
-            assert attrs["stream"] == "test::user"
-
-            points = _get_metric_data_points(
-                metric_reader, "protean.subscription.pending_messages"
-            )
-            assert len(points) >= 1
-            assert points[0].value == 5
-
-        _clean_gauges(test_domain)
-
-    def test_subscription_dlq_and_status_gauges(self, test_domain):
-        metric_reader = _init_telemetry_in_memory(test_domain)
-        _clean_gauges(test_domain)
-
-        from protean.server.observatory.metrics import _register_infrastructure_gauges
-
-        mock_status = MagicMock()
-        mock_status.handler_name = "FailHandler"
-        mock_status.stream_category = "test::orders"
-        mock_status.subscription_type = "stream"
-        mock_status.lag = 0
-        mock_status.pending = 3
-        mock_status.dlq_depth = 7
-        mock_status.status = "degraded"
-
-        with patch(
-            "protean.server.observatory.metrics._collect_subscription_statuses",
-            return_value=[(test_domain, mock_status)],
-        ):
-            _register_infrastructure_gauges([test_domain])
-
-            points = _get_metric_data_points(
-                metric_reader, "protean_subscription_dlq_depth"
-            )
-            assert len(points) >= 1
-            assert points[0].value == 7
-
-            points = _get_metric_data_points(
-                metric_reader, "protean_subscription_status"
-            )
-            assert len(points) >= 1
-            assert points[0].value == 0  # "degraded" != "ok"
-
-        _clean_gauges(test_domain)
+        _clean_gauges(domain)
 
 
 class TestGaugeRegistrationGuard:
@@ -570,26 +487,21 @@ class TestGaugeRegistrationGuard:
         _init_telemetry_in_memory(test_domain)
         _clean_gauges(test_domain)
 
-        from protean.server.observatory.metrics import _register_infrastructure_gauges
-
         _register_infrastructure_gauges([test_domain])
         assert getattr(test_domain, _GAUGES_KEY, False) is True
 
         # Second call should be a no-op (doesn't raise)
         _register_infrastructure_gauges([test_domain])
+        assert getattr(test_domain, _GAUGES_KEY, False) is True
 
         _clean_gauges(test_domain)
 
     def test_skips_when_no_telemetry_init(self, test_domain):
-        from protean.server.observatory.metrics import _register_infrastructure_gauges
-
         # Domain without telemetry init
         _register_infrastructure_gauges([test_domain])
         assert getattr(test_domain, _GAUGES_KEY, False) is False
 
     def test_skips_empty_domains_list(self):
-        from protean.server.observatory.metrics import _register_infrastructure_gauges
-
         _register_infrastructure_gauges([])
 
 
@@ -601,165 +513,78 @@ class TestGaugeRegistrationGuard:
 class TestHandRolledPoolMetrics:
     """Hand-rolled fallback includes pool and broker pool metrics."""
 
-    def test_includes_db_pool_metrics(self):
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        domain = _make_mock_domain()
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        domain._get_outbox_repo.return_value = mock_outbox
-        domain.brokers.get.return_value = None
-
-        fake_stats = [
-            (
-                "default",
-                "postgresql",
-                {"size": 10, "checked_out": 3, "overflow": 0, "checked_in": 7},
-            )
-        ]
-
-        with patch(
-            "protean.server.observatory.metrics._collect_pool_stats",
-            return_value=fake_stats,
-        ):
-            output = _hand_rolled_metrics([domain])
+    def test_includes_db_pool_metrics(self, sqlite_domain):
+        output = _hand_rolled_metrics([sqlite_domain])
 
         assert "protean_db_pool_size" in output
         assert "protean_db_pool_checked_out" in output
         assert "protean_db_pool_overflow" in output
         assert "protean_db_pool_checked_in" in output
         assert 'provider_name="default"' in output
-        assert 'database_type="postgresql"' in output
+        assert 'database_type="sqlite"' in output
 
-    def test_includes_broker_pool_metrics(self):
-        from protean.server.observatory.metrics import _hand_rolled_metrics
+    def test_includes_broker_pool_metrics(self, test_domain, monkeypatch):
+        _attach_redis(
+            monkeypatch,
+            test_domain,
+            RedisClient(RedisPool(created=10, available=6, max_connections=10)),
+        )
 
-        domain = _make_mock_domain()
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        domain._get_outbox_repo.return_value = mock_outbox
-        domain.brokers.get.return_value = None
-
-        fake_data = [("default", 4, 6, 10)]
-
-        with patch(
-            "protean.server.observatory.metrics._collect_broker_pool_stats",
-            return_value=fake_data,
-        ):
-            output = _hand_rolled_metrics([domain])
+        output = _hand_rolled_metrics([test_domain])
 
         assert "protean_broker_pool_active_connections" in output
-        assert 'broker_name="default"' in output
+        assert 'protean_broker_pool_active_connections{broker_name="default"} 4' in (
+            output
+        )
 
-    def test_outbox_uses_pending_count_name(self):
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        domain = _make_mock_domain()
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {"pending": 5, "published": 2}
-        domain._get_outbox_repo.return_value = mock_outbox
-        domain.brokers.get.return_value = None
+    def test_outbox_uses_pending_count_name_and_omits_empty_pools(self):
+        domain = _outbox_domain({"pending": 5, "published": 2})
 
         output = _hand_rolled_metrics([domain])
+
         assert "protean_outbox_pending_count" in output
         # pending_count reflects only the "pending" status, not all statuses
-        assert 'protean_outbox_pending_count{domain="test"} 5' in output
+        assert 'protean_outbox_pending_count{domain="Backpressure"} 5' in output
+        # The memory provider and inline broker have no pools to report.
+        assert "protean_db_pool_size" not in output
+        assert "protean_broker_pool_active_connections" not in output
 
     def test_subscription_uses_otel_names(self):
-        from protean.server.observatory.metrics import _hand_rolled_metrics
+        domain = _outbox_domain({"pending": 1, "failed": 1})
 
-        mock_status = MagicMock()
-        mock_status.handler_name = "TestHandler"
-        mock_status.stream_category = "test::events"
-        mock_status.subscription_type = "stream"
-        mock_status.lag = 10
-        mock_status.pending = 3
-        mock_status.dlq_depth = 1
-        mock_status.status = "ok"
-
-        domain = _make_mock_domain()
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        domain._get_outbox_repo.return_value = mock_outbox
-        domain.brokers.get.return_value = None
-
-        with patch(
-            "protean.server.observatory.metrics._collect_subscription_statuses",
-            return_value=[(domain, mock_status)],
-        ):
-            output = _hand_rolled_metrics([domain])
+        output = _hand_rolled_metrics([domain])
 
         assert "protean_subscription_consumer_lag" in output
         assert "protean_subscription_pending_messages" in output
         assert "protean_subscription_dlq_depth" in output
         assert "protean_subscription_status" in output
 
-    def test_empty_pool_stats_omits_section(self):
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        domain = _make_mock_domain()
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        domain._get_outbox_repo.return_value = mock_outbox
-        domain.brokers.get.return_value = None
-
-        with (
-            patch(
-                "protean.server.observatory.metrics._collect_pool_stats",
-                return_value=[],
-            ),
-            patch(
-                "protean.server.observatory.metrics._collect_broker_pool_stats",
-                return_value=[],
-            ),
-        ):
-            output = _hand_rolled_metrics([domain])
-
-        assert "protean_db_pool_size" not in output
-        assert "protean_broker_pool_active_connections" not in output
-
-    def test_pool_stats_exception_handled(self):
-        from protean.server.observatory.metrics import _hand_rolled_metrics
-
-        domain = _make_mock_domain()
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        domain._get_outbox_repo.return_value = mock_outbox
-        domain.brokers.get.return_value = None
-
+    def test_pool_stats_exception_handled(self, test_domain):
         with patch(
             "protean.server.observatory.metrics._collect_pool_stats",
             side_effect=RuntimeError("pool query failed"),
         ):
-            output = _hand_rolled_metrics([domain])
+            output = _hand_rolled_metrics([test_domain])
 
         # Should still have outbox metrics
         assert "protean_outbox_pending_count" in output
 
-    def test_subscription_lag_none_omits_lag_line(self):
-        """When lag is None, the consumer_lag line is omitted."""
-        from protean.server.observatory.metrics import _hand_rolled_metrics
+    def test_subscription_lag_none_omits_lag_line(self, test_domain):
+        """When lag is None, the consumer_lag line is omitted.
 
-        mock_status = MagicMock()
-        mock_status.handler_name = "Handler"
-        mock_status.stream_category = "test::events"
-        mock_status.subscription_type = "stream"
-        mock_status.lag = None
-        mock_status.pending = 2
-        mock_status.dlq_depth = 0
-        mock_status.status = "ok"
+        An event handler whose stream category has no events yet has no head
+        position, so its lag is unknown.
+        """
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(OrderEventHandler, part_of=Order)
+        test_domain.init(traverse=False)
 
-        domain = _make_mock_domain()
-        mock_outbox = MagicMock()
-        mock_outbox.count_by_status.return_value = {}
-        domain._get_outbox_repo.return_value = mock_outbox
-        domain.brokers.get.return_value = None
+        [(_, status)] = _collect_subscription_statuses([test_domain])
+        assert status.lag is None
+        _scrape_cache.clear()
 
-        with patch(
-            "protean.server.observatory.metrics._collect_subscription_statuses",
-            return_value=[(domain, mock_status)],
-        ):
-            output = _hand_rolled_metrics([domain])
+        output = _hand_rolled_metrics([test_domain])
 
         # pending_messages is present but consumer_lag value line is absent
         assert "protean_subscription_pending_messages" in output

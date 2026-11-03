@@ -154,35 +154,30 @@ class TestVersionRetryDefaults:
         assert _VERSION_RETRY_DEFAULTS["base_delay_seconds"] == 0.05
         assert _VERSION_RETRY_DEFAULTS["max_delay_seconds"] == 1.0
 
-    def test_config_from_active_domain(self, test_domain):
-        """Config is read from the active domain when available."""
-        config = _get_version_retry_config()
-        assert config["enabled"] is True
-        assert config["max_retries"] == 3
-        assert config["base_delay_seconds"] == 0.05
-        assert config["max_delay_seconds"] == 1.0
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            None,
+            {
+                "enabled": False,
+                "max_retries": 5,
+                "base_delay_seconds": 0.1,
+                "max_delay_seconds": 2.0,
+            },
+            {"max_retries": 10},
+        ],
+        ids=["domain-defaults", "all-keys", "one-key"],
+    )
+    def test_config_read_from_active_domain(self, test_domain, caplog, overrides):
+        """The active domain's values win; a missing key falls back to its default."""
+        if overrides is not None:
+            test_domain.config["server"]["version_retry"] = overrides
+        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
 
-    def test_config_custom_overrides(self, test_domain):
-        """Custom config values are respected."""
-        test_domain.config["server"]["version_retry"] = {
-            "enabled": False,
-            "max_retries": 5,
-            "base_delay_seconds": 0.1,
-            "max_delay_seconds": 2.0,
-        }
         config = _get_version_retry_config()
-        assert config["enabled"] is False
-        assert config["max_retries"] == 5
-        assert config["base_delay_seconds"] == 0.1
-        assert config["max_delay_seconds"] == 2.0
 
-    def test_config_partial_overrides(self, test_domain):
-        """Partial config falls back to defaults for missing keys."""
-        test_domain.config["server"]["version_retry"] = {"max_retries": 10}
-        config = _get_version_retry_config()
-        assert config["enabled"] is True  # default
-        assert config["max_retries"] == 10  # overridden
-        assert config["base_delay_seconds"] == 0.05  # default
+        assert config == {**_VERSION_RETRY_DEFAULTS, **(overrides or {})}
+        assert [r for r in caplog.records if r.name == "protean.utils.mixins"] == []
 
     @pytest.fixture
     def fresh_warnings(self, monkeypatch):
@@ -275,13 +270,6 @@ class TestVersionRetryDefaults:
         assert "`server` is a str, not a table" in message
         assert "s3cr3t" not in message
 
-    def test_valid_config_logs_no_warning(self, test_domain, caplog):
-        caplog.set_level(logging.WARNING, logger="protean.utils.mixins")
-
-        _get_version_retry_config()
-
-        assert [r for r in caplog.records if r.name == "protean.utils.mixins"] == []
-
     def test_config_falls_back_when_no_domain_active(self, test_domain):
         """Falls back to defaults when no domain context is active."""
         from protean.utils.globals import _domain_context_stack
@@ -316,8 +304,8 @@ class TestRetryOnVersionError:
     """Test that @handle retries on ExpectedVersionError."""
 
     @patch("protean.utils.mixins.time.sleep")
-    def test_succeeds_on_first_attempt(self, mock_sleep, test_domain):
-        """No retry needed when handler succeeds immediately."""
+    def test_succeeds_on_first_attempt(self, mock_sleep, test_domain, caplog):
+        """No retry and no retry log when the handler succeeds immediately."""
         test_domain.register(UserCommandHandler, part_of=User)
         test_domain.init(traverse=False)
 
@@ -325,25 +313,31 @@ class TestRetryOnVersionError:
 
         command = RenameUser(user_id=identifier, name="Jane")
         enriched = test_domain._enrich_command(command, True)
-        UserCommandHandler._handle(enriched)
+        with caplog.at_level(logging.DEBUG, logger="protean.utils.mixins"):
+            UserCommandHandler._handle(enriched)
 
         # Verify the rename happened
         repo = test_domain.repository_for(User)
         user = repo.get(identifier)
         assert user.name == "Jane"
         mock_sleep.assert_not_called()
+        assert [r for r in caplog.records if "Version conflict" in r.message] == []
 
+    @pytest.mark.parametrize("conflicts", [1, 2])
     @patch("protean.utils.mixins.time.sleep")
-    def test_retries_on_version_error_then_succeeds(self, mock_sleep, test_domain):
-        """Handler retries and succeeds after transient version conflict."""
+    def test_retries_on_version_error_then_succeeds(
+        self, mock_sleep, test_domain, caplog, conflicts
+    ):
+        """Each conflict sleeps once, logs the retry, and reruns the handler
+        in a fresh UoW; the final run's return value reaches the caller."""
         attempt_count = 0
 
-        class RetryTestHandler(BaseCommandHandler):
+        class ConflictHandler(BaseCommandHandler):
             @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
+            def rename(self, command: RenameUser) -> str:
                 nonlocal attempt_count
                 attempt_count += 1
-                if attempt_count == 1:
+                if attempt_count <= conflicts:
                     raise ExpectedVersionError(
                         "Wrong expected version: 0 (Stream: test, Stream Version: 1)"
                     )
@@ -351,73 +345,44 @@ class TestRetryOnVersionError:
                 user = repo.get(command.user_id)
                 user.change_name(command.name)
                 repo.add(user)
+                return "renamed"
 
-        test_domain.register(RetryTestHandler, part_of=User)
+        test_domain.register(ConflictHandler, part_of=User)
         test_domain.init(traverse=False)
 
         identifier = _create_user(test_domain)
 
         command = RenameUser(user_id=identifier, name="Jane")
         enriched = test_domain._enrich_command(command, True)
-        RetryTestHandler._handle(enriched)
+        with caplog.at_level(logging.DEBUG, logger="protean.utils.mixins"):
+            result = ConflictHandler._handle(enriched)
 
-        assert attempt_count == 2
-        mock_sleep.assert_called_once()
+        assert result == "renamed"
+        assert attempt_count == conflicts + 1
+        assert mock_sleep.call_count == conflicts
+        retry_logs = [r for r in caplog.records if "Version conflict" in r.message]
+        assert len(retry_logs) == conflicts
+        for number, record in enumerate(retry_logs, start=1):
+            assert f"retrying ({number}/3)" in record.message
+        assert test_domain.repository_for(User).get(identifier).name == "Jane"
 
+    @pytest.mark.parametrize(
+        "errors",
+        [
+            [ValueError("business rule violation")],
+            [
+                ExpectedVersionError("conflict"),
+                RuntimeError("unexpected error on retry"),
+            ],
+        ],
+        ids=["first-attempt", "after-a-version-conflict"],
+    )
     @patch("protean.utils.mixins.time.sleep")
-    def test_retries_twice_then_succeeds(self, mock_sleep, test_domain):
-        """Handler succeeds on third attempt after two version conflicts."""
-        attempt_count = 0
-
-        class RetryTwiceHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempt_count
-                attempt_count += 1
-                if attempt_count <= 2:
-                    raise ExpectedVersionError("version conflict")
-                repo = current_domain.repository_for(User)
-                user = repo.get(command.user_id)
-                user.change_name(command.name)
-                repo.add(user)
-
-        test_domain.register(RetryTwiceHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-        RetryTwiceHandler._handle(enriched)
-
-        assert attempt_count == 3
-        assert mock_sleep.call_count == 2
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_exhausts_retries_and_raises(self, mock_sleep, test_domain):
-        """Raises ExpectedVersionError after exhausting all retries."""
-
-        class AlwaysFailHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                raise ExpectedVersionError("persistent version conflict")
-
-        test_domain.register(AlwaysFailHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-
-        with pytest.raises(ExpectedVersionError, match="persistent version conflict"):
-            AlwaysFailHandler._handle(enriched)
-
-        # Default: 3 retries = 4 total attempts, 3 sleeps
-        assert mock_sleep.call_count == 3
-
-    def test_non_version_error_propagates_immediately(self, test_domain):
-        """Non-ExpectedVersionError exceptions propagate without retrying."""
+    def test_other_error_propagates_without_retry(
+        self, mock_sleep, test_domain, errors
+    ):
+        """An error that is not a version conflict propagates at once, even
+        when it is raised by a retry."""
         attempt_count = 0
 
         class BadHandler(BaseCommandHandler):
@@ -425,7 +390,7 @@ class TestRetryOnVersionError:
             def rename(self, command: RenameUser) -> None:
                 nonlocal attempt_count
                 attempt_count += 1
-                raise ValueError("business rule violation")
+                raise errors[attempt_count - 1]
 
         test_domain.register(BadHandler, part_of=User)
         test_domain.init(traverse=False)
@@ -435,10 +400,10 @@ class TestRetryOnVersionError:
         command = RenameUser(user_id=identifier, name="Jane")
         enriched = test_domain._enrich_command(command, True)
 
-        with pytest.raises(ValueError, match="business rule violation"):
+        with pytest.raises(type(errors[-1]), match=str(errors[-1])):
             BadHandler._handle(enriched)
 
-        assert attempt_count == 1  # No retry
+        assert attempt_count == len(errors)
 
 
 # ---------------------------------------------------------------------------
@@ -449,20 +414,30 @@ class TestRetryOnVersionError:
 class TestRetryDisabled:
     """Test that retry can be disabled via configuration."""
 
+    @pytest.mark.parametrize(
+        "key, value",
+        [("enabled", False), ("max_retries", 0)],
+        ids=["enabled-flag", "zero-retries"],
+    )
     @patch("protean.utils.mixins.time.sleep")
-    def test_disabled_via_enabled_flag(self, mock_sleep, test_domain):
-        """Setting enabled=False bypasses retry entirely."""
+    def test_disabled_retry_raises_on_first_conflict(
+        self, mock_sleep, test_domain, key, value
+    ):
+        """``enabled = false`` or ``max_retries = 0`` bypasses retry entirely."""
+        attempt_count = 0
 
         class FailHandler(BaseCommandHandler):
             @handle(RenameUser)
             def rename(self, command: RenameUser) -> None:
+                nonlocal attempt_count
+                attempt_count += 1
                 raise ExpectedVersionError("conflict")
 
         test_domain.register(FailHandler, part_of=User)
         test_domain.init(traverse=False)
 
         # Set config AFTER init to avoid any reset
-        test_domain.config["server"]["version_retry"]["enabled"] = False
+        test_domain.config["server"]["version_retry"][key] = value
 
         identifier = _create_user(test_domain)
 
@@ -472,31 +447,7 @@ class TestRetryDisabled:
         with pytest.raises(ExpectedVersionError):
             FailHandler._handle(enriched)
 
-        mock_sleep.assert_not_called()
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_disabled_via_zero_retries(self, mock_sleep, test_domain):
-        """Setting max_retries=0 bypasses retry."""
-
-        class FailHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                raise ExpectedVersionError("conflict")
-
-        test_domain.register(FailHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        # Set config AFTER init
-        test_domain.config["server"]["version_retry"]["max_retries"] = 0
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-
-        with pytest.raises(ExpectedVersionError):
-            FailHandler._handle(enriched)
-
+        assert attempt_count == 1
         mock_sleep.assert_not_called()
 
 
@@ -508,9 +459,33 @@ class TestRetryDisabled:
 class TestExponentialBackoff:
     """Verify exponential backoff delays and capping."""
 
+    @pytest.mark.parametrize(
+        "overrides, delays",
+        [
+            # Default: 3 retries = 4 total attempts, 3 sleeps
+            ({}, [0.05, 0.1, 0.2]),
+            ({"max_retries": 1}, [0.05]),
+            (
+                {
+                    "max_retries": 4,
+                    "base_delay_seconds": 0.1,
+                    "max_delay_seconds": 10.0,
+                },
+                [0.1, 0.2, 0.4, 0.8],
+            ),
+            (
+                {"max_retries": 5, "base_delay_seconds": 0.5, "max_delay_seconds": 1.0},
+                [0.5, 1.0, 1.0, 1.0, 1.0],
+            ),
+        ],
+        ids=["defaults", "one-retry", "exponential", "capped-at-max"],
+    )
     @patch("protean.utils.mixins.time.sleep")
-    def test_exponential_backoff_delays(self, mock_sleep, test_domain):
-        """Delays follow 2^attempt * base_delay pattern."""
+    def test_exhausted_retries_raise_after_backoff_delays(
+        self, mock_sleep, test_domain, overrides, delays
+    ):
+        """Delays follow 2^attempt * base_delay, never exceed max_delay_seconds,
+        and the last conflict propagates once the retries run out."""
         attempt_count = 0
 
         class FailHandler(BaseCommandHandler):
@@ -518,58 +493,26 @@ class TestExponentialBackoff:
             def rename(self, command: RenameUser) -> None:
                 nonlocal attempt_count
                 attempt_count += 1
-                raise ExpectedVersionError("conflict")
+                raise ExpectedVersionError("persistent version conflict")
 
         test_domain.register(FailHandler, part_of=User)
         test_domain.init(traverse=False)
 
         # Set config AFTER init
-        test_domain.config["server"]["version_retry"]["max_retries"] = 4
-        test_domain.config["server"]["version_retry"]["base_delay_seconds"] = 0.1
-        test_domain.config["server"]["version_retry"]["max_delay_seconds"] = 10.0
+        test_domain.config["server"]["version_retry"].update(overrides)
 
         identifier = _create_user(test_domain)
 
         command = RenameUser(user_id=identifier, name="Jane")
         enriched = test_domain._enrich_command(command, True)
 
-        with pytest.raises(ExpectedVersionError):
+        with pytest.raises(ExpectedVersionError, match="persistent version conflict"):
             FailHandler._handle(enriched)
 
-        assert attempt_count == 5  # initial + 4 retries
-        delays = [call.args[0] for call in mock_sleep.call_args_list]
-        # base=0.1: 0.1, 0.2, 0.4, 0.8
-        assert delays == pytest.approx([0.1, 0.2, 0.4, 0.8])
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_delay_capped_at_max(self, mock_sleep, test_domain):
-        """Backoff delay never exceeds max_delay_seconds."""
-
-        class FailHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                raise ExpectedVersionError("conflict")
-
-        test_domain.register(FailHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        # Set config AFTER init
-        test_domain.config["server"]["version_retry"]["max_retries"] = 5
-        test_domain.config["server"]["version_retry"]["base_delay_seconds"] = 0.5
-        test_domain.config["server"]["version_retry"]["max_delay_seconds"] = 1.0
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-
-        with pytest.raises(ExpectedVersionError):
-            FailHandler._handle(enriched)
-
-        delays = [call.args[0] for call in mock_sleep.call_args_list]
-        # base=0.5: 0.5, 1.0, 1.0, 1.0, 1.0 (capped at 1.0)
-        assert delays == pytest.approx([0.5, 1.0, 1.0, 1.0, 1.0])
-        assert all(d <= 1.0 for d in delays)
+        assert attempt_count == len(delays) + 1
+        assert [call.args[0] for call in mock_sleep.call_args_list] == pytest.approx(
+            delays
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -603,54 +546,6 @@ class TestEventHandlerRetry:
 
         assert attempt_count == 2
         mock_sleep.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# Integration with real version conflicts
-# ---------------------------------------------------------------------------
-
-
-class TestRealVersionConflict:
-    """Test retry with actual version conflicts from event-sourced aggregates."""
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_concurrent_modification_retries(self, mock_sleep, test_domain):
-        """When a handler hits a version conflict, the retry resolves it
-        by re-executing with a fresh UoW."""
-        attempt_count = 0
-
-        class ConflictHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempt_count
-                attempt_count += 1
-                if attempt_count == 1:
-                    # Simulate a version conflict on first attempt
-                    raise ExpectedVersionError(
-                        "Wrong expected version: 0 (Stream: test, Stream Version: 1)"
-                    )
-                # On retry, succeed
-                repo = current_domain.repository_for(User)
-                user = repo.get(command.user_id)
-                user.change_name(command.name)
-                repo.add(user)
-
-        test_domain.register(ConflictHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-        ConflictHandler._handle(enriched)
-
-        assert attempt_count == 2
-        mock_sleep.assert_called_once()
-
-        # Verify final state
-        repo = test_domain.repository_for(User)
-        user = repo.get(identifier)
-        assert user.name == "Jane"
 
 
 @pytest.fixture(params=[False, True], ids=["outbox-off", "outbox-on"])
@@ -699,47 +594,6 @@ class TestCommitFailureRetry:
         assert isinstance(exc_info.value.__cause__, ValueError)
         assert attempt_count == 1
         mock_sleep.assert_not_called()
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_value_error_from_sync_event_handler_is_not_retried(
-        self, mock_sleep, test_domain
-    ):
-        # Under sync processing the event handler runs inside the commit,
-        # after the events are durable. Retrying would append them again.
-        attempt_count = 0
-
-        class RegisteringHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempt_count
-                attempt_count += 1
-                user = User.register(
-                    user_id=command.user_id, name=command.name, email="j@example.com"
-                )
-                current_domain.repository_for(User).add(user)
-
-        class FailingReaction(BaseEventHandler):
-            @handle(UserRegistered)
-            def on_registered(self, event: UserRegistered) -> None:
-                raise ValueError("reaction failed")
-
-        test_domain.register(RegisteringHandler, part_of=User)
-        test_domain.register(FailingReaction, part_of=User)
-        test_domain.init(traverse=False)
-        assert test_domain.config["event_processing"] == "sync"
-
-        user_id = str(uuid4())
-        command = RenameUser(user_id=user_id, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-        with pytest.raises(TransactionError) as exc_info:
-            RegisteringHandler._handle(enriched)
-
-        assert isinstance(exc_info.value.__cause__, ValueError)
-        assert str(exc_info.value.__cause__) == "reaction failed"
-        assert attempt_count == 1
-        mock_sleep.assert_not_called()
-        messages = test_domain.event_store.store.read(f"test::user-{user_id}")
-        assert [m.metadata.headers.type for m in messages] == ["Test.UserRegistered.v1"]
 
     @patch("protean.utils.mixins.time.sleep")
     def test_event_store_conflict_at_commit_is_retried(
@@ -960,8 +814,11 @@ class TestSyncEventHandlerConflict:
             # version conflict when the commit's own write raises it.
             lambda: type("StaleDataError", (Exception,), {})("stale in reaction"),
             lambda: ConfigurationError("reaction misconfigured"),
+            # Under sync processing the event handler runs inside the commit,
+            # after the events are durable. Retrying would append them again.
+            lambda: ValueError("reaction failed"),
         ],
-        ids=["stale-data-error", "configuration-error"],
+        ids=["stale-data-error", "configuration-error", "value-error"],
     )
     def test_any_reaction_failure_is_wrapped_and_not_retried(
         self, test_domain, make_error
@@ -1069,201 +926,6 @@ class TestSyncEventHandlerConflict:
         assert attempts == 2
         assert test_domain.repository_for(User).get(other_id).name == "Reacted"
         assert self._stored_types(test_domain, user_id) == ["Test.UserRegistered.v1"]
-
-
-# ---------------------------------------------------------------------------
-# Logging tests
-# ---------------------------------------------------------------------------
-
-
-class TestRetryLogging:
-    """Verify debug logging on retry attempts."""
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_debug_log_on_retry(self, mock_sleep, test_domain, caplog):
-        """Debug log emitted for each retry attempt."""
-        import logging
-
-        attempt_count = 0
-
-        class LogHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempt_count
-                attempt_count += 1
-                if attempt_count <= 2:
-                    raise ExpectedVersionError("version mismatch")
-
-        test_domain.register(LogHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-
-        with caplog.at_level(logging.DEBUG, logger="protean.utils.mixins"):
-            LogHandler._handle(enriched)
-
-        retry_logs = [r for r in caplog.records if "Version conflict" in r.message]
-        assert len(retry_logs) == 2
-        assert "retrying (1/3)" in retry_logs[0].message
-        assert "retrying (2/3)" in retry_logs[1].message
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_no_log_on_success(self, mock_sleep, test_domain, caplog):
-        """No retry logs when handler succeeds on first attempt."""
-        import logging
-
-        class SuccessHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                pass  # succeeds immediately
-
-        test_domain.register(SuccessHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-
-        with caplog.at_level(logging.DEBUG, logger="protean.utils.mixins"):
-            SuccessHandler._handle(enriched)
-
-        retry_logs = [r for r in caplog.records if "Version conflict" in r.message]
-        assert len(retry_logs) == 0
-        mock_sleep.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# Handler return value tests
-# ---------------------------------------------------------------------------
-
-
-class TestHandlerReturnValue:
-    """Verify that return values pass through the retry wrapper correctly."""
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_return_value_preserved_on_retry(self, mock_sleep, test_domain):
-        """Command handler return value is preserved even after retries."""
-        attempt_count = 0
-
-        class ReturningHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempt_count
-                attempt_count += 1
-                if attempt_count == 1:
-                    raise ExpectedVersionError("conflict")
-
-        test_domain.register(ReturningHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-        result = ReturningHandler._handle(enriched)
-
-        assert result is None
-        assert attempt_count == 2
-
-
-# ---------------------------------------------------------------------------
-# Edge cases
-# ---------------------------------------------------------------------------
-
-
-class TestEdgeCases:
-    """Edge cases and boundary conditions for version retry."""
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_max_retries_one(self, mock_sleep, test_domain):
-        """With max_retries=1, only one retry is attempted."""
-        attempt_count = 0
-
-        class OneRetryHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempt_count
-                attempt_count += 1
-                raise ExpectedVersionError("conflict")
-
-        test_domain.register(OneRetryHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        # Set config AFTER init
-        test_domain.config["server"]["version_retry"]["max_retries"] = 1
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-
-        with pytest.raises(ExpectedVersionError):
-            OneRetryHandler._handle(enriched)
-
-        assert attempt_count == 2  # initial + 1 retry
-        assert mock_sleep.call_count == 1
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_handler_raises_different_error_after_version_error(
-        self, mock_sleep, test_domain
-    ):
-        """If handler raises a different error on retry, it propagates."""
-        attempt_count = 0
-
-        class MixedErrorHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempt_count
-                attempt_count += 1
-                if attempt_count == 1:
-                    raise ExpectedVersionError("conflict")
-                raise RuntimeError("unexpected error on retry")
-
-        test_domain.register(MixedErrorHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-
-        with pytest.raises(RuntimeError, match="unexpected error on retry"):
-            MixedErrorHandler._handle(enriched)
-
-        assert attempt_count == 2
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_version_error_subclass_is_caught(self, mock_sleep, test_domain):
-        """Subclasses of ExpectedVersionError are also retried."""
-
-        class CustomVersionError(ExpectedVersionError):
-            pass
-
-        attempt_count = 0
-
-        class SubclassHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempt_count
-                attempt_count += 1
-                if attempt_count == 1:
-                    raise CustomVersionError("custom conflict")
-
-        test_domain.register(SubclassHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-        SubclassHandler._handle(enriched)
-
-        assert attempt_count == 2
-        mock_sleep.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

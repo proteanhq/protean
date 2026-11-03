@@ -5,6 +5,7 @@ observations when the metrics are scraped with telemetry enabled. Mirrors
 ``test_subscription_otel_metrics.py``.
 """
 
+import logging
 from datetime import UTC, datetime
 
 import pytest
@@ -63,8 +64,8 @@ def register_elements(test_domain):
     test_domain.register(Registered, part_of=User)
     test_domain.register(Balances)
     test_domain.register(BalancesProjector, projector_for=Balances, aggregates=[User])
-    # A second projection with no position written -> staleness is None, exercising
-    # the gauge callback's skip branch alongside Balances (which emits).
+    # Tokens has no position written, so its staleness is None and the gauge
+    # reports no point for it, while Balances reports one.
     test_domain.register(Tokens)
     test_domain.register(TokensProjector, projector_for=Tokens, aggregates=[User])
     test_domain.init(traverse=False)
@@ -123,9 +124,21 @@ def test_staleness_gauge_emits_on_scrape(test_domain):
     assert metric is not None
 
     points = list(metric.data.data_points)
-    assert any(p.attributes.get("projection") == "Balances" for p in points)
+    assert [p.attributes.get("projection") for p in points] == ["Balances"]
     # Caught-up projection reports zero staleness.
-    balances_point = next(
-        p for p in points if p.attributes.get("projection") == "Balances"
-    )
-    assert balances_point.value == 0
+    assert points[0].value == 0
+
+
+def test_staleness_gauge_skips_projections_with_no_source_events(test_domain, caplog):
+    """A projection whose source stream is empty has no lag and reports no
+    staleness point. The gauge callback skips it, so the OTel SDK logs no
+    callback failure."""
+    metric_reader = _init_telemetry_in_memory(test_domain)
+
+    with caplog.at_level(logging.WARNING):
+        _register_infrastructure_gauges([test_domain])
+        metric = _get_metric(metric_reader, "protean.projection.staleness_seconds")
+
+    points = list(metric.data.data_points) if metric is not None else []
+    assert points == []
+    assert [r for r in caplog.records if r.name.startswith("opentelemetry")] == []

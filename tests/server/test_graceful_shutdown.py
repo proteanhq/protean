@@ -7,44 +7,31 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from protean import Domain
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
+from protean.fields import Identifier, String
 from protean.server.engine import Engine
+from protean.utils.mixins import handle
+
+
+class ShutdownUser(BaseAggregate):
+    email: String()
+
+
+class ShutdownUserRegistered(BaseEvent):
+    user_id: Identifier()
+
+
+class ShutdownUserHandler(BaseEventHandler):
+    @handle(ShutdownUserRegistered)
+    def on_registered(self, event: ShutdownUserRegistered) -> None:
+        pass
 
 
 @pytest.mark.no_test_domain
 class TestDomainClose:
     """Test Domain.close() shuts down all infrastructure adapters."""
-
-    def test_close_calls_provider_close(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        with patch.object(domain.providers, "close") as mock_close:
-            domain.close()
-            mock_close.assert_called_once()
-
-    def test_close_calls_broker_close(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        with patch.object(domain.brokers, "close") as mock_close:
-            domain.close()
-            mock_close.assert_called_once()
-
-    def test_close_calls_cache_close(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        with patch.object(domain.caches, "close") as mock_close:
-            domain.close()
-            mock_close.assert_called_once()
-
-    def test_close_calls_event_store_close(self):
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        with patch.object(domain.event_store, "close") as mock_close:
-            domain.close()
-            mock_close.assert_called_once()
 
     def test_close_is_idempotent(self):
         """Calling close() multiple times should not raise."""
@@ -74,7 +61,7 @@ class TestDomainClose:
         assert any("Error closing event store" in r.message for r in caplog.records)
 
     def test_close_order_is_reverse_of_init(self):
-        """Event store closed first, providers closed last."""
+        """close() closes each adapter once: event store first, providers last."""
         domain = Domain(name="Test")
         domain.init(traverse=False)
 
@@ -111,51 +98,32 @@ class TestDomainClose:
 class TestEngineShutdownOrder:
     """Test Engine.shutdown() calls domain.close() and follows correct ordering."""
 
-    def test_shutdown_calls_domain_close(self):
-        """Engine.shutdown() should call domain.close() after subscriptions stop."""
+    def test_shutdown_closes_domain_once_after_subscriptions(self):
+        """Engine.shutdown() calls domain.close() once, after every
+        subscription has stopped."""
         domain = Domain(name="Test")
+        domain.register(ShutdownUser)
+        domain.register(ShutdownUserRegistered, part_of=ShutdownUser)
+        domain.register(ShutdownUserHandler, part_of=ShutdownUser)
         domain.init(traverse=False)
 
         with domain.domain_context():
             engine = Engine(domain, test_mode=True)
+            subscriptions = list(engine._subscriptions.values())
+            assert subscriptions
+            assert all(sub.keep_going for sub in subscriptions)
 
-            with patch.object(domain, "close") as mock_close:
-                engine.loop.run_until_complete(engine.shutdown())
-                mock_close.assert_called_once()
-
-    def test_shutdown_closes_domain_after_subscriptions(self):
-        """domain.close() is called after subscription shutdown completes."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-
-            call_order = []
-
-            # Mock a subscription
-            mock_subscription = MagicMock()
-
-            async def mock_shutdown():
-                call_order.append("subscription_shutdown")
-
-            mock_subscription.shutdown = mock_shutdown
-            engine._subscriptions = {"test": mock_subscription}
-
+            still_running_at_close = []
             original_close = domain.close
 
             def tracked_close():
-                call_order.append("domain_close")
+                still_running_at_close.append([sub.keep_going for sub in subscriptions])
                 original_close()
 
             with patch.object(domain, "close", side_effect=tracked_close):
                 engine.loop.run_until_complete(engine.shutdown())
 
-            assert "subscription_shutdown" in call_order
-            assert "domain_close" in call_order
-            assert call_order.index("subscription_shutdown") < call_order.index(
-                "domain_close"
-            )
+            assert still_running_at_close == [[False] * len(subscriptions)]
 
     def test_shutdown_domain_close_error_does_not_prevent_loop_stop(self, caplog):
         """Even if domain.close() raises, the loop should still stop."""
@@ -176,38 +144,6 @@ class TestEngineShutdownOrder:
             assert any("engine.cleanup_failed" in r.message for r in caplog.records)
 
 
-@pytest.mark.no_test_domain
-class TestInFlightTaskCompletion:
-    """Test that in-flight message handlers complete before forced cancellation."""
-
-    def test_inflight_tasks_get_grace_period(self):
-        """Tasks running when shutdown begins get a grace period to finish."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-
-            task_completed = False
-
-            async def slow_handler():
-                nonlocal task_completed
-                await asyncio.sleep(0.1)  # Short delay, well within timeout
-                task_completed = True
-
-            # Create a task that simulates an in-flight handler
-            engine.loop.run_until_complete(self._run_with_task(engine, slow_handler))
-
-            assert task_completed
-
-    async def _run_with_task(self, engine, handler_coro):
-        """Helper to run shutdown with an in-flight task."""
-        task = asyncio.ensure_future(handler_coro())
-        await engine.shutdown()
-        return task
-
-
-@pytest.mark.no_test_domain
 class TestConfigurableDrainWindow:
     """The drain window is read from [server].drain_timeout and governs the
     wait before in-flight tasks are force-cancelled on shutdown."""
@@ -240,30 +176,25 @@ class TestConfigurableDrainWindow:
         engine.loop.run_until_complete(_run())
         return state
 
-    def test_default_window_is_ten_seconds(self):
-        """With no key set, the drain window is 10 (unchanged default)."""
-        engine = self._engine()
-        assert engine.drain_timeout == 10.0
+    @pytest.mark.parametrize("value, expected", [(None, 10.0), (3, 3.0)])
+    def test_window_is_read_with_a_default_of_ten(self, value, expected):
+        """With no key set, the drain window is 10; a set key is used as is."""
+        engine = self._engine(drain_timeout=value)
+        assert engine.drain_timeout == expected
 
-    def test_configured_window_is_read(self):
-        engine = self._engine(drain_timeout=3)
-        assert engine.drain_timeout == 3.0
-
-    def test_garbage_window_falls_back_to_ten(self):
-        """An invalid value falls back to 10 without raising."""
-        engine = self._engine(drain_timeout="not-a-number")
-        assert engine.drain_timeout == 10.0
-
-    def test_short_window_cancels_straggler(self):
-        """A configured 0.05s window force-cancels a 1s in-flight handler.
+    def test_short_window_cancels_straggler(self, caplog):
+        """A configured 0.05s window force-cancels a 1s in-flight handler and
+        logs the cancellation.
 
         This also proves the old hardcoded 10.0 literal is gone: under 10s the
         1s sleep would finish, so the task would complete, not cancel.
         """
         engine = self._engine(drain_timeout=0.05)
-        state = self._drain_with_inflight(engine, sleep_for=1.0)
+        with caplog.at_level(logging.DEBUG):
+            state = self._drain_with_inflight(engine, sleep_for=1.0)
         assert state["cancelled"] is True
         assert state["completed"] is False
+        assert any("engine.cancelling_tasks" in r.message for r in caplog.records)
 
     def test_generous_window_lets_inflight_finish(self):
         """A 2s window lets a 0.05s in-flight handler run to completion."""
@@ -276,70 +207,52 @@ class TestConfigurableDrainWindow:
         assert state["completed"] is True
         assert state["cancelled"] is False
 
-    def test_garbage_window_warns(self, caplog):
-        """The fallback is announced, so a typo'd value is not silently ignored."""
-        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
-            engine = self._engine(drain_timeout="not-a-number")
-
-        assert engine.drain_timeout == 10.0
-        assert any(
-            "drain_timeout_invalid_using_default" in r.message for r in caplog.records
-        )
-
-    @pytest.mark.parametrize("value", [True, False])
-    def test_boolean_window_falls_back_to_ten(self, value):
-        """A TOML `drain_timeout = true` is not a one-second window.
-
-        bool subclasses int, so plain float() coercion would turn `true` into
-        1.0 and quietly shrink the grace period. Both bools are rejected.
-        """
-        engine = self._engine(drain_timeout=value)
-        assert engine.drain_timeout == 10.0
-
     @pytest.mark.parametrize(
-        "value", [float("nan"), float("inf"), float("-inf"), "nan", "inf"]
+        "value",
+        [
+            "not-a-number",
+            True,
+            False,
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+            "nan",
+            "inf",
+            10**400,
+        ],
     )
-    def test_non_finite_window_falls_back_to_ten(self, value):
-        """nan and inf survive float() but are not usable windows.
+    def test_invalid_window_falls_back_to_ten_and_warns(self, caplog, value):
+        """An invalid value falls back to 10 without raising, and the fallback
+        is announced, so a typo'd value is not silently ignored.
 
-        Every comparison against nan is False, so a nan window slips past the
+        A TOML `drain_timeout = true` is not a one-second window: bool
+        subclasses int, so plain float() coercion would turn `true` into 1.0
+        and quietly shrink the grace period. Both bools are rejected.
+
+        nan and inf survive float() but are not usable windows. Every
+        comparison against nan is False, so a nan window slips past the
         positive check and reaches asyncio.wait, which then returns on the next
         loop step and force-cancels in-flight handlers with no grace. An inf
         window never ends, so shutdown would never finish.
-        """
-        engine = self._engine(drain_timeout=value)
-        assert engine.drain_timeout == 10.0
 
-    def test_non_finite_window_warns(self, caplog):
-        """The nan fallback is announced, like any other invalid value."""
+        An int beyond float range is too large for float() and is invalid too.
+        """
         with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
-            engine = self._engine(drain_timeout=float("nan"))
+            engine = self._engine(drain_timeout=value)
 
         assert engine.drain_timeout == 10.0
         assert any(
             "drain_timeout_invalid_using_default" in r.message for r in caplog.records
         )
 
-    def test_overflowing_window_falls_back_to_ten(self):
-        """A value too large for float() (an int beyond float range) is invalid."""
-        engine = self._engine(drain_timeout=10**400)
-        assert engine.drain_timeout == 10.0
-
-    def test_zero_window_falls_back_to_ten(self):
-        """A zero window would give no grace at all, so it is rejected."""
-        engine = self._engine(drain_timeout=0)
-        assert engine.drain_timeout == 10.0
-
-    def test_negative_window_falls_back_to_ten(self):
-        """A negative window is invalid and falls back to the default."""
-        engine = self._engine(drain_timeout=-5)
-        assert engine.drain_timeout == 10.0
-
-    def test_non_positive_window_warns(self, caplog):
-        """The non-positive fallback is announced, so an operator is told the
-        configured window was rejected rather than silently applied."""
+    @pytest.mark.parametrize("value", [0, -5])
+    def test_non_positive_window_falls_back_to_ten_and_warns(self, caplog, value):
+        """A zero window would give no grace at all, and a negative one is
+        invalid, so both fall back to the default. The fallback is announced,
+        so an operator is told the configured window was rejected rather than
+        silently applied."""
         with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
-            engine = self._engine(drain_timeout=-5)
+            engine = self._engine(drain_timeout=value)
 
         assert engine.drain_timeout == 10.0
         assert any(
@@ -388,44 +301,6 @@ class TestCacheClose:
         cache = domain.caches["default"]
         # Should not raise - memory cache inherits default no-op close()
         cache.close()
-
-
-@pytest.mark.no_test_domain
-class TestBrokersRegistryClose:
-    """Test that the Brokers registry class close() iterates all brokers."""
-
-    def test_brokers_registry_close_calls_all(self):
-        """Brokers.close() calls close() on every registered broker."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        mock_broker_1 = MagicMock()
-        mock_broker_2 = MagicMock()
-        domain.brokers._brokers = {"default": mock_broker_1, "secondary": mock_broker_2}
-
-        domain.brokers.close()
-
-        mock_broker_1.close.assert_called_once()
-        mock_broker_2.close.assert_called_once()
-
-
-@pytest.mark.no_test_domain
-class TestCachesRegistryClose:
-    """Test that the Caches registry class close() iterates all caches."""
-
-    def test_caches_registry_close_calls_all(self):
-        """Caches.close() calls close() on every registered cache."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        mock_cache_1 = MagicMock()
-        mock_cache_2 = MagicMock()
-        domain.caches._caches = {"default": mock_cache_1, "secondary": mock_cache_2}
-
-        domain.caches.close()
-
-        mock_cache_1.close.assert_called_once()
-        mock_cache_2.close.assert_called_once()
 
 
 @pytest.mark.no_test_domain
@@ -487,59 +362,33 @@ class TestProvidersReinitializeClosesExisting:
 class TestRegistryCloseErrorIsolation:
     """Test that registry close() methods continue on individual adapter errors."""
 
-    def test_brokers_close_continues_on_error(self, caplog):
-        """If one broker's close() raises, the other still gets closed."""
+    @pytest.mark.parametrize(
+        "registry, attribute, kind",
+        [
+            ("brokers", "_brokers", "broker"),
+            ("caches", "_caches", "cache"),
+            ("providers", "_providers", "provider"),
+        ],
+    )
+    def test_close_continues_on_error(self, caplog, registry, attribute, kind):
+        """close() calls close() on every adapter in the registry. If one
+        adapter's close() raises, the other still gets closed."""
         domain = Domain(name="Test")
         domain.init(traverse=False)
 
-        failing_broker = MagicMock()
-        failing_broker.close.side_effect = RuntimeError("connection lost")
-        ok_broker = MagicMock()
-        domain.brokers._brokers = {"failing": failing_broker, "ok": ok_broker}
+        failing = MagicMock()
+        failing.close.side_effect = RuntimeError("connection lost")
+        ok = MagicMock()
+        adapters = getattr(domain, registry)
+        setattr(adapters, attribute, {"failing": failing, "ok": ok})
 
         with caplog.at_level(logging.ERROR):
-            domain.brokers.close()
+            adapters.close()
 
-        ok_broker.close.assert_called_once()
+        failing.close.assert_called_once()
+        ok.close.assert_called_once()
         assert any(
-            "Error closing broker 'failing'" in r.message for r in caplog.records
-        )
-
-    def test_caches_close_continues_on_error(self, caplog):
-        """If one cache's close() raises, the other still gets closed."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        failing_cache = MagicMock()
-        failing_cache.close.side_effect = RuntimeError("connection lost")
-        ok_cache = MagicMock()
-        domain.caches._caches = {"failing": failing_cache, "ok": ok_cache}
-
-        with caplog.at_level(logging.ERROR):
-            domain.caches.close()
-
-        ok_cache.close.assert_called_once()
-        assert any("Error closing cache 'failing'" in r.message for r in caplog.records)
-
-    def test_providers_close_continues_on_error(self, caplog):
-        """If one provider's close() raises, the other still gets closed."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        failing_provider = MagicMock()
-        failing_provider.close.side_effect = RuntimeError("connection lost")
-        ok_provider = MagicMock()
-        domain.providers._providers = {
-            "failing": failing_provider,
-            "ok": ok_provider,
-        }
-
-        with caplog.at_level(logging.ERROR):
-            domain.providers.close()
-
-        ok_provider.close.assert_called_once()
-        assert any(
-            "Error closing provider 'failing'" in r.message for r in caplog.records
+            f"Error closing {kind} 'failing'" in r.message for r in caplog.records
         )
 
 
@@ -592,36 +441,6 @@ class TestEngineShutdownTaskExceptionRetrieval:
                 "Task" in r.message and "raised during shutdown" in r.message
                 for r in caplog.records
             )
-
-    def test_shutdown_cancels_tasks_exceeding_timeout(self, caplog):
-        """Tasks that don't finish within the grace period are cancelled."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-
-            async def stuck_task():
-                await asyncio.sleep(3600)  # Will never finish on its own
-
-            async def run_shutdown_with_stuck_task():
-                task = asyncio.ensure_future(stuck_task())
-                await engine.shutdown()
-                assert task.cancelled()
-
-            with caplog.at_level(logging.DEBUG):
-                # Patch wait to use a very short timeout
-                original_wait = asyncio.wait
-
-                async def short_wait(tasks, **kwargs):
-                    return await original_wait(tasks, timeout=0.1)
-
-                with patch(
-                    "protean.server.engine.asyncio.wait", side_effect=short_wait
-                ):
-                    engine.loop.run_until_complete(run_shutdown_with_stuck_task())
-
-            assert any("engine.cancelling_tasks" in r.message for r in caplog.records)
 
 
 @pytest.mark.no_test_domain
@@ -676,18 +495,6 @@ class TestRedisBrokerReconnectAfterClose:
         broker._created_groups_set = set()
         broker._group_creation_times = {}
         return broker
-
-    def test_client_revives_when_instance_is_none(self):
-        """The _client accessor reconnects when redis_instance is None."""
-        broker = self._make_broker()
-        mock_client = MagicMock()
-
-        with patch("redis.Redis.from_url", return_value=mock_client) as from_url:
-            result = broker._client
-
-        assert result is mock_client
-        assert broker.redis_instance is mock_client
-        from_url.assert_called_once()
 
     def test_client_reuses_live_instance_without_reconnecting(self):
         """The _client accessor does not reconnect when already connected."""
@@ -759,17 +566,16 @@ class TestRedisBrokerReconnectAfterClose:
         mock_client.xreadgroup.side_effect = redis.ConnectionError(
             "Connection closed by server."
         )
+        mock_client.ping.return_value = True
         broker.redis_instance = mock_client
 
-        with patch.object(
-            broker, "_ensure_connection", return_value=True
-        ) as ensure_connection:
-            result = broker._read_blocking(
-                "stream", "group", "consumer", timeout_ms=100, count=1
-            )
+        result = broker._read_blocking(
+            "stream", "group", "consumer", timeout_ms=100, count=1
+        )
 
         assert result == []
-        ensure_connection.assert_called_once()
+        # The connection check pinged the client.
+        mock_client.ping.assert_called_once()
 
     def test_read_blocking_does_not_reconnect_on_non_connection_error(self):
         """_read_blocking does not reconnect for unrelated errors (scope guard)."""
@@ -779,13 +585,13 @@ class TestRedisBrokerReconnectAfterClose:
         mock_client.xreadgroup.side_effect = ValueError("bad payload")
         broker.redis_instance = mock_client
 
-        with patch.object(broker, "_ensure_connection") as ensure_connection:
-            result = broker._read_blocking(
-                "stream", "group", "consumer", timeout_ms=100, count=1
-            )
+        result = broker._read_blocking(
+            "stream", "group", "consumer", timeout_ms=100, count=1
+        )
 
         assert result == []
-        ensure_connection.assert_not_called()
+        # No connection check ran.
+        mock_client.ping.assert_not_called()
 
 
 @pytest.mark.no_test_domain

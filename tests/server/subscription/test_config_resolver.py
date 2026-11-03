@@ -30,14 +30,10 @@ class Order(BaseAggregate):
 class TestConfigResolverInitialization:
     """Tests for ConfigResolver initialization."""
 
-    def test_resolver_initializes_with_domain(self, test_domain):
-        """ConfigResolver can be initialized with a domain."""
+    def test_resolver_holds_domain_and_server_config(self, test_domain):
+        """ConfigResolver keeps the domain and reads its server configuration."""
         resolver = ConfigResolver(test_domain)
         assert resolver._domain is test_domain
-
-    def test_resolver_accesses_server_config(self, test_domain):
-        """ConfigResolver can access server configuration."""
-        resolver = ConfigResolver(test_domain)
         assert isinstance(resolver.server_config, dict)
         assert "default_subscription_type" in resolver.server_config
 
@@ -93,9 +89,37 @@ class TestConfigResolverHardcodedDefaults:
 class TestConfigResolverServerDefaults:
     """Tests for server-level default configuration."""
 
-    def test_applies_server_default_subscription_type(self, test_domain):
-        """Server default_subscription_type is applied."""
-        test_domain.config["server"]["default_subscription_type"] = "stream"
+    @pytest.mark.parametrize(
+        "path, value, attr, expected",
+        [
+            (
+                ("default_subscription_type",),
+                "stream",
+                "subscription_type",
+                SubscriptionType.STREAM,
+            ),
+            (
+                ("stream_subscription", "blocking_timeout_ms"),
+                8000,
+                "blocking_timeout_ms",
+                8000,
+            ),
+            (("stream_subscription", "max_retries"), 7, "max_retries", 7),
+            (
+                ("event_store_subscription", "position_update_interval"),
+                25,
+                "position_update_interval",
+                25,
+            ),
+            (("messages_per_tick",), 75, "messages_per_tick", 75),
+        ],
+    )
+    def test_applies_server_setting(self, test_domain, path, value, attr, expected):
+        """A value set in the [server] section reaches the resolved config."""
+        section = test_domain.config["server"]
+        for key in path[:-1]:
+            section = section[key]
+        section[path[-1]] = value
 
         @test_domain.event_handler(part_of=Order)
         class TestHandler(BaseEventHandler):
@@ -104,7 +128,7 @@ class TestConfigResolverServerDefaults:
         resolver = ConfigResolver(test_domain)
         config = resolver.resolve(TestHandler)
 
-        assert config.subscription_type == SubscriptionType.STREAM
+        assert getattr(config, attr) == expected
 
     @pytest.mark.no_test_domain
     def test_applies_server_default_subscription_profile(self):
@@ -134,23 +158,6 @@ class TestConfigResolverServerDefaults:
             config.blocking_timeout_ms
             == PROFILE_DEFAULTS[SubscriptionProfile.FAST]["blocking_timeout_ms"]
         )
-
-    def test_applies_server_stream_subscription_settings(self, test_domain):
-        """Server stream_subscription settings are applied."""
-        test_domain.config["server"]["stream_subscription"]["blocking_timeout_ms"] = (
-            8000
-        )
-        test_domain.config["server"]["stream_subscription"]["max_retries"] = 7
-
-        @test_domain.event_handler(part_of=Order)
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        assert config.blocking_timeout_ms == 8000
-        assert config.max_retries == 7
 
     def test_applies_server_retention_maxlen(self, test_domain):
         """`retention_maxlen` resolves from `[server.stream_subscription]`.
@@ -211,34 +218,6 @@ class TestConfigResolverServerDefaults:
         config = resolver.resolve(EventStoreRetentionHandler)
 
         assert config.retention_maxlen is None
-
-    def test_applies_server_event_store_subscription_settings(self, test_domain):
-        """Server event_store_subscription settings are applied."""
-        test_domain.config["server"]["event_store_subscription"][
-            "position_update_interval"
-        ] = 25
-
-        @test_domain.event_handler(part_of=Order)
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        assert config.position_update_interval == 25
-
-    def test_applies_server_messages_per_tick(self, test_domain):
-        """Server messages_per_tick is applied."""
-        test_domain.config["server"]["messages_per_tick"] = 75
-
-        @test_domain.event_handler(part_of=Order)
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        assert config.messages_per_tick == 75
 
 
 class TestConfigResolverHandlerServerConfig:
@@ -321,25 +300,6 @@ class TestConfigResolverHandlerMetaConfig:
 
         assert config.subscription_type == SubscriptionType.EVENT_STORE
 
-    def test_applies_handler_meta_subscription_profile(self, test_domain):
-        """Handler Meta subscription_profile is applied."""
-
-        @test_domain.event_handler(
-            part_of=Order,
-            subscription_profile=SubscriptionProfile.BATCH,
-        )
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        # BATCH profile has messages_per_tick = 500
-        assert (
-            config.messages_per_tick
-            == PROFILE_DEFAULTS[SubscriptionProfile.BATCH]["messages_per_tick"]
-        )
-
     def test_applies_handler_meta_subscription_config(self, test_domain):
         """Handler Meta subscription_config dict is applied."""
 
@@ -358,26 +318,6 @@ class TestConfigResolverHandlerMetaConfig:
 
         assert config.messages_per_tick == 42
         assert config.max_retries == 7
-
-    def test_handler_meta_overrides_server_config(self, test_domain):
-        """Handler Meta overrides server configuration."""
-        test_domain.config["server"]["messages_per_tick"] = 50
-        test_domain.config["server"]["subscriptions"]["TestHandler"] = {
-            "messages_per_tick": 100,
-        }
-
-        @test_domain.event_handler(
-            part_of=Order,
-            subscription_config={"messages_per_tick": 200},
-        )
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        # Handler Meta should have highest priority
-        assert config.messages_per_tick == 200
 
     def test_handler_meta_source_stream_becomes_origin_stream(self, test_domain):
         """Handler Meta source_stream is mapped to origin_stream."""
@@ -419,126 +359,63 @@ class TestConfigResolverPriorityOrder:
         # Handler Meta has highest priority
         assert config.messages_per_tick == 3
 
-    def test_server_handler_config_over_server_default(self, test_domain):
-        """Handler server config takes priority over server defaults."""
-        test_domain.config["server"]["messages_per_tick"] = 10
-        test_domain.config["server"]["subscriptions"]["TestHandler"] = {
-            "messages_per_tick": 20,
-        }
-
-        @test_domain.event_handler(part_of=Order)
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        assert config.messages_per_tick == 20
-
-    def test_profile_values_can_be_overridden(self, test_domain):
-        """Profile values can be overridden by explicit settings."""
-
-        @test_domain.event_handler(
-            part_of=Order,
-            subscription_profile=SubscriptionProfile.PRODUCTION,
-            subscription_config={"messages_per_tick": 999},
-        )
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        # Explicit value overrides profile default
-        assert config.messages_per_tick == 999
-        # Other profile values should still apply
-        assert config.enable_dlq is True  # From PRODUCTION profile
-
 
 class TestConfigResolverProfileExpansion:
     """Tests for profile expansion."""
 
-    def test_production_profile_expansion(self, test_domain):
-        """PRODUCTION profile expands to correct values."""
-
-        @test_domain.event_handler(
-            part_of=Order,
-            subscription_profile=SubscriptionProfile.PRODUCTION,
+    @pytest.mark.parametrize(
+        "profile, expected",
+        [
+            (
+                SubscriptionProfile.PRODUCTION,
+                {
+                    "subscription_type": SubscriptionType.STREAM,
+                    "messages_per_tick": 100,
+                    "enable_dlq": True,
+                },
+            ),
+            (
+                SubscriptionProfile.FAST,
+                {
+                    "subscription_type": SubscriptionType.STREAM,
+                    "messages_per_tick": 10,
+                    "blocking_timeout_ms": 100,
+                },
+            ),
+            (
+                SubscriptionProfile.BATCH,
+                {"messages_per_tick": 500, "blocking_timeout_ms": 10000},
+            ),
+            (
+                SubscriptionProfile.DEBUG,
+                {"messages_per_tick": 1, "enable_dlq": False},
+            ),
+            (
+                SubscriptionProfile.PROJECTION,
+                {
+                    "subscription_type": SubscriptionType.EVENT_STORE,
+                    "enable_dlq": False,
+                },
+            ),
+        ],
+    )
+    def test_meta_profile_expansion(self, test_domain, profile, expected):
+        """A profile named in handler Meta expands to that profile's values."""
+        target = (
+            {"stream_category": "$all"}
+            if profile == SubscriptionProfile.PROJECTION
+            else {"part_of": Order}
         )
+
+        @test_domain.event_handler(subscription_profile=profile, **target)
         class TestHandler(BaseEventHandler):
             pass
 
         resolver = ConfigResolver(test_domain)
         config = resolver.resolve(TestHandler)
 
-        assert config.subscription_type == SubscriptionType.STREAM
-        assert config.messages_per_tick == 100
-        assert config.enable_dlq is True
-
-    def test_fast_profile_expansion(self, test_domain):
-        """FAST profile expands to correct values."""
-
-        @test_domain.event_handler(
-            part_of=Order,
-            subscription_profile=SubscriptionProfile.FAST,
-        )
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        assert config.subscription_type == SubscriptionType.STREAM
-        assert config.messages_per_tick == 10
-        assert config.blocking_timeout_ms == 100
-
-    def test_batch_profile_expansion(self, test_domain):
-        """BATCH profile expands to correct values."""
-
-        @test_domain.event_handler(
-            part_of=Order,
-            subscription_profile=SubscriptionProfile.BATCH,
-        )
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        assert config.messages_per_tick == 500
-        assert config.blocking_timeout_ms == 10000
-
-    def test_debug_profile_expansion(self, test_domain):
-        """DEBUG profile expands to correct values."""
-
-        @test_domain.event_handler(
-            part_of=Order,
-            subscription_profile=SubscriptionProfile.DEBUG,
-        )
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        assert config.messages_per_tick == 1
-        assert config.enable_dlq is False
-
-    def test_projection_profile_expansion(self, test_domain):
-        """PROJECTION profile expands to correct values."""
-
-        @test_domain.event_handler(
-            stream_category="$all",
-            subscription_profile=SubscriptionProfile.PROJECTION,
-        )
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        assert config.subscription_type == SubscriptionType.EVENT_STORE
-        assert config.enable_dlq is False
+        for attr, value in expected.items():
+            assert getattr(config, attr) == value
 
     def test_profile_from_server_config_string(self, test_domain):
         """Profile specified as string in server config is resolved."""
@@ -563,16 +440,26 @@ class TestConfigResolverProfileExpansion:
 class TestConfigResolverProductionWarning:
     """Tests for production environment detection and warnings."""
 
-    def test_logs_warning_for_event_store_in_production(
-        self, test_domain, monkeypatch, caplog
+    @pytest.mark.parametrize(
+        "env, subscription_type, expect_warning",
+        [
+            ("production", SubscriptionType.EVENT_STORE, True),
+            ("development", SubscriptionType.EVENT_STORE, False),
+            ("production", SubscriptionType.STREAM, False),
+        ],
+    )
+    def test_event_store_warning_only_in_production(
+        self, test_domain, monkeypatch, caplog, env, subscription_type, expect_warning
     ):
-        """Warning is logged when using EVENT_STORE in production."""
-        monkeypatch.setenv("PROTEAN_ENV", "production")
-
-        @test_domain.event_handler(
-            stream_category="$all",
-            subscription_type=SubscriptionType.EVENT_STORE,
+        """Only an EVENT_STORE subscription in production logs the warning."""
+        monkeypatch.setenv("PROTEAN_ENV", env)
+        target = (
+            {"stream_category": "$all"}
+            if subscription_type == SubscriptionType.EVENT_STORE
+            else {"part_of": Order}
         )
+
+        @test_domain.event_handler(subscription_type=subscription_type, **target)
         class TestHandler(BaseEventHandler):
             pass
 
@@ -580,54 +467,11 @@ class TestConfigResolverProductionWarning:
         with caplog.at_level(logging.WARNING):
             resolver.resolve(TestHandler)
 
-        assert any(
+        warned = any(
             "EventStoreSubscription in production" in record.message
             for record in caplog.records
         )
-
-    def test_no_warning_for_event_store_in_development(
-        self, test_domain, monkeypatch, caplog
-    ):
-        """No warning when using EVENT_STORE in development."""
-        monkeypatch.setenv("PROTEAN_ENV", "development")
-
-        @test_domain.event_handler(
-            stream_category="$all",
-            subscription_type=SubscriptionType.EVENT_STORE,
-        )
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        with caplog.at_level(logging.WARNING):
-            resolver.resolve(TestHandler)
-
-        assert not any(
-            "EventStoreSubscription in production" in record.message
-            for record in caplog.records
-        )
-
-    def test_no_warning_for_stream_in_production(
-        self, test_domain, monkeypatch, caplog
-    ):
-        """No warning when using STREAM in production."""
-        monkeypatch.setenv("PROTEAN_ENV", "production")
-
-        @test_domain.event_handler(
-            part_of=Order,
-            subscription_type=SubscriptionType.STREAM,
-        )
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        with caplog.at_level(logging.WARNING):
-            resolver.resolve(TestHandler)
-
-        assert not any(
-            "EventStoreSubscription in production" in record.message
-            for record in caplog.records
-        )
+        assert warned is expect_warning
 
 
 class TestConfigResolverProductionDetection:
@@ -641,75 +485,37 @@ class TestConfigResolverProductionDetection:
         monkeypatch.setenv(env_var, "production")
         assert ConfigResolver._is_production_environment() is True
 
-    @pytest.mark.parametrize("value", ["production", "prod", "prd"])
+    @pytest.mark.parametrize("value", ["production", "prod", "prd", "PRODUCTION"])
     def test_detects_production_values(self, monkeypatch, value):
-        """Production is detected for various production value strings."""
+        """Production is detected for each production value string, in any case."""
         monkeypatch.setenv("PROTEAN_ENV", value)
         assert ConfigResolver._is_production_environment() is True
 
-    def test_case_insensitive_detection(self, monkeypatch):
-        """Production detection is case-insensitive."""
-        monkeypatch.setenv("PROTEAN_ENV", "PRODUCTION")
-        assert ConfigResolver._is_production_environment() is True
-
-    def test_non_production_env(self, monkeypatch):
-        """Non-production environments return False."""
-        monkeypatch.setenv("PROTEAN_ENV", "development")
-        assert ConfigResolver._is_production_environment() is False
-
-    def test_no_env_vars_set(self, monkeypatch):
-        """Returns False when no environment variables are set."""
+    @pytest.mark.parametrize("value", ["development", None])
+    def test_non_production_env(self, monkeypatch, value):
+        """A non-production value, or no variable at all, is not production."""
         for var in ["PROTEAN_ENV", "PYTHON_ENV", "ENV", "ENVIRONMENT"]:
             monkeypatch.delenv(var, raising=False)
+        if value is not None:
+            monkeypatch.setenv("PROTEAN_ENV", value)
         assert ConfigResolver._is_production_environment() is False
 
 
 class TestConfigResolverMergeConfigs:
     """Tests for configuration merging logic."""
 
-    def test_merge_preserves_base_values(self, test_domain):
-        """Merge preserves base values not in override."""
+    def test_merge_overrides_skips_none_and_copies(self, test_domain):
+        """Merge keeps base values, applies non-None overrides, adds new keys,
+        and leaves both inputs unchanged."""
         resolver = ConfigResolver(test_domain)
         base = {"a": 1, "b": 2, "c": 3}
-        override = {"b": 20}
+        override = {"a": None, "b": 20, "d": 4}
 
         result = resolver._merge_configs(base, override)
 
-        assert result["a"] == 1
-        assert result["b"] == 20
-        assert result["c"] == 3
-
-    def test_merge_ignores_none_values(self, test_domain):
-        """Merge ignores None values in override."""
-        resolver = ConfigResolver(test_domain)
-        base = {"a": 1, "b": 2}
-        override = {"a": None, "b": 20}
-
-        result = resolver._merge_configs(base, override)
-
-        assert result["a"] == 1  # None is ignored
-        assert result["b"] == 20
-
-    def test_merge_adds_new_keys(self, test_domain):
-        """Merge adds new keys from override."""
-        resolver = ConfigResolver(test_domain)
-        base = {"a": 1}
-        override = {"b": 2}
-
-        result = resolver._merge_configs(base, override)
-
-        assert result["a"] == 1
-        assert result["b"] == 2
-
-    def test_merge_does_not_modify_original(self, test_domain):
-        """Merge does not modify the original dictionaries."""
-        resolver = ConfigResolver(test_domain)
-        base = {"a": 1, "b": 2}
-        override = {"b": 20}
-
-        resolver._merge_configs(base, override)
-
-        assert base["b"] == 2  # Original unchanged
+        assert result == {"a": 1, "b": 20, "c": 3, "d": 4}
+        assert base == {"a": 1, "b": 2, "c": 3}
+        assert override == {"a": None, "b": 20, "d": 4}
 
 
 class TestConfigResolverCommandHandler:
@@ -768,22 +574,6 @@ class TestConfigResolverUnknownProfileAndType:
     Unknown profile-name resolution is covered in test_profile_validation.py.
     """
 
-    def test_resolve_unknown_subscription_type_string_falls_back(
-        self, test_domain, caplog
-    ):
-        """_resolve_subscription_type logs warning and returns EVENT_STORE for unknown type string."""
-        resolver = ConfigResolver(test_domain)
-
-        with caplog.at_level(
-            logging.WARNING, logger="protean.server.subscription.config_resolver"
-        ):
-            result = resolver._resolve_subscription_type("nonexistent_type")
-
-        assert result == SubscriptionType.EVENT_STORE
-        assert any(
-            "Unknown subscription type" in record.message for record in caplog.records
-        )
-
     def test_resolve_non_string_non_enum_subscription_type_falls_back(
         self, test_domain
     ):
@@ -824,68 +614,55 @@ class TestConfigResolverDebugLogging:
 class TestConfigResolverCustomProfiles:
     """End-to-end resolution of custom `[server.profiles.<name>]` profiles."""
 
-    def test_custom_profile_via_default_subscription_profile(self, test_domain):
-        """A custom profile named by default_subscription_profile resolves end-to-end."""
+    @pytest.mark.parametrize(
+        "named_at",
+        [
+            "default_subscription_profile",
+            "default_subscription_profile_other_case",
+            "handler_server_config",
+            "handler_meta",
+        ],
+    )
+    def test_custom_profile_resolves_wherever_named(self, test_domain, named_at):
+        """A custom profile resolves when named as the server default (in any
+        case), in server.subscriptions.<Handler>, or in the handler's Meta.
+
+        Registration lowercases the section name, so a reference in another case
+        still finds it. The override plus the rest of fast's defaults, carried by
+        inheritance, reach the resolved config.
+        """
         test_domain.config["server"]["profiles"]["myfast"] = {
             "inherits": "fast",
             "messages_per_tick": 25,
         }
-        test_domain.config["server"]["default_subscription_profile"] = "myfast"
-        # The profile sits at priority 6; clear the priority-5 server-level
-        # defaults that would otherwise shadow the fields it should govern.
-        test_domain.config["server"].pop("messages_per_tick", None)
-        test_domain.config["server"].pop("default_subscription_type", None)
-        test_domain.config["server"]["stream_subscription"] = {}
+        meta = {}
+        if named_at.startswith("default_subscription_profile"):
+            test_domain.config["server"]["default_subscription_profile"] = (
+                "MyFast" if named_at.endswith("other_case") else "myfast"
+            )
+            # The profile sits at priority 6; clear the priority-5 server-level
+            # defaults that would otherwise shadow the fields it should govern.
+            test_domain.config["server"].pop("messages_per_tick", None)
+            test_domain.config["server"].pop("default_subscription_type", None)
+            test_domain.config["server"]["stream_subscription"] = {}
+        elif named_at == "handler_server_config":
+            test_domain.config["server"]["subscriptions"]["ProfHandler"] = {
+                "profile": "myfast",
+            }
+        else:
+            meta = {"subscription_profile": "myfast"}
 
-        @test_domain.event_handler(part_of=Order)
-        class PlainHandler(BaseEventHandler):
+        @test_domain.event_handler(part_of=Order, **meta)
+        class ProfHandler(BaseEventHandler):
             pass
 
-        config = ConfigResolver(test_domain).resolve(PlainHandler)
+        config = ConfigResolver(test_domain).resolve(ProfHandler)
 
         fast = PROFILE_DEFAULTS[SubscriptionProfile.FAST]
-        # The one override plus the rest of fast's defaults carried by inheritance.
         assert config.messages_per_tick == 25
         assert config.subscription_type == fast["subscription_type"]
         assert config.blocking_timeout_ms == fast["blocking_timeout_ms"]
         assert config.max_retries == fast["max_retries"]
-
-    def test_custom_profile_via_handler_server_config(self, test_domain):
-        """A custom profile named in server.subscriptions.<Handler> resolves."""
-        test_domain.config["server"]["profiles"]["myfast"] = {
-            "inherits": "fast",
-            "messages_per_tick": 25,
-        }
-        test_domain.config["server"]["subscriptions"]["ServerProfHandler"] = {
-            "profile": "myfast",
-        }
-
-        @test_domain.event_handler(part_of=Order)
-        class ServerProfHandler(BaseEventHandler):
-            pass
-
-        config = ConfigResolver(test_domain).resolve(ServerProfHandler)
-
-        assert config.messages_per_tick == 25
-        assert (
-            config.blocking_timeout_ms
-            == PROFILE_DEFAULTS[SubscriptionProfile.FAST]["blocking_timeout_ms"]
-        )
-
-    def test_custom_profile_via_handler_meta_profile(self, test_domain):
-        """A custom profile named in a handler's Meta subscription_profile resolves."""
-        test_domain.config["server"]["profiles"]["myfast"] = {
-            "inherits": "fast",
-            "messages_per_tick": 25,
-        }
-
-        @test_domain.event_handler(part_of=Order, subscription_profile="myfast")
-        class MetaProfHandler(BaseEventHandler):
-            pass
-
-        config = ConfigResolver(test_domain).resolve(MetaProfHandler)
-
-        assert config.messages_per_tick == 25
 
     def test_same_level_override_beats_custom_profile_defaults(self, test_domain):
         """An explicit field at the same level wins over the custom profile's default."""
@@ -1020,30 +797,6 @@ class TestConfigResolverCustomProfiles:
             == PROFILE_DEFAULTS[SubscriptionProfile.BATCH]["messages_per_tick"]
         )
 
-    def test_custom_profile_referenced_by_different_case_resolves(self, test_domain):
-        """A profile registered lowercased resolves when referenced in another case.
-
-        Registration lowercases the section name; a reference in a different case
-        must still round-trip through `_profile_defaults` (which also lowercases).
-        """
-        test_domain.config["server"]["profiles"]["myfast"] = {
-            "inherits": "fast",
-            "messages_per_tick": 25,
-        }
-        test_domain.config["server"]["default_subscription_profile"] = "MyFast"
-        # Clear the priority-5 defaults that would otherwise shadow the field.
-        test_domain.config["server"].pop("messages_per_tick", None)
-        test_domain.config["server"].pop("default_subscription_type", None)
-        test_domain.config["server"]["stream_subscription"] = {}
-
-        @test_domain.event_handler(part_of=Order)
-        class CaseHandler(BaseEventHandler):
-            pass
-
-        config = ConfigResolver(test_domain).resolve(CaseHandler)
-
-        assert config.messages_per_tick == 25
-
     def test_custom_event_store_profile_dlq_is_sanitized(self, test_domain):
         """enable_dlq is forced off for an event_store custom profile, not left to raise.
 
@@ -1077,12 +830,31 @@ class TestConfigResolverRetention:
     is dropped before it reaches SubscriptionConfig if the filter omits it.
     """
 
-    def test_builtin_profile_retention_survives_resolution(self, test_domain):
-        """A built-in profile's retention_maxlen reaches the resolved config."""
-        test_domain.config["server"]["profiles"]  # ensure the slot exists
-        test_domain.config["server"]["subscriptions"]["RetHandler"] = {
-            "profile": "production",
+    @pytest.mark.parametrize(
+        "profile, expected",
+        [
+            (None, None),
+            ("production", 100_000),
+            ("myret", 42),
+        ],
+    )
+    def test_profile_retention_survives_resolution(
+        self, test_domain, profile, expected
+    ):
+        """A profile's retention_maxlen reaches the resolved config. A handler
+        that names no profile resolves with retention_maxlen None.
+
+        The custom `myret` profile sets 42, which differs from every built-in
+        default, so a resolved 42 can only come from that profile.
+        """
+        test_domain.config["server"]["profiles"]["myret"] = {
+            "inherits": "production",
+            "retention_maxlen": 42,
         }
+        if profile is not None:
+            test_domain.config["server"]["subscriptions"]["RetHandler"] = {
+                "profile": profile,
+            }
 
         @test_domain.event_handler(part_of=Order)
         class RetHandler(BaseEventHandler):
@@ -1090,46 +862,7 @@ class TestConfigResolverRetention:
 
         config = ConfigResolver(test_domain).resolve(RetHandler)
 
-        assert (
-            config.retention_maxlen
-            == PROFILE_DEFAULTS[SubscriptionProfile.PRODUCTION]["retention_maxlen"]
-            == 100_000
-        )
-
-    def test_custom_profile_retention_survives_resolution(self, test_domain):
-        """A custom profile's retention_maxlen flows through the known_fields filter.
-
-        This is the binding oracle for the resolver gap: `myret` sets a value
-        (42) that differs from every built-in default, so seeing 42 proves the
-        per-profile retention value was neither dropped by the resolver filter
-        nor shadowed by a default.
-        """
-        test_domain.config["server"]["profiles"]["myret"] = {
-            "inherits": "production",
-            "retention_maxlen": 42,
-        }
-        test_domain.config["server"]["subscriptions"]["MyRetHandler"] = {
-            "profile": "myret",
-        }
-
-        @test_domain.event_handler(part_of=Order)
-        class MyRetHandler(BaseEventHandler):
-            pass
-
-        config = ConfigResolver(test_domain).resolve(MyRetHandler)
-
-        assert config.retention_maxlen == 42
-
-    def test_retention_defaults_off_without_profile(self, test_domain):
-        """With no profile setting retention, the resolved config leaves it off."""
-
-        @test_domain.event_handler(part_of=Order)
-        class PlainRetHandler(BaseEventHandler):
-            pass
-
-        config = ConfigResolver(test_domain).resolve(PlainRetHandler)
-
-        assert config.retention_maxlen is None
+        assert config.retention_maxlen == expected
 
     def test_event_store_type_clears_inherited_retention(self, test_domain):
         """An EVENT_STORE handler under a stream profile resolves with no cap.

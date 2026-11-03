@@ -14,6 +14,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import Integer, String
 from protean.port.broker import BrokerCapabilities
+from protean.server import Engine
 from protean.server.outbox_processor import OutboxProcessor, _in_group_commit_order
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
@@ -55,18 +56,6 @@ class FailingBroker:
         return "broker-msg-id"
 
 
-class FakeEmitter:
-    def emit(self, **kwargs) -> None:
-        pass
-
-
-class FakeEngine:
-    def __init__(self, domain) -> None:
-        self.domain = domain
-        self.loop = None
-        self.emitter = FakeEmitter()
-
-
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.config["enable_outbox"] = True
@@ -82,10 +71,13 @@ def outbox_repo(test_domain):
 
 
 async def _processor(
-    test_domain, fail_ids: set[str], engine: FakeEngine | None = None
+    test_domain, fail_ids: set[str], engine: Engine | None = None
 ) -> OutboxProcessor:
     processor = OutboxProcessor(
-        engine or FakeEngine(test_domain), "default", "default", worker_id="worker-1"
+        engine or Engine(test_domain, test_mode=True),
+        "default",
+        "default",
+        worker_id="worker-1",
     )
     await processor.initialize()
     processor.broker = FailingBroker(fail_ids)
@@ -283,7 +275,7 @@ class TestProcessBatchWithPriorityLanes:
         self, test_domain, outbox_repo
     ):
         test_domain.config["server"]["priority_lanes"] = {"enabled": False}
-        engine = FakeEngine(test_domain)
+        engine = Engine(test_domain, test_mode=True)
         consumer = StreamSubscription(engine, CATEGORY, Counter)
         processor = await _processor(test_domain, fail_ids=set(), engine=engine)
         # Lanes turn on after startup. The running consumer still reads only
@@ -305,7 +297,7 @@ class TestProcessBatchWithPriorityLanes:
     async def test_routing_keeps_the_backfill_lane_the_consumers_started_with(
         self, test_domain, outbox_repo
     ):
-        engine = FakeEngine(test_domain)
+        engine = Engine(test_domain, test_mode=True)
         consumer = StreamSubscription(engine, CATEGORY, Counter)
         processor = await _processor(test_domain, fail_ids=set(), engine=engine)
         test_domain.config["server"]["priority_lanes"] = {"enabled": False}

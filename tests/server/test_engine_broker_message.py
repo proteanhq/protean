@@ -114,17 +114,6 @@ class TestDraining:
         assert result is True
         assert _call_log == [{"key": "value"}]
 
-    @pytest.mark.asyncio
-    async def test_processes_when_not_draining(self, test_domain):
-        """Negative: with draining False (the default), the message is processed."""
-        _register_and_init(test_domain, SuccessSubscriber)
-        engine = Engine(domain=test_domain, test_mode=True)
-        assert engine.draining is False
-
-        result = await engine.handle_broker_message(SuccessSubscriber, {"key": "value"})
-        assert result is True
-        assert _call_log == [{"key": "value"}]
-
 
 # ---------------------------------------------------------------------------
 # 2. Returns True on successful processing
@@ -134,6 +123,7 @@ class TestSuccessfulProcessing:
     async def test_returns_true_on_success(self, test_domain):
         _register_and_init(test_domain, SuccessSubscriber)
         engine = Engine(domain=test_domain, test_mode=True)
+        assert engine.draining is False
 
         result = await engine.handle_broker_message(SuccessSubscriber, {"foo": "bar"})
         assert result is True
@@ -167,7 +157,7 @@ class TestSubscriberException:
 
 
 # ---------------------------------------------------------------------------
-# 4. Sets message_in_context when message_id and stream are provided
+# 4. Sets message_in_context when message_id and stream are provided, then clears it
 # ---------------------------------------------------------------------------
 class TestMessageInContextSet:
     @pytest.mark.asyncio
@@ -175,12 +165,15 @@ class TestMessageInContextSet:
         _register_and_init(test_domain, ContextCapturingSubscriber, stream="ctx_stream")
         engine = Engine(domain=test_domain, test_mode=True)
 
-        await engine.handle_broker_message(
-            ContextCapturingSubscriber,
-            {"key": "value"},
-            message_id="msg-100",
-            stream="ctx_stream",
-        )
+        with test_domain.domain_context():
+            await engine.handle_broker_message(
+                ContextCapturingSubscriber,
+                {"key": "value"},
+                message_id="msg-100",
+                stream="ctx_stream",
+            )
+            # After the call, the context has been cleaned up
+            assert g.get("message_in_context") is None
 
         assert len(_captured_contexts) == 1
         msg = _captured_contexts[0]
@@ -191,26 +184,22 @@ class TestMessageInContextSet:
         assert msg.data == {"key": "value"}
 
     @pytest.mark.asyncio
-    async def test_no_context_when_metadata_not_provided(self, test_domain):
-        """When message_id and stream are omitted, no context is set."""
-        _register_and_init(test_domain, ContextCapturingSubscriber, stream="ctx_stream")
-        engine = Engine(domain=test_domain, test_mode=True)
-
-        await engine.handle_broker_message(ContextCapturingSubscriber, {"key": "value"})
-
-        assert len(_captured_contexts) == 1
-        assert _captured_contexts[0] is None
-
-    @pytest.mark.asyncio
-    async def test_no_context_when_only_message_id_provided(self, test_domain):
+    @pytest.mark.parametrize(
+        "metadata",
+        [
+            pytest.param({}, id="metadata-not-provided"),
+            pytest.param({"message_id": "msg-200"}, id="only-message-id-provided"),
+        ],
+    )
+    async def test_no_context_without_both_message_id_and_stream(
+        self, test_domain, metadata
+    ):
         """Both message_id AND stream are needed; one alone is not enough."""
         _register_and_init(test_domain, ContextCapturingSubscriber, stream="ctx_stream")
         engine = Engine(domain=test_domain, test_mode=True)
 
         await engine.handle_broker_message(
-            ContextCapturingSubscriber,
-            {"key": "value"},
-            message_id="msg-200",
+            ContextCapturingSubscriber, {"key": "value"}, **metadata
         )
 
         assert len(_captured_contexts) == 1
@@ -218,27 +207,7 @@ class TestMessageInContextSet:
 
 
 # ---------------------------------------------------------------------------
-# 5. Cleans up message_in_context on success
-# ---------------------------------------------------------------------------
-class TestContextCleanupOnSuccess:
-    @pytest.mark.asyncio
-    async def test_context_cleaned_up_after_success(self, test_domain):
-        _register_and_init(test_domain, ContextCapturingSubscriber, stream="ctx_stream")
-        engine = Engine(domain=test_domain, test_mode=True)
-
-        with test_domain.domain_context():
-            await engine.handle_broker_message(
-                ContextCapturingSubscriber,
-                {"key": "value"},
-                message_id="msg-300",
-                stream="ctx_stream",
-            )
-            # After the call, the context should have been cleaned up
-            assert g.get("message_in_context") is None
-
-
-# ---------------------------------------------------------------------------
-# 6. Cleans up message_in_context on failure
+# 5. Cleans up message_in_context on failure
 # ---------------------------------------------------------------------------
 class TestContextCleanupOnFailure:
     @pytest.mark.asyncio
@@ -262,53 +231,46 @@ class TestContextCleanupOnFailure:
 
 
 # ---------------------------------------------------------------------------
-# 7. _extract_source_message_id unit tests
+# 6. _extract_source_message_id unit tests
 # ---------------------------------------------------------------------------
 class TestExtractSourceMessageId:
-    def test_extracts_from_protean_message_format(self):
-        """Standard Protean broker message has metadata.headers.id."""
-        message = {
-            "data": {"foo": "bar"},
-            "metadata": {
-                "headers": {"id": "catalogue::product-6ed888bb-1.1"},
-            },
-        }
-        assert _extract_source_message_id(message) == "catalogue::product-6ed888bb-1.1"
-
-    def test_returns_none_for_missing_metadata(self):
-        """Raw external message without metadata."""
-        assert _extract_source_message_id({"data": {"foo": "bar"}}) is None
-
-    def test_returns_none_for_missing_headers(self):
-        assert _extract_source_message_id({"metadata": {}}) is None
-
-    def test_returns_none_for_missing_id(self):
-        assert _extract_source_message_id({"metadata": {"headers": {}}}) is None
-
-    def test_returns_none_for_empty_string_id(self):
-        assert _extract_source_message_id({"metadata": {"headers": {"id": ""}}}) is None
-
-    def test_returns_none_for_whitespace_id(self):
-        assert (
-            _extract_source_message_id({"metadata": {"headers": {"id": "   "}}}) is None
-        )
-
-    def test_returns_none_for_none_id(self):
-        assert (
-            _extract_source_message_id({"metadata": {"headers": {"id": None}}}) is None
-        )
-
-    def test_strips_whitespace(self):
-        message = {"metadata": {"headers": {"id": "  msg-123  "}}}
-        assert _extract_source_message_id(message) == "msg-123"
-
-    def test_returns_none_for_non_string_id(self):
-        """Non-string id values are rejected."""
-        assert _extract_source_message_id({"metadata": {"headers": {"id": 42}}}) is None
+    @pytest.mark.parametrize(
+        "message, expected",
+        [
+            pytest.param(
+                {
+                    "data": {"foo": "bar"},
+                    "metadata": {
+                        "headers": {"id": "catalogue::product-6ed888bb-1.1"},
+                    },
+                },
+                "catalogue::product-6ed888bb-1.1",
+                id="protean-message-format",
+            ),
+            pytest.param({"data": {"foo": "bar"}}, None, id="missing-metadata"),
+            pytest.param({"metadata": {}}, None, id="missing-headers"),
+            pytest.param({"metadata": {"headers": {}}}, None, id="missing-id"),
+            pytest.param({"metadata": {"headers": {"id": ""}}}, None, id="empty-id"),
+            pytest.param(
+                {"metadata": {"headers": {"id": "   "}}}, None, id="whitespace-id"
+            ),
+            pytest.param({"metadata": {"headers": {"id": None}}}, None, id="none-id"),
+            pytest.param(
+                {"metadata": {"headers": {"id": "  msg-123  "}}},
+                "msg-123",
+                id="strips-whitespace",
+            ),
+            pytest.param(
+                {"metadata": {"headers": {"id": 42}}}, None, id="non-string-id"
+            ),
+        ],
+    )
+    def test_extract_source_message_id(self, message, expected):
+        assert _extract_source_message_id(message) == expected
 
 
 # ---------------------------------------------------------------------------
-# 8. Source message_id preferred over broker delivery ID
+# 7. Source message_id preferred over broker delivery ID
 # ---------------------------------------------------------------------------
 class TestSourceMessageIdPreferredOverDeliveryId:
     @pytest.mark.asyncio
@@ -342,9 +304,16 @@ class TestSourceMessageIdPreferredOverDeliveryId:
         assert msg.metadata.headers.id != redis_delivery_id
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_delivery_id_for_raw_messages(self, test_domain):
-        """When payload has no metadata.headers.id (raw external message),
-        the broker delivery ID is used as fallback."""
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            pytest.param({"raw_field": "external_data"}, id="raw-external-message"),
+            pytest.param({"metadata": {"headers": {"id": ""}}}, id="empty-embedded-id"),
+        ],
+    )
+    async def test_falls_back_to_delivery_id(self, test_domain, payload):
+        """When the payload carries no usable metadata.headers.id, the broker
+        delivery ID is used as fallback."""
         _register_and_init(test_domain, ContextCapturingSubscriber, stream="ctx_stream")
         engine = Engine(domain=test_domain, test_mode=True)
 
@@ -352,26 +321,7 @@ class TestSourceMessageIdPreferredOverDeliveryId:
 
         await engine.handle_broker_message(
             ContextCapturingSubscriber,
-            {"raw_field": "external_data"},
-            message_id=redis_delivery_id,
-            stream="ctx_stream",
-        )
-
-        assert len(_captured_contexts) == 1
-        msg = _captured_contexts[0]
-        assert msg.metadata.headers.id == redis_delivery_id
-
-    @pytest.mark.asyncio
-    async def test_falls_back_when_embedded_id_is_empty(self, test_domain):
-        """Empty/whitespace metadata.headers.id falls back to delivery ID."""
-        _register_and_init(test_domain, ContextCapturingSubscriber, stream="ctx_stream")
-        engine = Engine(domain=test_domain, test_mode=True)
-
-        redis_delivery_id = "1775350249700-0"
-
-        await engine.handle_broker_message(
-            ContextCapturingSubscriber,
-            {"metadata": {"headers": {"id": ""}}},
+            payload,
             message_id=redis_delivery_id,
             stream="ctx_stream",
         )

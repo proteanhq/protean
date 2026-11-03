@@ -1,16 +1,16 @@
 """Tests for the TraceEmitter class.
 
 Integration tests require a running Redis instance and are gated behind @pytest.mark.redis.
-Unit tests for edge cases use mock domains.
+Unit tests for edge cases use a domain on the inline broker.
 """
 
 import json
 import logging
 import time
-from unittest.mock import MagicMock
 
 import pytest
 
+from protean.domain import Domain
 from protean.server.tracing import (
     _SUBSCRIBER_CHECK_TTL,
     TRACE_CHANNEL,
@@ -331,44 +331,66 @@ class TestEmitterWorkerIdPropagation:
         assert data["worker_id"] == "OrderProjector-pod42-9999-aabb00"
 
 
+@pytest.fixture
+def inline_domain():
+    """Domain on the inline broker, which has no Redis connection."""
+    domain = Domain(name="Emitter Edge Cases")
+    domain.config["brokers"]["default"] = {"provider": "inline"}
+    domain._initialize()
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        yield domain
+
+
+@pytest.mark.no_test_domain
 class TestEmitterInitializationEdgeCases:
     """Unit tests for _ensure_initialized error paths (no Redis needed)."""
 
-    def test_ensure_initialized_handles_broker_exception(self):
+    def test_ensure_initialized_handles_broker_exception(
+        self, inline_domain, monkeypatch
+    ):
         """_ensure_initialized returns False when broker access raises."""
-        mock_domain = MagicMock()
-        mock_domain.name = "test-domain"
-        mock_domain.brokers.get.side_effect = RuntimeError("broker unavailable")
 
-        emitter = TraceEmitter(mock_domain)
+        def _unavailable(name):
+            raise RuntimeError("broker unavailable")
+
+        monkeypatch.setattr(inline_domain.brokers, "get", _unavailable)
+
+        emitter = TraceEmitter(inline_domain)
         result = emitter._ensure_initialized()
 
         assert result is False
         assert emitter._initialized is True  # Marked as attempted
         assert emitter._redis is None
 
-    def test_ensure_initialized_handles_missing_redis_instance(self):
+    def test_ensure_initialized_handles_missing_redis_instance(self, inline_domain):
         """_ensure_initialized returns False when broker has no redis_instance."""
-        mock_domain = MagicMock()
-        mock_domain.name = "test-domain"
-        mock_broker = MagicMock(spec=[])  # No redis_instance attribute
-        mock_domain.brokers.get.return_value = mock_broker
+        assert not hasattr(inline_domain.brokers.get("default"), "redis_instance")
 
-        emitter = TraceEmitter(mock_domain)
+        emitter = TraceEmitter(inline_domain)
         result = emitter._ensure_initialized()
 
         assert result is False
         assert emitter._initialized is True
         assert emitter._redis is None
 
-    def test_subscriber_check_failure_is_logged_and_reads_as_none(self, caplog):
-        mock_domain = MagicMock()
-        mock_domain.name = "test-domain"
-        redis_conn = MagicMock()
-        redis_conn.pubsub_numsub.side_effect = ConnectionError("Redis is down")
-        mock_domain.brokers.get.return_value.redis_instance = redis_conn
+    def test_subscriber_check_failure_is_logged_and_reads_as_none(
+        self, inline_domain, caplog, monkeypatch
+    ):
+        class DroppedRedis:
+            def pubsub_numsub(self, channel):
+                raise ConnectionError("Redis is down")
 
-        emitter = TraceEmitter(mock_domain)
+        # The inline broker stands in for a Redis broker whose connection dropped
+        monkeypatch.setattr(
+            inline_domain.brokers.get("default"),
+            "redis_instance",
+            DroppedRedis(),
+            raising=False,
+        )
+
+        emitter = TraceEmitter(inline_domain)
         with caplog.at_level(logging.DEBUG, logger="protean.server.tracing"):
             result = emitter._check_subscribers()
 

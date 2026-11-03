@@ -14,20 +14,16 @@ from protean.server.subscription.config_resolver import ConfigResolver
 class TestProfileValidation:
     """The resolver fails fast on a profile name it cannot resolve."""
 
-    def test_profile_defaults_unknown_name_raises_error(self, test_domain):
-        """_profile_defaults raises ConfigurationError for an unknown profile name."""
-        resolver = ConfigResolver(test_domain)
+    @pytest.mark.parametrize(
+        "profile", ["nonexistent_profile", 12345], ids=["unknown_name", "non_string"]
+    )
+    def test_profile_defaults_unknown_profile_raises(self, test_domain, profile):
+        """_profile_defaults raises ConfigurationError for a name it cannot find.
 
-        with pytest.raises(ConfigurationError, match="Unknown subscription profile"):
-            resolver._profile_defaults("nonexistent_profile")
-
-    def test_profile_defaults_non_string_non_enum_raises(self, test_domain):
-        """A non-string, non-enum profile no longer silently falls back to a default.
-
-        The old _resolve_profile returned PRODUCTION for such input; the registry
-        lookup instead stringifies it, finds no match, and fails fast.
+        A non-string, non-enum value does not fall back to a default profile:
+        the registry lookup stringifies it, finds no match, and fails fast.
         """
         resolver = ConfigResolver(test_domain)
 
         with pytest.raises(ConfigurationError, match="Unknown subscription profile"):
-            resolver._profile_defaults(12345)  # type: ignore
+            resolver._profile_defaults(profile)

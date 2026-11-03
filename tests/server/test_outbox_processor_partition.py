@@ -9,6 +9,8 @@ Verifies ADR-0028 decisions 3, 4, and 8 on the publishing side:
 - an invalid key that somehow reaches publish is abandoned, not retried.
 """
 
+import logging
+
 import pytest
 
 from protean.core.aggregate import BaseAggregate
@@ -17,13 +19,17 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain
 from protean.fields import Identifier, String
 from protean.port.broker import BrokerCapabilities
+from protean.server import Engine
 from protean.server.outbox_processor import OutboxProcessor
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxStatus
 
 
 class RecordingBroker:
-    """A fake broker that records what it was asked to publish (not a mock)."""
+    """A fake broker that records what it was asked to publish (not a mock).
+
+    Only the Redis broker partitions streams, so this stands in for it.
+    """
 
     def __init__(self, name: str, capabilities: BrokerCapabilities) -> None:
         self.name = name
@@ -42,21 +48,6 @@ class RecordingBroker:
         if getattr(self, "raise_on_record", False):
             raise RuntimeError("index write boom")
         self.recorded_partitions.append((category, key))
-
-
-class FakeEmitter:
-    def __init__(self) -> None:
-        self.events: list[dict] = []
-
-    def emit(self, **kwargs) -> None:
-        self.events.append(kwargs)
-
-
-class FakeEngine:
-    def __init__(self, domain: Domain) -> None:
-        self.domain = domain
-        self.loop = None
-        self.emitter = FakeEmitter()
 
 
 class Order(BaseAggregate):
@@ -108,7 +99,9 @@ class TestPartitionRouting:
     @pytest.mark.asyncio
     async def test_partition_key_routes_to_partition_stream(self):
         domain = _make_domain("RoutePart")
-        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+        processor = OutboxProcessor(
+            Engine(domain, test_mode=True), "default", "default"
+        )
         broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
         processor.broker = broker
 
@@ -123,7 +116,9 @@ class TestPartitionRouting:
     @pytest.mark.asyncio
     async def test_partition_composes_with_backfill_lane(self):
         domain = _make_domain("RouteBackfill", lanes_enabled=True, threshold=0)
-        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+        processor = OutboxProcessor(
+            Engine(domain, test_mode=True), "default", "default"
+        )
         broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
         processor.broker = broker
 
@@ -137,51 +132,40 @@ class TestPartitionRouting:
         assert broker.published[0][0] == "test::order:client-1:backfill"
 
     @pytest.mark.asyncio
-    async def test_no_partition_key_routes_to_base_category(self):
+    @pytest.mark.parametrize(
+        "partition_key, capability, is_external",
+        [
+            (None, BrokerCapabilities.STREAM_PARTITIONING, False),
+            # Broker lacks STREAM_PARTITIONING: key carried but routing is a no-op.
+            ("client-1", BrokerCapabilities.RELIABLE_MESSAGING, False),
+            # Registration validates sequential_by against the internal outbox
+            # broker only, so partition routing is internal-only. An external
+            # processor, even on a partitioning broker, must publish to the base
+            # category and not partition a stream no one opted into.
+            ("client-1", BrokerCapabilities.STREAM_PARTITIONING, True),
+        ],
+        ids=["no_partition_key", "non_partitioning_broker", "external_processor"],
+    )
+    async def test_routes_to_base_category_without_an_index_write(
+        self, partition_key, capability, is_external
+    ):
         domain = _make_domain("RouteBase")
-        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
-        broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
-        processor.broker = broker
-
-        with domain.domain_context():
-            await processor._publish_message(_outbox_row("m3", partition_key=None))
-
-        assert broker.published[0][0] == "test::order"
-
-    @pytest.mark.asyncio
-    async def test_non_partitioning_broker_ignores_key(self):
-        domain = _make_domain("RouteNoCap")
-        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
-        # Broker lacks STREAM_PARTITIONING → key carried but routing is a no-op.
-        broker = RecordingBroker("default", BrokerCapabilities.RELIABLE_MESSAGING)
-        processor.broker = broker
-
-        with domain.domain_context():
-            await processor._publish_message(
-                _outbox_row("m4", partition_key="client-1")
-            )
-
-        assert broker.published[0][0] == "test::order"
-
-    @pytest.mark.asyncio
-    async def test_external_processor_does_not_partition(self):
-        # Registration validates sequential_by against the internal outbox
-        # broker only, so partition routing is internal-only. An external
-        # processor, even on a partitioning broker, must publish to the base
-        # category and not partition a stream no one opted into.
-        domain = _make_domain("RouteExternal")
         processor = OutboxProcessor(
-            FakeEngine(domain), "default", "default", is_external=True
+            Engine(domain, test_mode=True),
+            "default",
+            "default",
+            is_external=is_external,
         )
-        broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
+        broker = RecordingBroker("default", capability)
         processor.broker = broker
 
         with domain.domain_context():
             await processor._publish_message(
-                _outbox_row("m5", partition_key="client-1")
+                _outbox_row("m3", partition_key=partition_key)
             )
 
         assert broker.published[0][0] == "test::order"
+        assert broker.recorded_partitions == []
 
 
 @pytest.mark.database
@@ -199,7 +183,9 @@ class TestAbandonBackstop:
                 outbox_repo.add(row)
             row_id = row.id
 
-            processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+            processor = OutboxProcessor(
+                Engine(domain, test_mode=True), "default", "default"
+            )
             await processor.initialize()
             # Override with a partitioning broker so the backstop path engages.
             processor.broker = RecordingBroker(
@@ -232,7 +218,9 @@ class TestAbandonBackstop:
                 outbox_repo.add(row)
             row_id = row.id
 
-            processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+            processor = OutboxProcessor(
+                Engine(domain, test_mode=True), "default", "default"
+            )
             await processor.initialize()
             processor.broker = RecordingBroker(
                 "default", BrokerCapabilities.STREAM_PARTITIONING
@@ -260,7 +248,9 @@ class TestAbandonBackstop:
                 outbox_repo.add(row)
             row_id = row.id
 
-            processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+            processor = OutboxProcessor(
+                Engine(domain, test_mode=True), "default", "default"
+            )
             await processor.initialize()
             broker = RecordingBroker("default", BrokerCapabilities.RELIABLE_MESSAGING)
             processor.broker = broker
@@ -274,30 +264,35 @@ class TestAbandonBackstop:
             assert broker.published[0][0] == "test::order"
 
     @pytest.mark.asyncio
-    async def test_abandon_failure_returns_false_does_not_propagate(self):
+    async def test_abandon_failure_returns_false_does_not_propagate(self, caplog):
         # If the abandon transaction blows up (row cleaned up between claim and
         # backstop, or an OCC race on a reclaimed row), the backstop must swallow
         # it and return False so one poisoned row cannot abort the rest of the
-        # batch in process_batch. Inject a repo whose get() raises to simulate it.
+        # batch in process_batch. The row is never stored, so the abandon's
+        # reload fails as it would for a row deleted after the claim.
         domain = _make_domain("AbandonRaises")
 
-        class _RaisingRepo:
-            def get(self, _id):
-                raise RuntimeError("row vanished between claim and backstop")
-
         with domain.domain_context():
-            processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+            processor = OutboxProcessor(
+                Engine(domain, test_mode=True), "default", "default"
+            )
             await processor.initialize()
-            processor.outbox_repo = _RaisingRepo()
             processor.broker = RecordingBroker(
                 "default", BrokerCapabilities.STREAM_PARTITIONING
             )
 
             row = _outbox_row("bad-3", partition_key="has:colon")
             # Must not raise out of the backstop.
-            result = await processor._process_single_message(row)
+            with caplog.at_level(
+                logging.ERROR, logger="protean.server.outbox_processor"
+            ):
+                result = await processor._process_single_message(row)
 
             assert result is False
+            assert any(
+                r.getMessage() == "outbox.invalid_partition_key_abandon_failed"
+                for r in caplog.records
+            )
             # It never reached the publish path.
             assert processor.broker.published == []
 
@@ -314,7 +309,9 @@ class TestAbandonBackstop:
                 outbox_repo.add(row)
             row_id = row.id
 
-            processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+            processor = OutboxProcessor(
+                Engine(domain, test_mode=True), "default", "default"
+            )
             await processor.initialize()
             broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
             processor.broker = broker
@@ -339,27 +336,14 @@ class TestPartitionIndexWrite:
     """
 
     @pytest.mark.asyncio
-    async def test_partitioned_publish_records_index(self):
-        domain = _make_domain("IdxWrite")
-        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
-        broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
-        processor.broker = broker
-
-        with domain.domain_context():
-            await processor._publish_message(
-                _outbox_row("m1", partition_key="client-1")
-            )
-
-        # Records the base category and key, before the partition segment.
-        assert broker.recorded_partitions == [("test::order", "client-1")]
-
-    @pytest.mark.asyncio
     async def test_every_partitioned_publish_records_no_cache(self):
         # No per-process cache: each publish records its key, even a repeat.
         # Relying on SADD idempotency keeps a reaped-then-republished key from
         # being silently skipped (the strand bug a cache would reintroduce).
         domain = _make_domain("IdxNoCache")
-        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+        processor = OutboxProcessor(
+            Engine(domain, test_mode=True), "default", "default"
+        )
         broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
         processor.broker = broker
 
@@ -380,7 +364,9 @@ class TestPartitionIndexWrite:
         # PENDING and retries — never leave a message on a partition stream that
         # is absent from the index (the consumer would never discover it).
         domain = _make_domain("IdxFail")
-        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
+        processor = OutboxProcessor(
+            Engine(domain, test_mode=True), "default", "default"
+        )
         broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
         broker.raise_on_record = True
         processor.broker = broker
@@ -394,29 +380,3 @@ class TestPartitionIndexWrite:
         assert error is not None
         # The message was NOT published to the partition stream.
         assert broker.published == []
-
-    @pytest.mark.asyncio
-    async def test_no_index_write_without_partition_key(self):
-        domain = _make_domain("IdxNoKey")
-        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
-        broker = RecordingBroker("default", BrokerCapabilities.STREAM_PARTITIONING)
-        processor.broker = broker
-
-        with domain.domain_context():
-            await processor._publish_message(_outbox_row("m1", partition_key=None))
-
-        assert broker.recorded_partitions == []
-
-    @pytest.mark.asyncio
-    async def test_no_index_write_on_non_partitioning_broker(self):
-        domain = _make_domain("IdxNoCap")
-        processor = OutboxProcessor(FakeEngine(domain), "default", "default")
-        broker = RecordingBroker("default", BrokerCapabilities.RELIABLE_MESSAGING)
-        processor.broker = broker
-
-        with domain.domain_context():
-            await processor._publish_message(
-                _outbox_row("m1", partition_key="client-1")
-            )
-
-        assert broker.recorded_partitions == []

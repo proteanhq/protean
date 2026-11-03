@@ -1,7 +1,5 @@
 import asyncio
-import contextlib
 import logging
-from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -11,6 +9,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier
 from protean.server.engine import Engine
+from protean.server.subscription import BaseSubscription
 from protean.utils import Processing
 from protean.utils.mixins import handle
 
@@ -48,19 +47,7 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-def test_processing_messages_on_start(test_domain):
-    identifier = str(uuid4())
-    user = User(user_id=identifier)
-    user.raise_(UserLoggedIn(user_id=identifier))
-    test_domain.repository_for(User).add(user)
-
-    engine = Engine(domain=test_domain, test_mode=True)
-    engine.run()
-
-    assert counter == 1
-
-
-def test_that_read_position_is_updated_after_engine_run(test_domain):
+def test_processing_messages_from_beginning_the_first_time(test_domain):
     identifier = str(uuid4())
     user = User(user_id=identifier)
     user.raise_(UserLoggedIn(user_id=identifier))
@@ -72,19 +59,8 @@ def test_that_read_position_is_updated_after_engine_run(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     engine.run()
 
-    messages = test_domain.event_store.store.read("$all")
-    assert len(messages) == 2
-
-
-def test_processing_messages_from_beginning_the_first_time(test_domain):
-    identifier = str(uuid4())
-    user = User(user_id=identifier)
-    user.raise_(UserLoggedIn(user_id=identifier))
-    test_domain.repository_for(User).add(user)
-
-    engine = Engine(domain=test_domain, test_mode=True)
-    engine.run()
-
+    assert counter == 1
+    # The handler's read position is written after the event
     messages = test_domain.event_store.store.read("$all")
     assert len(messages) == 2
 
@@ -95,48 +71,74 @@ def test_processing_messages_from_beginning_the_first_time(test_domain):
     engine = Engine(domain=test_domain, test_mode=True)
     engine.run()
 
+    # The second engine resumes from the stored position and reprocesses nothing
     messages = test_domain.event_store.store.read("$all")
     assert len(messages) == 2
+    assert counter == 1
 
 
 def test_engine_run_non_test_mode(test_domain, caplog):
-    """Test that engine runs in non-test mode with run_forever."""
+    """In non-test mode the engine runs the loop until shutdown stops it."""
+    test_domain.config["server"]["health"]["enabled"] = False
     engine = Engine(domain=test_domain, test_mode=False)
+    engine.loop.call_soon(lambda: engine.loop.create_task(engine.shutdown()))
 
-    with patch.object(engine.loop, "run_forever") as mock_run_forever:
-        with caplog.at_level(logging.INFO, logger="protean.server.engine"):
-            engine.run()
+    with caplog.at_level(logging.INFO, logger="protean.server.engine"):
+        engine.run()
 
-    mock_run_forever.assert_called_once()
-    assert any("engine.started" in record.message for record in caplog.records)
+    messages = [record.message for record in caplog.records]
+    assert "engine.started" in messages
+    assert "engine.shutting_down" in messages
+    assert messages[-1] == "engine.stopped"
+    assert engine.exit_code == 0
 
 
-def test_engine_test_mode_cancels_long_running_tasks(test_domain, caplog):
-    """Test that test mode cancels tasks still running after all cycles."""
+class HangingSubscription(BaseSubscription):
+    """A real subscription whose backend never answers during ``initialize()``.
+
+    Every framework subscription's ``start()`` returns as soon as its backend
+    is ready, so only a backend that hangs keeps a ``start()`` task running.
+    """
+
+    subscriber_name = "hanging"
+
+    def __init__(self, engine: Engine) -> None:
+        super().__init__(engine)
+        self.cancelled = False
+
+    async def initialize(self) -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+
+    async def get_next_batch_of_messages(self) -> list:
+        return []
+
+    async def process_batch(self, messages) -> int:
+        return 0
+
+
+@pytest.mark.parametrize(
+    "reports_idle", [True, False], ids=["reports-idle", "cannot-report-idle"]
+)
+def test_engine_test_mode_cancels_long_running_tasks(test_domain, caplog, reports_idle):
+    """Test mode runs every cycle, then cancels a start() that is still running.
+
+    The wait does not depend on whether the subscription can report idleness.
+    """
     engine = Engine(domain=test_domain, test_mode=True)
-
-    # Replace the subscriptions with a mock that has a long-running start()
-    async def long_running_start():
-        """A start() coroutine that blocks for longer than the test cycles."""
-        with contextlib.suppress(asyncio.CancelledError):
-            await asyncio.sleep(10)
-
-    class FakeSubscription:
-        async def start(self):
-            await long_running_start()
-
-        async def shutdown(self):
-            pass
-
-    # Inject a fake subscription so the engine has tasks to manage
-    engine._subscriptions = {"fake-handler": FakeSubscription()}
+    hanging = HangingSubscription(engine)
+    hanging.reports_idle = reports_idle
+    engine._subscriptions["hanging"] = hanging
 
     with caplog.at_level(logging.DEBUG, logger="protean.server.engine"):
         engine.run()
 
-    # Verify all 50 cycles ran (task was still running through all cycles)
     cycle_msgs = [r.message for r in caplog.records if "Test mode cycle" in r.message]
     assert len(cycle_msgs) == 50
+    assert hanging.cancelled
 
 
 def test_engine_run_closes_its_event_loop(test_domain):

@@ -179,22 +179,6 @@ class TestEventStoreSubscriptionHandlers:
             "EventStoreCommandHandler",
         ]
 
-    def test_stream_handler_not_reported(self, test_domain):
-        """A stream-resolved handler is not reported — the negative case."""
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-
-        @test_domain.event_handler(part_of=Order)
-        class OrderEventHandler(BaseEventHandler):
-            @handle(OrderPlaced)
-            def on_placed(self, event):
-                pass
-
-        test_domain.register(Order)
-        test_domain.register(OrderPlaced, part_of=Order)
-        test_domain.init(traverse=False)
-
-        assert event_store_subscription_handlers(test_domain) == []
-
     def test_broker_subscriber_only_domain_is_empty(self, test_domain):
         """Broker subscribers use a multi-worker-safe path and are excluded."""
 
@@ -217,16 +201,12 @@ class TestEventStoreSubscriptionHandlers:
 
 
 class TestEventStoreMultiWorkerError:
-    def test_message_names_handlers_and_worker_count(self):
+    def test_message_names_handlers_worker_count_and_ways_forward(self):
         message = event_store_multi_worker_error(["HandlerA", "HandlerB"], 4)
 
         assert "4 workers" in message
         assert "- HandlerA" in message
         assert "- HandlerB" in message
-
-    def test_message_lists_the_three_ways_forward(self):
-        message = event_store_multi_worker_error(["HandlerA"], 2)
-
         assert "single worker" in message
         assert 'subscription_type = "stream"' in message
         assert "--allow-event-store-multiworker" in message

@@ -164,16 +164,11 @@ def factory(engine):
 class TestSubscriptionFactoryInitialization:
     """Tests for SubscriptionFactory initialization."""
 
-    def test_factory_initializes_with_engine(self, engine):
-        """Factory should initialize with an engine reference."""
+    def test_factory_holds_engine_and_config_resolver(self, engine):
+        """Factory keeps the engine and builds a ConfigResolver for its domain."""
         factory = SubscriptionFactory(engine)
 
         assert factory.engine is engine
-
-    def test_factory_creates_config_resolver(self, engine):
-        """Factory should create a ConfigResolver instance."""
-        factory = SubscriptionFactory(engine)
-
         assert factory.config_resolver is not None
         assert factory.config_resolver._domain is engine.domain
 
@@ -181,96 +176,87 @@ class TestSubscriptionFactoryInitialization:
 class TestSubscriptionFactoryCreateStreamSubscription:
     """Tests for creating StreamSubscription instances."""
 
-    def test_creates_stream_subscription_by_default(self, factory):
-        """Factory should create StreamSubscription by default."""
+    @pytest.mark.parametrize(
+        "handler, stream_category",
+        [
+            (UserEventHandler, "my-app::domain-events:v2"),
+            (UserCommandHandler, "commands"),
+        ],
+    )
+    def test_creates_stream_subscription_by_default(
+        self, factory, handler, stream_category
+    ):
+        """Factory creates a StreamSubscription by default and wires its attributes."""
         subscription = factory.create_subscription(
-            handler=UserEventHandler,
-            stream_category="test::user",
+            handler=handler,
+            stream_category=stream_category,
         )
 
         assert isinstance(subscription, StreamSubscription)
-        assert subscription.stream_category == "test::user"
-        assert subscription.handler == UserEventHandler
+        assert subscription.stream_category == stream_category
+        assert subscription.handler == handler
+        assert subscription.engine is factory.engine
+        assert handler.__name__ in subscription.subscriber_name
 
-    def test_creates_stream_subscription_with_production_profile(self, factory):
-        """Factory should create StreamSubscription with PRODUCTION profile settings."""
+    @pytest.mark.parametrize(
+        "handler, expected",
+        [
+            (
+                ProductionHandler,
+                {
+                    "messages_per_tick": 100,
+                    "blocking_timeout_ms": 5000,
+                    "max_retries": 3,
+                    "enable_dlq": True,
+                },
+            ),
+            (
+                FastHandler,
+                {
+                    "messages_per_tick": 10,
+                    "blocking_timeout_ms": 100,
+                    "max_retries": 2,
+                    "retry_delay_seconds": 0,
+                },
+            ),
+            (
+                BatchHandler,
+                {
+                    "messages_per_tick": 500,
+                    "blocking_timeout_ms": 10000,
+                    "max_retries": 5,
+                },
+            ),
+            (
+                CustomConfigHandler,
+                {"messages_per_tick": 75, "max_retries": 10, "enable_dlq": False},
+            ),
+            (
+                ProfileWithOverridesHandler,
+                # Override value, then a value kept from the PRODUCTION profile
+                {"messages_per_tick": 50, "blocking_timeout_ms": 5000},
+            ),
+        ],
+    )
+    def test_creates_stream_subscription_with_handler_settings(
+        self, factory, handler, expected
+    ):
+        """Factory applies the profile and config each handler registered with."""
         subscription = factory.create_subscription(
-            handler=ProductionHandler,
+            handler=handler,
             stream_category="orders",
         )
 
         assert isinstance(subscription, StreamSubscription)
-        assert subscription.messages_per_tick == 100
-        assert subscription.blocking_timeout_ms == 5000
-        assert subscription.max_retries == 3
-        assert subscription.enable_dlq is True
-
-    def test_creates_stream_subscription_with_fast_profile(self, factory):
-        """Factory should create StreamSubscription with FAST profile settings."""
-        subscription = factory.create_subscription(
-            handler=FastHandler,
-            stream_category="notifications",
-        )
-
-        assert isinstance(subscription, StreamSubscription)
-        assert subscription.messages_per_tick == 10
-        assert subscription.blocking_timeout_ms == 100
-        assert subscription.max_retries == 2
-        assert subscription.retry_delay_seconds == 0
-
-    def test_creates_stream_subscription_with_batch_profile(self, factory):
-        """Factory should create StreamSubscription with BATCH profile settings."""
-        subscription = factory.create_subscription(
-            handler=BatchHandler,
-            stream_category="reports",
-        )
-
-        assert isinstance(subscription, StreamSubscription)
-        assert subscription.messages_per_tick == 500
-        assert subscription.blocking_timeout_ms == 10000
-        assert subscription.max_retries == 5
-
-    def test_creates_stream_subscription_with_custom_config(self, factory):
-        """Factory should create StreamSubscription with custom config."""
-        subscription = factory.create_subscription(
-            handler=CustomConfigHandler,
-            stream_category="custom",
-        )
-
-        assert isinstance(subscription, StreamSubscription)
-        assert subscription.messages_per_tick == 75
-        assert subscription.max_retries == 10
-        assert subscription.enable_dlq is False
-
-    def test_creates_stream_subscription_with_profile_overrides(self, factory):
-        """Factory should apply overrides on top of profile."""
-        subscription = factory.create_subscription(
-            handler=ProfileWithOverridesHandler,
-            stream_category="mixed",
-        )
-
-        assert isinstance(subscription, StreamSubscription)
-        # Override value
-        assert subscription.messages_per_tick == 50
-        # Profile default
-        assert subscription.blocking_timeout_ms == 5000
-
-    def test_creates_stream_subscription_for_command_handler(self, factory):
-        """Factory should create StreamSubscription for command handlers."""
-        subscription = factory.create_subscription(
-            handler=UserCommandHandler,
-            stream_category="commands",
-        )
-
-        assert isinstance(subscription, StreamSubscription)
-        assert subscription.handler == UserCommandHandler
+        for attr, value in expected.items():
+            assert getattr(subscription, attr) == value
 
 
 class TestSubscriptionFactoryCreateEventStoreSubscription:
     """Tests for creating EventStoreSubscription instances."""
 
     def test_creates_event_store_subscription_when_configured(self, factory):
-        """Factory should create EventStoreSubscription when subscription_type is EVENT_STORE."""
+        """Factory creates an EventStoreSubscription when subscription_type is EVENT_STORE."""
         subscription = factory.create_subscription(
             handler=ProjectionHandler,
             stream_category="$all",
@@ -279,15 +265,6 @@ class TestSubscriptionFactoryCreateEventStoreSubscription:
         assert isinstance(subscription, EventStoreSubscription)
         assert subscription.stream_category == "$all"
         assert subscription.handler == ProjectionHandler
-
-    def test_event_store_subscription_has_correct_settings(self, factory):
-        """EventStoreSubscription should have correct default settings."""
-        subscription = factory.create_subscription(
-            handler=ProjectionHandler,
-            stream_category="events",
-        )
-
-        assert isinstance(subscription, EventStoreSubscription)
         # EventStoreSubscription uses position tracking, not DLQ
         assert subscription.position_update_interval > 0
 
@@ -396,21 +373,6 @@ class TestSubscriptionFactoryWithServerConfig:
 class TestSubscriptionFactoryLogging:
     """Tests for factory logging behavior."""
 
-    def test_logs_subscription_creation(self, factory, caplog):
-        """Factory should log subscription creation."""
-        import logging
-
-        with caplog.at_level(
-            logging.DEBUG, logger="protean.server.subscription.factory"
-        ):
-            factory.create_subscription(
-                handler=UserEventHandler,
-                stream_category="test",
-            )
-
-        assert "Created" in caplog.text
-        assert "UserEventHandler" in caplog.text
-
     def test_logs_resolved_configuration(self, factory, caplog):
         """Factory should log resolved configuration details at DEBUG level."""
         import logging
@@ -427,50 +389,9 @@ class TestSubscriptionFactoryLogging:
         assert "Created StreamSubscription" in caplog.text
         assert "ProductionHandler" in caplog.text
 
-    def test_logs_subscription_type_in_debug(self, factory, caplog):
-        """Factory should log subscription type at DEBUG level."""
-        import logging
-
-        with caplog.at_level(
-            logging.DEBUG, logger="protean.server.subscription.factory"
-        ):
-            factory.create_subscription(
-                handler=ProductionHandler,
-                stream_category="test",
-            )
-
-        assert "Created StreamSubscription" in caplog.text
-
 
 class TestSubscriptionFactoryAttributes:
     """Tests for subscription attributes set by factory."""
-
-    def test_sets_correct_stream_category(self, factory):
-        """Factory should set correct stream_category on subscription."""
-        subscription = factory.create_subscription(
-            handler=UserEventHandler,
-            stream_category="my-app::events",
-        )
-
-        assert subscription.stream_category == "my-app::events"
-
-    def test_sets_correct_handler_reference(self, factory):
-        """Factory should set correct handler reference on subscription."""
-        subscription = factory.create_subscription(
-            handler=UserEventHandler,
-            stream_category="test",
-        )
-
-        assert subscription.handler == UserEventHandler
-
-    def test_sets_correct_engine_reference(self, factory):
-        """Factory should set correct engine reference on subscription."""
-        subscription = factory.create_subscription(
-            handler=UserEventHandler,
-            stream_category="test",
-        )
-
-        assert subscription.engine is factory.engine
 
     def test_generates_unique_subscription_id(self, factory):
         """Factory should generate unique subscription IDs."""
@@ -485,58 +406,9 @@ class TestSubscriptionFactoryAttributes:
 
         assert sub1.subscription_id != sub2.subscription_id
 
-    def test_sets_subscriber_name_from_handler(self, factory):
-        """Factory should set subscriber_name from handler."""
-        subscription = factory.create_subscription(
-            handler=UserEventHandler,
-            stream_category="test",
-        )
-
-        assert "UserEventHandler" in subscription.subscriber_name
-
-
-class TestSubscriptionFactoryEdgeCases:
-    """Edge case tests for SubscriptionFactory."""
-
-    def test_handles_special_stream_category_names(self, factory):
-        """Factory should handle special characters in stream category."""
-        subscription = factory.create_subscription(
-            handler=UserEventHandler,
-            stream_category="my-app::domain-events:v2",
-        )
-
-        assert subscription.stream_category == "my-app::domain-events:v2"
-
-    def test_handles_all_stream_for_projections(self, factory):
-        """Factory should handle $all stream for projections."""
-        subscription = factory.create_subscription(
-            handler=ProjectionHandler,
-            stream_category="$all",
-        )
-
-        assert subscription.stream_category == "$all"
-
 
 class TestSubscriptionFactoryConfigResolution:
     """Tests for config resolution integration."""
-
-    def test_config_resolver_is_accessible(self, factory):
-        """Factory should expose config_resolver for inspection."""
-        assert factory.config_resolver is not None
-
-    def test_uses_config_resolver_for_resolution(self, factory):
-        """Factory should use ConfigResolver for configuration."""
-        # Create a subscription and verify the config was properly resolved
-        subscription = factory.create_subscription(
-            handler=ProductionHandler,
-            stream_category="orders",
-        )
-
-        # PRODUCTION profile values should be applied
-        assert isinstance(subscription, StreamSubscription)
-        assert subscription.messages_per_tick == 100
-        assert subscription.max_retries == 3
-        assert subscription.enable_dlq is True
 
     def test_priority_chain_is_respected(self, test_domain):
         """Factory should respect the full config priority chain."""

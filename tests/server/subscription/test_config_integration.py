@@ -72,9 +72,52 @@ def engine(test_domain):
 class TestStreamSubscriptionFromConfig:
     """Tests for StreamSubscription.from_config() method."""
 
-    def test_from_config_with_production_profile(self, engine):
-        """StreamSubscription can be created from PRODUCTION profile config."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
+    @pytest.mark.parametrize(
+        "profile, expected",
+        [
+            (
+                SubscriptionProfile.PRODUCTION,
+                {
+                    "messages_per_tick": 100,
+                    "blocking_timeout_ms": 5000,
+                    "max_retries": 3,
+                    "retry_delay_seconds": 1,
+                    "enable_dlq": True,
+                },
+            ),
+            (
+                SubscriptionProfile.FAST,
+                {
+                    "messages_per_tick": 10,
+                    "blocking_timeout_ms": 100,
+                    "max_retries": 2,
+                    "retry_delay_seconds": 0,
+                },
+            ),
+            (
+                SubscriptionProfile.BATCH,
+                {
+                    "messages_per_tick": 500,
+                    "blocking_timeout_ms": 10000,
+                    "max_retries": 5,
+                    "retry_delay_seconds": 2,
+                    "enable_dlq": True,
+                },
+            ),
+            (
+                SubscriptionProfile.DEBUG,
+                {
+                    "messages_per_tick": 1,
+                    "max_retries": 1,
+                    "retry_delay_seconds": 0,
+                    "enable_dlq": False,
+                },
+            ),
+        ],
+    )
+    def test_from_config_applies_profile_values(self, engine, profile, expected):
+        """StreamSubscription takes its settings from each STREAM-type profile."""
+        config = SubscriptionConfig.from_profile(profile)
 
         subscription = StreamSubscription.from_config(
             engine=engine,
@@ -85,61 +128,34 @@ class TestStreamSubscriptionFromConfig:
 
         assert isinstance(subscription, StreamSubscription)
         assert subscription.stream_category == "test::user"
-        assert subscription.handler == UserEventHandler
-        assert subscription.messages_per_tick == 100
-        assert subscription.blocking_timeout_ms == 5000
-        assert subscription.max_retries == 3
-        assert subscription.retry_delay_seconds == 1
-        assert subscription.enable_dlq is True
+        for attr, value in expected.items():
+            assert getattr(subscription, attr) == value
 
-    def test_from_config_with_fast_profile(self, engine):
-        """StreamSubscription can be created from FAST profile config."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.FAST)
-
-        subscription = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="notifications",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert subscription.messages_per_tick == 10
-        assert subscription.blocking_timeout_ms == 100
-        assert subscription.max_retries == 2
-        assert subscription.retry_delay_seconds == 0
-
-    def test_from_config_with_batch_profile(self, engine):
-        """StreamSubscription can be created from BATCH profile config."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.BATCH)
+    @pytest.mark.parametrize(
+        "handler, stream_category",
+        [
+            (UserEventHandler, "my-app::domain-events"),
+            (UserCommandHandler, "commands"),
+        ],
+    )
+    def test_from_config_sets_engine_handler_and_subscriber(
+        self, engine, handler, stream_category
+    ):
+        """StreamSubscription.from_config wires the engine, handler, stream and subscriber names."""
+        config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
 
         subscription = StreamSubscription.from_config(
             engine=engine,
-            stream_category="reports",
-            handler=UserEventHandler,
+            stream_category=stream_category,
+            handler=handler,
             config=config,
         )
 
-        assert subscription.messages_per_tick == 500
-        assert subscription.blocking_timeout_ms == 10000
-        assert subscription.max_retries == 5
-        assert subscription.retry_delay_seconds == 2
-        assert subscription.enable_dlq is True
-
-    def test_from_config_with_debug_profile(self, engine):
-        """StreamSubscription can be created from DEBUG profile config."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.DEBUG)
-
-        subscription = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="debug::events",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert subscription.messages_per_tick == 1
-        assert subscription.max_retries == 1
-        assert subscription.retry_delay_seconds == 0
-        assert subscription.enable_dlq is False
+        assert subscription.engine is engine
+        assert subscription.handler == handler
+        assert subscription.stream_category == stream_category
+        assert handler.__name__ in subscription.subscriber_name
+        assert subscription.subscriber_class_name == handler.__name__
 
     def test_from_config_with_custom_overrides(self, engine):
         """StreamSubscription respects custom overrides on profile."""
@@ -184,23 +200,18 @@ class TestStreamSubscriptionFromConfig:
         assert subscription.blocking_timeout_ms == 3000
         assert subscription.max_retries == 3  # Profile default
 
-    def test_from_config_with_command_handler(self, engine):
-        """StreamSubscription can be created with a command handler."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
-
-        subscription = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="commands",
-            handler=UserCommandHandler,
-            config=config,
-        )
-
-        assert subscription.handler == UserCommandHandler
-
-    def test_from_config_rejects_event_store_type(self, engine):
-        """StreamSubscription.from_config raises error for EVENT_STORE config."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
-
+    @pytest.mark.parametrize(
+        "config",
+        [
+            SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION),
+            SubscriptionConfig.from_dict(
+                {"subscription_type": "event_store", "enable_dlq": False}
+            ),
+        ],
+        ids=["projection_profile", "manual_event_store_type"],
+    )
+    def test_from_config_rejects_event_store_type(self, engine, config):
+        """StreamSubscription.from_config raises error for an EVENT_STORE config."""
         with pytest.raises(ConfigurationError) as exc_info:
             StreamSubscription.from_config(
                 engine=engine,
@@ -213,80 +224,34 @@ class TestStreamSubscriptionFromConfig:
         assert "subscription_type=event_store" in str(exc_info.value)
         assert "Expected subscription_type=stream" in str(exc_info.value)
 
-    def test_from_config_rejects_manually_set_event_store_type(self, engine):
-        """StreamSubscription.from_config raises error when type is manually set to EVENT_STORE."""
-        config = SubscriptionConfig.from_dict(
-            {
-                "subscription_type": "event_store",
-                "enable_dlq": False,  # Required for EVENT_STORE
-            }
-        )
-
-        with pytest.raises(ConfigurationError) as exc_info:
-            StreamSubscription.from_config(
-                engine=engine,
-                stream_category="test",
-                handler=UserEventHandler,
-                config=config,
-            )
-
-        assert "Cannot create StreamSubscription" in str(exc_info.value)
-
-    def test_from_config_sets_engine_correctly(self, engine):
-        """StreamSubscription.from_config sets the engine reference."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
-
-        subscription = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert subscription.engine is engine
-
-    def test_from_config_generates_unique_subscription_id(self, engine):
-        """StreamSubscription.from_config generates a unique subscription ID."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
-
-        sub1 = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        sub2 = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert sub1.subscription_id != sub2.subscription_id
-        assert "UserEventHandler" in sub1.subscription_id
-
 
 class TestEventStoreSubscriptionFromConfig:
     """Tests for EventStoreSubscription.from_config() method."""
 
-    def test_from_config_with_projection_profile(self, engine):
-        """EventStoreSubscription can be created from PROJECTION profile config."""
+    @pytest.mark.parametrize("handler", [UserEventHandler, UserCommandHandler])
+    def test_from_config_with_projection_profile(self, engine, handler):
+        """EventStoreSubscription takes PROJECTION values and wires engine, handler and subscriber."""
         config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
 
         subscription = EventStoreSubscription.from_config(
             engine=engine,
             stream_category="$all",
-            handler=UserEventHandler,
+            handler=handler,
             config=config,
         )
 
         assert isinstance(subscription, EventStoreSubscription)
+        assert subscription.engine is engine
         assert subscription.stream_category == "$all"
-        assert subscription.handler == UserEventHandler
+        assert subscription.handler == handler
+        assert handler.__name__ in subscription.subscriber_name
+        assert subscription.subscriber_class_name == handler.__name__
         assert subscription.messages_per_tick == 100
         assert subscription.position_update_interval == 10
         assert subscription.tick_interval == 0
+        assert subscription.origin_stream is None
+        assert subscription.current_position == -1
+        assert subscription.messages_since_last_position_write == 0
 
     def test_from_config_with_custom_overrides(self, engine):
         """EventStoreSubscription respects custom overrides on profile."""
@@ -347,22 +312,12 @@ class TestEventStoreSubscriptionFromConfig:
         assert subscription.position_update_interval == 25
         assert subscription.origin_stream == "users"
 
-    def test_from_config_with_command_handler(self, engine):
-        """EventStoreSubscription can be created with a command handler."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
-
-        subscription = EventStoreSubscription.from_config(
-            engine=engine,
-            stream_category="commands",
-            handler=UserCommandHandler,
-            config=config,
-        )
-
-        assert subscription.handler == UserCommandHandler
-
-    def test_from_config_rejects_stream_type(self, engine):
-        """EventStoreSubscription.from_config raises error for STREAM config."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
+    @pytest.mark.parametrize(
+        "profile", [SubscriptionProfile.PRODUCTION, SubscriptionProfile.FAST]
+    )
+    def test_from_config_rejects_stream_type(self, engine, profile):
+        """EventStoreSubscription.from_config raises error for a STREAM-type profile."""
+        config = SubscriptionConfig.from_profile(profile)
 
         with pytest.raises(ConfigurationError) as exc_info:
             EventStoreSubscription.from_config(
@@ -376,45 +331,30 @@ class TestEventStoreSubscriptionFromConfig:
         assert "subscription_type=stream" in str(exc_info.value)
         assert "Expected subscription_type=event_store" in str(exc_info.value)
 
-    def test_from_config_rejects_fast_profile(self, engine):
-        """EventStoreSubscription.from_config raises error for FAST profile (STREAM type)."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.FAST)
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            EventStoreSubscription.from_config(
-                engine=engine,
-                stream_category="test",
-                handler=UserEventHandler,
-                config=config,
-            )
+class TestFromConfigSubscriptionId:
+    """from_config gives every subscription its own id."""
 
-        assert "Cannot create EventStoreSubscription" in str(exc_info.value)
+    @pytest.mark.parametrize(
+        "subscription_cls, profile",
+        [
+            (StreamSubscription, SubscriptionProfile.PRODUCTION),
+            (EventStoreSubscription, SubscriptionProfile.PROJECTION),
+        ],
+    )
+    def test_from_config_generates_unique_subscription_id(
+        self, engine, subscription_cls, profile
+    ):
+        """Two subscriptions built from one config get different ids naming the handler."""
+        config = SubscriptionConfig.from_profile(profile)
 
-    def test_from_config_sets_engine_correctly(self, engine):
-        """EventStoreSubscription.from_config sets the engine reference."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
-
-        subscription = EventStoreSubscription.from_config(
+        sub1 = subscription_cls.from_config(
             engine=engine,
             stream_category="test",
             handler=UserEventHandler,
             config=config,
         )
-
-        assert subscription.engine is engine
-
-    def test_from_config_generates_unique_subscription_id(self, engine):
-        """EventStoreSubscription.from_config generates a unique subscription ID."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
-
-        sub1 = EventStoreSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        sub2 = EventStoreSubscription.from_config(
+        sub2 = subscription_cls.from_config(
             engine=engine,
             stream_category="test",
             handler=UserEventHandler,
@@ -423,20 +363,6 @@ class TestEventStoreSubscriptionFromConfig:
 
         assert sub1.subscription_id != sub2.subscription_id
         assert "UserEventHandler" in sub1.subscription_id
-
-    def test_from_config_initializes_position_tracking(self, engine):
-        """EventStoreSubscription.from_config initializes position tracking attributes."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
-
-        subscription = EventStoreSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert subscription.current_position == -1
-        assert subscription.messages_since_last_position_write == 0
 
 
 class TestFromConfigRoundtrip:
@@ -513,16 +439,15 @@ class TestFromConfigRoundtrip:
 class TestFromConfigEdgeCases:
     """Edge case tests for from_config() methods."""
 
-    def test_zero_blocking_timeout_is_rejected(self):
-        """A zero blocking_timeout_ms would spin the poll loop, so it is rejected."""
+    def test_zero_blocking_timeout_is_rejected(self, engine):
+        """A zero blocking_timeout_ms would spin the poll loop, so both the
+        config and the constructor called without a config reject it."""
         with pytest.raises(ConfigurationError, match="must be positive"):
             SubscriptionConfig.from_profile(
                 SubscriptionProfile.PRODUCTION,
                 blocking_timeout_ms=0,
             )
 
-    def test_constructor_rejects_zero_blocking_timeout(self, engine):
-        """The constructor rejects a zero blocking_timeout_ms without a config."""
         with pytest.raises(ConfigurationError, match="must be positive"):
             StreamSubscription(
                 engine=engine,
@@ -546,139 +471,3 @@ class TestFromConfigEdgeCases:
         )
 
         assert subscription.max_retries == 0
-
-    def test_event_store_subscription_without_origin_stream(self, engine):
-        """EventStoreSubscription can be created without origin_stream filter."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
-
-        subscription = EventStoreSubscription.from_config(
-            engine=engine,
-            stream_category="$all",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert subscription.origin_stream is None
-
-    def test_stream_subscription_with_special_stream_category(self, engine):
-        """StreamSubscription handles special stream category names."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
-
-        subscription = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="my-app::domain-events",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert subscription.stream_category == "my-app::domain-events"
-
-    def test_event_store_subscription_with_all_stream(self, engine):
-        """EventStoreSubscription handles $all stream category."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
-
-        subscription = EventStoreSubscription.from_config(
-            engine=engine,
-            stream_category="$all",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert subscription.stream_category == "$all"
-
-
-class TestFromConfigWithAllProfiles:
-    """Test from_config with all available profiles to ensure compatibility."""
-
-    @pytest.mark.parametrize(
-        "profile",
-        [
-            SubscriptionProfile.PRODUCTION,
-            SubscriptionProfile.FAST,
-            SubscriptionProfile.BATCH,
-            SubscriptionProfile.DEBUG,
-        ],
-    )
-    def test_stream_subscription_with_stream_profiles(self, engine, profile):
-        """StreamSubscription can be created from all STREAM-type profiles."""
-        config = SubscriptionConfig.from_profile(profile)
-
-        subscription = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert isinstance(subscription, StreamSubscription)
-        assert subscription.stream_category == "test"
-
-    def test_event_store_subscription_with_projection_profile(self, engine):
-        """EventStoreSubscription can be created from PROJECTION profile."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
-
-        subscription = EventStoreSubscription.from_config(
-            engine=engine,
-            stream_category="$all",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert isinstance(subscription, EventStoreSubscription)
-
-
-class TestFromConfigSubscriberAttributes:
-    """Tests that from_config correctly sets subscriber attributes."""
-
-    def test_stream_subscription_subscriber_name(self, engine):
-        """StreamSubscription.from_config sets correct subscriber_name."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
-
-        subscription = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        # subscriber_name should be the FQN of the handler
-        assert "UserEventHandler" in subscription.subscriber_name
-
-    def test_stream_subscription_subscriber_class_name(self, engine):
-        """StreamSubscription.from_config sets correct subscriber_class_name."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
-
-        subscription = StreamSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert subscription.subscriber_class_name == "UserEventHandler"
-
-    def test_event_store_subscription_subscriber_name(self, engine):
-        """EventStoreSubscription.from_config sets correct subscriber_name."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
-
-        subscription = EventStoreSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert "UserEventHandler" in subscription.subscriber_name
-
-    def test_event_store_subscription_subscriber_class_name(self, engine):
-        """EventStoreSubscription.from_config sets correct subscriber_class_name."""
-        config = SubscriptionConfig.from_profile(SubscriptionProfile.PROJECTION)
-
-        subscription = EventStoreSubscription.from_config(
-            engine=engine,
-            stream_category="test",
-            handler=UserEventHandler,
-            config=config,
-        )
-
-        assert subscription.subscriber_class_name == "UserEventHandler"

@@ -36,7 +36,7 @@ from protean.core.query import BaseQuery
 from protean.core.query_handler import BaseQueryHandler
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Float, Identifier, String
-from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
+from protean.utils.eventing import Message
 from protean.utils.globals import current_domain, g
 from protean.utils.mixins import handle, read
 
@@ -134,6 +134,30 @@ class WalletCommandHandler(BaseCommandHandler):
         return {"opened": command.wallet_id}
 
 
+class AccountOpened(BaseEvent):
+    account_id = Identifier(identifier=True)
+    name = String(required=True)
+
+
+class AccountWithEvent(BaseAggregate):
+    account_id = Identifier(identifier=True)
+    name = String(required=True)
+
+
+class OpenAccountWithEvent(BaseCommand):
+    account_id = Identifier(identifier=True)
+    name = String(required=True)
+
+
+class AccountWithEventHandler(BaseCommandHandler):
+    @handle(OpenAccountWithEvent)
+    def open(self, command: OpenAccountWithEvent):
+        acct = AccountWithEvent(account_id=command.account_id, name=command.name)
+        acct.raise_(AccountOpened(account_id=command.account_id, name=command.name))
+        current_domain.repository_for(AccountWithEvent).add(acct)
+        return {"opened": command.account_id}
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -185,6 +209,18 @@ def span_exporter(test_domain):
     return _init_telemetry_in_memory(test_domain)
 
 
+def _process_open_account(domain, **kwargs):
+    domain.process(
+        OpenAccount(account_id=str(uuid4()), name="Acme"),
+        asynchronous=False,
+        **kwargs,
+    )
+
+
+def _span(spans, name):
+    return next(s for s in spans if s.name == name)
+
+
 # ---------------------------------------------------------------------------
 # Tests: Command processing spans
 # ---------------------------------------------------------------------------
@@ -193,58 +229,19 @@ def span_exporter(test_domain):
 class TestCommandProcessSpan:
     """CommandProcessor.process() emits ``protean.command.process``."""
 
-    def test_process_emits_span_with_correct_name(self, test_domain, span_exporter):
+    def test_process_span_carries_command_attributes(self, test_domain, span_exporter):
+        acct_id = str(uuid4())
         test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            OpenAccount(account_id=acct_id, name="Acme"),
             asynchronous=False,
         )
 
-        spans = span_exporter.get_finished_spans()
-        span_names = [s.name for s in spans]
-        assert "protean.command.process" in span_names
-
-    def test_process_span_has_command_type(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
+        process_span = _span(
+            span_exporter.get_finished_spans(), "protean.command.process"
         )
-
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
         assert process_span.attributes["protean.command.type"] == OpenAccount.__type__
-
-    def test_process_span_has_command_id(self, test_domain, span_exporter):
-        acct_id = str(uuid4())
-        test_domain.process(
-            OpenAccount(account_id=acct_id, name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
         assert process_span.attributes["protean.command.id"] == acct_id
-
-    def test_process_span_has_stream(self, test_domain, span_exporter):
-        acct_id = str(uuid4())
-        test_domain.process(
-            OpenAccount(account_id=acct_id, name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
-        assert "protean.stream" in process_span.attributes
         assert process_span.attributes["protean.stream"] != ""
-
-    def test_process_span_has_correlation_id(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
-        assert "protean.correlation_id" in process_span.attributes
         assert process_span.attributes["protean.correlation_id"] != ""
 
 
@@ -256,38 +253,17 @@ class TestCommandProcessSpan:
 class TestCommandEnrichSpan:
     """CommandProcessor.enrich() emits a child ``protean.command.enrich``."""
 
-    def test_enrich_span_emitted(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
+    def test_enrich_span_is_child_of_process_with_command_type(
+        self, test_domain, span_exporter
+    ):
+        _process_open_account(test_domain)
 
         spans = span_exporter.get_finished_spans()
-        span_names = [s.name for s in spans]
-        assert "protean.command.enrich" in span_names
+        process_span = _span(spans, "protean.command.process")
+        enrich_span = _span(spans, "protean.command.enrich")
 
-    def test_enrich_is_child_of_process(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
-        enrich_span = next(s for s in spans if s.name == "protean.command.enrich")
-
-        # The enrich span's parent should be the process span
         assert enrich_span.parent is not None
         assert enrich_span.parent.span_id == process_span.context.span_id
-
-    def test_enrich_span_has_command_type(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        enrich_span = next(s for s in spans if s.name == "protean.command.enrich")
         assert enrich_span.attributes["protean.command.type"] == OpenAccount.__type__
 
 
@@ -299,48 +275,19 @@ class TestCommandEnrichSpan:
 class TestHandlerExecuteSpan:
     """HandlerMixin._handle() emits ``protean.handler.execute``."""
 
-    def test_handler_span_emitted(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
+    def test_handler_span_is_child_of_process_with_handler_attributes(
+        self, test_domain, span_exporter
+    ):
+        _process_open_account(test_domain)
 
         spans = span_exporter.get_finished_spans()
-        span_names = [s.name for s in spans]
-        assert "protean.handler.execute" in span_names
+        process_span = _span(spans, "protean.command.process")
+        handler_span = _span(spans, "protean.handler.execute")
 
-    def test_handler_span_has_name_attribute(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
         assert (
             handler_span.attributes["protean.handler.name"] == "AccountCommandHandler"
         )
-
-    def test_handler_span_has_type_attribute(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
         assert handler_span.attributes["protean.handler.type"] == "COMMAND_HANDLER"
-
-    def test_handler_span_is_child_of_process(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-
         assert handler_span.parent is not None
         assert handler_span.parent.span_id == process_span.context.span_id
 
@@ -353,58 +300,24 @@ class TestHandlerExecuteSpan:
 class TestErrorSpans:
     """Errors in handlers record exceptions and set ERROR status on spans."""
 
-    def test_error_recorded_on_process_span(self, test_domain, span_exporter):
+    @pytest.mark.parametrize(
+        "span_name", ["protean.command.process", "protean.handler.execute"]
+    )
+    def test_error_and_exception_event_recorded_on_span(
+        self, test_domain, span_exporter, span_name
+    ):
         with pytest.raises(RuntimeError, match="handler exploded"):
             test_domain.process(
                 FailingCommand(account_id=str(uuid4())),
                 asynchronous=False,
             )
 
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
+        span = _span(span_exporter.get_finished_spans(), span_name)
 
-        assert process_span.status.status_code == StatusCode.ERROR
-        assert "handler exploded" in process_span.status.description
-
-    def test_exception_event_recorded_on_process_span(self, test_domain, span_exporter):
-        with pytest.raises(RuntimeError):
-            test_domain.process(
-                FailingCommand(account_id=str(uuid4())),
-                asynchronous=False,
-            )
-
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
-
+        assert span.status.status_code == StatusCode.ERROR
+        assert "handler exploded" in span.status.description
         # OTEL records exceptions as span events
-        exception_events = [e for e in process_span.events if e.name == "exception"]
-        assert len(exception_events) == 1
-        assert "handler exploded" in exception_events[0].attributes["exception.message"]
-
-    def test_error_recorded_on_handler_span(self, test_domain, span_exporter):
-        with pytest.raises(RuntimeError, match="handler exploded"):
-            test_domain.process(
-                FailingCommand(account_id=str(uuid4())),
-                asynchronous=False,
-            )
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-
-        assert handler_span.status.status_code == StatusCode.ERROR
-        assert "handler exploded" in handler_span.status.description
-
-    def test_exception_event_recorded_on_handler_span(self, test_domain, span_exporter):
-        with pytest.raises(RuntimeError):
-            test_domain.process(
-                FailingCommand(account_id=str(uuid4())),
-                asynchronous=False,
-            )
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-
-        exception_events = [e for e in handler_span.events if e.name == "exception"]
+        exception_events = [e for e in span.events if e.name == "exception"]
         assert len(exception_events) == 1
         assert "handler exploded" in exception_events[0].attributes["exception.message"]
 
@@ -417,90 +330,24 @@ class TestErrorSpans:
 class TestQueryDispatchSpan:
     """QueryProcessor.dispatch() emits ``protean.query.dispatch``."""
 
-    def test_query_dispatch_emits_span(self, test_domain, span_exporter):
-        test_domain.dispatch(GetOrdersByCustomer(customer_id="cust-42"))
-
-        spans = span_exporter.get_finished_spans()
-        span_names = [s.name for s in spans]
-        assert "protean.query.dispatch" in span_names
-
-    def test_query_span_has_query_type(self, test_domain, span_exporter):
-        test_domain.dispatch(GetOrdersByCustomer(customer_id="cust-42"))
-
-        spans = span_exporter.get_finished_spans()
-        query_span = next(s for s in spans if s.name == "protean.query.dispatch")
-        assert (
-            query_span.attributes["protean.query.type"] == GetOrdersByCustomer.__type__
-        )
-
-    def test_query_span_has_handler_name(self, test_domain, span_exporter):
-        test_domain.dispatch(GetOrdersByCustomer(customer_id="cust-42"))
-
-        spans = span_exporter.get_finished_spans()
-        query_span = next(s for s in spans if s.name == "protean.query.dispatch")
-        assert (
-            query_span.attributes["protean.handler.name"] == "OrderSummaryQueryHandler"
-        )
-
-    def test_handler_execute_span_inside_query_dispatch(
+    def test_query_dispatch_span_wraps_query_handler_span(
         self, test_domain, span_exporter
     ):
         test_domain.dispatch(GetOrdersByCustomer(customer_id="cust-42"))
 
         spans = span_exporter.get_finished_spans()
-        query_span = next(s for s in spans if s.name == "protean.query.dispatch")
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
+        query_span = _span(spans, "protean.query.dispatch")
+        handler_span = _span(spans, "protean.handler.execute")
 
-        # Handler span should be a child of query dispatch span
+        assert (
+            query_span.attributes["protean.query.type"] == GetOrdersByCustomer.__type__
+        )
+        assert (
+            query_span.attributes["protean.handler.name"] == "OrderSummaryQueryHandler"
+        )
+        assert handler_span.attributes["protean.handler.type"] == "QUERY_HANDLER"
         assert handler_span.parent is not None
         assert handler_span.parent.span_id == query_span.context.span_id
-
-    def test_query_handler_type_attribute(self, test_domain, span_exporter):
-        test_domain.dispatch(GetOrdersByCustomer(customer_id="cust-42"))
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-        assert handler_span.attributes["protean.handler.type"] == "QUERY_HANDLER"
-
-
-# ---------------------------------------------------------------------------
-# Tests: Parent-child span relationships
-# ---------------------------------------------------------------------------
-
-
-class TestSpanRelationships:
-    """Verify the full parent-child span tree during command processing."""
-
-    def test_full_span_tree(self, test_domain, span_exporter):
-        """process → enrich (child) + handler.execute (child)."""
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
-        enrich_span = next(s for s in spans if s.name == "protean.command.enrich")
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-
-        # All spans share the same trace ID
-        assert enrich_span.context.trace_id == process_span.context.trace_id
-        assert handler_span.context.trace_id == process_span.context.trace_id
-
-        # Process is the root (no parent or parent from external context)
-        # Enrich and handler are children of process
-        assert enrich_span.parent.span_id == process_span.context.span_id
-        assert handler_span.parent.span_id == process_span.context.span_id
-
-    def test_all_spans_share_trace_id(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        trace_ids = {s.context.trace_id for s in spans}
-        assert len(trace_ids) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -510,19 +357,6 @@ class TestSpanRelationships:
 
 class TestNoOpWhenDisabled:
     """When telemetry is not enabled, processing should work without spans."""
-
-    def test_command_processing_works_without_telemetry(self, test_domain):
-        acct_id = str(uuid4())
-        result = test_domain.process(
-            OpenAccount(account_id=acct_id, name="Acme"),
-            asynchronous=False,
-        )
-        assert result == {"opened": acct_id}
-
-    def test_query_dispatch_works_without_telemetry(self, test_domain):
-        result = test_domain.dispatch(GetOrdersByCustomer(customer_id="cust-42"))
-        assert isinstance(result, list)
-        assert len(result) == 2
 
     def test_failing_handler_propagates_without_telemetry(self, test_domain):
         with pytest.raises(RuntimeError, match="handler exploded"):
@@ -540,86 +374,20 @@ class TestNoOpWhenDisabled:
 class TestUoWCommitSpan:
     """UnitOfWork.commit() emits ``protean.uow.commit``."""
 
-    def test_uow_commit_span_emitted(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
+    def test_uow_commit_span_has_counts_and_shares_handler_trace(
+        self, test_domain, span_exporter
+    ):
+        _process_open_account(test_domain)
 
         spans = span_exporter.get_finished_spans()
-        span_names = [s.name for s in spans]
-        assert "protean.uow.commit" in span_names
+        handler_span = _span(spans, "protean.handler.execute")
+        uow_span = _span(spans, "protean.uow.commit")
 
-    def test_uow_commit_span_has_event_count(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        uow_span = next(s for s in spans if s.name == "protean.uow.commit")
-        assert "protean.uow.event_count" in uow_span.attributes
         assert uow_span.attributes["protean.uow.event_count"] >= 0
-
-    def test_uow_commit_span_has_session_count(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        uow_span = next(s for s in spans if s.name == "protean.uow.commit")
-        assert "protean.uow.session_count" in uow_span.attributes
         assert uow_span.attributes["protean.uow.session_count"] >= 0
-
-    def test_uow_commit_is_descendant_of_handler(self, test_domain, span_exporter):
-        """UoW commit is nested under handler (via repository.add)."""
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-        uow_span = next(s for s in spans if s.name == "protean.uow.commit")
-
         # UoW commit is a descendant of handler (parent chain goes through repository.add)
         assert uow_span.parent is not None
         assert uow_span.context.trace_id == handler_span.context.trace_id
-
-    def test_uow_commit_shares_trace_id(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        trace_ids = {s.context.trace_id for s in spans}
-        assert len(trace_ids) == 1
-
-
-class AccountOpened(BaseEvent):
-    account_id = Identifier(identifier=True)
-    name = String(required=True)
-
-
-class AccountWithEvent(BaseAggregate):
-    account_id = Identifier(identifier=True)
-    name = String(required=True)
-
-
-class OpenAccountWithEvent(BaseCommand):
-    account_id = Identifier(identifier=True)
-    name = String(required=True)
-
-
-class AccountWithEventHandler(BaseCommandHandler):
-    @handle(OpenAccountWithEvent)
-    def open(self, command: OpenAccountWithEvent):
-        acct = AccountWithEvent(account_id=command.account_id, name=command.name)
-        acct.raise_(AccountOpened(account_id=command.account_id, name=command.name))
-        current_domain.repository_for(AccountWithEvent).add(acct)
-        return {"opened": command.account_id}
 
 
 class TestUoWCommitSpanOnError:
@@ -666,81 +434,36 @@ class TestUoWCommitSpanOnError:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Repository add span
+# Tests: Repository spans
 # ---------------------------------------------------------------------------
 
 
 class TestRepositoryAddSpan:
     """BaseRepository.add() emits ``protean.repository.add``."""
 
-    def test_repository_add_span_emitted(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
+    def test_repository_add_span_is_child_of_handler(self, test_domain, span_exporter):
+        _process_open_account(test_domain)
 
         spans = span_exporter.get_finished_spans()
-        span_names = [s.name for s in spans]
-        assert "protean.repository.add" in span_names
-
-    def test_repository_add_has_aggregate_type(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        add_spans = [s for s in spans if s.name == "protean.repository.add"]
+        handler_span = _span(spans, "protean.handler.execute")
         account_add = next(
             s
-            for s in add_spans
-            if s.attributes.get("protean.aggregate.type") == "Account"
-        )
-        assert account_add.attributes["protean.aggregate.type"] == "Account"
-
-    def test_repository_add_has_provider(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
+            for s in spans
+            if s.name == "protean.repository.add"
+            and s.attributes.get("protean.aggregate.type") == "Account"
         )
 
-        spans = span_exporter.get_finished_spans()
-        add_spans = [s for s in spans if s.name == "protean.repository.add"]
-        account_add = next(
-            s
-            for s in add_spans
-            if s.attributes.get("protean.aggregate.type") == "Account"
-        )
         assert "protean.provider" in account_add.attributes
-
-    def test_repository_add_is_child_of_handler(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-        add_spans = [s for s in spans if s.name == "protean.repository.add"]
-        account_add = next(
-            s
-            for s in add_spans
-            if s.attributes.get("protean.aggregate.type") == "Account"
-        )
-
         assert account_add.parent is not None
         assert account_add.parent.span_id == handler_span.context.span_id
-
-
-# ---------------------------------------------------------------------------
-# Tests: Repository get span
-# ---------------------------------------------------------------------------
 
 
 class TestRepositoryGetSpan:
     """BaseRepository.get() emits ``protean.repository.get``."""
 
-    def test_repository_get_span_emitted(self, test_domain, span_exporter):
+    def test_repository_get_span_has_aggregate_type_and_provider(
+        self, test_domain, span_exporter
+    ):
         acct_id = str(uuid4())
         test_domain.process(
             OpenAccount(account_id=acct_id, name="Acme"),
@@ -748,41 +471,10 @@ class TestRepositoryGetSpan:
         )
         span_exporter.clear()
 
-        repo = test_domain.repository_for(Account)
-        repo.get(acct_id)
+        test_domain.repository_for(Account).get(acct_id)
 
-        spans = span_exporter.get_finished_spans()
-        span_names = [s.name for s in spans]
-        assert "protean.repository.get" in span_names
-
-    def test_repository_get_has_aggregate_type(self, test_domain, span_exporter):
-        acct_id = str(uuid4())
-        test_domain.process(
-            OpenAccount(account_id=acct_id, name="Acme"),
-            asynchronous=False,
-        )
-        span_exporter.clear()
-
-        repo = test_domain.repository_for(Account)
-        repo.get(acct_id)
-
-        spans = span_exporter.get_finished_spans()
-        get_span = next(s for s in spans if s.name == "protean.repository.get")
+        get_span = _span(span_exporter.get_finished_spans(), "protean.repository.get")
         assert get_span.attributes["protean.aggregate.type"] == "Account"
-
-    def test_repository_get_has_provider(self, test_domain, span_exporter):
-        acct_id = str(uuid4())
-        test_domain.process(
-            OpenAccount(account_id=acct_id, name="Acme"),
-            asynchronous=False,
-        )
-        span_exporter.clear()
-
-        repo = test_domain.repository_for(Account)
-        repo.get(acct_id)
-
-        spans = span_exporter.get_finished_spans()
-        get_span = next(s for s in spans if s.name == "protean.repository.get")
         assert "protean.provider" in get_span.attributes
 
 
@@ -794,99 +486,78 @@ class TestRepositoryGetSpan:
 class TestEventStoreAppendSpan:
     """BaseEventStore.append() emits ``protean.event_store.append``."""
 
-    def test_event_store_append_span_emitted(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        span_names = [s.name for s in spans]
-        assert "protean.event_store.append" in span_names
-
-    def test_event_store_append_has_stream(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        append_span = next(s for s in spans if s.name == "protean.event_store.append")
-        assert "protean.event_store.stream" in append_span.attributes
-        assert append_span.attributes["protean.event_store.stream"] != ""
-
-    def test_event_store_append_has_message_type(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        append_span = next(s for s in spans if s.name == "protean.event_store.append")
-        assert "protean.event_store.message_type" in append_span.attributes
-
-    def test_event_store_append_has_position(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        append_span = next(s for s in spans if s.name == "protean.event_store.append")
-        assert "protean.event_store.position" in append_span.attributes
-
-    def test_event_store_append_shares_trace_with_command_process(
+    def test_event_store_append_span_attributes_and_trace(
         self, test_domain, span_exporter
     ):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
+        _process_open_account(test_domain)
 
         spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
-        append_span = next(s for s in spans if s.name == "protean.event_store.append")
+        process_span = _span(spans, "protean.command.process")
+        append_span = _span(spans, "protean.event_store.append")
 
+        assert append_span.attributes["protean.event_store.stream"] != ""
+        assert "protean.event_store.message_type" in append_span.attributes
+        assert "protean.event_store.position" in append_span.attributes
         # event_store.append is part of the same trace
         assert append_span.parent is not None
         assert append_span.context.trace_id == process_span.context.trace_id
 
 
 # ---------------------------------------------------------------------------
-# Tests: Full infrastructure span tree
+# Tests: Full span tree
 # ---------------------------------------------------------------------------
 
 
-class TestInfrastructureSpanTree:
-    """Verify the full span tree including infrastructure spans."""
+class TestSpanTree:
+    """Verify the full span tree during command processing."""
 
     def test_full_span_tree_with_infrastructure(self, test_domain, span_exporter):
         """process → enrich + handler.execute → repository.add + uow.commit → event_store.append."""
+        _process_open_account(test_domain)
+
+        spans = span_exporter.get_finished_spans()
+        span_names = {s.name for s in spans}
+
+        assert {
+            "protean.command.process",
+            "protean.command.enrich",
+            "protean.handler.execute",
+            "protean.repository.add",
+            "protean.uow.commit",
+            "protean.event_store.append",
+        } <= span_names
+
+        # All spans share the same trace ID
+        assert len({s.context.trace_id for s in spans}) == 1
+
+        # Enrich and handler are children of process
+        process_span = _span(spans, "protean.command.process")
+        assert (
+            _span(spans, "protean.command.enrich").parent.span_id
+            == process_span.context.span_id
+        )
+        assert (
+            _span(spans, "protean.handler.execute").parent.span_id
+            == process_span.context.span_id
+        )
+
+    def test_es_full_span_tree(self, test_domain, span_exporter):
         test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
+            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
             asynchronous=False,
         )
 
         spans = span_exporter.get_finished_spans()
         span_names = {s.name for s in spans}
 
-        # All expected spans are present
-        assert "protean.command.process" in span_names
-        assert "protean.command.enrich" in span_names
-        assert "protean.handler.execute" in span_names
-        assert "protean.repository.add" in span_names
-        assert "protean.uow.commit" in span_names
-        assert "protean.event_store.append" in span_names
-
-    def test_all_infrastructure_spans_share_trace_id(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        trace_ids = {s.context.trace_id for s in spans}
-        assert len(trace_ids) == 1
+        assert {
+            "protean.command.process",
+            "protean.handler.execute",
+            "protean.repository.add",
+            "protean.uow.commit",
+            "protean.event_store.append",
+        } <= span_names
+        assert len({s.context.trace_id for s in spans}) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -894,74 +565,35 @@ class TestInfrastructureSpanTree:
 # ---------------------------------------------------------------------------
 
 
+def _event_sourced_span(spans, name):
+    return next(
+        s
+        for s in spans
+        if s.name == name
+        and s.attributes.get("protean.repository.kind") == "event_sourced"
+    )
+
+
 class TestEventSourcedRepositoryAddSpan:
     """BaseEventSourcedRepository.add() emits ``protean.repository.add``."""
 
-    def test_es_repository_add_span_emitted(self, test_domain, span_exporter):
+    def test_es_repository_add_span_attributes(self, test_domain, span_exporter):
         test_domain.process(
             OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
             asynchronous=False,
         )
 
-        spans = span_exporter.get_finished_spans()
-        add_spans = [
-            s
-            for s in spans
-            if s.name == "protean.repository.add"
-            and s.attributes.get("protean.repository.kind") == "event_sourced"
-        ]
-        assert len(add_spans) >= 1
-
-    def test_es_repository_add_has_aggregate_type(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        add_span = next(
-            s
-            for s in spans
-            if s.name == "protean.repository.add"
-            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        add_span = _event_sourced_span(
+            span_exporter.get_finished_spans(), "protean.repository.add"
         )
         assert add_span.attributes["protean.aggregate.type"] == "Wallet"
-
-    def test_es_repository_add_has_kind_attribute(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        add_span = next(
-            s
-            for s in spans
-            if s.name == "protean.repository.add"
-            and s.attributes.get("protean.repository.kind") == "event_sourced"
-        )
-        assert add_span.attributes["protean.repository.kind"] == "event_sourced"
-
-    def test_es_repository_add_has_provider(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        add_span = next(
-            s
-            for s in spans
-            if s.name == "protean.repository.add"
-            and s.attributes.get("protean.repository.kind") == "event_sourced"
-        )
         assert "protean.provider" in add_span.attributes
 
 
 class TestEventSourcedRepositoryGetSpan:
     """BaseEventSourcedRepository.get() emits ``protean.repository.get``."""
 
-    def test_es_repository_get_span_emitted(self, test_domain, span_exporter):
+    def test_es_repository_get_span_attributes(self, test_domain, span_exporter):
         wallet_id = str(uuid4())
         test_domain.process(
             OpenWallet(wallet_id=wallet_id, owner="Alice"),
@@ -969,76 +601,12 @@ class TestEventSourcedRepositoryGetSpan:
         )
         span_exporter.clear()
 
-        repo = test_domain.repository_for(Wallet)
-        repo.get(wallet_id)
+        test_domain.repository_for(Wallet).get(wallet_id)
 
-        spans = span_exporter.get_finished_spans()
-        get_spans = [
-            s
-            for s in spans
-            if s.name == "protean.repository.get"
-            and s.attributes.get("protean.repository.kind") == "event_sourced"
-        ]
-        assert len(get_spans) >= 1
-
-    def test_es_repository_get_has_aggregate_type(self, test_domain, span_exporter):
-        wallet_id = str(uuid4())
-        test_domain.process(
-            OpenWallet(wallet_id=wallet_id, owner="Alice"),
-            asynchronous=False,
-        )
-        span_exporter.clear()
-
-        repo = test_domain.repository_for(Wallet)
-        repo.get(wallet_id)
-
-        spans = span_exporter.get_finished_spans()
-        get_span = next(
-            s
-            for s in spans
-            if s.name == "protean.repository.get"
-            and s.attributes.get("protean.repository.kind") == "event_sourced"
+        get_span = _event_sourced_span(
+            span_exporter.get_finished_spans(), "protean.repository.get"
         )
         assert get_span.attributes["protean.aggregate.type"] == "Wallet"
-
-    def test_es_repository_get_has_kind_attribute(self, test_domain, span_exporter):
-        wallet_id = str(uuid4())
-        test_domain.process(
-            OpenWallet(wallet_id=wallet_id, owner="Alice"),
-            asynchronous=False,
-        )
-        span_exporter.clear()
-
-        repo = test_domain.repository_for(Wallet)
-        repo.get(wallet_id)
-
-        spans = span_exporter.get_finished_spans()
-        get_span = next(
-            s
-            for s in spans
-            if s.name == "protean.repository.get"
-            and s.attributes.get("protean.repository.kind") == "event_sourced"
-        )
-        assert get_span.attributes["protean.repository.kind"] == "event_sourced"
-
-    def test_es_repository_get_has_provider(self, test_domain, span_exporter):
-        wallet_id = str(uuid4())
-        test_domain.process(
-            OpenWallet(wallet_id=wallet_id, owner="Alice"),
-            asynchronous=False,
-        )
-        span_exporter.clear()
-
-        repo = test_domain.repository_for(Wallet)
-        repo.get(wallet_id)
-
-        spans = span_exporter.get_finished_spans()
-        get_span = next(
-            s
-            for s in spans
-            if s.name == "protean.repository.get"
-            and s.attributes.get("protean.repository.kind") == "event_sourced"
-        )
         assert "protean.provider" in get_span.attributes
 
 
@@ -1097,260 +665,89 @@ class TestEventSourcedRepositoryGetOrNoneSpan:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Event-sourced full span tree
+# Tests: Correlation/causation IDs on handler.execute and uow.commit spans
 # ---------------------------------------------------------------------------
 
 
-class TestEventSourcedSpanTree:
-    """Verify span tree for event-sourced aggregate operations."""
+def _correlated_uow_span(spans):
+    """Return the UoW commit span that has protean.correlation_id.
 
-    def test_es_full_span_tree(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        span_names = {s.name for s in spans}
-
-        assert "protean.command.process" in span_names
-        assert "protean.handler.execute" in span_names
-        assert "protean.repository.add" in span_names
-        assert "protean.uow.commit" in span_names
-        assert "protean.event_store.append" in span_names
-
-    def test_es_all_spans_share_trace_id(self, test_domain, span_exporter):
-        test_domain.process(
-            OpenWallet(wallet_id=str(uuid4()), owner="Alice"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        trace_ids = {s.context.trace_id for s in spans}
-        assert len(trace_ids) == 1
-
-
-# ---------------------------------------------------------------------------
-# Tests: Correlation/causation IDs on handler.execute span
-# ---------------------------------------------------------------------------
-
-
-class TestHandlerSpanCorrelationAttributes:
-    """protean.handler.execute span carries correlation_id and causation_id."""
-
-    def test_handler_span_has_correlation_id(self, test_domain, span_exporter):
-        corr_id = "test-corr-handler-123"
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-            correlation_id=corr_id,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-        assert handler_span.attributes["protean.correlation_id"] == corr_id
-
-    def test_handler_span_has_auto_generated_correlation_id(
-        self, test_domain, span_exporter
-    ):
-        """When no explicit correlation_id is provided, an auto-generated one appears."""
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-        assert "protean.correlation_id" in handler_span.attributes
-        assert handler_span.attributes["protean.correlation_id"] != ""
-
-    def test_handler_span_omits_causation_id_for_root_command(
-        self, test_domain, span_exporter
-    ):
-        """Root commands have no causation_id, so the handler span omits it."""
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-        # A root command has no causation chain, so causation_id is absent.
-        # Derived events/commands processed by downstream handlers WILL carry
-        # causation_id (the parent message's ID).
-        assert "protean.causation_id" not in handler_span.attributes
-
-    def test_handler_span_has_causation_id_from_parent_context(
-        self, test_domain, span_exporter
-    ):
-        """When a parent message context exists, the handler span carries causation_id."""
-        # Simulate a parent event context (as if this command was dispatched from
-        # an event handler processing a prior message).
-        parent_msg_id = "test::parent-msg-001"
-        fake_parent = type(
-            "FakeMessage",
-            (),
-            {
-                "metadata": Metadata(
-                    headers=MessageHeaders(
-                        id=parent_msg_id, type="ParentEvent", stream="test-stream"
-                    ),
-                    domain=DomainMeta(
-                        kind="EVENT",
-                        correlation_id="parent-corr-id",
-                        causation_id=None,
-                    ),
-                )
-            },
-        )()
-        g.message_in_context = fake_parent
-        try:
-            test_domain.process(
-                OpenAccount(account_id=str(uuid4()), name="Acme"),
-                asynchronous=False,
-            )
-        finally:
-            g.pop("message_in_context", None)
-
-        spans = span_exporter.get_finished_spans()
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-        assert handler_span.attributes["protean.causation_id"] == parent_msg_id
-
-    def test_handler_span_correlation_matches_process_span(
-        self, test_domain, span_exporter
-    ):
-        """Handler span's correlation_id matches the process span's."""
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
-        handler_span = next(s for s in spans if s.name == "protean.handler.execute")
-        assert (
-            handler_span.attributes["protean.correlation_id"]
-            == process_span.attributes["protean.correlation_id"]
-        )
-
-
-# ---------------------------------------------------------------------------
-# Tests: Correlation ID on uow.commit span
-# ---------------------------------------------------------------------------
-
-
-class TestUoWSpanCorrelationAttributes:
-    """protean.uow.commit span carries correlation/causation IDs when message context is set.
-
-    Note: There may be multiple UoW commit spans during command processing
-    (e.g. one for event store command append, one for handler-level persistence).
-    The handler-level UoW commit runs while g.message_in_context is set and
-    therefore carries the correlation_id (and causation_id when present) attributes.
+    There may be multiple UoW commit spans during command processing
+    (e.g. one for event store command append, one for handler-level
+    persistence). The handler-level UoW commit runs while
+    g.message_in_context is set and therefore carries the correlation_id
+    (and causation_id when present) attributes.
     """
+    correlated = [
+        s
+        for s in spans
+        if s.name == "protean.uow.commit" and "protean.correlation_id" in s.attributes
+    ]
+    assert len(correlated) >= 1, (
+        "Expected at least one UoW commit span with protean.correlation_id"
+    )
+    return correlated[0]
 
-    @staticmethod
-    def _find_uow_span_with_correlation(spans):
-        """Return the UoW commit span that has protean.correlation_id."""
-        uow_spans = [s for s in spans if s.name == "protean.uow.commit"]
-        assert len(uow_spans) >= 1, "Expected at least one protean.uow.commit span"
-        correlated = [s for s in uow_spans if "protean.correlation_id" in s.attributes]
-        assert len(correlated) >= 1, (
-            "Expected at least one UoW commit span with protean.correlation_id"
-        )
-        return correlated[0]
 
-    def test_uow_span_has_correlation_id(self, test_domain, span_exporter):
-        corr_id = "test-corr-uow-456"
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-            correlation_id=corr_id,
-        )
+class TestSpanCorrelationAttributes:
+    """``protean.handler.execute`` and ``protean.uow.commit`` carry
+    correlation_id and causation_id."""
 
-        spans = span_exporter.get_finished_spans()
-        uow_span = self._find_uow_span_with_correlation(spans)
-        assert uow_span.attributes["protean.correlation_id"] == corr_id
-
-    def test_uow_span_has_auto_generated_correlation_id(
+    def test_explicit_correlation_id_on_handler_and_uow_spans(
         self, test_domain, span_exporter
     ):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
+        corr_id = "test-corr-123"
+        _process_open_account(test_domain, correlation_id=corr_id)
 
         spans = span_exporter.get_finished_spans()
-        uow_span = self._find_uow_span_with_correlation(spans)
-        assert uow_span.attributes["protean.correlation_id"] != ""
-
-    def test_uow_span_omits_causation_id_for_root_command(
-        self, test_domain, span_exporter
-    ):
-        """Root commands have no causation_id, so UoW commit span omits it."""
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
+        handler_span = _span(spans, "protean.handler.execute")
+        assert handler_span.attributes["protean.correlation_id"] == corr_id
+        assert _correlated_uow_span(spans).attributes["protean.correlation_id"] == (
+            corr_id
         )
 
-        spans = span_exporter.get_finished_spans()
-        uow_span = self._find_uow_span_with_correlation(spans)
-        assert "protean.causation_id" not in uow_span.attributes
-
-    def test_uow_span_has_causation_id_from_parent_context(
+    def test_root_command_spans_share_generated_correlation_and_omit_causation(
         self, test_domain, span_exporter
     ):
-        """When a parent message context exists, the UoW commit span carries causation_id."""
-        parent_msg_id = "test::parent-uow-001"
-        fake_parent = type(
-            "FakeMessage",
-            (),
-            {
-                "metadata": Metadata(
-                    headers=MessageHeaders(
-                        id=parent_msg_id, type="ParentEvent", stream="test-stream"
-                    ),
-                    domain=DomainMeta(
-                        kind="EVENT",
-                        correlation_id="parent-corr-uow",
-                        causation_id=None,
-                    ),
-                )
-            },
-        )()
-        g.message_in_context = fake_parent
+        """Without an explicit correlation_id, an auto-generated one appears on
+        every span; a root command has no causation chain, so causation_id is
+        absent."""
+        _process_open_account(test_domain)
+
+        spans = span_exporter.get_finished_spans()
+        process_corr = _span(spans, "protean.command.process").attributes[
+            "protean.correlation_id"
+        ]
+        for span in (
+            _span(spans, "protean.handler.execute"),
+            _correlated_uow_span(spans),
+        ):
+            assert span.attributes["protean.correlation_id"] != ""
+            assert span.attributes["protean.correlation_id"] == process_corr
+            assert "protean.causation_id" not in span.attributes
+
+    def test_causation_id_from_parent_message_context(self, test_domain, span_exporter):
+        """When a command is processed while a parent message is in context (as
+        if dispatched from an event handler), both spans carry causation_id."""
+        wallet = Wallet.open(wallet_id=str(uuid4()), owner="Alice")
+        parent = Message.from_domain_object(wallet._events[0])
+        parent_msg_id = parent.metadata.headers.id
+
+        g.message_in_context = parent
         try:
-            test_domain.process(
-                OpenAccount(account_id=str(uuid4()), name="Acme"),
-                asynchronous=False,
-            )
+            _process_open_account(test_domain)
         finally:
             g.pop("message_in_context", None)
 
         spans = span_exporter.get_finished_spans()
-        # There may be multiple UoW commit spans (event store append + handler).
+        handler_span = _span(spans, "protean.handler.execute")
+        assert handler_span.attributes["protean.causation_id"] == parent_msg_id
         # The handler-level UoW runs while g.message_in_context has the enriched
         # command (which inherits causation_id from the parent context).
-        uow_spans = [s for s in spans if s.name == "protean.uow.commit"]
         causation_spans = [
-            s for s in uow_spans if "protean.causation_id" in s.attributes
+            s
+            for s in spans
+            if s.name == "protean.uow.commit" and "protean.causation_id" in s.attributes
         ]
-        assert len(causation_spans) >= 1, (
-            "Expected at least one UoW commit span with protean.causation_id"
-        )
+        assert len(causation_spans) >= 1
         assert causation_spans[0].attributes["protean.causation_id"] == parent_msg_id
-
-    def test_uow_span_correlation_matches_process_span(
-        self, test_domain, span_exporter
-    ):
-        test_domain.process(
-            OpenAccount(account_id=str(uuid4()), name="Acme"),
-            asynchronous=False,
-        )
-
-        spans = span_exporter.get_finished_spans()
-        process_span = next(s for s in spans if s.name == "protean.command.process")
-        uow_span = self._find_uow_span_with_correlation(spans)
-        assert (
-            uow_span.attributes["protean.correlation_id"]
-            == process_span.attributes["protean.correlation_id"]
-        )

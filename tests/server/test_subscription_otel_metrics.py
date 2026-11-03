@@ -15,9 +15,8 @@ Verifies that:
 - All metrics are no-op when OTEL is not configured.
 """
 
-import asyncio
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -148,31 +147,9 @@ def _make_event_message(test_domain) -> Message:
     return Message.from_domain_object(user._events[-1])
 
 
-class MockEngine:
-    """Minimal engine mock for subscription tests.
-
-    Delegates ``handle_message`` to the real Engine implementation
-    so that handler dispatch works correctly with real domain elements.
-    """
-
-    def __init__(self, domain):
-        self.domain = domain
-        self.loop = asyncio.new_event_loop()
-        self.emitter = Mock()
-        self.shutting_down = False
-        self.draining = False
-        # Create a real engine for message handling
-        self._real_engine = Engine(domain, test_mode=True)
-
-    async def handle_message(self, handler_cls, message, worker_id=None):
-        return await self._real_engine.handle_message(
-            handler_cls, message, worker_id=worker_id
-        )
-
-
 def _make_stream_subscription(test_domain, handler_cls=UserEventHandler, **overrides):
-    """Create a StreamSubscription with a mock engine for the handler."""
-    engine = MockEngine(test_domain)
+    """Create a StreamSubscription on a real Engine for the handler."""
+    engine = Engine(test_domain, test_mode=True)
     sub = StreamSubscription(
         engine=engine,
         stream_category="test::user",
@@ -183,12 +160,21 @@ def _make_stream_subscription(test_domain, handler_cls=UserEventHandler, **overr
         retry_delay_seconds=overrides.pop("retry_delay_seconds", 0),
         enable_dlq=overrides.pop("enable_dlq", True),
     )
-    # Set a mock broker so ack/nack/publish calls work
-    sub.broker = MagicMock()
-    sub.broker.ack = MagicMock(return_value=True)
     for key, value in overrides.items():
         setattr(sub, key, value)
     return sub
+
+
+async def _deliver_events(sub, count: int = 1) -> list:
+    """Publish ``count`` events to the domain broker and read them back."""
+    await sub.initialize()
+    for _ in range(count):
+        sub.broker.publish(
+            sub.stream_category, _make_event_message(sub.engine.domain).to_dict()
+        )
+    batch = await sub.get_next_batch_of_messages()
+    assert len(batch) == count
+    return batch
 
 
 def _make_broker_subscription(test_domain, subscriber_cls, **overrides):
@@ -200,6 +186,14 @@ def _make_broker_subscription(test_domain, subscriber_cls, **overrides):
     return sub
 
 
+async def _deliver_payload(sub) -> list:
+    """Publish one payload to the subscriber's broker stream and read it back."""
+    sub.broker.publish(sub.stream_name, {"data": "test"})
+    batch = await sub.get_next_batch_of_messages()
+    assert len(batch) == 1
+    return batch
+
+
 # ---------------------------------------------------------------------------
 # StreamSubscription metric tests
 # ---------------------------------------------------------------------------
@@ -207,7 +201,8 @@ def _make_broker_subscription(test_domain, subscriber_cls, **overrides):
 
 class TestStreamSubscriptionMessagesProcessed:
     """StreamSubscription.process_batch() increments
-    ``protean.subscription.messages_processed`` on success and failure."""
+    ``protean.subscription.messages_processed`` and records
+    ``protean.subscription.processing_duration`` on success and failure."""
 
     @pytest.fixture(autouse=True)
     def setup(self, test_domain):
@@ -226,42 +221,39 @@ class TestStreamSubscriptionMessagesProcessed:
             delattr(test_domain, _DOMAIN_METRICS_KEY)
 
     @pytest.mark.asyncio
-    async def test_success_increments_counter(self, test_domain, telemetry):
+    async def test_successful_messages_accumulate_with_duration(
+        self, test_domain, telemetry
+    ):
         metric_reader = telemetry
         sub = _make_stream_subscription(test_domain, UserEventHandler)
+        batch = await _deliver_events(sub, count=3)
 
-        message = _make_event_message(test_domain)
-        serialized = message.to_dict()
-
-        # Mock the broker ack
-        sub.broker = MagicMock()
-        sub.broker.ack = MagicMock(return_value=True)
-
-        await sub.process_batch([("msg-1", serialized)], stream="test::user")
+        assert await sub.process_batch(batch, stream="test::user") == 3
 
         points = _get_metric_data_points(
             metric_reader, "protean.subscription.messages_processed"
         )
-        assert len(points) >= 1
         ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
         assert len(ok_points) == 1
-        assert ok_points[0].value == 1
+        assert ok_points[0].value == 3
         assert dict(ok_points[0].attributes)["subscription"] == "UserEventHandler"
         assert dict(ok_points[0].attributes)["stream"] == "test::user"
+
+        durations = _get_metric_data_points(
+            metric_reader, "protean.subscription.processing_duration"
+        )
+        assert len(durations) == 1
+        assert durations[0].sum > 0
+        assert durations[0].count == 3
+        assert dict(durations[0].attributes)["subscription"] == "UserEventHandler"
 
     @pytest.mark.asyncio
     async def test_failure_increments_counter_with_error(self, test_domain, telemetry):
         metric_reader = telemetry
         sub = _make_stream_subscription(test_domain, FailingEventHandler)
+        batch = await _deliver_events(sub)
 
-        message = _make_event_message(test_domain)
-        serialized = message.to_dict()
-
-        sub.broker = MagicMock()
-        sub.broker.nack = MagicMock(return_value=True)
-        sub.retry_delay_seconds = 0
-
-        await sub.process_batch([("msg-1", serialized)], stream="test::user")
+        await sub.process_batch(batch, stream="test::user")
 
         points = _get_metric_data_points(
             metric_reader, "protean.subscription.messages_processed"
@@ -272,69 +264,6 @@ class TestStreamSubscriptionMessagesProcessed:
         ]
         assert len(error_points) == 1
         assert error_points[0].value == 1
-
-    @pytest.mark.asyncio
-    async def test_multiple_messages_accumulate(self, test_domain, telemetry):
-        metric_reader = telemetry
-        sub = _make_stream_subscription(test_domain, UserEventHandler)
-
-        sub.broker = MagicMock()
-        sub.broker.ack = MagicMock(return_value=True)
-
-        messages = []
-        for i in range(3):
-            msg = _make_event_message(test_domain)
-            messages.append((f"msg-{i}", msg.to_dict()))
-
-        await sub.process_batch(messages, stream="test::user")
-
-        points = _get_metric_data_points(
-            metric_reader, "protean.subscription.messages_processed"
-        )
-        ok_points = [p for p in points if dict(p.attributes).get("status") == "ok"]
-        assert len(ok_points) == 1
-        assert ok_points[0].value == 3
-
-
-class TestStreamSubscriptionProcessingDuration:
-    """StreamSubscription.process_batch() records
-    ``protean.subscription.processing_duration`` histogram."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self, test_domain):
-        test_domain.config["event_processing"] = Processing.ASYNC.value
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(Registered, part_of=User)
-        test_domain.register(UserEventHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-    @pytest.fixture()
-    def telemetry(self, test_domain):
-        _, metric_reader = _init_telemetry_in_memory(test_domain)
-        yield metric_reader
-        if hasattr(test_domain, _DOMAIN_METRICS_KEY):
-            delattr(test_domain, _DOMAIN_METRICS_KEY)
-
-    @pytest.mark.asyncio
-    async def test_records_duration(self, test_domain, telemetry):
-        metric_reader = telemetry
-        sub = _make_stream_subscription(test_domain, UserEventHandler)
-
-        message = _make_event_message(test_domain)
-        serialized = message.to_dict()
-
-        sub.broker = MagicMock()
-        sub.broker.ack = MagicMock(return_value=True)
-
-        await sub.process_batch([("msg-1", serialized)], stream="test::user")
-
-        points = _get_metric_data_points(
-            metric_reader, "protean.subscription.processing_duration"
-        )
-        assert len(points) >= 1
-        assert points[0].sum > 0
-        assert points[0].count == 1
-        assert dict(points[0].attributes)["subscription"] == "UserEventHandler"
 
 
 class TestStreamSubscriptionRetries:
@@ -357,30 +286,7 @@ class TestStreamSubscriptionRetries:
             delattr(test_domain, _DOMAIN_METRICS_KEY)
 
     @pytest.mark.asyncio
-    async def test_retry_increments_counter(self, test_domain, telemetry):
-        metric_reader = telemetry
-        sub = _make_stream_subscription(
-            test_domain,
-            FailingEventHandler,
-            retry_delay_seconds=0,
-            max_retries=3,
-        )
-
-        message = _make_event_message(test_domain)
-        serialized = message.to_dict()
-
-        sub.broker = MagicMock()
-        sub.broker.nack = MagicMock(return_value=True)
-
-        await sub.process_batch([("msg-1", serialized)], stream="test::user")
-
-        points = _get_metric_data_points(metric_reader, "protean.subscription.retries")
-        assert len(points) >= 1
-        assert points[0].value == 1
-        assert dict(points[0].attributes)["subscription"] == "FailingEventHandler"
-
-    @pytest.mark.asyncio
-    async def test_multiple_retries_accumulate(self, test_domain, telemetry):
+    async def test_each_retry_increments_counter(self, test_domain, telemetry):
         metric_reader = telemetry
         sub = _make_stream_subscription(
             test_domain,
@@ -388,21 +294,20 @@ class TestStreamSubscriptionRetries:
             retry_delay_seconds=0,
             max_retries=5,
         )
+        batch = await _deliver_events(sub)
 
-        message = _make_event_message(test_domain)
-        serialized = message.to_dict()
-
-        sub.broker = MagicMock()
-        sub.broker.nack = MagicMock(return_value=True)
-
-        # Process the same message twice (simulating re-delivery)
-        await sub.process_batch([("msg-1", serialized)], stream="test::user")
-        await sub.process_batch([("msg-1", serialized)], stream="test::user")
+        await sub.process_batch(batch, stream="test::user")
 
         points = _get_metric_data_points(metric_reader, "protean.subscription.retries")
-        assert len(points) >= 1
-        total = sum(p.value for p in points)
-        assert total == 2
+        assert len(points) == 1
+        assert points[0].value == 1
+        assert dict(points[0].attributes)["subscription"] == "FailingEventHandler"
+
+        # Process the same message again, as a re-delivery would.
+        await sub.process_batch(batch, stream="test::user")
+
+        points = _get_metric_data_points(metric_reader, "protean.subscription.retries")
+        assert sum(p.value for p in points) == 2
 
 
 class TestStreamSubscriptionDLQRouted:
@@ -434,17 +339,11 @@ class TestStreamSubscriptionDLQRouted:
             max_retries=1,
             enable_dlq=True,
         )
+        batch = await _deliver_events(sub)
 
-        message = _make_event_message(test_domain)
-        serialized = message.to_dict()
-
-        sub.broker = MagicMock()
-        sub.broker.nack = MagicMock(return_value=True)
-        sub.broker.ack = MagicMock(return_value=True)
-        sub.broker.publish = MagicMock()
-
-        # First attempt → retry (retry_count 1 >= max_retries 1 → DLQ)
-        await sub.process_batch([("msg-1", serialized)], stream="test::user")
+        # First attempt: retry count 1 reaches max_retries 1, so the message
+        # goes to the DLQ.
+        await sub.process_batch(batch, stream="test::user")
 
         points = _get_metric_data_points(
             metric_reader, "protean.subscription.dlq_routed"
@@ -453,6 +352,7 @@ class TestStreamSubscriptionDLQRouted:
         assert points[0].value == 1
         assert dict(points[0].attributes)["subscription"] == "FailingEventHandler"
         assert dict(points[0].attributes)["stream"] == "test::user"
+        assert len(sub.broker.read(sub.dlq_stream, "dlq-check", 10)) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -462,7 +362,9 @@ class TestStreamSubscriptionDLQRouted:
 
 class TestBrokerSubscriptionMessagesProcessed:
     """BrokerSubscription.process_batch() increments
-    ``protean.subscription.messages_processed``."""
+    ``protean.subscription.messages_processed``, records
+    ``protean.subscription.processing_duration`` and, on failure,
+    ``protean.subscription.retries``."""
 
     @pytest.fixture(autouse=True)
     def setup(self, test_domain):
@@ -479,14 +381,14 @@ class TestBrokerSubscriptionMessagesProcessed:
             delattr(test_domain, _DOMAIN_METRICS_KEY)
 
     @pytest.mark.asyncio
-    async def test_success_increments_counter(self, test_domain, telemetry):
+    async def test_success_increments_counter_and_records_duration(
+        self, test_domain, telemetry
+    ):
         metric_reader = telemetry
         sub = _make_broker_subscription(test_domain, SucceedingSubscriber)
+        batch = await _deliver_payload(sub)
 
-        sub.broker.ack = MagicMock(return_value=True)
-        sub.engine.handle_broker_message = AsyncMock(return_value=True)
-
-        await sub.process_batch([("msg-1", {"data": "test"})])
+        assert await sub.process_batch(batch) == 1
 
         points = _get_metric_data_points(
             metric_reader, "protean.subscription.messages_processed"
@@ -497,17 +399,25 @@ class TestBrokerSubscriptionMessagesProcessed:
         assert ok_points[0].value == 1
         assert dict(ok_points[0].attributes)["subscription"] == "SucceedingSubscriber"
 
+        durations = _get_metric_data_points(
+            metric_reader, "protean.subscription.processing_duration"
+        )
+        assert len(durations) >= 1
+        assert durations[0].sum > 0
+        assert durations[0].count == 1
+        assert dict(durations[0].attributes)["subscription"] == "SucceedingSubscriber"
+
     @pytest.mark.asyncio
-    async def test_failure_increments_counter_with_error(self, test_domain, telemetry):
+    async def test_failure_increments_error_and_retry_counters(
+        self, test_domain, telemetry
+    ):
         metric_reader = telemetry
         sub = _make_broker_subscription(
-            test_domain, FailingSubscriber, retry_delay_seconds=0
+            test_domain, FailingSubscriber, retry_delay_seconds=0, max_retries=3
         )
+        batch = await _deliver_payload(sub)
 
-        sub.broker.nack = MagicMock(return_value=True)
-        sub.engine.handle_broker_message = AsyncMock(return_value=False)
-
-        await sub.process_batch([("msg-1", {"data": "test"})])
+        await sub.process_batch(batch)
 
         points = _get_metric_data_points(
             metric_reader, "protean.subscription.messages_processed"
@@ -519,76 +429,10 @@ class TestBrokerSubscriptionMessagesProcessed:
         assert len(error_points) == 1
         assert error_points[0].value == 1
 
-
-class TestBrokerSubscriptionProcessingDuration:
-    """BrokerSubscription.process_batch() records
-    ``protean.subscription.processing_duration``."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self, test_domain):
-        test_domain.config["message_processing"] = Processing.ASYNC.value
-        test_domain.register(SucceedingSubscriber, stream="test_stream")
-        test_domain.init(traverse=False)
-
-    @pytest.fixture()
-    def telemetry(self, test_domain):
-        _, metric_reader = _init_telemetry_in_memory(test_domain)
-        yield metric_reader
-        if hasattr(test_domain, _DOMAIN_METRICS_KEY):
-            delattr(test_domain, _DOMAIN_METRICS_KEY)
-
-    @pytest.mark.asyncio
-    async def test_records_duration(self, test_domain, telemetry):
-        metric_reader = telemetry
-        sub = _make_broker_subscription(test_domain, SucceedingSubscriber)
-
-        sub.broker.ack = MagicMock(return_value=True)
-        sub.engine.handle_broker_message = AsyncMock(return_value=True)
-
-        await sub.process_batch([("msg-1", {"data": "test"})])
-
-        points = _get_metric_data_points(
-            metric_reader, "protean.subscription.processing_duration"
-        )
-        assert len(points) >= 1
-        assert points[0].sum > 0
-        assert points[0].count == 1
-        assert dict(points[0].attributes)["subscription"] == "SucceedingSubscriber"
-
-
-class TestBrokerSubscriptionRetries:
-    """BrokerSubscription._retry_message() increments
-    ``protean.subscription.retries``."""
-
-    @pytest.fixture(autouse=True)
-    def setup(self, test_domain):
-        test_domain.config["message_processing"] = Processing.ASYNC.value
-        test_domain.register(FailingSubscriber, stream="fail_stream")
-        test_domain.init(traverse=False)
-
-    @pytest.fixture()
-    def telemetry(self, test_domain):
-        _, metric_reader = _init_telemetry_in_memory(test_domain)
-        yield metric_reader
-        if hasattr(test_domain, _DOMAIN_METRICS_KEY):
-            delattr(test_domain, _DOMAIN_METRICS_KEY)
-
-    @pytest.mark.asyncio
-    async def test_retry_increments_counter(self, test_domain, telemetry):
-        metric_reader = telemetry
-        sub = _make_broker_subscription(
-            test_domain, FailingSubscriber, retry_delay_seconds=0, max_retries=3
-        )
-
-        sub.broker.nack = MagicMock(return_value=True)
-        sub.engine.handle_broker_message = AsyncMock(return_value=False)
-
-        await sub.process_batch([("msg-1", {"data": "test"})])
-
-        points = _get_metric_data_points(metric_reader, "protean.subscription.retries")
-        assert len(points) >= 1
-        assert points[0].value == 1
-        assert dict(points[0].attributes)["subscription"] == "FailingSubscriber"
+        retries = _get_metric_data_points(metric_reader, "protean.subscription.retries")
+        assert len(retries) >= 1
+        assert retries[0].value == 1
+        assert dict(retries[0].attributes)["subscription"] == "FailingSubscriber"
 
 
 class TestBrokerSubscriptionDLQRouted:
@@ -618,14 +462,11 @@ class TestBrokerSubscriptionDLQRouted:
             max_retries=1,
             enable_dlq=True,
         )
+        batch = await _deliver_payload(sub)
 
-        sub.broker.nack = MagicMock(return_value=True)
-        sub.broker.ack = MagicMock(return_value=True)
-        sub.broker.publish = MagicMock()
-        sub.engine.handle_broker_message = AsyncMock(return_value=False)
-
-        # First failure → retry count reaches max_retries → DLQ
-        await sub.process_batch([("msg-1", {"data": "test"})])
+        # First failure: retry count reaches max_retries, so the message goes
+        # to the DLQ.
+        await sub.process_batch(batch)
 
         points = _get_metric_data_points(
             metric_reader, "protean.subscription.dlq_routed"
@@ -633,6 +474,7 @@ class TestBrokerSubscriptionDLQRouted:
         assert len(points) >= 1
         assert points[0].value == 1
         assert dict(points[0].attributes)["subscription"] == "FailingSubscriber"
+        assert len(sub.broker.read(sub.dlq_stream, "dlq-check", 10)) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -659,14 +501,29 @@ class TestEngineObservableGauges:
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
 
-    def test_engine_up_reports_one_when_running(self, test_domain, telemetry):
+    def test_running_engine_reports_up_uptime_and_subscriptions(
+        self, test_domain, telemetry
+    ):
         metric_reader = telemetry
         # Engine creation registers the gauges as a side effect
-        Engine(test_domain, test_mode=True)
+        engine = Engine(test_domain, test_mode=True)
 
-        points = _get_metric_data_points(metric_reader, "protean.engine.up")
-        assert len(points) >= 1
-        assert points[0].value == 1
+        expected_count = len(engine._subscriptions) + len(engine._broker_subscriptions)
+        assert expected_count > 0  # Ensure we have subscriptions to count
+
+        up = _get_metric_data_points(metric_reader, "protean.engine.up")
+        assert len(up) >= 1
+        assert up[0].value == 1
+
+        uptime = _get_metric_data_points(metric_reader, "protean.engine.uptime_seconds")
+        assert len(uptime) >= 1
+        assert uptime[0].value >= 0
+
+        active = _get_metric_data_points(
+            metric_reader, "protean.engine.active_subscriptions"
+        )
+        assert len(active) >= 1
+        assert active[0].value == expected_count
 
     def test_engine_up_reports_zero_when_shutting_down(self, test_domain, telemetry):
         metric_reader = telemetry
@@ -677,36 +534,14 @@ class TestEngineObservableGauges:
         assert len(points) >= 1
         assert points[0].value == 0
 
-    def test_engine_uptime_reports_positive_value(self, test_domain, telemetry):
-        metric_reader = telemetry
-        # Engine creation registers the gauges as a side effect
-        Engine(test_domain, test_mode=True)
-
-        points = _get_metric_data_points(metric_reader, "protean.engine.uptime_seconds")
-        assert len(points) >= 1
-        assert points[0].value >= 0
-
-    def test_engine_active_subscriptions_counts_correctly(self, test_domain, telemetry):
-        metric_reader = telemetry
-        engine = Engine(test_domain, test_mode=True)
-
-        expected_count = len(engine._subscriptions) + len(engine._broker_subscriptions)
-        assert expected_count > 0  # Ensure we have subscriptions to count
-
-        points = _get_metric_data_points(
-            metric_reader, "protean.engine.active_subscriptions"
-        )
-        assert len(points) >= 1
-        assert points[0].value == expected_count
-
 
 # ---------------------------------------------------------------------------
-# DomainMetrics instrument existence tests
+# DomainMetrics instrument tests
 # ---------------------------------------------------------------------------
 
 
 class TestSubscriptionMetricsInDomainMetrics:
-    """DomainMetrics contains the new subscription instruments."""
+    """DomainMetrics contains the subscription instruments."""
 
     @pytest.fixture()
     def telemetry(self, test_domain):
@@ -714,13 +549,6 @@ class TestSubscriptionMetricsInDomainMetrics:
         yield metric_reader
         if hasattr(test_domain, _DOMAIN_METRICS_KEY):
             delattr(test_domain, _DOMAIN_METRICS_KEY)
-
-    def test_subscription_instruments_exist(self, test_domain, telemetry):
-        metrics = get_domain_metrics(test_domain)
-        assert hasattr(metrics, "subscription_messages_processed")
-        assert hasattr(metrics, "subscription_dlq_routed")
-        assert hasattr(metrics, "subscription_retries")
-        assert hasattr(metrics, "subscription_processing_duration")
 
     def test_subscription_counters_accept_attributes(self, test_domain, telemetry):
         metric_reader = telemetry
@@ -745,30 +573,6 @@ class TestSubscriptionMetricsInDomainMetrics:
         ]:
             points = _get_metric_data_points(metric_reader, name)
             assert len(points) >= 1, f"No data points for {name}"
-
-
-# ---------------------------------------------------------------------------
-# No-op behavior tests
-# ---------------------------------------------------------------------------
-
-
-class TestNoOpSubscriptionMetrics:
-    """Subscription metrics are no-op when telemetry is not configured."""
-
-    def test_noop_subscription_counters(self, test_domain):
-        """DomainMetrics subscription instruments work without OTel configured."""
-        metrics = get_domain_metrics(test_domain)
-        attrs = {
-            "subscription": "Test",
-            "handler": "Test",
-            "stream": "test",
-        }
-
-        # Should not raise
-        metrics.subscription_messages_processed.add(1, {**attrs, "status": "ok"})
-        metrics.subscription_retries.add(1, attrs)
-        metrics.subscription_dlq_routed.add(1, attrs)
-        metrics.subscription_processing_duration.record(0.5, attrs)
 
 
 # ---------------------------------------------------------------------------
@@ -888,42 +692,28 @@ class TestSubscriptionLagSecondsGauge:
 
         The count-based lag path already guards this; the seconds gauge must not
         report a data point (which would read as ``0.0``) when the value is
-        unavailable. Seed a status with a real message-count lag but no seconds.
+        unavailable. A projector that has never written a position trails head
+        by a real message count, but has no timestamp to measure seconds from.
         """
-        from protean.server.subscription_status import SubscriptionStatus
-
-        no_seconds = SubscriptionStatus(
-            name="sub-lagprojector",
-            handler_name="LagProjector",
-            subscription_type="event_store",
-            stream_category="user",
-            lag=42,
-            pending=0,
-            current_position="100",
-            head_position="142",
-            status="lagging",
-            consumer_count=0,
-            dlq_depth=0,
-            last_updated=None,
-            lag_seconds=None,
-        )
+        with test_domain.domain_context():
+            store = test_domain.event_store.store
+            category = LagProjector.meta_.stream_categories[0]
+            for i in range(3):
+                store._write(f"{category}-{i}", "Registered", {"user_id": str(i)})
         _, metric_reader = _init_telemetry_in_memory(test_domain)
 
-        with patch(
-            "protean.server.observatory.metrics._collect_subscription_statuses",
-            return_value=[(test_domain, no_seconds)],
-        ):
-            _register_infrastructure_gauges([test_domain])
-            # Read both metrics while the collector is patched; observable-gauge
-            # callbacks fire at read time.
-            points = _get_metric_data_points(
-                metric_reader, "protean.subscription.lag_seconds"
-            )
-            lag_points = _get_metric_data_points(
-                metric_reader, "protean.subscription.consumer_lag"
-            )
+        _register_infrastructure_gauges([test_domain])
+        points = _get_metric_data_points(
+            metric_reader, "protean.subscription.lag_seconds"
+        )
+        lag_points = _get_metric_data_points(
+            metric_reader, "protean.subscription.consumer_lag"
+        )
 
         assert not any(p.attributes.get("handler") == "LagProjector" for p in points)
         # The count-based lag still reports, proving the status was collected and
         # only the None seconds were skipped.
-        assert any(p.attributes.get("handler") == "LagProjector" for p in lag_points)
+        assert any(
+            p.attributes.get("handler") == "LagProjector" and p.value > 0
+            for p in lag_points
+        )

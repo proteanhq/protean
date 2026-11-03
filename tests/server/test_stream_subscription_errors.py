@@ -1,12 +1,15 @@
 """Tests for StreamSubscription error handling — retry, DLQ, traces, priority lanes.
 
-Uses a FakeBroker to avoid requiring Redis, since the internal retry/DLQ
-logic operates on the broker interface (ack, nack, publish) without needing
-Redis Streams.
+The retry/DLQ logic only needs the broker interface (ack, nack, publish), so
+these tests run on the domain's inline broker. Each test publishes a message,
+reads it back for the subscription's consumer group, and checks the outcome on
+the broker: an ACKed message is gone, a NACKed one is delivered again on the
+next read, and a dead-lettered one is on the DLQ stream.
 """
 
 import logging
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 
@@ -18,10 +21,10 @@ from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
+from protean.utils.eventing import Message
+from tests.server.test_trace_correlation import _attach_recording_redis
 
 # ── Domain elements ─────────────────────────────────────────────────────
-
-handler_counter = 0
 
 
 class StreamTestAggregate(BaseAggregate):
@@ -37,52 +40,16 @@ class StreamTestEvent(BaseEvent):
 class SucceedingHandler(BaseEventHandler):
     @handle(StreamTestEvent)
     def handle_event(self, event):
-        global handler_counter
-        handler_counter += 1
+        pass
 
 
 class AlwaysFailingHandler(BaseEventHandler):
     @handle(StreamTestEvent)
     def handle_event(self, event):
-        global handler_counter
-        handler_counter += 1
         raise RuntimeError("Always fails")
 
 
-# ── Fake broker ──────────────────────────────────────────────────────────
-
-
-class FakeBroker:
-    """Minimal broker stub for testing retry/DLQ logic."""
-
-    def __init__(self):
-        self.acked: list[tuple] = []
-        self.nacked: list[tuple] = []
-        self.published: list[tuple] = []
-
-    def _ensure_group(self, consumer_group, stream):
-        pass
-
-    def ack(self, stream, identifier, consumer_group):
-        self.acked.append((stream, identifier, consumer_group))
-        return True
-
-    def nack(self, stream, identifier, consumer_group):
-        self.nacked.append((stream, identifier, consumer_group))
-        return True
-
-    def publish(self, stream, message):
-        self.published.append((stream, message))
-        return "dlq-id"
-
-
 # ── Fixtures ─────────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def reset_counters():
-    global handler_counter
-    handler_counter = 0
 
 
 @pytest.fixture(autouse=True)
@@ -94,6 +61,14 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
+@pytest.fixture
+def broker(test_domain, monkeypatch):
+    """The domain's inline broker, set to redeliver a NACKed message at once."""
+    broker = test_domain.brokers["default"]
+    monkeypatch.setattr(broker, "_retry_delay", 0)
+    return broker
+
+
 def _make_subscription(
     test_domain,
     handler_cls,
@@ -102,7 +77,7 @@ def _make_subscription(
     enable_dlq: bool = True,
     lanes_enabled: bool = False,
 ) -> StreamSubscription:
-    """Create a StreamSubscription with a FakeBroker attached."""
+    """Create a StreamSubscription on the domain's broker."""
     engine = Engine(test_domain, test_mode=True)
 
     if lanes_enabled:
@@ -119,8 +94,50 @@ def _make_subscription(
         retry_delay_seconds=retry_delay_seconds,
         enable_dlq=enable_dlq,
     )
-    sub.broker = FakeBroker()
+    sub.broker = test_domain.brokers["default"]
     return sub
+
+
+def _read_ids(sub, stream: str | None = None) -> list[str]:
+    """Read every message waiting on ``stream`` for the subscription's group."""
+    messages = sub.broker.read(stream or sub.stream_category, sub.consumer_group, 10)
+    return [identifier for identifier, _ in messages]
+
+
+def _deliver(sub, payload: dict, stream: str | None = None) -> str:
+    """Publish ``payload`` and read it back as the subscription; return its id."""
+    stream = stream or sub.stream_category
+    sub.broker.publish(stream, payload)
+    [identifier] = _read_ids(sub, stream)
+    return identifier
+
+
+def _dlq(sub, dlq_stream: str) -> list[dict]:
+    return [payload for _, payload in sub.broker.read(dlq_stream, "inspector", 10)]
+
+
+def _streams(sub) -> set[str]:
+    """Name every stream on the broker that has received a message."""
+    return set(sub.broker.health_stats()["details"]["streams"]["names"])
+
+
+def _in_flight(sub, stream: str) -> int:
+    groups = sub.broker.info()["consumer_groups"]
+    return groups[sub.consumer_group]["in_flight_messages"][stream]
+
+
+def _publish_fails(broker, monkeypatch, times: int | None = None) -> None:
+    """Make DLQ publishes raise, for the first ``times`` calls or for all."""
+    real_publish = broker.publish
+    calls = {"count": 0}
+
+    def publish(stream, message):
+        calls["count"] += 1
+        if times is None or calls["count"] <= times:
+            raise Exception("Broker down")
+        return real_publish(stream, message)
+
+    monkeypatch.setattr(broker, "publish", publish)
 
 
 # ── Tests: blocking timeout checked at construction ─────────────────────
@@ -165,72 +182,69 @@ class TestRetryToDLQRoundTrip:
     """Full retry pipeline: fail N times → NACKs → DLQ → ACK."""
 
     @pytest.mark.asyncio
-    async def test_full_3_retry_to_dlq(self, test_domain):
+    async def test_full_3_retry_to_dlq(self, test_domain, broker):
         """Message NACKed 2 times, then moved to DLQ on 3rd failure."""
         sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=3)
-
-        identifier = "msg-round-trip"
         payload = {"data": "important"}
+        identifier = _deliver(sub, payload)
 
-        # Failures 1 and 2 → NACK
-        await sub.handle_failed_message(identifier, payload)
-        assert sub.retry_counts[identifier] == 1
-        assert len(sub.broker.nacked) == 1
-        assert len(sub.broker.published) == 0
-
-        await sub.handle_failed_message(identifier, payload)
-        assert sub.retry_counts[identifier] == 2
-        assert len(sub.broker.nacked) == 2
-        assert len(sub.broker.published) == 0
+        # Failures 1 and 2 → NACK, so the message comes back on the next read
+        for attempt in (1, 2):
+            await sub.handle_failed_message(identifier, payload)
+            assert sub.retry_counts[identifier] == attempt
+            assert _dlq(sub, "test_stream:dlq") == []
+            assert _read_ids(sub) == [identifier]
 
         # Failure 3 → DLQ + ACK
         await sub.handle_failed_message(identifier, payload)
         assert identifier not in sub.retry_counts
-        assert len(sub.broker.published) == 1
-        assert sub.broker.published[0][0] == "test_stream:dlq"
-        assert len(sub.broker.acked) == 1
-
-    @pytest.mark.asyncio
-    async def test_max_retries_1_single_retry(self, test_domain):
-        """With max_retries=1, first failure exhausts immediately."""
-        sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=1)
-
-        await sub.handle_failed_message("msg1", {"data": "x"})
-
-        # Immediate DLQ (retry_count=1 >= max_retries=1)
-        assert "msg1" not in sub.retry_counts
-        assert len(sub.broker.published) == 1
-        assert sub.broker.published[0][0] == "test_stream:dlq"
-
-    @pytest.mark.asyncio
-    async def test_retry_count_in_dlq_metadata(self, test_domain):
-        """DLQ message contains correct retry_count in _dlq_metadata."""
-        sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=2)
-
-        # 2 failures → DLQ
-        await sub.handle_failed_message("msg1", {"data": "x"})
-        await sub.handle_failed_message("msg1", {"data": "x"})
-
-        dlq_msg = sub.broker.published[0][1]
-        assert dlq_msg["_dlq_metadata"]["retry_count"] == 2
+        [dlq_msg] = _dlq(sub, "test_stream:dlq")
+        assert dlq_msg["data"] == "important"
+        assert dlq_msg["_dlq_metadata"]["retry_count"] == 3
         assert dlq_msg["_dlq_metadata"]["original_stream"] == "test_stream"
-        assert dlq_msg["_dlq_metadata"]["original_id"] == "msg1"
+        assert dlq_msg["_dlq_metadata"]["original_id"] == identifier
         assert dlq_msg["_dlq_metadata"]["consumer_group"] == sub.consumer_group
         assert dlq_msg["_dlq_metadata"]["consumer"] == sub.consumer_name
+        assert _read_ids(sub) == []
+        assert _in_flight(sub, "test_stream") == 0
+        # Nothing was published to any stream other than these two.
+        assert _streams(sub) == {"test_stream", "test_stream:dlq"}
 
     @pytest.mark.asyncio
-    async def test_retry_count_cleared_on_ack(self, test_domain):
+    @pytest.mark.parametrize("lanes_enabled", [False, True])
+    async def test_max_retries_1_single_retry(self, test_domain, broker, lanes_enabled):
+        """With max_retries=1, first failure exhausts immediately, and a primary
+        stream message goes to stream:dlq with or without priority lanes."""
+        sub = _make_subscription(
+            test_domain,
+            AlwaysFailingHandler,
+            max_retries=1,
+            lanes_enabled=lanes_enabled,
+        )
+        identifier = _deliver(sub, {"data": "x"})
+
+        await sub.handle_failed_message(identifier, {"data": "x"}, stream="test_stream")
+
+        # Immediate DLQ (retry_count=1 >= max_retries=1)
+        assert identifier not in sub.retry_counts
+        assert len(_dlq(sub, "test_stream:dlq")) == 1
+
+    @pytest.mark.asyncio
+    async def test_retry_count_cleared_on_ack(self, test_domain, broker):
         """Successful ACK clears the retry count for a message."""
         sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=5)
+        identifier = _deliver(sub, {"data": "x"})
 
         # One failure → retry count = 1
-        await sub.handle_failed_message("msg1", {"data": "x"})
-        assert sub.retry_counts["msg1"] == 1
+        await sub.handle_failed_message(identifier, {"data": "x"})
+        assert sub.retry_counts[identifier] == 1
 
-        # Acknowledge (simulating success on re-delivery)
-        await sub._acknowledge_message("msg1")
+        # Acknowledge the redelivery (simulating success)
+        assert _read_ids(sub) == [identifier]
+        assert await sub._acknowledge_message(identifier) is True
 
-        assert "msg1" not in sub.retry_counts
+        assert identifier not in sub.retry_counts
+        assert _read_ids(sub) == []
 
 
 # ── Tests: Priority Lanes DLQ Routing ────────────────────────────────────
@@ -240,41 +254,20 @@ class TestPriorityLanesDLQ:
     """Messages from backfill stream route to backfill DLQ."""
 
     @pytest.mark.asyncio
-    async def test_primary_stream_routes_to_primary_dlq(self, test_domain):
-        """Primary stream messages go to stream:dlq."""
+    async def test_backfill_stream_routes_to_backfill_dlq(self, test_domain, broker):
+        """Backfill stream messages go to stream:backfill:dlq, and the DLQ
+        metadata names the backfill stream as the source."""
         sub = _make_subscription(
             test_domain, AlwaysFailingHandler, max_retries=1, lanes_enabled=True
         )
-
-        await sub.handle_failed_message("msg1", {"data": "x"}, stream="test_stream")
-
-        assert sub.broker.published[0][0] == "test_stream:dlq"
-
-    @pytest.mark.asyncio
-    async def test_backfill_stream_routes_to_backfill_dlq(self, test_domain):
-        """Backfill stream messages go to stream:backfill:dlq."""
-        sub = _make_subscription(
-            test_domain, AlwaysFailingHandler, max_retries=1, lanes_enabled=True
-        )
+        identifier = _deliver(sub, {"data": "x"}, stream=sub.backfill_stream)
 
         await sub.handle_failed_message(
-            "msg1", {"data": "x"}, stream=sub.backfill_stream
+            identifier, {"data": "x"}, stream=sub.backfill_stream
         )
 
-        assert sub.broker.published[0][0] == "test_stream:backfill:dlq"
-
-    @pytest.mark.asyncio
-    async def test_dlq_metadata_preserves_original_stream(self, test_domain):
-        """DLQ metadata original_stream matches the source stream (backfill)."""
-        sub = _make_subscription(
-            test_domain, AlwaysFailingHandler, max_retries=1, lanes_enabled=True
-        )
-
-        await sub.handle_failed_message(
-            "msg1", {"data": "x"}, stream=sub.backfill_stream
-        )
-
-        dlq_msg = sub.broker.published[0][1]
+        assert _dlq(sub, "test_stream:dlq") == []
+        [dlq_msg] = _dlq(sub, "test_stream:backfill:dlq")
         assert dlq_msg["_dlq_metadata"]["original_stream"] == sub.backfill_stream
 
 
@@ -282,61 +275,59 @@ class TestPriorityLanesDLQ:
 
 
 class TestTraceEvents:
-    """Verify trace event emission for ack, nack, and DLQ."""
+    """Verify trace event emission for ack, nack, and DLQ.
+
+    The engine's real trace emitter writes to Redis, so each test gives it a
+    Redis stand-in and reads the traces it recorded.
+    """
 
     @pytest.mark.asyncio
-    async def test_message_nacked_trace_on_retry(self, test_domain):
+    async def test_message_nacked_trace_on_retry(self, test_domain, broker):
         """message.nacked trace emitted when retrying."""
         sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=3)
-        sub.engine.emitter = MagicMock()
+        redis = _attach_recording_redis(sub.engine.emitter)
+        identifier = _deliver(sub, {"data": "x"})
 
-        await sub.handle_failed_message("msg1", {"data": "x"})
+        await sub.handle_failed_message(identifier, {"data": "x"})
 
-        sub.engine.emitter.emit.assert_called_once()
-        kwargs = sub.engine.emitter.emit.call_args.kwargs
-        assert kwargs["event"] == "message.nacked"
-        assert kwargs["stream"] == "test_stream"
-        assert kwargs["message_id"] == "msg1"
-        assert kwargs["status"] == "retry"
-        assert kwargs["metadata"]["retry_count"] == 1
-        assert kwargs["metadata"]["max_retries"] == 3
+        [trace] = redis.traces()
+        assert trace["event"] == "message.nacked"
+        assert trace["stream"] == "test_stream"
+        assert trace["message_id"] == identifier
+        assert trace["status"] == "retry"
+        assert trace["metadata"]["retry_count"] == 1
+        assert trace["metadata"]["max_retries"] == 3
 
     @pytest.mark.asyncio
-    async def test_message_dlq_trace_on_exhaustion(self, test_domain):
+    async def test_message_dlq_trace_on_exhaustion(self, test_domain, broker):
         """message.dlq trace emitted when moved to DLQ."""
         sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=1)
-        sub.engine.emitter = MagicMock()
+        redis = _attach_recording_redis(sub.engine.emitter)
+        identifier = _deliver(sub, {"data": "x"})
 
-        await sub.handle_failed_message("msg1", {"data": "x"})
+        await sub.handle_failed_message(identifier, {"data": "x"})
 
-        calls = sub.engine.emitter.emit.call_args_list
-        assert len(calls) == 1
-        kwargs = calls[0].kwargs
-        assert kwargs["event"] == "message.dlq"
-        assert kwargs["stream"] == "test_stream"
-        assert kwargs["metadata"]["dlq_stream"] == "test_stream:dlq"
+        [trace] = redis.traces()
+        assert trace["event"] == "message.dlq"
+        assert trace["stream"] == "test_stream"
+        assert trace["metadata"]["dlq_stream"] == "test_stream:dlq"
 
     @pytest.mark.asyncio
-    async def test_message_acked_trace_on_success(self, test_domain):
+    async def test_message_acked_trace_on_success(self, test_domain, broker):
         """message.acked trace emitted on successful ACK."""
-        from protean.utils.eventing import Message
-
         sub = _make_subscription(test_domain, SucceedingHandler)
-        sub.engine.emitter = MagicMock()
+        redis = _attach_recording_redis(sub.engine.emitter)
+        msg = Message.from_domain_object(
+            StreamTestEvent(test_id=str(uuid4()), message="test")
+        )
+        identifier = _deliver(sub, msg.to_dict())
 
-        # Create a proper Message for the trace
-        from uuid import uuid4
+        await sub._acknowledge_message(identifier, message=msg, stream="test_stream")
 
-        event = StreamTestEvent(test_id=str(uuid4()), message="test")
-        msg = Message.from_domain_object(event)
-
-        await sub._acknowledge_message("msg1", message=msg, stream="test_stream")
-
-        sub.engine.emitter.emit.assert_called_once()
-        kwargs = sub.engine.emitter.emit.call_args.kwargs
-        assert kwargs["event"] == "message.acked"
-        assert kwargs["stream"] == "test_stream"
-        assert kwargs["handler"] == "SucceedingHandler"
+        [trace] = redis.traces()
+        assert trace["event"] == "message.acked"
+        assert trace["stream"] == "test_stream"
+        assert trace["handler"] == "SucceedingHandler"
 
 
 # ── Tests: Deserialization → DLQ ─────────────────────────────────────────
@@ -346,40 +337,21 @@ class TestDeserializationDLQ:
     """Invalid messages go directly to DLQ (no retry)."""
 
     @pytest.mark.asyncio
-    async def test_invalid_payload_moves_to_dlq(self, test_domain):
-        """Malformed payload deserialization failure routes to DLQ."""
+    async def test_invalid_payload_moves_to_dlq(self, test_domain, broker):
+        """A malformed payload goes straight to the DLQ with its original
+        content, and no retry count is recorded."""
         sub = _make_subscription(test_domain, SucceedingHandler)
+        payload = {"corrupt": "data", "extra": 42}
+        identifier = _deliver(sub, payload)
 
-        result = await sub._deserialize_message(
-            "bad-msg", {"not": "a valid message"}, "test_stream"
-        )
+        result = await sub._deserialize_message(identifier, payload, "test_stream")
 
         assert result is None
-        assert len(sub.broker.published) == 1
-        assert sub.broker.published[0][0] == "test_stream:dlq"
-
-    @pytest.mark.asyncio
-    async def test_deserialization_dlq_preserves_original_payload(self, test_domain):
-        """DLQ message preserves the original invalid payload."""
-        sub = _make_subscription(test_domain, SucceedingHandler)
-
-        payload = {"corrupt": "data", "extra": 42}
-        await sub._deserialize_message("bad-msg", payload, "test_stream")
-
-        dlq_msg = sub.broker.published[0][1]
+        [dlq_msg] = _dlq(sub, "test_stream:dlq")
         assert dlq_msg["corrupt"] == "data"
         assert dlq_msg["extra"] == 42
         assert "_dlq_metadata" in dlq_msg
-
-    @pytest.mark.asyncio
-    async def test_deserialization_failure_no_retry(self, test_domain):
-        """Deserialization failures go straight to DLQ — no retry tracking."""
-        sub = _make_subscription(test_domain, SucceedingHandler)
-
-        await sub._deserialize_message("bad-msg", {"bad": True}, "test_stream")
-
-        # No retry count recorded
-        assert "bad-msg" not in sub.retry_counts
+        assert identifier not in sub.retry_counts
 
 
 # ── Tests: DLQ Disabled ──────────────────────────────────────────────────
@@ -389,86 +361,64 @@ class TestDLQDisabled:
     """Behavior when enable_dlq=False."""
 
     @pytest.mark.asyncio
-    async def test_move_to_dlq_returns_true_when_disabled(self, test_domain):
-        """move_to_dlq is a no-op when DLQ is disabled, and reports success (True)
-        so the caller ACKs the discarded message rather than holding it."""
-        sub = _make_subscription(test_domain, AlwaysFailingHandler, enable_dlq=False)
-
-        result = await sub.move_to_dlq("msg1", {"data": "x"})
-
-        assert result is True
-        assert len(sub.broker.published) == 0
-
-    @pytest.mark.asyncio
-    async def test_exhaust_retries_still_acks_when_dlq_disabled(self, test_domain):
-        """Even without DLQ, exhausted messages are ACKed to clear pending."""
+    async def test_exhaust_retries_still_acks_when_dlq_disabled(
+        self, test_domain, broker
+    ):
+        """Even without DLQ, exhausted messages are ACKed to clear pending.
+        move_to_dlq is a no-op that reports success (True), so the caller ACKs
+        the discarded message rather than holding it."""
         sub = _make_subscription(
             test_domain, AlwaysFailingHandler, max_retries=1, enable_dlq=False
         )
+        identifier = _deliver(sub, {"data": "x"})
 
-        await sub.handle_failed_message("msg1", {"data": "x"})
+        assert await sub.move_to_dlq(identifier, {"data": "x"}) is True
+        await sub.handle_failed_message(identifier, {"data": "x"})
 
-        # No DLQ publish
-        assert len(sub.broker.published) == 0
+        # No DLQ publish, and no publish to any other stream. Checked before
+        # reading the DLQ, because a read registers the stream it reads.
+        assert _streams(sub) == {"test_stream"}
+        assert _dlq(sub, "test_stream:dlq") == []
         # But message was ACKed
-        assert len(sub.broker.acked) == 1
+        assert _read_ids(sub) == []
+        assert _in_flight(sub, "test_stream") == 0
         # And retry count cleared
-        assert "msg1" not in sub.retry_counts
+        assert identifier not in sub.retry_counts
 
 
 # ── Tests: DLQ Publish Failure ───────────────────────────────────────────
 
 
 class TestDLQPublishFailure:
-    """DLQ publish exceptions are caught gracefully."""
-
-    @pytest.mark.asyncio
-    async def test_dlq_publish_exception_logged(self, test_domain, caplog):
-        """Exception during DLQ publish is caught and logged."""
-        sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=1)
-        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
-
-        with caplog.at_level(logging.ERROR):
-            await sub.handle_failed_message("msg1", {"data": "x"})
-
-        assert "Failed to move message msg1 to DLQ" in caplog.text
-
-    @pytest.mark.asyncio
-    async def test_dlq_publish_failure_holds_message_for_redelivery(self, test_domain):
-        """A failed DLQ publish must NOT ACK the message; it NACKs and retains the
-        retry count so the broker redelivers it (issue #1263)."""
-        sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=1)
-        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
-
-        await sub.handle_failed_message("msg1", {"data": "x"})
-
-        # Not ACKed away; NACKed for redelivery; retry count retained.
-        assert len(sub.broker.acked) == 0
-        assert len(sub.broker.nacked) == 1
-        assert "msg1" in sub.retry_counts
+    """A failed DLQ publish holds the message for redelivery (issue #1263)."""
 
     @pytest.mark.asyncio
     async def test_message_reaches_dlq_after_transient_publish_failure(
-        self, test_domain
+        self, test_domain, broker, monkeypatch, caplog
     ):
-        """The message is retried, not lost: once the DLQ publish succeeds on a
-        redelivery it is moved to the DLQ and ACKed."""
+        """A failed DLQ publish is logged and must NOT ACK the message: it NACKs
+        and keeps the retry count, so the broker redelivers it. Once the DLQ
+        publish succeeds on the redelivery it is moved to the DLQ and ACKed."""
         sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=1)
-        # Publish fails on the first exhaust, succeeds on the redelivery.
-        sub.broker.publish = MagicMock(side_effect=[Exception("Broker down"), "dlq-id"])
+        identifier = _deliver(sub, {"data": "x"})
+        _publish_fails(broker, monkeypatch, times=1)
 
-        await sub.handle_failed_message("msg1", {"data": "x"})
-        assert len(sub.broker.acked) == 0  # held, not acked
-        assert "msg1" in sub.retry_counts
+        with caplog.at_level(logging.ERROR):
+            await sub.handle_failed_message(identifier, {"data": "x"})
 
-        await sub.handle_failed_message("msg1", {"data": "x"})
-        assert sub.broker.publish.call_count == 2
-        assert len(sub.broker.acked) == 1  # acked once the DLQ move succeeded
-        assert "msg1" not in sub.retry_counts
+        assert f"Failed to move message {identifier} to DLQ" in caplog.text
+        assert identifier in sub.retry_counts
+        # Held, not acked: the NACK hands it back on the next read.
+        assert _read_ids(sub) == [identifier]
+
+        await sub.handle_failed_message(identifier, {"data": "x"})
+        assert len(_dlq(sub, "test_stream:dlq")) == 1
+        assert identifier not in sub.retry_counts
+        assert _read_ids(sub) == []
 
     @pytest.mark.asyncio
     async def test_dlq_publish_failure_backs_off_before_holding(
-        self, test_domain, monkeypatch
+        self, test_domain, broker, monkeypatch
     ):
         """The exhaust-path hold NACK backs off (retry_delay_seconds) first, so a
         downed DLQ is retried at the retry cadence rather than hammered at poll
@@ -476,7 +426,8 @@ class TestDLQPublishFailure:
         sub = _make_subscription(
             test_domain, AlwaysFailingHandler, max_retries=1, retry_delay_seconds=0.25
         )
-        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
+        identifier = _deliver(sub, {"data": "x"})
+        _publish_fails(broker, monkeypatch)
 
         sleeps: list[float] = []
 
@@ -488,45 +439,50 @@ class TestDLQPublishFailure:
             fake_sleep,
         )
 
-        await sub.handle_failed_message("msg1", {"data": "x"})
+        await sub.handle_failed_message(identifier, {"data": "x"})
 
         # Backed off before holding, and still held (NACK, no ACK).
         assert 0.25 in sleeps
-        assert len(sub.broker.nacked) == 1
-        assert len(sub.broker.acked) == 0
+        assert _read_ids(sub) == [identifier]
 
     @pytest.mark.asyncio
     async def test_backfill_dlq_publish_failure_holds_on_backfill_stream(
-        self, test_domain
+        self, test_domain, broker, monkeypatch
     ):
         """A failed DLQ publish for a backfill-lane message NACKs on the backfill
         stream (not the primary), holding it for redelivery."""
         sub = _make_subscription(
             test_domain, AlwaysFailingHandler, max_retries=1, lanes_enabled=True
         )
-        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
+        identifier = _deliver(sub, {"data": "x"}, stream=sub.backfill_stream)
+        _publish_fails(broker, monkeypatch)
 
         await sub.handle_failed_message(
-            "msg1", {"data": "x"}, stream=sub.backfill_stream
+            identifier, {"data": "x"}, stream=sub.backfill_stream
         )
 
-        assert len(sub.broker.acked) == 0
-        assert sub.broker.nacked == [(sub.backfill_stream, "msg1", sub.consumer_group)]
-        assert "msg1" in sub.retry_counts
+        assert _read_ids(sub, sub.backfill_stream) == [identifier]
+        assert identifier in sub.retry_counts
 
     @pytest.mark.asyncio
-    async def test_nack_failure_after_dlq_failure_is_logged(self, test_domain, caplog):
+    async def test_nack_failure_after_dlq_failure_is_logged(
+        self, test_domain, broker, monkeypatch, caplog
+    ):
         """If the hold NACK itself fails after a failed DLQ publish, it is logged
         and the message is still not ACKed."""
         sub = _make_subscription(test_domain, AlwaysFailingHandler, max_retries=1)
-        sub.broker.publish = MagicMock(side_effect=Exception("Broker down"))
-        sub.broker.nack = MagicMock(return_value=False)  # NACK also fails
+        identifier = _deliver(sub, {"data": "x"})
+        _publish_fails(broker, monkeypatch)
+        monkeypatch.setattr(broker, "nack", MagicMock(return_value=False))
 
         with caplog.at_level(logging.WARNING):
-            await sub.handle_failed_message("msg1", {"data": "x"})
+            await sub.handle_failed_message(identifier, {"data": "x"})
 
-        assert len(sub.broker.acked) == 0
-        assert "Failed to NACK message msg1 after a failed DLQ publish" in caplog.text
+        assert _in_flight(sub, "test_stream") == 1
+        assert (
+            f"Failed to NACK message {identifier} after a failed DLQ publish"
+            in caplog.text
+        )
 
 
 # ── Tests: Configuration ─────────────────────────────────────────────────
@@ -536,15 +492,18 @@ class TestConfiguration:
     """Configuration defaults and overrides."""
 
     def test_default_config_values(self, test_domain):
-        """StreamSubscription picks up defaults from config."""
+        """StreamSubscription picks up defaults from config, and the DLQ and
+        backfill stream names follow convention."""
         engine = Engine(test_domain, test_mode=True)
         sub = StreamSubscription(
-            engine=engine, stream_category="test", handler=SucceedingHandler
+            engine=engine, stream_category="orders", handler=SucceedingHandler
         )
 
         assert sub.max_retries == 3
         assert sub.retry_delay_seconds == 1.0
         assert sub.enable_dlq is True
+        assert sub.dlq_stream == "orders:dlq"
+        assert sub.backfill_dlq_stream == "orders:backfill:dlq"
 
     def test_constructor_overrides(self, test_domain):
         """Explicit constructor args override config."""
@@ -561,13 +520,3 @@ class TestConfiguration:
         assert sub.max_retries == 10
         assert sub.retry_delay_seconds == 5.0
         assert sub.enable_dlq is False
-
-    def test_dlq_and_backfill_stream_naming(self, test_domain):
-        """DLQ and backfill stream names follow convention."""
-        engine = Engine(test_domain, test_mode=True)
-        sub = StreamSubscription(
-            engine=engine, stream_category="orders", handler=SucceedingHandler
-        )
-
-        assert sub.dlq_stream == "orders:dlq"
-        assert sub.backfill_dlq_stream == "orders:backfill:dlq"
