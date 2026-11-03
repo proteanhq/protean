@@ -120,7 +120,7 @@
         },
         "profile": {
           "oneOf": [
-            { "type": "string", "enum": ["production", "fast", "batch", "debug", "projection"] },
+            { "type": "string" },
             { "type": "null" }
           ]
         },

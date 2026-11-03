@@ -123,8 +123,8 @@ class BaseCommandHandler(Element, HandlerMixin, OptionsMixin):
         # category, broker capability). ``None`` disables partitioning.
         ("sequential_by", None),
         # Subscription configuration options
-        ("subscription_type", None),  # SubscriptionType enum or None for default
-        ("subscription_profile", None),  # SubscriptionProfile enum or None
+        ("subscription_type", None),  # SubscriptionType or its name; None = default
+        ("subscription_profile", None),  # SubscriptionProfile or a profile name
         ("subscription_config", {}),  # Dict of custom config overrides
         ("suppress_checks", ()),
     ]
