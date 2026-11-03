@@ -535,6 +535,36 @@ class TestMethodScope:
 
         assert scope.resolve(self._use(method, "Closed")) is None
 
+    def test_a_bare_annotation_of_the_name_keeps_the_import(self, tmp_path):
+        """``Closed: type`` with no value binds nothing at runtime, so a later
+        use still gets the import's FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme.events import Closed
+                Closed: type
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) == "acme.events.Closed"
+
+    def test_an_annotated_assignment_of_the_name_leaves_it_unresolved(self, tmp_path):
+        """``Closed: type = ...`` rebinds the name, so the later use has no
+        single FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme.events import Closed
+                Closed: type = object
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
     def test_a_parameter_of_the_same_name_does_not_block_the_import(self, tmp_path):
         """A parameter is bound before the body runs, so the import after it
         rebinds the name and a later use gets the import's FQN."""
