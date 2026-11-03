@@ -79,13 +79,13 @@ statements written inside one method body, and the returned
   the name as local for the whole function, so the module binding would be
   wrong there.
 - A method-local binding shadows a module-level binding of the same name.
-- Two method-local imports that give a name different FQNs leave it ``None``.
+- Method-local imports that give a name different FQNs leave it ``None``.
   So does a relative import that escapes the top-level package, a ``global`` or
   ``nonlocal`` declaration of the name, and any other binding of the name in the
   body (an assignment, a ``for``/``with``/``except`` target, a walrus, a ``del``,
   a nested ``def`` or ``class``, a ``nonlocal`` rebinding from a nested ``def``,
-  a walrus in a nested scope's decorators, defaults or bases). Two imports with
-  the same FQN still bind it.
+  a walrus in a nested scope's decorators, defaults or bases). Imports that all
+  give it the same FQN still bind it.
 - A parameter of the same name leaves it ``None`` too, unless the first import
   of the name is a statement of the body itself, outside any ``if``, ``try``,
   loop or ``with``. That import always runs, so it replaces the argument for
