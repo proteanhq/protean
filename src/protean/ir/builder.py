@@ -1106,8 +1106,9 @@ class IRBuilder:
 
         Handler Meta takes either the enum member or its name as a string, so
         both spellings record the same IR value. An unknown string is recorded
-        as declared, lower-cased. An empty string counts as unset, as it does
-        at runtime. Any other value is recorded as ``str(value).lower()``.
+        as declared, lower-cased. An empty string is recorded as ``None``, the
+        same as an unset option. Any other value is recorded as
+        ``str(value).lower()``.
         """
         name = value.value if isinstance(value, Enum) else value
         if name is None:
