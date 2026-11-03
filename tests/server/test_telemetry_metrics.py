@@ -902,7 +902,8 @@ class TestGaugeCallbacks:
         assert _points_in(data, "protean.outbox.pending_count") == []
 
     def test_subscription_gauges_report_statuses(self, test_domain, telemetry):
-        """Subscription gauges report every status, and skip a None lag."""
+        """The four subscription gauges are registered, and the lag gauge has no
+        point for a subscription whose lag is None."""
         _, metric_reader = telemetry
         _enqueue_open_account(test_domain)
 

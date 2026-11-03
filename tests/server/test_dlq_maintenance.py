@@ -204,6 +204,12 @@ class TestDLQMaintenanceTaskInit:
 
     @pytest.mark.no_test_domain
     def test_per_subscription_overrides(self):
+        """The task indexes a subscription's DLQ overrides by its DLQ stream.
+
+        No engine subscription carries a ``config`` today, so a real engine
+        never applies these overrides. This test feeds them through a stand-in
+        and checks the indexing only.
+        """
         domain = _setup_domain()
         with domain.domain_context():
             domain.init(traverse=False)
@@ -282,8 +288,8 @@ class TestDLQMaintenanceCycle:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "depth, threshold, alerts",
-        [(10, 5, True), (5, 100, False)],
-        ids=["above_threshold", "below_threshold"],
+        [(10, 5, True), (5, 5, True), (4, 5, False)],
+        ids=["above_threshold", "at_threshold", "below_threshold"],
     )
     async def test_alert_fires_only_when_threshold_reached(
         self, caplog, depth, threshold, alerts
@@ -392,8 +398,8 @@ class TestDLQMaintenanceCollectStreams:
         """Two handlers on one stream category share one DLQ stream, listed once."""
         domain = _setup_domain()
         with domain.domain_context():
-            domain.register(DLQMaintOtherHandler, part_of=DLQMaintAggregate)
             _register_handler(domain)
+            domain.register(DLQMaintOtherHandler, part_of=DLQMaintAggregate)
 
             assert len(discover_subscriptions(domain)) == 2
 

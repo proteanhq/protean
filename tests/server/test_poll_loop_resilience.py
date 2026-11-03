@@ -440,7 +440,9 @@ class TestEventStoreSubscriptionPollResilience:
         assert error_sleeps == [1, 2, 4, 1]
 
     @pytest.mark.asyncio
-    async def test_recovered_position_counts_as_work(self, domain_setup):
+    async def test_recovery_retries_a_failed_position_in_the_same_poll_iteration(
+        self, domain_setup
+    ):
         """A handler failure in the tick records a failed position. The recovery
         pass that runs after the same tick retries it with success."""
         domain_setup.register(FailOnceEventHandler, part_of=User)

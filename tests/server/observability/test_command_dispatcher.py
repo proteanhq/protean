@@ -162,9 +162,10 @@ class TestCommandDispatcherRouting:
         engine = Engine(domain=test_domain, test_mode=True)
         dispatcher = engine._subscriptions["commands:test::user:command"].handler
 
-        assert dispatcher.resolve_handler(command) is UserCommandHandler
         dispatcher._handle(command)
-        assert [c.user_id for c in register_calls] == [identifier]
+        assert len(register_calls) == 1
+        assert register_calls[0] is command
+        assert dispatcher.resolve_handler(command) is UserCommandHandler
 
     def test_unknown_command_returns_none_with_warning(self, test_domain, caplog):
         """_handle returns None for unregistered command type."""
@@ -278,7 +279,8 @@ class TestCommandDispatcherCaching:
         # _handle should use cached item
         dispatcher._handle(message)
         assert dispatcher._last_resolved_item is None  # Cleared after use
-        assert register_calls == [cached]
+        assert len(register_calls) == 1
+        assert register_calls[0] is cached
 
 
 class TestEngineGroupsCommandsByStream:

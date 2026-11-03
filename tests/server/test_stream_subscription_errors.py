@@ -115,6 +115,11 @@ def _dlq(sub, dlq_stream: str) -> list[dict]:
     return [payload for _, payload in sub.broker.read(dlq_stream, "inspector", 10)]
 
 
+def _streams(sub) -> set[str]:
+    """Name every stream on the broker that has received a message."""
+    return set(sub.broker.health_stats()["details"]["streams"]["names"])
+
+
 def _in_flight(sub, stream: str) -> int:
     groups = sub.broker.info()["consumer_groups"]
     return groups[sub.consumer_group]["in_flight_messages"][stream]
@@ -201,6 +206,8 @@ class TestRetryToDLQRoundTrip:
         assert dlq_msg["_dlq_metadata"]["consumer"] == sub.consumer_name
         assert _read_ids(sub) == []
         assert _in_flight(sub, "test_stream") == 0
+        # Nothing was published to any stream other than these two.
+        assert _streams(sub) == {"test_stream", "test_stream:dlq"}
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("lanes_enabled", [False, True])
@@ -371,7 +378,9 @@ class TestDLQDisabled:
         assert await sub.move_to_dlq(identifier, {"data": "x"}) is True
         await sub.handle_failed_message(identifier, {"data": "x"})
 
-        # No DLQ publish
+        # No DLQ publish, and no publish to any other stream. Checked before
+        # reading the DLQ, because a read registers the stream it reads.
+        assert _streams(sub) == {"test_stream"}
         assert _dlq(sub, "test_stream:dlq") == []
         # But message was ACKed
         assert _read_ids(sub) == []

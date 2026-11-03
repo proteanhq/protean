@@ -1488,9 +1488,9 @@ class TestFailureRecordOrdering:
 class _StubIdempotencyStore:
     """Minimal stand-in for the Redis-backed idempotency store.
 
-    The real store's ``is_active`` is only true with a live Redis connection, so a
-    stub is the only way to exercise the success-side ``record_success`` branch in
-    the core (no-Redis) suite.
+    The real store's ``is_active`` is only true with a live Redis connection, so the
+    core (no-Redis) suite uses this stub to check that a handler that succeeds
+    records its idempotency key.
     """
 
     def __init__(self) -> None:

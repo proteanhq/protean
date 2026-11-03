@@ -655,7 +655,8 @@ class TestTransientRetryMetric:
 
 
 class TestRecordHandlerRetry:
-    """Direct tests for the metric-recording helper's guard branches."""
+    """The metric-recording helper records nothing without a domain, labels a
+    handler with no element type, and never lets a metric failure propagate."""
 
     class _Dummy:
         element_type = None

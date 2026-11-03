@@ -4,6 +4,8 @@ This module contains comprehensive tests for the SubscriptionConfig,
 SubscriptionType, SubscriptionProfile enums, and profile loading functionality.
 """
 
+import dataclasses
+
 import pytest
 
 from protean.exceptions import ConfigurationError
@@ -450,17 +452,7 @@ class TestSubscriptionConfigToDict:
         config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
         result = config.to_dict()
 
-        for key in (
-            "messages_per_tick",
-            "tick_interval",
-            "blocking_timeout_ms",
-            "max_retries",
-            "retry_delay_seconds",
-            "enable_dlq",
-            "position_update_interval",
-            "origin_stream",
-        ):
-            assert key in result
+        assert set(result) == {f.name for f in dataclasses.fields(SubscriptionConfig)}
         assert result["subscription_type"] == "stream"
 
     def test_to_dict_roundtrip(self):

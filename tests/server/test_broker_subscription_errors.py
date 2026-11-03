@@ -206,6 +206,7 @@ class TestDLQRouting:
         assert dlq_msg["payload"] == "important"
         assert dlq_msg["_dlq_metadata"]["original_id"] == identifier
         assert dlq_msg["_dlq_metadata"]["retry_count"] == 3
+        assert _in_flight(broker, sub) == 0
         assert await _deliver(sub) == ([], 0)
 
     async def test_dlq_message_metadata(self, test_domain, broker):
@@ -258,6 +259,7 @@ class TestDLQDisabled:
         assert _dlq_payloads(broker, "fail_stream") == []
         assert sub.retry_counts == {}
         # Still ACKed to clear it from pending: nothing is redelivered.
+        assert _in_flight(broker, sub) == 0
         assert await _deliver(sub) == ([], 0)
 
 

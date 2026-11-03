@@ -880,8 +880,7 @@ class TestConfigResolverRetention:
         that names no profile resolves with retention_maxlen None.
 
         The custom `myret` profile sets 42, which differs from every built-in
-        default, so seeing 42 proves the value was neither dropped by the
-        resolver filter nor shadowed by a default.
+        default, so a resolved 42 can only come from that profile.
         """
         test_domain.config["server"]["profiles"]["myret"] = {
             "inherits": "production",

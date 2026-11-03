@@ -6,8 +6,8 @@ Three layers, matching the OCC harness (#1382):
   default, activated by a process-wide :func:`~protean.utils.recovery_trace.capture`;
 - the instrumentation on the real ``EventStoreSubscription`` recovery path, which
   must emit the spec's transitions when a capture is active and nothing otherwise;
-- the ``specs/recovery_trace.py`` log-to-TLA+ converter and its reject branches,
-  which ``check.sh`` only exercises on the happy path so its guards would rot here.
+- the ``specs/recovery_trace.py`` log-to-TLA+ converter, which must reject a log
+  it cannot convert. ``check.sh`` runs the converter only on logs it accepts.
 
 The three ``check.sh`` outcomes (a real trace accepted, the divergence fixture
 rejected on conformance, the no-crash fixture rejected on coverage) are the machine
@@ -507,8 +507,7 @@ def test_non_recover_delivered_defaults_to_false(tmp_path):
 @pytest.mark.no_test_domain
 def test_witnesses_redelivery_needs_a_post_crash_reread_of_a_recorded_position():
     """The recorder's anti-vacuity guard: it only reports a witness when a recorded
-    position fails again *after* a crash. check.sh drives this on the happy path only,
-    so its branches would rot untested without these."""
+    position fails again *after* a crash."""
     witnesses = recovery_trace_script._witnesses_redelivery
 
     # record → crash → fail on the same position: the redelivery window.

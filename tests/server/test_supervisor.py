@@ -24,6 +24,7 @@ import pytest
 from protean._deprecation import RemovedInProtean020Warning
 from protean.exceptions import ConfigurationError
 from protean.integrations.logging import ProteanRedactionFilter
+from protean.server.engine import Engine
 from protean.server.reloader import Reloader
 from protean.server.supervisor import (
     _DRAIN_MARGIN_SECONDS,
@@ -88,6 +89,27 @@ def domain_module(tmp_path, monkeypatch):
 
     for name in names:
         sys.modules.pop(name, None)
+
+
+@pytest.fixture
+def engine_calls(monkeypatch):
+    """Record the arguments the worker builds each Engine with, and each
+    ``run()`` call, while the real Engine does the work."""
+    calls: list[tuple[str, object]] = []
+    real_init = Engine.__init__
+    real_run = Engine.run
+
+    def init(self, domain, test_mode=False, **kwargs):
+        calls.append(("init", {"test_mode": test_mode, **kwargs}))
+        real_init(self, domain, test_mode=test_mode, **kwargs)
+
+    def run(self):
+        calls.append(("run", None))
+        return real_run(self)
+
+    monkeypatch.setattr(Engine, "__init__", init)
+    monkeypatch.setattr(Engine, "run", run)
+    return calls
 
 
 def _domain_source(config: dict | None = None) -> str:
@@ -277,7 +299,7 @@ class TestSupervisorTerminationBudget:
             "just-under-floor",
             "just-over-floor",
             "long-window-not-capped",
-            "missing-window",
+            "window-not-set-uses-the-default",
             "string",
             "boolean",
             "zero",
@@ -583,9 +605,10 @@ class TestSupervisorMonitor:
 
         assert supervisor._shutting_down is True
         assert supervisor.workers == []
-        assert "All workers have been shut down" in [
-            r.getMessage() for r in caplog.records
-        ]
+        # Each shutdown ends with this record, so one record means one shutdown.
+        assert [r.getMessage() for r in caplog.records].count(
+            "All workers have been shut down"
+        ) == 1
 
 
 class TestSupervisorMonitorEdgeCases:
@@ -730,9 +753,7 @@ class TestSupervisorEventStoreGuard:
         self, domain_path, num_workers, acknowledge
     ):
         """The guard lets the start proceed when the risk is acknowledged, when
-        every handler resolves to a stream subscription, and for one worker.
-        The stream case guards against a regression that wrongly blocks
-        legitimate stream multi-worker deployments."""
+        every handler resolves to a stream subscription, and for one worker."""
         change_working_directory_to("test31")
 
         supervisor = Supervisor(
@@ -838,13 +859,15 @@ def _redaction_keys() -> list[set[str]]:
 
 
 class TestWorkerEntry:
-    def test_worker_entry_success(self, domain_module):
+    def test_worker_entry_success(self, domain_module, engine_calls):
         """_worker_entry loads and initializes the domain, applies its logging
         table, and runs the engine to a clean exit."""
         path = domain_module(_domain_source({"logging": {"redact": ["secret"]}}))
 
         with pytest.raises(SystemExit, match="0"):
             _worker_entry(path, test_mode=True, worker_id=0)
+
+        assert engine_calls == [("init", {"test_mode": True}), ("run", None)]
 
         keys = _redaction_keys()
         assert len(keys) == 1
@@ -1018,7 +1041,7 @@ class TestWorkerEntryLoggingFlags:
         assert isinstance(handlers[0], logging.handlers.QueueHandler)
         assert handlers[0].queue is log_queue
 
-    def test_engine_is_built_without_debug(self, domain_module):
+    def test_engine_is_built_without_debug(self, domain_module, engine_calls):
         """``log_level="DEBUG"`` sets the logging level only. The engine is not
         built in debug mode, so its own logger keeps its level unset."""
         engine_logger = logging.getLogger("protean.server.engine")
@@ -1028,6 +1051,7 @@ class TestWorkerEntryLoggingFlags:
         with pytest.raises(SystemExit, match="0"):
             _worker_entry(path, True, 0, log_level="DEBUG")
 
+        assert engine_calls == [("init", {"test_mode": True}), ("run", None)]
         assert engine_logger.level == logging.NOTSET
 
     def test_log_config_does_not_silence_the_worker_failure_message(
