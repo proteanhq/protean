@@ -1846,10 +1846,11 @@ class SADAO(BaseDAO):
         rest of the transaction carries on, and this method returns ``None``.
 
         After a rejected write, this method looks for the row that holds the
-        key. Under READ COMMITTED, the default isolation level of PostgreSQL,
-        MySQL and SQL Server, that read sees a row another transaction has
-        just committed. Under REPEATABLE READ or SERIALIZABLE it may not, and
-        the ``IntegrityError`` is raised.
+        key. Under READ COMMITTED that read sees a row another transaction has
+        just committed. PostgreSQL and SQL Server run at READ COMMITTED by
+        default, and the MySQL provider sets it. Under REPEATABLE READ or
+        SERIALIZABLE the read may not see the row, and the ``IntegrityError``
+        is raised.
 
         Raises:
             IntegrityError: The database rejected the write, and this
