@@ -13,6 +13,7 @@ import asyncio
 from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
 from typer.testing import CliRunner
 
 from protean import apply
@@ -613,6 +614,33 @@ class TestEventstoreDlqInspect:
 
         assert result.exit_code == EXIT_USAGE
         assert "No exhausted position 999 found" in result.output
+
+    @pytest.mark.parametrize(
+        "later", [FailedPositionStatus.RESOLVED, FailedPositionStatus.PURGED]
+    )
+    def test_inspect_refuses_a_position_cleared_after_exhaustion(
+        self, test_domain, later
+    ):
+        _register(test_domain)
+        _drive_to_exhaustion(test_domain)
+        failed_stream = collect_failed_streams(test_domain)[0][1]
+        test_domain.event_store.store._write(
+            failed_stream,
+            later.value,
+            {"position": 1, "message_id": str(uuid4()), "retry_count": 2},
+            metadata={
+                "headers": {"type": later.value, "stream": failed_stream},
+                "domain": {"kind": MessageType.READ_POSITION.value},
+            },
+        )
+
+        with patch("protean.cli.eventstore.load_domain", return_value=test_domain):
+            result = runner.invoke(
+                app, ["eventstore", "dlq", "inspect", "1", "--domain", "x.py"]
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "No exhausted position 1 found" in result.output
 
     def test_inspect_unknown_subscription_is_usage_error(self, test_domain):
         _register(test_domain)

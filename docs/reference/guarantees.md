@@ -174,7 +174,7 @@ store.
 | **Ordering** | Breadth-first chain order ([ADR-0016](../adr/0016-breadth-first-synchronous-event-dispatch.md)) | Per category by `global_position`; `$all` by `global_position` |
 | **Consistency** | Read models updated before `domain.process()` returns | Eventual |
 | **Retry** | None | Up to `max_retries` on a recovery pass |
-| **Terminal state** | The error reaches the caller | `Exhausted`: position dropped, no dead-letter queue |
+| **Terminal state** | The error reaches the caller | `Exhausted`: position dropped, listed by `protean eventstore dlq` |
 
 The defaults below (`position_update_interval` 10, `max_retries` 3,
 `recovery_interval_seconds` 30, `gap_timeout_seconds` 5) belong to the base
@@ -199,8 +199,11 @@ event-store subscription; the outbox only publishes to external brokers.
 A failed message is retried up to `max_retries` times, every
 `recovery_interval_seconds`. After the last retry its position is marked
 `Exhausted`, dropped from tracking, and a `handler.failed` event is emitted.
-Event-store subscriptions have no dead-letter queue. Broker and stream
-subscriptions do; see [Dead-letter queues](#dead-letter-queues).
+The `Exhausted` record is written to the subscription's `failed-*` stream, and
+the position stays exhausted until it is replayed or purged. [`protean eventstore dlq`](cli/data/eventstore-dlq.md)
+lists, inspects, replays and purges these positions. The subscription status
+counts them as `dlq_depth`. Broker and stream subscriptions use dead-letter
+queue streams instead; see [Dead-letter queues](#dead-letter-queues).
 
 ### Recovery of a failed message is crash-safe
 

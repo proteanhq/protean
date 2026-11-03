@@ -57,7 +57,7 @@ from protean.cli.result import (
     route_logs_to_stderr,
 )
 from protean.exceptions import ConfigurationError
-from protean.utils.dlq import collect_failed_streams
+from protean.utils.dlq import collect_failed_streams, exhausted_records
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -180,62 +180,6 @@ def _select_failed_streams(
     return pairs
 
 
-def _exhausted_positions(store: BaseEventStore, failed_stream: str) -> list[int]:
-    """Return the positions whose latest record in ``failed_stream`` is Exhausted.
-
-    Reads the whole stream with ``read_all`` (never a single capped ``read``,
-    which would silently truncate a large stream) and folds last-status-wins per
-    position, so a position that was later resolved or re-failed is not reported
-    as exhausted.
-    """
-    from protean.server.subscription.event_store_subscription import (  # noqa: PLC0415
-        FailedPositionStatus,
-    )
-
-    latest_status: dict[int, str] = {}
-    for message in store.read_all(failed_stream):
-        position = message.data.get("position")
-        headers = message.metadata.headers if message.metadata else None
-        status = headers.type if headers else None
-        if position is None or status is None:
-            continue
-        latest_status[position] = status
-
-    return [
-        pos
-        for pos, status in latest_status.items()
-        if status == FailedPositionStatus.EXHAUSTED.value
-    ]
-
-
-def _find_exhausted_record(
-    store: BaseEventStore,
-    pairs: list[tuple[SubscriptionInfo, str]],
-    position: int,
-) -> Message | None:
-    """Find the ``Exhausted`` record for ``position`` across the failed streams.
-
-    Returns the record message (from which ``inspect`` reads ``stream_name`` and
-    ``stream_position``), or ``None`` if no failed stream holds an ``Exhausted``
-    record at that position.
-    """
-    from protean.server.subscription.event_store_subscription import (  # noqa: PLC0415
-        FailedPositionStatus,
-    )
-
-    found: Message | None = None
-    for _info, failed_stream in pairs:
-        for message in store.read_all(failed_stream):
-            if message.data.get("position") != position:
-                continue
-            headers = message.metadata.headers if message.metadata else None
-            status = headers.type if headers else None
-            if status == FailedPositionStatus.EXHAUSTED.value:
-                # Last write wins, defensively; exhaustion is written once.
-                found = message
-    return found
-
-
 def _read_failing_event(
     store: BaseEventStore, record: Message, position: int
 ) -> Message | None:
@@ -288,20 +232,15 @@ def _exhausted_owners(
     ``replay`` and ``purge`` act on a single handler's copy, so the caller uses
     this to detect that ambiguity.
 
-    Folds last-status-wins (via ``_exhausted_positions``) before reading the
-    record, so a position already resolved or purged is not returned: acting on
-    it again would re-run a handler or re-mark a position the operator already
-    cleared.
+    Folds last-status-wins (via ``exhausted_records``), so a position already
+    resolved or purged is not returned: acting on it again would re-run a
+    handler or re-mark a position the operator already cleared.
     """
     owners: list[tuple[SubscriptionInfo, str, Message]] = []
     for info, failed_stream in pairs:
-        if position not in _exhausted_positions(store, failed_stream):
-            continue
-        # The position's latest status is Exhausted (it is in
-        # ``_exhausted_positions``), so its Exhausted record exists.
-        record = _find_exhausted_record(store, [(info, failed_stream)], position)
-        assert record is not None
-        owners.append((info, failed_stream, record))
+        record = exhausted_records(store, failed_stream).get(position)
+        if record is not None:
+            owners.append((info, failed_stream, record))
     return owners
 
 
@@ -368,7 +307,7 @@ def _still_exhausted_or_abort(
     rather than closing it; closing it needs a conditional append the failed
     streams do not have.
     """
-    if position not in _exhausted_positions(store, failed_stream):
+    if position not in exhausted_records(store, failed_stream):
         emit_usage_error(
             as_json=False,
             message=(
@@ -532,7 +471,7 @@ def list_dlq(
 
         subscriptions: list[dict[str, Any]] = []
         for info, failed_stream in pairs:
-            exhausted = sorted(_exhausted_positions(store, failed_stream))
+            exhausted = sorted(exhausted_records(store, failed_stream))
             if not exhausted:
                 continue
             subscriptions.append(
@@ -615,12 +554,15 @@ def inspect(
                 message=f"No event-store subscription found for stream category '{subscription}'.",
             )
 
-        record = _find_exhausted_record(store, pairs, position)
-        if record is None:
+        # Every owner's record names the same global position, so the first
+        # one re-reads the same event.
+        owners = _exhausted_owners(store, pairs, position)
+        if not owners:
             emit_usage_error(
                 as_json=output_json,
                 message=f"No exhausted position {position} found.",
             )
+        record = owners[0][2]
 
         event = _read_failing_event(store, record, position)
         if event is None:

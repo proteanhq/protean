@@ -14,6 +14,8 @@ from protean.utils import DomainObjects, fqn
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.port.event_store import BaseEventStore
+    from protean.utils.eventing import Message
 
 
 @dataclass
@@ -79,6 +81,36 @@ def failed_positions_stream(handler_fqn: str, stream_category: str) -> str:
     call this so the name cannot drift between the writer and the reader.
     """
     return f"failed-{handler_fqn}-{stream_category}"
+
+
+def exhausted_records(store: BaseEventStore, failed_stream: str) -> dict[int, Message]:
+    """Return each position whose latest record in ``failed_stream`` is Exhausted.
+
+    Reads the whole stream with ``read_all`` and folds last-status-wins per
+    position, so a position later resolved, purged or re-failed is left out.
+    Records without a ``position`` or a header type are skipped. The result maps
+    each exhausted global position to its ``Exhausted`` record; a missing or
+    empty stream gives an empty dict.
+    """
+    # Function-local: event_store_subscription imports this module at load time.
+    from protean.server.subscription.event_store_subscription import (  # noqa: PLC0415
+        FailedPositionStatus,
+    )
+
+    latest: dict[int, tuple[str, Message]] = {}
+    for message in store.read_all(failed_stream):
+        position = message.data.get("position")
+        headers = message.metadata.headers if message.metadata else None
+        status = headers.type if headers else None
+        if position is None or status is None:
+            continue
+        latest[position] = (status, message)
+
+    return {
+        position: message
+        for position, (status, message) in latest.items()
+        if status == FailedPositionStatus.EXHAUSTED.value
+    }
 
 
 def recovery_checkpoint_stream(subscriber_name: str, stream_category: str) -> str:
