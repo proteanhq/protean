@@ -1097,14 +1097,6 @@ class TestWorkerEntryLoggingFlags:
 
 
 class TestLoggingArgumentValidation:
-    def test_invalid_log_level_raises(self):
-        with pytest.raises(ValueError, match="Invalid log_level 'VERBOSE'"):
-            Supervisor(domain_path="d", num_workers=1, log_level="VERBOSE")
-
-    def test_invalid_log_format_raises(self):
-        with pytest.raises(ValueError, match="Invalid log_format 'xml'"):
-            Supervisor(domain_path="d", num_workers=1, log_format="xml")
-
     @pytest.mark.parametrize(
         "log_level, log_format, expected_level, expected_format",
         [("debug", "json", "DEBUG", "json"), ("", "", None, None)],

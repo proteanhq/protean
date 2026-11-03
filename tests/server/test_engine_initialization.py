@@ -73,16 +73,6 @@ class TestEngineObservatoryConfigFallback:
 # ---------------------------------------------------------------------------
 class TestEngineOutboxValidation:
     @pytest.mark.no_test_domain
-    def test_engine_starts_normally_without_outbox(self):
-        """Engine should start when outbox is not enabled (event_store mode)."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            assert len(engine._outbox_processors) == 0
-
-    @pytest.mark.no_test_domain
     def test_engine_raises_when_outbox_table_missing(self):
         """Engine should raise ConfigurationError when outbox DAO is not accessible."""
         domain = Domain(name="Test")

@@ -4,8 +4,10 @@ Covers the error handling pipeline: retry counting, NACK on transient
 failure, DLQ routing after exhaustion, configuration overrides, and trace
 event emission.
 
-Each test publishes to the real inline broker, reads the batch back through
-the subscription and processes it with real subscribers. An ACKed message is
+Every test except the two configuration tests publishes to the real inline
+broker, reads the batch back through the subscription and processes it with
+real subscribers. The configuration tests only build a subscription and read
+its attributes. An ACKed message is
 gone from the stream; a NACKed one is delivered again on the next read.
 """
 

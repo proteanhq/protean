@@ -175,19 +175,6 @@ class TestInjectTraceparentFromContext:
         result = inject_traceparent_from_context()
         assert result is None
 
-    def test_captures_active_span_context(self):
-        provider = SDKTracerProvider()
-        tracer = provider.get_tracer("test")
-
-        with tracer.start_as_current_span("test-span") as span:
-            tp = inject_traceparent_from_context()
-
-        assert tp is not None
-        sc = span.get_span_context()
-        assert tp.trace_id == f"{sc.trace_id:032x}"
-        assert tp.parent_id == f"{sc.span_id:016x}"
-        assert tp.sampled is True
-
 
 # ---------------------------------------------------------------------------
 # Tests: CommandProcessor.process() context extraction

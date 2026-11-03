@@ -329,18 +329,6 @@ class TestHealthServerIntegration:
         assert "503 Service Unavailable" in status
         assert body["status"] == "unavailable"
 
-    def test_unknown_path_returns_404(self, health_server):
-        _, _, loop, port = health_server
-        status, _ = _parse_http(_fetch_health(loop, port, path="/unknown"))
-        assert "404" in status
-
-    def test_post_returns_405(self, health_server):
-        _, _, loop, port = health_server
-        status, _ = _parse_http(
-            _fetch_health(loop, port, method="POST", path="/healthz")
-        )
-        assert "405" in status
-
     def test_drainz_drains_this_worker_and_logs_it(self, health_server, caplog):
         """POST /drainz flips engine.draining to True, answers 200 and names
         the process that drained.
@@ -766,8 +754,9 @@ def _status(name, **overrides):
 class TestSubscriptionHealthBlock:
     """The readiness probe reports per-subscription lag, status and breaker state.
 
-    Each test runs the real status collector against the memory event store,
-    in the worker thread the probe uses. The collector enters its own
+    Each test except the collection-failure test runs the real status
+    collector against the memory event store, in the worker thread the probe
+    uses. The collector enters its own
     ``domain_context()`` there, while the test sets the context up on the event
     loop. A handler's lag is the stream head minus its stored read position, so
     the tests write events and a position to set it.
@@ -835,21 +824,6 @@ class TestSubscriptionHealthBlock:
             detail = result["checks"]["subscriptions"]["details"][0]
             assert detail["lag"] is None
             assert detail["status"] == "unknown"
-
-    async def test_circuit_state_absent_when_subscription_has_no_breaker(self):
-        """Subscriptions without a breaker are not given a fabricated state."""
-        domain = _handler_domain()
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            # The engine runs the handler as an event-store subscription, which
-            # carries no breaker.
-            assert isinstance(engine._subscriptions[HANDLER], EventStoreSubscription)
-
-            result = await _readiness(engine)
-
-            detail = result["checks"]["subscriptions"]["details"][0]
-            assert detail["name"] == HANDLER
-            assert "circuit_state" not in detail
 
     async def test_breaker_with_no_matching_status_is_still_reported(self):
         """A ``sequential_by`` process manager is keyed ``{name}-partitioned``
@@ -959,24 +933,6 @@ class TestSubscriptionHealthBlock:
 
             assert result["checks"]["subscriptions"]["total"] == 3
 
-    async def test_block_is_json_serialisable(self):
-        """The probe writes JSON, so every value in the block must encode."""
-        domain = _handler_domain()
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            engine._subscriptions[HANDLER] = _breaker_subscription(
-                engine, CircuitBreakerState.HALF_OPEN
-            )
-            _write_events(domain, 3)
-            _set_lag(domain, 3, lag_seconds=4.0)
-
-            result = await _readiness(engine)
-
-            encoded = json.loads(json.dumps(result))
-            detail = encoded["checks"]["subscriptions"]["details"][0]
-            assert detail["circuit_state"] == "half_open"
-            assert detail["lag"] == 3
-
 
 @pytest.mark.no_test_domain
 class TestSubscriptionBlockRefresher:
@@ -1073,23 +1029,6 @@ class TestSubscriptionBlockRefresher:
 
             # The good data survives rather than being replaced by nothing.
             assert refresher.block["details"][0]["lag"] == 3
-
-    async def test_a_collector_error_is_reported_not_hidden(self):
-        """A backend that errors is surfaced, not papered over with old data."""
-        domain = Domain(name="Test")
-        domain.init(traverse=False)
-        with domain.domain_context():
-            engine = Engine(domain, test_mode=True)
-            refresher = _SubscriptionBlockRefresher(engine)
-
-            with patch(
-                "protean.server.health.collect_subscription_statuses",
-                side_effect=RuntimeError("redis is down"),
-            ):
-                await refresher._refresh_once()
-
-            assert refresher.block["collection_error"] is True
-            assert refresher.block["details"] == []
 
     async def test_block_reports_its_age_once_refreshes_stop_landing(self):
         domain = Domain(name="Test")

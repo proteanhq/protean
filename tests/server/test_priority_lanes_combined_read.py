@@ -43,8 +43,8 @@ class ScriptedLanesBroker:
     These tests need replies the inline broker never gives. The inline broker
     returns a waiting primary message from the non-blocking primary read, so its
     combined read never holds primary entries; on Redis they appear when a
-    message lands on the primary stream between the two reads. A Redis reply
-    can also hold ``None`` for a stream.
+    message lands on the primary stream between the two reads. One test also
+    scripts a ``None`` entry for a stream, which the subscription skips.
     """
 
     def __init__(self, combined_reply=None, primary_reply=()):

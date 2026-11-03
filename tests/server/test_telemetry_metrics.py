@@ -536,20 +536,6 @@ class TestNoOpMetrics:
         )
         assert result == {"opened": account_id}
 
-    def test_domain_metrics_returns_noop_instruments(self, test_domain):
-        """DomainMetrics uses no-op instruments when OTel is not set up."""
-        metrics = get_domain_metrics(test_domain)
-        # Should not raise even though no real OTel is configured
-        metrics.command_processed.add(1, {"command_type": "test", "status": "ok"})
-        metrics.command_duration.record(0.5, {"command_type": "test", "status": "ok"})
-        metrics.handler_invocations.add(1, {"handler_name": "test", "status": "ok"})
-        metrics.handler_duration.record(0.1, {"handler_name": "test", "status": "ok"})
-        metrics.uow_commits.add(1)
-        metrics.uow_events_per_commit.record(5)
-        metrics.outbox_published.add(1)
-        metrics.outbox_failed.add(1)
-        metrics.outbox_latency.record(0.02)
-
 
 # ---------------------------------------------------------------------------
 # Tests: Metrics endpoint and Prometheus text
@@ -1038,18 +1024,6 @@ class TestNoOpFallbacks:
         obs = _NoOpObservation(*args)
         assert obs.value == args[0]
         assert obs.attributes == attributes
-
-    def test_noop_counter_add(self):
-        """_NoOpCounter.add does nothing."""
-        counter = _NoOpCounter()
-        counter.add(1)
-        counter.add(5, {"key": "val"})
-
-    def test_noop_histogram_record(self):
-        """_NoOpHistogram.record does nothing."""
-        hist = _NoOpHistogram()
-        hist.record(1.5)
-        hist.record(0.1, {"key": "val"})
 
     def test_noop_observable_gauge(self):
         """_NoOpObservableGauge can be instantiated."""

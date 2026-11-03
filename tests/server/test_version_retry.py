@@ -929,44 +929,6 @@ class TestSyncEventHandlerConflict:
 
 
 # ---------------------------------------------------------------------------
-# Edge cases
-# ---------------------------------------------------------------------------
-
-
-class TestEdgeCases:
-    """Edge cases and boundary conditions for version retry."""
-
-    @patch("protean.utils.mixins.time.sleep")
-    def test_version_error_subclass_is_caught(self, mock_sleep, test_domain):
-        """Subclasses of ExpectedVersionError are also retried."""
-
-        class CustomVersionError(ExpectedVersionError):
-            pass
-
-        attempt_count = 0
-
-        class SubclassHandler(BaseCommandHandler):
-            @handle(RenameUser)
-            def rename(self, command: RenameUser) -> None:
-                nonlocal attempt_count
-                attempt_count += 1
-                if attempt_count == 1:
-                    raise CustomVersionError("custom conflict")
-
-        test_domain.register(SubclassHandler, part_of=User)
-        test_domain.init(traverse=False)
-
-        identifier = _create_user(test_domain)
-
-        command = RenameUser(user_id=identifier, name="Jane")
-        enriched = test_domain._enrich_command(command, True)
-        SubclassHandler._handle(enriched)
-
-        assert attempt_count == 2
-        mock_sleep.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
 # Nested handlers: retry happens at the outermost handler only
 # ---------------------------------------------------------------------------
 

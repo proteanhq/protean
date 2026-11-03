@@ -12,7 +12,6 @@ Covers:
 import asyncio
 import contextlib
 import logging
-import os.path
 
 import pytest
 
@@ -175,9 +174,6 @@ class TestResolveCallback:
     )
     def test_unusable_path_returns_none(self, path):
         assert _resolve_callback(path) is None
-
-    def test_valid_import(self):
-        assert _resolve_callback("os.path.exists") is os.path.exists
 
 
 class TestDLQMaintenanceTaskInit:

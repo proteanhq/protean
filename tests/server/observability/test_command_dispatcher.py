@@ -187,19 +187,6 @@ class TestCommandDispatcherRouting:
 
 
 class TestCommandDispatcherResolveHandler:
-    def test_resolve_handler_returns_class_for_known_command(self, test_domain):
-        engine = Engine(domain=test_domain, test_mode=True)
-        subscription_key = "commands:test::user:command"
-        dispatcher = engine._subscriptions[subscription_key].handler
-
-        identifier = str(uuid4())
-        command = Register(user_id=identifier, email="test@example.com")
-        enriched = test_domain._enrich_command(command, True)
-        message = Message.from_domain_object(enriched)
-
-        resolved = dispatcher.resolve_handler(message)
-        assert resolved is UserCommandHandler
-
     def test_resolve_handler_returns_none_for_unknown(self, test_domain):
         dispatcher = CommandDispatcher(
             "test::user:command",

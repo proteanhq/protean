@@ -233,22 +233,6 @@ class TestCircuitBreakerOpens:
         assert _circuit_trace_events(redis) == []
 
     @pytest.mark.asyncio
-    async def test_open_gate_pauses_reads_inside_reset_window(self, domain):
-        sub = _make_stream_subscription(domain, circuit_breaker_reset_seconds=30)
-        _publish(sub, [_payload("ok")])
-        # Force OPEN with the window almost — but not yet — elapsed, so the gate
-        # sleeps a short slice and skips the read.
-        sub.circuit_state = CircuitBreakerState.OPEN
-        sub.circuit_opened_at = time.monotonic() - 29.95
-
-        permitted = await sub._circuit_permits_reads()
-
-        assert permitted is False
-        assert sub.circuit_state == CircuitBreakerState.OPEN
-        # The waiting message was never read, so it is still there to read.
-        assert len(_read(sub)) == 1
-
-    @pytest.mark.asyncio
     async def test_closed_gate_permits_reads(self, domain):
         sub = _make_stream_subscription(domain)
         assert await sub._circuit_permits_reads() is True

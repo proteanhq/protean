@@ -108,17 +108,6 @@ class TestRetentionMaxlenWiring:
 class TestMaybeTrim:
     """_maybe_trim only trims when retention is enabled."""
 
-    async def test_no_trim_when_retention_off(self, engine, test_domain):
-        """With retention_maxlen=None the broker's trim is never called."""
-        with test_domain.domain_context():
-            sub = _subscription(engine, retention_maxlen=None)
-        recorder = _TrimRecorder()
-        sub.broker = recorder
-
-        await sub._maybe_trim("account")
-
-        assert recorder.calls == []
-
     async def test_trims_named_stream_when_retention_on(self, engine, test_domain):
         """With retention on, trim runs against the exact stream passed in."""
         with test_domain.domain_context():

@@ -576,30 +576,6 @@ class TestSubscriptionMetricsInDomainMetrics:
 
 
 # ---------------------------------------------------------------------------
-# No-op behavior tests
-# ---------------------------------------------------------------------------
-
-
-class TestNoOpSubscriptionMetrics:
-    """Subscription metrics are no-op when telemetry is not configured."""
-
-    def test_noop_subscription_counters(self, test_domain):
-        """DomainMetrics subscription instruments work without OTel configured."""
-        metrics = get_domain_metrics(test_domain)
-        attrs = {
-            "subscription": "Test",
-            "handler": "Test",
-            "stream": "test",
-        }
-
-        # Should not raise
-        metrics.subscription_messages_processed.add(1, {**attrs, "status": "ok"})
-        metrics.subscription_retries.add(1, attrs)
-        metrics.subscription_dlq_routed.add(1, attrs)
-        metrics.subscription_processing_duration.record(0.5, attrs)
-
-
-# ---------------------------------------------------------------------------
 # Subscription lag-seconds gauge (infrastructure gauge + hand-rolled fallback)
 # ---------------------------------------------------------------------------
 

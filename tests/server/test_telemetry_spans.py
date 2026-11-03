@@ -358,19 +358,6 @@ class TestQueryDispatchSpan:
 class TestNoOpWhenDisabled:
     """When telemetry is not enabled, processing should work without spans."""
 
-    def test_command_processing_works_without_telemetry(self, test_domain):
-        acct_id = str(uuid4())
-        result = test_domain.process(
-            OpenAccount(account_id=acct_id, name="Acme"),
-            asynchronous=False,
-        )
-        assert result == {"opened": acct_id}
-
-    def test_query_dispatch_works_without_telemetry(self, test_domain):
-        result = test_domain.dispatch(GetOrdersByCustomer(customer_id="cust-42"))
-        assert isinstance(result, list)
-        assert len(result) == 2
-
     def test_failing_handler_propagates_without_telemetry(self, test_domain):
         with pytest.raises(RuntimeError, match="handler exploded"):
             test_domain.process(

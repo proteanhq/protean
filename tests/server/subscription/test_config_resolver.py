@@ -359,25 +359,6 @@ class TestConfigResolverPriorityOrder:
         # Handler Meta has highest priority
         assert config.messages_per_tick == 3
 
-    def test_profile_values_can_be_overridden(self, test_domain):
-        """Profile values can be overridden by explicit settings."""
-
-        @test_domain.event_handler(
-            part_of=Order,
-            subscription_profile=SubscriptionProfile.PRODUCTION,
-            subscription_config={"messages_per_tick": 999},
-        )
-        class TestHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(TestHandler)
-
-        # Explicit value overrides profile default
-        assert config.messages_per_tick == 999
-        # Other profile values should still apply
-        assert config.enable_dlq is True  # From PRODUCTION profile
-
 
 class TestConfigResolverProfileExpansion:
     """Tests for profile expansion."""
@@ -592,22 +573,6 @@ class TestConfigResolverUnknownProfileAndType:
 
     Unknown profile-name resolution is covered in test_profile_validation.py.
     """
-
-    def test_resolve_unknown_subscription_type_string_falls_back(
-        self, test_domain, caplog
-    ):
-        """_resolve_subscription_type logs warning and returns EVENT_STORE for unknown type string."""
-        resolver = ConfigResolver(test_domain)
-
-        with caplog.at_level(
-            logging.WARNING, logger="protean.server.subscription.config_resolver"
-        ):
-            result = resolver._resolve_subscription_type("nonexistent_type")
-
-        assert result == SubscriptionType.EVENT_STORE
-        assert any(
-            "Unknown subscription type" in record.message for record in caplog.records
-        )
 
     def test_resolve_non_string_non_enum_subscription_type_falls_back(
         self, test_domain

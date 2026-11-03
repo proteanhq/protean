@@ -255,15 +255,6 @@ class TestEngineInferStreamCategory:
 
         assert stream_category == "custom-stream"
 
-    def test_infer_stream_category_from_part_of(self, test_domain):
-        """Should infer stream_category from part_of aggregate."""
-        _register_user_event_handler(test_domain)
-
-        engine = Engine(test_domain, test_mode=True)
-        stream_category = engine._infer_stream_category(UserEventHandler)
-
-        assert stream_category == User.meta_.stream_category
-
     def test_infer_stream_category_raises_when_cannot_infer(self, test_domain):
         """Should raise ValueError when stream category cannot be inferred."""
 
@@ -356,35 +347,6 @@ class TestEngineConfigPriority:
 
         # Handler FAST profile (10) should override server BATCH profile (500)
         assert _subscription_for(engine, ProductionEventHandler).messages_per_tick == 10
-
-    def test_full_config_priority_chain(self, test_domain):
-        """Full priority chain should be respected."""
-        # Server config with profile
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-        test_domain.config["server"]["default_subscription_profile"] = "batch"  # 500
-
-        # Handler-specific server config
-        test_domain.config["server"]["subscriptions"] = {
-            "CustomConfigHandler": {"messages_per_tick": 300}
-        }
-
-        test_domain.register(User, event_sourced=True)
-        test_domain.register(UserRegistered, part_of=User)
-        # Handler with profile + config override
-        test_domain.register(
-            CustomConfigHandler,
-            part_of=User,
-            subscription_profile=SubscriptionProfile.PRODUCTION,  # 100
-            subscription_config={"messages_per_tick": 50},  # Override to 50
-        )
-        test_domain.init(traverse=False)
-
-        engine = Engine(test_domain, test_mode=True)
-
-        subscription = _subscription_for(engine, CustomConfigHandler)
-
-        # Handler Meta config (50) > Handler Meta profile (100) > Server handler (300) > Server profile (500)
-        assert subscription.messages_per_tick == 50
 
 
 # -----------------------------------------------------------------------

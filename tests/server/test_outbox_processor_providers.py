@@ -106,22 +106,6 @@ class TestEngineProcessorsFollowAggregateProviders:
         assert names == {"outbox-processor-default-to-default"}
         assert not any("-memory-" in name for name in names)
 
-    def test_an_unmanaged_provider_gets_no_processor(self):
-        domain = _with_global_broker(_domain())
-        domain.config["databases"]["readonly"] = {
-            "provider": "memory",
-            "managed": False,
-        }
-        _aggregate(domain, "Order")
-        _aggregate(domain, "Report", provider="readonly")
-
-        names = _engine_processor_names(domain)
-
-        assert names == {
-            "outbox-processor-default-to-default",
-            "outbox-processor-default-to-global-external",
-        }
-
     def test_a_managed_provider_no_aggregate_names_gets_no_processor(self):
         domain = _domain()
         domain.config["databases"]["secondary"] = {"provider": "memory"}

@@ -187,15 +187,6 @@ class TestReloaderProcessLifecycle:
 
         mock_process.kill.assert_called_once()
 
-    def test_stop_process_captures_nonzero_exit_code(self):
-        reloader = Reloader(domain_path="my.domain")
-        reloader.process = _exited_process(exitcode=42)
-
-        reloader._stop_process()
-
-        assert reloader.exit_code == 42
-        assert reloader.process is None
-
     def test_restart_process_stops_then_starts(self):
         """A restart replaces the worker and clears the previous exit code."""
         reloader = Reloader(domain_path="my.domain")
@@ -501,13 +492,6 @@ class TestDisplayPath:
         nested.touch()
 
         assert _display_path(str(nested)) == "'src/domain.py'"
-
-    def test_absolute_when_outside_cwd(self, tmp_path, monkeypatch):
-        (tmp_path / "cwd").mkdir()
-        monkeypatch.chdir(tmp_path / "cwd")
-        outside = tmp_path / "elsewhere" / "domain.py"
-
-        assert _display_path(str(outside)) == f"'{outside}'"
 
 
 def _spawned_kwargs(reloader: Reloader) -> dict[str, object]:

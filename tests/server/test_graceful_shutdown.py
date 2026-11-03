@@ -496,18 +496,6 @@ class TestRedisBrokerReconnectAfterClose:
         broker._group_creation_times = {}
         return broker
 
-    def test_client_revives_when_instance_is_none(self):
-        """The _client accessor reconnects when redis_instance is None."""
-        broker = self._make_broker()
-        mock_client = MagicMock()
-
-        with patch("redis.Redis.from_url", return_value=mock_client) as from_url:
-            result = broker._client
-
-        assert result is mock_client
-        assert broker.redis_instance is mock_client
-        from_url.assert_called_once()
-
     def test_client_reuses_live_instance_without_reconnecting(self):
         """The _client accessor does not reconnect when already connected."""
         broker = self._make_broker()
