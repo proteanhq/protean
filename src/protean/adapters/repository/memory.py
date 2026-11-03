@@ -108,6 +108,10 @@ class MemorySession:
     #                      | "delete"; last op per record wins
     #   ``version_checks`` ``(schema, identifier)`` -> expected ``_version`` the
     #                      live store must still hold for the commit to apply
+    #   ``if_absent``      ``(schema, identifier)`` -> a check that tells whether
+    #                      a live record holds the row's unique key; the commit
+    #                      drops a row ``DictDAO.save_if_absent`` wrote when a
+    #                      record that holds its key was committed first
     _db: dict[str, typing.Any]
 
     def __init__(
@@ -139,6 +143,7 @@ class MemorySession:
                 "ops": {},
                 "version_checks": {},
                 "created": set(),
+                "if_absent": {},
             }
 
     def write(
@@ -184,10 +189,42 @@ class MemorySession:
             return
         self._db["version_checks"].setdefault((schema, identifier), expected_version)
 
+    def write_if_absent(
+        self,
+        schema: str,
+        identifier: typing.Any,
+        key_taken: typing.Callable[[dict[typing.Any, typing.Any]], bool],
+    ) -> None:
+        """Make the commit drop the written record ``identifier`` when
+        ``key_taken`` finds a live record that holds its unique key.
+
+        ``key_taken`` receives the live records of ``schema`` that this
+        session neither wrote nor deleted.
+        """
+        self._db["if_absent"][(schema, identifier)] = key_taken
+
     def _clear_changeset(self) -> None:
         self._db["ops"].clear()
         self._db["version_checks"].clear()
         self._db["created"].clear()
+        self._db["if_absent"].clear()
+
+    def _drop_rows_whose_key_is_taken(self, live: dict[str, typing.Any]) -> None:
+        """Drop each row written by ``save_if_absent`` whose unique key a live
+        record now holds. Another session committed that record after this
+        session checked the key."""
+        ops = self._db["ops"]
+        for (schema, identifier), key_taken in self._db["if_absent"].items():
+            if ops.get((schema, identifier)) != "write":
+                continue
+            others = {
+                record_id: record
+                for record_id, record in live.get(schema, {}).items()
+                if (schema, record_id) not in ops
+            }
+            if key_taken(others):
+                del ops[(schema, identifier)]
+                self._db["data"][schema].pop(identifier, None)
 
     def commit(self) -> None:
         """Validate optimistic-concurrency versions and merge changes to the store.
@@ -223,6 +260,8 @@ class MemorySession:
                         f"(Schema: {schema}, Identifier: {identifier}, "
                         f"Version: {stored_version})"
                     )
+
+            self._drop_rows_whose_key_is_taken(live)
 
             # Set: merge this session's changes into the live store record by
             # record, so concurrent writes to other records are preserved.
@@ -614,6 +653,11 @@ class DictDAO(BaseDAO):
         the provider lock. The check reads both the committed store and this
         session's own writes, so it also sees a row that another session
         committed after this session started.
+
+        Inside a Unit of Work the row is only staged. When another session
+        commits a row with the same key before this one commits, the commit
+        drops this row and keeps the other. This method has already returned
+        the entity in that case.
         """
         conn = self._get_session()
         assert conn is not None
@@ -623,20 +667,28 @@ class DictDAO(BaseDAO):
         identifier = getattr(entity_obj, id_fld.field_name)
         model_obj = self.database_model_cls.from_entity(entity_obj)
 
+        def key_taken(records: dict[typing.Any, typing.Any]) -> bool:
+            return (
+                self._unique_index_collision(model_obj, records, identifier) is not None
+            )
+
         provider = cast(MemoryProvider, self.provider)
         with conn._db["lock"]:
-            # A committed row this session has deleted does not hold its key.
+            # This session's own copy holds the rows it wrote or deleted, so
+            # the committed view leaves those rows out.
             committed = {
                 record_id: record
                 for record_id, record in provider._databases.get(
                     self.schema_name, {}
                 ).items()
-                if conn._db["ops"].get((self.schema_name, record_id)) != "delete"
+                if (self.schema_name, record_id) not in conn._db["ops"]
             }
-            for records in (committed, conn._db["data"][self.schema_name]):
-                if self._unique_index_collision(model_obj, records, identifier):
-                    return None
-            return self.save(entity_obj, apply_hooks=apply_hooks)
+            if key_taken(committed) or key_taken(conn._db["data"][self.schema_name]):
+                return None
+            saved = self.save(entity_obj, apply_hooks=apply_hooks)
+            if not self._is_standalone:
+                conn.write_if_absent(self.schema_name, identifier, key_taken)
+            return saved
 
     def _create(self, model_obj: typing.Any) -> typing.Any:
         """Write a record to the dict repository"""

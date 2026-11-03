@@ -1086,9 +1086,10 @@ class BaseDAO(metaclass=ABCMeta):
         such index, this is :meth:`save`.
 
         This default checks for the key, then saves. Two writers that check at
-        the same moment can both save, so the store's own unique index decides
-        the race. An adapter can override it with a check that holds under
-        concurrency, such as a savepoint, a lock or a conditional insert.
+        the same moment can both pass the check. A store with a unique index on
+        the key then rejects the second write with its own error. A store with
+        no such index, such as Elasticsearch, keeps both rows. An adapter can
+        override this method so that a lost race also returns ``None``.
 
         Args:
             entity_obj: The entity to persist.
@@ -1120,7 +1121,8 @@ class BaseDAO(metaclass=ABCMeta):
         criteria = reduce(operator.or_, groups)
         id_f = id_field(self.entity_cls)
         assert id_f is not None and id_f.field_name is not None
-        return criteria & ~Q(**{id_f.field_name: getattr(entity_obj, id_f.field_name)})
+        id_attr = id_f.attribute_name or id_f.field_name
+        return criteria & ~Q(**{id_attr: getattr(entity_obj, id_f.field_name)})
 
     def _unique_key_indexes(self) -> list[Index]:
         """The entity's ``Index`` declarations with ``unique=True`` and no
@@ -1131,11 +1133,17 @@ class BaseDAO(metaclass=ABCMeta):
             if isinstance(index, Index) and index.unique and index.where is None
         ]
 
-    @staticmethod
-    def _key_values(entity_obj: Any, index: Index) -> dict[str, Any] | None:
-        """``entity_obj``'s values for ``index``'s fields, or ``None`` when
-        any of them is ``None``."""
-        values = {name: getattr(entity_obj, name, None) for name in index.fields}
+    def _key_values(self, entity_obj: Any, index: Index) -> dict[str, Any] | None:
+        """``entity_obj``'s values for ``index``'s fields, keyed by the name
+        each field is stored under, or ``None`` when any value is ``None``."""
+        entity_fields = fields(self.entity_cls)
+        values = {}
+        for name in index.fields:
+            field_obj = entity_fields.get(name)
+            # ``_count`` matches stored names, which differ from the field
+            # name for a field declared with ``referenced_as``.
+            stored_name = getattr(field_obj, "attribute_name", None) or name
+            values[stored_name] = getattr(entity_obj, name, None)
         if any(value is None for value in values.values()):
             return None
         return values

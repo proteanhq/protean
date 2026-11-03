@@ -6,6 +6,9 @@ relies on it so that a reconcile sweep and a live unit of work can both try to
 write the same row, and the second writer skips its copy instead of failing.
 """
 
+import threading
+import time
+
 import pytest
 from sqlalchemy.exc import IntegrityError
 
@@ -35,6 +38,10 @@ class RawKeyedRow(BaseAggregate):
     token: String(max_length=50)
 
 
+class RenamedKeyRow(BaseAggregate):
+    email: String(max_length=50, referenced_as="email_address")
+
+
 def _raw_unique_token_indexes():
     # A unique index the framework does not know about: only the database
     # enforces it, so a duplicate reaches the database as an IntegrityError
@@ -56,6 +63,11 @@ def register_elements(test_domain):
         RawKeyedRow,
         schema_name="generic_raw_keyed_row",
         indexes=_raw_unique_token_indexes(),
+    )
+    test_domain.register(
+        RenamedKeyRow,
+        schema_name="generic_renamed_key_row",
+        indexes=[Index("email", unique=True)],
     )
     test_domain.init(traverse=False)
 
@@ -141,6 +153,17 @@ class TestSaveIfAbsent:
         stored = test_domain.repository_for(KeyedRow).get(row.id)
         assert stored.note == "changed"
 
+    def test_a_key_field_stored_under_another_name_is_matched(self, test_domain):
+        dao = _dao(test_domain, RenamedKeyRow)
+        dao.save(RenamedKeyRow(email="a@example.com"))
+
+        assert dao.save_if_absent(RenamedKeyRow(email="a@example.com")) is None
+        assert BaseDAO.save_if_absent(dao, RenamedKeyRow(email="a@example.com")) is None
+
+        # A count, because the Elasticsearch model cannot load a record whose
+        # field is stored under another name.
+        assert dao.query.filter(email="a@example.com").count() == 1
+
 
 @pytest.mark.basic_storage
 class TestBaseDAODefault:
@@ -164,6 +187,30 @@ class TestBaseDAODefault:
         assert BaseDAO.save_if_absent(dao, row) is row
         assert len(_rows_with_key(test_domain, "m1", "internal")) == 1
 
+    def test_default_writes_a_row_with_a_none_key_value(self, test_domain):
+        provider = test_domain.providers["default"]
+        if getattr(provider, "__database__", None) == "mssql":
+            pytest.skip("SQL Server's unique index treats NULLs as equal")
+        dao = _dao(test_domain)
+        first = KeyedRow(key_a="m1", key_b=None)
+        dao.save(first)
+
+        second = KeyedRow(key_a="m1", key_b=None)
+
+        assert BaseDAO.save_if_absent(dao, second) is second
+        stored = dao.query.filter(key_a="m1").all().items
+        assert sorted(r.id for r in stored) == sorted([first.id, second.id])
+
+    def test_default_resaves_a_stored_row(self, test_domain):
+        dao = _dao(test_domain)
+        row = KeyedRow(key_a="m1", key_b="internal", note="first")
+        dao.save(row)
+
+        row.note = "changed"
+
+        assert BaseDAO.save_if_absent(dao, row) is row
+        assert test_domain.repository_for(KeyedRow).get(row.id).note == "changed"
+
 
 @pytest.mark.transactional
 class TestSaveIfAbsentInUnitOfWork:
@@ -173,10 +220,14 @@ class TestSaveIfAbsentInUnitOfWork:
 
         other = KeyedRow(key_a="m2", key_b="internal", note="other")
         duplicate = KeyedRow(key_a="m1", key_b="internal", note="duplicate")
+        version = duplicate._version
         with UnitOfWork():
             _dao(test_domain).save(other)
             assert _dao(test_domain).save_if_absent(duplicate) is None
             assert current_uow._tracked_instance(KeyedRow, duplicate.id) is None
+
+        assert duplicate.state_.is_new
+        assert duplicate._version == version
 
         rows = _rows_with_key(test_domain, "m1", "internal")
         assert [r.note for r in rows] == ["first"]
@@ -203,6 +254,24 @@ class TestSaveIfAbsentInUnitOfWork:
 
         rows = _rows_with_key(test_domain, "m1", "internal")
         assert [r.note for r in rows] == ["committed first"]
+
+    def test_writes_a_row_whose_key_this_unit_of_work_freed(self, test_domain):
+        repo = test_domain.repository_for(KeyedRow)
+        first = KeyedRow(key_a="m1", key_b="internal", note="first")
+        _dao(test_domain).save(first)
+
+        newcomer = KeyedRow(key_a="m1", key_b="internal", note="newcomer")
+        with UnitOfWork():
+            moved = repo.get(first.id)
+            moved.key_a = "m3"
+            _dao(test_domain).save(moved)
+
+            assert _dao(test_domain).save_if_absent(newcomer) is newcomer
+
+        assert [r.note for r in _rows_with_key(test_domain, "m1", "internal")] == [
+            "newcomer"
+        ]
+        assert repo.get(first.id).key_a == "m3"
 
 
 @pytest.mark.atomic_transactions
@@ -235,3 +304,98 @@ class TestSaveIfAbsentAtomicity:
             dao.save_if_absent(RawKeyedRow(token="t1"))
 
         assert len(dao.query.filter(token="t1").all().items) == 1
+
+
+def _skip_on_sqlite(test_domain):
+    provider = test_domain.providers["default"]
+    if getattr(provider, "__database__", None) == "sqlite":
+        pytest.skip("SQLite lets one transaction write at a time")
+
+
+def _race_a_live_writer(test_domain, live_commits):
+    """Stage ``live`` in a unit of work on another thread, then call
+    ``save_if_absent`` with the same key in this thread's unit of work while
+    ``live`` is still in flight. The other thread then commits or rolls back.
+
+    Returns the rows that hold the key, the row this thread saved beside it,
+    and any error either thread raised.
+    """
+    live = KeyedRow(key_a="m1", key_b="internal", note="live")
+    mine = KeyedRow(key_a="m1", key_b="internal", note="mine")
+    other = KeyedRow(key_a="m2", key_b="internal", note="other")
+    live_staged = threading.Event()
+    mine_started = threading.Event()
+    live_done = threading.Event()
+    errors: list[Exception] = []
+
+    def live_writer() -> None:
+        ctx = test_domain.domain_context()
+        ctx.push()
+        try:
+            uow = UnitOfWork()
+            uow.start()
+            assert _dao(test_domain).save_if_absent(live) is live
+            # Send the INSERT now, so the database holds the key in flight.
+            if hasattr(uow.get_session("default"), "flush"):
+                uow.get_session("default").flush()
+            live_staged.set()
+            mine_started.wait(timeout=10)
+            # Give this thread's write time to reach the database and wait
+            # on the in-flight key.
+            time.sleep(0.5)
+            if live_commits:
+                uow.commit()
+            else:
+                uow.rollback()
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            live_done.set()
+            live_staged.set()
+            ctx.pop()
+
+    thread = threading.Thread(target=live_writer)
+    thread.start()
+    try:
+        assert live_staged.wait(timeout=10)
+        with UnitOfWork():
+            _dao(test_domain).save(other)
+            mine_started.set()
+            _dao(test_domain).save_if_absent(mine)
+            # Commit only after the live writer has finished.
+            assert live_done.wait(timeout=10)
+    except Exception as exc:
+        errors.append(exc)
+    finally:
+        mine_started.set()
+        thread.join(timeout=20)
+    assert not thread.is_alive()
+
+    stored_other = test_domain.repository_for(KeyedRow).query.filter(key_a="m2").all()
+    return _rows_with_key(test_domain, "m1", "internal"), stored_other.items, errors
+
+
+@pytest.mark.transactional
+class TestSaveIfAbsentBesideALiveWriter:
+    """A second writer calls ``save_if_absent`` while a first writer's unit of
+    work holds the same key, written and not yet committed."""
+
+    def test_the_second_writer_skips_its_row_when_the_first_commits(self, test_domain):
+        _skip_on_sqlite(test_domain)
+
+        rows, others, errors = _race_a_live_writer(test_domain, live_commits=True)
+
+        assert errors == []
+        assert [r.note for r in rows] == ["live"]
+        assert [r.note for r in others] == ["other"]
+
+    def test_the_second_writer_keeps_its_row_when_the_first_rolls_back(
+        self, test_domain
+    ):
+        _skip_on_sqlite(test_domain)
+
+        rows, others, errors = _race_a_live_writer(test_domain, live_commits=False)
+
+        assert errors == []
+        assert [r.note for r in rows] == ["mine"]
+        assert [r.note for r in others] == ["other"]

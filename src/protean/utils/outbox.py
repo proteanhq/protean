@@ -1571,9 +1571,13 @@ def reconcile_outbox(
     and ``outbox.cleanup.abandoned_retention_hours`` are skipped, and so are
     events with no stored time.
 
-    The sweep is safe to run beside another sweep, and beside a live unit of
-    work that has appended its events and not yet saved their outbox rows.
-    Whichever writes a row first keeps it, and the other skips its copy.
+    The sweep can run beside another sweep, and beside a live unit of work
+    that has appended its events and not yet saved their outbox rows. Both
+    write through ``save_if_absent``, so whichever saves a row first keeps it
+    and the other skips its copy. On SQLite a sweep can instead fail with
+    ``database is locked`` while the unit of work holds the write lock.
+    Elasticsearch has no unique index, so two writers that save the same row
+    at the same moment can both keep a row.
 
     The return value counts the rows this call wrote, internal and external.
     It leaves out a row skipped because a row with the same ``message_id`` and

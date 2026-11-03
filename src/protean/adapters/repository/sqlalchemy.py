@@ -1843,19 +1843,30 @@ class SADAO(BaseDAO):
         See :meth:`BaseDAO.save_if_absent`. The database's unique index decides
         a race between two writers. Inside a Unit of Work the write runs in a
         savepoint, so a rejected write rolls back only the savepoint and the
-        rest of the transaction carries on.
+        rest of the transaction carries on, and this method returns ``None``.
+
+        After a rejected write, this method looks for the row that holds the
+        key. Under READ COMMITTED, the default isolation level of PostgreSQL,
+        MySQL and SQL Server, that read sees a row another transaction has
+        just committed. Under REPEATABLE READ or SERIALIZABLE it may not, and
+        the ``IntegrityError`` is raised.
 
         Raises:
-            IntegrityError: The database rejected the write, and no other row
-                holds the unique key, so the cause is another constraint.
+            IntegrityError: The database rejected the write, and this
+                transaction sees no other row that holds the unique key.
         """
         before = self._save_state(entity_obj)
+        session = None if self._is_standalone else self._get_session()
+        if session is not None:
+            self._begin_sqlite_transaction(session)
+            # ``begin_nested`` flushes pending writes before it opens the
+            # savepoint. Flush them here, so an error in an earlier write is
+            # raised as it is and not taken for this row's key collision.
+            session.flush()
         try:
-            if self._is_standalone:
+            if session is None:
                 return self.save(entity_obj, apply_hooks=apply_hooks)
 
-            session = self._get_session()
-            self._begin_sqlite_transaction(session)
             with session.begin_nested():
                 self.save(entity_obj, apply_hooks=apply_hooks)
                 # Run the INSERT now, inside the savepoint, so a rejection

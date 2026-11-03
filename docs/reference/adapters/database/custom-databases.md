@@ -67,10 +67,12 @@ underscored internals:
 the entity unless another row already holds its unique key, and returns `None`
 in that case. The unique key is the fields of each `Index` declared with
 `unique=True` and no `where` predicate. The outbox writes its rows through this
-method. The default checks with `_count`, then saves, so two writers that check
-at the same moment can both save, and the store's own unique index rejects the
-second. Override it when your store can make the check and the write one step,
-for example with a conditional insert or a savepoint.
+method. The default checks with `_count`, then saves. Two writers that check at
+the same moment can both pass the check. If your store has a unique index on
+the key, it rejects the second write with its own error. If it has none, both
+rows are kept. Override `save_if_absent` so that a lost race also returns
+`None`, for example with a conditional insert, or by catching the store's
+unique-index error and checking for the key again.
 
 ### 3. DatabaseModel
 

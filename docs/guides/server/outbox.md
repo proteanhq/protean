@@ -336,7 +336,9 @@ and is safe under `--workers N`, because the composite unique index on
 (`message_id`, `target_broker`) makes concurrent sweeps idempotent. A sweep is
 also safe while a command is committing. If the sweep writes a row before the
 command saves it, the command keeps the sweep's row, skips its own copy and
-commits.
+commits. SQLite and Elasticsearch have exceptions, listed in the
+[`protean outbox reconcile`](../../reference/cli/data/outbox.md#protean-outbox-reconcile)
+reference.
 The startup sweep covers only the `default` provider. Run the CLI with
 `--provider` for aggregates on other providers.
 
