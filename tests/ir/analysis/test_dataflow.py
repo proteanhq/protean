@@ -1019,6 +1019,23 @@ class TestWithCoverage:
 
         assert flow.coverage(inside).contexts[0].fqn is None
 
+    def test_a_method_local_import_does_not_resolve_a_context(self, tmp_path):
+        """``with`` contexts resolve from the module-level table only, so a
+        manager imported inside the method is carried as ``None``."""
+        flow, node = _setup(
+            tmp_path,
+            """
+            def m():
+                from protean import UnitOfWork
+
+                with UnitOfWork():
+                    persist()
+            """,
+        )
+        inside = node.body[1].body[0]
+
+        assert [c.fqn for c in flow.coverage(inside).contexts] == [None]
+
     def test_a_top_level_statement_has_empty_coverage(self, tmp_path):
         flow, node = _setup(tmp_path, "def m():\n    persist()\n")
 

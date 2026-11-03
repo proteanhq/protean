@@ -10,6 +10,13 @@ a ``raise_`` call and a construction of ``Opened``; the rule ties them at the
 method level. ``User.register`` proves the factory idiom: ``user.raise_(...)``
 leaves the receiver role ``UNKNOWN``, and the rule still recognizes it because it
 keys on the ``raise_`` method name and the constructed event, never on the role.
+
+``Journal`` imports its events from ``journal_events`` inside the methods that
+raise them: an absolute import, a relative one, and an aliased one. The events
+live in another module so that no module-level name in this file can resolve
+them. Those count as raised. Its
+``flag`` method imports ``Flagged`` and never calls ``raise_``, so ``Flagged``
+stays unraised.
 """
 
 from protean.core.aggregate import BaseAggregate
@@ -150,3 +157,32 @@ class Workflow(BaseAggregate):
 
 class Vanished(BaseEvent):
     ghost_id = Identifier()
+
+
+class Journal(BaseAggregate):
+    """Each method imports the event it uses inside its own body. ``void``,
+    ``reverse`` and ``archive`` raise their events through an absolute, a
+    relative and an aliased import. ``flag`` imports ``Flagged`` and never
+    raises it."""
+
+    name = String(max_length=50)
+
+    def void(self):
+        from tests.ir.support.journal_events import Voided
+
+        self.raise_(Voided(journal_id=self.id))
+
+    def reverse(self):
+        from .journal_events import Reversed
+
+        self.raise_(Reversed(journal_id=self.id))
+
+    def archive(self):
+        from tests.ir.support.journal_events import Archived as JournalArchived
+
+        self.raise_(JournalArchived(journal_id=self.id))
+
+    def flag(self):
+        from tests.ir.support.journal_events import Flagged
+
+        return Flagged(journal_id=self.id)

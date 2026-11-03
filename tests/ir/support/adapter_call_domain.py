@@ -67,8 +67,9 @@ class MultiCallOrder(BaseAggregate):
 
 
 class LocalImportOrder(BaseAggregate):
-    """Negative — unresolved callee: the adapter is bound by a function-local
-    import, so it is not in the module symbol table and does not resolve."""
+    """Positive: the adapter is bound by a function-local import. The method's
+    own imports resolve for uses after them, so the aliased call resolves to
+    the adapter and is flagged."""
 
     name = String(max_length=50)
 

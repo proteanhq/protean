@@ -15,7 +15,7 @@ from protean import Domain
 from protean.ir.builder import IRBuilder
 from protean.utils import fqn
 from tests.ir.support import unsourced_projection_domain as _pkg
-from tests.ir.support.unsourced_projection_domain import catalog
+from tests.ir.support.unsourced_projection_domain import catalog, remote
 
 CORPUS_ROOT = str(Path(_pkg.__file__).parent)
 
@@ -42,8 +42,8 @@ def flagged_ir() -> dict:
     opt-out, a fully sourced projection, a write on a handler parameter, a
     delete, a bulk update, a write delegated to a helper, a helper's write on
     its own receiver, a static helper's write on the record, a positional
-    template construction, a write on an unrelated object, and a projector the
-    index cannot resolve.
+    template construction, a write on an unrelated object, a projector the
+    index cannot resolve, and a projection imported inside the handler.
     """
     domain = Domain(name="UnsourcedProjectionField", root_path=CORPUS_ROOT)
     domain.register(catalog.Thing)
@@ -66,6 +66,7 @@ def flagged_ir() -> dict:
         catalog.SelfHelperProjection,
         catalog.StaticHelperProjection,
         catalog.TemplateProjection,
+        remote.RemoteProjection,
     ):
         domain.register(projection)
     domain.register(catalog.ExternalProjection, externally_populated=True)
@@ -157,6 +158,11 @@ def flagged_ir() -> dict:
     domain.register(
         catalog.TemplateProjector,
         projector_for=catalog.TemplateProjection,
+        aggregates=[catalog.Thing],
+    )
+    domain.register(
+        catalog.LocalImportProjector,
+        projector_for=remote.RemoteProjection,
         aggregates=[catalog.Thing],
     )
     domain.init(traverse=False)
@@ -326,3 +332,10 @@ class TestUnsourcedProjectionField:
         the build still completes."""
         assert fqn(catalog.NoSourceProjection) in flagged_ir["projections"]
         assert _fields_for(flagged_ir, catalog.NoSourceProjection) == []
+
+    def test_a_projection_imported_inside_the_handler_is_checked(self, flagged_ir):
+        """``LocalImportProjector`` imports ``RemoteProjection`` inside its
+        handler. The import resolves the construction, so ``headline`` is
+        sourced and ``byline`` is flagged. Were the import not read, no write
+        would be observed and the evidence guard would flag nothing."""
+        assert _fields_for(flagged_ir, remote.RemoteProjection) == ["byline"]

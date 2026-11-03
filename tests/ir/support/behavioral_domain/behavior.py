@@ -11,6 +11,8 @@ Each method carries a deliberate shape a test asserts:
 - ``Order.ship`` — a read (``self.total``), a write (``self.status = ...``), a
   ``self.raise_(...)`` call, and an ``OrderShipped(...)`` construction nested in
   it.
+- ``Order.reorder`` — an ``Order`` construction through an alias that only an
+  import inside the method body binds.
 - ``Order.restock`` — an augmented write (``self.stock += 1``), which the
   grammar models as a store and the catalog records as a write.
 - ``OrderRepository.active`` — a recognized repository query on ``self._dao``,
@@ -58,6 +60,12 @@ class Order(BaseAggregate):
         self.status = "shipped"
         self.raise_(OrderShipped(order_id=self.order_id))
         del current
+
+    def reorder(self) -> "Order":
+        """A construction whose name a method-local import binds."""
+        from tests.ir.support.behavioral_domain.behavior import Order as Reordered
+
+        return Reordered(status="reordered")
 
     def restock(self) -> None:
         """An augmented assignment, recorded as a write per its store ctx."""

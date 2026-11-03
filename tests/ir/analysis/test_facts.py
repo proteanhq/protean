@@ -664,6 +664,416 @@ class TestScope:
         assert "transform" in {c.method for c in facts.calls}
 
 
+def _callee_fqns(tmp_path, source, method="run"):
+    """The callee FQN of every call fact in ``Service.<method>`` of ``source``."""
+    catalog, index = _walked_catalog(_make_pkg(tmp_path, source))
+    facts = _method_facts(catalog, index, "pkg.mod", "Service", method)
+    return [c.callee_fqn for c in facts.calls]
+
+
+class TestMethodLocalImports:
+    def test_a_local_import_resolves_a_later_use(self, tmp_path):
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            class Service:
+                def run(self):
+                    from acme.events import Closed
+
+                    Closed(account_id=1)
+            """,
+        )
+
+        assert fqns == ["acme.events.Closed"]
+
+    def test_a_local_module_import_resolves_an_attribute_chain(self, tmp_path):
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            class Service:
+                def run(self):
+                    import acme.events as ev
+
+                    ev.Closed()
+            """,
+        )
+
+        assert fqns == ["acme.events.Closed"]
+
+    def test_a_use_before_the_import_does_not_resolve(self, tmp_path):
+        """Python treats the name as local for the whole function, so a use
+        above the import resolves neither to the import nor to the module
+        binding of the same name."""
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            from acme.legacy import Closed
+
+            class Service:
+                def run(self):
+                    Closed(account_id=1)
+                    from acme.events import Closed
+            """,
+        )
+
+        assert fqns == [None]
+
+    def test_a_sibling_method_does_not_see_the_import(self, tmp_path):
+        source = """
+            class Service:
+                def run(self):
+                    from acme.events import Closed
+
+                    Closed()
+
+                def other(self):
+                    Closed()
+            """
+
+        assert _callee_fqns(tmp_path, source, "run") == ["acme.events.Closed"]
+        assert _callee_fqns(tmp_path, source, "other") == [None]
+
+    def test_a_local_import_shadows_a_module_import(self, tmp_path):
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            from acme.legacy import Closed
+
+            class Service:
+                def run(self):
+                    from acme.events import Closed
+
+                    Closed()
+            """,
+        )
+
+        assert fqns == ["acme.events.Closed"]
+
+    def test_a_name_with_no_local_import_still_resolves_at_module_level(self, tmp_path):
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            from acme.legacy import Opened
+
+            class Service:
+                def run(self):
+                    from acme.events import Closed
+
+                    Opened()
+                    Closed()
+            """,
+        )
+
+        assert fqns == ["acme.legacy.Opened", "acme.events.Closed"]
+
+    @pytest.mark.parametrize(
+        "nested",
+        [
+            """
+                    def inner():
+                        from acme.legacy import Closed
+            """,
+            """
+                    class Inner:
+                        from acme.legacy import Closed
+            """,
+        ],
+        ids=["def", "class"],
+    )
+    def test_an_import_in_a_nested_scope_does_not_bind(self, tmp_path, nested):
+        """The nested import binds ``Closed`` in its own scope only. Were it
+        read as the method's, it would conflict with the method's own import
+        and leave ``Closed`` unresolved."""
+        source = (
+            """
+            class Service:
+                def run(self):
+                    from acme.events import Closed
+            """
+            + nested
+            + """
+                    Closed()
+            """
+        )
+
+        assert _callee_fqns(tmp_path, source) == ["acme.events.Closed"]
+
+    @pytest.mark.parametrize(
+        "block",
+        [
+            """
+                    try:
+                        from acme.events import Closed
+                    except ImportError:
+                        pass
+            """,
+            """
+                    if self.enabled:
+                        from acme.events import Closed
+            """,
+            """
+                    with self.lock:
+                        from acme.events import Closed
+            """,
+            """
+                    for _ in self.rows:
+                        from acme.events import Closed
+            """,
+            """
+                    while self.pending:
+                        from acme.events import Closed
+            """,
+        ],
+        ids=["try", "if", "with", "for", "while"],
+    )
+    def test_an_import_inside_a_block_binds(self, tmp_path, block):
+        source = (
+            """
+            class Service:
+                def run(self):
+            """
+            + block
+            + """
+                    Closed()
+            """
+        )
+
+        assert _callee_fqns(tmp_path, source) == ["acme.events.Closed"]
+
+    def test_two_imports_with_different_fqns_leave_the_name_unresolved(self, tmp_path):
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            from acme.module import Closed
+
+            class Service:
+                def run(self):
+                    try:
+                        from acme.events import Closed
+                    except ImportError:
+                        from acme.legacy import Closed
+
+                    Closed()
+            """,
+        )
+
+        assert fqns == [None]
+
+    def test_two_imports_with_the_same_fqn_bind_it(self, tmp_path):
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            class Service:
+                def run(self):
+                    if self.enabled:
+                        from acme.events import Closed
+                    else:
+                        from acme import events
+                        from acme.events import Closed
+
+                    Closed()
+            """,
+        )
+
+        assert fqns == ["acme.events.Closed"]
+
+    def test_a_use_between_two_conflicting_imports_does_not_resolve(self, tmp_path):
+        """The name is unresolved for every use after the first of two
+        conflicting imports, not only for a use after both."""
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            class Service:
+                def run(self):
+                    from acme.events import Closed
+
+                    Closed()
+                    from acme.legacy import Closed
+
+                    Closed()
+            """,
+        )
+
+        assert fqns == [None, None]
+
+    def test_a_rebound_receiver_root_has_no_role(self, tmp_path):
+        """A receiver rooted on a rebound local import resolves to nothing, so
+        it is not recognized as a repository."""
+        catalog, index = _walked_catalog(
+            _make_pkg(
+                tmp_path,
+                """
+                class Service:
+                    def run(self):
+                        from acme import repos
+
+                        repos = self.factory
+                        repos.orders.find(status="open")
+                """,
+            )
+        )
+        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
+
+        find = next(c for c in facts.calls if c.method == "find")
+
+        assert find.receiver_fqn is None
+        assert find.receiver_role is ReceiverRole.UNKNOWN
+
+    @pytest.mark.parametrize(
+        "rebind",
+        [
+            "Closed = self.factory",
+            "for Closed in self.kinds: pass",
+            "with self.open() as Closed: pass",
+            (
+                "try:\n                        pass\n"
+                "                    except Exception as Closed:\n"
+                "                        pass"
+            ),
+            "(Closed := self.factory)",
+            "del Closed",
+        ],
+        ids=["assign", "for", "with", "except", "walrus", "del"],
+    )
+    def test_another_binding_of_the_name_leaves_it_unresolved(self, tmp_path, rebind):
+        source = f"""
+            from acme.module import Closed
+
+            class Service:
+                def run(self):
+                    from acme.events import Closed
+                    {rebind}
+                    Closed()
+            """
+
+        assert _callee_fqns(tmp_path, source)[-1] is None
+
+    def test_a_match_capture_leaves_the_name_unresolved(self, tmp_path):
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            from acme.module import Closed, Opened, Moved
+
+            class Service:
+                def run(self, value):
+                    from acme.events import Closed, Opened, Moved
+
+                    match value:
+                        case [*Opened]:
+                            pass
+                        case {**Moved}:
+                            pass
+                        case Closed:
+                            pass
+                    Closed()
+                    Opened()
+                    Moved()
+            """,
+        )
+
+        assert fqns == [None, None, None]
+
+    def test_an_escaping_relative_import_does_not_fall_back_to_the_module(
+        self, tmp_path
+    ):
+        """``from ... import Closed`` walks past the top-level package, so it
+        binds no FQN. The name is still local in the method, so the module
+        binding of ``Closed`` must not be used either."""
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            from acme.legacy import Closed
+
+            class Service:
+                def run(self):
+                    from ... import Closed
+
+                    Closed()
+            """,
+        )
+
+        assert fqns == [None]
+
+    def test_a_relative_import_anchors_on_the_module_package(self, tmp_path):
+        fqns = _callee_fqns(
+            tmp_path,
+            """
+            class Service:
+                def run(self):
+                    from .events import Closed
+
+                    Closed()
+            """,
+        )
+
+        assert fqns == ["pkg.events.Closed"]
+
+    def test_a_local_unit_of_work_import_gives_its_role(self, tmp_path):
+        catalog, index = _walked_catalog(
+            _make_pkg(
+                tmp_path,
+                """
+                class Service:
+                    def run(self):
+                        from protean.core.unit_of_work import UnitOfWork
+
+                        UnitOfWork().commit()
+                """,
+            )
+        )
+        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
+
+        commit = next(c for c in facts.calls if c.method == "commit")
+
+        assert commit.receiver_role is ReceiverRole.UNIT_OF_WORK
+
+    def test_a_locally_imported_receiver_is_recognized(self, tmp_path):
+        catalog, index = _walked_catalog(
+            _make_pkg(
+                tmp_path,
+                """
+                class Service:
+                    def run(self):
+                        from acme import repos
+
+                        repos.orders.find(status="open")
+                """,
+            )
+        )
+        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
+
+        find = next(c for c in facts.calls if c.method == "find")
+
+        assert find.receiver_fqn == "acme.repos.orders"
+        assert find.receiver_role is ReceiverRole.REPOSITORY_QUERY
+
+    def test_a_locally_imported_q_names_its_fields(self, tmp_path):
+        catalog, index = _walked_catalog(
+            _make_pkg(
+                tmp_path,
+                """
+                class Service:
+                    def run(self):
+                        from protean.utils.query import Q
+
+                        self._dao.filter(Q(reference="r1"))
+                """,
+            )
+        )
+        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
+
+        query = next(c for c in facts.calls if c.method == "filter")
+
+        assert query.field_names == ("reference",)
+
+    def test_a_locally_imported_element_is_a_construction(self, order_catalog):
+        """``Order.reorder`` imports ``Order`` inside its body and constructs
+        it, which records a construction of the registered element."""
+        facts = order_catalog.element_facts(behavior.Order)["reorder"]
+
+        assert [c.fqn for c in facts.constructions] == [f"{BEHAVIOR_MODULE}.Order"]
+
+
 class TestDeterminism:
     def test_two_catalogs_over_the_same_source_agree(self):
         """Two catalogs over the same file produce equal facts in equal order."""

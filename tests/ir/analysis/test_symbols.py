@@ -425,6 +425,340 @@ class TestUseSiteResolution:
         assert resolver.resolve("pkg.mod", _use_site("registry['k'].bar")) is None
 
 
+class TestMethodScope:
+    @staticmethod
+    def _scope(tmp_path, source):
+        """The resolver and the scope of ``run``, the first function in ``mod``."""
+        resolver = _walked_resolver(_make_pkg(tmp_path, {"mod.py": source}))
+        tree = resolver._provider.tree("pkg.mod")
+        method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        return resolver, resolver.method_scope("pkg.mod", method), method
+
+    @staticmethod
+    def _use(method, text):
+        """The first use site in ``method`` whose source text is ``text``."""
+        return next(
+            n
+            for n in ast.walk(method)
+            if isinstance(n, (ast.Name, ast.Attribute))
+            and ast.unparse(n) == text
+            and isinstance(n.ctx, ast.Load)
+        )
+
+    def test_a_plain_import_binds_its_top_name(self, tmp_path):
+        """``import acme.events`` binds ``acme``; a later attribute walk off it
+        reconstructs the rest of the FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                import acme.events
+                return acme.events.Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "acme.events.Closed")) == (
+            "acme.events.Closed"
+        )
+
+    def test_a_use_on_the_same_line_after_the_import_resolves(self, tmp_path):
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme.events import Closed; return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) == "acme.events.Closed"
+
+    def test_each_name_keeps_the_position_of_its_own_first_import(self, tmp_path):
+        """``Closed`` is first imported above the use of ``Opened``, but
+        ``Opened`` is first imported below it, so that use stays unresolved."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme.events import Closed
+                early = Opened
+                from acme.events import Closed, Opened
+                return Opened
+            """,
+        )
+        uses = [
+            n for n in ast.walk(method) if isinstance(n, ast.Name) and n.id == "Opened"
+        ]
+        uses.sort(key=lambda n: n.lineno)
+
+        assert [scope.resolve(n) for n in uses] == [None, "acme.events.Opened"]
+
+    def test_the_module_table_is_untouched(self, tmp_path):
+        """The scope reads the method's imports without adding them to the
+        module table, so ``resolve(module, node)`` keeps its module-only
+        meaning for every other caller."""
+        resolver, scope, method = self._scope(
+            tmp_path,
+            """
+            from acme.legacy import Closed
+
+            def run():
+                from acme.events import Closed
+                return Closed
+            """,
+        )
+        use = self._use(method, "Closed")
+
+        assert scope.resolve(use) == "acme.events.Closed"
+        assert resolver.resolve("pkg.mod", use) == "acme.legacy.Closed"
+        assert resolver.symbols("pkg.mod") == {
+            "Closed": "acme.legacy.Closed",
+            "run": "pkg.mod.run",
+        }
+
+    @pytest.mark.parametrize("keyword", ["def", "async def", "class"])
+    def test_a_nested_definition_of_the_name_leaves_it_unresolved(
+        self, tmp_path, keyword
+    ):
+        """A nested ``def`` or ``class`` named like the import rebinds the name
+        in the method, so no single FQN is right for the use after both."""
+        body = "pass" if keyword == "class" else "return None"
+        _, scope, method = self._scope(
+            tmp_path,
+            f"""
+            def run():
+                from acme.events import Closed
+                {keyword} Closed():
+                    {body}
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_bare_annotation_of_the_name_keeps_the_import(self, tmp_path):
+        """``Closed: type`` with no value binds nothing at runtime, so a later
+        use still gets the import's FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme.events import Closed
+                Closed: type
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) == "acme.events.Closed"
+
+    def test_a_walrus_in_a_bare_annotation_target_leaves_it_unresolved(self, tmp_path):
+        """``cache[(Closed := factory)]: int`` evaluates its subscript target,
+        so the walrus rebinds the name and the later use has no single FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run(cache, factory):
+                from acme.events import Closed
+                cache[(Closed := factory)]: int
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    @pytest.mark.parametrize("target", ["count", "self.count"])
+    def test_a_walrus_in_an_annotation_keeps_the_import(self, tmp_path, target):
+        """Python never evaluates a local variable's annotation, so a walrus
+        inside one binds nothing and a later use keeps the import's FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            f"""
+            def run(self, factory):
+                from acme.events import Closed
+                {target}: (Closed := factory)
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) == "acme.events.Closed"
+
+    def test_an_annotated_assignment_of_the_name_leaves_it_unresolved(self, tmp_path):
+        """``Closed: type = ...`` rebinds the name, so the later use has no
+        single FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme.events import Closed
+                Closed: type = object
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_parameter_of_the_same_name_does_not_block_the_import(self, tmp_path):
+        """A parameter is bound before the body runs, so the import after it
+        rebinds the name and a later use gets the import's FQN."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run(Closed):
+                from acme.events import Closed
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) == "acme.events.Closed"
+
+    @pytest.mark.parametrize(
+        "signature",
+        ["Closed", "Closed, /", "*, Closed", "*Closed", "**Closed"],
+    )
+    def test_a_parameter_with_a_conditional_import_leaves_it_unresolved(
+        self, tmp_path, signature
+    ):
+        """When the import may not run, a later use can still see the argument
+        the caller passed, so no single FQN is right for it."""
+        _, scope, method = self._scope(
+            tmp_path,
+            f"""
+            def run(self, {signature}):
+                if self.on:
+                    from acme.events import Closed
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_parameter_with_an_import_in_a_try_leaves_it_unresolved(self, tmp_path):
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run(self, Closed=None):
+                try:
+                    from acme.events import Closed
+                except ImportError:
+                    pass
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_parameter_with_a_later_unconditional_import_leaves_it_unresolved(
+        self, tmp_path
+    ):
+        """The first import is conditional, so a use between it and the
+        unconditional one can still see the argument."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run(self, Closed=None):
+                if self.on:
+                    from acme.events import Closed
+                early = Closed
+                from acme.events import Closed
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    @pytest.mark.parametrize("keyword", ["global", "nonlocal"])
+    def test_a_declared_outer_name_leaves_it_unresolved(self, tmp_path, keyword):
+        """The import then binds the outer name, which a path that skips the
+        import still sees."""
+        _, scope, method = self._scope(
+            tmp_path,
+            f"""
+            from acme.legacy import Closed
+
+            def run(self):
+                {keyword} Closed
+                if self.on:
+                    from acme.events import Closed
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    @pytest.mark.parametrize(
+        "nested",
+        [
+            "def helper(x=(Closed := 1)): pass",
+            "f = lambda x=(Closed := 2): x",
+            "@(Closed := staticmethod)\n                def helper(): pass",
+            "class Helper((Closed := object)): pass",
+            "class Helper(metaclass=(Closed := type)): pass",
+            "def helper(x: (Closed := int)): pass",
+            "def helper() -> (Closed := int): pass",
+        ],
+    )
+    def test_a_walrus_in_a_nested_scope_header_leaves_it_unresolved(
+        self, tmp_path, nested
+    ):
+        """Decorators, defaults, annotations, bases and keywords run in the
+        method's own scope, so a walrus in one rebinds the method's name."""
+        _, scope, method = self._scope(
+            tmp_path,
+            f"""
+            def run():
+                from acme.events import Closed
+                {nested}
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_nonlocal_rebinding_in_a_nested_def_leaves_it_unresolved(self, tmp_path):
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme.events import Closed
+                def helper():
+                    nonlocal Closed
+                    import json as Closed
+                helper()
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) is None
+
+    def test_a_star_import_binds_no_use_site(self, tmp_path):
+        """``ast.parse`` accepts a ``*`` import in a function. It binds no name
+        a use site can carry, so other names keep their resolution."""
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            from acme.legacy import Closed
+
+            def run():
+                from os import *
+                return Closed
+            """,
+        )
+
+        assert scope.resolve(self._use(method, "Closed")) == "acme.legacy.Closed"
+
+    def test_a_computed_use_site_resolves_to_none(self, tmp_path):
+        _, scope, method = self._scope(
+            tmp_path,
+            """
+            def run():
+                from acme import factory
+                return factory().bar
+            """,
+        )
+        use = next(n for n in ast.walk(method) if isinstance(n, ast.Attribute))
+
+        assert scope.resolve(use) is None
+
+
 class TestClassification:
     def test_framework_symbols_are_recognised(self):
         resolver = SymbolResolver(Domain(name="Empty", root_path=""))

@@ -68,7 +68,8 @@ Receiver-role resolution is conservative
 -----------------------------------------
 A call's receiver is classified into a Protean role only when it is statically
 recognizable — ``self``, a name or attribute chain rooted at ``self`` or at a
-module-level name the resolver knows, or a construction. A receiver rooted at a
+name the resolver knows (a module-level name, or one a method-local import binds
+earlier in the method), or a construction. A receiver rooted at a
 plain local variable (``repo = ...; repo.filter(...)``) needs dataflow to know
 what it holds, which the separate layer in :mod:`protean.ir.analysis.dataflow`
 answers, so here it is left :attr:`ReceiverRole.UNKNOWN` rather than guessed. Recognition is by the known
@@ -110,7 +111,7 @@ from typing import TYPE_CHECKING
 
 from protean.ir.analysis.element_index import ElementIndex, FunctionNode
 from protean.ir.analysis.source_provider import SourceProvider
-from protean.ir.analysis.symbols import SymbolResolver
+from protean.ir.analysis.symbols import NESTED_SCOPES, MethodScope, SymbolResolver
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -133,10 +134,6 @@ _UNIT_OF_WORK_FQN = "protean.core.unit_of_work.UnitOfWork"
 
 #: The FQN of ``Q``, whose inline ``Q(field=...)`` form names query fields.
 _Q_FQN = "protean.utils.query.Q"
-
-#: Scopes the method-body walk does not descend into: a call inside one of these
-#: is a fact of that nested callable, not of the method enclosing it.
-_NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
 
 class ReceiverRole(StrEnum):
@@ -333,14 +330,18 @@ class FactCatalog:
         calls: list[CallFact] = []
         attributes: list[AttributeFact] = []
         constructions: list[ConstructionFact] = []
+        # Every resolution in this method reads the method's own imports before
+        # the module table. The scope walk is iterative, so it needs no share of
+        # the recursion guard below.
+        scope = self._resolver.method_scope(module, method)
 
         def visit(node: ast.AST, is_callee: bool) -> None:
-            if isinstance(node, _NESTED_SCOPES):
+            if isinstance(node, NESTED_SCOPES):
                 # A fact inside a nested function/lambda/class belongs to it,
                 # not to the method being cataloged.
                 return
             if isinstance(node, ast.Call):
-                self._record_call(module, path, node, calls, constructions)
+                self._record_call(scope, path, node, calls, constructions)
                 # The callee names the method, not a data access; its receiver
                 # and the argument expressions still carry facts of their own.
                 visit(node.func, True)
@@ -375,7 +376,7 @@ class FactCatalog:
 
     def _record_call(
         self,
-        module: str,
+        scope: MethodScope,
         path: str | None,
         node: ast.Call,
         calls: list[CallFact],
@@ -383,7 +384,7 @@ class FactCatalog:
     ) -> None:
         """Record a call as a construction or a call fact, never both."""
         location = _location(path, node)
-        callee_fqn = self._resolver.resolve(module, node.func)
+        callee_fqn = scope.resolve(node.func)
         method = _callee_name(node.func)
 
         if callee_fqn is not None and self._resolver.is_domain_element(callee_fqn):
@@ -395,12 +396,12 @@ class FactCatalog:
             )
             return
 
-        role, receiver_fqn = self._receiver_role(module, node.func, method)
+        role, receiver_fqn = self._receiver_role(scope, node.func, method)
         # Field extraction follows the method-name surface, not the receiver
         # role: a query call names the same fields whether or not its receiver
         # could be tied to a repository, so a variable-held ``repo.find(Q(...))``
         # reports its fields as consistently as a recognized one does.
-        field_names, dynamic = self._call_fields(module, node, method in _QUERY_METHODS)
+        field_names, dynamic = self._call_fields(scope, node, method in _QUERY_METHODS)
         calls.append(
             CallFact(
                 callee_fqn,
@@ -427,7 +428,7 @@ class FactCatalog:
     # ------------------------------------------------------------------
 
     def _receiver_role(
-        self, module: str, func: ast.expr, method: str | None
+        self, scope: MethodScope, func: ast.expr, method: str | None
     ) -> tuple[ReceiverRole, str | None]:
         """Classify the receiver of a call, and report the FQN it resolves to.
 
@@ -440,11 +441,11 @@ class FactCatalog:
             return ReceiverRole.UNKNOWN, None
 
         receiver = func.value
-        receiver_fqn = self._resolver.resolve(module, receiver)
-        if not self._receiver_recognized(module, receiver, receiver_fqn):
+        receiver_fqn = scope.resolve(receiver)
+        if not self._receiver_recognized(scope, receiver, receiver_fqn):
             return ReceiverRole.UNKNOWN, receiver_fqn
 
-        if self._is_unit_of_work(module, receiver, receiver_fqn):
+        if self._is_unit_of_work(scope, receiver, receiver_fqn):
             return ReceiverRole.UNIT_OF_WORK, receiver_fqn
         if method == RAISE_METHOD:
             return ReceiverRole.RAISE_, receiver_fqn
@@ -453,13 +454,13 @@ class FactCatalog:
         return ReceiverRole.UNKNOWN, receiver_fqn
 
     def _receiver_recognized(
-        self, module: str, receiver: ast.expr, receiver_fqn: str | None
+        self, scope: MethodScope, receiver: ast.expr, receiver_fqn: str | None
     ) -> bool:
         """Whether a receiver is statically recognizable, not a plain variable.
 
-        Recognizable: the whole chain resolves; or it is a name/attribute chain
-        rooted at ``self`` or at a module-level name the resolver knows; or it is
-        a construction of a domain element or the Unit of Work
+        Recognizable: the whole chain resolves, through a module-level name or
+        one a method-local import bound earlier in the body; or it is a
+        name/attribute chain rooted at ``self``; or it is a construction of a domain element or the Unit of Work
         (``UnitOfWork().commit()``). A chain rooted at a local variable (``repo``,
         ``repo.query``) is not — that needs dataflow — and neither is an
         arbitrary call result (``get_repo().filter(...)``), which is less
@@ -469,22 +470,22 @@ class FactCatalog:
             return True
         root = _root_name(receiver)
         if root is not None:
-            return (
-                root == "self" or self._resolver.symbols(module).get(root) is not None
-            )
+            # A chain whose root the scope knows has already resolved above, so
+            # only ``self`` is left to recognize here.
+            return root == "self"
         # A construction receiver has no name root, but only a construction of a
         # domain element or the Unit of Work is recognizable — an arbitrary call
         # result (``get_repo().filter(...)``) is *less* knowable than a plain
         # variable, so it must stay unknown, not be waved through as a query.
         if isinstance(receiver, ast.Call):
-            callee = self._resolver.resolve(module, receiver.func)
+            callee = scope.resolve(receiver.func)
             return callee is not None and (
                 callee == _UNIT_OF_WORK_FQN or self._resolver.is_domain_element(callee)
             )
         return False
 
     def _is_unit_of_work(
-        self, module: str, receiver: ast.expr, receiver_fqn: str | None
+        self, scope: MethodScope, receiver: ast.expr, receiver_fqn: str | None
     ) -> bool:
         """Whether a recognized receiver is the Unit of Work.
 
@@ -495,7 +496,7 @@ class FactCatalog:
         if receiver_fqn == _UNIT_OF_WORK_FQN:
             return True
         if isinstance(receiver, ast.Call):
-            return self._resolver.resolve(module, receiver.func) == _UNIT_OF_WORK_FQN
+            return scope.resolve(receiver.func) == _UNIT_OF_WORK_FQN
         return False
 
     # ------------------------------------------------------------------
@@ -503,7 +504,7 @@ class FactCatalog:
     # ------------------------------------------------------------------
 
     def _call_fields(
-        self, module: str, node: ast.Call, include_q: bool
+        self, scope: MethodScope, node: ast.Call, include_q: bool
     ) -> tuple[tuple[str, ...], bool]:
         """Field names a call passes: its keywords, plus inline ``Q`` fields.
 
@@ -519,7 +520,7 @@ class FactCatalog:
         for arg in node.args:
             if not isinstance(arg, ast.Call):
                 continue
-            if self._resolver.resolve(module, arg.func) != _Q_FQN:
+            if scope.resolve(arg.func) != _Q_FQN:
                 continue
             q_names, q_dynamic = _keyword_fields(arg)
             dynamic = dynamic or q_dynamic

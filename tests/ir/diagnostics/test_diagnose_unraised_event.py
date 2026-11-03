@@ -8,13 +8,17 @@ index cannot reach. These are the cases that keep an advisory from firing on
 correct code, so the negatives carry more weight than the single positive.
 """
 
+import pytest
+
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String
+from protean.ir.analysis import FactCatalog
 from protean.ir.builder import IRBuilder
 from protean.ir.diagnostics import REGISTRY, DiagnosticCode
 from protean.utils import fqn
 from tests.ir.diagnostics._helpers import _findings
+from tests.ir.support import journal_events as j
 from tests.ir.support import unraised_event_domain as m
 
 CODE = DiagnosticCode.UNRAISED_EVENT.value
@@ -88,6 +92,25 @@ class TestUnraisedEventIsFlagged:
 
         assert [d["element"] for d in findings] == [fqn(m.Drafted)]
 
+    def test_an_event_imported_in_a_method_that_does_not_raise_it_is_flagged(
+        self,
+    ):
+        """``Journal.flag`` imports ``Flagged`` inside the method and constructs
+        it without calling ``raise_``. The import resolves the construction, and
+        construction alone is still not a raise, so ``Flagged`` is flagged. The
+        three events the sibling methods import and raise are not."""
+        domain = _domain("UnraisedLocalImportNoRaise")
+        domain.register(m.Journal)
+        for event in (j.Voided, j.Reversed, j.Archived, j.Flagged):
+            domain.register(event, part_of=m.Journal)
+        domain.init(traverse=False)
+
+        flag_facts = FactCatalog(domain).element_facts(m.Journal)["flag"]
+        findings = _findings(IRBuilder(domain).build(), CODE)
+
+        assert [c.fqn for c in flag_facts.constructions] == [fqn(j.Flagged)]
+        assert [d["element"] for d in findings] == [fqn(j.Flagged)]
+
     def test_it_is_advisory_rather_than_a_warning(self):
         assert REGISTRY[DiagnosticCode.UNRAISED_EVENT].level == "info"
 
@@ -112,6 +135,27 @@ class TestTheRuleStaysSilent:
         domain.init(traverse=False)
 
         assert _findings(IRBuilder(domain).build(), CODE) == []
+
+    @pytest.mark.parametrize(
+        "event",
+        [j.Voided, j.Reversed, j.Archived],
+        ids=["absolute", "relative", "aliased"],
+    )
+    def test_an_event_imported_inside_the_raising_method_is_not_flagged(self, event):
+        """A method that imports its event in its own body and raises it counts
+        as raising it, whether the import is absolute, relative or aliased.
+        ``Flagged`` is co-registered as a firing control: it is imported but
+        never raised, so the rule must still report it."""
+        domain = _domain(f"UnraisedLocalImport{event.__name__}")
+        domain.register(m.Journal)
+        domain.register(event, part_of=m.Journal)
+        domain.register(j.Flagged, part_of=m.Journal)
+        domain.init(traverse=False)
+
+        elements = [d["element"] for d in _findings(IRBuilder(domain).build(), CODE)]
+
+        assert elements == [fqn(j.Flagged)]
+        assert fqn(event) not in elements
 
     def test_a_published_raised_event_is_not_flagged(self):
         domain = _domain("UnraisedPublishedRaised")
