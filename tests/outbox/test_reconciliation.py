@@ -2,9 +2,11 @@
 store whose relational outbox row did not land."""
 
 import logging
+import threading
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import text
 
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
@@ -15,17 +17,19 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.upcaster import BaseUpcaster
 from protean.domain import Domain
 from protean.fields import Identifier, Integer, String
+from protean.utils import outbox as outbox_module
 from protean.utils.eventing import Message, MessageHeaders, Metadata
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 from protean.utils.outbox import (
+    Outbox,
     OutboxStatus,
     _is_repairable_event,
     _resolve_outboxed_event_class,
     _written_after,
     reconcile_outbox,
 )
-from tests.shared import MESSAGE_DB_URI, FrozenClock
+from tests.shared import MESSAGE_DB_URI, POSTGRES_URI, FrozenClock
 
 # Reconcile repairs only events of event-sourced aggregates, so the repair
 # tests raise events on the event-sourced ``Wallet``. The state-based
@@ -303,6 +307,128 @@ class TestOutboxReconciliationOnMessageDB:
         # Before the fix this returned 0 (read_last_message("$all") was None).
         assert reconcile_outbox(domain) == 1
         assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
+
+
+@pytest.mark.no_test_domain
+class TestReconcileBesideALiveWriter:
+    def test_sweep_skips_a_row_a_live_commit_wrote_after_its_check(
+        self, domain_and_repo, monkeypatch
+    ):
+        """A live unit of work commits the row after the sweep found it
+        missing. The sweep keeps that row, skips its own copy, and counts
+        nothing."""
+        domain, outbox_repo = domain_and_repo
+        _fund(domain)
+        message_id = _newest_message_id(domain)
+        outbox_repo._dao._delete_all()  # simulate the crash window
+
+        live_dao = domain.providers["default"].get_dao(
+            Outbox, outbox_repo._database_model
+        )
+        live_rows = []
+        real_rebuilt_partition_key = outbox_module._rebuilt_partition_key
+
+        # The sweep computes the row's partition key after it has found the row
+        # missing and before it saves its copy, so the live row lands in between.
+        def live_commit_first(message, *args):
+            if not live_rows:
+                headers = message.metadata.headers
+                live_rows.append(
+                    Outbox.create_message(
+                        message_id=headers.id,
+                        stream_name=headers.stream,
+                        message_type=headers.type,
+                        data=message.data,
+                        metadata=message.metadata,
+                    )
+                )
+                live_dao.outside_uow().save(live_rows[0])
+            return real_rebuilt_partition_key(message, *args)
+
+        monkeypatch.setattr(outbox_module, "_rebuilt_partition_key", live_commit_first)
+
+        assert reconcile_outbox(domain) == 0
+
+        rows = outbox_repo.find_all_by_message_id(message_id)
+        assert [row.id for row in rows] == [live_rows[0].id]
+
+
+@pytest.mark.postgresql
+@pytest.mark.message_db
+@pytest.mark.no_test_domain
+class TestReconcileBesideALiveUnitOfWorkOnPostgres:
+    """The startup sweep runs while a unit of work has appended its event to
+    Message DB and not yet saved the event's outbox row."""
+
+    SCHEMA = "reconcile_beside_live_uow"
+
+    @pytest.fixture
+    def domain(self):
+        domain = Domain(name="ReconcileLive")
+        domain.config["databases"]["default"] = {
+            "provider": "postgresql",
+            "database_uri": POSTGRES_URI,
+            "schema": self.SCHEMA,
+        }
+        domain.config["event_store"] = {
+            "provider": "message_db",
+            "database_uri": MESSAGE_DB_URI,
+        }
+        domain.config["enable_outbox"] = True
+        domain.config["server"] = {"default_subscription_type": "stream"}
+        _register_wallet_and_account(domain)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            provider = domain.providers["default"]
+            # Tables of their own, so this domain's outbox table does not meet
+            # one another test left in the shared database.
+            with provider._engine.begin() as conn:
+                conn.execute(text(f"DROP SCHEMA IF EXISTS {self.SCHEMA} CASCADE"))
+                conn.execute(text(f"CREATE SCHEMA {self.SCHEMA}"))
+            domain.repository_for(Account)._dao
+            domain._get_outbox_repo("default")._dao
+            provider._metadata.create_all(provider._engine)
+            try:
+                yield domain
+            finally:
+                provider._scoped_session_cls.remove()
+                with provider._engine.begin() as conn:
+                    conn.execute(text(f"DROP SCHEMA IF EXISTS {self.SCHEMA} CASCADE"))
+                provider.close()
+                domain.event_store.store.close()
+
+    def test_the_live_commit_succeeds_and_one_row_is_kept(self, domain, monkeypatch):
+        store = domain.event_store.store
+        real_append = store.append
+        sweep_results = []
+        sweep_errors = []
+
+        def sweep():
+            try:
+                sweep_results.append(reconcile_outbox(domain))
+            except Exception as exc:  # reported by the assertion below
+                sweep_errors.append(exc)
+
+        def append_then_sweep(*args, **kwargs):
+            result = real_append(*args, **kwargs)
+            if not sweep_results and not sweep_errors:
+                thread = threading.Thread(target=sweep)
+                thread.start()
+                thread.join(timeout=30)
+            return result
+
+        monkeypatch.setattr(store, "append", append_then_sweep)
+
+        _fund(domain)
+        monkeypatch.undo()
+
+        assert sweep_errors == []
+        assert sweep_results == [1]
+        message_id = _newest_message_id(domain)
+        outbox_repo = domain._get_outbox_repo("default")
+        rows = outbox_repo.find_all_by_message_id(message_id)
+        assert [row.target_broker for row in rows] == ["default"]
 
 
 # --- Ownership filter ---------------------------------------------------------

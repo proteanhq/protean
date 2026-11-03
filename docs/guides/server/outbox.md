@@ -332,8 +332,13 @@ aggregate's event and has its row. Otherwise it reads the newest 1,000
 messages. That happens when the newest message is missing its row, belongs to
 another domain sharing the store, is a command, or is a state-based aggregate's
 event. The sweep never blocks boot (a failure is logged and startup continues),
-and is safe under `--workers N`, the composite unique index on (`message_id`,
-`target_broker`) makes concurrent sweeps idempotent.
+and is safe under `--workers N`, because the composite unique index on
+(`message_id`, `target_broker`) makes concurrent sweeps idempotent. A sweep is
+also safe while a command is committing. If the sweep writes a row before the
+command saves it, the command keeps the sweep's row, skips its own copy and
+commits. SQLite and Elasticsearch have exceptions, listed in the
+[`protean outbox reconcile`](../../reference/cli/data/outbox.md#protean-outbox-reconcile)
+reference.
 The startup sweep covers only the `default` provider. Run the CLI with
 `--provider` for aggregates on other providers.
 

@@ -1325,10 +1325,11 @@ class Engine:
         message when it is such an aggregate's event and has its row, and the
         ``limit`` window otherwise. A failure here
         must never block the engine from starting. With ``server --workers N``
-        it runs once per worker; the reconcile is
-        idempotent (the ``(message_id, target_broker)`` unique index rejects
-        duplicate rows), so a race between workers is safe. A single-flight guard
-        is a possible future refinement.
+        it runs once per worker. The sweep can run beside another sweep, and
+        beside a live unit of work that has appended its events and not yet
+        saved their outbox rows. :func:`~protean.utils.outbox.reconcile_outbox`
+        states what holds on each provider. A single-flight guard is a possible
+        future refinement.
         """
         if not self.domain.has_outbox:
             return 0

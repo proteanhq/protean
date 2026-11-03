@@ -108,6 +108,10 @@ class MemorySession:
     #                      | "delete"; last op per record wins
     #   ``version_checks`` ``(schema, identifier)`` -> expected ``_version`` the
     #                      live store must still hold for the commit to apply
+    #   ``if_absent``      ``(schema, identifier)`` -> a check that tells whether
+    #                      a live record holds the row's unique key; the commit
+    #                      drops a row ``DictDAO.save_if_absent`` wrote when a
+    #                      record that holds its key was committed first
     _db: dict[str, typing.Any]
 
     def __init__(
@@ -139,6 +143,7 @@ class MemorySession:
                 "ops": {},
                 "version_checks": {},
                 "created": set(),
+                "if_absent": {},
             }
 
     def write(
@@ -184,10 +189,45 @@ class MemorySession:
             return
         self._db["version_checks"].setdefault((schema, identifier), expected_version)
 
+    def write_if_absent(
+        self,
+        schema: str,
+        identifier: typing.Any,
+        key_taken: typing.Callable[
+            [dict[str, typing.Any], dict[typing.Any, typing.Any]], bool
+        ],
+    ) -> None:
+        """Make the commit drop the written record ``identifier`` when
+        ``key_taken`` finds a live record that holds its unique key.
+
+        ``key_taken`` receives the record as this session last wrote it, and
+        the live records of ``schema`` that this session neither wrote nor
+        deleted.
+        """
+        self._db["if_absent"][(schema, identifier)] = key_taken
+
     def _clear_changeset(self) -> None:
         self._db["ops"].clear()
         self._db["version_checks"].clear()
         self._db["created"].clear()
+        self._db["if_absent"].clear()
+
+    def _drop_rows_whose_key_is_taken(self, live: dict[str, typing.Any]) -> None:
+        """Drop each row written by ``save_if_absent`` whose unique key a live
+        record now holds. Another session committed that record after this
+        session checked the key."""
+        ops = self._db["ops"]
+        for (schema, identifier), key_taken in self._db["if_absent"].items():
+            if ops.get((schema, identifier)) != "write":
+                continue
+            others = {
+                record_id: record
+                for record_id, record in live.get(schema, {}).items()
+                if (schema, record_id) not in ops
+            }
+            if key_taken(self._db["data"][schema][identifier], others):
+                del ops[(schema, identifier)]
+                self._db["data"][schema].pop(identifier, None)
 
     def commit(self) -> None:
         """Validate optimistic-concurrency versions and merge changes to the store.
@@ -223,6 +263,8 @@ class MemorySession:
                         f"(Schema: {schema}, Identifier: {identifier}, "
                         f"Version: {stored_version})"
                     )
+
+            self._drop_rows_whose_key_is_taken(live)
 
             # Set: merge this session's changes into the live store record by
             # record, so concurrent writes to other records are preserved.
@@ -538,6 +580,42 @@ class DictDAO(BaseDAO):
         # Already an attribute name (e.g. a value-object shadow attribute).
         return field_name
 
+    def _unique_index_collision(
+        self,
+        model_obj: dict[str, typing.Any],
+        records: dict[typing.Any, typing.Any],
+        identifier: typing.Any,
+    ) -> tuple[Index, list[typing.Any]] | None:
+        """Find a unique index on which ``model_obj`` collides with a record.
+
+        Checks each ``Index(unique=True)`` declared on the entity against
+        ``records``, and returns the first index that collides, with
+        ``model_obj``'s values for it. The record stored under ``identifier``
+        is skipped, so re-saving a row does not collide with itself. A unique
+        index with a ``where`` predicate is not enforced. NULLs are distinct:
+        when any indexed value in ``model_obj`` is ``None``, that index never
+        collides.
+        """
+        # Partial (predicate) indexes are advisory in memory, so
+        # ``_unique_key_indexes`` leaves them out. Enforcing a partial unique
+        # index globally would reject rows that are valid on PostgreSQL/SQLite,
+        # where the `where` predicate excludes them from the constraint.
+        for index in self._unique_key_indexes():
+            keys = [self._storage_key(f) for f in index.fields]
+            values = [model_obj.get(k) for k in keys]
+
+            # NULLs are distinct: skip enforcement when any indexed value is NULL.
+            if any(v is None for v in values):
+                continue
+
+            if any(
+                record_id != identifier
+                and all(record.get(k) == v for k, v in zip(keys, values, strict=False))
+                for record_id, record in records.items()
+            ):
+                return index, values
+        return None
+
     def _check_unique_indexes(
         self,
         model_obj: dict[str, typing.Any],
@@ -546,51 +624,89 @@ class DictDAO(BaseDAO):
     ) -> None:
         """Raise if ``model_obj`` collides with another record on a unique index.
 
-        Checks each ``Index(unique=True)`` declared on the entity against
-        ``records``. The record stored under ``identifier`` is skipped, so
-        re-saving a row does not collide with itself. A unique index with a
-        ``where`` predicate is not enforced. NULLs are distinct: when any indexed
-        value in ``model_obj`` is ``None``, that index never collides.
-        ``_update_all`` and ``_claim`` do not run this check.
+        Uses the rules of :meth:`_unique_index_collision`. ``_update_all`` and
+        ``_claim`` do not run this check.
 
         Raises:
             ValidationError: Keyed by the index's field names joined with ``_``.
         """
-        for index in getattr(self.entity_cls.meta_, "indexes", ()) or ():
-            if not isinstance(index, Index) or not index.unique:
-                continue
-
-            # Partial (predicate) indexes are advisory in memory. Enforcing a
-            # partial unique index globally would reject rows that are valid on
-            # PostgreSQL/SQLite, where the `where` predicate excludes them from
-            # the constraint. `where` is documented as advisory for the memory
-            # provider, so skip enforcement rather than over-enforce.
-            if index.where is not None:
-                continue
-
-            keys = [self._storage_key(f) for f in index.fields]
-            values = [model_obj.get(k) for k in keys]
-
-            # NULLs are distinct: skip enforcement when any indexed value is NULL.
-            if any(v is None for v in values):
-                continue
-
-            for record_id, record in records.items():
-                if record_id == identifier:
-                    continue
-                if all(record.get(k) == v for k, v in zip(keys, values, strict=False)):
-                    fields_desc = ", ".join(index.fields)
-                    values_desc = ", ".join(repr(v) for v in values)
-                    raise ValidationError(
-                        {
-                            "_".join(index.fields): [
-                                (
-                                    f"{self.entity_cls.__name__} with "
-                                    f"({fields_desc}) ({values_desc}) is already present."
-                                )
-                            ]
-                        }
+        collision = self._unique_index_collision(model_obj, records, identifier)
+        if collision is None:
+            return
+        index, values = collision
+        fields_desc = ", ".join(index.fields)
+        values_desc = ", ".join(repr(v) for v in values)
+        raise ValidationError(
+            {
+                "_".join(index.fields): [
+                    (
+                        f"{self.entity_cls.__name__} with "
+                        f"({fields_desc}) ({values_desc}) is already present."
                     )
+                ]
+            }
+        )
+
+    def save_if_absent(
+        self, entity_obj: typing.Any, *, apply_hooks: bool = True
+    ) -> typing.Any:
+        """Save ``entity_obj`` unless another row already holds its unique key.
+
+        See :meth:`BaseDAO.save_if_absent`. The check and the save run under
+        the provider lock. The check reads both the committed store and this
+        session's copy of it, so it also sees a row that another session
+        committed after this session started. A row in the session's copy
+        holds its key even when another session has since deleted it, because
+        ``save`` checks the key against that same copy.
+
+        Inside a Unit of Work the row is only staged. When another session
+        commits a row with the same key before this one commits, the commit
+        drops this row and keeps the other. This method has already returned
+        the entity in that case.
+        """
+        conn = self._get_session()
+        assert conn is not None
+
+        id_fld = id_field(self.entity_cls)
+        assert id_fld is not None and id_fld.field_name is not None
+        identifier = getattr(entity_obj, id_fld.field_name)
+        model_obj = self.database_model_cls.from_entity(entity_obj)
+
+        def key_taken(records: dict[typing.Any, typing.Any]) -> bool:
+            return (
+                self._unique_index_collision(model_obj, records, identifier) is not None
+            )
+
+        def staged_key_taken(
+            record: dict[str, typing.Any], records: dict[typing.Any, typing.Any]
+        ) -> bool:
+            return self._unique_index_collision(record, records, None) is not None
+
+        provider = cast(MemoryProvider, self.provider)
+        with conn._db["lock"]:
+            # This session's own copy holds the rows it wrote or deleted, so
+            # the committed view leaves those rows out.
+            committed = {
+                record_id: record
+                for record_id, record in provider._databases.get(
+                    self.schema_name, {}
+                ).items()
+                if (self.schema_name, record_id) not in conn._db["ops"]
+            }
+            if key_taken(committed) or key_taken(conn._db["data"][self.schema_name]):
+                return None
+            saved = self.save(entity_obj, apply_hooks=apply_hooks)
+            if not self._is_standalone:
+                # Register under the identifier ``save`` assigned, which an
+                # ``Auto(increment=True)`` field only has after the save. The
+                # commit checks the record as last written, after the hooks
+                # and any later save in this session.
+                conn.write_if_absent(
+                    self.schema_name,
+                    getattr(saved, id_fld.field_name),
+                    staged_key_taken,
+                )
+            return saved
 
     def _create(self, model_obj: typing.Any) -> typing.Any:
         """Write a record to the dict repository"""

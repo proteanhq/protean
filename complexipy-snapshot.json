@@ -80,10 +80,6 @@
       {
         "name": "DictDAO::_filter",
         "complexity": 29
-      },
-      {
-        "name": "DictDAO::_check_unique_indexes",
-        "complexity": 30
       }
     ]
   },
@@ -1465,7 +1461,7 @@
     "functions": [
       {
         "name": "_reconcile_outbox",
-        "complexity": 29
+        "complexity": 25
       }
     ]
   },

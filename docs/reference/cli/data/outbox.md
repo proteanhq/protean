@@ -81,9 +81,26 @@ Otherwise it reads the `--limit` window, finds the newest event-sourced
 aggregate's event in it, and repairs only if that event is missing its row. In
 a store shared with other domains, a run reads the full window whenever the
 newest message belongs to another domain. A run also reads the full window
-when the last write was a command or a state-based aggregate's event. Reconciliation
-is idempotent, the composite unique index on (`message_id`, `target_broker`) means running it
-repeatedly, or concurrently with the startup sweep, never duplicates a row.
+when the last write was a command or a state-based aggregate's event.
+
+Reconciliation is idempotent. A run skips a row whose (`message_id`,
+`target_broker`) pair is already saved, so running it repeatedly never
+duplicates a row. The count that `reconcile` prints covers only the rows this
+run wrote.
+
+A run is also safe at the same time as the startup sweep or while commands are
+committing. When two writers try to save the same row, whichever saves it
+first keeps it and the other skips its copy, and a committing command still
+commits. The exceptions depend on the provider:
+
+- On SQLite, one transaction writes at a time. A run that waits for a
+  committing command longer than the busy timeout fails with
+  `database is locked`. The command still commits.
+- Elasticsearch has no unique index. Two writers that save the same row at the
+  same moment can both keep a row.
+
+When a run saves a row before the command does, the row has the default
+priority, not the priority of the command's request.
 
 A `published` event also gets back one row per broker in
 `[outbox].external_brokers`, with the same `partition_key` as its internal row.
@@ -252,7 +269,9 @@ protean server --domain=my_domain
 The sweep is gated on the outbox being enabled, reads the store as described
 above, and can never block startup. A failure during
 the sweep is logged and boot continues. With `--workers N` it runs once per
-worker; the idempotent index makes the overlap safe. The sweep covers only the
+worker. The sweeps can overlap with each other and with committing commands,
+with the exceptions listed under the `reconcile` command above. The sweep
+covers only the
 `default` provider. Run `protean outbox reconcile --provider=<name>` for
 aggregates on other providers.
 

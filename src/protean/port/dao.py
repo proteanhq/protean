@@ -1,16 +1,19 @@
 import datetime
 import logging
+import operator
 from abc import ABCMeta, abstractmethod
 from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import reduce
 from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from protean._deprecation import deprecated_from_registry
 from protean.core.aggregate import BaseAggregate, _pre_persist_change
 from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
+from protean.core.index import Index
 from protean.core.queryset import QuerySet, ResultSet
 from protean.exceptions import (
     ObjectNotFoundError,
@@ -1072,6 +1075,93 @@ class BaseDAO(metaclass=ABCMeta):
                 + (f" (at {location})" if location else "")
             )
             raise
+
+    def save_if_absent(self, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
+        """Save ``entity_obj`` unless another row already holds its unique key.
+
+        The unique key is the values of the fields of each ``Index`` declared
+        with ``unique=True`` and no ``where`` predicate. This method does not
+        check an index with a ``None`` among those values, and leaves such a
+        row to the database's own rule for NULLs. When the entity declares no
+        such index, this is :meth:`save`.
+
+        This default checks for the key, then saves. Two writers that check at
+        the same moment can both pass the check. A store with a unique index on
+        the key then rejects the second write with its own error. A store with
+        no such index, such as Elasticsearch, keeps both rows. An adapter can
+        override this method so that a lost race also returns ``None``.
+
+        Args:
+            entity_obj: The entity to persist.
+            apply_hooks: Passed to :meth:`save`.
+
+        Returns:
+            The saved entity, or ``None`` when another row holds the unique key.
+            Nothing is written in that case.
+        """
+        if self._unique_key_taken(entity_obj):
+            return None
+        return self.save(entity_obj, apply_hooks=apply_hooks)
+
+    def _unique_key_criteria(self, entity_obj: Any) -> Q | None:
+        """Match the other rows that share a unique key with ``entity_obj``.
+
+        Returns ``None`` when ``entity_obj`` has no unique key, as defined in
+        :meth:`save_if_absent`. The row stored under ``entity_obj``'s own
+        identifier never matches.
+        """
+        indexes = self._unique_key_indexes()
+        if not indexes:
+            return None
+
+        # The values as the store holds them: the model ``from_entity`` builds
+        # applies a ``Reference``'s identifier, a serialized ``Custom`` field,
+        # stored names and any transform a custom database model adds.
+        model_obj = self.database_model_cls.from_entity(entity_obj)
+        groups = [
+            Q(**values)
+            for index in indexes
+            if (values := self._key_values(model_obj, index)) is not None
+        ]
+        if not groups:
+            return None
+
+        criteria = reduce(operator.or_, groups)
+        id_f = id_field(self.entity_cls)
+        assert id_f is not None and id_f.field_name is not None
+        id_attr = id_f.attribute_name or id_f.field_name
+        return criteria & ~Q(**{id_attr: getattr(entity_obj, id_f.field_name)})
+
+    def _unique_key_indexes(self) -> list[Index]:
+        """The entity's ``Index`` declarations with ``unique=True`` and no
+        ``where`` predicate."""
+        return [
+            index
+            for index in getattr(self.entity_cls.meta_, "indexes", ()) or ()
+            if isinstance(index, Index) and index.unique and index.where is None
+        ]
+
+    def _key_values(self, model_obj: Any, index: Index) -> dict[str, Any] | None:
+        """``model_obj``'s values for ``index``'s fields, keyed by the name
+        each field is stored under, or ``None`` when any value is ``None``."""
+        entity_fields = fields(self.entity_cls)
+        values = {}
+        for name in index.fields:
+            field_obj = entity_fields.get(name)
+            # An index names either a field or the attribute it is stored
+            # under, and ``_count`` matches stored names.
+            stored_name = getattr(field_obj, "attribute_name", None) or name
+            values[stored_name] = self.database_model_cls._get_value(
+                model_obj, stored_name
+            )
+        if any(value is None for value in values.values()):
+            return None
+        return values
+
+    def _unique_key_taken(self, entity_obj: Any) -> bool:
+        """Whether another stored row shares a unique key with ``entity_obj``."""
+        criteria = self._unique_key_criteria(entity_obj)
+        return criteria is not None and self._count(criteria) > 0
 
     @deprecated_from_registry("dao_update")
     def update(
