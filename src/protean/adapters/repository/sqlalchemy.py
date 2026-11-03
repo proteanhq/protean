@@ -1901,33 +1901,43 @@ class SADAO(BaseDAO):
 
     def _save_state(
         self, entity_obj: typing.Any
-    ) -> tuple[bool, int | None, bool, bool]:
+    ) -> tuple[bool, int | None, typing.Any, bool]:
         """Capture what :meth:`_forget_save` restores: whether the entity is
-        new, an aggregate's version, whether the Unit of Work tracks it, and
-        whether the Unit of Work has already saved it."""
+        new, an aggregate's version, the instance the Unit of Work tracks
+        under its identifier, and whether the Unit of Work has saved that
+        instance."""
         if entity_obj.element_type != DomainObjects.AGGREGATE:
-            return entity_obj.state_.is_new, None, False, False
-        was_tracked = self._tracked_in_uow(entity_obj) is entity_obj
+            return entity_obj.state_.is_new, None, None, False
+        tracked = self._tracked_in_uow(entity_obj)
         return (
             entity_obj.state_.is_new,
             entity_obj._version,
-            was_tracked,
-            was_tracked and current_uow._is_saved(entity_obj),
+            tracked,
+            tracked is not None and current_uow._is_saved(tracked),
         )
 
     def _forget_save(
-        self, entity_obj: typing.Any, before: tuple[bool, int | None, bool, bool]
+        self, entity_obj: typing.Any, before: tuple[bool, int | None, typing.Any, bool]
     ) -> None:
         """Undo what ``save`` changed on ``entity_obj``, for a write the
         database then rejected."""
-        was_new, version, was_tracked, was_saved = before
+        was_new, version, tracked, was_saved = before
         if was_new:
             entity_obj.state_.mark_new()
         if version is None:
             return
         entity_obj._version = version
-        if current_uow and not was_saved:
-            current_uow._discard_from_identity_map(entity_obj, keep_tracked=was_tracked)
+        # A DAO working outside the Unit of Work never changed its tracking,
+        # and the instance it tracks may be another copy the Unit of Work saved.
+        if self._is_standalone:
+            return
+        if not was_saved:
+            current_uow._discard_from_identity_map(
+                entity_obj, keep_tracked=tracked is not None
+            )
+        if tracked is not None:
+            # ``save`` replaced the tracked instance with ``entity_obj``.
+            current_uow._add_to_identity_map(tracked)
 
     def _update(
         self, model_obj: typing.Any, expected_version: int | None = None

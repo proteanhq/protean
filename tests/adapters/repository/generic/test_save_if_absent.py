@@ -310,6 +310,26 @@ class TestSaveIfAbsentInUnitOfWork:
 
         assert repo.get(second.id).key_a == "m2"
 
+    def test_a_skip_outside_the_unit_of_work_keeps_its_tracked_copy(self, test_domain):
+        repo = test_domain.repository_for(KeyedRow)
+        outside_dao = (
+            test_domain.providers["default"]
+            .get_dao(KeyedRow, repo._database_model)
+            .outside_uow()
+        )
+        _dao(test_domain).save(KeyedRow(key_a="m1", key_b="internal", note="first"))
+        second = KeyedRow(key_a="m2", key_b="internal", note="second")
+        _dao(test_domain).save(second)
+
+        with UnitOfWork():
+            loaded = repo.get(second.id)
+            copy = outside_dao.get(second.id)
+            copy.key_a = "m1"
+            assert outside_dao.save_if_absent(copy) is None
+            assert current_uow._tracked_instance(KeyedRow, second.id) is loaded
+
+        assert repo.get(second.id).key_a == "m2"
+
     def test_writes_a_row_whose_key_this_unit_of_work_freed(self, test_domain):
         repo = test_domain.repository_for(KeyedRow)
         first = KeyedRow(key_a="m1", key_b="internal", note="first")
