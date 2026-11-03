@@ -13,9 +13,10 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.entity import BaseEntity
 from protean.core.index import Index
 from protean.core.unit_of_work import UnitOfWork
-from protean.fields import String
+from protean.fields import HasMany, String
 from protean.port.dao import BaseDAO
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
@@ -48,6 +49,14 @@ class StoredNameKeyRow(BaseAggregate):
 
 class UniqueFieldKeyRow(BaseAggregate):
     email: String(max_length=50, unique=True)
+
+
+class KeyedParent(BaseAggregate):
+    children = HasMany("KeyedChild")
+
+
+class KeyedChild(BaseEntity):
+    code: String(max_length=50)
 
 
 def _raw_unique_token_indexes():
@@ -86,6 +95,13 @@ def register_elements(test_domain):
         UniqueFieldKeyRow,
         schema_name="generic_unique_field_key_row",
         indexes=[Index("email", unique=True)],
+    )
+    test_domain.register(KeyedParent, schema_name="generic_keyed_parent")
+    test_domain.register(
+        KeyedChild,
+        part_of=KeyedParent,
+        schema_name="generic_keyed_child",
+        indexes=[Index("code", unique=True)],
     )
     test_domain.init(traverse=False)
 
@@ -202,6 +218,21 @@ class TestSaveIfAbsent:
         assert dao.save_if_absent(second) is None
         assert second.state_.is_new
         rows = dao.query.filter(email="a@example.com").all().items
+        assert [r.id for r in rows] == [first.id]
+
+    def test_skips_an_entity_whose_key_is_taken(self, test_domain):
+        provider = test_domain.providers["default"]
+        dao = provider.get_dao(
+            KeyedChild, provider.construct_database_model_class(KeyedChild)
+        )
+        first = KeyedChild(code="c1")
+        dao.save(first)
+
+        second = KeyedChild(code="c1")
+
+        assert dao.save_if_absent(second) is None
+        assert second.state_.is_new
+        rows = dao.query.filter(code="c1").all().items
         assert [r.id for r in rows] == [first.id]
 
 

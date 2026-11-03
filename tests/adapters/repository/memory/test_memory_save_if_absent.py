@@ -2,9 +2,9 @@
 
 When another writer commits a row with the same unique key before the Unit of
 Work commits, the commit drops the staged row. These tests check that the
-commit compares the key the staged row holds when the commit runs. The last
-test checks that the portable ``BaseDAO`` default compares the key as a custom
-database model stores it.
+commit compares the key the staged row holds when the commit runs, and leaves
+alone a staged row the Unit of Work deleted. One test checks that the portable
+``BaseDAO`` default compares the key as a custom database model stores it.
 """
 
 import pytest
@@ -100,3 +100,19 @@ def test_default_compares_the_key_the_database_model_stores(test_domain):
 
     assert BaseDAO.save_if_absent(dao, UpperKeyedRow(key="bolt")) is None
     assert dao.query.filter(key="BOLT").count() == 1
+
+
+def test_commit_keeps_a_row_another_writer_committed_when_the_staged_row_was_deleted(
+    test_domain,
+):
+    dao = test_domain.repository_for(KeyedRow)._dao
+    mine = KeyedRow(key="k", note="mine")
+
+    with UnitOfWork():
+        assert dao.save_if_absent(mine) is mine
+        dao.delete(mine)
+        _outside_dao(test_domain, KeyedRow).save(
+            KeyedRow(key="k", note="committed first")
+        )
+
+    assert _notes_with_key(test_domain, KeyedRow, "k") == ["committed first"]
