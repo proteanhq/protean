@@ -1110,10 +1110,18 @@ class BaseDAO(metaclass=ABCMeta):
         :meth:`save_if_absent`. The row stored under ``entity_obj``'s own
         identifier never matches.
         """
+        indexes = self._unique_key_indexes()
+        if not indexes:
+            return None
+
+        # The values as the store holds them: the model ``from_entity`` builds
+        # applies a ``Reference``'s identifier, a serialized ``Custom`` field,
+        # stored names and any transform a custom database model adds.
+        model_obj = self.database_model_cls.from_entity(entity_obj)
         groups = [
             Q(**values)
-            for index in self._unique_key_indexes()
-            if (values := self._key_values(entity_obj, index)) is not None
+            for index in indexes
+            if (values := self._key_values(model_obj, index)) is not None
         ]
         if not groups:
             return None
@@ -1133,20 +1141,19 @@ class BaseDAO(metaclass=ABCMeta):
             if isinstance(index, Index) and index.unique and index.where is None
         ]
 
-    def _key_values(self, entity_obj: Any, index: Index) -> dict[str, Any] | None:
-        """``entity_obj``'s values for ``index``'s fields, keyed by the name
+    def _key_values(self, model_obj: Any, index: Index) -> dict[str, Any] | None:
+        """``model_obj``'s values for ``index``'s fields, keyed by the name
         each field is stored under, or ``None`` when any value is ``None``."""
         entity_fields = fields(self.entity_cls)
-        # The values as the store holds them: a ``Reference`` as its
-        # identifier and a ``Custom`` field serialized, under stored names.
-        stored = self.database_model_cls._entity_to_dict(entity_obj)
         values = {}
         for name in index.fields:
             field_obj = entity_fields.get(name)
             # An index names either a field or the attribute it is stored
             # under, and ``_count`` matches stored names.
             stored_name = getattr(field_obj, "attribute_name", None) or name
-            values[stored_name] = stored.get(stored_name)
+            values[stored_name] = self.database_model_cls._get_value(
+                model_obj, stored_name
+            )
         if any(value is None for value in values.values()):
             return None
         return values
