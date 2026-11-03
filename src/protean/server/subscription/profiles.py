@@ -31,8 +31,9 @@ class SubscriptionType(Enum):
     Attributes:
         STREAM: Reads from a broker stream through a consumer group, with
             retries and a dead letter queue.
-        EVENT_STORE: Reads directly from the event store. It has no dead
-            letter queue and no stream retention.
+        EVENT_STORE: Reads directly from the event store, with no stream
+            retention. It records exhausted positions in a ``failed-*``
+            stream instead of a broker dead letter queue.
     """
 
     STREAM = "stream"

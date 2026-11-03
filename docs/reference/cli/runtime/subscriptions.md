@@ -122,7 +122,8 @@ infrastructure directly:
    discovered from `domain.registry`
 2. The `ConfigResolver` determines each handler's subscription type
 3. For event store subscriptions, position streams and `stream_head_position()`
-   are queried
+   are queried, and `dlq_depth` counts the positions whose latest record in the
+   subscription's `failed-*` stream is `Exhausted`
 4. For stream subscriptions, Redis `XINFO GROUPS` and `XLEN` are queried
 5. For outbox processors, `count_by_status()` is queried
 

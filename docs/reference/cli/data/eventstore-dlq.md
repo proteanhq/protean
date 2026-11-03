@@ -93,6 +93,8 @@ per-subscription list under `data.subscriptions`:
 Re-reads the event behind an exhausted position and prints its type, global
 position, and data. The event is read live from the store (it is never copied
 into the exhausted record), so you always see its current form.
+A position that was replayed or purged after it was exhausted is no longer
+exhausted, so `inspect` reports it as not found.
 
 ```bash
 protean eventstore dlq inspect 42 --domain=my_domain
