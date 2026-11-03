@@ -27,7 +27,6 @@ class SubscriptionType(Enum):
     """Enumeration of available subscription types.
 
     Attributes:
-<<<<<<< HEAD
         STREAM: Stream-based subscription using Redis Streams with blocking reads.
             This is the production-recommended subscription type that provides:
             - Transactional outbox pattern
@@ -41,13 +40,9 @@ class SubscriptionType(Enum):
             - Event replay
             - Development/debugging
             - Single-worker scenarios
-=======
-        STREAM: Reads from a broker stream through a consumer group, with
-            retries and a dead letter queue.
-        EVENT_STORE: Reads directly from the event store, with no stream
-            retention. It records exhausted positions in a ``failed-*``
-            stream instead of a broker dead letter queue.
->>>>>>> d8939a67 (Report exhausted positions as dlq_depth for event-store subscriptions (#2095))
+
+            It records exhausted positions in a ``failed-*`` stream instead
+            of a broker dead letter queue.
     """
 
     STREAM = "stream"
