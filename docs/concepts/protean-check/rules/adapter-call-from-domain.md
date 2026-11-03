@@ -46,7 +46,10 @@ call only when the callee **statically resolves** under `protean.adapters`. A ca
 callee cannot be resolved is **skipped, never guessed at**, keeping the rule on
 the deterministic side of ADR-0019. A callee bound by an import written inside
 the method (`from protean.adapters... import X`) resolves for every use after
-that import, so the rule flags it like one bound at module level.
+that import, so the rule flags it like one bound at module level. When the
+method also rebinds that name, by an assignment, a loop or `with` target, or a
+second import of a different object, the rule cannot tell which binding a call
+sees, so it skips every call through that name.
 
 Because it reads only an element's own top-level methods, it does **not** see
 an adapter call that sits in a method inherited from a non-registered base or
