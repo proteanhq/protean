@@ -1,3 +1,4 @@
+from types import ModuleType
 from unittest.mock import MagicMock
 
 import pytest
@@ -125,3 +126,15 @@ def test_find_domain_by_string_with_function_returning_non_domain(mock_module):
     with pytest.raises(NoDomainException) as exc_info:
         find_domain_by_string(mock_module, "bad_function()")
     assert "A valid Protean domain was not obtained" in str(exc_info.value)
+
+
+def test_find_domain_by_string_reports_a_missing_attribute_on_a_real_module():
+    module = ModuleType("real_module")
+
+    with pytest.raises(NoDomainException) as exc_info:
+        find_domain_by_string(module, "missing")
+
+    assert str(exc_info.value.args[0]) == (
+        "Failed to find attribute 'missing' in 'real_module'."
+    )
+    assert isinstance(exc_info.value.__cause__, AttributeError)

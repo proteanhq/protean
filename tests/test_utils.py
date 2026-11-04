@@ -91,6 +91,17 @@ def test_function_identity_strategy_with_valid_function():
     assert result == "custom-1"
 
 
+@pytest.mark.no_test_domain
+def test_function_identity_strategy_without_type_needs_an_active_domain():
+    """With no active domain, the function strategy reads the domain's identity
+    type and raises when the caller passes no identity type."""
+    with pytest.warns(UserWarning, match="Working outside of domain context"):
+        with pytest.raises(AttributeError):
+            _generate_identity(
+                identity_strategy="function", identity_function=lambda: "custom-1"
+            )
+
+
 def test_get_version():
     """get_version returns a version string."""
     version = get_version()

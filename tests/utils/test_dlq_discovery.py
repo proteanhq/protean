@@ -636,3 +636,36 @@ class TestCollectFailedStreams:
         names = {info.handler_name for info in infos}
         assert "WidgetHandler" in names
         assert "WebhookSubscriber" not in names
+
+
+@pytest.mark.no_test_domain
+class TestDiscoverSubscriptionsKeepsTheFirstDuplicate:
+    def test_a_class_found_twice_on_one_stream_keeps_its_first_kind(self):
+        domain = Domain(__file__, "TestFirstWins")
+
+        @domain.aggregate
+        class Order:
+            name: str
+
+        @domain.event_handler(part_of=Order)
+        class OrderEventHandler:
+            pass
+
+        domain.init(traverse=False)
+
+        # List the event handler under projectors as well, on the same stream
+        # category, so discovery meets the same (handler, stream) pair twice.
+        handlers = domain.registry._elements["EVENT_HANDLER"]
+        domain.registry._elements["PROJECTOR"] = dict(handlers)
+        category = OrderEventHandler.meta_.stream_category
+        OrderEventHandler.meta_.stream_categories = [category]
+
+        infos = [
+            i
+            for i in discover_subscriptions(domain)
+            if i.handler_name == "OrderEventHandler"
+        ]
+
+        assert len(infos) == 1
+        assert infos[0].stream_category == category
+        assert infos[0].is_projector is False

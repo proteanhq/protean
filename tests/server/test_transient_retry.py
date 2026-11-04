@@ -620,6 +620,29 @@ class TestTransientRetryMetric:
             "exception": "ConnectionError",
         }
 
+    @patch("protean.utils.mixins.time.sleep")
+    def test_exhausted_attempt_is_not_counted_as_a_retry(
+        self, mock_sleep, test_domain, retried_points
+    ):
+        """When the retries run out, the counter equals the retries that ran,
+        not the attempts."""
+
+        class H(BaseCommandHandler):
+            @handle(RenameUser)
+            def rename(self, command: RenameUser) -> None:
+                raise ConnectionError("still down")
+
+        test_domain.register(H, part_of=User, retries=2)
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ConnectionError, match="still down"):
+            H._handle(_enrich(test_domain))
+
+        assert mock_sleep.call_count == 2
+        points = retried_points()
+        assert len(points) == 1
+        assert points[0].value == 2
+
     @pytest.mark.parametrize(
         "error",
         [None, ValueError("business rule")],

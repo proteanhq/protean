@@ -1281,8 +1281,11 @@ class Message(Element, BaseModel, OptionsMixin):
     @staticmethod
     def _subject_without_category(stream: str) -> str | None:
         """Return the identifier part of *stream*, parsed without knowing its
-        category, or None if *stream* has no separator or nothing follows
-        its first "-"."""
+        category.
+
+        Returns None if *stream* has neither ":command-" nor "-", or if it
+        is a plain "<category>-" with nothing after the "-". A stream that
+        ends in ":command-" or "-fact-" gives an empty string."""
         # Command format: <anything>:command-<id>
         cmd_marker = ":command-"
         if cmd_marker in stream:
@@ -1421,7 +1424,7 @@ class Message(Element, BaseModel, OptionsMixin):
         extensions.update(
             {
                 key: value
-                for key, value in metadata.extensions.items()
+                for key, value in (metadata.extensions or {}).items()
                 if not key.startswith("_")
             }
         )

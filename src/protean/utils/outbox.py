@@ -1691,8 +1691,9 @@ def _messages_missing_internal_row(
     internal outbox row, in event store order.
 
     Also returns the brokers that already hold a row for each repairable event
-    that passes the cutoff, keyed by message id. Returns an empty list when no event in the window
-    passes the cutoff, or when the newest one that does has its internal row.
+    that passes the cutoff, keyed by message id. Returns ``([], {})`` when no
+    event in the window passes the cutoff, or when the newest one that does
+    has its internal row.
     """
     store = domain.event_store.store
     outbox_config = domain.config.get("outbox", {})
@@ -1795,8 +1796,9 @@ def _save_rebuilt_rows(
         )
         if abandon_reason is not None:
             outbox_message.mark_abandoned(abandon_reason, cause="Invalid partition key")
-        # A live unit of work, or another sweep, may write this row
-        # after the check above. Its row is kept and this one skipped.
+        # A live unit of work, or another sweep, may write this row after
+        # _messages_missing_internal_row checked for it. Its row is kept and
+        # this one skipped.
         if outbox_repo._dao.save_if_absent(outbox_message) is not None:
             created += 1
     return created

@@ -746,7 +746,12 @@ def _finalize_element_meta(
     normalized_deprecated: dict[str, str] | None,
 ) -> None:
     """Fill in default options, ``deprecated``, the message version and the
-    identity field on a class whose ``meta_`` is set."""
+    identity field on a class whose ``meta_`` is set.
+
+    Raises:
+        ConfigurationError: If ``meta_.superseded_by`` is neither a class nor
+            a string.
+    """
     # Assign default options for remaining items
     element_with_meta._set_defaults()
 
@@ -852,8 +857,9 @@ def _generate_function_identity(
     # Run the function configured as part of the Auto field. If not provided, fall back
     #   to the function defined at the domain level.
     id_function = identity_function or current_domain._identity_function
-    # This strategy ignores the identity type, but reading the domain's value
-    # keeps the AttributeError a call with no active domain has always raised.
+    # This strategy ignores the identity type. The read stays so that, with no
+    # active domain, a call that passes a function but no identity type raises
+    # AttributeError.
     _ = identity_type or current_domain.config["identity_type"]
 
     if callable(id_function):
@@ -957,12 +963,10 @@ def _check_clone_arguments(cls: Any, new_name: Any) -> None:
         raise ValueError(f"'{new_name}' is a reserved Python keyword")
 
 
-def _slot_names(cls: type) -> set[str] | None:
-    """Return the names in ``cls.__slots__``, or None if *cls* declares no
-    ``__slots__``."""
+def _slot_names(cls: type) -> set[str]:
+    """Return the names in ``cls.__slots__`` when it is a string, tuple or
+    list, and an empty set otherwise."""
     slots = getattr(cls, "__slots__", None)
-    if slots is None:
-        return None
     if isinstance(slots, (tuple, list)):
         return set(slots)
     if isinstance(slots, str):
@@ -980,10 +984,10 @@ def _clonable_attrs(cls: type) -> dict[str, Any]:
         "__weakref__",  # Weak reference support
         "__module__",  # Will be set automatically by type()
         "__doc__",  # Will be inherited or can be set separately
-        "__qualname__",  # Will be set explicitly below
+        "__qualname__",  # clone_class sets it on the new class
     }
     # Skip slot descriptors to avoid conflicts when cloning classes with __slots__
-    slot_names = _slot_names(cls) or set()
+    slot_names = _slot_names(cls)
 
     return {
         key: value

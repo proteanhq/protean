@@ -274,6 +274,17 @@ class TestToCloudeventExtensions:
         assert "_dropped_fields" not in ce
         assert ce["tenant_id"] == "t"
 
+    def test_metadata_without_extensions_emits_no_user_extensions(self):
+        """A metadata object built without validation can carry None for
+        ``extensions``; the CloudEvent is still produced."""
+        message, _ = _make_event_message()
+        message.metadata = message.metadata.model_copy(update={"extensions": None})
+
+        ce = message.to_cloudevent()
+
+        assert ce["id"] == message.metadata.headers.id
+        assert "tenant_id" not in ce
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # from_cloudevent()

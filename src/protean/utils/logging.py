@@ -356,7 +356,8 @@ def _resolve_log_level(level: str | None, env: str) -> int:
     """Return the numeric log level: *level* if given, else the
     ``PROTEAN_LOG_LEVEL`` env var, else the default for *env*.
 
-    An unknown level name resolves to ``logging.INFO``.
+    A name that is not an attribute of the ``logging`` module resolves to
+    ``logging.INFO``.
     """
     if level is None:
         level = os.getenv("PROTEAN_LOG_LEVEL", _ENV_LEVEL_MAP.get(env, "INFO")).upper()

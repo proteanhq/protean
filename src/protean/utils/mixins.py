@@ -699,12 +699,11 @@ def _tag_span_with_message_ids(span: Any) -> None:
     if msg is None or not hasattr(msg, "metadata") or not msg.metadata:
         return
     domain_meta = getattr(msg.metadata, "domain", None)
-    if domain_meta is None:
-        return
-    if domain_meta.correlation_id:
-        span.set_attribute("protean.correlation_id", domain_meta.correlation_id)
-    if domain_meta.causation_id:
-        span.set_attribute("protean.causation_id", domain_meta.causation_id)
+    if domain_meta is not None:
+        if domain_meta.correlation_id:
+            span.set_attribute("protean.correlation_id", domain_meta.correlation_id)
+        if domain_meta.causation_id:
+            span.set_attribute("protean.causation_id", domain_meta.causation_id)
 
 
 def _record_handler_metrics(
