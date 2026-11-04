@@ -192,16 +192,18 @@ Protean's source is organized into 10 top-level packages:
 
 ### Test Matrix
 
-Protean tests across five Python versions and five backing services, split
+Protean tests across five Python versions and seven backing services, split
 between per-PR CI and a nightly run:
 
 - **5 Python versions**: 3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease
-- **5 backing services** (started as Docker containers for the adapter suite):
+- **7 backing services** (started as Docker containers for the adapter suite):
     - PostgreSQL 16
-    - Redis
+    - Redis 7
     - Elasticsearch 8.7.0
     - MessageDB 1.3.1
     - MSSQL Server 2022
+    - MySQL 8.4
+    - MariaDB 11.4
 
 Each pull request runs the in-memory core suite on every stable version, and
 the PostgreSQL and Redis adapters plus any adapter the pull request changes. A

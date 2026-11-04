@@ -140,7 +140,7 @@ for the full contract.
 
 ## Quality
 
-Every commit runs the in-memory core suite across 5 Python versions and all 5 backing services on the newest stable Python; the full adapter matrix across every version runs nightly.
+Every commit runs the in-memory core suite across 5 Python versions and all 7 backing services on the newest stable Python; the full adapter matrix across every version runs nightly.
 
 | Metric | Value |
 |---|---|
