@@ -22,9 +22,18 @@ protean upgrade-check --domain=my_app --format=json
 
 The domain is initialized so the schema check can introspect the configured
 databases. `--opportunities` skips that init: those detectors only read your
-source, so the mode runs with the databases and brokers down. Exit code is `0`
-when only advisory (info) findings are present and `2` when any warnings need
-review.
+source, so the mode runs with the databases and brokers down.
+
+## Exit codes
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | No findings, or only advisory (`info`) findings. |
+| `1` | At least one `warning` finding, including `CHECK_FAILED`. |
+| `2` | A usage or environment error: a bad `--format`, a bad or misplaced `--pinned-version`, an unknown option, a domain that does not load, or an error while the domain initializes or the checks run. The message goes to stderr, and stdout stays empty, including under `--format json`. |
+
+`--format json` prints the findings as a plain JSON list. It does not use the
+[result envelope](conventions.md#the-result-envelope).
 
 ## Checks
 
@@ -123,8 +132,7 @@ standard Starlette and FastAPI ones. The queue-status detector reads a `status`
 or `state` field and needs at least two queue-vocabulary choices before it fires.
 Detector findings are advisory (`info`) and do not
 change the exit code. The one exception is `CHECK_FAILED`: if a detector cannot
-complete, that is a `warning`, and any warning exits `2` under the shared
-exit-code rule.
+complete, that is a `warning`, and any warning exits `1`.
 
 ### The pinned version
 
@@ -138,7 +146,7 @@ not own it yet.
 
 `--pinned-version` takes `MAJOR.MINOR` with an optional patch and an optional
 release tag: `0.16`, `0.16.3`, `0.16.0rc1`, `0.16.0.dev1`. Anything else exits
-`1`, so a typo does not silently read as some other version.
+`2`, so a typo does not silently read as some other version.
 
 ### Detectors
 
@@ -161,11 +169,13 @@ release. Judgment-heavy advice ("this orchestration is really a process
 manager") stays out of OSS; that is the commercial Domain Assessment surface, on
 the non-deterministic side of the open-core boundary.
 
-!!! warning "Exit code 2 is easier to hit in 0.17"
+!!! warning "A warning exit is easier to hit from 0.17"
 
-    The mapping is unchanged (any `warning` finding exits `2`), but
     `NESTED_UNIT_OF_WORK` and `IO_INSIDE_UNIT_OF_WORK` are both warnings, and
     both read your source rather than your config. A domain that exited `0` on
-    0.16 can exit `2` on 0.17 with nothing changed. See
-    [the migration guide](../migration/v0-17.md#the-unit-of-work-is-a-real-transaction)
+    0.16 can exit non-zero on 0.17 with nothing changed. On 0.17 and 0.18 a
+    warning exits `2`. From 0.19 it exits `1`, and `2` means the run itself
+    failed; see
+    [`upgrade-check` exits 1 for warnings and 2 for errors](../migration/v0-19.md#upgrade-check-exits-1-for-warnings-and-2-for-errors).
+    See [the 0.17 migration guide](../migration/v0-17.md#the-unit-of-work-is-a-real-transaction)
     for what the two findings mean.

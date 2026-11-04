@@ -15,9 +15,11 @@ follows the same `--json` contracts, and in both modes it exits `2` when it
 cannot connect to the event store. `ir diff` follows the exit-code convention:
 `2` for a usage, load or config error, printed on stderr, and `3` for its own
 "non-breaking changes only" result. Its `--format json` output keeps its own
-shape and does not use the envelope. The other commands that print JSON
-(`upgrade-check`, `ir check`) predate the contracts and are **not yet
-converged**: their exit codes and output shapes still differ.
+shape and does not use the envelope. `upgrade-check` follows the exit-code
+convention too: `1` for warning findings and `2` for a usage or environment
+error, printed on stderr. Its `--format json` output is still a plain list of
+findings, without the envelope. `ir check` predates the contracts and is **not
+yet converged**: its exit codes and output shape still differ.
 
 ## The result envelope
 
@@ -108,6 +110,16 @@ command that sets no explicit exit code already conforms.
 | `3` | Non-breaking changes only. |
 
 See [`protean ir diff`](ir.md#protean-ir-diff) for the details.
+
+**`protean upgrade-check`** (it follows the codes above, without the envelope):
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | No findings, or `info` findings only. |
+| `1` | At least one `warning` finding, including `CHECK_FAILED`. |
+| `2` | Usage or environment error, printed on stderr. |
+
+See [`protean upgrade-check`](upgrade-check.md#exit-codes) for the details.
 
 ## Clean stdout
 

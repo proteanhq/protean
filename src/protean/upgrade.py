@@ -124,7 +124,8 @@ def _check_health_port(domain: Domain) -> list[UpgradeFinding]:
             code="HEALTH_PORT_BIND",
             # Advisory: fires for every engine (host is always present in the
             # merged config defaults, so affected users cannot be isolated), so
-            # keep it at "info" rather than tripping upgrade-check's exit code 2.
+            # keep it at "info" rather than tripping upgrade-check's exit code 1,
+            # which it gives any warning.
             level="info",
             title="`protean server` health-check server now binds loopback by default",
             detail=(

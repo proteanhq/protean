@@ -282,10 +282,6 @@
     "file_name": "upgrade.py",
     "functions": [
       {
-        "name": "upgrade_check",
-        "complexity": 16
-      },
-      {
         "name": "_print_rich",
         "complexity": 17
       }
