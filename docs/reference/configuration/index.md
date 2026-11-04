@@ -416,9 +416,21 @@ default** on port `8080`.
 The server exposes `GET /healthz`, `GET /livez`, `GET /readyz`, and
 `POST /drainz`. `/drainz` asks the engine in that process to stop taking new
 work while in-flight work finishes, without shutting it down; `/readyz` then
-reports not-ready so a load balancer stops routing to the pod. For the probe
+reports not-ready so a load balancer stops routing to the pod. Its `drained`
+field turns `true` once that engine has no batch in flight. For the probe
 response bodies, readiness semantics, draining, and FastAPI router factory, see
 [Server Hardening reference](../server/hardening.md#health-checks).
+
+#### Claiming Unhandled Messages
+
+`server.reclaim_idle_seconds` (default `120`) sets how long a Redis stream entry
+must stay unacknowledged before a starting subscription claims it. A worker
+stopped in the middle of a batch leaves its unhandled messages pending in the
+consumer group; the next start claims and handles them once they are this old.
+Keep it above `circuit_breaker_reset_seconds` and above your longest batch, so
+a start never claims the entries of a consumer that is still running. A zero,
+negative or non-numeric value falls back to `120`. See
+[`server.reclaim_idle_seconds`](../server/hardening.md#serverreclaim_idle_seconds).
 
 #### Priority Lanes
 

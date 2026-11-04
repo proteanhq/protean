@@ -334,8 +334,9 @@ def test_subscription_names_derived_from_handler(test_domain, engine):
 
 # Test Cleanup Behavior
 @pytest.mark.redis
-async def test_cleanup_clears_retry_counts(test_domain, engine):
-    """Test that cleanup properly clears retry counts."""
+async def test_cleanup_keeps_retry_counts(test_domain, engine):
+    """Shutdown calls cleanup while the in-flight batch may still run, so a
+    message failing in the drain window keeps its earlier attempts."""
     with test_domain.domain_context():
         subscription = StreamSubscription(
             engine=engine, stream_category="user", handler=UserEventHandler
@@ -347,7 +348,6 @@ async def test_cleanup_clears_retry_counts(test_domain, engine):
 
         assert len(subscription.retry_counts) == 2
 
-        # Cleanup should clear retry counts
         await subscription.cleanup()
 
-        assert len(subscription.retry_counts) == 0
+        assert subscription.retry_counts == {"msg-1": 2, "msg-2": 1}

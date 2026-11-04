@@ -19,7 +19,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.domain import Processing
 from protean.fields import Identifier, String
 from protean.server import Engine
-from protean.server.tracing import MessageTrace, TraceEmitter
+from protean.server.tracing import TRACE_STREAM, MessageTrace, TraceEmitter
 from protean.utils.eventing import (
     DomainMeta,
     Message,
@@ -27,6 +27,38 @@ from protean.utils.eventing import (
     Metadata,
 )
 from protean.utils.mixins import handle
+
+
+class RecordingRedis:
+    """Stands in for the Redis server that TraceEmitter writes traces to."""
+
+    def __init__(self):
+        self.stream_entries = []
+
+    def xadd(self, name, fields, **kwargs):
+        self.stream_entries.append((name, fields))
+
+    def publish(self, channel, message):
+        pass
+
+    def pubsub_numsub(self, channel):
+        return []
+
+    def traces(self):
+        return [
+            json.loads(fields["data"])
+            for name, fields in self.stream_entries
+            if name == TRACE_STREAM
+        ]
+
+
+def _attach_recording_redis(emitter: TraceEmitter) -> RecordingRedis:
+    redis = RecordingRedis()
+    emitter._redis = redis
+    emitter._persist = True
+    emitter._initialized = True
+    return redis
+
 
 # --- MessageTrace dataclass tests ---
 

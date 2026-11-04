@@ -118,6 +118,13 @@ available). When a signal is received:
 4. Workers that do not stop within the timeout are forcefully killed with
    `SIGKILL`.
 
+Messages a worker read and did not handle before it stopped stay pending in
+Redis. When a worker starts, it claims the pending messages last delivered at
+least [`server.reclaim_idle_seconds`](hardening.md#serverreclaim_idle_seconds)
+earlier, and handles them. A partitioned subscription (`sequential_by`) does
+not wait for this threshold: the partition's next owner claims its pending
+messages through the lease handover.
+
 Sending a second signal while shutdown is already in progress is ignored.
 
 `SIGTERM` to the Supervisor is the only way to quiesce every worker at once.

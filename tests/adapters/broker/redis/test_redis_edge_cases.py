@@ -114,6 +114,11 @@ class TestRedisEdgeCases:
                 )
             ],
         ]
+        # The older pending entries the read takes after the new ones.
+        mock_redis.xpending_range.return_value = [
+            {"message_id": b"0-1"},
+            {"message_id": b"0-2"},
+        ]
         broker.redis_instance = mock_redis
 
         # Ensure group is mocked
@@ -155,6 +160,8 @@ class TestRedisEdgeCases:
                 )
             ],
         ]
+        # The older pending entries the read takes after the new ones.
+        mock_redis.xpending_range.return_value = [{"message_id": b"0-1"}]
         broker.redis_instance = mock_redis
 
         # Ensure group is mocked
@@ -199,6 +206,11 @@ class TestRedisEdgeCases:
                     ],
                 )
             ],
+        ]
+        # The older pending entries the read takes after the new ones.
+        mock_redis.xpending_range.return_value = [
+            {"message_id": b"0-1"},
+            {"message_id": b"0-2"},
         ]
         broker.redis_instance = mock_redis
 

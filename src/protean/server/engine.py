@@ -6,7 +6,7 @@ import platform
 import signal
 import time
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from signal import Signals
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -44,6 +44,7 @@ from .dlq_maintenance import DLQMaintenanceTask
 from .health import HealthServer
 from .outbox_processor import OutboxProcessor
 from .subscription.broker_subscription import BrokerSubscription
+from .subscription.event_store_subscription import EventStoreSubscription
 from .subscription.factory import (
     SubscriptionFactory,
     broker_supports_partitioning,
@@ -217,6 +218,51 @@ def _extract_correlation_id(message: dict[str, Any]) -> str:
     return new_correlation_id()
 
 
+DEFAULT_RECLAIM_IDLE_SECONDS = 120
+
+
+def _positive_server_setting(domain: "Domain", key: str, default: float) -> float:
+    """Read ``[server].<key>`` as a positive, finite number of seconds.
+
+    Logs ``engine.<key>_invalid_using_default`` and returns ``default`` when
+    the value is not a number (a boolean included), or is nan or infinite.
+    Logs ``engine.<key>_not_positive_using_default`` and returns ``default``
+    when the value is zero or negative.
+    """
+    raw: Any = default
+    try:
+        raw = domain.config.get("server", {}).get(key, default)
+        if isinstance(raw, bool):
+            # bool is a subclass of int, so float(True) is 1.0: a TOML
+            # `drain_timeout = true` would silently become one second instead
+            # of an invalid value. Reject it like any other non-numeric value.
+            raise TypeError(f"{key} must be a number, not a boolean")
+        value = float(raw)
+        if not math.isfinite(value):
+            # nan and inf survive float() and slip past the range check below,
+            # since every comparison against nan is False. A nan drain window
+            # makes asyncio.wait return on the next loop step and force-cancel
+            # in-flight handlers with no grace; an inf one never ends.
+            raise ValueError(f"{key} must be a finite number")
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        logger.warning(
+            f"engine.{key}_invalid_using_default",
+            extra={key: raw, "default": default},
+        )
+        return float(default)
+    # Zero or a negative value gives no window at all: a zero drain window
+    # cancels every unfinished task at once, and a zero reclaim threshold
+    # claims the entries of consumers that are still running. Neither is
+    # intended, so restore the default.
+    if value <= 0:
+        logger.warning(
+            f"engine.{key}_not_positive_using_default",
+            extra={key: value, "default": default},
+        )
+        return float(default)
+    return value
+
+
 class Engine:
     """
     The Engine class represents the Protean Engine that handles message processing and subscription management.
@@ -249,56 +295,32 @@ class Engine:
         # work finish, stay alive" so an orchestrator can quiesce the process
         # before sending SIGTERM. shutting_down means "tear everything down".
         #
-        # Draining only gates the subscription poll loops (they stop pulling new
-        # batches); it deliberately does NOT gate handle_message /
-        # handle_broker_message. A message already read into an in-flight batch
-        # must run to completion, since a False return from those guards travels
-        # the failure path (NACK/retry/DLQ) and would drop the message. The
-        # loop-top check then exits once the current batch finishes.
+        # Neither flag gates handle_message / handle_broker_message: both only
+        # stop the subscription poll loops from reading new batches. A message
+        # already read into an in-flight batch runs to completion, since a False
+        # return from those methods travels the failure path (NACK/retry/DLQ)
+        # and would strand the message. On shutdown the batch gets the
+        # drain_timeout window; a batch still running then is cancelled, which
+        # leaves its unhandled messages pending for a later consumer to claim.
         self.draining = False
 
         # Graceful drain window (seconds): how long shutdown() waits for
         # in-flight handlers to finish before force-cancelling. Read from
         # [server].drain_timeout, defaulting to 10 to preserve the previous
-        # hardcoded behaviour. Defensive read + numeric coercion mirrors the
-        # observatory/health config reads elsewhere in __init__.
-        # Pre-seeded so the warning below can name the offending value; it stays
-        # the default only if the config read itself fails.
-        drain_timeout_raw: Any = 10
-        try:
-            drain_timeout_raw = domain.config.get("server", {}).get("drain_timeout", 10)
-            if isinstance(drain_timeout_raw, bool):
-                # bool is a subclass of int, so float(True) is 1.0: a TOML
-                # `drain_timeout = true` would silently become a one-second
-                # window instead of an invalid value. Reject it like any other
-                # non-numeric setting.
-                raise TypeError("drain_timeout must be a number, not a boolean")
-            drain_timeout = float(drain_timeout_raw)
-            if not math.isfinite(drain_timeout):
-                # nan and inf survive float() and slip past the range check
-                # below, since every comparison against nan is False. A nan
-                # window makes asyncio.wait return on the next loop step and
-                # force-cancel in-flight handlers with no grace; an inf window
-                # never ends. Both are invalid.
-                raise ValueError("drain_timeout must be a finite number")
-            self.drain_timeout = drain_timeout
-        except (AttributeError, TypeError, ValueError, OverflowError):
-            logger.warning(
-                "engine.drain_timeout_invalid_using_default",
-                extra={"drain_timeout": drain_timeout_raw, "default": 10},
-            )
-            self.drain_timeout = 10.0
-        # A zero or negative window gives no grace at all: asyncio.wait returns
-        # on the next loop step and every unfinished task is cancelled
-        # immediately. That is almost never intended, so treat it as invalid and
-        # restore the default rather than silently force-cancelling in-flight
-        # work.
-        if self.drain_timeout <= 0:
-            logger.warning(
-                "engine.drain_timeout_not_positive_using_default",
-                extra={"drain_timeout": self.drain_timeout, "default": 10},
-            )
-            self.drain_timeout = 10.0
+        # hardcoded behaviour.
+        self.drain_timeout = _positive_server_setting(domain, "drain_timeout", 10)
+
+        # How long (seconds) an entry must sit unacknowledged under another consumer of
+        # a stream or broker subscription's group before the subscription claims
+        # it on startup. Read from [server].reclaim_idle_seconds.
+        self.reclaim_idle_seconds = _positive_server_setting(
+            domain, "reclaim_idle_seconds", DEFAULT_RECLAIM_IDLE_SECONDS
+        )
+
+        # Message batches read or being processed right now, across every
+        # subscription that pauses on drain. POST /drainz reports the engine
+        # drained once this is back to zero.
+        self._batches_in_flight = 0
 
         # Keep a strong reference to the shutdown task so it isn't garbage
         # collected mid-flight (see RUF006).
@@ -751,6 +773,34 @@ class Engine:
         count = len(self._subscriptions) + len(self._broker_subscriptions)
         return [create_observation(count)]
 
+    @contextlib.contextmanager
+    def batch_in_flight(self) -> Iterator[None]:
+        """Count a message batch as in flight while the block runs.
+
+        A subscription wraps each read and the processing of what it read in
+        this block. The count drops when the block exits, on an exception or a
+        cancellation as well, so :attr:`batches_drained` cannot stay False.
+        """
+        self._batches_in_flight += 1
+        try:
+            yield
+        finally:
+            self._batches_in_flight -= 1
+
+    @property
+    def batches_drained(self) -> bool:
+        """True when no subscription has a batch read or in processing."""
+        return self._batches_in_flight == 0
+
+    @property
+    def reclaim_idle_ms(self) -> int:
+        """``reclaim_idle_seconds`` in whole milliseconds, rounded up.
+
+        Never below 1, so a positive setting under one millisecond does not
+        become 0 ms, which claims every pending entry however recently read.
+        """
+        return max(1, math.ceil(self.reclaim_idle_seconds * 1000))
+
     async def handle_broker_message(
         self,
         subscriber_cls: type[BaseSubscriber],
@@ -772,9 +822,6 @@ class Engine:
         Returns:
             bool: True if the message was processed successfully, False otherwise
         """
-
-        if self.shutting_down:
-            return False  # Skip handling while shutting down
 
         with self.domain.domain_context():
             # Set message context so subscribers (and any commands they
@@ -849,9 +896,6 @@ class Engine:
         Returns:
             bool: True if the message was processed successfully, False otherwise
         """
-        if self.shutting_down:
-            return False  # Skip handling while shutting down
-
         # Propagate metadata extensions into g so that handlers see the
         # same context (tenant_id, user_id, etc.) that enrichers injected
         # when the event/command was originally raised.
@@ -1235,7 +1279,8 @@ class Engine:
 
         Shutdown ordering:
         1. Signal all subscriptions to stop accepting new messages
-        2. Wait for in-flight tasks to complete (bounded timeout), then cancel stragglers
+        2. Wait for in-flight tasks to complete (bounded timeout), then cancel
+           stragglers, then write event-store subscriptions' read positions
         3. Close domain infrastructure (event store, brokers, caches, providers)
         4. Clean up signal handlers and stop the event loop
 
@@ -1310,6 +1355,12 @@ class Engine:
                         task.cancel()
                     await asyncio.gather(*pending, return_exceptions=True)
 
+            # Step 2b: Write each event-store subscription's read position
+            # again. Step 1 wrote it before the in-flight batch finished, and a
+            # handler that completed since then moved the position in memory
+            # only. Without this write, a restart handles those messages again.
+            await self._write_store_positions()
+
             # Step 3: Close domain infrastructure connections
             try:
                 self.domain.close()
@@ -1320,6 +1371,29 @@ class Engine:
             self._cleanup_signal_handlers()
         finally:
             self.loop.stop()
+
+    async def _write_store_positions(self) -> None:
+        """Write each event-store subscription's read position, logging each
+        write that fails instead of raising."""
+        store_subscriptions = [
+            subscription
+            for subscription in self._subscriptions.values()
+            if isinstance(subscription, EventStoreSubscription)
+        ]
+        results = await asyncio.gather(
+            *(
+                subscription.update_current_position_to_store()
+                for subscription in store_subscriptions
+            ),
+            return_exceptions=True,
+        )
+        for subscription, result in zip(store_subscriptions, results, strict=True):
+            if isinstance(result, BaseException):
+                logger.error(
+                    "engine.position_write_failed",
+                    extra={"subscriber": subscription.subscriber_name},
+                    exc_info=result,
+                )
 
     def _reconcile_outbox_on_startup(self) -> int:
         """Recover the ADR-0015 crash window on startup: create outbox rows for

@@ -385,6 +385,19 @@ class TestHealthServerIntegration:
         assert len(records) == 1
         assert records[0].pid == os.getpid()
 
+    def test_drainz_reports_drained_once_no_batch_is_in_flight(self, health_server):
+        """``drained`` is false while a batch runs and true after it ends, so a
+        caller can POST until it reads true and then send SIGTERM."""
+        engine, _, loop, port = health_server
+        with engine.batch_in_flight():
+            _, during = _parse_http(
+                _fetch_health(loop, port, method="POST", path="/drainz")
+            )
+        _, after = _parse_http(_fetch_health(loop, port, method="POST", path="/drainz"))
+
+        assert during["drained"] is False
+        assert after["drained"] is True
+
     def test_non_draining_request_logs_nothing(self, health_server, caplog):
         """Negative: a request that does not drain emits no drain record."""
         engine, _, loop, port = health_server
