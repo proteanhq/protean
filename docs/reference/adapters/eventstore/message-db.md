@@ -35,7 +35,7 @@ docker run -d \
   --name message-db \
   -p 5433:5432 \
   -e POSTGRES_HOST_AUTH_METHOD=trust \
-  ethangarofolo/message-db:1.2.6
+  ethangarofolo/message-db:1.3.1
 ```
 
 ## Configuration
