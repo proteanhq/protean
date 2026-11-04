@@ -186,10 +186,11 @@ decides what belongs in the framework itself:
   rather than composite keys. Validation lives in the domain layer as invariants,
   not in the database. Hard deletion is an infrastructure escape hatch, not a
   domain operation.
-- **No abstractions over technology-specific concerns**: If a feature only makes
-  sense for one adapter (Alembic migrations for SQLAlchemy, say), it does not
-  belong in core Protean. The Ports and Adapters pattern exists precisely to keep
-  those concerns separate.
+- **No abstractions over technology-specific concerns**: Protean wraps no
+  technology in a generic layer of its own. When a feature makes sense only for
+  some adapters, those adapters implement it with their technology's own tools
+  and declare it as a capability, and Protean uses the feature only where an
+  adapter declares it.
 - **Coherence over feature breadth**: Fixing inconsistencies, unifying patterns,
   and improving type safety come before adding new capabilities. A smaller,
   coherent framework serves you better than a large, sprawling one.
