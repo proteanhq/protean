@@ -1142,18 +1142,20 @@ class RedisBroker(BaseBroker):
 
         Uses ``XAUTOCLAIM`` with ``JUSTID``, which does not count the claim as
         a delivery, then reads each claimed entry's delivery count with
-        ``XPENDING``. Entries whose message the stream no longer holds (it was
-        trimmed) are dropped from the pending list by ``XAUTOCLAIM`` and are
-        not returned. A missing group means nothing to claim.
+        ``XPENDING``, and returns the counts by entry id. Entries whose
+        message the stream no longer holds (it was trimmed) are dropped from
+        the pending list by ``XAUTOCLAIM`` and are not returned. A missing
+        group means nothing to claim.
 
-        A broker error after the first page has claimed entries stops the
-        scan, and the counts of the entries claimed so far are returned.
+        A broker error on a claim page after earlier pages claimed entries
+        stops the scan, and the counts of the entries claimed so far are
+        returned.
 
         Raises:
-            redis.RedisError: Any broker error other than a missing group
-                while claiming the first page, or any broker error while
-                reading the delivery counts. In the second case the entries
-                are already claimed into *consumer*.
+            redis.RedisError: A broker error other than a missing group on a
+                claim page while no entry is claimed yet, or a broker error
+                while reading the delivery counts, which happens after the
+                entries are claimed into *consumer*.
         """
         consumer = consumer_name or self._consumer_name
         self._ensure_group(group_name, stream)
