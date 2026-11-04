@@ -1,5 +1,6 @@
 import pytest
 
+from protean import Domain
 from protean.adapters import broker as broker_module
 from protean.adapters.broker.inline import InlineBroker
 from protean.exceptions import ConfigurationError
@@ -69,12 +70,33 @@ class TestBrokerInitialization:
 
         assert str(exc.value) == "Configure at least one broker in the domain"
 
-    def test_deleting_unknown_brokers_is_safe(self, test_domain):
-        try:
+    @pytest.mark.no_test_domain
+    def test_deleting_a_broker_after_init_removes_it(self):
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+
+        del domain.brokers["default"]
+
+        assert "default" not in domain.brokers
+        assert list(domain.brokers) == []
+        assert len(domain.brokers) == 0
+
+    def test_deleting_a_missing_broker_raises_key_error(self, test_domain):
+        """Deleting an unconfigured name raises KeyError and keeps the rest (#2126)."""
+        with pytest.raises(KeyError, match="imaginary"):
             del test_domain.brokers["imaginary"]
-        except Exception:
-            pytest.fail("Deleting an unknown broker should not raise an exception")
-        assert len(test_domain.brokers) == 1
+
+        assert list(test_domain.brokers) == ["default"]
+
+    @pytest.mark.no_test_domain
+    def test_deleting_before_init_raises_key_error(self):
+        """Deleting a name before init raises KeyError naming it (#2126)."""
+        domain = Domain(name="Test")
+
+        with pytest.raises(KeyError, match="default"):
+            del domain.brokers["default"]
+
+        assert len(domain.brokers) == 0
 
 
 class TestNonDestructiveReinitialization:
