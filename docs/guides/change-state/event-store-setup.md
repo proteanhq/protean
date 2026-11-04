@@ -38,7 +38,7 @@ provider = "memory"
 Message DB runs on PostgreSQL. Install it with Docker:
 
 ```bash
-docker run -d -p 5433:5432 ethangarofolo/message-db:1.2.6
+docker run -d -p 5433:5432 ethangarofolo/message-db:1.3.1
 ```
 
 Then configure:
