@@ -1348,38 +1348,6 @@
     ]
   },
   {
-    "path": "src/protean/utils/__init__.py",
-    "file_name": "__init__.py",
-    "functions": [
-      {
-        "name": "_generate_identity",
-        "complexity": 16
-      },
-      {
-        "name": "_derive_element_class",
-        "complexity": 20
-      },
-      {
-        "name": "clone_class",
-        "complexity": 20
-      },
-      {
-        "name": "_prepare_pydantic_namespace",
-        "complexity": 86
-      }
-    ]
-  },
-  {
-    "path": "src/protean/utils/dlq.py",
-    "file_name": "dlq.py",
-    "functions": [
-      {
-        "name": "discover_subscriptions",
-        "complexity": 32
-      }
-    ]
-  },
-  {
     "path": "src/protean/utils/domain_discovery.py",
     "file_name": "domain_discovery.py",
     "functions": [
