@@ -326,12 +326,11 @@ rebuilt on restart with no operator action:
 $ protean server --domain=my_domain
 ```
 
-The sweep reads nothing when no event-sourced aggregate is on the provider. It
-checks only the newest stored message when that message is an event-sourced
-aggregate's event and has its row. Otherwise it reads the newest 1,000
-messages. That happens when the newest message is missing its row, belongs to
-another domain sharing the store, is a command, or is a state-based aggregate's
-event. The sweep never blocks boot (a failure is logged and startup continues),
+The sweep reads nothing when no event-sourced aggregate is on the provider.
+Otherwise it reads the newest 1,000 messages and rebuilds the row of every
+event-sourced aggregate's event among them that is missing its row. This
+covers a row lost behind a later commit by another process in the same domain.
+The sweep never blocks boot (a failure is logged and startup continues),
 and is safe under `--workers N`, because the composite unique index on
 (`message_id`, `target_broker`) makes concurrent sweeps idempotent. A sweep is
 also safe while a command is committing. If the sweep writes a row before the

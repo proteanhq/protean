@@ -23,10 +23,10 @@ All commands accept a `--domain` option to specify the domain module path
 
 ## `protean outbox reconcile`
 
-Scans the tail of the event store for events that are durable in the store
-but have no internal-broker outbox row, and creates the missing rows. It
-repairs only when the newest event-sourced aggregate's event in the scan
-window is missing its row, which is what a crash at the tail leaves behind.
+Scans the most recent messages of the event store for events that are durable
+in the store but have no internal-broker outbox row, and creates the missing
+rows. It repairs every such event in the scan window, including one whose row
+was lost in a crash after which another process committed its own events.
 
 Only events raised by this domain's event-sourced aggregates on the given
 provider are repaired. For a state-based aggregate the relational row is the
@@ -75,13 +75,9 @@ Nothing to reconcile: no event in the scanned window is missing its outbox row.
 ```
 
 The command reads nothing when no event-sourced aggregate is on the provider.
-Otherwise the scan first checks the single newest message. When that message
-is an event-sourced aggregate's event and has its row, the scan stops there.
-Otherwise it reads the `--limit` window, finds the newest event-sourced
-aggregate's event in it, and repairs only if that event is missing its row. In
-a store shared with other domains, a run reads the full window whenever the
-newest message belongs to another domain. A run also reads the full window
-when the last write was a command or a state-based aggregate's event.
+Otherwise every run reads the `--limit` window and looks up the outbox rows of
+every event-sourced aggregate's event in it. It repairs each of those events
+that has no internal-broker row, wherever the event sits in the window.
 
 Reconciliation is idempotent. A run skips a row whose (`message_id`,
 `target_broker`) pair is already saved, so running it repeatedly never
