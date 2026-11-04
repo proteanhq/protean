@@ -486,8 +486,8 @@ class TestReceiverConservatism:
     def test_a_receiver_with_no_recognizable_root_is_left_unknown(
         self, tmp_path, body, method
     ):
-        """A receiver the catalog cannot place statically gets ``UNKNOWN``
-        rather than being waved through as a query."""
+        """A receiver the catalog cannot place statically gets ``UNKNOWN``,
+        not ``REPOSITORY_QUERY``."""
         source = f"class Service:\n    def run(self, handlers):\n        {body}\n"
         catalog, index = _walked_catalog(_make_pkg(tmp_path, source))
         facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")

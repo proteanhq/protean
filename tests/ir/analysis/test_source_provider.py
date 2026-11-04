@@ -2,6 +2,7 @@
 
 import ast
 import importlib
+import importlib.util
 import logging
 import os
 import sys
@@ -172,7 +173,15 @@ class TestFailOpen:
         "module_name",
         [
             pytest.param("sys", id="built-in"),
-            pytest.param("__hello__", id="frozen"),
+            pytest.param(
+                "__hello__",
+                id="frozen",
+                # Debug builds and ``-X frozen_modules=off`` load it from a file.
+                marks=pytest.mark.skipif(
+                    importlib.util.find_spec("__hello__").origin != "frozen",
+                    reason="__hello__ is not frozen in this interpreter",
+                ),
+            ),
             pytest.param("namespacepkg", id="namespace-package"),
         ],
     )
