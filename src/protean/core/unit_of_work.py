@@ -102,9 +102,12 @@ class UnitOfWork:
     ``domain.process(command, asynchronous=True)`` inside the block is stored
     at once and handled after the block commits, in its own UnitOfWork. The
     deferred commands run in the order they were processed, after the sync
-    event handlers of this commit. A command that one of those event handlers
-    defers belongs to the handler's own UnitOfWork, so it runs first. A
-    rollback means they never run.
+    event handlers of this commit. When this UnitOfWork commits inside a sync
+    event handler, its events wait for the dispatch already running, so its
+    deferred commands run before their handlers. A command that a sync event
+    handler defers belongs to the handler's own UnitOfWork, so it runs before
+    the deferred commands of the UnitOfWork that raised the event. A rollback
+    means they never run.
     """
 
     def __init__(self) -> None:
