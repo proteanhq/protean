@@ -59,7 +59,7 @@ In [2]: publishing.process(command)
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `command` | command instance | *required* | The command to process. |
-| `asynchronous` | `bool` or `None` | `None` | Override the domain's default processing mode. `None` uses the `command_processing` config. `False` always handles the command at once. `True` has no effect when `command_processing` is `"sync"`. |
+| `asynchronous` | `bool` or `None` | `None` | Override the domain's default processing mode. `None` uses the `command_processing` config. `False` always handles the command at once. When `command_processing` is `"sync"`, `True` handles the command at once outside a Unit of Work, and after the Unit of Work commits inside one, returning `None`. |
 | `idempotency_key` | `str` or `None` | `None` | Caller-provided key for submission-level deduplication (requires Redis). |
 | `raise_on_duplicate` | `bool` | `False` | When `True`, raises `DuplicateCommandError` on duplicate idempotency keys instead of silently returning the cached result. |
 | `priority` | `int` or `None` | `None` | Processing priority for events produced by this command. When priority lanes are enabled, events below the threshold are routed to a backfill stream. |
