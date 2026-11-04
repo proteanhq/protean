@@ -77,7 +77,7 @@ runs:
         # Bump when the image list below changes: a hit on an older key skips
         # the pull step entirely, so a newly added image would be missing from
         # the cache and pulled one container at a time instead.
-        key: docker-images-${{ runner.os }}-v4
+        key: docker-images-${{ runner.os }}-v5
 
     - name: Load or pull Docker images
       if: steps.services.outputs.list != ''
@@ -88,7 +88,7 @@ runs:
             postgres) echo "ghcr.io/proteanhq/mirror/postgres:16" ;;
             redis) echo "ghcr.io/proteanhq/mirror/redis:7" ;;
             elasticsearch) echo "ghcr.io/proteanhq/mirror/elasticsearch:8.7.0" ;;
-            message-db) echo "ghcr.io/proteanhq/mirror/message-db:1.2.6" ;;
+            message-db) echo "ghcr.io/proteanhq/mirror/message-db:1.3.1" ;;
             mssql) echo "ghcr.io/proteanhq/mirror/mssql-server:2022-latest" ;;
             # MySQL and MariaDB come from Docker Hub until the mirror carries
             # them. mirror-images.yml lists them, but that workflow is
@@ -187,7 +187,7 @@ runs:
             message-db)
               docker run -d --name message-db \
                 -p 55433:5432 \
-                ghcr.io/proteanhq/mirror/message-db:1.2.6 ;;
+                ghcr.io/proteanhq/mirror/message-db:1.3.1 ;;
             mssql)
               docker run -d --name mssql \
                 -p 51433:1433 \

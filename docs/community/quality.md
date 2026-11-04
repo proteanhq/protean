@@ -197,10 +197,10 @@ between per-PR CI and a nightly run:
 
 - **5 Python versions**: 3.11, 3.12, 3.13, 3.14, and the 3.15 prerelease
 - **5 backing services** (started as Docker containers for the adapter suite):
-    - PostgreSQL 11
+    - PostgreSQL 16
     - Redis
-    - Elasticsearch 7.12
-    - MessageDB 1.2.6
+    - Elasticsearch 8.7.0
+    - MessageDB 1.3.1
     - MSSQL Server 2022
 
 Each pull request runs the in-memory core suite on every stable version, and
