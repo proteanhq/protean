@@ -238,7 +238,14 @@ are found, the rebuild fails immediately with an error.
 Existing projection data is cleared:
 
 - **Database-backed projections** (the default): All rows are deleted via
-  the DAO's `_delete_all()` method.
+  the DAO's `_delete_all()` method. When a projector of the projection is
+  registered with `idempotent=True`, its delivery markers are deleted in the
+  same unit of work as the rows. Without this, the replay would find a marker
+  for every event, skip it as a redelivery, and leave the projection empty.
+  The replay writes fresh markers. On a relational or in-memory provider, a
+  failed marker delete rolls back the row delete. Elasticsearch has no
+  transactions, so there a failed marker delete leaves the rows deleted and
+  the markers in place.
 - **Cache-backed projections**: Keys matching the projection's naming
   pattern are removed via `remove_by_key_pattern()`.
 
@@ -255,7 +262,10 @@ Each event is dispatched through the projector's `_handle()` method, which:
 - Converts the stored `Message` to a domain event object (applying
   upcasters automatically)
 - Looks up the `@on` handler for the event type
-- Executes the handler within a `UnitOfWork`
+- Executes the handler within a `UnitOfWork`. For an idempotent projector
+  on a database-backed projection, it writes a new delivery marker in the
+  same `UnitOfWork`. A cache-backed projection has no marker store, so no
+  marker is written for it.
 - Events with no matching `@on` handler are silently skipped (no error)
 
 If an event type cannot be resolved (deprecated event without an upcaster

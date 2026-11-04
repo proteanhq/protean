@@ -53,6 +53,43 @@ class TestProjectionWithoutProjectors:
         assert len(result.errors) == 1
         assert "No projectors found" in result.errors[0]
 
+<<<<<<< HEAD
+=======
+    def test_rebuild_leaves_existing_data_in_place(self, test_domain):
+        """A projection with no projectors is not truncated."""
+        repo = current_domain.repository_for(UserDirectory)
+        repo.add(UserDirectory(user_id="u-1", email="kept@example.com", name="Kept"))
+
+        test_domain.rebuild_projection(UserDirectory)
+
+        assert repo.get("u-1").email == "kept@example.com"
+
+
+class TestReplayOrder:
+    def test_events_dispatch_in_store_order_across_categories(self, test_domain):
+        """Events dispatch in store order even when the categories are listed
+        in the opposite order.
+
+        ``Registered`` is stored first and creates the row with the user's
+        name. Replayed after ``Transacted``, it would fail on the row
+        ``Transacted`` had already created, and the name would stay empty.
+        """
+        user = User.register(email="order@example.com", name="Order")
+        current_domain.repository_for(User).add(user)
+        txn = Transaction.transact(user_id=user.id, amount=200.0)
+        current_domain.repository_for(Transaction).add(txn)
+        _truncate_projection(test_domain, Balances, [TransactionProjector])
+
+        categories = [Transaction.meta_.stream_category, User.meta_.stream_category]
+        dispatched, skipped = _replay_projector(
+            test_domain, TransactionProjector, categories, 500
+        )
+
+        assert (dispatched, skipped) == (2, 0)
+        balance = current_domain.repository_for(Balances).get(user.id)
+        assert (balance.name, balance.balance) == ("Order", 200.0)
+
+>>>>>>> 4a86912e (Clear idempotent projectors' markers when rebuilding a projection (#2120))
 
 class TestLargeEventCount:
     def test_many_events_processed_correctly(self, test_domain):
@@ -120,30 +157,23 @@ class TestCacheBackedProjectionTruncation:
         mock_domain = MagicMock()
         mock_domain.cache_for.return_value = mock_cache
 
-        _truncate_projection(mock_domain, mock_projection_cls)
+        _truncate_projection(mock_domain, mock_projection_cls, [])
 
         mock_domain.cache_for.assert_called_once_with(mock_projection_cls)
         # Keys are `name:::identifier`, so the truncation glob is the name,
         # the three-colon separator, then `*`.
         mock_cache.remove_by_key_pattern.assert_called_once_with("cached_view:::*")
 
-    def test_truncate_uses_dao_when_database_backed(self):
-        """_truncate_projection uses dao._delete_all for database-backed projections."""
-        mock_dao = MagicMock()
-        mock_repo = MagicMock()
-        mock_repo._dao = mock_dao
+    def test_truncate_deletes_rows_when_database_backed(self, test_domain):
+        """_truncate_projection deletes every row of a database-backed projection."""
+        user = User.register(email="truncate@example.com", name="Truncate")
+        current_domain.repository_for(User).add(user)
+        repo = current_domain.repository_for(Balances)
+        assert repo._dao.query.all().total == 1
 
-        mock_projection_cls = MagicMock()
-        mock_projection_cls.meta_.cache = None
-        mock_projection_cls.__name__ = "DbView"
+        _truncate_projection(test_domain, Balances, [TransactionProjector])
 
-        mock_domain = MagicMock()
-        mock_domain.repository_for.return_value = mock_repo
-
-        _truncate_projection(mock_domain, mock_projection_cls)
-
-        mock_domain.repository_for.assert_called_once_with(mock_projection_cls)
-        mock_dao._delete_all.assert_called_once()
+        assert repo._dao.query.all().total == 0
 
 
 class TestHandlerExceptionSkipsEvent:
