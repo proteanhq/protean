@@ -8,10 +8,12 @@ hold joins the message's aggregate cluster.
 """
 
 import re
+from typing import Annotated
 
 import fastavro
 import jsonschema
 import pytest
+from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -20,7 +22,7 @@ from protean.core.projection import BaseProjection
 from protean.core.query import BaseQuery
 from protean.core.value_object import BaseValueObject
 from protean.domain import Domain
-from protean.fields import Identifier, List, String, ValueObject
+from protean.fields import Custom, Identifier, List, String, ValueObject
 from protean.ir import load_schema
 from protean.ir.diff import classify_changes, diff_ir
 from protean.ir.generators.avro import generate_avro_schema
@@ -175,6 +177,63 @@ class TestIRField:
     def test_ir_validates_against_the_bundled_schema(self, flat):
         ir, _ = flat
         jsonschema.validate(ir, load_schema())
+
+
+class Either(BaseEvent):
+    acct_id = Identifier()
+    either: Addr | str
+
+
+class WithMetadata(BaseEvent):
+    acct_id = Identifier()
+    either: Addr | str
+    described: Annotated[Addr, Field(description="Where to")]
+    marked = Custom(Addr, deprecated={"since": "0.18"})
+    preset: Addr | None = Addr(city="Pune")
+
+
+class TestIRFieldMetadata:
+    @pytest.fixture
+    def fields(self, test_domain):
+        test_domain.register(Addr)
+        test_domain.register(Acct)
+        test_domain.register(WithMetadata, part_of=Acct)
+        test_domain.init(traverse=False)
+        ir = test_domain.to_ir()
+        jsonschema.validate(ir, load_schema())
+        return _fields(_build_flat_elements(ir), WithMetadata)
+
+    def test_union_with_another_type_keeps_its_standard_entry(self, fields):
+        assert fields["either"]["kind"] == "standard"
+
+    def test_union_with_another_type_does_not_place_the_value_object(self, test_domain):
+        test_domain.register(Addr)
+        test_domain.register(Acct)
+        test_domain.register(Either, part_of=Acct)
+        test_domain.init(traverse=False)
+        assert test_domain.to_ir()["clusters"][fqn(Acct)]["value_objects"] == {}
+
+    def test_description_is_kept(self, fields):
+        assert fields["described"] == {
+            "description": "Where to",
+            "kind": "value_object",
+            "required": True,
+            "target": fqn(Addr),
+        }
+
+    def test_deprecation_is_kept(self, fields):
+        assert fields["marked"] == {
+            "deprecated": {"since": "0.18"},
+            "kind": "value_object",
+            "target": fqn(Addr),
+        }
+
+    def test_default_is_kept(self, fields):
+        assert fields["preset"] == {
+            "default": {"city": "Pune"},
+            "kind": "value_object",
+            "target": fqn(Addr),
+        }
 
 
 class TestCluster:

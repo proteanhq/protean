@@ -526,10 +526,14 @@ class IRBuilder:
         self, cls: Any, field: ResolvedField, spec: Any | None
     ) -> dict[str, Any]:
         """Return the IR entry of a ``ResolvedField`` declared on ``cls``."""
+        entry = self._extract_resolved_field(field, spec)
         message_vo = self._message_value_object(cls, field)
         if message_vo is not None:
-            return self._value_object_entry(message_vo, field.required)
-        return self._extract_resolved_field(field, spec)
+            # Keep the field's own metadata (default, description, deprecated)
+            # and replace only what it says about the field's type.
+            entry.pop("type", None)
+            entry.update(self._value_object_entry(message_vo, field.required))
+        return entry
 
     def _message_value_object(self, cls: Any, field: ResolvedField) -> type | None:
         """Return the value object class a command or event field holds, if any.
@@ -537,18 +541,34 @@ class IRBuilder:
         A command or event turns its ``ValueObject`` fields into plain resolved
         fields typed by the value object class (``Addr`` or ``Addr | None``), the
         same type a bare annotation such as ``addr: Addr`` gives. Fields of any
-        other element, and list or dict fields, return ``None``.
+        other element, list or dict fields, and unions of more than one type
+        besides ``None`` (``Addr | str``) return ``None``.
         """
         if getattr(cls, "element_type", None) not in (
             DomainObjects.COMMAND,
             DomainObjects.EVENT,
         ):
             return None
+        return self._single_value_object(field._python_type)
+
+    @staticmethod
+    def _single_value_object(python_type: Any) -> type | None:
+        """Return the value object class ``python_type`` names on its own, if any.
+
+        ``Annotated`` wrappers and ``None`` union members are stripped. Any other
+        type, including a union with a second non-``None`` member, returns ``None``.
+        """
+        if typing.get_origin(python_type) is typing.Annotated:
+            return IRBuilder._single_value_object(typing.get_args(python_type)[0])
+        origin = typing.get_origin(python_type)
+        if origin is _types.UnionType or origin is typing.Union:
+            args = [a for a in typing.get_args(python_type) if a is not type(None)]
+            if len(args) != 1:
+                return None
+            return IRBuilder._single_value_object(args[0])
         # ``list[Addr]`` and ``dict[str, Addr]`` are generic aliases, not classes,
-        # so the class check below already returns ``None`` for them.
-        python_type: Any = field._python_type
-        base_type = self._unwrap_type(python_type)
-        return base_type if _is_value_object_class(base_type) else None
+        # so the class check returns ``None`` for them.
+        return python_type if _is_value_object_class(python_type) else None
 
     def _dict_value_object(self, field: ResolvedField) -> type | None:
         """Return the value object class a ``Dict`` field's values hold, if any."""
