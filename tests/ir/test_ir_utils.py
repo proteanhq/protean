@@ -10,6 +10,8 @@ from typer import Abort, Exit
 
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
 
+pytestmark = pytest.mark.no_test_domain
+
 _GOOD_DOMAIN = """
 from protean import Domain
 from protean.fields import String
