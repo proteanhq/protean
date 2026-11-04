@@ -22,17 +22,16 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
         return self._brokers[key]
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._brokers) if self._brokers else iter({})
+        return iter(self._brokers)
 
     def __len__(self) -> int:
-        return len(self._brokers) if self._brokers else 0
+        return len(self._brokers)
 
     def __setitem__(self, key: str, value: BaseBroker) -> None:
         self._brokers[key] = value
 
     def __delitem__(self, key: str) -> None:
-        if key in self._brokers:
-            del self._brokers[key]
+        del self._brokers[key]
 
     def close(self) -> None:
         """Close all broker connections and release resources."""
