@@ -546,7 +546,8 @@ class IRBuilder:
             return None
         # ``list[Addr]`` and ``dict[str, Addr]`` are generic aliases, not classes,
         # so the class check below already returns ``None`` for them.
-        base_type = self._unwrap_type(field._python_type)
+        python_type: Any = field._python_type
+        base_type = self._unwrap_type(python_type)
         return base_type if _is_value_object_class(base_type) else None
 
     def _dict_value_object(self, field: ResolvedField) -> type | None:
