@@ -135,9 +135,9 @@ class TestInfraImportInDomain:
     )
     def test_element_with_no_source_file_is_skipped(self, module_name):
         """When an element's ``__module__`` resolves to no source file, the rule
-        skips it without error and the diagnostics pass is not aborted. Here
-        ``find_spec`` raises because ``os`` is a module, not a package, or the
-        module name is empty."""
+        skips it without error and the diagnostics pass is not aborted. For
+        ``os.no_such_sub``, ``find_spec`` raises because ``os`` is a module, not
+        a package. An empty module name is skipped before any lookup."""
         domain = Domain(name="InfraNoSource", root_path=".")
         domain.config["lint"] = {"check_infra_imports": True}
         broken = type(
