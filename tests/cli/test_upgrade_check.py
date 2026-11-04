@@ -225,22 +225,50 @@ class TestUpgradeCheckExitCodes:
         assert "Error: RuntimeError: detectors blew up" in _stderr(result)
         assert result.stdout == ""
 
-    def test_an_exit_raised_by_the_checks_keeps_its_code(self, monkeypatch):
+    @pytest.mark.parametrize(
+        ("raised", "message"),
+        [(typer.Exit(code=0), "Error: Exit"), (typer.Abort(), "Error: Abort")],
+    )
+    def test_an_exit_raised_by_the_checks_exits_2(self, monkeypatch, raised, message):
+        # Exit(0) would read as a clean run and Abort's 1 as warnings found.
         def stop(domain):
-            raise typer.Exit(code=7)
+            raise raised
 
         monkeypatch.setattr(upgrade_cli, "run_upgrade_checks", stop)
         result = runner.invoke(app, ["upgrade-check", "-d", _DOMAIN])
-        assert result.exit_code == 7
+        assert result.exit_code == 2
+        assert message in _stderr(result)
+        assert result.stdout == ""
 
-    def test_an_abort_raised_by_the_checks_keeps_its_code(self, monkeypatch):
-        def stop(domain):
-            raise typer.Abort()
-
-        monkeypatch.setattr(upgrade_cli, "run_upgrade_checks", stop)
+    def test_applies_the_domains_logging_settings(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            Domain, "configure_logging", lambda self, **kw: calls.append(kw)
+        )
         result = runner.invoke(app, ["upgrade-check", "-d", _DOMAIN])
-        assert result.exit_code == 1
-        assert "Aborted" in result.output
+        assert result.exit_code == 0
+        assert calls == [{}]
+
+    def test_cli_log_level_overrides_the_domains_level(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            Domain, "configure_logging", lambda self, **kw: calls.append(kw)
+        )
+        result = runner.invoke(
+            app, ["--log-level", "DEBUG", "upgrade-check", "-d", _DOMAIN]
+        )
+        assert result.exit_code == 0
+        assert calls == [{"level": "DEBUG"}]
+
+    def test_a_logging_settings_error_exits_2(self, monkeypatch):
+        def boom(self, **kw):
+            raise ValueError("bad [logging]")
+
+        monkeypatch.setattr(Domain, "configure_logging", boom)
+        result = runner.invoke(app, ["upgrade-check", "-d", _DOMAIN])
+        assert result.exit_code == 2
+        assert "Error: ValueError: bad [logging]" in _stderr(result)
+        assert result.stdout == ""
 
     def test_markup_in_a_finding_prints_literally(self, monkeypatch):
         # A CHECK_FAILED detail can repeat a driver error that holds square

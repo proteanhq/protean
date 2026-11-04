@@ -26,14 +26,18 @@ Exit codes:
 
 import json
 import re
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich import print
 from rich.markup import escape
 
 from protean import __version__
-from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions
+from protean.cli._helpers import (
+    CTX_LOG_CONFIGURED,
+    apply_domain_logging,
+    handle_cli_exceptions,
+)
 from protean.cli.result import EXIT_FAILURE, emit_usage_error, route_logs_to_stderr
 from protean.domain import Domain
 from protean.exceptions import NoDomainException
@@ -115,7 +119,9 @@ def upgrade_check(
 
     _validate_options(format, opportunities, pinned_version)
     derived_domain = _load_domain(domain)
-    findings = _collect_findings(derived_domain, opportunities, pinned_version)
+    findings = _collect_findings(
+        derived_domain, opportunities, pinned_version, parent_obj
+    )
 
     if format == "json":
         typer.echo(json.dumps([f.as_dict() for f in findings], indent=2))
@@ -180,15 +186,24 @@ def _load_domain(domain_path: str) -> Domain:
 
 
 def _collect_findings(
-    derived_domain: Domain, opportunities: bool, pinned_version: str | None
+    derived_domain: Domain,
+    opportunities: bool,
+    pinned_version: str | None,
+    parent_obj: dict[str, Any],
 ) -> list[UpgradeFinding]:
-    """Run the checks for the selected mode and return their findings.
+    """Apply the domain's logging settings, run the checks for the selected
+    mode and return their findings.
 
-    An error while initializing the domain, or one that a single check does
-    not catch and report as ``CHECK_FAILED``, exits ``2`` on stderr before
-    anything is printed to stdout.
+    An error in the domain's ``[logging]`` settings, an error while
+    initializing the domain, or one that a single check does not catch and
+    report as ``CHECK_FAILED``, exits ``2`` on stderr before anything is
+    printed to stdout.
     """
     try:
+        # The stderr bootstrap put a root handler in place, so Domain.init
+        # skips its own logging setup; apply [logging] (redact, level,
+        # log_dir) here. The CLI's logging flags still take precedence.
+        apply_domain_logging(derived_domain, parent_obj)
         if opportunities:
             # No init here. The opportunity detectors only read the domain's
             # source off disk through SourceProvider, so initializing adapters
@@ -201,13 +216,11 @@ def _collect_findings(
         with derived_domain.domain_context():
             derived_domain.init(traverse=True)
             return run_upgrade_checks(derived_domain)
-    except (typer.Exit, typer.Abort):
-        # Both subclass RuntimeError; let an intended exit keep its own code.
-        raise
     except (Exception, SystemExit) as exc:
-        # CLI boundary: user domain code can raise anything. This also catches
-        # a bug in Protean's own check framing, so keep the traceback on
-        # stderr at debug level.
+        # CLI boundary: user domain code can raise anything, including a
+        # typer.Exit or typer.Abort (both RuntimeError), whose own code would
+        # read as clean or as warnings. This also catches a bug in Protean's
+        # own check framing, so keep the traceback on stderr at debug level.
         logger.debug("upgrade-check failed", exc_info=True)
         emit_usage_error(as_json=False, message=f"Error: {_describe(exc)}")
 
