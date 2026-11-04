@@ -1668,9 +1668,11 @@ def _existing_brokers_by_message(
     existing: dict[str, set[str]] = {message_id: set() for message_id in message_ids}
     for start in range(0, len(message_ids), _BROKER_LOOKUP_CHUNK_SIZE):
         chunk = message_ids[start : start + _BROKER_LOOKUP_CHUNK_SIZE]
-        # ``limit(None)``: the query's default limit would drop rows past it.
+        # ``only()`` skips loading each row's event payload, and
+        # ``limit(None)`` keeps the query's default limit from dropping rows.
         rows = (
             outbox_repo._dao.query.filter(message_id__in=chunk)
+            .only("message_id", "target_broker")
             .limit(None)
             .all(with_total=False)
             .items
