@@ -20,8 +20,8 @@ Exit codes:
     1 — warnings found (review recommended before upgrading), including a
         check that could not complete (``CHECK_FAILED``)
     2 — a usage or environment error: a bad option, a domain that does not
-        load, or an error while initializing the domain or running the checks.
-        The message goes to stderr and stdout stays empty.
+        load, or an error while initializing the domain or outside a single
+        check. The message goes to stderr and stdout stays empty.
 """
 
 import json
@@ -30,6 +30,7 @@ from typing import Annotated
 
 import typer
 from rich import print
+from rich.markup import escape
 
 from protean import __version__
 from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions
@@ -159,15 +160,19 @@ def _load_domain(domain_path: str) -> Domain:
         msg = f"Error loading Protean domain: {exc.args[0]}"
         logger.error(msg)
         emit_usage_error(as_json=False, message=msg)
-    except Exception as exc:  # noqa: BLE001 - CLI boundary: importing user code can raise anything
-        # Discovery converts only ImportError to NoDomainException; a module
-        # that raises anything else at import (a SyntaxError, a RuntimeError)
-        # is still a domain that did not load.
-        msg = f"Error loading Protean domain: {type(exc).__name__}: {exc}"
+    except (Exception, SystemExit) as exc:
+        # CLI boundary: importing user code can raise anything. Discovery
+        # converts only ImportError to NoDomainException; a module that raises
+        # anything else at import (a SyntaxError, a RuntimeError, a sys.exit
+        # call) is still a domain that did not load. The traceback stays on
+        # stderr at debug level.
+        logger.debug("domain import failed", exc_info=True)
+        msg = f"Error loading Protean domain: {_describe(exc)}"
         logger.error(msg)
         emit_usage_error(as_json=False, message=msg)
 
-    if derived_domain is None:  # pragma: no cover - derive_domain raises on failure
+    # Discovery returns None when no path is given and nothing is found.
+    if derived_domain is None:
         emit_usage_error(
             as_json=False, message="Error loading Protean domain: no domain found."
         )
@@ -179,8 +184,9 @@ def _collect_findings(
 ) -> list[UpgradeFinding]:
     """Run the checks for the selected mode and return their findings.
 
-    An error while initializing the domain or running the checks exits ``2``
-    on stderr, before anything is printed to stdout.
+    An error while initializing the domain, or one that a single check does
+    not catch and report as ``CHECK_FAILED``, exits ``2`` on stderr before
+    anything is printed to stdout.
     """
     try:
         if opportunities:
@@ -198,8 +204,17 @@ def _collect_findings(
     except (typer.Exit, typer.Abort):
         # Both subclass RuntimeError; let an intended exit keep its own code.
         raise
-    except Exception as exc:  # noqa: BLE001 - CLI boundary: user domain code can raise anything
-        emit_usage_error(as_json=False, message=f"Error: {exc}")
+    except (Exception, SystemExit) as exc:
+        # CLI boundary: user domain code can raise anything. This also catches
+        # a bug in Protean's own check framing, so keep the traceback on
+        # stderr at debug level.
+        logger.debug("upgrade-check failed", exc_info=True)
+        emit_usage_error(as_json=False, message=f"Error: {_describe(exc)}")
+
+
+def _describe(exc: BaseException) -> str:
+    """Name the exception type, so an empty message still says what failed."""
+    return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
 
 
 def _print_rich(domain_name: str, findings: list[UpgradeFinding]) -> None:
@@ -207,11 +222,15 @@ def _print_rich(domain_name: str, findings: list[UpgradeFinding]) -> None:
     infos = sum(1 for f in findings if f.level == "info")
 
     if not findings:
-        print(f"\n  Domain: [bold]{domain_name}[/bold]  [bold green]READY[/bold green]")
+        print(
+            f"\n  Domain: [bold]{escape(domain_name)}[/bold]  [bold green]READY[/bold green]"
+        )
         print("  No upgrade actions detected.\n")
         return
 
-    print(f"\n  Domain: [bold]{domain_name}[/bold]  [bold yellow]REVIEW[/bold yellow]")
+    print(
+        f"\n  Domain: [bold]{escape(domain_name)}[/bold]  [bold yellow]REVIEW[/bold yellow]"
+    )
     parts = []
     if warnings:
         parts.append(f"[yellow]{warnings} warning(s)[/yellow]")
@@ -221,12 +240,12 @@ def _print_rich(domain_name: str, findings: list[UpgradeFinding]) -> None:
 
     for f in findings:
         marker = "[yellow]![/yellow]" if f.level == "warning" else "[cyan]i[/cyan]"
-        loc = f" [dim]({f.element})[/dim]" if f.element else ""
-        print(f"  {marker} [bold]{f.title}[/bold]{loc}")
-        print(f"    [dim]{f.code}[/dim]  {f.detail}")
-        print(f"    [green]Remediation:[/green] {f.remediation}")
+        loc = f" [dim]({escape(f.element)})[/dim]" if f.element else ""
+        print(f"  {marker} [bold]{escape(f.title)}[/bold]{loc}")
+        print(f"    [dim]{escape(f.code)}[/dim]  {escape(f.detail)}")
+        print(f"    [green]Remediation:[/green] {escape(f.remediation)}")
         if f.sql:
             print("    [green]Generated SQL:[/green]")
             for line in f.sql.splitlines():
-                print(f"      [dim]{line}[/dim]")
+                print(f"      [dim]{escape(line)}[/dim]")
         print()

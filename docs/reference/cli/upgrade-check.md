@@ -30,7 +30,7 @@ source, so the mode runs with the databases and brokers down.
 |-----------|---------|
 | `0` | No findings, or only advisory (`info`) findings. |
 | `1` | At least one `warning` finding, including `CHECK_FAILED`. |
-| `2` | A usage or environment error: a bad `--format`, a bad or misplaced `--pinned-version`, an unknown option, a domain that does not load, or an error while the domain initializes or the checks run. The message goes to stderr, and stdout stays empty, including under `--format json`. |
+| `2` | A usage or environment error: a bad `--format`, a bad or misplaced `--pinned-version`, an unknown option, a domain that does not load, an error while the domain initializes, or an error outside a single check. A check that fails on its own reports `CHECK_FAILED` and exits `1`. The message goes to stderr, and stdout stays empty, including under `--format json`. |
 
 `--format json` prints the findings as a plain JSON list. It does not use the
 [result envelope](conventions.md#the-result-envelope).

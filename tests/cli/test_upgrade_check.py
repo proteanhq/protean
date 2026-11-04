@@ -146,6 +146,8 @@ class TestUpgradeCheckExitCodes:
                 "Error loading Protean domain: RuntimeError: boom",
             ),
             ("def broken(:", "Error loading Protean domain: SyntaxError"),
+            ("import sys; sys.exit(0)", "Error loading Protean domain: SystemExit: 0"),
+            ("import sys; sys.exit(1)", "Error loading Protean domain: SystemExit: 1"),
         ],
     )
     def test_domain_that_raises_at_import_exits_2(
@@ -168,7 +170,35 @@ class TestUpgradeCheckExitCodes:
         monkeypatch.setattr(Domain, "init", boom)
         result = runner.invoke(app, ["upgrade-check", "-d", _DOMAIN, "--format", fmt])
         assert result.exit_code == 2
-        assert "Error: adapters unreachable" in _stderr(result)
+        assert "Error: RuntimeError: adapters unreachable" in _stderr(result)
+        assert result.stdout == ""
+
+    @pytest.mark.parametrize(
+        ("error", "message"),
+        [
+            (SystemExit(0), "Error: SystemExit: 0"),
+            (RuntimeError(), "Error: RuntimeError"),
+        ],
+    )
+    def test_domain_init_exit_or_empty_error_exits_2(self, monkeypatch, error, message):
+        # A sys.exit(0) during init must not read as a clean run, and an
+        # exception with no message still names what failed.
+        def boom(self, *args, **kwargs):
+            raise error
+
+        monkeypatch.setattr(Domain, "init", boom)
+        result = runner.invoke(app, ["upgrade-check", "-d", _DOMAIN])
+        assert result.exit_code == 2
+        assert _stderr(result).endswith(message)
+        assert result.stdout == ""
+
+    def test_no_domain_found_exits_2(self, tmp_path, monkeypatch):
+        # With an empty --domain, discovery searches the working directory and
+        # returns None when it finds nothing.
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["upgrade-check", "-d", ""])
+        assert result.exit_code == 2
+        assert "Error loading Protean domain: no domain found." in _stderr(result)
         assert result.stdout == ""
 
     def test_run_upgrade_checks_raising_exits_2(self, monkeypatch):
@@ -180,7 +210,7 @@ class TestUpgradeCheckExitCodes:
             app, ["upgrade-check", "-d", _DOMAIN, "--format", "json"]
         )
         assert result.exit_code == 2
-        assert "Error: checks blew up" in _stderr(result)
+        assert "Error: RuntimeError: checks blew up" in _stderr(result)
         assert result.stdout == ""
 
     def test_run_opportunity_checks_raising_exits_2(self, monkeypatch):
@@ -192,7 +222,7 @@ class TestUpgradeCheckExitCodes:
             app, ["upgrade-check", "-d", _TEXT_DOMAIN, "--opportunities"]
         )
         assert result.exit_code == 2
-        assert "Error: detectors blew up" in _stderr(result)
+        assert "Error: RuntimeError: detectors blew up" in _stderr(result)
         assert result.stdout == ""
 
     def test_an_exit_raised_by_the_checks_keeps_its_code(self, monkeypatch):
@@ -202,6 +232,36 @@ class TestUpgradeCheckExitCodes:
         monkeypatch.setattr(upgrade_cli, "run_upgrade_checks", stop)
         result = runner.invoke(app, ["upgrade-check", "-d", _DOMAIN])
         assert result.exit_code == 7
+
+    def test_an_abort_raised_by_the_checks_keeps_its_code(self, monkeypatch):
+        def stop(domain):
+            raise typer.Abort()
+
+        monkeypatch.setattr(upgrade_cli, "run_upgrade_checks", stop)
+        result = runner.invoke(app, ["upgrade-check", "-d", _DOMAIN])
+        assert result.exit_code == 1
+        assert "Aborted" in result.output
+
+    def test_markup_in_a_finding_prints_literally(self, monkeypatch):
+        # A CHECK_FAILED detail can repeat a driver error that holds square
+        # brackets; rich must print it, not parse it as a closing tag.
+        finding = UpgradeFinding(
+            code="CHECK_FAILED",
+            level="warning",
+            title="check [failed]",
+            detail="could not connect to /var/run/[/x]sock",
+            remediation="see [databases.default]",
+            element="[databases.default]",
+            sql="SELECT '[/dim]';",
+        )
+        monkeypatch.setattr(upgrade_cli, "run_upgrade_checks", lambda d: [finding])
+        result = runner.invoke(app, ["upgrade-check", "-d", _DOMAIN])
+        assert result.exit_code == 1
+        assert "could not connect to /var/run/[/x]sock" in result.stdout
+        assert "check [failed]" in result.stdout
+        assert "see [databases.default]" in result.stdout
+        assert "([databases.default])" in result.stdout
+        assert "SELECT '[/dim]';" in result.stdout
 
     def test_help_lists_the_three_exit_codes(self):
         result = runner.invoke(app, ["upgrade-check", "--help"])
@@ -322,7 +382,7 @@ class TestOpportunitiesCLI:
             ],
         )
         assert result.exit_code == 0
-        assert "Invalid --pinned-version" not in result.stdout
+        assert "Invalid --pinned-version" not in result.stderr
 
     def test_opportunities_does_not_initialize_adapters(self, monkeypatch):
         # Opportunity checks read source off disk, so they must not need working
@@ -350,6 +410,28 @@ class TestOpportunitiesCLI:
         )
         assert result.exit_code == 1
         assert "CHECK_FAILED" in result.stdout
+
+    def test_a_failing_detector_under_json_is_a_warning_and_exits_1(self, monkeypatch):
+        def boom(trees, pinned, domain):
+            raise RuntimeError("detector blew up")
+
+        monkeypatch.setattr(upgrade_opportunities, "_DETECTORS", (boom,))
+        result = runner.invoke(
+            app,
+            [
+                "upgrade-check",
+                "-d",
+                _TEXT_DOMAIN,
+                "--opportunities",
+                "--format",
+                "json",
+            ],
+        )
+        assert result.exit_code == 1
+        payload = json.loads(result.stdout)
+        failed = [f for f in payload if f["code"] == "CHECK_FAILED"]
+        assert len(failed) == 1
+        assert failed[0]["level"] == "warning"
 
 
 class TestPrintRich:
