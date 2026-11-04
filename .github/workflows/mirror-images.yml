@@ -52,7 +52,7 @@ jobs:
 
           # "<upstream source>|<mirror path>:<tag>" — the mirror path is a flat
           # basename so refs stay short and registry-agnostic. Keep this list in
-          # sync with the image() list in .github/actions/test-suite/action.yml.
+          # sync with the image() function in .github/actions/test-suite/action.yml.
           MAPPINGS=(
             "postgres:16|postgres:16"
             "redis:7|redis:7"
@@ -60,9 +60,9 @@ jobs:
             "ethangarofolo/message-db:1.3.1|message-db:1.3.1"
             "mcr.microsoft.com/mssql/server:2022-latest|mssql-server:2022-latest"
             # CI still pulls these two from Docker Hub. Once this workflow has
-            # run and the new packages are Public, point the image() list in
-            # .github/actions/test-suite/action.yml at ghcr.io/proteanhq/mirror/
-            # for them too.
+            # run and the new packages are Public, point the image() function
+            # in .github/actions/test-suite/action.yml at
+            # ghcr.io/proteanhq/mirror/ for them too.
             "mysql:8.4|mysql:8.4"
             "mariadb:11.4|mariadb:11.4"
           )
