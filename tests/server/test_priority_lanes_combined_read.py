@@ -145,6 +145,27 @@ class TestCombinedRead:
         assert sub.broker.combined_reads == []
 
     @pytest.mark.asyncio
+    async def test_back_to_back_primary_batches_keep_reading_primary(
+        self, lanes_domain
+    ):
+        """A primary stream that never runs dry is read batch after batch,
+        past the tenth batch, with no combined read in between."""
+        sub = _lanes_subscription(lanes_domain, {}, primary_reply=[PRIMARY_MESSAGE])
+
+        async def stop_after_eleven(messages, stream=None):
+            sub.batches.append((messages, stream))
+            if len(sub.batches) == 11:
+                sub.keep_going = False
+            return len(messages)
+
+        sub.process_batch = stop_after_eleven
+
+        await sub.poll()
+
+        assert sub.batches == [([PRIMARY_MESSAGE], sub.stream_category)] * 11
+        assert sub.broker.combined_reads == []
+
+    @pytest.mark.asyncio
     async def test_failed_combined_read_marks_the_read_failed(
         self, lanes_domain, monkeypatch
     ):

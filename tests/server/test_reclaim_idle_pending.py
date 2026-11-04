@@ -15,6 +15,7 @@ import time
 from uuid import uuid4
 
 import pytest
+import redis
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
@@ -256,6 +257,29 @@ class TestBrokerReclaim:
         broker.redis_instance.xadd("orphan", {"i": "1"})
 
         assert broker._reclaim_idle_pending("orphan", "group", "new", 10) == {}
+
+    def test_group_deleted_after_caching_claims_nothing_and_recreates_it(self, domain):
+        """A group removed behind the broker's group cache makes the claim fail
+        with NOGROUP. The claim returns nothing and creates the group again."""
+        broker = domain.brokers["default"]
+        broker._ensure_group("group", "dropped")
+        broker.redis_instance.xadd("dropped", {"i": "1"})
+        broker.redis_instance.xgroup_destroy("dropped", "group")
+
+        assert broker._reclaim_idle_pending("dropped", "group", "new", 10) == {}
+        groups = broker.redis_instance.xinfo_groups("dropped")
+        assert [
+            g["name"].decode() if isinstance(g["name"], bytes) else g["name"]
+            for g in groups
+        ] == ["group"]
+
+    def test_other_claim_errors_are_raised(self, domain):
+        """Negative: a claim error other than NOGROUP reaches the caller."""
+        broker = domain.brokers["default"]
+        broker.redis_instance.set("not-a-stream", "x")
+
+        with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
+            broker._reclaim_idle_pending("not-a-stream", "group", "new", 10)
 
     def test_none_claims_into_the_brokers_own_consumer(self, domain):
         broker = domain.brokers["default"]
