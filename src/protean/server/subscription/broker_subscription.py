@@ -150,7 +150,7 @@ class BrokerSubscription(BaseSubscription):
                 self.subscriber_name,
                 # None: the consumer the broker's own read uses.
                 None,
-                int(self.engine.reclaim_idle_seconds * 1000),
+                self.engine.reclaim_idle_ms,
             )
         except Exception:  # non-critical: the entries stay pending for a later start
             logger.warning(

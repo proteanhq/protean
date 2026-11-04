@@ -365,7 +365,7 @@ class StreamSubscription(BaseSubscription):
                 stream,
                 self.consumer_group,
                 self.consumer_name,
-                int(self.engine.reclaim_idle_seconds * 1000),
+                self.engine.reclaim_idle_ms,
             )
         except Exception:  # non-critical: the entries stay pending for a later start
             logger.warning(
@@ -1097,14 +1097,10 @@ class StreamSubscription(BaseSubscription):
         }
 
     async def cleanup(self) -> None:
-        """
-        Perform cleanup tasks during shutdown.
+        """Log the end of the subscription during shutdown.
 
-        This method clears any in-memory state during shutdown.
-
-        Returns:
-            None
+        ``retry_counts`` is kept: shutdown calls this before the in-flight
+        batch has finished, and a message that fails in the drain window must
+        still count its earlier attempts toward ``max_retries``.
         """
-        # Clear retry counts
-        self.retry_counts.clear()
         logger.debug(f"Cleanup completed for subscription: {self.subscriber_name}")

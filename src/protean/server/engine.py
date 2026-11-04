@@ -784,6 +784,15 @@ class Engine:
         """True when no subscription has a batch read or in processing."""
         return self._batches_in_flight == 0
 
+    @property
+    def reclaim_idle_ms(self) -> int:
+        """``reclaim_idle_seconds`` in whole milliseconds, rounded up.
+
+        Never below 1, so a positive setting under one millisecond does not
+        become 0 ms, which claims every pending entry however recently read.
+        """
+        return max(1, math.ceil(self.reclaim_idle_seconds * 1000))
+
     async def handle_broker_message(
         self,
         subscriber_cls: type[BaseSubscriber],

@@ -8,6 +8,7 @@ with the broker untouched. The engine counts the batches in flight so that
 
 import asyncio
 import logging
+import time
 
 import pytest
 
@@ -16,6 +17,7 @@ from protean.domain import Processing
 from protean.server import Engine
 from protean.server.engine import DEFAULT_RECLAIM_IDLE_SECONDS
 from protean.server.subscription.broker_subscription import BrokerSubscription
+from tests.server.test_trace_correlation import _attach_recording_redis
 
 handled: list[dict] = []
 
@@ -90,29 +92,49 @@ class TestBatchOnShutdown:
     def test_drain_timeout_cancels_the_batch_without_failing_it(self, test_domain):
         """A batch still running when the drain window ends is cancelled.
 
-        The cancellation lands in the first message's retry delay. The later
-        messages are not handled, not retried and not acknowledged, so the
-        broker still holds them for a later consumer.
+        Shutdown starts before the first message is handled. The first two
+        messages are handled after that, then the batch waits until the drain
+        window ends and is cancelled. The third message is not handled, gets
+        no retry count and no ``message.nacked`` trace, and shutdown does not
+        wait out the retry delay.
         """
-        test_domain.config["server"]["drain_timeout"] = 0.05
+        test_domain.config["server"]["drain_timeout"] = 0.1
         engine = Engine(test_domain, test_mode=True)
         subscription = _subscription(engine, retry_delay_seconds=5)
-        _publish_batch(engine)
+        traces = _attach_recording_redis(engine.emitter)
+        broker = engine.domain.brokers["default"]
+        for name in ("first", "second", "third"):
+            broker.publish("orders", {"name": name})
+        handle_broker_message = engine.handle_broker_message
+
+        async def handle_then_hold(subscriber_cls, message, **kwargs):
+            if message["name"] == "first":
+                # Shutdown starts during this pause.
+                await asyncio.sleep(0.02)
+            result = await handle_broker_message(subscriber_cls, message, **kwargs)
+            if message["name"] == "second":
+                # Hold the batch until the drain window cancels it.
+                await asyncio.Event().wait()
+            return result
+
+        engine.handle_broker_message = handle_then_hold  # type: ignore[method-assign]
 
         async def run():
             messages = await subscription.get_next_batch_of_messages()
+            assert len(messages) == 3
             batch = asyncio.ensure_future(subscription.process_batch(messages))
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(0.01)
+            started = time.monotonic()
             await engine.shutdown()
-            return batch
+            return batch, time.monotonic() - started
 
-        batch = engine.loop.run_until_complete(run())
+        batch, shutdown_seconds = engine.loop.run_until_complete(run())
 
         assert batch.cancelled()
-        assert handled == []
-        # Only the first message reached the failure path; the cancelled ones
-        # did not.
-        assert len(subscription.retry_counts) == 1
+        assert [m["name"] for m in handled] == ["first", "second"]
+        assert subscription.retry_counts == {}
+        assert [t for t in traces.traces() if t["event"] == "message.nacked"] == []
+        assert shutdown_seconds < 2
 
 
 class TestBatchesInFlight:
@@ -186,6 +208,17 @@ class TestReclaimIdleSetting:
     def test_configured_value_is_used(self, test_domain):
         test_domain.config["server"]["reclaim_idle_seconds"] = 300
         assert Engine(test_domain, test_mode=True).reclaim_idle_seconds == 300.0
+
+    @pytest.mark.parametrize(
+        ("seconds", "milliseconds"), [(120, 120_000), (0.0015, 2), (0.0004, 1)]
+    )
+    def test_threshold_in_milliseconds_rounds_up(
+        self, test_domain, seconds, milliseconds
+    ):
+        """A positive threshold under a millisecond never becomes 0 ms, which
+        would claim entries a running consumer read moments ago."""
+        test_domain.config["server"]["reclaim_idle_seconds"] = seconds
+        assert Engine(test_domain, test_mode=True).reclaim_idle_ms == milliseconds
 
     @pytest.mark.parametrize("value", ["soon", True, float("nan"), float("inf")])
     def test_invalid_value_falls_back_and_warns(self, test_domain, caplog, value):

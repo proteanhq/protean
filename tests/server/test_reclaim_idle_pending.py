@@ -11,6 +11,7 @@ name of its own and leaving them unacknowledged.
 """
 
 import asyncio
+import logging
 import time
 from uuid import uuid4
 
@@ -25,9 +26,11 @@ from protean.domain import Domain
 from protean.fields import Boolean, Identifier, String
 from protean.server import Engine
 from protean.server.subscription.broker_subscription import BrokerSubscription
+from protean.server.subscription.profiles import CircuitBreakerState
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.eventing import Message
 from protean.utils.mixins import handle
+from tests.server.test_trace_correlation import _attach_recording_redis
 from tests.shared import REDIS_URI
 
 pytestmark = [pytest.mark.redis, pytest.mark.no_test_domain]
@@ -37,6 +40,8 @@ STOPPED_CONSUMER = "stopped-worker"
 RECLAIM_IDLE_SECONDS = 0.05
 
 handled: list[str] = []
+# Labels the handler fails on while they are in this set.
+failing_labels: set[str] = set()
 
 
 class Shipment(BaseAggregate):
@@ -52,7 +57,7 @@ class ShipmentBooked(BaseEvent):
 class ShipmentTracker(BaseEventHandler):
     @handle(ShipmentBooked)
     def track(self, event: ShipmentBooked) -> None:
-        if event.fail:
+        if event.fail or event.label in failing_labels:
             raise RuntimeError("intentional failure")
         handled.append(event.label)
 
@@ -66,6 +71,7 @@ class LabelPrinter(BaseSubscriber):
 def _reset_handled():
     yield
     handled.clear()
+    failing_labels.clear()
 
 
 def _domain(**server: object) -> Domain:
@@ -129,7 +135,10 @@ def _leave_pending(domain: Domain, stream: str, group: str, count: int) -> None:
 
 
 def _pending_by_consumer(domain: Domain, stream: str, group: str) -> dict[str, int]:
-    client = domain.brokers["default"].redis_instance
+    return _pending_on(domain.brokers["default"].redis_instance, stream, group)
+
+
+def _pending_on(client: redis.Redis, stream: str, group: str) -> dict[str, int]:
     summary = client.xpending(stream, group)
     return {
         (c["name"].decode() if isinstance(c["name"], bytes) else c["name"]): int(
@@ -217,6 +226,140 @@ class TestStreamSubscription:
         assert primary == []
         await second.process_batch(backfill, stream=second.backfill_stream)
         assert handled == ["late"]
+
+
+class TestStoppedWorkerStates:
+    """A message a stopped worker still meant to retry is claimed like any other."""
+
+    async def test_claims_a_message_waiting_for_its_retry(self, domain):
+        category = Shipment.meta_.stream_category
+        first = _stream_subscription(domain, max_retries=3)
+        await _start(first)
+        _publish(domain, category, "flaky")
+        failing_labels.add("flaky")
+        await _read_and_process(first)
+        assert list(first.retry_counts.values()) == [1]
+        assert _pending_by_consumer(domain, category, first.consumer_group) == {
+            first.consumer_name: 1
+        }
+        await asyncio.sleep(RECLAIM_IDLE_SECONDS * 2)
+        failing_labels.clear()
+
+        second = _stream_subscription(domain, max_retries=3)
+        await _start(second)
+        processed = await _read_and_process(second)
+
+        assert processed == 1
+        assert handled == ["flaky"]
+        assert _pending_by_consumer(domain, category, second.consumer_group) == {}
+
+    async def test_claims_a_message_held_by_an_open_circuit_breaker(self, domain):
+        category = Shipment.meta_.stream_category
+        first = _stream_subscription(domain, circuit_breaker_threshold=1)
+        await _start(first)
+        _publish(domain, category, "held")
+        failing_labels.add("held")
+        await _read_and_process(first)
+        assert first.circuit_state == CircuitBreakerState.OPEN
+        assert _pending_by_consumer(domain, category, first.consumer_group) == {
+            first.consumer_name: 1
+        }
+        await asyncio.sleep(RECLAIM_IDLE_SECONDS * 2)
+        failing_labels.clear()
+
+        second = _stream_subscription(domain, circuit_breaker_threshold=1)
+        await _start(second)
+        processed = await _read_and_process(second)
+
+        assert processed == 1
+        assert handled == ["held"]
+        assert _pending_by_consumer(domain, category, second.consumer_group) == {}
+
+
+def _pause_handling(subscription: StreamSubscription, pause: dict[str, float]):
+    """Make the engine wait *pause[label]* seconds after handling that label.
+
+    A negative pause holds the batch until it is cancelled.
+    """
+    engine = subscription.engine
+    handle_message = engine.handle_message
+
+    async def handle_then_pause(handler, message, **kwargs):
+        result = await handle_message(handler, message, **kwargs)
+        wait = pause.get(message.data["label"])
+        if wait is not None and wait < 0:
+            await asyncio.Event().wait()
+        elif wait is not None:
+            await asyncio.sleep(wait)
+        return result
+
+    engine.handle_message = handle_then_pause  # type: ignore[method-assign]
+
+
+class TestShutdownMidBatch:
+    """A shutdown that starts mid-batch on a Redis stream subscription."""
+
+    async def test_batch_that_finishes_in_the_drain_window_is_all_acked(
+        self, domain, caplog
+    ):
+        category = Shipment.meta_.stream_category
+        domain.config["server"]["drain_timeout"] = 5
+        sub = _stream_subscription(domain, messages_per_tick=10)
+        await _start(sub)
+        for label in ("a", "b", "c"):
+            _publish(domain, category, label)
+        _pause_handling(sub, {"a": 0.05})
+        # Shutdown closes the broker's connection.
+        client = domain.brokers["default"].redis_instance
+
+        messages = await sub.get_next_batch_of_messages()
+        assert len(messages) == 3
+        batch = asyncio.ensure_future(sub.process_batch(messages))
+        await asyncio.sleep(0.01)
+        with caplog.at_level(logging.WARNING):
+            await sub.engine.shutdown()
+
+        assert batch.result() == 3
+        assert handled == ["a", "b", "c"]
+        assert _pending_on(client, category, sub.consumer_group) == {}
+        assert client.xlen(sub.dlq_stream) == 0
+        assert not [r for r in caplog.records if "Failed" in r.getMessage()]
+
+    async def test_drain_timeout_leaves_the_rest_pending_without_failing_it(
+        self, domain
+    ):
+        category = Shipment.meta_.stream_category
+        domain.config["server"]["drain_timeout"] = 0.1
+        sub = _stream_subscription(
+            domain, messages_per_tick=10, circuit_breaker_threshold=1
+        )
+        sub.retry_delay_seconds = 5
+        await _start(sub)
+        for label in ("a", "b", "c"):
+            _publish(domain, category, label)
+        traces = _attach_recording_redis(sub.engine.emitter)
+        _pause_handling(sub, {"a": 0.05, "b": -1})
+        # Shutdown closes the broker's connection.
+        client = domain.brokers["default"].redis_instance
+
+        messages = await sub.get_next_batch_of_messages()
+        batch = asyncio.ensure_future(sub.process_batch(messages))
+        await asyncio.sleep(0.01)
+        started = time.monotonic()
+        await sub.engine.shutdown()
+
+        assert batch.cancelled()
+        assert time.monotonic() - started < 2
+        # "a" was acked; "b" was handled but cancelled before its ack, and
+        # "c" was never reached. Both stay pending for a later start to claim.
+        assert handled == ["a", "b"]
+        assert _pending_on(client, category, sub.consumer_group) == {
+            sub.consumer_name: 2
+        }
+        assert sub.retry_counts == {}
+        assert sub.consecutive_handler_failures == 0
+        assert sub.circuit_state == CircuitBreakerState.CLOSED
+        assert [t for t in traces.traces() if t["event"] == "message.nacked"] == []
 
 
 class TestBrokerSubscription:
