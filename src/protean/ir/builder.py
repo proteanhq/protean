@@ -1700,7 +1700,8 @@ class IRBuilder:
         so we derive it from which aggregate/entity embeds them via
         ``ValueObject``, ``ValueObjectList`` or value-object ``Dict`` fields,
         then from an explicit ``part_of``. A value object none of these place
-        goes to the aggregate of a command or event that holds it in a field.
+        goes to the aggregate of a command or event that holds it in a
+        single-value field; a list or dict field on a message does not place it.
         """
         registry = self._domain._domain_registry
         vo_map: dict[str, type] = {}
@@ -1733,7 +1734,7 @@ class IRBuilder:
         return vo_map
 
     def _map_message_value_objects(self, vo_map: dict[str, type]) -> None:
-        """Add to ``vo_map`` each value object a command or event field holds.
+        """Add to ``vo_map`` each value object a message's single-value field holds.
 
         A value object already in ``vo_map`` keeps its cluster. When messages of
         two aggregates hold the same value object, the first message scanned

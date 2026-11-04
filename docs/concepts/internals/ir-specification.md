@@ -827,9 +827,11 @@ Python's `json.dumps()` is the reference serializer. `0.0` serializes as
 A VO declared `part_of=Order` appears in the Order cluster, even if Payment
 also references it. The Payment field references the VO by FQN. Cross-cluster
 references are valid. A VO without `part_of` appears in the cluster of the
-aggregate, entity, command or event that holds it in a field, aggregate and
-entity fields first. A VO that none of
-these hold appears only in the elements index.
+aggregate or entity that holds it in a field, including a list or dict field.
+When no aggregate or entity holds it, the VO appears in the cluster of a
+command or event that holds it in a single-value field. A list or dict field on
+a command or event does not place it. A VO that none of these hold appears only
+in the elements index.
 
 ### Diagnostics in Checksum
 
