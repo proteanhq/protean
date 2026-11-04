@@ -1693,7 +1693,7 @@ class IRBuilder:
         return None
 
     def _build_vo_cluster_map(self) -> dict[str, type]:
-        """Build a mapping of VO FQN → aggregate class by scanning fields.
+        """Build a mapping of VO FQN → aggregate class from fields and ``part_of``.
 
         Value objects don't get ``aggregate_cluster`` set by the resolver,
         so we derive it from which aggregate/entity embeds them via
