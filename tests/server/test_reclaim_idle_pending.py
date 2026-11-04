@@ -64,6 +64,8 @@ class ShipmentTracker(BaseEventHandler):
 
 class LabelPrinter(BaseSubscriber):
     def __call__(self, data: dict) -> None:
+        if data["label"] in failing_labels:
+            raise RuntimeError("intentional failure")
         handled.append(data["label"])
 
 
@@ -394,6 +396,34 @@ class TestBrokerSubscription:
 
         assert sorted(handled) == ["x", "y"]
         assert _pending_by_consumer(domain, "labels", second.subscriber_name) == {}
+
+    async def test_restart_counts_only_the_failed_attempts(self, domain):
+        """A lone message fails once, then the worker stops. A read that
+        returns fewer entries than asked for must not deliver the same entry
+        twice, or the restarted worker counts two failed attempts and the
+        second failure dead-letters the message with max_retries=3."""
+        broker = domain.brokers["default"]
+        engine = Engine(domain, test_mode=True)
+        broker.publish("labels", {"label": "flaky"})
+        failing_labels.add("flaky")
+        first = BrokerSubscription(
+            engine, broker, "labels", LabelPrinter, max_retries=3, retry_delay_seconds=0
+        )
+        await first.process_batch(await first.get_next_batch_of_messages())
+        assert list(first.retry_counts.values()) == [1]
+
+        # A restarted process reads under a new consumer name.
+        broker._consumer_name = "restarted-worker"
+        await asyncio.sleep(RECLAIM_IDLE_SECONDS * 2)
+        second = BrokerSubscription(
+            engine, broker, "labels", LabelPrinter, max_retries=3, retry_delay_seconds=0
+        )
+        await _start(second)
+        assert list(second.retry_counts.values()) == [1]
+        await second.process_batch(await second.get_next_batch_of_messages())
+
+        assert list(second.retry_counts.values()) == [2]
+        assert broker.redis_instance.xlen(second.dlq_stream) == 0
 
 
 class TestBrokerReclaim:

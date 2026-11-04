@@ -418,27 +418,64 @@ class RedisBroker(BaseBroker):
 
             # If we didn't get enough messages, try reading pending messages
             if len(messages) < no_of_messages:
-                remaining = no_of_messages - len(messages)
-                response = self._client.xreadgroup(
-                    consumer_group, self._consumer_name, {stream: "0"}, count=remaining
+                self._read_older_pending(
+                    stream, consumer_group, messages, no_of_messages
                 )
-
-                if response and response[0][1]:
-                    seen_ids = {msg[0] for msg in messages}  # Avoid duplicates
-                    for message_id, fields in response[0][1]:
-                        if fields:
-                            redis_id_str = self._decode_if_bytes(message_id)
-                            if redis_id_str not in seen_ids:
-                                message = self._deserialize_message(fields)
-                                messages.append((redis_id_str, message))
-                                seen_ids.add(redis_id_str)
-                                if len(messages) >= no_of_messages:
-                                    break
 
         except redis.ResponseError:
             logger.exception("broker.redis.read_failed")
 
         return messages[:no_of_messages]  # Ensure we don't return more than requested
+
+    def _read_older_pending(
+        self,
+        stream: str,
+        consumer_group: str,
+        messages: list[tuple[str, dict[str, Any]]],
+        no_of_messages: int,
+    ) -> None:
+        """Append this consumer's pending entries to *messages*, up to
+        *no_of_messages* in all, leaving out the new entries already in it.
+
+        Raises:
+            redis.ResponseError: When a Redis call fails.
+        """
+        remaining = no_of_messages - len(messages)
+        if messages:
+            # A pending read from "0" returns this consumer's entries in id
+            # order, the ones just read last. Reading them again adds a
+            # delivery to each, and a subscription that claims them on restart
+            # counts deliveries as failed attempts. So read only the older
+            # pending entries.
+            remaining = len(
+                self._client.xpending_range(
+                    stream,
+                    consumer_group,
+                    min="-",
+                    max="(" + messages[0][0],
+                    count=remaining,
+                    consumername=self._consumer_name,
+                )
+            )
+        if not remaining:
+            return
+
+        response = self._client.xreadgroup(
+            consumer_group, self._consumer_name, {stream: "0"}, count=remaining
+        )
+        if not (response and response[0][1]):
+            return
+
+        seen_ids = {msg[0] for msg in messages}  # Avoid duplicates
+        for message_id, fields in response[0][1]:
+            if fields:
+                redis_id_str = self._decode_if_bytes(message_id)
+                if redis_id_str not in seen_ids:
+                    message = self._deserialize_message(fields)
+                    messages.append((redis_id_str, message))
+                    seen_ids.add(redis_id_str)
+                    if len(messages) >= no_of_messages:
+                        break
 
     def _read_blocking(
         self,

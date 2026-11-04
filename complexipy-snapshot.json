@@ -32,10 +32,6 @@
         "complexity": 24
       },
       {
-        "name": "RedisBroker::_read",
-        "complexity": 33
-      },
-      {
         "name": "RedisBroker::_read_blocking",
         "complexity": 37
       }
