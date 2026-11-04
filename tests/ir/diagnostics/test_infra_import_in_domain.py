@@ -35,9 +35,9 @@ class TestInfraImportInDomain:
         assert _infra_findings(ir) == []
 
     def test_clean_domain_with_flag_on_is_not_flagged(self):
-        """An element module importing only ``protean.fields`` (this test
-        module) must not be flagged, even with the rule on. The rule does not flag
-        legitimate framework imports."""
+        """An element defined in this test module, which imports protean
+        modules but nothing from ``protean.adapters``, is not flagged with the
+        rule on."""
         domain = Domain(name="CleanInfra", root_path=".")
         domain.config["lint"] = {"check_infra_imports": True}
 

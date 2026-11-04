@@ -481,21 +481,31 @@ class TestReceiverConservatism:
                 "filter",
                 id="subscript",
             ),
-            # A recognized ``self`` receiver whose method is none of the known
-            # surfaces is not defaulted to a role.
-            pytest.param("self.compute()", "compute", id="non-surface-method"),
         ],
     )
     def test_a_receiver_with_no_recognizable_root_is_left_unknown(
         self, tmp_path, body, method
     ):
-        """A receiver the catalog cannot place statically gets ``UNKNOWN``
-        rather than being waved through as a query."""
+        """A receiver the catalog cannot place statically gets ``UNKNOWN``,
+        not ``REPOSITORY_QUERY``."""
         source = f"class Service:\n    def run(self, handlers):\n        {body}\n"
         catalog, index = _walked_catalog(_make_pkg(tmp_path, source))
         facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
 
         call = next(c for c in facts.calls if c.method == method)
+
+        assert call.receiver_role is ReceiverRole.UNKNOWN
+
+    def test_a_self_receiver_calling_a_non_query_method_is_left_unknown(self, tmp_path):
+        """A recognized ``self`` receiver calling a method that is neither a
+        query method nor ``raise_``, such as ``self.compute()``, gets
+        ``UNKNOWN``. The role comes from the method name, and ``compute`` names
+        neither."""
+        source = "class Service:\n    def run(self):\n        self.compute()\n"
+        catalog, index = _walked_catalog(_make_pkg(tmp_path, source))
+        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
+
+        call = next(c for c in facts.calls if c.method == "compute")
 
         assert call.receiver_role is ReceiverRole.UNKNOWN
 

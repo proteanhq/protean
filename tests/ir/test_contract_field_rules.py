@@ -8,8 +8,6 @@ element. For a published event's fields, both lists must flag the same breaks.
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,6 +28,7 @@ from protean.ir.diff import (
     classify_changes,
     diff_ir,
 )
+from tests.ir.support.git_repo import commit_ir
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -607,35 +606,14 @@ class Placed:
 """
 
 
-def _commit_ir(repo: Path, ir: dict[str, Any]) -> None:
-    """Create a git repository at *repo* holding *ir* committed as
-    ``.protean/ir.json``."""
-    env = {
-        **os.environ,
-        "HOME": str(repo),
-        "GIT_AUTHOR_NAME": "test",
-        "GIT_AUTHOR_EMAIL": "test@test.com",
-        "GIT_COMMITTER_NAME": "test",
-        "GIT_COMMITTER_EMAIL": "test@test.com",
-    }
-    (repo / ".protean").mkdir()
-    (repo / ".protean" / "ir.json").write_text(json.dumps(ir), encoding="utf-8")
-    for command in (
-        ["git", "init", "-q"],
-        ["git", "add", ".protean/ir.json"],
-        ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "baseline"],
-    ):
-        subprocess.run(command, cwd=repo, env=env, capture_output=True, check=True)
-
-
 class TestHookOnExcludedPublishedEvent:
     """The pre-commit hook names a contract break the `exclude` filter left in."""
 
     @pytest.fixture(autouse=True)
-    def _repo(self, tmp_path, monkeypatch):
+    def _repo(self, tmp_path, monkeypatch, isolated_git):
         # HEAD holds the IR with an Integer qty; shop.py, the live domain,
         # declares it as a String.
-        _commit_ir(tmp_path, _build(qty=Integer()))
+        commit_ir(tmp_path, _build(qty=Integer()))
         (tmp_path / "shop.py").write_text(_SHOP_SOURCE, encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         monkeypatch.syspath_prepend(str(tmp_path))

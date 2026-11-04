@@ -8,6 +8,8 @@ import pytest
 
 from protean.ir.git import GitError, load_ir_from_commit
 
+pytestmark = pytest.mark.usefixtures("isolated_git")
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

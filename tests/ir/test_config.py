@@ -2,7 +2,6 @@
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -15,7 +14,10 @@ from protean.ir.config import (
     _parse_config,
     load_config,
 )
+from tests.ir.support.git_repo import commit_ir
 from tests.shared import change_working_directory_to
+
+pytestmark = pytest.mark.usefixtures("isolated_git")
 
 runner = CliRunner()
 
@@ -46,32 +48,12 @@ _TEST7_DOMAIN = str(
 )
 
 
-def _commit_ir(repo: Path, ir_dict: dict) -> None:
-    """Create a git repository at *repo* holding *ir_dict* committed as
-    ``.protean/ir.json``."""
-    env = {
-        **os.environ,
-        "HOME": str(repo),
-        "GIT_AUTHOR_NAME": "test",
-        "GIT_AUTHOR_EMAIL": "test@test.com",
-        "GIT_COMMITTER_NAME": "test",
-        "GIT_COMMITTER_EMAIL": "test@test.com",
-    }
-    _write_ir(repo / ".protean", ir_dict)
-    for command in (
-        ["git", "init", "-q"],
-        ["git", "add", ".protean/ir.json"],
-        ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "baseline"],
-    ):
-        subprocess.run(command, cwd=repo, env=env, capture_output=True, check=True)
-
-
 def _run_compat_hook(monkeypatch, repo: Path, baseline_ir: dict) -> int:
     """Commit *baseline_ir* in a git repository at *repo*, run the compat hook
     against HEAD from inside it, and return the exit code."""
     from protean.cli.hooks import check_compat_hook
 
-    _commit_ir(repo, baseline_ir)
+    commit_ir(repo, baseline_ir)
     os.chdir(repo)
     monkeypatch.setattr(
         sys,

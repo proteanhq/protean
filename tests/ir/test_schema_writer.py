@@ -318,13 +318,14 @@ class TestWriteIR:
 
 
 # ---------------------------------------------------------------------------
-# Unknown FQNs and an empty IR
+# Nothing to find or write
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.no_test_domain
-class TestUnknownFqnAndEmptyIR:
-    """An unknown FQN maps to no cluster, and an empty IR writes no schema files."""
+class TestNothingToFindOrWrite:
+    """The cluster lookup returns ``None`` for an FQN it cannot find, and the
+    writer writes no files for an IR with no clusters."""
 
     @pytest.mark.parametrize(
         "fqn, ir_builder",

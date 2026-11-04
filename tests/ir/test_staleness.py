@@ -667,8 +667,10 @@ class TestCheckCLIExitCodes:
 
 @pytest.mark.no_test_domain
 class TestPrintCheckTextWithoutChecksumOrFile:
-    """The `protean ir check` text output leaves out the checksum and file lines
-    when the result has no checksum or IR file."""
+    """The `protean ir check` text output for a result with no checksum or IR
+    file: it leaves out the checksum and file lines, names the `.protean`
+    directory when no IR exists, and still names both versions on a version
+    mismatch."""
 
     def test_fresh_with_none_checksum(self, capsys):
         from protean.cli.ir import _print_check_text
@@ -797,7 +799,9 @@ class TestStalenessDiagnostic:
             "display": "protean-check-staleness --fix",
         }
 
-    def test_dispatching_the_named_command_clears_the_diagnostic(self, monkeypatch):
+    def test_dispatching_the_named_command_clears_the_diagnostic(
+        self, monkeypatch, isolated_git
+    ):
         # End to end: emit → dispatch the resolving command the diagnostic names
         # → re-check → the diagnostic is gone.
         self._write_stale_ir()
