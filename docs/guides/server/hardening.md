@@ -221,7 +221,9 @@ to stop, waiting for in-flight handlers to finish (up to
 10 seconds by default),
 then closing the event store, brokers, caches, and providers in
 reverse initialisation order. A batch that started before the signal keeps
-handling its messages during the drain window. If the window ends first, the
+handling its messages during the drain window, except in a partitioned
+subscription (`sequential_by`), which cancels its partition workers when the
+signal arrives. If the window ends first, the
 rest of the batch stays pending in Redis, and a later start claims it after
 [`server.reclaim_idle_seconds`](../../reference/server/hardening.md#serverreclaim_idle_seconds),
 120 seconds by default. Send `SIGTERM` and give the pod a

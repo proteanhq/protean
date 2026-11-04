@@ -311,8 +311,8 @@ class Engine:
         self.drain_timeout = _positive_server_setting(domain, "drain_timeout", 10)
 
         # How long (seconds) an entry must sit unacknowledged under another consumer of
-        # a stream subscription's group before the subscription claims it on
-        # startup. Read from [server].reclaim_idle_seconds.
+        # a stream or broker subscription's group before the subscription claims
+        # it on startup. Read from [server].reclaim_idle_seconds.
         self.reclaim_idle_seconds = _positive_server_setting(
             domain, "reclaim_idle_seconds", DEFAULT_RECLAIM_IDLE_SECONDS
         )

@@ -550,7 +550,8 @@ Elasticsearch providers return an empty dict.
 3. Wait up to the drain window for in-flight handler tasks to complete;
    cancel any that remain. A batch that started before the shutdown keeps
    handling its messages inside the window. When the window ends, the batch is
-   cancelled. Its unhandled messages are not retried and not sent to the
+   cancelled. A partitioned stream subscription (`sequential_by`) cancels its
+   partition workers in step 2 instead. Its unhandled messages are not retried and not sent to the
    dead-letter queue: on Redis Streams they stay pending for the next start to
    claim (see [`server.reclaim_idle_seconds`](#serverreclaim_idle_seconds)).
 4. Call `Domain.close()`, which closes the event store, brokers, caches, and

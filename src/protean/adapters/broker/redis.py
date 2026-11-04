@@ -1150,8 +1150,10 @@ class RedisBroker(BaseBroker):
         scan, and the counts of the entries claimed so far are returned.
 
         Raises:
-            redis.RedisError: Any broker error other than a missing group,
-                raised before any entry is claimed.
+            redis.RedisError: Any broker error other than a missing group
+                while claiming the first page, or any broker error while
+                reading the delivery counts. In the second case the entries
+                are already claimed into *consumer*.
         """
         consumer = consumer_name or self._consumer_name
         self._ensure_group(group_name, stream)
