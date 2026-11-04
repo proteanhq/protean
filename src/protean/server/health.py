@@ -13,7 +13,9 @@ Endpoints:
     POST /drainz  — Advisory drain: flip the engine to ``draining`` so it stops
                     taking new work while in-flight handlers finish. The process
                     stays alive; readiness then reports not-ready so a load
-                    balancer stops routing. → 200
+                    balancer stops routing. The ``drained`` field is true once
+                    no batch is in flight, so a caller can POST again until it
+                    reads true before sending SIGTERM. → 200
 
 Every endpoint here answers for the engine in *this* process, ``/drainz``
 included: it drains the worker whose health server took the request, not its
@@ -591,7 +593,16 @@ class HealthServer:
                 self.engine.draining = True
                 pid = os.getpid()
                 logger.info("engine.drain_requested", extra={"pid": pid})
-                writer.write(_json_response(200, {"status": "draining", "pid": pid}))
+                writer.write(
+                    _json_response(
+                        200,
+                        {
+                            "status": "draining",
+                            "pid": pid,
+                            "drained": self.engine.batches_drained,
+                        },
+                    )
+                )
             elif method != "GET":
                 writer.write(_json_response(405, {"error": "Method Not Allowed"}))
             elif path in ("/healthz", "/livez"):

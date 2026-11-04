@@ -33,6 +33,10 @@ CONSUMER_GROUP_SEPARATOR = ":"
 NEW_MESSAGES_MARK = ">"
 PENDING_MESSAGES_MARK = "0"
 
+# Entries claimed, and pending rows read, per call when a subscription claims
+# a stopped consumer's pending entries on startup.
+_RECLAIM_BATCH_SIZE = 100
+
 # A stream entry ID, ``<ms>`` or ``<ms>-<seq>``, never a range bound. XRANGE
 # also accepts ``-``, ``+`` and ``(`` prefixes as range bounds, so a DLQ ID is
 # checked against this before it is passed as both bounds of a single-entry
@@ -114,6 +118,26 @@ return redis.call('XREADGROUP', 'GROUP', ARGV[2], ARGV[3],
 _LUA_ACK_FENCED = """
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
 return redis.call('XACK', KEYS[2], ARGV[2], ARGV[3])
+"""
+
+# Claim one page of a group's idle pending entries and read each claimed
+# entry's delivery count. JUSTID leaves each entry's delivery counter as it was,
+# so repeated claims do not add deliveries. It runs in Lua because redis-py drops
+# the cursor from a JUSTID reply, and so that a page's claim and its counts
+# succeed or fail together: a claim whose counts are lost would restart the
+# entries' retry history.
+# KEYS are the stream. ARGV are the group, the consumer, the minimum idle time
+# in milliseconds, the start id and the count. Returns the next cursor, the
+# claimed ids, and their delivery counts in the same order.
+_LUA_AUTOCLAIM_JUSTID = """
+local reply = redis.call('XAUTOCLAIM', KEYS[1], ARGV[1], ARGV[2], ARGV[3],
+                         ARGV[4], 'COUNT', ARGV[5], 'JUSTID')
+local counts = {}
+for i, id in ipairs(reply[2]) do
+    local row = redis.call('XPENDING', KEYS[1], ARGV[1], id, id, 1)
+    counts[i] = row[1] and row[1][4] or 0
+end
+return {reply[1], reply[2], counts}
 """
 
 # Race-safe cold-partition reap. KEYS[1]=index_set, KEYS[2..]=every physical
@@ -219,6 +243,7 @@ class RedisBroker(BaseBroker):
         self._lua_read_fenced = self._client.register_script(_LUA_READ_FENCED)
         self._lua_ack_fenced = self._client.register_script(_LUA_ACK_FENCED)
         self._lua_reap_partition = self._client.register_script(_LUA_REAP_PARTITION)
+        self._lua_autoclaim_justid = self._client.register_script(_LUA_AUTOCLAIM_JUSTID)
 
         # Add compatibility attributes for generic tests
         # Redis Streams handle these differently but tests expect these attributes
@@ -403,27 +428,64 @@ class RedisBroker(BaseBroker):
 
             # If we didn't get enough messages, try reading pending messages
             if len(messages) < no_of_messages:
-                remaining = no_of_messages - len(messages)
-                response = self._client.xreadgroup(
-                    consumer_group, self._consumer_name, {stream: "0"}, count=remaining
+                self._read_older_pending(
+                    stream, consumer_group, messages, no_of_messages
                 )
-
-                if response and response[0][1]:
-                    seen_ids = {msg[0] for msg in messages}  # Avoid duplicates
-                    for message_id, fields in response[0][1]:
-                        if fields:
-                            redis_id_str = self._decode_if_bytes(message_id)
-                            if redis_id_str not in seen_ids:
-                                message = self._deserialize_message(fields)
-                                messages.append((redis_id_str, message))
-                                seen_ids.add(redis_id_str)
-                                if len(messages) >= no_of_messages:
-                                    break
 
         except redis.ResponseError:
             logger.exception("broker.redis.read_failed")
 
         return messages[:no_of_messages]  # Ensure we don't return more than requested
+
+    def _read_older_pending(
+        self,
+        stream: str,
+        consumer_group: str,
+        messages: list[tuple[str, dict[str, Any]]],
+        no_of_messages: int,
+    ) -> None:
+        """Append this consumer's pending entries to *messages*, up to
+        *no_of_messages* in all, leaving out the new entries already in it.
+
+        Raises:
+            redis.ResponseError: When a Redis call fails.
+        """
+        remaining = no_of_messages - len(messages)
+        if messages:
+            # A pending read from "0" returns this consumer's entries in id
+            # order, the ones just read last. Reading them again adds a
+            # delivery to each, and a subscription that claims them on restart
+            # counts deliveries as failed attempts. So read only the older
+            # pending entries.
+            remaining = len(
+                self._client.xpending_range(
+                    stream,
+                    consumer_group,
+                    min="-",
+                    max="(" + messages[0][0],
+                    count=remaining,
+                    consumername=self._consumer_name,
+                )
+            )
+        if not remaining:
+            return
+
+        response = self._client.xreadgroup(
+            consumer_group, self._consumer_name, {stream: "0"}, count=remaining
+        )
+        if not (response and response[0][1]):
+            return
+
+        seen_ids = {msg[0] for msg in messages}  # Avoid duplicates
+        for message_id, fields in response[0][1]:
+            if fields:
+                redis_id_str = self._decode_if_bytes(message_id)
+                if redis_id_str not in seen_ids:
+                    message = self._deserialize_message(fields)
+                    messages.append((redis_id_str, message))
+                    seen_ids.add(redis_id_str)
+                    if len(messages) >= no_of_messages:
+                        break
 
     def _read_blocking(
         self,
@@ -1089,6 +1151,91 @@ class RedisBroker(BaseBroker):
             )
 
         return removed
+
+    def _reclaim_idle_pending(
+        self,
+        stream: str,
+        group_name: str,
+        consumer_name: str | None,
+        min_idle_ms: int,
+    ) -> dict[str, int]:
+        """Claim the group's entries idle for *min_idle_ms* into *consumer_name*.
+
+        Uses ``XAUTOCLAIM`` with ``JUSTID``, which does not count the claim as
+        a delivery, reads each claimed entry's delivery count with
+        ``XPENDING`` in the same script, and returns the counts by entry id.
+        Entries whose message the stream no longer holds (it was trimmed) are
+        dropped from the pending list by ``XAUTOCLAIM`` and are not returned. A missing
+        group means nothing to claim.
+
+        A broker error on a claim page after earlier pages claimed entries
+        stops the scan, and the counts of the entries claimed so far are
+        returned.
+
+        Raises:
+            redis.RedisError: A broker error other than a missing group on a
+                claim page while no entry is claimed yet.
+        """
+        consumer = consumer_name or self._consumer_name
+        self._ensure_group(group_name, stream)
+        claimed: dict[str, int] = {}
+        cursor = STREAM_ID_START + "-0"
+        while True:
+            try:
+                page = self._autoclaim_page(
+                    stream, group_name, consumer, min_idle_ms, cursor
+                )
+            except redis.RedisError as e:
+                if not claimed:
+                    raise
+                # Earlier pages already moved entries to this consumer. Return
+                # them so they keep their place toward max_retries; a later
+                # start claims the rest.
+                logger.warning(
+                    f"Stopped claiming idle entries for {group_name} on "
+                    f"{stream} after {len(claimed)}: {e}"
+                )
+                return claimed
+            if page is None:
+                return claimed
+            cursor, counts = page
+            claimed.update(counts)
+            # A "0-0" cursor means the scan reached the end of the pending list.
+            if cursor == STREAM_ID_START + "-0":
+                return claimed
+
+    def _autoclaim_page(
+        self,
+        stream: str,
+        group_name: str,
+        consumer: str,
+        min_idle_ms: int,
+        cursor: str,
+    ) -> tuple[str, dict[str, int]] | None:
+        """Claim one page of idle entries; return the next cursor and the
+        claimed entries' delivery counts by id.
+
+        Returns None when the group is missing, after creating it again.
+        """
+        try:
+            reply = self._lua_autoclaim_justid(
+                keys=[stream],
+                args=[group_name, consumer, min_idle_ms, cursor, _RECLAIM_BATCH_SIZE],
+                client=self._client,
+            )
+        except redis.ResponseError as e:
+            if "NOGROUP" not in str(e):
+                raise
+            self._forget_stream_groups(stream)
+            self._ensure_group(group_name, stream)
+            return None
+        return (
+            self._decode_if_bytes(reply[0]),
+            {
+                self._decode_if_bytes(mid): int(count)
+                for mid, count in zip(reply[1], reply[2], strict=True)
+            },
+        )
 
     def _info(self) -> dict[str, Any]:
         """Get information about consumer groups and consumers"""

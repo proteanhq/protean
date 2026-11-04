@@ -1517,17 +1517,19 @@ class EventStoreSubscription(BaseSubscription):
                 with self.engine.domain.domain_context():
                     # Process new messages
                     started = time.monotonic()
-                    had_work = await self.tick()
+                    with self._batch_in_flight():
+                        had_work = await self.tick()
 
-                    # Periodically attempt recovery of failed positions.
-                    # A recovery pass re-reads failed positions and dispatches
-                    # handlers, so it is fresh intake, not in-flight work: skip
-                    # it if a drain began while the tick above was running,
-                    # rather than fanning out new handlers after the trigger.
-                    # A recovered position dispatched its handler, which may
-                    # have raised messages for other subscriptions.
-                    if not self._quiescing() and await self.maybe_run_recovery():
-                        had_work = True
+                        # Periodically attempt recovery of failed positions.
+                        # A recovery pass re-reads failed positions and
+                        # dispatches handlers, so it is fresh intake, not
+                        # in-flight work: skip it if a drain began while the
+                        # tick above was running, rather than fanning out new
+                        # handlers after the trigger. A recovered position
+                        # dispatched its handler, which may have raised
+                        # messages for other subscriptions.
+                        if not self._quiescing() and await self.maybe_run_recovery():
+                            had_work = True
                     # A failed position waiting for its next retry is work
                     # still to do, whether or not this pass recovered any.
                     if self.enable_recovery and self._failed_positions:

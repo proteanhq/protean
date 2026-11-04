@@ -1,7 +1,9 @@
 import asyncio
+import contextlib
 import logging
 import time
 from abc import ABC, abstractmethod
+from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Any
 
 from protean.server.subscription.config_resolver import ConfigResolver
@@ -126,7 +128,9 @@ class BaseSubscription(ABC):
                 with self.engine.domain.domain_context():
                     # Process messages
                     started = time.monotonic()
-                    self._record_tick(started, await self.tick())
+                    with self._batch_in_flight():
+                        had_work = await self.tick()
+                    self._record_tick(started, had_work)
 
                     # Reset error counter on successful tick
                     consecutive_errors = 0
@@ -156,6 +160,17 @@ class BaseSubscription(ABC):
                 # Exponential backoff: 1s, 2s, 4s, 8s, ... capped at 30s
                 backoff = min(2 ** (consecutive_errors - 1), 30)
                 await asyncio.sleep(backoff)
+
+    def _batch_in_flight(self) -> AbstractContextManager[None]:
+        """Count the enclosed read and processing as a batch in flight.
+
+        Subscriptions that do not pause on drain are left out: the outbox keeps
+        running through the drain, so counting it would mean the engine never
+        reports its batches drained.
+        """
+        if self.pauses_on_drain:
+            return self.engine.batch_in_flight()
+        return contextlib.nullcontext()
 
     async def _pause_between_ticks(self) -> None:
         """Sleep ``tick_interval`` (shorter in test mode), always yielding control."""

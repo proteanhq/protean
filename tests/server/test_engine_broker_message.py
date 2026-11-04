@@ -1,6 +1,6 @@
 """Tests for Engine.handle_broker_message.
 
-Covers the async broker message handling path: shutdown guard, success
+Covers the async broker message handling path: in-flight work on shutdown, success
 and failure flows, message_in_context lifecycle, and source message_id
 extraction from broker payloads.
 """
@@ -78,18 +78,23 @@ def _register_and_init(test_domain, subscriber_cls, stream: str = "test_stream")
 
 
 # ---------------------------------------------------------------------------
-# 1. Returns False when shutting_down is True
+# 1. Shutting down does not reject at the handler: an in-flight message runs
 # ---------------------------------------------------------------------------
 class TestShuttingDown:
     @pytest.mark.asyncio
-    async def test_returns_false_when_shutting_down(self, test_domain):
+    async def test_processes_inflight_message_when_shutting_down(self, test_domain):
+        """A message already read into a batch runs to completion on shutdown.
+
+        A False return here would send it down the NACK/retry/DLQ path. The
+        drain_timeout cancellation is what cuts a long batch short.
+        """
         _register_and_init(test_domain, SuccessSubscriber)
         engine = Engine(domain=test_domain, test_mode=True)
         engine.shutting_down = True
 
         result = await engine.handle_broker_message(SuccessSubscriber, {"key": "value"})
-        assert result is False
-        assert len(_call_log) == 0
+        assert result is True
+        assert _call_log == [{"key": "value"}]
 
 
 # ---------------------------------------------------------------------------
@@ -101,8 +106,8 @@ class TestDraining:
         """A message already dispatched must run to completion while draining.
 
         Draining gates only the poll loops (they stop fetching new batches). The
-        handler guard is gated on shutting_down alone, so a message already read
-        into an in-flight batch is processed, not failed. If draining rejected
+        handler has no guard, so a message already read into an in-flight batch
+        is processed, not failed. If draining rejected
         here, the False return would travel the NACK/retry/DLQ failure path and
         drop the message, violating the "no in-flight message is dropped" rule.
         """
