@@ -2,6 +2,9 @@
 
 **Status:** Proposed
 
+> Amended November 2026, see the amendment to decision 1 and
+> [ADR-0048](0048-sql-event-store.md).
+
 **Date:** June 2026
 
 ## Context
@@ -60,6 +63,14 @@ sequence, and make the relational commit and outbox follow it.
    and only then commits the relational session that carries aggregate state and
    the outbox rows. The event store, which is the source of truth for
    event-sourced aggregates, becomes the first durable write.
+
+   *Amended (November 2026, ADR-0048): a SQL event store that shares the
+   `default` database provider appends inside the Unit of Work's transaction.
+   Events, aggregate rows and outbox rows then commit or roll back together, so
+   the append is part of the relational commit and is no longer a separate
+   durable anchor, and reconciliation has no window to repair. This decision
+   applies unchanged to every event store that commits each append on its own
+   connection, including a SQL event store configured with `database_uri`.*
 
 2. **Idempotent on retry**: Because a commit can be retried after a partial
    failure (the append succeeds, the relational commit fails), the append must be

@@ -119,3 +119,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0045](0045-handle-only-the-errors-you-expect.md) | Handle only the errors you expect |
 | [0046](0046-one-aggregate-instance-per-unit-of-work.md) | One aggregate instance per Unit of Work |
 | [0047](0047-mypy-plugin-subclasses-decorated-elements.md) | The mypy plugin makes a decorated element a subclass of its base |
+| [0048](0048-sql-event-store.md) | Protean stores events in SQLite and PostgreSQL through SQLAlchemy |
