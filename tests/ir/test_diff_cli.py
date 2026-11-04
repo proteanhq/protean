@@ -2876,8 +2876,11 @@ _ERROR_CASES = {
 
 @pytest.mark.no_test_domain
 class TestDiffErrorsExit2:
-    """Every usage, load or config error exits 2 with its message on stderr,
-    prints no diff on stdout and never runs the diff, at every strictness."""
+    """A usage, load or config error exits 2 with its message on stderr,
+    prints nothing on stdout and stops before the diff runs, at every
+    strictness. An IR the comparison or a renderer rejects also exits 2 with
+    nothing on stdout, after the diff runs; under ``off`` the comparison does
+    not run, so an IR only the comparison rejects exits 0."""
 
     @pytest.fixture(autouse=True)
     def _setup(self, tmp_path, monkeypatch):

@@ -497,9 +497,10 @@ class TestReceiverConservatism:
         assert call.receiver_role is ReceiverRole.UNKNOWN
 
     def test_a_self_receiver_calling_a_non_query_method_is_left_unknown(self, tmp_path):
-        """A recognized ``self`` receiver calling a method outside the query
-        surface, such as ``self.compute()``, gets ``UNKNOWN``. The role comes
-        from the method name, and ``compute`` names no known surface."""
+        """A recognized ``self`` receiver calling a method that is neither a
+        query method nor ``raise_``, such as ``self.compute()``, gets
+        ``UNKNOWN``. The role comes from the method name, and ``compute`` names
+        neither."""
         source = "class Service:\n    def run(self):\n        self.compute()\n"
         catalog, index = _walked_catalog(_make_pkg(tmp_path, source))
         facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
