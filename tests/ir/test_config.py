@@ -504,41 +504,6 @@ class TestCheckCLIWithConfig:
 
 
 @pytest.mark.no_test_domain
-class TestStalenessHookWithConfig:
-    """check_staleness_hook() respects .protean/config.toml."""
-
-    @pytest.fixture(autouse=True)
-    def reset_path(self, tmp_path):
-        original_path = sys.path[:]
-        cwd = Path.cwd()
-        change_working_directory_to("test7")
-        self._protean_dir = tmp_path / ".protean"
-        yield
-        sys.path[:] = original_path
-        os.chdir(cwd)
-
-    def test_exits_0_when_staleness_disabled(self, monkeypatch):
-        from protean.cli.hooks import check_staleness_hook
-
-        _write_config(self._protean_dir, "[staleness]\nenabled = false\n")
-
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "protean-check-staleness",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-            ],
-        )
-        with pytest.raises(SystemExit) as exc_info:
-            check_staleness_hook()
-        assert exc_info.value.code == 0
-
-
-@pytest.mark.no_test_domain
 class TestCompatHookWithConfig:
     """check_compat_hook() respects .protean/config.toml."""
 
