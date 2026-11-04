@@ -785,6 +785,38 @@ class BaseBroker(metaclass=ABCMeta):
         """
         return 0
 
+    def _reclaim_idle_pending(
+        self,
+        stream: str,
+        group_name: str,
+        consumer_name: str | None,
+        min_idle_ms: int,
+    ) -> dict[str, int]:
+        """Move entries left pending by other consumers to *consumer_name*.
+
+        Optional maintenance hook, run when a subscription starts. Brokers
+        that keep a pending list per consumer (e.g. Redis Streams) override
+        this to take over every entry of the group that has sat unread under
+        another consumer for at least *min_idle_ms* milliseconds. The claim
+        does not deliver the entries: the subscription's next read of its own
+        pending entries does. Brokers without per-consumer pending lists leave
+        the default implementation, which claims nothing.
+
+        Args:
+            stream: The stream the group consumes.
+            group_name: The consumer group.
+            consumer_name: The consumer to claim into. ``None`` means the
+                consumer this broker's own :meth:`read` uses.
+            min_idle_ms: How long an entry must have gone unread, in
+                milliseconds, before it is claimed.
+
+        Returns:
+            dict[str, int]: The delivery count of each claimed entry, keyed by
+            entry id: how many times the group delivered it before the claim.
+            Empty by default.
+        """
+        return {}
+
     def _mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
         """Signal that a Protean subscription owns retry and dead-lettering for
         this (stream, consumer group) pair.

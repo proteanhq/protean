@@ -322,7 +322,7 @@ class TestPMTransitionTrace:
         assert _traces(traces, "pm.transition") == []
 
 
-class TestShutdownSkip:
+class TestShutdownInFlight:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
         test_domain.register(User, event_sourced=True)
@@ -331,8 +331,8 @@ class TestShutdownSkip:
         test_domain.init(traverse=False)
 
     @pytest.mark.asyncio
-    async def test_skips_when_shutting_down(self, test_domain):
-        """Returns False without emitting when engine is shutting down."""
+    async def test_runs_and_traces_when_shutting_down(self, test_domain):
+        """A message already in a batch is handled and traced during shutdown."""
         engine = Engine(domain=test_domain, test_mode=True)
         traces = _record_traces(engine)
         engine.shutting_down = True
@@ -340,6 +340,6 @@ class TestShutdownSkip:
         message = _make_event_message(test_domain)
         result = await engine.handle_message(UserEventHandler, message)
 
-        assert result is False
-        assert traces == []
-        assert handler_calls == []
+        assert result is True
+        assert len(_traces(traces, "handler.completed")) == 1
+        assert len(handler_calls) == 1

@@ -5,6 +5,7 @@ default_subscription_type = "stream"      # "stream" or "event_store"
 default_subscription_profile = "production"
 messages_per_tick = 100                   # Messages per processing cycle
 drain_timeout = 10                        # Seconds to wait for in-flight handlers on shutdown
+reclaim_idle_seconds = 120                # Seconds a pending Redis entry waits before a new consumer claims it
 
 # StreamSubscription defaults
 [server.stream_subscription]

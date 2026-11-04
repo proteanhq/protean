@@ -32,10 +32,6 @@
         "complexity": 24
       },
       {
-        "name": "RedisBroker::_read",
-        "complexity": 33
-      },
-      {
         "name": "RedisBroker::_read_blocking",
         "complexity": 37
       }
@@ -1032,12 +1028,12 @@
         "complexity": 22
       },
       {
-        "name": "Engine::run",
+        "name": "Engine::handle_message",
         "complexity": 29
       },
       {
-        "name": "Engine::handle_message",
-        "complexity": 30
+        "name": "Engine::run",
+        "complexity": 29
       },
       {
         "name": "Engine::_wire_components",

@@ -461,7 +461,8 @@ class PartitionedStreamSubscription(StreamSubscription):
                 and not owned.halted
                 and owned.partition_id in self._owned
             ):
-                processed = await self._drain_once(owned)
+                with self._batch_in_flight():
+                    processed = await self._drain_once(owned)
                 if processed > 0:
                     idle_since = None
                     continue
