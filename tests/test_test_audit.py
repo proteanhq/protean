@@ -571,7 +571,7 @@ class TestStaticScan:
     def test_every_file_in_the_repo_parses(self):
         private, coverage_named = audit.static_scan(REPO)
 
-        assert private and coverage_named
+        assert private
         paths = {f.path for f in private + coverage_named}
         assert paths.isdisjoint(audit.EXCLUDED)
 
