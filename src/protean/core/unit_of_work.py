@@ -82,20 +82,6 @@ class UnitOfWork:
     UnitOfWork automatically, so explicit usage is typically only needed in
     application services or scripts.
 
-<<<<<<< HEAD
-    **Nesting joins the outermost transaction.** A UnitOfWork started while
-    another is already active on the same context does not open its own
-    transaction. There are no savepoints, so it joins the outermost one: every
-    write, read, and event routes to the outermost UnitOfWork, and only that one
-    commits or rolls back. A nested rollback rolls back the whole transaction.
-    This is why an application service called from within a command handler's
-    UnitOfWork composes into a single transaction rather than committing
-    independently. Independent inner transactions (a savepoint, or a
-    sub-transaction that commits on its own) are not supported, by design: the
-    aggregate is the consistency boundary and one UnitOfWork maps to one use
-    case. For cross-aggregate coordination use domain events; for a durable
-    side-effect that must survive a rollback use the outbox.
-=======
     A UnitOfWork started while another is active on the same context joins the
     outermost one. Every write, read and event goes to the outermost
     UnitOfWork, and only that one commits or rolls back. A rollback in a nested
@@ -106,7 +92,6 @@ class UnitOfWork:
     ``rollback()`` without an exception. To coordinate several aggregates, use
     domain events. Events reach the outbox in the same commit,
     so they are delivered only when the transaction commits (see ADR-0015).
->>>>>>> cd097d2e (Raise from an outer commit of a transaction a nested UnitOfWork doomed (#2097))
 
     The UnitOfWork maintains an identity map to track loaded aggregates and
     collects domain events raised during the transaction. On commit, events
