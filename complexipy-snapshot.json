@@ -751,7 +751,7 @@
       },
       {
         "name": "IRBuilder::_extract_fields",
-        "complexity": 32
+        "complexity": 29
       },
       {
         "name": "IRBuilder::_diagnose_unraised_event",

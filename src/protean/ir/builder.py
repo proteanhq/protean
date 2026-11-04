@@ -47,7 +47,12 @@ from protean.ir.constants import (
     is_persistence_call,
 )
 from protean.ir.diagnostics import Diagnostic, DiagnosticCode, build_diagnostic
-from protean.utils import _DEPRECATED_PLUMBING, _callable_qualname, fqn
+from protean.utils import (
+    _DEPRECATED_PLUMBING,
+    DomainObjects,
+    _callable_qualname,
+    fqn,
+)
 from protean.utils.container import Element, OptionsMixin
 from protean.utils.reflection import _ID_FIELD_NAME, declared_fields
 from protean.utils.upcasting import (
@@ -450,10 +455,9 @@ class IRBuilder:
             entry: dict[str, Any] = {}
 
             if isinstance(field_obj, ValueObject):
-                entry["kind"] = "value_object"
-                entry["target"] = self._resolved_fqn(field_obj.value_object_cls)
-                if field_obj.required:
-                    entry["required"] = True
+                entry = self._value_object_entry(
+                    field_obj.value_object_cls, field_obj.required
+                )
 
             elif isinstance(field_obj, ValueObjectList):
                 entry["kind"] = "value_object_list"
@@ -484,7 +488,7 @@ class IRBuilder:
                     entry["auto_generated"] = True
 
             elif isinstance(field_obj, ResolvedField):
-                entry = self._extract_resolved_field(field_obj, field_meta.get(name))
+                entry = self._resolved_field_entry(cls, field_obj, field_meta.get(name))
 
             else:
                 # Unknown field type — skip
@@ -507,6 +511,43 @@ class IRBuilder:
             result[name] = dict(sorted(entry.items()))
 
         return result
+
+    def _value_object_entry(self, target: type | str, required: bool) -> dict[str, Any]:
+        """Return the IR entry of a field that embeds one value object."""
+        entry: dict[str, Any] = {
+            "kind": "value_object",
+            "target": self._resolved_fqn(target),
+        }
+        if required:
+            entry["required"] = True
+        return entry
+
+    def _resolved_field_entry(
+        self, cls: Any, field: ResolvedField, spec: Any | None
+    ) -> dict[str, Any]:
+        """Return the IR entry of a ``ResolvedField`` declared on ``cls``."""
+        message_vo = self._message_value_object(cls, field)
+        if message_vo is not None:
+            return self._value_object_entry(message_vo, field.required)
+        return self._extract_resolved_field(field, spec)
+
+    def _message_value_object(self, cls: Any, field: ResolvedField) -> type | None:
+        """Return the value object class a command or event field holds, if any.
+
+        A command or event turns its ``ValueObject`` fields into plain resolved
+        fields typed by the value object class (``Addr`` or ``Addr | None``).
+        Fields of any other element, and list or dict fields, return ``None``.
+        """
+        if getattr(cls, "element_type", None) not in (
+            DomainObjects.COMMAND,
+            DomainObjects.EVENT,
+        ):
+            return None
+        python_type: Any = field._python_type
+        base_type = self._unwrap_type(python_type)
+        if self._is_list_type(base_type) or self._is_dict_type(base_type, python_type):
+            return None
+        return base_type if _is_value_object_class(base_type) else None
 
     def _dict_value_object(self, field: ResolvedField) -> type | None:
         """Return the value object class a ``Dict`` field's values hold, if any."""
@@ -1681,7 +1722,38 @@ class IRBuilder:
                 if part_of is not None:
                     vo_map[vo_fqn] = part_of
 
+        # Last, value objects held only by commands and events. Running after
+        # the scans above means a value object an aggregate, an entity or
+        # ``part_of`` places keeps that cluster.
+        self._map_message_value_objects(vo_map)
+
         return vo_map
+
+    def _map_message_value_objects(self, vo_map: dict[str, type]) -> None:
+        """Add to ``vo_map`` each value object a command or event field holds.
+
+        A value object already in ``vo_map`` keeps its cluster. Messages with no
+        resolvable aggregate are skipped.
+        """
+        registry = self._domain._domain_registry
+        for element_type in ("COMMAND", "EVENT"):
+            for record in registry._elements.get(element_type, {}).values():
+                message_cls = record.cls
+                agg_cls = self._resolve_aggregate_cls(message_cls)
+                if agg_cls is None:
+                    continue
+                for vo_cls in self._message_value_objects(message_cls):
+                    vo_map.setdefault(self._resolved_fqn(vo_cls), agg_cls)
+
+    def _message_value_objects(self, message_cls: Any) -> list[type]:
+        """Return the value object classes the fields of a command or event hold."""
+        vo_classes: list[type] = []
+        for field_obj in declared_fields(message_cls).values():
+            if isinstance(field_obj, ResolvedField):
+                vo_cls = self._message_value_object(message_cls, field_obj)
+                if vo_cls is not None:
+                    vo_classes.append(vo_cls)
+        return vo_classes
 
     def _build_clusters(self) -> dict[str, Any]:
         """Build cluster dict keyed by aggregate FQN."""
