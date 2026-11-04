@@ -84,24 +84,13 @@ def rebuild_projection(
     event store through each projector that targets this projection.
     Upcasters are applied automatically during replay.
 
-<<<<<<< HEAD
     Events are read from the ``$all`` stream and filtered to only the
     categories each projector listens to, ensuring correct global ordering
     for cross-aggregate projections.
-=======
-    An event that cannot be resolved or whose handler raises is logged and
-    counted in ``events_skipped``; the rebuild continues. An error while
-    reading events from the store is raised, after the projection has been
-    truncated. A projection with no
-    projectors is not truncated, and the result carries an error.
 
     For a database-backed projection, the truncate also deletes the delivery
     markers of every idempotent projector targeting it, in the same
     transaction as the row delete. The replay then writes fresh markers.
-
-    Must be called after ``domain.init()`` and within
-    ``domain.domain_context()``.
->>>>>>> 4a86912e (Clear idempotent projectors' markers when rebuilding a projection (#2120))
 
     Args:
         domain: The initialized domain instance.
