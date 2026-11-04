@@ -3,7 +3,6 @@
 import copy
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -14,6 +13,9 @@ from typer.testing import CliRunner
 from protean.cli import app
 from protean.exceptions import ConfigurationError
 from protean.ir.builder import IRBuilder
+from tests.ir.support.git_repo import commit_ir
+
+pytestmark = pytest.mark.usefixtures("isolated_git")
 
 runner = CliRunner()
 
@@ -28,27 +30,6 @@ def _write_ir(tmp_path, filename, ir_dict):
 _TEST7_DOMAIN = str(
     Path(__file__).parent.parent / "support" / "domains" / "test7" / "publishing7.py"
 )
-
-
-def _commit_ir(repo: Path, ir_dict: dict | list, ir_dir: str = ".protean") -> None:
-    """Create a git repository at *repo* holding *ir_dict* committed as
-    ``<ir_dir>/ir.json``."""
-    env = {
-        **os.environ,
-        "HOME": str(repo),
-        "GIT_AUTHOR_NAME": "test",
-        "GIT_AUTHOR_EMAIL": "test@test.com",
-        "GIT_COMMITTER_NAME": "test",
-        "GIT_COMMITTER_EMAIL": "test@test.com",
-    }
-    (repo / ir_dir).mkdir(parents=True, exist_ok=True)
-    (repo / ir_dir / "ir.json").write_text(json.dumps(ir_dict), encoding="utf-8")
-    for command in (
-        ["git", "init", "-q"],
-        ["git", "add", f"{ir_dir}/ir.json"],
-        ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "baseline"],
-    ):
-        subprocess.run(command, cwd=repo, env=env, capture_output=True, check=True)
 
 
 def _minimal_ir(**overrides):
@@ -902,7 +883,7 @@ class TestDiffGitBaseline:
 
     def test_base_head_no_changes(self):
         """When the baseline IR matches the live domain, exit 0."""
-        _commit_ir(self._repo, self._live_ir())
+        commit_ir(self._repo, self._live_ir())
         result = self._diff("-f", "json")
         parsed = json.loads(result.output)
         assert parsed["summary"]["has_changes"] is False
@@ -910,20 +891,20 @@ class TestDiffGitBaseline:
 
     def test_base_custom_dir(self):
         """--dir names the directory inside the commit that holds ir.json."""
-        _commit_ir(self._repo, _minimal_ir(), ir_dir="custom_ir")
+        commit_ir(self._repo, _minimal_ir(), ir_dir="custom_ir")
         result = self._diff("--dir", "custom_ir", "-f", "json")
         parsed = json.loads(result.output)
         assert parsed["summary"]["has_changes"] is True
 
     def test_base_event_model_format(self):
         """--base renders the event-model format over the same git loader."""
-        _commit_ir(self._repo, _minimal_ir())  # empty baseline, so slices are added
+        commit_ir(self._repo, _minimal_ir())  # empty baseline, so slices are added
         result = self._diff("--format=event-model")
         assert result.exit_code != 0
         assert "Model changes:" in result.output
 
     def test_base_holding_a_json_list_exits_2(self):
-        _commit_ir(self._repo, [])
+        commit_ir(self._repo, [])
         result = self._diff()
         assert result.exit_code == 2
         assert "'.protean/ir.json' at commit 'HEAD' is not a JSON object" in (
@@ -3006,7 +2987,7 @@ class TestDiffErrorsExit2:
             f'[compatibility]\nstrictness = "{strictness}"\n', encoding="utf-8"
         )
         if mode == "git baseline":
-            _commit_ir(self._tmp, _minimal_ir())
+            commit_ir(self._tmp, _minimal_ir())
             os.chdir(self._tmp)
             args = ["ir", "diff", "--dir", ".protean", "--base", "HEAD"]
         else:

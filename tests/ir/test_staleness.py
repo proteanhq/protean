@@ -797,7 +797,9 @@ class TestStalenessDiagnostic:
             "display": "protean-check-staleness --fix",
         }
 
-    def test_dispatching_the_named_command_clears_the_diagnostic(self, monkeypatch):
+    def test_dispatching_the_named_command_clears_the_diagnostic(
+        self, monkeypatch, isolated_git
+    ):
         # End to end: emit → dispatch the resolving command the diagnostic names
         # → re-check → the diagnostic is gone.
         self._write_stale_ir()
