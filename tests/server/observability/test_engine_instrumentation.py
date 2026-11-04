@@ -403,11 +403,11 @@ class TestShutdownInFlight:
         message = _make_event_message(test_domain)
         result = await engine.handle_message(UserEventHandler, message)
 
-<<<<<<< HEAD
-        assert result is False
-        engine.emitter.emit.assert_not_called()
-=======
         assert result is True
-        assert len(_traces(traces, "handler.completed")) == 1
+        completed_calls = [
+            c
+            for c in engine.emitter.emit.call_args_list
+            if c.kwargs.get("event") == "handler.completed"
+        ]
+        assert len(completed_calls) == 1
         assert len(handler_calls) == 1
->>>>>>> dd897b64 (Finish the in-flight batch on SIGTERM and claim stopped workers' messages (#2104))

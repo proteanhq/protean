@@ -25,8 +25,33 @@ from tests.server.test_circuit_breaker import (
 from tests.server.test_priority_lanes_combined_read import (
     BACKFILL_MESSAGE,
     PRIMARY_MESSAGE,
-    ScriptedLanesBroker,
 )
+
+
+class ScriptedLanesBroker:
+    """Returns fixed replies to the two lanes reads and records each combined read.
+
+    The inline broker returns a waiting primary message from the non-blocking
+    primary read, so its combined read never holds primary entries; on Redis they
+    appear when a message lands on the primary stream between the two reads.
+    """
+
+    def __init__(self, combined_reply=None, primary_reply=()):
+        self.combined_reply = combined_reply or {}
+        self.primary_reply = list(primary_reply)
+        self.combined_reads: list[dict] = []
+        self.trimmed: list[str] = []
+
+    def read_blocking(self, **kwargs):
+        return list(self.primary_reply)
+
+    def read_blocking_streams(self, **kwargs):
+        self.combined_reads.append(kwargs)
+        return self.combined_reply
+
+    def trim(self, stream, maxlen):
+        self.trimmed.append(stream)
+        return 0
 
 
 @pytest.fixture(autouse=True)

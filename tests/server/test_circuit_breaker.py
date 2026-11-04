@@ -103,6 +103,13 @@ class MockEngine:
             handler_cls, message, worker_id=worker_id
         )
 
+    def batch_in_flight(self):
+        return self._real_engine.batch_in_flight()
+
+    @property
+    def batches_drained(self):
+        return self._real_engine.batches_drained
+
 
 def _make_stream_subscription(test_domain, handler_cls=ToggleEventHandler, **overrides):
     """Create a StreamSubscription with a mock engine and mock broker."""

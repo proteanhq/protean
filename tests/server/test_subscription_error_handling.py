@@ -117,7 +117,6 @@ def test_domain_setup(test_domain):
 
 
 @pytest.mark.asyncio
-<<<<<<< HEAD
 async def test_event_handler_error_handling(test_domain_setup, caplog):
     """Test that error handlers are called when exceptions occur in event handlers"""
     # Create test data
@@ -172,10 +171,6 @@ async def test_subscriber_error_handling(test_domain_setup, caplog):
 
 
 @pytest.mark.asyncio
-async def test_handle_message_during_shutdown(test_domain_setup):
-    """Test that handle_message returns False when the engine is shutting down"""
-    # Create test data
-=======
 async def test_handle_message_during_shutdown_still_runs(test_domain_setup):
     """handle_message is not gated on shutting_down: a message already read
     into a batch runs, and its handler's failure goes to handle_error.
@@ -183,7 +178,6 @@ async def test_handle_message_during_shutdown_still_runs(test_domain_setup):
     A shutdown that cuts the batch short does so by cancelling the task once
     drain_timeout runs out, not by failing the remaining messages here.
     """
->>>>>>> dd897b64 (Finish the in-flight batch on SIGTERM and claim stopped workers' messages (#2104))
     engine = Engine(domain=test_domain_setup, test_mode=True)
 
     user_id = "test-id-shutdown"
