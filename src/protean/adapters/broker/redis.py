@@ -1146,41 +1146,82 @@ class RedisBroker(BaseBroker):
         trimmed) are dropped from the pending list by ``XAUTOCLAIM`` and are
         not returned. A missing group means nothing to claim.
 
+        A broker error after the first page has claimed entries stops the
+        scan, and the counts of the entries claimed so far are returned.
+
         Raises:
-            redis.RedisError: Any broker error other than a missing group.
+            redis.RedisError: Any broker error other than a missing group,
+                raised before any entry is claimed.
         """
         consumer = consumer_name or self._consumer_name
         self._ensure_group(group_name, stream)
+        claimed = self._claim_idle_ids(stream, group_name, consumer, min_idle_ms)
+        if not claimed:
+            return {}
+        return self._delivery_counts(stream, group_name, consumer, claimed)
+
+    def _claim_idle_ids(
+        self, stream: str, group_name: str, consumer: str, min_idle_ms: int
+    ) -> list[str]:
+        """Page through the group's idle entries, claiming each into *consumer*.
+
+        Returns the claimed ids. A broker error after a page has claimed
+        entries stops the scan and returns those ids.
+        """
         claimed: list[str] = []
         cursor = STREAM_ID_START + "-0"
         while True:
             try:
-                reply = self._lua_autoclaim_justid(
-                    keys=[stream],
-                    args=[
-                        group_name,
-                        consumer,
-                        min_idle_ms,
-                        cursor,
-                        _RECLAIM_BATCH_SIZE,
-                    ],
-                    client=self._client,
+                page = self._autoclaim_page(
+                    stream, group_name, consumer, min_idle_ms, cursor
                 )
-            except redis.ResponseError as e:
-                if "NOGROUP" in str(e):
-                    self._forget_stream_groups(stream)
-                    self._ensure_group(group_name, stream)
-                    break
-                raise
-            claimed.extend(self._decode_if_bytes(mid) for mid in reply[1])
-            cursor = self._decode_if_bytes(reply[0])
+            except redis.RedisError as e:
+                if not claimed:
+                    raise
+                # Earlier pages already moved entries to this consumer. Return
+                # them so they keep their place toward max_retries; a later
+                # start claims the rest.
+                logger.warning(
+                    f"Stopped claiming idle entries for {group_name} on "
+                    f"{stream} after {len(claimed)}: {e}"
+                )
+                return claimed
+            if page is None:
+                return claimed
+            cursor, ids = page
+            claimed.extend(ids)
             # A "0-0" cursor means the scan reached the end of the pending list.
             if cursor == STREAM_ID_START + "-0":
-                break
+                return claimed
 
-        if not claimed:
-            return {}
-        return self._delivery_counts(stream, group_name, consumer, claimed)
+    def _autoclaim_page(
+        self,
+        stream: str,
+        group_name: str,
+        consumer: str,
+        min_idle_ms: int,
+        cursor: str,
+    ) -> tuple[str, list[str]] | None:
+        """Claim one page of idle entries; return the next cursor and the ids.
+
+        Returns None when the group is missing, after creating it again.
+        """
+        try:
+            reply = self._lua_autoclaim_justid(
+                keys=[stream],
+                args=[group_name, consumer, min_idle_ms, cursor, _RECLAIM_BATCH_SIZE],
+                client=self._client,
+            )
+        except redis.ResponseError as e:
+            if "NOGROUP" not in str(e):
+                raise
+            self._forget_stream_groups(stream)
+            self._ensure_group(group_name, stream)
+            return None
+        return (
+            self._decode_if_bytes(reply[0]),
+            [self._decode_if_bytes(mid) for mid in reply[1]],
+        )
 
     def _delivery_counts(
         self, stream: str, group_name: str, consumer: str, ids: list[str]

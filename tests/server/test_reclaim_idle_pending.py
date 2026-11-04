@@ -485,6 +485,35 @@ class TestBrokerReclaim:
         with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
             broker._reclaim_idle_pending("not-a-stream", "group", "new", 10)
 
+    def test_error_after_a_claimed_page_returns_that_pages_counts(self, domain, caplog):
+        """A broker error on the second page stops the scan. The entries the
+        first page claimed keep their delivery counts."""
+        broker = domain.brokers["default"]
+        broker._ensure_group("group", "partial")
+        for i in range(150):
+            broker.redis_instance.xadd("partial", {"i": str(i)})
+        _leave_pending(domain, "partial", "group", 150)
+
+        claim = broker._lua_autoclaim_justid
+        calls = 0
+
+        def fail_second_page(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise redis.ConnectionError("connection lost")
+            return claim(*args, **kwargs)
+
+        broker._lua_autoclaim_justid = fail_second_page
+        with caplog.at_level(logging.WARNING, logger="protean.adapters.broker.redis"):
+            counts = broker._reclaim_idle_pending("partial", "group", "new", 10)
+
+        assert len(counts) == 100
+        assert set(counts.values()) == {1}
+        assert "Stopped claiming idle entries for group on partial after 100" in (
+            caplog.text
+        )
+
     def test_none_claims_into_the_brokers_own_consumer(self, domain):
         broker = domain.brokers["default"]
         broker._ensure_group("group", "own")
