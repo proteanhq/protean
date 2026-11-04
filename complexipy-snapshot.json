@@ -1348,46 +1348,6 @@
     ]
   },
   {
-    "path": "src/protean/utils/domain_discovery.py",
-    "file_name": "domain_discovery.py",
-    "functions": [
-      {
-        "name": "find_domain_by_string",
-        "complexity": 18
-      }
-    ]
-  },
-  {
-    "path": "src/protean/utils/eventing.py",
-    "file_name": "eventing.py",
-    "functions": [
-      {
-        "name": "BaseMessageType::_convert_vo_descriptors",
-        "complexity": 16
-      },
-      {
-        "name": "Message::from_cloudevent",
-        "complexity": 16
-      },
-      {
-        "name": "Message::to_domain_object",
-        "complexity": 16
-      },
-      {
-        "name": "Message::_extract_subject",
-        "complexity": 17
-      },
-      {
-        "name": "Message::_resolve_field_aliases",
-        "complexity": 18
-      },
-      {
-        "name": "Message::to_cloudevent",
-        "complexity": 27
-      }
-    ]
-  },
-  {
     "path": "src/protean/utils/logging.py",
     "file_name": "logging.py",
     "functions": [

@@ -4,7 +4,7 @@ import inspect
 import json
 import logging
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Container
 from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Union, cast
@@ -269,6 +269,29 @@ def _validate_version(value: Any, descriptor: str) -> None:
         )
 
 
+def _annotate_value_object_fields(
+    own_annots: dict[str, Any], candidates: dict[str, Any]
+) -> dict[str, None]:
+    """Replace each ``ValueObject`` field in *candidates* with a direct type
+    annotation in *own_annots*.
+
+    A required field is annotated with the value object class. An optional
+    field is annotated as the class or None. Returns the names of the
+    optional fields, each mapped to the None default it needs.
+    """
+    defaults_to_set: dict[str, None] = {}
+    for name, value in candidates.items():
+        if not isinstance(value, ValueObjectField):
+            continue
+        vo_cls = value.value_object_cls
+        if value.required:
+            own_annots[name] = vo_cls
+        else:
+            own_annots[name] = cast(Any, vo_cls) | None
+            defaults_to_set[name] = None
+    return defaults_to_set
+
+
 # ---------------------------------------------------------------------------
 # BaseMessageType
 # ---------------------------------------------------------------------------
@@ -401,32 +424,22 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
         the equivalent of ``email: Email | None = None``.
         """
         own_annots = inspect.get_annotations(cls)
-        names_to_remove: list[str] = []
-        defaults_to_set: dict[str, None] = {}
 
         # 1. Assignment style: ``email = ValueObject(Email)``
-        for name, value in list(vars(cls).items()):
-            if isinstance(value, ValueObjectField):
-                vo_cls = value.value_object_cls
-                if value.required:
-                    own_annots[name] = vo_cls
-                else:
-                    own_annots[name] = vo_cls | None  # type: ignore[operator]
-                    defaults_to_set[name] = None
-                names_to_remove.append(name)
+        assigned = {
+            name: value
+            for name, value in vars(cls).items()
+            if isinstance(value, ValueObjectField)
+        }
+        defaults_to_set = _annotate_value_object_fields(own_annots, assigned)
 
         # 2. Annotation style: ``email: ValueObject(Email)``
-        for name, annot_value in list(own_annots.items()):
-            if isinstance(annot_value, ValueObjectField):
-                vo_cls = annot_value.value_object_cls
-                if annot_value.required:
-                    own_annots[name] = vo_cls
-                else:
-                    own_annots[name] = vo_cls | None  # type: ignore[operator]
-                    defaults_to_set[name] = None
+        defaults_to_set.update(
+            _annotate_value_object_fields(own_annots, dict(own_annots))
+        )
 
         # Remove descriptors from namespace
-        for name in names_to_remove:
+        for name in assigned:
             with contextlib.suppress(AttributeError):
                 delattr(cls, name)
 
@@ -927,27 +940,42 @@ class Message(Element, BaseModel, OptionsMixin):
         live_names = fields_map.keys()
         resolved: dict[str, Any] | None = None
         for field_name, field_obj in fields_map.items():
-            aliases = getattr(field_obj, "renamed_from", None)
-            if not aliases:
-                continue
-            current = resolved if resolved is not None else data
-            present = [
-                alias
-                for alias in aliases
-                if alias in current and alias not in live_names
-            ]
+            present = Message._present_aliases(
+                field_obj, resolved if resolved is not None else data, live_names
+            )
             if not present:
                 continue
             if resolved is None:
                 resolved = dict(data)
-            if field_name not in resolved:
-                # Adopt the first stored alias as the field's value.
-                resolved[field_name] = resolved.pop(present[0])
-                present = present[1:]
-            # Drop stale alias keys (current name already won, or a duplicate).
-            for alias in present:
-                resolved.pop(alias, None)
+            Message._move_aliases_onto_field(resolved, field_name, present)
         return resolved if resolved is not None else data
+
+    @staticmethod
+    def _present_aliases(
+        field_obj: Any, payload: dict[str, Any], live_names: Container[str]
+    ) -> list[str]:
+        """Return the ``renamed_from`` aliases of *field_obj* that are keys of
+        *payload* and are not themselves live field names."""
+        aliases = getattr(field_obj, "renamed_from", None)
+        if not aliases:
+            return []
+        return [
+            alias for alias in aliases if alias in payload and alias not in live_names
+        ]
+
+    @staticmethod
+    def _move_aliases_onto_field(
+        resolved: dict[str, Any], field_name: str, present: list[str]
+    ) -> None:
+        """Move the first alias in *present* onto *field_name* in *resolved*
+        unless the field is already there, and drop the other alias keys."""
+        if field_name not in resolved:
+            # Adopt the first stored alias as the field's value.
+            resolved[field_name] = resolved.pop(present[0])
+            present = present[1:]
+        # Drop stale alias keys (current name already won, or a duplicate).
+        for alias in present:
+            resolved.pop(alias, None)
 
     @staticmethod
     def _is_lenient(element_cls: type) -> bool:
@@ -989,56 +1017,13 @@ class Message(Element, BaseModel, OptionsMixin):
         try:
             self._validate_message_kind()
 
-            type_string = self.metadata.headers.type
-            element_cls = (
-                current_domain._events_and_commands.get(type_string)
-                if type_string is not None
-                else None
-            )
-            data = self.data
-
-            if element_cls is None:
-                # Direct lookup failed — try upcasting from an older version.
-                upcaster_chain = current_domain._upcaster_chain
-                element_cls = (
-                    upcaster_chain.resolve_event_class(type_string)
-                    if type_string is not None
-                    else None
-                )
-
-                if element_cls is None:
-                    raise ConfigurationError(
-                        f"Message type {type_string} is not registered with the domain."
-                    )
-
-                # Parse "DomainName.EventName.v1" → base + int version
-                assert type_string is not None
-                base_type, _, version_str = type_string.rpartition(".")
-                from_version = int(version_str.lstrip("v"))
-                data = upcaster_chain.upcast(base_type, from_version, data)
+            element_cls, data = self._resolve_element_class(self.metadata.headers.type)
 
             # Map old field names in the stored payload onto renamed fields, so
             # a payload written before a rename loads without an upcaster.
             data = self._resolve_field_aliases(element_cls, data)
 
-            # Lenient mode: drop fields no longer on the class (recording them on
-            # the metadata) rather than letting ``extra="forbid"`` reject them.
-            # Runs after alias resolution so a renamed old key is kept, not
-            # dropped as unknown.
-            metadata = self.metadata
-            if self._is_lenient(element_cls):
-                data, dropped = self._drop_unknown_fields(element_cls, data)
-                if dropped:
-                    # Record dropped fields under a framework-namespaced key in
-                    # the (already round-trip-preserved) extensions map.
-                    metadata = metadata.model_copy(
-                        update={
-                            "extensions": {
-                                **metadata.extensions,
-                                "_dropped_fields": dropped,
-                            }
-                        }
-                    )
+            data, metadata = self._drop_fields_when_lenient(element_cls, data)
 
             element_factory = cast(
                 "Callable[..., BaseEvent | BaseCommand]", element_cls
@@ -1047,19 +1032,92 @@ class Message(Element, BaseModel, OptionsMixin):
 
         # any failure is re-raised as DeserializationError with context
         except Exception as e:
-            context = self._build_error_context(e)
+            raise self._deserialization_error(e) from e
 
-            if self.metadata.headers and self.metadata.headers.id:
-                message_id = self.metadata.headers.id
-            else:
-                message_id = context.get("type", "unknown")
+    def _resolve_element_class(
+        self, type_string: str | None
+    ) -> tuple[type, dict[str, Any]]:
+        """Return the registered class for *type_string* and the payload to
+        build it from.
 
-            # Ensure message_id is never None
-            message_id = str(message_id) if message_id else "unknown"
+        If the type string is not registered (e.g. an old version), the
+        domain's upcaster chain resolves the class and upcasts the payload.
+        """
+        element_cls = (
+            current_domain._events_and_commands.get(type_string)
+            if type_string is not None
+            else None
+        )
+        if element_cls is not None:
+            return element_cls, self.data
 
-            raise DeserializationError(
-                message_id=message_id, error=str(e), context=context
-            ) from e
+        # Direct lookup failed — try upcasting from an older version.
+        upcaster_chain = current_domain._upcaster_chain
+        upcast_cls = (
+            upcaster_chain.resolve_event_class(type_string)
+            if type_string is not None
+            else None
+        )
+
+        if upcast_cls is None:
+            raise ConfigurationError(
+                f"Message type {type_string} is not registered with the domain."
+            )
+
+        # Parse "DomainName.EventName.v1" → base + int version
+        assert type_string is not None
+        base_type, _, version_str = type_string.rpartition(".")
+        from_version = int(version_str.lstrip("v"))
+        return upcast_cls, upcaster_chain.upcast(base_type, from_version, self.data)
+
+    def _drop_fields_when_lenient(
+        self, element_cls: type, data: dict[str, Any]
+    ) -> tuple[dict[str, Any], "Metadata"]:
+        """Return the payload and metadata to build *element_cls* from.
+
+        In lenient mode, fields no longer on the class are dropped and their
+        names recorded on a copy of the metadata. Otherwise both are returned
+        unchanged.
+        """
+        assert self.metadata is not None
+        # Lenient mode: drop fields no longer on the class (recording them on
+        # the metadata) rather than letting ``extra="forbid"`` reject them.
+        # Runs after alias resolution so a renamed old key is kept, not
+        # dropped as unknown.
+        metadata = self.metadata
+        if not self._is_lenient(element_cls):
+            return data, metadata
+        data, dropped = self._drop_unknown_fields(element_cls, data)
+        if dropped:
+            # Record dropped fields under a framework-namespaced key in
+            # the (already round-trip-preserved) extensions map.
+            metadata = metadata.model_copy(
+                update={
+                    "extensions": {
+                        **metadata.extensions,
+                        "_dropped_fields": dropped,
+                    }
+                }
+            )
+        return data, metadata
+
+    def _deserialization_error(self, exception: Exception) -> DeserializationError:
+        """Build the ``DeserializationError`` that reports *exception* with the
+        message's id and context."""
+        assert self.metadata is not None
+        context = self._build_error_context(exception)
+
+        if self.metadata.headers and self.metadata.headers.id:
+            message_id = self.metadata.headers.id
+        else:
+            message_id = context.get("type", "unknown")
+
+        # Ensure message_id is never None
+        message_id = str(message_id) if message_id else "unknown"
+
+        return DeserializationError(
+            message_id=message_id, error=str(exception), context=context
+        )
 
     @classmethod
     def _validate_aggregate_association(
@@ -1200,22 +1258,30 @@ class Message(Element, BaseModel, OptionsMixin):
         )
 
         if category:
-            # Fact event: <category>-fact-<id>
-            fact_prefix = f"{category}-fact-"
-            if stream.startswith(fact_prefix):
-                return stream[len(fact_prefix) :]
+            subject = self._subject_after_category(stream, category)
+            if subject is not None:
+                return subject
 
-            # Command: <category>:command-<id>
-            cmd_prefix = f"{category}:command-"
-            if stream.startswith(cmd_prefix):
-                return stream[len(cmd_prefix) :]
+        return self._subject_without_category(stream)
 
-            # Regular event: <category>-<id>
-            evt_prefix = f"{category}-"
-            if stream.startswith(evt_prefix):
-                return stream[len(evt_prefix) :]
+    @staticmethod
+    def _subject_after_category(stream: str, category: str) -> str | None:
+        """Return the part of *stream* after its *category* prefix, or None if
+        *stream* does not start with one of the category's prefixes."""
+        prefixes = (
+            f"{category}-fact-",  # Fact event: <category>-fact-<id>
+            f"{category}:command-",  # Command: <category>:command-<id>
+            f"{category}-",  # Regular event: <category>-<id>
+        )
+        for prefix in prefixes:
+            if stream.startswith(prefix):
+                return stream[len(prefix) :]
+        return None
 
-        # Fallback: parse stream name without category.
+    @staticmethod
+    def _subject_without_category(stream: str) -> str | None:
+        """Return the identifier part of *stream*, parsed without knowing its
+        category, or None if *stream* has no separator."""
         # Command format: <anything>:command-<id>
         cmd_marker = ":command-"
         if cmd_marker in stream:
@@ -1302,8 +1368,6 @@ class Message(Element, BaseModel, OptionsMixin):
         assert self.metadata is not None, "Message must have metadata"
 
         headers = self.metadata.headers
-        domain = self.metadata.domain
-        envelope = self.metadata.envelope
 
         # Required attributes
         ce: dict[str, Any] = {
@@ -1324,44 +1388,61 @@ class Message(Element, BaseModel, OptionsMixin):
         # Data
         ce["data"] = self.data
 
-        # ── Extensions ──
+        ce.update(self._cloudevent_extensions(self.metadata))
+
+        # Strip None values
+        return {k: v for k, v in ce.items() if v is not None}
+
+    @staticmethod
+    def _cloudevent_extensions(metadata: "Metadata") -> dict[str, Any]:
+        """Return the CloudEvents extension attributes for *metadata*: the
+        trace context, the ``protean``-namespaced attributes, and the user
+        extensions whose names do not start with ``_``."""
+        headers = metadata.headers
+        envelope = metadata.envelope
+        extensions: dict[str, Any] = {}
 
         # W3C Trace Context
         if headers and headers.traceparent:
-            ce["traceparent"] = headers.traceparent.to_w3c()
+            extensions["traceparent"] = headers.traceparent.to_w3c()
 
         # Protean-namespaced extensions
-        if domain:
-            if domain.sequence_id is not None:
-                ce["sequence"] = domain.sequence_id
-                ce["proteansequencetype"] = (
-                    "DotNotation" if "." in domain.sequence_id else "Integer"
-                )
-            if domain.correlation_id is not None:
-                ce["proteancorrelationid"] = domain.correlation_id
-            if domain.causation_id is not None:
-                ce["proteancausationid"] = domain.causation_id
-            if domain.kind is not None:
-                ce["proteankind"] = domain.kind
+        if metadata.domain:
+            extensions.update(Message._protean_domain_extensions(metadata.domain))
 
         if envelope and envelope.checksum:
-            ce["proteanchecksum"] = envelope.checksum
+            extensions["proteanchecksum"] = envelope.checksum
 
         # User extensions from enrichers. Protean reserves the `_` prefix for
         # framework-internal, read-time-only records (e.g. `_dropped_fields`
         # from lenient deserialization); these are never published to the wire,
         # so they are excluded from the emitted CloudEvent.
-        if self.metadata.extensions:
-            ce.update(
-                {
-                    key: value
-                    for key, value in self.metadata.extensions.items()
-                    if not key.startswith("_")
-                }
-            )
+        extensions.update(
+            {
+                key: value
+                for key, value in metadata.extensions.items()
+                if not key.startswith("_")
+            }
+        )
+        return extensions
 
-        # Strip None values
-        return {k: v for k, v in ce.items() if v is not None}
+    @staticmethod
+    def _protean_domain_extensions(domain: "DomainMeta") -> dict[str, Any]:
+        """Return the ``protean``-namespaced CloudEvents extensions that
+        *domain* has values for."""
+        extensions: dict[str, Any] = {}
+        if domain.sequence_id is not None:
+            extensions["sequence"] = domain.sequence_id
+            extensions["proteansequencetype"] = (
+                "DotNotation" if "." in domain.sequence_id else "Integer"
+            )
+        if domain.correlation_id is not None:
+            extensions["proteancorrelationid"] = domain.correlation_id
+        if domain.causation_id is not None:
+            extensions["proteancausationid"] = domain.causation_id
+        if domain.kind is not None:
+            extensions["proteankind"] = domain.kind
+        return extensions
 
     @classmethod
     def from_cloudevent(cls, cloudevent: dict[str, Any]) -> "Message":
@@ -1441,6 +1522,58 @@ class Message(Element, BaseModel, OptionsMixin):
             `CloudEvents v1.0.2 Specification
             <https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md>`_
         """
+        cls._check_cloudevent_required(cloudevent)
+
+        # ── Extract known attributes ──
+        ce_data: dict[str, Any] = cloudevent.get("data", {})
+
+        # Protean extensions
+        traceparent_raw = cloudevent.get("traceparent")
+        checksum = cloudevent.get("proteanchecksum")
+
+        ce_time = cls._parse_cloudevent_time(cloudevent.get("time"))
+
+        # ── Parse traceparent ──
+        traceparent: TraceParent | None = None
+        if traceparent_raw and isinstance(traceparent_raw, str):
+            traceparent = TraceParent.build(traceparent_raw)
+
+        # ── Build headers ──
+        headers = MessageHeaders(
+            id=cloudevent["id"],
+            type=cloudevent["type"],
+            time=ce_time,
+            traceparent=traceparent,
+        )
+
+        # ── Build envelope ──
+        envelope = MessageEnvelope(
+            specversion=cloudevent["specversion"],
+            checksum=checksum or MessageEnvelope.compute_checksum(ce_data),
+        )
+
+        # ── Build domain meta ──
+        domain_meta = DomainMeta(
+            kind=cloudevent.get("proteankind", MessageType.EVENT.value),
+            correlation_id=cloudevent.get("proteancorrelationid"),
+            causation_id=cloudevent.get("proteancausationid"),
+            sequence_id=cloudevent.get("sequence"),
+        )
+
+        # ── Assemble metadata ──
+        metadata = Metadata(
+            headers=headers,
+            envelope=envelope,
+            domain=domain_meta,
+            extensions=cls._extensions_from_cloudevent(cloudevent),
+        )
+
+        return cls(data=ce_data, metadata=metadata)
+
+    @staticmethod
+    def _check_cloudevent_required(cloudevent: dict[str, Any]) -> None:
+        """Raise ``ValueError`` if *cloudevent* lacks a required attribute or
+        its ``specversion`` is not ``"1.0"``."""
         # ── Validate required attributes ──
         missing = [
             attr
@@ -1459,60 +1592,21 @@ class Message(Element, BaseModel, OptionsMixin):
                 f"only '1.0' is supported"
             )
 
-        # ── Extract known attributes ──
-        ce_id: str = cloudevent["id"]
-        ce_type: str = cloudevent["type"]
-        ce_source: str = cloudevent["source"]
-        ce_time_raw = cloudevent.get("time")
-        ce_data: dict[str, Any] = cloudevent.get("data", {})
-        ce_subject = cloudevent.get("subject")
-        ce_datacontenttype = cloudevent.get("datacontenttype")
-        ce_dataschema = cloudevent.get("dataschema")
-
-        # Protean extensions
-        traceparent_raw = cloudevent.get("traceparent")
-        correlation_id = cloudevent.get("proteancorrelationid")
-        causation_id = cloudevent.get("proteancausationid")
-        checksum = cloudevent.get("proteanchecksum")
-        kind = cloudevent.get("proteankind", MessageType.EVENT.value)
-        sequence_id = cloudevent.get("sequence")
-
-        # ── Parse time ──
-        ce_time: datetime | None = None
+    @staticmethod
+    def _parse_cloudevent_time(ce_time_raw: Any) -> datetime | None:
+        """Return the CloudEvent ``time`` as a datetime, parsing an ISO 8601
+        string, or None if it is absent or of another type."""
         if ce_time_raw:
             if isinstance(ce_time_raw, datetime):
-                ce_time = ce_time_raw
-            elif isinstance(ce_time_raw, str):
-                ce_time = datetime.fromisoformat(ce_time_raw)
+                return ce_time_raw
+            if isinstance(ce_time_raw, str):
+                return datetime.fromisoformat(ce_time_raw)
+        return None
 
-        # ── Parse traceparent ──
-        traceparent: TraceParent | None = None
-        if traceparent_raw and isinstance(traceparent_raw, str):
-            traceparent = TraceParent.build(traceparent_raw)
-
-        # ── Build headers ──
-        headers = MessageHeaders(
-            id=ce_id,
-            type=ce_type,
-            time=ce_time,
-            traceparent=traceparent,
-        )
-
-        # ── Build envelope ──
-        envelope = MessageEnvelope(
-            specversion=specversion,
-            checksum=checksum or MessageEnvelope.compute_checksum(ce_data),
-        )
-
-        # ── Build domain meta ──
-        domain_meta = DomainMeta(
-            kind=kind,
-            correlation_id=correlation_id,
-            causation_id=causation_id,
-            sequence_id=sequence_id,
-        )
-
-        # ── Collect extensions ──
+    @staticmethod
+    def _extensions_from_cloudevent(cloudevent: dict[str, Any]) -> dict[str, Any]:
+        """Return the ``metadata.extensions`` for *cloudevent*: the CloudEvents
+        attributes with no internal field, and every unknown extension."""
         # Known CE/Protean attribute names to exclude from extensions
         _known_attrs = {
             "specversion",
@@ -1532,10 +1626,14 @@ class Message(Element, BaseModel, OptionsMixin):
             "sequence",
             "proteansequencetype",
         }
+        ce_subject = cloudevent.get("subject")
+        ce_datacontenttype = cloudevent.get("datacontenttype")
+        ce_dataschema = cloudevent.get("dataschema")
+
         extensions: dict[str, Any] = {}
 
         # Preserve CE-specific attributes that have no internal field
-        extensions["ce_source"] = ce_source
+        extensions["ce_source"] = cloudevent["source"]
         if ce_subject is not None:
             extensions["ce_subject"] = ce_subject
         if ce_datacontenttype and ce_datacontenttype != "application/json":
@@ -1547,13 +1645,4 @@ class Message(Element, BaseModel, OptionsMixin):
         extensions.update(
             {key: value for key, value in cloudevent.items() if key not in _known_attrs}
         )
-
-        # ── Assemble metadata ──
-        metadata = Metadata(
-            headers=headers,
-            envelope=envelope,
-            domain=domain_meta,
-            extensions=extensions,
-        )
-
-        return cls(data=ce_data, metadata=metadata)
+        return extensions
