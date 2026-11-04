@@ -82,18 +82,16 @@ class UnitOfWork:
     UnitOfWork automatically, so explicit usage is typically only needed in
     application services or scripts.
 
-    **Nesting joins the outermost transaction.** A UnitOfWork started while
-    another is already active on the same context does not open its own
-    transaction. There are no savepoints, so it joins the outermost one: every
-    write, read, and event routes to the outermost UnitOfWork, and only that one
-    commits or rolls back. A nested rollback rolls back the whole transaction.
-    This is why an application service called from within a command handler's
-    UnitOfWork composes into a single transaction rather than committing
-    independently. Independent inner transactions (a savepoint, or a
-    sub-transaction that commits on its own) are not supported, by design: the
-    aggregate is the consistency boundary and one UnitOfWork maps to one use
-    case. For cross-aggregate coordination use domain events; for a durable
-    side-effect that must survive a rollback use the outbox.
+    A UnitOfWork started while another is active on the same context joins the
+    outermost one. Every write, read and event goes to the outermost
+    UnitOfWork, and only that one commits or rolls back. A rollback in a nested
+    UnitOfWork rolls back the whole transaction. There are no savepoints, and
+    an inner UnitOfWork cannot commit on its own. If the outermost UnitOfWork
+    then tries to commit, it rolls back and raises: the exception that failed
+    the nested UnitOfWork, or ``TransactionError`` when the nested one called
+    ``rollback()`` without an exception. To coordinate several aggregates, use
+    domain events. Events reach the outbox in the same commit,
+    so they are delivered only when the transaction commits (see ADR-0015).
 
     The UnitOfWork maintains an identity map to track loaded aggregates and
     collects domain events raised during the transaction. On commit, events
@@ -122,9 +120,12 @@ class UnitOfWork:
         # A UnitOfWork started while another is already active on this context is
         # a participant in the outer transaction (see ``start``). ``_nested`` marks
         # it; ``_rollback_only`` is set on the outermost UoW when a participant
-        # rolls back, dooming the whole transaction.
+        # rolls back, dooming the whole transaction. ``_rollback_cause`` keeps the
+        # first exception that failed a participant, so the outermost commit can
+        # raise it instead of the caller losing it.
         self._nested = False
         self._rollback_only = False
+        self._rollback_cause: BaseException | None = None
 
         # Work that must happen only once this transaction's writes are durable
         # (see ``run_after_commit``). A rollback discards it.
@@ -151,13 +152,26 @@ class UnitOfWork:
         exc_tb: TracebackType | None,
     ) -> bool | None:
         if exc_type is not None:  # something blew up inside the block
-            self.rollback()
+            # An explicit commit or rollback inside the block may have ended the
+            # transaction already. A second rollback would raise
+            # InvalidOperationError and hide the exception in flight. A
+            # participant that has ended does not doom the transaction here, so
+            # its exception is not the cause either.
+            if self._in_progress:
+                if self._nested:
+                    outermost = _uow_stack.top
+                    if outermost is not None and outermost._rollback_cause is None:
+                        outermost._rollback_cause = exc_val
+                self.rollback()
             return False  # re-raise the original exception
 
         try:
             self.commit()  # happy path
         except Exception:  # a failed commit rolls back, then re-raises
-            self.rollback()  # commit itself failed
+            # A doomed commit has already rolled back. A second rollback would
+            # raise InvalidOperationError and hide the real error.
+            if self._in_progress:
+                self.rollback()
             raise
         finally:
             self._reset()  # close sessions, clear state
@@ -287,12 +301,14 @@ class UnitOfWork:
         rollback then defer to the outermost UoW (see ``commit``/``rollback``).
         """
         # Recompute nesting on every start: a UnitOfWork instance can be reused, so
-        # a stale ``_nested``/``_rollback_only`` from a prior use must not leak into
-        # this one. (A UoW previously used as nested, then reused as the outermost,
-        # would otherwise keep ``_nested=True`` and no-op its commit, silently
-        # losing the transaction and leaving itself on the context stack.)
+        # a stale ``_nested``/``_rollback_only``/``_rollback_cause`` from a prior
+        # use must not leak into this one. (A UoW previously used as nested, then
+        # reused as the outermost, would otherwise keep ``_nested=True`` and no-op
+        # its commit, silently losing the transaction and leaving itself on the
+        # context stack.)
         self._nested = _uow_stack.top is not None
         self._rollback_only = False
+        self._rollback_cause = None
         self._in_progress = True
 
         if self._nested:
@@ -327,7 +343,11 @@ class UnitOfWork:
         Raises:
             InvalidOperationError: If the UnitOfWork is not in progress.
             ExpectedVersionError: On optimistic concurrency conflict.
-            TransactionError: If the underlying database commit fails.
+            TransactionError: If the underlying database commit fails, or if a
+                nested UnitOfWork called ``rollback()`` without an exception.
+                The transaction is rolled back first.
+            BaseException: The exception that failed a nested UnitOfWork, when
+                one did. The transaction is rolled back first.
         """
         # Raise error if there the Unit Of Work is not active
         logger.debug("uow.committing", extra={"uow_id": id(self)})
@@ -345,12 +365,15 @@ class UnitOfWork:
         if self._rollback_only:
             # A nested participant rolled back, dooming the whole transaction. Roll
             # back instead of committing; nothing is persisted or dispatched.
-            logger.warning(
-                "A nested UnitOfWork was rolled back; the whole transaction is "
-                "rolled back."
-            )
+            # Read the cause first: ``rollback()`` clears it.
+            cause = self._rollback_cause
             self.rollback()
-            return
+            if cause is not None:
+                raise cause
+            raise TransactionError(
+                "The transaction was marked rollback-only because a nested "
+                "UnitOfWork rolled back, so it was rolled back instead of committed."
+            )
 
         tracer = self.domain.tracer
 
@@ -763,6 +786,10 @@ class UnitOfWork:
         # cannot pop a parent UnitOfWork off the stack.
         if _uow_stack.top is self:
             _uow_stack.pop()
+
+        # The transaction ends here, so drop the participant's exception and the
+        # traceback it holds.
+        self._rollback_cause = None
 
         self._settle_versions_on_rollback()
 

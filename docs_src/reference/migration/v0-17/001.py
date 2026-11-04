@@ -33,7 +33,8 @@ def place_order(order, entry):
             pass  # the exception is handled...
 
         # ...but on 0.17 the outer transaction is already doomed, and the
-        # order is not saved either. On 0.16 the order was saved.
+        # order is not saved either. On 0.16 the order was saved. From 0.18.1
+        # the outer block also raises the RuntimeError when it ends.
 
 
 # --8<-- [end:nested]
