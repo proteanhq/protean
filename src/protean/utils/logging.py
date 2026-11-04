@@ -215,31 +215,37 @@ def _move_redaction_filter_last() -> None:
     root = logging.getLogger()
     targets: list[logging.Filterer] = [root, *root.handlers]
     for target in targets:
-        filters = list(target.filters)
-        context_positions = [
-            i for i, f in enumerate(filters) if isinstance(f, _CONTEXT_FILTERS)
-        ]
-        if not context_positions:
-            continue
-        last_context = context_positions[-1]
-        if not any(
-            isinstance(f, ProteanRedactionFilter) for f in filters[:last_context]
-        ):
-            continue
-        redaction = [f for f in filters if isinstance(f, ProteanRedactionFilter)]
-        head = [
-            f
-            for f in filters[: last_context + 1]
-            if not isinstance(f, ProteanRedactionFilter)
-        ]
-        tail = [
-            f
-            for f in filters[last_context + 1 :]
-            if not isinstance(f, ProteanRedactionFilter)
-        ]
-        # Bind a new list instead of mutating the old one, so a record being
-        # filtered on another thread finishes its pass over the old list.
-        target.filters = [*head, *redaction, *tail]
+        reordered = _filters_with_redaction_last(list(target.filters))
+        if reordered is not None:
+            # Bind a new list instead of mutating the old one, so a record being
+            # filtered on another thread finishes its pass over the old list.
+            target.filters = reordered
+
+
+def _filters_with_redaction_last(filters: list[_T]) -> list[_T] | None:
+    """Return *filters* with each ``ProteanRedactionFilter`` moved right after
+    the last Protean context filter, or None when no redaction filter sits
+    before a context filter."""
+    context_positions = [
+        i for i, f in enumerate(filters) if isinstance(f, _CONTEXT_FILTERS)
+    ]
+    if not context_positions:
+        return None
+    last_context = context_positions[-1]
+    if not any(isinstance(f, ProteanRedactionFilter) for f in filters[:last_context]):
+        return None
+    redaction = [f for f in filters if isinstance(f, ProteanRedactionFilter)]
+    head = [
+        f
+        for f in filters[: last_context + 1]
+        if not isinstance(f, ProteanRedactionFilter)
+    ]
+    tail = [
+        f
+        for f in filters[last_context + 1 :]
+        if not isinstance(f, ProteanRedactionFilter)
+    ]
+    return [*head, *redaction, *tail]
 
 
 def configure_logging(
@@ -312,43 +318,11 @@ def configure_logging(
         extra_processors = [*list(extra_processors or []), redaction_proc]
 
     if dict_config is not None:
-        logging.config.dictConfig(dict_config)
-        # Set up structlog so that get_logger() calls produce well-formed
-        # output even when the user supplies their own stdlib dictConfig.
-        env = _detect_env()
-        _setup_structlog(env=env, format="auto", extra_processors=extra_processors)
-        # Install ProteanCorrelationFilter on the root logger and its handlers
-        # so correlation_id and causation_id are available in every log
-        # record, matching the behavior of Domain.configure_logging().
-        _install_root_filter(ProteanCorrelationFilter())
-        if redact:
-            _install_root_filter(ProteanRedactionFilter(redact))
-        # Root-logger filters do not run for records from child loggers, so
-        # Protean filters the dict declared on the root logger alone also go
-        # on each root handler. dictConfig() keeps the root logger's existing
-        # filters, so the root can hold several redaction filters with
-        # different keys. Each one goes on every handler that does not
-        # already mask all its keys: copying only the first of its class
-        # would leave the other filters' keys unmasked.
-        root = logging.getLogger()
-        for filter_ in list(root.filters):
-            if isinstance(filter_, ProteanRedactionFilter):
-                for handler in root.handlers:
-                    _add_redaction_filter_if_uncovered(handler, filter_)
-            elif isinstance(filter_, _PROTEAN_ROOT_FILTERS):
-                _install_root_filter(filter_)
-        _move_redaction_filter_last()
+        _configure_from_dict(dict_config, redact, extra_processors)
         return
 
     env = _detect_env()
-
-    # Resolve log level: explicit arg > env var > environment default
-    if level is None:
-        level = os.getenv("PROTEAN_LOG_LEVEL", _ENV_LEVEL_MAP.get(env, "INFO")).upper()
-    else:
-        level = level.upper()
-
-    numeric_level = getattr(logging, level, logging.INFO)
+    numeric_level = _resolve_log_level(level, env)
 
     # --- stdlib logging setup (with ProcessorFormatter bridge) ---
     _setup_stdlib_logging(
@@ -376,6 +350,60 @@ def configure_logging(
             logging.getLogger(logger_name).setLevel(
                 getattr(logging, logger_level.upper(), logging.INFO)
             )
+
+
+def _resolve_log_level(level: str | None, env: str) -> int:
+    """Return the numeric log level: *level* if given, else the
+    ``PROTEAN_LOG_LEVEL`` env var, else the default for *env*.
+
+    An unknown level name resolves to ``logging.INFO``.
+    """
+    if level is None:
+        level = os.getenv("PROTEAN_LOG_LEVEL", _ENV_LEVEL_MAP.get(env, "INFO")).upper()
+    else:
+        level = level.upper()
+
+    return cast(int, getattr(logging, level, logging.INFO))
+
+
+def _configure_from_dict(
+    dict_config: dict[str, Any],
+    redact: list[str] | None,
+    extra_processors: list[Any] | None,
+) -> None:
+    """Apply *dict_config* with ``logging.config.dictConfig``, then set up
+    structlog and the Protean filters on the root logger and its handlers."""
+    logging.config.dictConfig(dict_config)
+    # Set up structlog so that get_logger() calls produce well-formed
+    # output even when the user supplies their own stdlib dictConfig.
+    env = _detect_env()
+    _setup_structlog(env=env, format="auto", extra_processors=extra_processors)
+    # Install ProteanCorrelationFilter on the root logger and its handlers
+    # so correlation_id and causation_id are available in every log
+    # record, matching the behavior of Domain.configure_logging().
+    _install_root_filter(ProteanCorrelationFilter())
+    if redact:
+        _install_root_filter(ProteanRedactionFilter(redact))
+    _copy_root_filters_to_handlers()
+    _move_redaction_filter_last()
+
+
+def _copy_root_filters_to_handlers() -> None:
+    """Install each Protean filter on the root logger onto each root handler."""
+    # Root-logger filters do not run for records from child loggers, so
+    # Protean filters the dict declared on the root logger alone also go
+    # on each root handler. dictConfig() keeps the root logger's existing
+    # filters, so the root can hold several redaction filters with
+    # different keys. Each one goes on every handler that does not
+    # already mask all its keys: copying only the first of its class
+    # would leave the other filters' keys unmasked.
+    root = logging.getLogger()
+    for filter_ in list(root.filters):
+        if isinstance(filter_, ProteanRedactionFilter):
+            for handler in root.handlers:
+                _add_redaction_filter_if_uncovered(handler, filter_)
+        elif isinstance(filter_, _PROTEAN_ROOT_FILTERS):
+            _install_root_filter(filter_)
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
@@ -495,25 +523,29 @@ def _extract_aggregate_info(item: Any, handler_cls: type) -> tuple[str, str]:
 
     if part_of is not None:
         aggregate = part_of.__name__
-
-        # Try to extract aggregate_id from the message stream
-        metadata = getattr(item, "_metadata", None)
-        if metadata is not None:
-            headers = getattr(metadata, "headers", None)
-            if headers is not None:
-                stream = getattr(headers, "stream", None) or ""
-                stream_category = getattr(
-                    getattr(part_of, "meta_", None), "stream_category", ""
-                )
-                if stream and stream_category:
-                    cmd_prefix = f"{stream_category}:command-"
-                    evt_prefix = f"{stream_category}-"
-                    if cmd_prefix in stream:
-                        aggregate_id = stream.split(cmd_prefix, 1)[1]
-                    elif stream.startswith(evt_prefix):
-                        aggregate_id = stream[len(evt_prefix) :]
+        aggregate_id = _aggregate_id_from_stream(item, part_of)
 
     return aggregate, aggregate_id
+
+
+def _aggregate_id_from_stream(item: Any, part_of: type) -> str:
+    """Return the aggregate ID in the stream name of *item*'s message
+    metadata, or ``""`` when the stream does not belong to *part_of*."""
+    metadata = getattr(item, "_metadata", None)
+    headers = getattr(metadata, "headers", None) if metadata is not None else None
+    if headers is None:
+        return ""
+    stream = getattr(headers, "stream", None) or ""
+    stream_category = getattr(getattr(part_of, "meta_", None), "stream_category", "")
+    if not (stream and stream_category):
+        return ""
+    cmd_prefix = f"{stream_category}:command-"
+    evt_prefix = f"{stream_category}-"
+    if cmd_prefix in stream:
+        return stream.split(cmd_prefix, 1)[1]
+    if stream.startswith(evt_prefix):
+        return stream[len(evt_prefix) :]
+    return ""
 
 
 def _read_access_log_counters() -> tuple[list[str], dict[str, int], str]:
@@ -804,33 +836,13 @@ def _emit_wide_event(
     Extracted from ``access_log_handler`` so that emission failures can be
     caught without interfering with handler exception propagation.
     """
-    # Extract framework fields
-    message_type = getattr(item, "__class__", None)
-    message_type_name = (
-        getattr(message_type, "__type__", None)
-        or getattr(message_type, "__name__", "unknown")
-        if message_type
-        else "unknown"
-    )
-    message_id = ""
-    metadata = getattr(item, "_metadata", None)
-    if metadata is not None:
-        headers = getattr(metadata, "headers", None)
-        if headers is not None:
-            message_id = getattr(headers, "id", "") or ""
-
+    message_type_name, message_id = _message_type_and_id(item)
     aggregate, aggregate_id = _extract_aggregate_info(item, handler_cls)
     correlation_id, causation_id = _get_correlation_context()
     events_raised, repo_operations, uow_outcome = _read_access_log_counters()
 
     handler_name = f"{handler_cls.__name__}.{handler_method_name}"
-
-    # Determine status
-    if error_info is not None:
-        status = "failed"
-    else:
-        threshold = _get_slow_handler_threshold()
-        status = "slow" if (threshold > 0 and duration_ms > threshold) else "ok"
+    status = _handler_status(error_info, duration_ms)
 
     # Build the wide event — strip keys that collide with framework-reserved
     # names or stdlib LogRecord attributes to prevent KeyError / overwrites.
@@ -857,7 +869,41 @@ def _emit_wide_event(
         }
     )
 
-    # Emit the wide event
+    _log_wide_event(status, error_info, wide_event)
+
+
+def _message_type_and_id(item: Any) -> tuple[Any, Any]:
+    """Return the message type name of *item* and the message id in its
+    metadata headers, or ``"unknown"`` and ``""`` when they are absent."""
+    message_type = getattr(item, "__class__", None)
+    message_type_name = (
+        getattr(message_type, "__type__", None)
+        or getattr(message_type, "__name__", "unknown")
+        if message_type
+        else "unknown"
+    )
+    message_id = ""
+    metadata = getattr(item, "_metadata", None)
+    headers = getattr(metadata, "headers", None) if metadata is not None else None
+    if headers is not None:
+        message_id = getattr(headers, "id", "") or ""
+    return message_type_name, message_id
+
+
+def _handler_status(error_info: Exception | None, duration_ms: float) -> str:
+    """Return ``"failed"`` when the handler raised, ``"slow"`` when it ran
+    past the slow-handler threshold, and ``"ok"`` otherwise."""
+    if error_info is not None:
+        return "failed"
+    threshold = _get_slow_handler_threshold()
+    return "slow" if (threshold > 0 and duration_ms > threshold) else "ok"
+
+
+def _log_wide_event(
+    status: str, error_info: Exception | None, wide_event: dict[str, Any]
+) -> None:
+    """Log *wide_event* on the access logger at the level *status* calls for,
+    and on the perf logger too when the handler was slow."""
     if error_info is not None:
         access_logger.error(
             "access.handler_failed",

@@ -1348,28 +1348,6 @@
     ]
   },
   {
-    "path": "src/protean/utils/logging.py",
-    "file_name": "logging.py",
-    "functions": [
-      {
-        "name": "_move_redaction_filter_last",
-        "complexity": 17
-      },
-      {
-        "name": "_emit_wide_event",
-        "complexity": 18
-      },
-      {
-        "name": "_extract_aggregate_info",
-        "complexity": 19
-      },
-      {
-        "name": "configure_logging",
-        "complexity": 20
-      }
-    ]
-  },
-  {
     "path": "src/protean/utils/mixins.py",
     "file_name": "mixins.py",
     "functions": [
