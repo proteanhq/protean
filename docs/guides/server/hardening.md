@@ -220,7 +220,11 @@ to stop, waiting for in-flight handlers to finish (up to
 [`server.drain_timeout`](../../reference/server/hardening.md#serverdrain_timeout),
 10 seconds by default),
 then closing the event store, brokers, caches, and providers in
-reverse initialisation order. Send `SIGTERM` and give the pod a
+reverse initialisation order. A batch that started before the signal keeps
+handling its messages during the drain window. If the window ends first, the
+rest of the batch stays pending in Redis, and a later start claims it after
+[`server.reclaim_idle_seconds`](../../reference/server/hardening.md#serverreclaim_idle_seconds),
+120 seconds by default. Send `SIGTERM` and give the pod a
 `terminationGracePeriodSeconds` of at least `15`, long enough for the drain and close steps to complete:
 
 ```yaml

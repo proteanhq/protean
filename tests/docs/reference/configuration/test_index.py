@@ -313,6 +313,7 @@ def test_server_values(load_toml):
     assert server["default_subscription_profile"] == "production"
     assert server["messages_per_tick"] == 100
     assert server["drain_timeout"] == 10
+    assert server["reclaim_idle_seconds"] == 120
     assert server["stream_subscription"] == {
         "blocking_timeout_ms": 5000,
         "max_retries": 3,

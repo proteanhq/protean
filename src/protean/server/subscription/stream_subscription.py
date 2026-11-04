@@ -283,6 +283,11 @@ class StreamSubscription(BaseSubscription):
         # brokers without an independent ceiling (all production adapters).
         self.broker._mark_subscription_owned(self.stream_category, self.consumer_group)
 
+        # Claim before the cleanup: the cleanup skips a consumer that still has
+        # pending entries, so claiming first lets it remove a stopped consumer
+        # from this host and process in the same start.
+        self._reclaim_idle_pending(self.stream_category)
+
         # Clean up stale consumers from previous engine runs
         try:
             removed = self.broker._cleanup_stale_consumers(
@@ -317,6 +322,8 @@ class StreamSubscription(BaseSubscription):
                 self.backfill_stream, self.consumer_group
             )
 
+            self._reclaim_idle_pending(self.backfill_stream)
+
             # Clean up stale consumers on backfill stream too
             try:
                 removed = self.broker._cleanup_stale_consumers(
@@ -345,6 +352,35 @@ class StreamSubscription(BaseSubscription):
             f"on stream '{self.stream_category}' with consumer group '{self.consumer_group}'"
         )
 
+    def _reclaim_idle_pending(self, stream: str) -> None:
+        """Claim the group's idle pending entries on *stream* into this consumer.
+
+        Seeds ``retry_counts`` with each entry's earlier deliveries, so a
+        claimed message keeps its place toward ``max_retries``. A failure is
+        logged and does not stop startup.
+        """
+        assert self.broker is not None, "Broker not initialized"
+        try:
+            counts = self.broker._reclaim_idle_pending(
+                stream,
+                self.consumer_group,
+                self.consumer_name,
+                int(self.engine.reclaim_idle_seconds * 1000),
+            )
+        except Exception:  # non-critical: the entries stay pending for a later start
+            logger.warning(
+                f"Failed to claim idle pending messages for "
+                f"{self.subscriber_name} on '{stream}'",
+                exc_info=True,
+            )
+            return
+        if counts:
+            self.retry_counts.update(counts)
+            logger.info(
+                f"Claimed {len(counts)} idle pending message(s) for "
+                f"{self.subscriber_name} on '{stream}'"
+            )
+
     async def poll(self) -> None:
         """Read and process messages until the subscription stops or drains.
 
@@ -363,71 +399,85 @@ class StreamSubscription(BaseSubscription):
                 if not await self._circuit_permits_reads():
                     continue
 
-                started = time.monotonic()
-                self._read_failed = False
-                if self._lanes_enabled:
-                    # PRIORITY LANES MODE
-                    # Step 1: Non-blocking read on primary (production) stream
-                    messages = await self._read_primary_nonblocking()
+                # The read is inside the block too: a read that returns
+                # messages has delivered them, so they count as in flight.
+                with self._batch_in_flight():
+                    started = time.monotonic()
+                    self._read_failed = False
+                    if self._lanes_enabled:
+                        # PRIORITY LANES MODE
+                        # Step 1: Non-blocking read on primary (production) stream
+                        messages = await self._read_primary_nonblocking()
 
-                    if messages:
-                        await self.process_batch(messages, stream=self.stream_category)
-                        await self._maybe_trim(self.stream_category)
-                        batches_processed += 1
-                        self._record_tick(started, True)
-                        # Loop back immediately to check primary again
-                        if batches_processed % 10 == 0:
-                            await asyncio.sleep(0)
-                        consecutive_errors = 0
-                        continue
+                        if messages:
+                            await self.process_batch(
+                                messages, stream=self.stream_category
+                            )
+                            await self._maybe_trim(self.stream_category)
+                            batches_processed += 1
+                            self._record_tick(started, True)
+                            # Loop back immediately to check primary again
+                            if batches_processed % 10 == 0:
+                                await asyncio.sleep(0)
+                            consecutive_errors = 0
+                            continue
 
-                    # Step 2: Primary empty → one blocking read on both streams.
-                    # The primary read above awaits, so a drain (or shutdown)
-                    # can begin while this turn is suspended. Re-check before
-                    # the combined read: nothing is in flight at this point
-                    # (the primary came back empty), so stopping here drops no
-                    # message and avoids pulling in a new one.
-                    if self._quiescing():
-                        break
-                    primary, backfill = await self._read_lanes_blocking()
+                        # Step 2: Primary empty → one blocking read on both streams.
+                        # The primary read above awaits, so a drain (or shutdown)
+                        # can begin while this turn is suspended. Re-check before
+                        # the combined read: nothing is in flight at this point
+                        # (the primary came back empty), so stopping here drops no
+                        # message and avoids pulling in a new one.
+                        if self._quiescing():
+                            break
+                        primary, backfill = await self._read_lanes_blocking()
 
-                    if primary:
-                        await self.process_batch(primary, stream=self.stream_category)
-                        await self._maybe_trim(self.stream_category)
-                        batches_processed += 1
+                        if primary:
+                            await self.process_batch(
+                                primary, stream=self.stream_category
+                            )
+                            await self._maybe_trim(self.stream_category)
+                            batches_processed += 1
 
-                    # The backfill entries are already delivered to this
-                    # consumer, so they are processed like the rest of one
-                    # batch, even if a drain began or the primary batch opened
-                    # the breaker. The consumer name changes on every restart,
-                    # so an entry left pending here would never be read again.
-                    if backfill:
-                        await self.process_batch(backfill, stream=self.backfill_stream)
-                        await self._maybe_trim(self.backfill_stream)
-                        batches_processed += 1
-                    self._record_tick(started, self._tick_outcome(primary + backfill))
+                        # The backfill entries are already delivered to this
+                        # consumer, so they are processed like the rest of one
+                        # batch, even if a drain began or the primary batch opened
+                        # the breaker. The consumer name changes on every restart,
+                        # so an entry left pending here waits until a later start
+                        # claims it after reclaim_idle_seconds.
+                        if backfill:
+                            await self.process_batch(
+                                backfill, stream=self.backfill_stream
+                            )
+                            await self._maybe_trim(self.backfill_stream)
+                            batches_processed += 1
+                        self._record_tick(
+                            started, self._tick_outcome(primary + backfill)
+                        )
 
-                    # Yield control before re-checking primary
-                    await asyncio.sleep(0)
-                else:
-                    # STANDARD MODE: unchanged behavior
-                    messages = await self.get_next_batch_of_messages()
-
-                    if messages:
-                        await self.process_batch(messages, stream=self.stream_category)
-                        await self._maybe_trim(self.stream_category)
-                        batches_processed += 1
-                        self._record_tick(started, True)
-
-                        # Yield control only after processing a batch
-                        # This maximizes throughput while maintaining responsiveness
-                        if batches_processed % 10 == 0:  # Yield every 10 batches
-                            await asyncio.sleep(0)
-                    else:
-                        # No messages available, the blocking read timed out
-                        # This is normal, just yield control
-                        self._record_tick(started, self._tick_outcome(messages))
+                        # Yield control before re-checking primary
                         await asyncio.sleep(0)
+                    else:
+                        # STANDARD MODE: unchanged behavior
+                        messages = await self.get_next_batch_of_messages()
+
+                        if messages:
+                            await self.process_batch(
+                                messages, stream=self.stream_category
+                            )
+                            await self._maybe_trim(self.stream_category)
+                            batches_processed += 1
+                            self._record_tick(started, True)
+
+                            # Yield control only after processing a batch
+                            # This maximizes throughput while maintaining responsiveness
+                            if batches_processed % 10 == 0:  # Yield every 10 batches
+                                await asyncio.sleep(0)
+                        else:
+                            # No messages available, the blocking read timed out
+                            # This is normal, just yield control
+                            self._record_tick(started, self._tick_outcome(messages))
+                            await asyncio.sleep(0)
 
                 consecutive_errors = 0
 

@@ -39,7 +39,11 @@ subscriptions, drain in-flight handlers (for `server.drain_timeout`, 10
 seconds by default), and close providers, brokers, caches, and the event
 store before systemd escalates to `SIGKILL`. If you raise
 `server.drain_timeout` above 25, raise `TimeoutStopSec` above the drain
-window plus 5 seconds too. See [Shut down gracefully](./hardening.md#shut-down-gracefully).
+window plus 5 seconds too. Messages a stopped worker read and did not handle
+stay pending in Redis. The next start claims the ones that have waited
+[`server.reclaim_idle_seconds`](../../reference/server/hardening.md#serverreclaim_idle_seconds)
+(120 seconds by default), so a restart within that time leaves them for a later
+start. See [Shut down gracefully](./hardening.md#shut-down-gracefully).
 
 ## Docker
 

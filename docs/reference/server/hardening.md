@@ -77,7 +77,7 @@ silence the warning.
 | `GET /healthz` | Liveness | `200` with `{"status": "ok", "checks": {"event_loop": "responsive"}}` |
 | `GET /livez` | Liveness (alias for `/healthz`) | Same as `/healthz` |
 | `GET /readyz` | Readiness | `200` when all checks pass, `503` otherwise |
-| `POST /drainz` | Drain trigger | `200` with `{"status": "draining", "pid": <worker pid>}`; flips the engine to `draining` |
+| `POST /drainz` | Drain trigger | `200` with `{"status": "draining", "pid": <worker pid>, "drained": <bool>}`; flips the engine to `draining` |
 
 Sample responses. Liveness while the engine is running:
 
@@ -249,7 +249,7 @@ $ curl -i -X POST http://localhost:8080/drainz
 HTTP/1.1 200 OK
 Content-Type: application/json
 
-{"status": "draining", "pid": 4021}
+{"status": "draining", "pid": 4021, "drained": false}
 ```
 
 While draining:
@@ -257,8 +257,9 @@ While draining:
 - New messages are no longer fetched: the subscription poll loops stop pulling
   new batches. A batch already read keeps running to completion, so no in-flight
   message is dropped; the loop exits once that batch finishes. The message
-  handlers themselves are not gated on `draining`, only on `shutting_down`, so a
-  message already dispatched is never failed just because a drain began.
+  handlers themselves are not gated on `draining` or on `shutting_down`, so a
+  message already dispatched is never failed because a drain or a shutdown
+  began.
 - The outbox keeps flushing while draining: it holds already-committed rows, not
   new inbound work, so it publishes what it has rather than freezing until the
   next process starts. It stops on the `SIGTERM` shutdown.
@@ -280,6 +281,18 @@ Content-Type: application/json
 
 - `/healthz` and `/livez` stay `200`: draining means healthy but not taking
   work, so it is not a restart signal.
+
+The `drained` field is `true` once this worker has no batch in flight. A batch
+counts from the read that fetched it until its last message is handled, so a
+subscription waiting on a read also counts. Each `POST` returns the current
+value, so a `preStop` hook can repeat the `POST` until it reads `true` and then
+let the `SIGTERM` follow:
+
+```bash
+until curl -sX POST http://localhost:8080/drainz | grep -q '"drained": true'; do
+  sleep 1
+done
+```
 
 `/drainz` is advisory. It does not itself shut the engine down; the process
 stays alive so your orchestrator can send `SIGTERM` afterwards to actually
@@ -322,10 +335,10 @@ health port:
 
 ```bash
 $ for port in 8080 8081 8082 8083; do curl -sX POST "http://localhost:$port/drainz"; done
-{"status": "draining", "pid": 4021}
-{"status": "draining", "pid": 4022}
-{"status": "draining", "pid": 4023}
-{"status": "draining", "pid": 4024}
+{"status": "draining", "pid": 4021, "drained": true}
+{"status": "draining", "pid": 4022, "drained": true}
+{"status": "draining", "pid": 4023, "drained": false}
+{"status": "draining", "pid": 4024, "drained": true}
 ```
 
 `port_auto_increment` is required here. With the default `false`, only the first
@@ -535,7 +548,11 @@ Elasticsearch providers return an empty dict.
 2. Signal every subscription, broker subscription, outbox processor,
    and DLQ maintenance task to stop.
 3. Wait up to the drain window for in-flight handler tasks to complete;
-   cancel any that remain.
+   cancel any that remain. A batch that started before the shutdown keeps
+   handling its messages inside the window. When the window ends, the batch is
+   cancelled. Its unhandled messages are not retried and not sent to the
+   dead-letter queue: on Redis Streams they stay pending for the next start to
+   claim (see [`server.reclaim_idle_seconds`](#serverreclaim_idle_seconds)).
 4. Call `Domain.close()`, which closes the event store, brokers, caches, and
    providers in reverse initialisation order.
 5. Remove signal handlers and stop the event loop.
@@ -579,6 +596,40 @@ the server's own wait, or it kills the server before the drain ends. For one
 worker, that is the drain window plus a few seconds for the steps around it.
 For several workers, it is the Supervisor's wait: the larger of 30 and the
 drain window plus 5.
+
+### `server.reclaim_idle_seconds`
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `reclaim_idle_seconds` | `120` | Seconds a Redis stream entry must stay unacknowledged before a starting subscription claims it |
+
+A worker stopped in the middle of a batch leaves the messages it had read and
+not yet handled pending in the Redis consumer group, under that worker's
+consumer name. Every start uses a new consumer name, so no later read returns
+those messages. On startup each stream subscription and broker subscription
+claims the group's entries that have stayed unacknowledged for at least
+`reclaim_idle_seconds`, then reads and handles them. With priority lanes on,
+the stream subscription claims on the backfill stream too. Partitioned
+subscriptions claim through their own lease handover and do not use this key.
+
+A claimed message keeps its earlier deliveries toward `max_retries`. A message
+delivered once before the restart that fails once more after it reaches
+`max_retries = 2` and goes to the dead-letter queue.
+
+The threshold has two conditions:
+
+- It must be longer than `circuit_breaker_reset_seconds` (60 by default) and
+  longer than the longest batch. A consumer that is still running holds its
+  entries for that long without acknowledging them, and a shorter threshold
+  lets a new start claim them and handle them twice.
+- Only a start claims entries. An entry left by a restart that comes back
+  within the threshold is younger than the threshold at that start, so it
+  waits for a later start, or for another worker in the group to start.
+
+A zero or negative value falls back to `120`, since it would claim the entries
+of consumers that are still running. So does anything that is not a finite
+number. A failed claim is logged as a warning and does not stop the
+subscription from starting.
 
 ## Optimistic locking
 

@@ -33,6 +33,10 @@ CONSUMER_GROUP_SEPARATOR = ":"
 NEW_MESSAGES_MARK = ">"
 PENDING_MESSAGES_MARK = "0"
 
+# Entries claimed, and pending rows read, per call when a subscription claims
+# a stopped consumer's pending entries on startup.
+_RECLAIM_BATCH_SIZE = 100
+
 # A stream entry ID, ``<ms>`` or ``<ms>-<seq>``, never a range bound. XRANGE
 # also accepts ``-``, ``+`` and ``(`` prefixes as range bounds, so a DLQ ID is
 # checked against this before it is passed as both bounds of a single-entry
@@ -1078,6 +1082,88 @@ class RedisBroker(BaseBroker):
             )
 
         return removed
+
+    def _reclaim_idle_pending(
+        self,
+        stream: str,
+        group_name: str,
+        consumer_name: str | None,
+        min_idle_ms: int,
+    ) -> dict[str, int]:
+        """Claim the group's entries idle for *min_idle_ms* into *consumer_name*.
+
+        Uses ``XAUTOCLAIM``, then reads each claimed entry's delivery count
+        with ``XPENDING``. ``XAUTOCLAIM`` counts the claim as one delivery, so
+        that delivery is taken off the count returned. Entries whose message
+        the stream no longer holds (it was trimmed) are dropped from the
+        pending list by ``XAUTOCLAIM`` and are not returned. A missing group
+        means nothing to claim.
+
+        Raises:
+            redis.RedisError: Any broker error other than a missing group.
+        """
+        consumer = consumer_name or self._consumer_name
+        self._ensure_group(group_name, stream)
+        claimed: list[str] = []
+        cursor = STREAM_ID_START + "-0"
+        while True:
+            try:
+                reply = self._client.xautoclaim(
+                    stream,
+                    group_name,
+                    consumer,
+                    min_idle_time=min_idle_ms,
+                    start_id=cursor,
+                    count=_RECLAIM_BATCH_SIZE,
+                    # redis-py drops the cursor from a JUSTID reply, which
+                    # would end the scan after the first batch.
+                )
+            except redis.ResponseError as e:
+                if "NOGROUP" in str(e):
+                    self._forget_stream_groups(stream)
+                    self._ensure_group(group_name, stream)
+                    break
+                raise
+            claimed.extend(self._decode_if_bytes(mid) for mid, _fields in reply[1])
+            cursor = self._decode_if_bytes(reply[0])
+            # A "0-0" cursor means the scan reached the end of the pending list.
+            if cursor == STREAM_ID_START + "-0":
+                break
+
+        if not claimed:
+            return {}
+        return self._delivery_counts(stream, group_name, consumer, claimed)
+
+    def _delivery_counts(
+        self, stream: str, group_name: str, consumer: str, ids: list[str]
+    ) -> dict[str, int]:
+        """Return how many times the group delivered each of *ids* before the
+        claim that moved it to *consumer*.
+
+        Pages through *consumer*'s pending list, which holds the claimed ids
+        and any entries the consumer already had.
+        """
+        wanted = set(ids)
+        counts: dict[str, int] = {}
+        start = "-"
+        while len(counts) < len(wanted):
+            rows = self._client.xpending_range(
+                stream,
+                group_name,
+                min=start,
+                max="+",
+                count=_RECLAIM_BATCH_SIZE,
+                consumername=consumer,
+            )
+            for row in rows:
+                message_id = self._decode_if_bytes(row["message_id"])
+                if message_id in wanted:
+                    counts[message_id] = int(row["times_delivered"]) - 1
+            if len(rows) < _RECLAIM_BATCH_SIZE:
+                break
+            # "(" makes the next page start after the last id read.
+            start = "(" + self._decode_if_bytes(rows[-1]["message_id"])
+        return counts
 
     def _info(self) -> dict[str, Any]:
         """Get information about consumer groups and consumers"""

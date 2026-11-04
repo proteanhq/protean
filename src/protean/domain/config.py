@@ -112,6 +112,11 @@ def _default_config() -> dict[str, Any]:
             # --reload watcher read this too, and wait this window plus a margin
             # before they SIGKILL a worker.
             "drain_timeout": 10,
+            # Seconds a Redis stream entry must sit unacknowledged before a
+            # starting consumer claims it from a consumer that stopped. Keep it
+            # above circuit_breaker_reset_seconds and the longest batch, so a
+            # live consumer's in-flight entries are never claimed.
+            "reclaim_idle_seconds": 120,
             # Event store subscription settings
             # Used when subscription_type is "event_store"
             "event_store_subscription": {

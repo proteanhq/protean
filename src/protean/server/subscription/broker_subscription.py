@@ -135,6 +135,37 @@ class BrokerSubscription(BaseSubscription):
         # In-memory retry tracking (message identifier -> count)
         self.retry_counts: dict[str, int] = {}
 
+    async def initialize(self) -> None:
+        """Claim the group's idle pending entries into this broker's consumer.
+
+        A worker that stopped mid-batch leaves its unhandled entries pending
+        under its own consumer, which no later read returns. Claiming them lets
+        this subscription read them again. ``retry_counts`` is seeded with each
+        entry's earlier deliveries, so a claimed message keeps its place toward
+        ``max_retries``. A failure is logged and does not stop startup.
+        """
+        try:
+            counts = self.broker._reclaim_idle_pending(
+                self.stream_name,
+                self.subscriber_name,
+                # None: the consumer the broker's own read uses.
+                None,
+                int(self.engine.reclaim_idle_seconds * 1000),
+            )
+        except Exception:  # non-critical: the entries stay pending for a later start
+            logger.warning(
+                f"Failed to claim idle pending messages for "
+                f"{self.subscriber_name} on '{self.stream_name}'",
+                exc_info=True,
+            )
+            return
+        if counts:
+            self.retry_counts.update(counts)
+            logger.info(
+                f"Claimed {len(counts)} idle pending message(s) for "
+                f"{self.subscriber_name} on '{self.stream_name}'"
+            )
+
     async def get_next_batch_of_messages(self) -> list[Any]:
         """
         Get the next batch of messages to process.

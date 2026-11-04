@@ -1036,12 +1036,12 @@
         "complexity": 22
       },
       {
-        "name": "Engine::run",
+        "name": "Engine::handle_message",
         "complexity": 29
       },
       {
-        "name": "Engine::handle_message",
-        "complexity": 30
+        "name": "Engine::run",
+        "complexity": 29
       },
       {
         "name": "Engine::_wire_components",
