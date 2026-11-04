@@ -20,10 +20,12 @@ records (the :mod:`protean.ir.diagnostics` shape, plain dicts at runtime).
 ``check``, ``verify``, ``events catalog``, ``subscriptions status``, and
 ``projection status`` emit this envelope today. ``ir diff`` follows the
 exit-code convention below (``3`` is its "non-breaking changes only" class) but
-keeps its own ``--format json`` shape, off the envelope. The other commands that
-print ``--json``/``--format json`` (``upgrade-check``, ``ir check``) are not yet
-converged onto either. That is a separate follow-on. Do not read this module as
-a claim that they already conform.
+keeps its own ``--format json`` shape, off the envelope. ``upgrade-check``
+follows the exit-code convention too (``1`` for warning findings) and keeps its
+``--format json`` output a plain list of findings, off the envelope. ``ir check``
+also prints ``--format json`` but is not yet converged onto either. That is a
+separate follow-on. Do not read this module as a claim that it already
+conforms.
 
 The envelope is a guarded contract, not just a shape: it ships a pinned,
 versioned JSON Schema at :data:`SCHEMA_PATH`, mirroring the IR precedent at
