@@ -2876,12 +2876,24 @@ _ERROR_CASES = {
 
 @pytest.mark.no_test_domain
 class TestDiffErrorsExit2:
-    """Every usage, load or config error exits 2 with its message on stderr
-    and prints no diff on stdout, at every strictness."""
+    """Every usage, load or config error exits 2 with its message on stderr,
+    prints no diff on stdout and never runs the diff, at every strictness."""
 
     @pytest.fixture(autouse=True)
-    def _setup(self, tmp_path):
+    def _setup(self, tmp_path, monkeypatch):
+        import protean.cli.ir
         from tests.shared import change_working_directory_to
+
+        # A spy, not a stub: the diff still runs if called, and the tests
+        # assert it was never called.
+        self._diff_calls = []
+        real_diff_ir = protean.cli.ir.diff_ir
+
+        def diff_ir_spy(*args, **kwargs):
+            self._diff_calls.append(args)
+            return real_diff_ir(*args, **kwargs)
+
+        monkeypatch.setattr(protean.cli.ir, "diff_ir", diff_ir_spy)
 
         original_path = sys.path[:]
         cwd = Path.cwd()
@@ -2915,6 +2927,7 @@ class TestDiffErrorsExit2:
         assert isinstance(result.exception, SystemExit)
         assert message in " ".join(result.stderr.split())
         assert result.stdout == ""
+        assert self._diff_calls == []
 
     @pytest.mark.parametrize("strictness", [None, "strict", "warn", "off"])
     @pytest.mark.parametrize("case", list(_ERROR_CASES))
@@ -2951,6 +2964,7 @@ class TestDiffErrorsExit2:
         assert result.exit_code == 2
         assert "Invalid .protean/config.toml" in result.stderr
         assert result.stdout == ""
+        assert self._diff_calls == []
 
     @pytest.mark.parametrize(
         "target", ["protean.cli.ir.load_config", "protean.cli.ir.load_stored_ir"]
@@ -2978,6 +2992,7 @@ class TestDiffErrorsExit2:
         assert result.exit_code == 2
         assert "--base requires --domain" in result.stderr
         assert "config.toml" not in result.stderr
+        assert self._diff_calls == []
 
     @pytest.mark.parametrize("strictness", ["strict", "off"])
     @pytest.mark.parametrize("mode", ["git baseline", "auto-baseline"])
@@ -3000,6 +3015,7 @@ class TestDiffErrorsExit2:
         assert result.exit_code == 2, result.output
         assert "Error loading Protean domain" in result.stderr
         assert result.stdout == ""
+        assert self._diff_calls == []
 
     @pytest.mark.parametrize("strictness", ["strict", "off"])
     def test_missing_right_file_after_a_good_domain_exits_2(self, strictness):
@@ -3022,6 +3038,7 @@ class TestDiffErrorsExit2:
         assert result.exit_code == 2, result.output
         assert "file not found or not a regular file" in " ".join(result.stderr.split())
         assert result.stdout == ""
+        assert self._diff_calls == []
 
     @pytest.mark.parametrize(
         "bad_ir", [{"clusters": []}, {"clusters": {"app.Order": 5}}]
@@ -3044,6 +3061,8 @@ class TestDiffErrorsExit2:
         assert result.exit_code == 2, result.output
         assert "does not have the IR structure" in " ".join(result.stderr.split())
         assert result.stdout == ""
+        # The diff ran and rejected the IR, so the spy sees calls.
+        assert len(self._diff_calls) == 1
 
     @pytest.mark.parametrize(
         "bad_ir",
@@ -3122,6 +3141,7 @@ class TestDiffErrorsExit2:
         )
         assert result.exit_code == 0, result.output
         assert "Compatibility checking is disabled" in result.stdout
+        assert self._diff_calls == []
 
     def test_domain_init_error_exits_2(self, monkeypatch):
         # The aggregate names an entity that does not exist, so init fails.
