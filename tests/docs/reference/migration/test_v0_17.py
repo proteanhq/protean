@@ -34,7 +34,8 @@ def test_a_failed_nested_unit_of_work_dooms_the_outer_one():
         order = example.Order(customer="Jane")
         entry = example.Audit(note="order placed")
 
-        example.place_order(order, entry)
+        with pytest.raises(RuntimeError, match="audit failed"):
+            example.place_order(order, entry)
 
         with pytest.raises(ObjectNotFoundError):
             example.domain.repository_for(example.Order).get(order.id)

@@ -15,6 +15,7 @@ pre-flatten model.
 import pytest
 
 from protean import UnitOfWork
+from protean.exceptions import TransactionError
 from protean.utils.globals import _uow_context_stack
 
 from .elements import Person, PersonRepository
@@ -76,16 +77,18 @@ class TestNestedUnitOfWork:
 
     def test_explicit_inner_rollback_dooms_the_transaction(self, test_domain):
         """A nested rollback rolls back the whole transaction (no savepoints), so
-        the outermost commit persists nothing."""
+        the outermost commit persists nothing and raises TransactionError."""
         repo = test_domain.repository_for(Person)
-        with UnitOfWork():
-            repo.add(Person(first_name="A", last_name="X"))
-            inner = UnitOfWork()
-            inner.start()
-            repo.add(Person(first_name="B", last_name="X"))
-            inner.rollback()
-            repo.add(Person(first_name="C", last_name="X"))
+        with pytest.raises(TransactionError, match="rollback-only"):
+            with UnitOfWork():
+                repo.add(Person(first_name="A", last_name="X"))
+                inner = UnitOfWork()
+                inner.start()
+                repo.add(Person(first_name="B", last_name="X"))
+                inner.rollback()
+                repo.add(Person(first_name="C", last_name="X"))
         assert _count(test_domain) == 0
+        assert _uow_context_stack.top is None
 
     def test_reused_instance_is_not_stuck_nested(self, test_domain):
         """A UnitOfWork instance reused after being nested must behave as a normal
@@ -106,3 +109,161 @@ class TestNestedUnitOfWork:
 
         assert _uow_context_stack.top is None  # u popped itself, no poisoning
         assert _count(test_domain) == 1  # the write persisted
+
+
+class TestOuterCommitOfADoomedTransaction:
+    """The outermost commit raises when a nested UnitOfWork failed and the
+    failure was caught before the outer block ended."""
+
+    def test_outer_commit_of_a_doomed_transaction_raises(self, test_domain):
+        repo = test_domain.repository_for(Person)
+        err = RuntimeError("boom")
+        with pytest.raises(RuntimeError) as excinfo:
+            with UnitOfWork():
+                repo.add(Person(first_name="A", last_name="X"))
+                try:
+                    with UnitOfWork():
+                        raise err
+                except RuntimeError:
+                    pass
+        assert excinfo.value is err
+        assert _count(test_domain) == 0
+        assert _uow_context_stack.top is None
+
+    def test_direct_commit_raises_the_cause_and_rolls_back(self, test_domain):
+        repo = test_domain.repository_for(Person)
+        err = ValueError("inner failure")
+        uow = UnitOfWork()
+        uow.start()
+        repo.add(Person(first_name="A", last_name="X"))
+        try:
+            with UnitOfWork():
+                raise err
+        except ValueError:
+            pass
+
+        with pytest.raises(ValueError) as excinfo:
+            uow.commit()
+
+        assert excinfo.value is err
+        assert uow.in_progress is False
+        assert _uow_context_stack.top is None
+        assert _count(test_domain) == 0
+
+    def test_the_first_nested_failure_is_raised(self, test_domain):
+        first = RuntimeError("first")
+        with pytest.raises(RuntimeError) as excinfo:
+            with UnitOfWork():
+                try:
+                    with UnitOfWork():
+                        raise first
+                except RuntimeError:
+                    pass
+                try:
+                    with UnitOfWork():
+                        raise KeyError("second")
+                except KeyError:
+                    pass
+        assert excinfo.value is first
+
+    def test_the_cause_is_not_replaced_by_a_second_rollback(self, test_domain):
+        """``__exit__`` must not roll back the already rolled-back transaction
+        again, which would raise InvalidOperationError instead of the cause."""
+        caught: list[BaseException] = []
+        try:
+            with UnitOfWork():
+                try:
+                    with UnitOfWork():
+                        raise LookupError("cause")
+                except LookupError:
+                    pass
+        except Exception as exc:
+            caught.append(exc)
+
+        assert len(caught) == 1
+        assert type(caught[0]) is LookupError
+        assert caught[0].args == ("cause",)
+
+    def test_explicit_commit_inside_the_outer_block_raises_the_cause(self, test_domain):
+        repo = test_domain.repository_for(Person)
+        err = RuntimeError("inner")
+        with pytest.raises(RuntimeError) as excinfo:
+            with UnitOfWork() as uow:
+                repo.add(Person(first_name="A", last_name="X"))
+                try:
+                    with UnitOfWork():
+                        raise err
+                except RuntimeError:
+                    pass
+                uow.commit()
+
+        assert excinfo.value is err
+        assert _count(test_domain) == 0
+        assert _uow_context_stack.top is None
+
+    def test_a_doomed_instance_commits_normally_when_reused(self, test_domain):
+        repo = test_domain.repository_for(Person)
+        uow = UnitOfWork()
+        with pytest.raises(RuntimeError):
+            with uow:
+                try:
+                    with UnitOfWork():
+                        raise RuntimeError("boom")
+                except RuntimeError:
+                    pass
+
+        with uow:
+            repo.add(Person(first_name="KEPT", last_name="X"))
+
+        assert _count(test_domain) == 1
+        assert _uow_context_stack.top is None
+
+    def test_the_cause_is_dropped_when_the_outer_block_raises(self, test_domain):
+        uow = UnitOfWork()
+        with pytest.raises(KeyError):
+            with uow:
+                try:
+                    with UnitOfWork():
+                        raise RuntimeError("inner")
+                except RuntimeError:
+                    pass
+                assert isinstance(uow._rollback_cause, RuntimeError)
+                raise KeyError("outer")
+
+        assert uow._rollback_cause is None
+        assert uow.in_progress is False
+
+    def test_the_cause_is_dropped_by_a_manual_rollback(self, test_domain):
+        uow = UnitOfWork()
+        uow.start()
+        try:
+            with UnitOfWork():
+                raise RuntimeError("inner")
+        except RuntimeError:
+            pass
+        assert isinstance(uow._rollback_cause, RuntimeError)
+
+        uow.rollback()
+
+        assert uow._rollback_cause is None
+        assert uow.in_progress is False
+
+    def test_an_ended_participant_does_not_record_the_cause(self, test_domain):
+        """An exception raised after a nested ``commit()`` dooms nothing, so a
+        later nested failure is the one the outermost commit raises."""
+        later = RuntimeError("later")
+        with pytest.raises(RuntimeError) as excinfo:
+            with UnitOfWork():
+                try:
+                    with UnitOfWork() as inner:
+                        inner.commit()
+                        raise KeyError("after commit")
+                except KeyError:
+                    pass
+                try:
+                    with UnitOfWork():
+                        raise later
+                except RuntimeError:
+                    pass
+        assert excinfo.value is later
+        assert _uow_context_stack.top is None

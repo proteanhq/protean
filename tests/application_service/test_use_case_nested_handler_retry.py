@@ -2,6 +2,7 @@
 UnitOfWork, so it does not retry a version conflict in place. The use case
 has no retry of its own, so its caller receives the conflict."""
 
+import contextlib
 from unittest.mock import patch
 
 import pytest
@@ -44,6 +45,13 @@ class AccountService(BaseApplicationService):
     def write(self, account_id: str) -> None:
         current_domain.process(WriteAccount(account_id=account_id), asynchronous=False)
 
+    @use_case
+    def write_ignoring_conflict(self, account_id: str) -> None:
+        with contextlib.suppress(ExpectedVersionError):
+            current_domain.process(
+                WriteAccount(account_id=account_id), asynchronous=False
+            )
+
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
@@ -60,6 +68,18 @@ def register_elements(test_domain):
 def test_use_case_caller_receives_the_nested_handlers_conflict(mock_sleep, test_domain):
     with pytest.raises(ExpectedVersionError):
         AccountService().write("a1")
+
+    assert inner_runs == 1
+    assert test_domain.repository_for(Account).get_or_none("a1") is None
+    mock_sleep.assert_not_called()
+
+
+@patch("protean.utils.mixins.time.sleep")
+def test_use_case_that_catches_the_nested_conflict_still_receives_it_at_commit(
+    mock_sleep, test_domain
+):
+    with pytest.raises(ExpectedVersionError, match="stale"):
+        AccountService().write_ignoring_conflict("a1")
 
     assert inner_runs == 1
     assert test_domain.repository_for(Account).get_or_none("a1") is None
