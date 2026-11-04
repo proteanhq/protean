@@ -559,8 +559,7 @@ class TestReconcileBesideALiveUnitOfWorkOnPostgres:
 #
 # Only events raised by this domain's aggregates get outbox rows from the unit
 # of work, so only those may be repaired. Foreign events in a shared store,
-# commands, and process manager transitions must be skipped, both in the
-# fast-path check and in the repair set.
+# commands, and process manager transitions must be skipped.
 
 
 class Fund(BaseCommand):

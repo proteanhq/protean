@@ -147,11 +147,10 @@ by its per-stream `position`, and a category or `$all` read pages by
 !!! warning "Interim: not yet a stable contract"
     The event-store append is written first, and the relational and outbox
     commit follows it without a shared transaction. The window between them is
-    closed by a reconciliation sweep at startup for event-sourced aggregates:
-    when the newest event-sourced aggregate's event has lost its internal outbox
-    row, the sweep rebuilds the rows of every recent event-sourced aggregate's
-    event that lost one, including the external-broker rows of a `published`
-    event. A state-based aggregate's event with no outbox row is not rebuilt.
+    closed by a reconciliation sweep at startup for event-sourced aggregates.
+    The sweep rebuilds the rows of every recent event-sourced aggregate's event
+    that has lost its internal outbox row, including the external-broker rows
+    of a `published` event. It skips events older than the cleanup retention. A state-based aggregate's event with no outbox row is not rebuilt.
     On a transactional provider its aggregate row commits or rolls back
     together with its outbox rows. On a provider without transactions, such as
     Elasticsearch, the row can be saved while its outbox row is lost, and that

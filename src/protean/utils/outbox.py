@@ -1538,11 +1538,12 @@ def reconcile_outbox(
     """Create outbox rows for events that are in the event store but have no
     outbox row, and return how many rows this call wrote.
 
-    The function reads the most recent ``limit`` messages of ``$all`` on every
-    run, and repairs every event of the kinds described below that has no
-    internal outbox row. ``limit`` counts every message in ``$all``, including ones the
-    function skips. Returns ``0`` when the domain has no outbox, or when no
-    event-sourced aggregate is on ``provider_name``.
+    Returns ``0`` without reading the event store when the domain has no
+    outbox, or when no event-sourced aggregate is on ``provider_name``.
+    Otherwise the function reads the most recent ``limit`` messages of
+    ``$all``, and repairs every event of the kinds described below that has
+    no internal outbox row. ``limit`` counts every message in ``$all``,
+    including ones the function skips.
 
     Only events raised by this domain's event-sourced aggregates on
     ``provider_name`` are repaired. For an event-sourced aggregate the event

@@ -25,8 +25,9 @@ All commands accept a `--domain` option to specify the domain module path
 
 Scans the most recent messages of the event store for events that are durable
 in the store but have no internal-broker outbox row, and creates the missing
-rows. It repairs every such event in the scan window, including one whose row
-was lost in a crash after which another process committed its own events.
+rows. It repairs every such event in the scan window that is inside the
+cleanup retention, including one whose row was lost in a crash after which
+another process committed its own events.
 
 Only events raised by this domain's event-sourced aggregates on the given
 provider are repaired. For a state-based aggregate the relational row is the
@@ -77,7 +78,13 @@ Nothing to reconcile: no event in the scanned window is missing its outbox row.
 The command reads nothing when no event-sourced aggregate is on the provider.
 Otherwise every run reads the `--limit` window and looks up the outbox rows of
 every event-sourced aggregate's event in it. It repairs each of those events
-that has no internal-broker row, wherever the event sits in the window.
+that has no internal-broker row and is inside the cleanup retention, wherever
+the event sits in the window.
+
+A rebuilt row is created when the run saves it, so it publishes after the rows
+of any later commit. For a [`sequential_by`](../../server/sequential-by.md) key
+that means an event rebuilt behind a later commit is delivered after that
+commit's events.
 
 Reconciliation is idempotent. A run skips a row whose (`message_id`,
 `target_broker`) pair is already saved, so running it repeatedly never
@@ -114,6 +121,11 @@ abandoned rows that have a partition key), and a deleted row looks the same as
 one lost in a crash, so rebuilding it would send the event again. An event lost in a crash and left unrepaired for longer than that
 retention is not repaired. An event with no stored time is also skipped,
 because its age is unknown.
+
+The cutoff uses the retentions configured when the run starts. Cleanup deleted
+rows under the retentions configured when it ran. If you raise a retention
+after cleanup ran with a lower one, the next run rebuilds the rows cleanup
+deleted in between, and those events are published again.
 
 A row the reconciler abandons records `last_processed_at`, so
 `cleanup_old_abandoned()` removes it once `abandoned_retention_hours` has
