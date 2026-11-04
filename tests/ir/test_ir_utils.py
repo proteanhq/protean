@@ -101,7 +101,10 @@ class TestLoadDomainIr:
     def test_no_domain_aborts(self, domain_dir, capsys):
         with pytest.raises(Abort):
             load_domain_ir("no_such_ir_utils_module.py")
-        assert "Error loading Protean domain:" in capsys.readouterr().out
+        assert (
+            "Error loading Protean domain: Could not import 'no_such_ir_utils_module'."
+            in _one_line(capsys.readouterr().out)
+        )
 
     def test_init_error_aborts(self, domain_dir, capsys):
         path = domain_dir("ir_utils_init_fails_domain", _INIT_FAILS_DOMAIN)
@@ -152,8 +155,10 @@ class TestUsageExit:
             load_domain_ir("no_such_ir_utils_module.py", usage_exit=True)
         assert exc_info.value.exit_code == 2
         captured = capsys.readouterr()
-        assert "Error loading Protean domain:" in captured.err
-        assert "no_such_ir_utils_module" in _one_line(captured.err)
+        assert (
+            "Error loading Protean domain: Could not import 'no_such_ir_utils_module'."
+            in _one_line(captured.err)
+        )
         assert captured.out == ""
 
     def test_domain_init_error_exits_2_on_stderr(self, domain_dir, capsys):
