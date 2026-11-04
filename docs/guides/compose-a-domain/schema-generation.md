@@ -152,8 +152,8 @@ metadata in `x-protean-*` extension fields:
 
 ### Nested structures
 
-Value objects and entities referenced by an aggregate are resolved as `$defs`
-with `$ref` pointers:
+Value objects and entities referenced by an aggregate, and value objects
+referenced by a command or event, are resolved as `$defs` with `$ref` pointers:
 
 ```json
 {
