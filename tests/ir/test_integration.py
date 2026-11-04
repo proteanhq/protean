@@ -324,16 +324,9 @@ class TestDiagnostics:
 
 @pytest.mark.no_test_domain
 class TestDeterminism:
-    def test_identical_checksums(self):
-        """domain.to_ir() called twice must produce identical checksums."""
-        domain = build_integration_domain()
-        ir1 = domain.to_ir()
-        ir2 = domain.to_ir()
-        assert ir1["checksum"] == ir2["checksum"]
-
     def test_identical_structure(self):
-        """Two IR builds from the same domain must be structurally identical
-        (ignoring generated_at timestamp)."""
+        """Two IR builds from the same domain are identical, checksum
+        included, apart from the generated_at timestamp."""
         domain = build_integration_domain()
         ir1 = domain.to_ir()
         ir2 = domain.to_ir()

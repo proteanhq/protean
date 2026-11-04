@@ -87,16 +87,6 @@ class TestCustomFieldIR:
         assert brand_field["kind"] == "custom"
         assert brand_field["required"] is True
 
-    def test_ir_with_a_custom_field_validates_against_the_schema(self, ir):
-        try:
-            validate(instance=ir, schema=load_schema())
-        except ValidationError as exc:
-            pytest.fail(
-                f"IR with a custom field failed schema validation:\n"
-                f"  Path: {'.'.join(str(p) for p in exc.absolute_path)}\n"
-                f"  Message: {exc.message}"
-            )
-
 
 @pytest.mark.no_test_domain
 class TestCustomFieldDefaultInIR:
@@ -109,23 +99,6 @@ class TestCustomFieldDefaultInIR:
             if fqn.endswith(".Theme")
         )
         assert cluster["aggregate"]["fields"]["brand"]["default"] == "#FFFFFF"
-
-    def test_ir_with_a_custom_default_serializes_to_json(self, ir_with_default):
-        # The IR is written out as JSON and hashed into the canonical baselines,
-        # so an unserialized default breaks every emitter, not just this test.
-        json.dumps(ir_with_default)
-
-    def test_ir_with_a_custom_default_validates_against_the_schema(
-        self, ir_with_default
-    ):
-        try:
-            validate(instance=ir_with_default, schema=load_schema())
-        except ValidationError as exc:
-            pytest.fail(
-                f"IR with a custom default failed schema validation:\n"
-                f"  Path: {'.'.join(str(p) for p in exc.absolute_path)}\n"
-                f"  Message: {exc.message}"
-            )
 
 
 @pytest.fixture(scope="module")
@@ -170,19 +143,26 @@ class TestCustomDefaultOnAGeneratedElement:
         assert fact_event["fields"]["brand"]["kind"] == "custom"
         assert fact_event["fields"]["brand"]["default"] == "#000000"
 
-    def test_ir_with_a_fact_event_custom_default_serializes_to_json(
-        self, fact_event_ir
-    ):
-        json.dumps(fact_event_ir)
 
-    def test_ir_with_a_fact_event_custom_default_validates_against_the_schema(
-        self, fact_event_ir
+@pytest.mark.no_test_domain
+class TestIRWithACustomFieldIsAValidDocument:
+    @pytest.mark.parametrize(
+        "ir_fixture",
+        ["ir", "ir_with_default", "fact_event_ir"],
+        ids=["custom-field", "custom-default", "fact-event-custom-default"],
+    )
+    def test_ir_serializes_to_json_and_validates_against_the_schema(
+        self, request, ir_fixture
     ):
+        document = request.getfixturevalue(ir_fixture)
+        # The IR is written out as JSON and hashed into the canonical baselines,
+        # so an unserialized default breaks every emitter.
+        json.dumps(document)
         try:
-            validate(instance=fact_event_ir, schema=load_schema())
+            validate(instance=document, schema=load_schema())
         except ValidationError as exc:
             pytest.fail(
-                f"IR with a fact-event custom default failed schema validation:\n"
+                f"IR ({ir_fixture}) failed schema validation:\n"
                 f"  Path: {'.'.join(str(p) for p in exc.absolute_path)}\n"
                 f"  Message: {exc.message}"
             )

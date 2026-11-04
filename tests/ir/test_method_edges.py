@@ -307,18 +307,18 @@ class TestSchemaConformance:
     def test_built_ir_validates(self, ir):
         jsonschema.validate(ir, load_schema())
 
-    def test_empty_method_edges_is_rejected(self, ir):
+    @pytest.mark.parametrize(
+        "method_edges",
+        [{}, {"place": {}}],
+        ids=["empty-map", "method-with-neither-side"],
+    )
+    def test_an_empty_edge_map_is_rejected(self, ir, method_edges):
         """Sparsity is a schema rule, not just a builder habit.
 
-        The builder only ever writes a non-empty map, so an element carrying
-        ``method_edges: {}`` came from somewhere else and should not validate.
+        The builder only ever writes a non-empty map, and leaves out a method
+        that has no edges. An empty map, at either level, came from somewhere
+        else and should not validate.
         """
-        ir["clusters"][_fq("Catalog")]["aggregate"]["method_edges"] = {}
-        with pytest.raises(jsonschema.ValidationError):
-            jsonschema.validate(ir, load_schema())
-
-    def test_method_with_neither_side_is_rejected(self, ir):
-        """The same rule one level down: an edgeless method is absent, not empty."""
-        ir["clusters"][_fq("Catalog")]["aggregate"]["method_edges"] = {"place": {}}
+        ir["clusters"][_fq("Catalog")]["aggregate"]["method_edges"] = method_edges
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate(ir, load_schema())

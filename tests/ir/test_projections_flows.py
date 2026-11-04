@@ -71,9 +71,6 @@ class TestProjectionExtraction:
         domain = build_projection_test_domain()
         self.ir = IRBuilder(domain).build()
 
-    def test_projections_present(self):
-        assert len(self.ir["projections"]) >= 1
-
     def test_projection_structure(self):
         proj_entry = next(iter(self.ir["projections"].values()))
         assert "projection" in proj_entry
@@ -103,14 +100,19 @@ class TestProjectionExtraction:
         assert "schema_name" in opts
         assert "limit" in opts
 
-    def test_projector_present(self):
+    @pytest.mark.parametrize(
+        ("section", "element_type"),
+        [
+            ("projectors", "PROJECTOR"),
+            ("queries", "QUERY"),
+            ("query_handlers", "QUERY_HANDLER"),
+        ],
+    )
+    def test_each_section_holds_one_element_of_its_type(self, section, element_type):
         proj_entry = next(iter(self.ir["projections"].values()))
-        assert len(proj_entry["projectors"]) == 1
-
-    def test_projector_element_type(self):
-        proj_entry = next(iter(self.ir["projections"].values()))
-        projector = next(iter(proj_entry["projectors"].values()))
-        assert projector["element_type"] == "PROJECTOR"
+        members = list(proj_entry[section].values())
+        assert len(members) == 1
+        assert members[0]["element_type"] == element_type
 
     def test_projector_for(self):
         proj_entry = next(iter(self.ir["projections"].values()))
@@ -128,15 +130,6 @@ class TestProjectionExtraction:
         projector = next(iter(proj_entry["projectors"].values()))
         assert len(projector["aggregates"]) >= 1
 
-    def test_query_present(self):
-        proj_entry = next(iter(self.ir["projections"].values()))
-        assert len(proj_entry["queries"]) == 1
-
-    def test_query_element_type(self):
-        proj_entry = next(iter(self.ir["projections"].values()))
-        query = next(iter(proj_entry["queries"].values()))
-        assert query["element_type"] == "QUERY"
-
     def test_query_type_no_version(self):
         proj_entry = next(iter(self.ir["projections"].values()))
         query = next(iter(proj_entry["queries"].values()))
@@ -144,26 +137,11 @@ class TestProjectionExtraction:
         assert "__type__" in query
         assert not query["__type__"].endswith(".v1")
 
-    def test_query_part_of(self):
+    @pytest.mark.parametrize("section", ["queries", "query_handlers"])
+    def test_query_side_elements_are_part_of_the_projection(self, section):
         proj_entry = next(iter(self.ir["projections"].values()))
-        query = next(iter(proj_entry["queries"].values()))
-        proj_fqn = proj_entry["projection"]["fqn"]
-        assert query["part_of"] == proj_fqn
-
-    def test_query_handler_present(self):
-        proj_entry = next(iter(self.ir["projections"].values()))
-        assert len(proj_entry["query_handlers"]) == 1
-
-    def test_query_handler_element_type(self):
-        proj_entry = next(iter(self.ir["projections"].values()))
-        qh = next(iter(proj_entry["query_handlers"].values()))
-        assert qh["element_type"] == "QUERY_HANDLER"
-
-    def test_query_handler_part_of(self):
-        proj_entry = next(iter(self.ir["projections"].values()))
-        qh = next(iter(proj_entry["query_handlers"].values()))
-        proj_fqn = proj_entry["projection"]["fqn"]
-        assert qh["part_of"] == proj_fqn
+        element = next(iter(proj_entry[section].values()))
+        assert element["part_of"] == proj_entry["projection"]["fqn"]
 
     def test_all_keys_sorted(self):
         proj_entry = next(iter(self.ir["projections"].values()))
@@ -185,17 +163,17 @@ class TestSubscriberExtraction:
     def test_subscriber_present(self):
         assert len(self.ir["flows"]["subscribers"]) == 1
 
-    def test_subscriber_element_type(self):
+    @pytest.mark.parametrize(
+        ("key", "expected"),
+        [
+            ("element_type", "SUBSCRIBER"),
+            ("broker", "default"),
+            ("stream", "external_events"),
+        ],
+    )
+    def test_subscriber_records_its_declaration(self, key, expected):
         sub = next(iter(self.ir["flows"]["subscribers"].values()))
-        assert sub["element_type"] == "SUBSCRIBER"
-
-    def test_subscriber_broker(self):
-        sub = next(iter(self.ir["flows"]["subscribers"].values()))
-        assert sub["broker"] == "default"
-
-    def test_subscriber_stream(self):
-        sub = next(iter(self.ir["flows"]["subscribers"].values()))
-        assert sub["stream"] == "external_events"
+        assert sub[key] == expected
 
     def test_subscriber_keys_sorted(self):
         sub = next(iter(self.ir["flows"]["subscribers"].values()))

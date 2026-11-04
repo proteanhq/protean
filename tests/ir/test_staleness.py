@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import sys
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -61,15 +62,17 @@ def _live_ir_for_test7() -> dict:
 class TestLoadStoredIr:
     """Unit tests for load_stored_ir()."""
 
-    def test_returns_none_when_no_file(self, tmp_path):
-        result = load_stored_ir(tmp_path)
-        assert result is None
+    @pytest.mark.parametrize("subdir", ["", "nonexistent"])
+    def test_returns_none_without_an_ir_file(self, tmp_path, subdir):
+        # An empty directory and a missing directory both hold no ir.json.
+        assert load_stored_ir(tmp_path / subdir) is None
 
-    def test_returns_ir_dict_and_path_for_valid_file(self, tmp_path):
+    @pytest.mark.parametrize("as_str", [False, True])
+    def test_returns_ir_dict_and_path_for_valid_file(self, tmp_path, as_str):
         ir = {"ir_version": "0.1.0", "checksum": "sha256:abc123", "clusters": {}}
         _write_ir(tmp_path, ir)
 
-        result = load_stored_ir(tmp_path)
+        result = load_stored_ir(str(tmp_path) if as_str else tmp_path)
 
         assert result is not None
         ir_dict, ir_path = result
@@ -83,21 +86,6 @@ class TestLoadStoredIr:
         with pytest.raises(ValueError, match="Invalid JSON"):
             load_stored_ir(tmp_path)
 
-    def test_accepts_str_path(self, tmp_path):
-        ir = {"checksum": "sha256:xyz"}
-        _write_ir(tmp_path, ir)
-
-        result = load_stored_ir(str(tmp_path))
-
-        assert result is not None
-        ir_dict, _ = result
-        assert ir_dict == ir
-
-    def test_returns_none_for_missing_directory(self, tmp_path):
-        missing = tmp_path / "nonexistent"
-        result = load_stored_ir(missing)
-        assert result is None
-
     @pytest.mark.parametrize("content", ["[]", "null", "5"])
     def test_raises_for_json_that_is_not_an_object(self, tmp_path, content):
         (tmp_path / "ir.json").write_text(content, encoding="utf-8")
@@ -105,18 +93,16 @@ class TestLoadStoredIr:
         with pytest.raises(ValueError, match="is not a JSON object"):
             load_stored_ir(tmp_path)
 
-    def test_raises_for_bytes_that_are_not_utf8(self, tmp_path):
-        (tmp_path / "ir.json").write_bytes(b"\xff\xfe")
+    @pytest.mark.parametrize("kind", ["bytes_not_utf8", "directory"])
+    def test_raises_for_a_file_that_cannot_be_read(self, tmp_path, kind):
+        # An ir.json that is a directory makes read_text raise
+        # IsADirectoryError, an OSError.
+        if kind == "directory":
+            (tmp_path / "ir.json").mkdir()
+        else:
+            (tmp_path / "ir.json").write_bytes(b"\xff\xfe")
 
         with pytest.raises(ValueError, match=r"Could not read .*ir\.json"):
-            load_stored_ir(tmp_path)
-
-    def test_raises_for_unreadable_file(self, tmp_path):
-        # Make ir.json a directory so read_text raises IsADirectoryError (OSError subclass)
-        ir_dir = tmp_path / "ir.json"
-        ir_dir.mkdir()
-
-        with pytest.raises(ValueError, match="Could not read"):
             load_stored_ir(tmp_path)
 
 
@@ -201,11 +187,16 @@ class TestCheckStalenessFresh:
 
     def test_fresh_when_checksums_match(self):
         live_ir = _live_ir_for_test7()
+        assert live_ir["ir_version"] == SCHEMA_VERSION
         _write_ir(self._protean_dir, live_ir)
 
         result = check_staleness("publishing7.py", self._protean_dir)
 
         assert result.status == StalenessStatus.FRESH
+        assert result.domain_checksum == live_ir["checksum"]
+        assert result.stored_checksum == live_ir["checksum"]
+        assert result.ir_file is not None
+        assert result.ir_file.name == "ir.json"
 
     def test_fresh_when_baseline_has_old_schema_url(self):
         """Baselines written before the IR's ``$schema`` URL moved to the docs
@@ -235,38 +226,27 @@ class TestCheckStalenessFresh:
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["status"] == "fresh"
 
-    def test_raises_when_derive_domain_returns_none(self, monkeypatch):
+    def test_raises_when_no_domain_is_found(self, tmp_path, monkeypatch):
         """A stored IR present but no derivable domain must raise, not crash.
 
-        Guards against calling .init() on a None domain (derive_domain is
-        typed Domain | None).
+        With no domain path, no PROTEAN_DOMAIN and no domain.py in the
+        working directory, discovery finds no domain (derive_domain is typed
+        Domain | None), and check_staleness must not call .init() on None.
         """
         from protean.exceptions import NoDomainException
 
         _write_ir(self._protean_dir, _live_ir_for_test7())
-        monkeypatch.setattr("protean.ir.staleness.derive_domain", lambda _: None)
+        empty = tmp_path / "no_domain_here"
+        empty.mkdir()
+        # The class fixture restores the working directory. monkeypatch.chdir
+        # would undo after that fixture and leave the process in test7.
+        os.chdir(empty)
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+        # Another test may have imported a module named ``domain``.
+        monkeypatch.delitem(sys.modules, "domain", raising=False)
 
-        with pytest.raises(NoDomainException):
-            check_staleness("publishing7.py", self._protean_dir)
-
-    def test_fresh_result_has_matching_checksums(self):
-        live_ir = _live_ir_for_test7()
-        _write_ir(self._protean_dir, live_ir)
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
-        assert result.domain_checksum == live_ir["checksum"]
-        assert result.stored_checksum == live_ir["checksum"]
-        assert result.domain_checksum == result.stored_checksum
-
-    def test_fresh_result_has_ir_file_path(self):
-        live_ir = _live_ir_for_test7()
-        _write_ir(self._protean_dir, live_ir)
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
-        assert result.ir_file is not None
-        assert result.ir_file.name == "ir.json"
+        with pytest.raises(NoDomainException, match="Could not derive"):
+            check_staleness("", self._protean_dir)
 
 
 @pytest.mark.no_test_domain
@@ -289,7 +269,7 @@ class TestShowAndCheckProduceSameChecksum:
 
     def test_ir_show_output_is_fresh_according_to_check(self):
         """Write IR via the same path as ``protean ir show``, then verify
-        ``check_staleness`` considers it fresh."""
+        ``check_staleness`` considers it fresh with the same checksums."""
         from protean.cli._ir_utils import load_domain_ir
 
         show_ir = load_domain_ir("publishing7.py")
@@ -298,18 +278,6 @@ class TestShowAndCheckProduceSameChecksum:
         result = check_staleness("publishing7.py", self._protean_dir)
 
         assert result.status == StalenessStatus.FRESH
-        assert result.domain_checksum == show_ir["checksum"]
-
-    def test_checksums_match_between_show_and_staleness(self):
-        """Directly compare checksums from ``load_domain_ir`` (show path)
-        and ``check_staleness`` (check path)."""
-        from protean.cli._ir_utils import load_domain_ir
-
-        show_ir = load_domain_ir("publishing7.py")
-        _write_ir(self._protean_dir, show_ir)
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
         assert result.domain_checksum == show_ir["checksum"]
         assert result.stored_checksum == show_ir["checksum"]
 
@@ -329,29 +297,17 @@ class TestCheckStalenessStale:
         os.chdir(cwd)
 
     def test_stale_when_checksum_differs(self):
+        # The baseline has no ir_version, so the legacy checksum comparison
+        # decides, never VERSION_MISMATCH.
         stale_ir = {"checksum": "sha256:outdated000000000000000000000000"}
         _write_ir(self._protean_dir, stale_ir)
 
         result = check_staleness("publishing7.py", self._protean_dir)
 
         assert result.status == StalenessStatus.STALE
-
-    def test_stale_result_has_different_checksums(self):
-        stale_ir = {"checksum": "sha256:outdated000000000000000000000000"}
-        _write_ir(self._protean_dir, stale_ir)
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
         assert result.domain_checksum != result.stored_checksum
         assert result.stored_checksum == "sha256:outdated000000000000000000000000"
         assert result.domain_checksum is not None
-
-    def test_stale_result_has_ir_file_path(self):
-        stale_ir = {"checksum": "sha256:outdated000000000000000000000000"}
-        _write_ir(self._protean_dir, stale_ir)
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
         assert result.ir_file is not None
 
 
@@ -369,33 +325,17 @@ class TestCheckStalenessNoIR:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_no_ir_when_directory_empty(self):
-        # Directory not even created — no ir.json
-        result = check_staleness("publishing7.py", self._empty_dir)
+    @pytest.mark.parametrize("as_str", [False, True])
+    def test_no_ir_without_loading_the_domain(self, as_str):
+        # The domain module does not exist, so loading it would raise.
+        protean_dir = str(self._empty_dir) if as_str else self._empty_dir
+
+        result = check_staleness("no_such_staleness_domain.py", protean_dir)
 
         assert result.status == StalenessStatus.NO_IR
-
-    def test_no_ir_result_has_none_checksums(self):
-        result = check_staleness("publishing7.py", self._empty_dir)
-
         assert result.domain_checksum is None
         assert result.stored_checksum is None
         assert result.ir_file is None
-
-    def test_no_ir_with_str_path(self):
-        result = check_staleness("publishing7.py", str(self._empty_dir))
-
-        assert result.status == StalenessStatus.NO_IR
-
-    def test_no_ir_does_not_load_the_domain(self, monkeypatch):
-        def fail(_):
-            raise AssertionError("the domain must not be loaded")
-
-        monkeypatch.setattr("protean.ir.staleness.derive_domain", fail)
-
-        result = check_staleness("publishing7.py", self._empty_dir)
-
-        assert result.status == StalenessStatus.NO_IR
 
 
 # ---------------------------------------------------------------------------
@@ -417,73 +357,24 @@ class TestCheckStalenessVersionMismatch:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_version_mismatch_when_stored_version_differs(self):
-        # Older schema version → VERSION_MISMATCH, regardless of checksum.
+    @pytest.mark.parametrize("stored_version", ["0.0.9", "9.9.9"])
+    def test_version_mismatch_without_loading_the_domain(self, stored_version):
+        # Any version difference, older or newer, is a mismatch regardless of
+        # checksum. The domain module does not exist, so building the live IR
+        # would raise.
         _write_ir(
             self._protean_dir,
-            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
+            {"ir_version": stored_version, "checksum": "sha256:whatever"},
         )
 
-        result = check_staleness("publishing7.py", self._protean_dir)
+        result = check_staleness("no_such_staleness_domain.py", self._protean_dir)
 
         assert result.status == StalenessStatus.VERSION_MISMATCH
-
-    def test_version_mismatch_does_not_load_the_domain(self, monkeypatch):
-        _write_ir(
-            self._protean_dir,
-            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
-        )
-
-        def fail(_):
-            raise AssertionError("the domain must not be loaded")
-
-        monkeypatch.setattr("protean.ir.staleness.derive_domain", fail)
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
-        assert result.status == StalenessStatus.VERSION_MISMATCH
-
-    def test_version_mismatch_populates_versions(self):
-        _write_ir(
-            self._protean_dir,
-            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
-        )
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
-        assert result.stored_version == "0.0.9"
+        assert result.stored_version == stored_version
         assert result.current_version == SCHEMA_VERSION
         assert result.stored_checksum == "sha256:whatever"
-        assert result.ir_file is not None
-
-    def test_version_mismatch_when_stored_version_is_newer(self):
-        # The branch fires on ANY version difference, not only older baselines.
-        _write_ir(
-            self._protean_dir,
-            {"ir_version": "9.9.9", "checksum": "sha256:whatever"},
-        )
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
-        assert result.status == StalenessStatus.VERSION_MISMATCH
-        assert result.stored_version == "9.9.9"
-        assert result.current_version == SCHEMA_VERSION
-
-    def test_version_mismatch_short_circuits_before_building_live_ir(self, monkeypatch):
-        # The live IR is never built: derive_domain is not called at all.
-        def _fail(*args, **kwargs):
-            raise AssertionError("derive_domain must not be called on mismatch")
-
-        monkeypatch.setattr("protean.ir.staleness.derive_domain", _fail)
-        _write_ir(
-            self._protean_dir,
-            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
-        )
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
-        assert result.status == StalenessStatus.VERSION_MISMATCH
         assert result.domain_checksum is None
+        assert result.ir_file is not None
 
     def test_non_string_version_coerced_to_str(self):
         # A corrupt baseline with a non-string ir_version still yields a
@@ -499,31 +390,12 @@ class TestCheckStalenessVersionMismatch:
         assert result.stored_version == "0.1"
         assert isinstance(result.stored_version, str)
 
-    def test_same_version_matching_checksum_is_fresh(self):
-        # Negative #1: matching version + matching checksum → FRESH, not mismatch.
-        live_ir = _live_ir_for_test7()
-        assert live_ir["ir_version"] == SCHEMA_VERSION
-        _write_ir(self._protean_dir, live_ir)
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
-        assert result.status == StalenessStatus.FRESH
-
     def test_same_version_differing_checksum_is_stale(self):
         # Negative #1: matching version but stale content → STALE, not mismatch.
         _write_ir(
             self._protean_dir,
             {"ir_version": SCHEMA_VERSION, "checksum": "sha256:outdated"},
         )
-
-        result = check_staleness("publishing7.py", self._protean_dir)
-
-        assert result.status == StalenessStatus.STALE
-
-    def test_absent_version_falls_through_to_checksum(self):
-        # Negative #2: a bare baseline with no ir_version keeps legacy behavior
-        # (checksum comparison → STALE), never VERSION_MISMATCH.
-        _write_ir(self._protean_dir, {"checksum": "sha256:outdated"})
 
         result = check_staleness("publishing7.py", self._protean_dir)
 
@@ -569,57 +441,39 @@ class TestCheckCLIText:
         _write_ir(self._protean_dir, live_ir)
         return live_ir
 
-    def test_fresh_output_says_fresh(self):
+    def _check(self):
+        return runner.invoke(
+            app,
+            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
+        )
+
+    def test_fresh_exits_0_and_says_fresh(self):
         self._write_live_ir()
-        result = runner.invoke(
-            app,
-            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
-        )
-        assert "fresh" in result.output.lower()
+        result = self._check()
+        assert result.exit_code == 0
+        assert "IR is fresh." in result.output
 
-    def test_stale_output_says_stale(self):
-        _write_ir(self._protean_dir, {"checksum": "sha256:old"})
-        result = runner.invoke(
-            app,
-            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
-        )
-        assert "stale" in result.output.lower()
-
-    def test_no_ir_output_says_no_ir(self):
-        result = runner.invoke(
-            app,
-            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
-        )
-        assert (
-            "no materialized ir" in result.output.lower()
-            or "not found" in result.output.lower()
-        )
-
-    def test_stale_output_shows_update_hint(self):
-        _write_ir(self._protean_dir, {"checksum": "sha256:old"})
-        result = runner.invoke(
-            app,
-            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
-        )
+    def test_stale_exits_1_and_shows_checksums_and_update_hint(self):
+        _write_ir(self._protean_dir, {"checksum": "sha256:old" + "0" * 58})
+        result = self._check()
+        assert result.exit_code == 1
+        assert "IR is stale" in result.output
+        assert "stored:  sha256:old000000" in result.output
+        assert "current: sha256:" in result.output
         assert "protean ir show" in result.output
 
-    def test_stale_output_shows_checksums(self):
-        _write_ir(self._protean_dir, {"checksum": "sha256:old" + "0" * 58})
-        result = runner.invoke(
-            app,
-            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
-        )
-        assert "stored" in result.output.lower() or "current" in result.output.lower()
+    def test_no_ir_exits_2_and_says_no_ir(self):
+        result = self._check()
+        assert result.exit_code == 2
+        assert "no materialized ir" in result.output.lower()
 
-    def test_version_mismatch_output_names_both_versions(self):
+    def test_version_mismatch_exits_3_and_names_both_versions(self):
         _write_ir(
             self._protean_dir,
             {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
         )
-        result = runner.invoke(
-            app,
-            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
-        )
+        result = self._check()
+        assert result.exit_code == 3
         assert "version mismatch" in result.output.lower()
         assert "0.0.9" in result.output
         assert SCHEMA_VERSION in result.output
@@ -685,8 +539,7 @@ class TestCheckCLIJSON:
         _write_ir(self._protean_dir, live_ir)
         return live_ir
 
-    def test_json_output_is_valid_json(self):
-        self._write_live_ir()
+    def _check_json(self) -> dict:
         result = runner.invoke(
             app,
             [
@@ -702,115 +555,26 @@ class TestCheckCLIJSON:
         )
         parsed = json.loads(result.output)
         assert isinstance(parsed, dict)
+        return parsed
 
-    def test_json_fresh_has_correct_status(self):
-        self._write_live_ir()
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "check",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-                "-f",
-                "json",
-            ],
-        )
-        parsed = json.loads(result.output)
+    def test_json_fresh_has_status_checksums_and_null_versions(self):
+        live_ir = self._write_live_ir()
+        parsed = self._check_json()
         assert parsed["status"] == "fresh"
+        assert parsed["domain_checksum"] == live_ir["checksum"]
+        assert parsed["stored_checksum"] == live_ir["checksum"]
+        assert "ir_file" in parsed
+        # stored_version/current_version are only populated on a mismatch.
+        assert parsed["stored_version"] is None
+        assert parsed["current_version"] is None
 
     def test_json_stale_has_correct_status(self):
         _write_ir(self._protean_dir, {"checksum": "sha256:old"})
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "check",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-                "-f",
-                "json",
-            ],
-        )
-        parsed = json.loads(result.output)
-        assert parsed["status"] == "stale"
+        assert self._check_json()["status"] == "stale"
 
-    def test_json_no_ir_has_correct_status(self):
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "check",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-                "-f",
-                "json",
-            ],
-        )
-        parsed = json.loads(result.output)
+    def test_json_no_ir_has_status_and_null_checksums(self):
+        parsed = self._check_json()
         assert parsed["status"] == "no_ir"
-
-    def test_json_has_required_keys(self):
-        self._write_live_ir()
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "check",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-                "-f",
-                "json",
-            ],
-        )
-        parsed = json.loads(result.output)
-        assert "status" in parsed
-        assert "domain_checksum" in parsed
-        assert "stored_checksum" in parsed
-        assert "ir_file" in parsed
-
-    def test_json_fresh_checksums_match(self):
-        live_ir = self._write_live_ir()
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "check",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-                "-f",
-                "json",
-            ],
-        )
-        parsed = json.loads(result.output)
-        assert parsed["domain_checksum"] == live_ir["checksum"]
-        assert parsed["stored_checksum"] == live_ir["checksum"]
-
-    def test_json_no_ir_has_null_checksums(self):
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "check",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-                "-f",
-                "json",
-            ],
-        )
-        parsed = json.loads(result.output)
         assert parsed["domain_checksum"] is None
         assert parsed["stored_checksum"] is None
         assert parsed["ir_file"] is None
@@ -820,43 +584,10 @@ class TestCheckCLIJSON:
             self._protean_dir,
             {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
         )
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "check",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-                "-f",
-                "json",
-            ],
-        )
-        parsed = json.loads(result.output)
+        parsed = self._check_json()
         assert parsed["status"] == "version_mismatch"
         assert parsed["stored_version"] == "0.0.9"
         assert parsed["current_version"] == SCHEMA_VERSION
-
-    def test_json_fresh_has_null_versions(self):
-        # stored_version/current_version are only populated on a mismatch.
-        self._write_live_ir()
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "check",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-                "-f",
-                "json",
-            ],
-        )
-        parsed = json.loads(result.output)
-        assert parsed["stored_version"] is None
-        assert parsed["current_version"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -877,47 +608,6 @@ class TestCheckCLIExitCodes:
         yield
         sys.path[:] = original_path
         os.chdir(cwd)
-
-    def test_exit_0_when_fresh(self):
-        from protean.ir.builder import IRBuilder
-        from protean.utils.domain_discovery import derive_domain
-
-        domain = derive_domain("publishing7.py")
-        domain.init(traverse=False)
-        live_ir = IRBuilder(domain).build()
-        _write_ir(self._protean_dir, live_ir)
-
-        result = runner.invoke(
-            app,
-            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
-        )
-        assert result.exit_code == 0
-
-    def test_exit_1_when_stale(self):
-        _write_ir(self._protean_dir, {"checksum": "sha256:old"})
-        result = runner.invoke(
-            app,
-            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
-        )
-        assert result.exit_code == 1
-
-    def test_exit_2_when_no_ir(self):
-        result = runner.invoke(
-            app,
-            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
-        )
-        assert result.exit_code == 2
-
-    def test_exit_3_on_version_mismatch(self):
-        _write_ir(
-            self._protean_dir,
-            {"ir_version": "0.0.9", "checksum": "sha256:whatever"},
-        )
-        result = runner.invoke(
-            app,
-            ["ir", "check", "-d", "publishing7.py", "--dir", str(self._protean_dir)],
-        )
-        assert result.exit_code == 3
 
     def test_exit_2_on_invalid_domain(self, tmp_path):
         result = runner.invoke(
@@ -971,13 +661,14 @@ class TestCheckCLIExitCodes:
 
 
 # ---------------------------------------------------------------------------
-# TestPrintCheckTextBranches — direct unit tests for _print_check_text()
+# TestPrintCheckTextWithoutChecksumOrFile
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.no_test_domain
-class TestPrintCheckTextBranches:
-    """Cover the None-checksum and None-ir_file branches in _print_check_text."""
+class TestPrintCheckTextWithoutChecksumOrFile:
+    """The `protean ir check` text output leaves out the checksum and file lines
+    when the result has no checksum or IR file."""
 
     def test_fresh_with_none_checksum(self, capsys):
         from protean.cli.ir import _print_check_text
@@ -989,10 +680,13 @@ class TestPrintCheckTextBranches:
             stored_checksum=None,
             ir_file=None,
         )
-        # Should not raise; just prints "IR is fresh." without the checksum line
         _print_check_text(result)
 
-    def test_stale_with_none_stored_checksum(self):
+        captured = capsys.readouterr()
+        assert "IR is fresh." in captured.out
+        assert "checksum:" not in captured.out
+
+    def test_stale_with_none_stored_checksum(self, capsys):
         from protean.cli.ir import _print_check_text
         from protean.ir.staleness import StalenessResult, StalenessStatus
 
@@ -1002,8 +696,14 @@ class TestPrintCheckTextBranches:
             stored_checksum=None,
             ir_file=None,
         )
-        # All None — should not raise; prints stale message and hint
         _print_check_text(result)
+
+        captured = capsys.readouterr()
+        assert "IR is stale" in captured.out
+        assert "stored:" not in captured.out
+        assert "current:" not in captured.out
+        assert "file:" not in captured.out
+        assert "to update." in captured.out
 
     def test_no_ir_with_no_ir_file_uses_protean_dir(self, capsys):
         from protean.cli.ir import _print_check_text
@@ -1063,16 +763,6 @@ class TestStalenessDiagnostic:
     def _write_stale_ir(self) -> None:
         _write_ir(self._protean_dir, {"checksum": "sha256:outdated0000000000000000"})
 
-    def test_fresh_result_has_no_diagnostic(self):
-        # Negative: a fresh baseline has nothing to report.
-        result = StalenessResult(
-            status=StalenessStatus.FRESH,
-            domain_checksum="sha256:same",
-            stored_checksum="sha256:same",
-            ir_file=None,
-        )
-        assert staleness_diagnostic(result, domain_module="publishing7.py") is None
-
     def test_non_stale_statuses_have_no_diagnostic(self):
         # Negative: IR_STALE is scoped to STALE only. Iterate every other status
         # so a status added later is covered automatically (NO_IR and
@@ -1124,10 +814,13 @@ class TestStalenessDiagnostic:
         assert op["command"] in scripts
         entry = scripts[op["command"]].load()
 
-        # The staleness hook stages the regenerated file with `git add`; the tmp
-        # baseline is outside any work tree, so stub the staging out. The fix's
-        # file write is what clears staleness, not the staging.
-        monkeypatch.setattr("protean.cli.hooks._git_add", lambda path: None)
+        # The staleness hook stages the regenerated file with `git add`. Point
+        # git at a repository around the tmp baseline, so the staging runs for
+        # real without touching the repository the tests run in.
+        work_tree = self._protean_dir.parent
+        subprocess.run(["git", "init", str(work_tree)], capture_output=True, check=True)
+        monkeypatch.setenv("GIT_DIR", str(work_tree / ".git"))
+        monkeypatch.setenv("GIT_WORK_TREE", str(work_tree))
         # Dispatch exactly what the diagnostic names (`protean-check-staleness
         # --fix`), plus the --domain/--dir context an agent supplies.
         argv = [
@@ -1142,6 +835,14 @@ class TestStalenessDiagnostic:
         with pytest.raises(SystemExit) as exc:
             entry()
         assert exc.value.code == 0
+
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        assert staged == [".protean/ir.json"]
 
         after = check_staleness("publishing7.py", self._protean_dir)
         assert after.status == StalenessStatus.FRESH

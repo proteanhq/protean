@@ -12,7 +12,7 @@ from protean.ir.generators.catalog import (
 )
 
 # ---------------------------------------------------------------------------
-# Helpers — composable IR builders
+# Helpers: composable IR builders
 # ---------------------------------------------------------------------------
 
 
@@ -141,13 +141,15 @@ def _ir(
 
 
 class TestEmptyIR:
-    def test_empty_ir(self):
-        result = generate_catalog({})
-        assert "No clusters found" in result
-
-    def test_empty_clusters(self):
-        result = generate_catalog({"clusters": {}})
-        assert "No clusters found" in result
+    @pytest.mark.parametrize(
+        "ir",
+        [
+            pytest.param({}, id="empty_ir"),
+            pytest.param({"clusters": {}}, id="empty_clusters"),
+        ],
+    )
+    def test_no_clusters_says_so(self, ir):
+        assert "No clusters found" in generate_catalog(ir)
 
 
 class TestFieldTable:
@@ -242,17 +244,18 @@ class TestEventRendering:
         result = generate_catalog(ir)
         assert "**Version**: 2" in result
 
-    def test_event_published_flag(self):
-        evts = _event("app.OrderPlaced", published=True)
+    @pytest.mark.parametrize(
+        "published, expected",
+        [
+            pytest.param(True, "**Published**: Yes", id="published"),
+            pytest.param(False, "**Published**: No", id="not_published"),
+        ],
+    )
+    def test_event_published_flag(self, published, expected):
+        evts = _event("app.OrderPlaced", published=published)
         ir = _ir(clusters=_cluster("app.Order", events=evts))
         result = generate_catalog(ir)
-        assert "**Published**: Yes" in result
-
-    def test_event_not_published(self):
-        evts = _event("app.OrderPlaced", published=False)
-        ir = _ir(clusters=_cluster("app.Order", events=evts))
-        result = generate_catalog(ir)
-        assert "**Published**: No" in result
+        assert expected in result
 
     def test_fact_event_flag(self):
         evts = _event("app.OrderFact", is_fact_event=True)
@@ -419,16 +422,15 @@ class TestContractSummary:
         pc_pos = result.index("PaymentConfirmed")
         assert op_pos < pc_pos
 
-    def test_no_contracts_no_section(self):
-        ir = _ir(clusters=_cluster("app.Order"))
-        result = generate_catalog(ir)
-        assert "Published Event Contracts" not in result
-
-    def test_empty_contracts_list_no_section(self):
-        ir = _ir(
-            clusters=_cluster("app.Order"),
-            contracts={"events": []},
-        )
+    @pytest.mark.parametrize(
+        "contracts",
+        [
+            pytest.param(None, id="no_contracts"),
+            pytest.param({"events": []}, id="empty_contracts_list"),
+        ],
+    )
+    def test_no_published_contracts_no_section(self, contracts):
+        ir = _ir(clusters=_cluster("app.Order"), contracts=contracts)
         result = generate_catalog(ir)
         assert "Published Event Contracts" not in result
 
@@ -534,11 +536,6 @@ class TestFullIntegration:
         result = generate_catalog(full_ir)
         assert result.startswith("# Event & Command Catalog")
 
-    def test_both_clusters(self, full_ir: dict):
-        result = generate_catalog(full_ir)
-        assert "## Order" in result
-        assert "## Payment" in result
-
     def test_all_events(self, full_ir: dict):
         result = generate_catalog(full_ir)
         assert "OrderPlaced" in result
@@ -550,10 +547,6 @@ class TestFullIntegration:
         assert "PlaceOrder" in result
         assert "CancelOrder" in result
         assert "ConfirmPayment" in result
-
-    def test_contracts_section(self, full_ir: dict):
-        result = generate_catalog(full_ir)
-        assert "Published Event Contracts" in result
 
     def test_field_tables(self, full_ir: dict):
         result = generate_catalog(full_ir)

@@ -223,17 +223,50 @@ class TestPackageScope:
 
 
 class TestRoleTags:
-    def test_command_handler_method(self, index):
-        assert (
-            index.role_of(elements.WalletCommandHandler, "open_wallet")
-            is MethodRole.COMMAND_HANDLER_METHOD
-        )
-
-    def test_repository_method(self, index):
-        assert (
-            index.role_of(elements.WalletRepository, "find_by_label")
-            is MethodRole.REPOSITORY_METHOD
-        )
+    @pytest.mark.parametrize(
+        ("element", "method", "role"),
+        [
+            pytest.param(
+                elements.WalletCommandHandler,
+                "open_wallet",
+                MethodRole.COMMAND_HANDLER_METHOD,
+                id="command-handler-method",
+            ),
+            pytest.param(
+                elements.WalletRepository,
+                "find_by_label",
+                MethodRole.REPOSITORY_METHOD,
+                id="repository-method",
+            ),
+            # ``EVENT_SOURCED_REPOSITORY`` is a separate element type from
+            # ``REPOSITORY`` and carries the same role.
+            pytest.param(
+                elements.WalletEventSourcedRepository,
+                "find_snapshot",
+                MethodRole.REPOSITORY_METHOD,
+                id="event-sourced-repository-method",
+            ),
+            # A process manager handles events with ``@handle``; the vocabulary
+            # has no separate tag for it, so it shares the event-handler role.
+            pytest.param(
+                elements.WalletProcessManager,
+                "on_opened",
+                MethodRole.EVENT_HANDLER_METHOD,
+                id="process-manager-handler",
+            ),
+            # Underscore keeps a method out of the two *name*-derived roles
+            # only. Protean registers a decorated private method as a handler,
+            # so the index says it is one.
+            pytest.param(
+                elements.WalletEventHandler,
+                "_audit",
+                MethodRole.EVENT_HANDLER_METHOD,
+                id="private-decorated-handler",
+            ),
+        ],
+    )
+    def test_a_method_is_tagged_with_its_role(self, index, element, method, role):
+        assert index.role_of(element, method) is role
 
     def test_aggregate_behavior_and_apply_are_not_swapped(self, index):
         """The one pairing that is easy to get backwards."""
@@ -257,31 +290,6 @@ class TestRoleTags:
         behavior. A wrong tag is worse than no tag."""
         for name in ("balance_non_negative", "label", "describe", "__str__"):
             assert index.role_of(elements.Wallet, name) is None
-
-    def test_event_sourced_repository_methods_are_repository_methods(self, index):
-        """``EVENT_SOURCED_REPOSITORY`` is a separate element type from
-        ``REPOSITORY`` and carries the same role."""
-        assert (
-            index.role_of(elements.WalletEventSourcedRepository, "find_snapshot")
-            is MethodRole.REPOSITORY_METHOD
-        )
-
-    def test_process_manager_handlers_are_event_handler_methods(self, index):
-        """A process manager handles events with ``@handle``; the vocabulary
-        has no separate tag for it, so it shares the event-handler role."""
-        assert (
-            index.role_of(elements.WalletProcessManager, "on_opened")
-            is MethodRole.EVENT_HANDLER_METHOD
-        )
-
-    def test_a_private_name_does_not_block_a_decorator_derived_role(self, index):
-        """Underscore keeps a method out of the two *name*-derived roles only.
-        Protean registers a decorated private method as a handler, so the index
-        says it is one."""
-        assert (
-            index.role_of(elements.WalletEventHandler, "_audit")
-            is MethodRole.EVENT_HANDLER_METHOD
-        )
 
     def test_on_reads_as_handle_off_the_projector_too(self, index):
         """``on`` is not a projector-only spelling: it is a literal alias of
@@ -386,27 +394,27 @@ class TestQualnameBinding:
         assert index.class_entry(TEST_MODULE, "Duplicate") is not None
         assert index.class_entry(TEST_MODULE, "no_such_fn.<locals>.Duplicate") is None
 
-    def test_class_with_an_empty_qualname_is_skipped(self, index):
-        """A dynamically built class can be nameless. Matching on its final
-        name segment would then match nothing useful, so it is refused up
-        front."""
-        nameless = type("", (), {"__module__": TEST_MODULE})
-
-        assert nameless.__qualname__ == ""
-        assert index.element_class_entry(nameless) is None
-        assert index.element_methods(nameless) == ()
-
-    def test_class_with_a_non_string_qualname_is_skipped(self, index):
-        """CPython refuses a non-string ``__qualname__`` on a real class, but
-        ``element_class_entry`` only requires something that quacks like one
-        (``__module__``/``__qualname__`` attributes), so a test double or
-        other non-class object can carry a non-string qualname. The truthy,
-        non-string case must be refused before the ``"." in qualname`` check,
-        which would otherwise raise ``TypeError`` on it."""
-        fake_cls = SimpleNamespace(__module__=TEST_MODULE, __qualname__=42)
-
-        assert index.element_class_entry(fake_cls) is None
-        assert index.element_methods(fake_cls) == ()
+    @pytest.mark.parametrize(
+        "cls",
+        [
+            # A dynamically built class can be nameless. Matching on its final
+            # name segment would then match nothing useful, so it is refused up
+            # front.
+            pytest.param(type("", (), {"__module__": TEST_MODULE}), id="empty"),
+            # CPython refuses a non-string ``__qualname__`` on a real class, but
+            # ``element_class_entry`` only requires something with
+            # ``__module__``/``__qualname__`` attributes, so a test double can
+            # carry one. It must be refused before the ``"." in qualname``
+            # check, which would otherwise raise ``TypeError`` on it.
+            pytest.param(
+                SimpleNamespace(__module__=TEST_MODULE, __qualname__=42),
+                id="non-string",
+            ),
+        ],
+    )
+    def test_class_with_an_unusable_qualname_is_skipped(self, index, cls):
+        assert index.element_class_entry(cls) is None
+        assert index.element_methods(cls) == ()
 
 
 class TestRebuiltElements:

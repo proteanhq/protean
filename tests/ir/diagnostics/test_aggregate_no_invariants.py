@@ -1,5 +1,7 @@
 """Diagnostics: TestAggregateNoInvariants."""
 
+import pytest
+
 from protean import Domain
 from protean.core.entity import invariant
 from protean.exceptions import ValidationError
@@ -41,35 +43,18 @@ class TestAggregateNoInvariants:
         assert "protean-overview" in d["teaching_skills"]
         assert d["teaching_skills"] == sorted(d["teaching_skills"])
 
-    def test_post_invariant_not_flagged(self):
-        domain = Domain(name="PostInvariant", root_path=".")
+    @pytest.mark.parametrize("kind", ["pre", "post"])
+    def test_aggregate_with_invariant_not_flagged(self, kind):
+        domain = Domain(name="WithInvariant", root_path=".")
 
         @domain.aggregate
         class Order:
             total = Float()
 
-            @invariant.post
+            @getattr(invariant, kind)
             def total_is_non_negative(self):
                 if self.total is not None and self.total < 0:
                     raise ValidationError({"total": ["must be non-negative"]})
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        codes = [d["code"] for d in ir["diagnostics"]]
-        assert "AGGREGATE_NO_INVARIANTS" not in codes
-
-    def test_pre_invariant_not_flagged(self):
-        domain = Domain(name="PreInvariant", root_path=".")
-
-        @domain.aggregate
-        class Order:
-            total = Float()
-
-            @invariant.pre
-            def total_present(self):
-                if self.total is None:
-                    raise ValidationError({"total": ["is required"]})
 
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()

@@ -43,19 +43,6 @@ class TestSchemaPublication:
         _runtime_schema_files(),
         ids=lambda p: p.parent.name,
     )
-    def test_published_copy_exists(self, runtime_schema: Path):
-        version_dir = runtime_schema.parent.name
-        published = _PUBLISHED_SCHEMA_ROOT / version_dir / "schema.json"
-        assert published.exists(), (
-            f"Runtime schema {runtime_schema} has no published copy at {published}. "
-            "Publish it by copying the runtime schema verbatim."
-        )
-
-    @pytest.mark.parametrize(
-        "runtime_schema",
-        _runtime_schema_files(),
-        ids=lambda p: p.parent.name,
-    )
     def test_published_copy_is_byte_identical(self, runtime_schema: Path):
         version_dir = runtime_schema.parent.name
         published = _PUBLISHED_SCHEMA_ROOT / version_dir / "schema.json"

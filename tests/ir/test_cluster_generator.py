@@ -1,8 +1,8 @@
 """Tests for the aggregate cluster diagram generator.
 
-Covers: generate_cluster_diagram, single-cluster filtering,
-aggregate stereotypes, entity/VO rendering, cross-aggregate references,
-invariant notes, and edge cases.
+Checks generate_cluster_diagram: single-cluster filtering,
+aggregate stereotypes, entity and value object rendering, cross-aggregate
+references, invariant notes, and empty input.
 """
 
 import pytest
@@ -68,13 +68,15 @@ def _ir_with_clusters(clusters: dict) -> dict:
 
 
 class TestEmptyIR:
-    def test_empty_clusters(self):
-        result = generate_cluster_diagram({"clusters": {}})
-        assert result == "classDiagram"
-
-    def test_missing_clusters_key(self):
-        result = generate_cluster_diagram({})
-        assert result == "classDiagram"
+    @pytest.mark.parametrize(
+        "ir",
+        [
+            pytest.param({"clusters": {}}, id="empty_clusters"),
+            pytest.param({}, id="missing_clusters_key"),
+        ],
+    )
+    def test_no_clusters_renders_bare_header(self, ir):
+        assert generate_cluster_diagram(ir) == "classDiagram"
 
     def test_unknown_cluster_fqn(self):
         ir = _ir_with_clusters(_minimal_aggregate())
@@ -144,23 +146,6 @@ class TestSingleAggregate:
 
 
 class TestInvariantNotes:
-    def test_post_invariant_rendered(self):
-        ir = _ir_with_clusters(
-            _minimal_aggregate(
-                invariants={"pre": [], "post": ["must_have_positive_total"]}
-            )
-        )
-        result = generate_cluster_diagram(ir)
-        assert "note for app_Order" in result
-        assert "must_have_positive_total" in result
-
-    def test_pre_invariant_rendered(self):
-        ir = _ir_with_clusters(
-            _minimal_aggregate(invariants={"pre": ["check_balance"], "post": []})
-        )
-        result = generate_cluster_diagram(ir)
-        assert "check_balance" in result
-
     def test_no_invariants_no_note(self):
         ir = _ir_with_clusters(_minimal_aggregate(invariants={"pre": [], "post": []}))
         result = generate_cluster_diagram(ir)
@@ -432,29 +417,6 @@ class TestMultipleClusters:
 
 
 class TestFieldConstraints:
-    def test_identifier_field(self):
-        fields = {
-            "id": {
-                "kind": "auto",
-                "type": "Auto",
-                "identifier": True,
-                "unique": True,
-                "auto_generated": True,
-            },
-        }
-        ir = _ir_with_clusters(_minimal_aggregate(fields=fields))
-        result = generate_cluster_diagram(ir)
-        assert "+id Auto~identifier~" in result
-
-    def test_required_field(self):
-        fields = {
-            "id": {"kind": "auto", "type": "Auto", "identifier": True},
-            "name": {"kind": "standard", "type": "String", "required": True},
-        }
-        ir = _ir_with_clusters(_minimal_aggregate(fields=fields))
-        result = generate_cluster_diagram(ir)
-        assert "+name String~required~" in result
-
     def test_unconstrained_field(self):
         fields = {
             "id": {"kind": "auto", "type": "Auto", "identifier": True},

@@ -21,7 +21,7 @@ from protean.core.projection import BaseProjection
 from protean.core.value_object import BaseValueObject
 from protean.fields import Float, HasMany, Identifier, Integer, String, ValueObject
 from protean.ir.generators.avro import generate_avro_schema, generate_avro_schemas
-from protean.ir.generators.protobuf import generate_proto_schema
+from protean.ir.generators.protobuf import generate_proto_schema, generate_proto_schemas
 from protean.ir.generators.schema_writer import (
     _relative_schema_path,
     write_all_schemas,
@@ -68,21 +68,18 @@ class TestAvroMapping:
         assert types["when"] == {"type": "long", "logicalType": "timestamp-millis"}
         assert types["day"] == {"type": "int", "logicalType": "date"}
 
-    def test_optional_is_null_first_union_with_default(self):
-        schema = generate_avro_schema(_elem("E", {"note": _f("String")}))
+    @pytest.mark.parametrize(
+        "spec",
+        [_f("String"), _f("String", default="pending")],
+        ids=["no-default", "non-null-default"],
+    )
+    def test_optional_is_null_first_union_defaulting_to_null(self, spec):
+        # Avro requires a union default to match the first branch (null), so a
+        # non-null IR default must not leak onto a null-first union.
+        schema = generate_avro_schema(_elem("E", {"note": spec}))
         note = next(f for f in schema["fields"] if f["name"] == "note")
         assert note["type"] == ["null", "string"]
         assert note["default"] is None
-
-    def test_optional_with_non_null_default_still_defaults_to_null(self):
-        # Avro requires a union default to match the first branch (null), so a
-        # non-null IR default must not leak onto a null-first union.
-        schema = generate_avro_schema(
-            _elem("E", {"status": _f("String", default="pending")})
-        )
-        status = next(f for f in schema["fields"] if f["name"] == "status")
-        assert status["type"] == ["null", "string"]
-        assert status["default"] is None
 
     def test_required_field_has_no_union(self):
         schema = generate_avro_schema(_elem("E", {"name": _f("String", required=True)}))
@@ -101,13 +98,6 @@ class TestAvroMapping:
         )
         field = next(f for f in schema["fields"] if f["name"] == "new_name")
         assert field["aliases"] == ["old_name"]
-
-    def test_list_becomes_array(self):
-        schema = generate_avro_schema(
-            _elem("E", {"tags": {"kind": "list", "type": "List", "required": True}})
-        )
-        tags = next(f for f in schema["fields"] if f["name"] == "tags")
-        assert tags["type"] == {"type": "array", "items": "string"}
 
 
 class TestAvroRoundTrip:
@@ -328,39 +318,18 @@ class TestAvroComplexFields:
         assert types["meta"] == {"type": "map", "values": "string"}
         assert types["owner"] == "string"
 
-    def test_list_with_content_type(self):
-        schema = generate_avro_schema(
-            _elem(
-                "E",
-                {
-                    "nums": {
-                        "kind": "list",
-                        "type": "List",
-                        "content_type": "Integer",
-                        "required": True,
-                    }
-                },
-            )
-        )
-        nums = next(f for f in schema["fields"] if f["name"] == "nums")
-        assert nums["type"] == {"type": "array", "items": "long"}
-
-    def test_list_of_identifier_items_are_plain_strings(self):
-        schema = generate_avro_schema(
-            _elem(
-                "E",
-                {
-                    "ids": {
-                        "kind": "list",
-                        "type": "List",
-                        "content_type": "Identifier",
-                        "required": True,
-                    }
-                },
-            )
-        )
-        ids = next(f for f in schema["fields"] if f["name"] == "ids")
-        assert ids["type"] == {"type": "array", "items": "string"}
+    @pytest.mark.parametrize(
+        ("content_type", "items"),
+        [(None, "string"), ("Integer", "long"), ("Identifier", "string")],
+        ids=["no-content-type", "integer-items", "identifier-items-are-plain-strings"],
+    )
+    def test_list_becomes_array_of_its_content_type(self, content_type, items):
+        field = {"kind": "list", "type": "List", "required": True}
+        if content_type is not None:
+            field["content_type"] = content_type
+        schema = generate_avro_schema(_elem("E", {"values": field}))
+        values = next(f for f in schema["fields"] if f["name"] == "values")
+        assert values["type"] == {"type": "array", "items": items}
 
     def test_unresolvable_target_falls_back_to_map(self):
         schema = generate_avro_schema(
@@ -382,9 +351,6 @@ class TestGenerateAllSchemas:
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.init(traverse=False)
         ir = test_domain.to_ir()
-
-        from protean.ir.generators.avro import generate_avro_schemas
-        from protean.ir.generators.protobuf import generate_proto_schemas
 
         avro = generate_avro_schemas(ir)
         proto = generate_proto_schemas(ir)
@@ -570,18 +536,13 @@ class TestFlatElementSkips:
             "projections": {},
         }
 
-    def test_generate_avro_schemas_skips(self):
-        from protean.ir.generators.avro import generate_avro_schemas
-
-        schemas = generate_avro_schemas(self._ir())
-        assert "app.C" in schemas
-        assert "app.NoFields" not in schemas
-        assert "app.NotData" not in schemas
-
-    def test_generate_proto_schemas_skips(self):
-        from protean.ir.generators.protobuf import generate_proto_schemas
-
-        schemas = generate_proto_schemas(self._ir())
+    @pytest.mark.parametrize(
+        "generate",
+        [generate_avro_schemas, generate_proto_schemas],
+        ids=["avro", "protobuf"],
+    )
+    def test_generator_skips_fieldless_and_non_data_elements(self, generate):
+        schemas = generate(self._ir())
         assert "app.C" in schemas
         assert "app.NoFields" not in schemas
         assert "app.NotData" not in schemas

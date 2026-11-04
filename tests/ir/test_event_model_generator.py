@@ -1,9 +1,9 @@
 """Tests for the EventModeling slice-timeline generator.
 
-Covers: generate_event_model_slice and generate_event_model_timeline —
-the command -> aggregate -> event -> consumer slices, consumer
-classification (read models vs automations), fact-event exclusion,
-multi-slice ordering, and the empty/edge branches.
+Checks generate_event_model_slice, generate_event_model_timeline and the
+per-slice helpers: the command -> aggregate -> event -> consumer slices,
+consumer classification (read models vs automations), fact-event exclusion,
+multi-slice ordering, annotations, and empty or partial clusters.
 """
 
 import pytest
@@ -21,7 +21,7 @@ from protean.ir.generators.event_model import (
 )
 
 # ------------------------------------------------------------------
-# Fixtures — composable IR builders
+# Fixtures: composable IR builders
 # ------------------------------------------------------------------
 
 
@@ -149,19 +149,29 @@ def _projector(fqn: str, projector_for: str, handlers: dict) -> dict:
 
 
 class TestEmptyIR:
-    def test_timeline_empty_clusters(self):
-        assert generate_event_model_timeline(_ir()) == "flowchart LR"
+    @pytest.mark.parametrize(
+        "ir",
+        [
+            pytest.param(_ir(), id="empty_clusters"),
+            pytest.param({}, id="missing_clusters_key"),
+        ],
+    )
+    def test_timeline_without_clusters_renders_bare_header(self, ir):
+        assert generate_event_model_timeline(ir) == "flowchart LR"
 
-    def test_timeline_missing_clusters_key(self):
-        assert generate_event_model_timeline({}) == "flowchart LR"
-
-    def test_slice_empty_ir(self):
-        assert generate_event_model_slice({}, "app.Order") == "flowchart LR"
-
-    def test_slice_unknown_cluster(self):
-        clusters = {"app.Order": _cluster("app.Order")}
-        result = generate_event_model_slice(_ir(clusters=clusters), "app.Missing")
-        assert result == "flowchart LR"
+    @pytest.mark.parametrize(
+        "ir, cluster_fqn",
+        [
+            pytest.param({}, "app.Order", id="empty_ir"),
+            pytest.param(
+                _ir(clusters={"app.Order": _cluster("app.Order")}),
+                "app.Missing",
+                id="unknown_cluster",
+            ),
+        ],
+    )
+    def test_slice_for_missing_cluster_renders_bare_header(self, ir, cluster_fqn):
+        assert generate_event_model_slice(ir, cluster_fqn) == "flowchart LR"
 
     def test_slice_empty_cluster_still_renders_the_aggregate(self):
         # An empty cluster mapping is present, not absent, so the slice draws
@@ -401,45 +411,6 @@ class TestConsumerClassification:
 
 
 class TestConsumerShapesAndLifecycle:
-    def test_read_model_and_automation_have_distinct_shapes(self):
-        """A read model is a cylinder; an automation is a hexagon."""
-        clusters = {
-            "app.Order": _cluster(
-                "app.Order",
-                events={
-                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
-                },
-                event_handlers={
-                    "app.OrderNotifier": _event_handler(
-                        "app.OrderNotifier",
-                        {"App.OrderPlaced.v1": ["send_email"]},
-                    ),
-                },
-            ),
-        }
-        projections = {
-            "app.OrderSummary": _projection(
-                "app.OrderSummary",
-                {
-                    "app.OrderSummaryProjector": _projector(
-                        "app.OrderSummaryProjector",
-                        "app.OrderSummary",
-                        {"App.OrderPlaced.v1": ["on_placed"]},
-                    ),
-                },
-            ),
-        }
-        result = generate_event_model_slice(
-            _ir(clusters=clusters, projections=projections), "app.Order"
-        )
-        # Read model: cylinder [(...)]
-        assert (
-            "rm_app_Order_app_OrderSummaryProjector[(OrderSummaryProjector → OrderSummary)]"
-            in result
-        )
-        # Automation: hexagon {{...}} — a different shape from the read model
-        assert "auto_app_Order_app_OrderNotifier{{OrderNotifier}}" in result
-
     def test_process_manager_start_end_lifecycle_is_rendered(self):
         """A PM's start/end shows in its label and on the edge from the event."""
         clusters = {
@@ -816,11 +787,11 @@ class TestConsumerIndexing:
 
 
 # ------------------------------------------------------------------
-# Edge clusters: commands-only, events-only
+# Clusters with only commands or only events
 # ------------------------------------------------------------------
 
 
-class TestEdgeClusters:
+class TestClustersWithOnlyCommandsOrEvents:
     def test_commands_without_events(self):
         clusters = {
             "app.Order": _cluster(
@@ -856,16 +827,6 @@ class TestEdgeClusters:
 
 
 class TestSliceGwt:
-    def test_ac1_given_when_then_in_order(self):
-        """The GWT block names the aggregate and reads Given, When, Then."""
-        result = generate_slice_gwt(_headline_ir(), "app.Order")
-        assert "> **Given** Order" in result
-        assert "> **When** PlaceOrder" in result
-        assert "> **Then** OrderPlaced" in result
-        # Given leads, When next, Then last.
-        assert result.index("**Given**") < result.index("**When**")
-        assert result.index("**When**") < result.index("**Then**")
-
     def test_ac2_one_command_one_event_headline(self):
         """The headline slice pairs the command and event on the When/Then lines."""
         result = generate_slice_gwt(_headline_ir(), "app.Order")
@@ -891,8 +852,8 @@ class TestSliceGwt:
         assert "_OrderFact" not in result
 
     def test_only_fact_events_has_no_then_line(self):
-        # events dict is non-empty, but every event is fact-filtered, so the
-        # Then line is dropped: exercises the empty-after-filter branch.
+        # The events dict is non-empty, but every event is a fact event and
+        # is filtered out, so the Then line is dropped.
         clusters = {
             "app.Order": _cluster(
                 "app.Order",
@@ -1183,21 +1144,21 @@ class TestUnmatchedAnnotations:
         assert report.endswith("- `bad ## Forged x`")
         assert "\n## Forged" not in report
 
-    def test_render_report_fences_backticks_in_a_key(self):
-        # A backtick in a key (valid in a TOML quoted key) must not cut the
-        # code span short: the fence grows past the longest run inside.
-        report = render_unmatched_annotations(["app.`Odd`"])
-        assert report.endswith("- `` app.`Odd` ``")
-
-    def test_render_report_fences_a_backtick_run_in_a_key(self):
-        # The fence is one backtick longer than the longest run in the key.
-        report = render_unmatched_annotations(["a``b```c"])
-        assert report.endswith("- ````a``b```c````")
-
-    def test_render_report_renders_an_empty_key(self):
-        # An empty key still needs a well-formed span, so it is padded.
-        report = render_unmatched_annotations([""])
-        assert report.endswith("- `  `")
+    @pytest.mark.parametrize(
+        "key, expected_line",
+        [
+            # A backtick in a key (valid in a TOML quoted key) must not cut the
+            # code span short: the fence grows past the longest run inside.
+            pytest.param("app.`Odd`", "- `` app.`Odd` ``", id="backticks_in_key"),
+            # The fence is one backtick longer than the longest run in the key.
+            pytest.param("a``b```c", "- ````a``b```c````", id="backtick_run_in_key"),
+            # An empty key still needs a well-formed span, so it is padded.
+            pytest.param("", "- `  `", id="empty_key"),
+        ],
+    )
+    def test_render_report_fences_each_key_as_inline_code(self, key, expected_line):
+        report = render_unmatched_annotations([key])
+        assert report.endswith(expected_line)
 
 
 # ------------------------------------------------------------------
@@ -1211,10 +1172,43 @@ class TestSliceAnnotations:
         # the no-file baseline byte-identical to the pre-annotation render.
         assert generate_slice_annotations(_headline_ir(), "app.Order", {}) == ""
 
-    def test_aggregate_note_renders_in_its_slice(self):
-        annotations = {"app.Order": {"note": "The fulfillment boundary."}}
+    @pytest.mark.parametrize(
+        "key, note, expected",
+        [
+            pytest.param(
+                "app.Order",
+                "The fulfillment boundary.",
+                "> **Note:** The fulfillment boundary.",
+                id="aggregate",
+            ),
+            pytest.param(
+                "app.PlaceOrder",
+                "Triggered by checkout.",
+                "> **Note:** Triggered by checkout.",
+                id="command",
+            ),
+            pytest.param(
+                "app.OrderPlaced",
+                "Gates the shipment slice.",
+                "> **Note:** Gates the shipment slice.",
+                id="event",
+            ),
+            # app.OrderSummaryProjector is a consumer drawn in the app.Order slice.
+            pytest.param(
+                "app.OrderSummaryProjector",
+                "Feeds the ops dashboard.",
+                "> **Note:** Feeds the ops dashboard.",
+                id="drawn_consumer",
+            ),
+            pytest.param("app.Ghost", "Orphaned.", "", id="unmatched_key"),
+        ],
+    )
+    def test_note_renders_only_for_an_element_drawn_in_the_slice(
+        self, key, note, expected
+    ):
+        annotations = {key: {"note": note}}
         result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
-        assert result == "> **Note:** The fulfillment boundary."
+        assert result == expected
 
     def test_owner_renders_when_present(self):
         annotations = {
@@ -1231,22 +1225,6 @@ class TestSliceAnnotations:
         }
         result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
         assert result == ("> **Note:** First line.\n>\n> Second paragraph.")
-
-    def test_note_keyed_by_command_renders_in_the_slice(self):
-        annotations = {"app.PlaceOrder": {"note": "Triggered by checkout."}}
-        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
-        assert result == "> **Note:** Triggered by checkout."
-
-    def test_note_keyed_by_event_renders_in_the_slice(self):
-        annotations = {"app.OrderPlaced": {"note": "Gates the shipment slice."}}
-        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
-        assert result == "> **Note:** Gates the shipment slice."
-
-    def test_unmatched_key_renders_nothing_in_the_slice(self):
-        annotations = {"app.Ghost": {"note": "Orphaned."}}
-        assert (
-            generate_slice_annotations(_headline_ir(), "app.Order", annotations) == ""
-        )
 
     def test_multiple_notes_render_in_sorted_fqn_order(self):
         annotations = {
@@ -1278,14 +1256,6 @@ class TestSliceAnnotations:
         annotations = {"app.Order": {"note": "The fulfillment boundary."}}
         assert generate_slice_annotations(ir, "app.Order", annotations) != ""
         assert generate_slice_annotations(ir, "app.Shipment", annotations) == ""
-
-    def test_note_keyed_by_a_drawn_consumer_renders_in_the_slice(self):
-        # app.OrderSummaryProjector is a consumer drawn in the app.Order slice.
-        annotations = {
-            "app.OrderSummaryProjector": {"note": "Feeds the ops dashboard."}
-        }
-        result = generate_slice_annotations(_headline_ir(), "app.Order", annotations)
-        assert result == "> **Note:** Feeds the ops dashboard."
 
     def test_owner_with_embedded_newline_stays_quoted(self):
         # A TOML string may carry newlines. Every owner line must be
@@ -1347,41 +1317,16 @@ class TestEventModelSections:
         sections = generate_event_model_sections(_headline_ir(), {})
         assert [section.notes for section in sections] == [""]
 
-    def test_consumer_indexes_are_built_once_for_the_whole_render(self, monkeypatch):
+    def test_consumer_indexes_are_built_once_for_the_whole_render(self):
         # The point of this entry point: a render costs one pass over the
-        # projections and flows, not one per slice.
-        from protean.ir.generators import event_model
-
-        calls = {"read_models": 0, "automations": 0}
-
-        real_read_model_index = event_model._read_model_index
-        real_automation_index = event_model._automation_index
-
-        def counted_read_model_index(ir):
-            calls["read_models"] += 1
-            return real_read_model_index(ir)
-
-        def counted_automation_index(ir):
-            calls["automations"] += 1
-            return real_automation_index(ir)
-
-        monkeypatch.setattr(event_model, "_read_model_index", counted_read_model_index)
-        monkeypatch.setattr(event_model, "_automation_index", counted_automation_index)
-
-        clusters = {
-            "app.Order": _cluster(
-                "app.Order",
-                events={
-                    "app.OrderPlaced": _event("app.OrderPlaced", "App.OrderPlaced.v1"),
-                },
-            ),
-            "app.Shipment": _cluster("app.Shipment"),
-            "app.Payment": _cluster("app.Payment"),
-        }
+        # projections and process managers, not one per slice.
+        ir = _indexing_ir(1)
+        ir["clusters"]["app.Shipment"] = _cluster("app.Shipment")
+        ir["clusters"]["app.Payment"] = _cluster("app.Payment")
         annotations = {"app.Order": {"note": "The boundary."}}
-        sections = event_model.generate_event_model_sections(
-            _ir(clusters=clusters), annotations
-        )
+
+        sections = generate_event_model_sections(ir, annotations)
 
         assert len(sections) == 3
-        assert calls == {"read_models": 1, "automations": 1}
+        assert ir["projections"].scans == 1
+        assert ir["flows"]["process_managers"].scans == 1

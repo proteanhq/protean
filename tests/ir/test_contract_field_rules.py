@@ -8,9 +8,11 @@ element. For a published event's fields, both lists must flag the same breaks.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -308,43 +310,40 @@ class TestAddedFields:
 
 
 class TestReportFieldName:
-    def test_same_name_type_change_names_the_field(self):
-        report = _report(_build(qty=Integer()), _build(qty=String()))
-
-        assert [(c.change_type, c.field_name) for c in report.breaking_changes] == [
-            ("field_type_changed", "qty")
-        ]
-
-    def test_same_name_shape_change_names_the_field(self):
-        report = _report(
-            _build(amount=Decimal(precision=19, scale=2)),
-            _build(amount=Decimal(precision=19, scale=4)),
-        )
-
-        assert [(c.change_type, c.field_name) for c in report.breaking_changes] == [
-            ("field_type_changed", "amount")
-        ]
-
     @pytest.mark.parametrize(
-        ("left_field", "right_field"),
+        ("left_fields", "right_fields", "expected"),
         [
-            (Integer(), String(renamed_from="qty")),
-            (Decimal(precision=19, scale=2), Decimal(scale=4, renamed_from="qty")),
+            ({"qty": Integer()}, {"qty": String()}, ("field_type_changed", "qty")),
+            (
+                {"amount": Decimal(precision=19, scale=2)},
+                {"amount": Decimal(precision=19, scale=4)},
+                ("field_type_changed", "amount"),
+            ),
+            (
+                {"qty": Integer()},
+                {"count": String(renamed_from="qty")},
+                ("field_type_changed", "qty"),
+            ),
+            (
+                {"qty": Decimal(precision=19, scale=2)},
+                {"count": Decimal(scale=4, renamed_from="qty")},
+                ("field_type_changed", "qty"),
+            ),
+            ({}, {"note": String(required=True)}, ("required_field_added", "note")),
         ],
-        ids=["type-change", "shape-change"],
+        ids=[
+            "same-name-type-change",
+            "same-name-shape-change",
+            "rename-with-type-change",
+            "rename-with-shape-change",
+            "required-field-added",
+        ],
     )
-    def test_rename_with_a_break_names_the_old_field(self, left_field, right_field):
-        report = _report(_build(qty=left_field), _build(count=right_field))
+    def test_the_report_names_the_field(self, left_fields, right_fields, expected):
+        report = _report(_build(**left_fields), _build(**right_fields))
 
         assert [(c.change_type, c.field_name) for c in report.breaking_changes] == [
-            ("field_type_changed", "qty")
-        ]
-
-    def test_required_field_added_names_the_field(self):
-        report = _report(_build(), _build(note=String(required=True)))
-
-        assert [(c.change_type, c.field_name) for c in report.breaking_changes] == [
-            ("required_field_added", "note")
+            expected
         ]
 
 
@@ -589,19 +588,65 @@ class TestJsonCompatibilityBlock:
         ]
 
 
+_SHOP_SOURCE = """
+from protean import Domain
+from protean.fields import Identifier, String
+
+domain = Domain(name="Shop")
+
+
+@domain.aggregate
+class Order:
+    name = String()
+
+
+@domain.event(part_of=Order, published=True, version=1)
+class Placed:
+    order_id = Identifier()
+    qty = String()
+"""
+
+
+def _commit_ir(repo: Path, ir: dict[str, Any]) -> None:
+    """Create a git repository at *repo* holding *ir* committed as
+    ``.protean/ir.json``."""
+    env = {
+        **os.environ,
+        "HOME": str(repo),
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@test.com",
+    }
+    (repo / ".protean").mkdir()
+    (repo / ".protean" / "ir.json").write_text(json.dumps(ir), encoding="utf-8")
+    for command in (
+        ["git", "init", "-q"],
+        ["git", "add", ".protean/ir.json"],
+        ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "baseline"],
+    ):
+        subprocess.run(command, cwd=repo, env=env, capture_output=True, check=True)
+
+
 class TestHookOnExcludedPublishedEvent:
     """The pre-commit hook names a contract break the `exclude` filter left in."""
 
+    @pytest.fixture(autouse=True)
+    def _repo(self, tmp_path, monkeypatch):
+        # HEAD holds the IR with an Integer qty; shop.py, the live domain,
+        # declares it as a String.
+        _commit_ir(tmp_path, _build(qty=Integer()))
+        (tmp_path / "shop.py").write_text(_SHOP_SOURCE, encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.syspath_prepend(str(tmp_path))
+        monkeypatch.delitem(sys.modules, "shop", raising=False)
+        yield
+        sys.modules.pop("shop", None)
+
     def _check(self, config: CompatConfig) -> bool:
-        baseline = _build(qty=Integer())
-        current = _build(qty=String())
-        with (
-            patch("protean.ir.git.load_ir_from_commit", return_value=baseline),
-            patch("protean.cli.hooks._load_live_ir", return_value=current),
-        ):
-            return _check_compat_single(
-                "shop.py", Path(".protean"), base="HEAD", config=config
-            )
+        return _check_compat_single(
+            "shop.py", Path(".protean"), base="HEAD", config=config
+        )
 
     def test_strict_blocks_and_names_the_break(self, capsys):
         assert self._check(CompatConfig(exclude=(EVENT_FQN,))) is False

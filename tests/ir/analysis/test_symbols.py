@@ -75,282 +75,200 @@ def element_domain():
 
 
 class TestImportBindings:
-    def test_from_import_as_binds_the_alias(self, tmp_path):
-        resolver = _walked_resolver(
-            _make_pkg(tmp_path, {"mod.py": "from x.y import z as w\n"})
-        )
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            pytest.param("from x.y import z as w\n", {"w": "x.y.z"}, id="from-as"),
+            pytest.param("from a.b import c\n", {"c": "a.b.c"}, id="from"),
+            # ``import a.b.c`` binds ``a``, not ``a.b.c``: Python binds the top
+            # name and the rest is reached by walking attributes off it.
+            pytest.param("import a.b.c\n", {"a": "a"}, id="plain-dotted"),
+            pytest.param("import a.b.c as w\n", {"w": "a.b.c"}, id="dotted-as"),
+            pytest.param("from a.b import *\n", {}, id="star"),
+            pytest.param(
+                """
+                class Order: ...
 
-        assert resolver.symbols("pkg.mod") == {"w": "x.y.z"}
+                def make(): ...
 
-    def test_from_import_binds_the_imported_name(self, tmp_path):
-        resolver = _walked_resolver(
-            _make_pkg(tmp_path, {"mod.py": "from a.b import c\n"})
-        )
-
-        assert resolver.symbols("pkg.mod")["c"] == "a.b.c"
-
-    def test_plain_import_binds_the_top_name_only(self, tmp_path):
-        """``import a.b.c`` binds ``a``, not ``a.b.c`` — Python binds the top
-        name and the rest is reached by walking attributes off it."""
-        resolver = _walked_resolver(_make_pkg(tmp_path, {"mod.py": "import a.b.c\n"}))
-        table = resolver.symbols("pkg.mod")
-
-        assert table == {"a": "a"}
-        assert "a.b.c" not in table
-
-    def test_dotted_import_as_binds_the_full_target(self, tmp_path):
-        resolver = _walked_resolver(
-            _make_pkg(tmp_path, {"mod.py": "import a.b.c as w\n"})
-        )
-
-        assert resolver.symbols("pkg.mod") == {"w": "a.b.c"}
-
-    def test_star_import_binds_no_name(self, tmp_path):
-        resolver = _walked_resolver(
-            _make_pkg(tmp_path, {"mod.py": "from a.b import *\n"})
-        )
-
-        assert resolver.symbols("pkg.mod") == {}
-
-    def test_module_level_definitions_bind_to_their_fqn(self, tmp_path):
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
+                async def fetch(): ...
+                """,
                 {
-                    "mod.py": """
-                    class Order: ...
-
-                    def make(): ...
-
-                    async def fetch(): ...
-                    """
+                    "Order": "pkg.mod.Order",
+                    "make": "pkg.mod.make",
+                    "fetch": "pkg.mod.fetch",
                 },
-            )
-        )
+                id="definitions",
+            ),
+        ],
+    )
+    def test_a_module_level_statement_binds_its_names(self, tmp_path, source, expected):
+        resolver = _walked_resolver(_make_pkg(tmp_path, {"mod.py": source}))
 
-        assert resolver.symbols("pkg.mod") == {
-            "Order": "pkg.mod.Order",
-            "make": "pkg.mod.make",
-            "fetch": "pkg.mod.fetch",
-        }
+        assert resolver.symbols("pkg.mod") == expected
 
 
 class TestShadowing:
-    def test_a_local_class_shadows_a_same_named_import(self, tmp_path):
-        """The issue's shadowing case: local definitions win over imports,
-        matching Python's last-binding-wins for that shape."""
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
-                {
-                    "mod.py": """
-                    from other import Order
+    @pytest.mark.parametrize(
+        ("source", "name", "fqn"),
+        [
+            # Local definitions win over imports, matching Python's
+            # last-binding-wins for that shape.
+            pytest.param(
+                """
+                from other import Order
 
-                    class Order: ...
-                    """
-                },
-            )
-        )
+                class Order: ...
+                """,
+                "Order",
+                "pkg.mod.Order",
+                id="class-after-import",
+            ),
+            pytest.param(
+                """
+                from other import build
 
-        assert resolver.symbols("pkg.mod")["Order"] == "pkg.mod.Order"
+                def build(): ...
+                """,
+                "build",
+                "pkg.mod.build",
+                id="def-after-import",
+            ),
+            # The reverse shape: binding by source order (not imports then
+            # definitions) is what keeps this from being a wrong FQN.
+            pytest.param(
+                """
+                class Order: ...
 
-    def test_a_local_def_shadows_a_same_named_import(self, tmp_path):
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
-                {
-                    "mod.py": """
-                    from other import build
+                from other import Order
+                """,
+                "Order",
+                "other.Order",
+                id="import-after-class",
+            ),
+        ],
+    )
+    def test_the_last_binding_in_source_order_wins(self, tmp_path, source, name, fqn):
+        resolver = _walked_resolver(_make_pkg(tmp_path, {"mod.py": source}))
 
-                    def build(): ...
-                    """
-                },
-            )
-        )
+        assert resolver.symbols("pkg.mod")[name] == fqn
 
-        assert resolver.symbols("pkg.mod")["build"] == "pkg.mod.build"
+    @pytest.mark.parametrize(
+        ("source", "names"),
+        [
+            pytest.param(
+                """
+                from other import Order
 
-    def test_an_import_after_a_definition_wins_by_source_order(self, tmp_path):
-        """The reverse shape: a ``class`` followed by a same-named import binds
-        the import, matching Python's last-binding-wins. Binding by source order
-        (not imports-then-defs) is what keeps this from being a wrong FQN."""
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
-                {
-                    "mod.py": """
-                    class Order: ...
+                Order = make_order()
+                """,
+                ["Order"],
+                id="assignment",
+            ),
+            pytest.param(
+                """
+                from other import count
 
-                    from other import Order
-                    """
-                },
-            )
-        )
+                count += 1
+                """,
+                ["count"],
+                id="augmented-assignment",
+            ),
+            pytest.param(
+                """
+                from other import Order
 
-        assert resolver.symbols("pkg.mod")["Order"] == "other.Order"
+                Order: type = make_order()
+                """,
+                ["Order"],
+                id="annotated-assignment-with-a-value",
+            ),
+            pytest.param(
+                """
+                from other import Order, Line
 
-    def test_a_reassignment_degrades_a_bound_name_to_unresolved(self, tmp_path):
-        """A module-level ``=`` over an imported name rebinds it to a value the
-        table cannot follow, so the name is dropped and resolves to ``None`` —
-        a miss, never the stale import FQN."""
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
-                {
-                    "mod.py": """
-                    from other import Order
+                Order, Line = make_pair()
+                """,
+                ["Order", "Line"],
+                id="tuple-unpacking",
+            ),
+            pytest.param(
+                """
+                from other import head, tail
 
-                    Order = make_order()
-                    """
-                },
-            )
-        )
-
-        assert "Order" not in resolver.symbols("pkg.mod")
-        assert resolver.resolve("pkg.mod", _use_site("Order")) is None
-
-    def test_an_augmented_assignment_degrades_a_bound_name_to_unresolved(
-        self, tmp_path
+                head, *tail = make_sequence()
+                """,
+                ["head", "tail"],
+                id="starred-unpacking",
+            ),
+        ],
+    )
+    def test_a_rebinding_degrades_an_imported_name_to_unresolved(
+        self, tmp_path, source, names
     ):
-        """A module-level ``+=`` over an imported name rebinds it to a value the
-        table cannot follow, so the name is dropped and resolves to ``None``."""
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
-                {
-                    "mod.py": """
-                    from other import count
+        """A module-level rebinding over an imported name gives it a value the
+        table cannot follow, so every rebound name is dropped and resolves to
+        ``None``: a miss, never the stale import FQN."""
+        resolver = _walked_resolver(_make_pkg(tmp_path, {"mod.py": source}))
 
-                    count += 1
-                    """
-                },
-            )
-        )
+        for name in names:
+            assert name not in resolver.symbols("pkg.mod")
+            assert resolver.resolve("pkg.mod", _use_site(name)) is None
 
-        assert "count" not in resolver.symbols("pkg.mod")
-        assert resolver.resolve("pkg.mod", _use_site("count")) is None
-
-    def test_an_annotated_assignment_with_a_value_degrades_a_bound_name(self, tmp_path):
-        """A module-level ``x: T = ...`` over an imported name rebinds it, so the
-        name is dropped and resolves to ``None``."""
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
-                {
-                    "mod.py": """
-                    from other import Order
-
-                    Order: type = make_order()
-                    """
-                },
-            )
-        )
-
-        assert "Order" not in resolver.symbols("pkg.mod")
-        assert resolver.resolve("pkg.mod", _use_site("Order")) is None
-
-    def test_a_bare_annotation_without_a_value_keeps_a_bound_name(self, tmp_path):
-        """A module-level ``x: T`` with no value binds nothing, so a same-named
-        import is left untouched and still resolves."""
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
-                {
-                    "mod.py": """
-                    from other import Order
-
-                    Order: type
-                    """
-                },
-            )
-        )
-
-        assert resolver.resolve("pkg.mod", _use_site("Order")) == "other.Order"
-
-    def test_a_tuple_unpacking_degrades_every_bound_name(self, tmp_path):
-        """A module-level tuple unpacking rebinds each target name, so every one
-        is dropped and resolves to ``None``."""
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
-                {
-                    "mod.py": """
-                    from other import Order, Line
-
-                    Order, Line = make_pair()
-                    """
-                },
-            )
-        )
-
-        assert "Order" not in resolver.symbols("pkg.mod")
-        assert "Line" not in resolver.symbols("pkg.mod")
-        assert resolver.resolve("pkg.mod", _use_site("Order")) is None
-        assert resolver.resolve("pkg.mod", _use_site("Line")) is None
-
-    def test_a_starred_unpacking_degrades_the_starred_name(self, tmp_path):
-        """A module-level starred unpacking (``a, *b = ...``) rebinds both the
-        plain and the starred target, so both are dropped."""
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
-                {
-                    "mod.py": """
-                    from other import head, tail
-
-                    head, *tail = make_sequence()
-                    """
-                },
-            )
-        )
-
-        assert "head" not in resolver.symbols("pkg.mod")
-        assert "tail" not in resolver.symbols("pkg.mod")
-        assert resolver.resolve("pkg.mod", _use_site("head")) is None
-        assert resolver.resolve("pkg.mod", _use_site("tail")) is None
-
-    def test_an_attribute_target_rebinds_no_module_name(self, tmp_path):
-        """A module-level attribute assignment (``a.b = ...``) binds no module
-        name, so a same-named import is left untouched and still resolves."""
-        resolver = _walked_resolver(
-            _make_pkg(
-                tmp_path,
-                {
-                    "mod.py": """
-                    from other import Order
-
-                    Order.total = compute()
-                    """
-                },
-            )
-        )
+    @pytest.mark.parametrize(
+        "statement",
+        [
+            # ``x: T`` with no value binds nothing.
+            pytest.param("Order: type", id="bare-annotation"),
+            # ``a.b = ...`` binds no module name.
+            pytest.param("Order.total = compute()", id="attribute-target"),
+        ],
+    )
+    def test_a_statement_that_binds_no_name_keeps_the_import(self, tmp_path, statement):
+        source = f"from other import Order\n\n{statement}\n"
+        resolver = _walked_resolver(_make_pkg(tmp_path, {"mod.py": source}))
 
         assert resolver.resolve("pkg.mod", _use_site("Order")) == "other.Order"
 
 
 class TestRelativeImports:
-    def test_single_dot_import_anchors_on_the_package(self, tmp_path):
-        resolver = _walked_resolver(
-            _make_pkg(tmp_path, {"sub/mod.py": "from . import z\n"})
-        )
+    @pytest.mark.parametrize(
+        ("path", "source", "module", "name", "fqn"),
+        [
+            pytest.param(
+                "sub/mod.py",
+                "from . import z\n",
+                "pkg.sub.mod",
+                "z",
+                "pkg.sub.z",
+                id="single-dot",
+            ),
+            pytest.param(
+                "sub/mod.py",
+                "from ..other import y\n",
+                "pkg.sub.mod",
+                "y",
+                "pkg.other.y",
+                id="double-dot",
+            ),
+            # An ``__init__`` file *is* its package, so a single-dot import
+            # stays in that package rather than its parent.
+            pytest.param(
+                "sub/__init__.py",
+                "from . import w\n",
+                "pkg.sub",
+                "w",
+                "pkg.sub.w",
+                id="package-init",
+            ),
+        ],
+    )
+    def test_a_relative_import_anchors_on_its_package(
+        self, tmp_path, path, source, module, name, fqn
+    ):
+        resolver = _walked_resolver(_make_pkg(tmp_path, {path: source}))
 
-        assert resolver.symbols("pkg.sub.mod")["z"] == "pkg.sub.z"
-
-    def test_double_dot_import_walks_up_a_package(self, tmp_path):
-        resolver = _walked_resolver(
-            _make_pkg(tmp_path, {"sub/mod.py": "from ..other import y\n"})
-        )
-
-        assert resolver.symbols("pkg.sub.mod")["y"] == "pkg.other.y"
-
-    def test_a_package_init_is_its_own_anchor(self, tmp_path):
-        """A module whose source is an ``__init__`` file *is* its package, so a
-        single-dot import stays in that package rather than its parent."""
-        resolver = _walked_resolver(
-            _make_pkg(tmp_path, {"sub/__init__.py": "from . import w\n"})
-        )
-
-        assert resolver.symbols("pkg.sub")["w"] == "pkg.sub.w"
+        assert resolver.symbols(module)[name] == fqn
 
     def test_an_import_that_escapes_the_top_level_binds_nothing(self, tmp_path):
         """A relative import walking past the top-level package is left
@@ -378,51 +296,55 @@ class TestUseSiteResolution:
     def _resolver(tmp_path, source):
         return _walked_resolver(_make_pkg(tmp_path, {"mod.py": source}))
 
-    def test_a_bare_name_resolves_through_the_table(self, tmp_path):
-        resolver = self._resolver(tmp_path, "from a.b import c\n")
+    @pytest.mark.parametrize(
+        ("source", "expression", "fqn"),
+        [
+            pytest.param("from a.b import c\n", "c", "a.b.c", id="bare-name"),
+            # The trailing segment is appended to the root's FQN.
+            pytest.param(
+                "import a.b as mixins\n",
+                "mixins.handle",
+                "a.b.handle",
+                id="attribute-chain",
+            ),
+            pytest.param(
+                "import pkgroot\n",
+                "pkgroot.a.b.Thing",
+                "pkgroot.a.b.Thing",
+                id="deep-attribute-chain",
+            ),
+        ],
+    )
+    def test_a_use_site_resolves_through_the_table(
+        self, tmp_path, source, expression, fqn
+    ):
+        resolver = self._resolver(tmp_path, source)
 
-        assert resolver.resolve("pkg.mod", _use_site("c")) == "a.b.c"
+        assert resolver.resolve("pkg.mod", _use_site(expression)) == fqn
 
-    def test_an_attribute_chain_resolves_through_its_root(self, tmp_path):
-        """``mixins.handle`` off ``import a.b as mixins`` appends the trailing
-        segment to the root's FQN."""
-        resolver = self._resolver(tmp_path, "import a.b as mixins\n")
+    @pytest.mark.parametrize(
+        ("source", "expression"),
+        [
+            # A bare builtin that was never imported or defined has no binding.
+            pytest.param("x = 1\n", "filter", id="unbound-name"),
+            pytest.param("x = 1\n", "unknown.attr", id="unresolved-root"),
+            # ``self`` is never in a module's table.
+            pytest.param("from a import b\n", "self.x", id="self-attribute"),
+            # A call result or a subscript is not a name, so nothing rooted on
+            # one resolves.
+            pytest.param("from a import factory\n", "factory().bar", id="call-root"),
+            pytest.param(
+                "from a import factory\n", "registry['k'].bar", id="subscript-root"
+            ),
+        ],
+    )
+    def test_a_use_site_with_no_binding_resolves_to_none(
+        self, tmp_path, source, expression
+    ):
+        """An unresolvable use site gives ``None``, never a wrong FQN."""
+        resolver = self._resolver(tmp_path, source)
 
-        assert resolver.resolve("pkg.mod", _use_site("mixins.handle")) == "a.b.handle"
-
-    def test_a_deep_attribute_chain_appends_every_segment(self, tmp_path):
-        resolver = self._resolver(tmp_path, "import pkgroot\n")
-
-        assert (
-            resolver.resolve("pkg.mod", _use_site("pkgroot.a.b.Thing"))
-            == "pkgroot.a.b.Thing"
-        )
-
-    def test_an_unbound_name_resolves_to_none(self, tmp_path):
-        """A bare builtin that was never imported or defined has no binding, so
-        it resolves to ``None`` rather than a wrong FQN."""
-        resolver = self._resolver(tmp_path, "x = 1\n")
-
-        assert resolver.resolve("pkg.mod", _use_site("filter")) is None
-
-    def test_an_unresolved_root_yields_none_for_the_whole_chain(self, tmp_path):
-        resolver = self._resolver(tmp_path, "x = 1\n")
-
-        assert resolver.resolve("pkg.mod", _use_site("unknown.attr")) is None
-
-    def test_a_self_attribute_resolves_to_none(self, tmp_path):
-        """``self`` is never in a module's table, so ``self.x`` is unresolved."""
-        resolver = self._resolver(tmp_path, "from a import b\n")
-
-        assert resolver.resolve("pkg.mod", _use_site("self.x")) is None
-
-    def test_a_computed_root_resolves_to_none(self, tmp_path):
-        """A call result or a subscript is not a name, so nothing rooted on one
-        resolves."""
-        resolver = self._resolver(tmp_path, "from a import factory\n")
-
-        assert resolver.resolve("pkg.mod", _use_site("factory().bar")) is None
-        assert resolver.resolve("pkg.mod", _use_site("registry['k'].bar")) is None
+        assert resolver.resolve("pkg.mod", _use_site(expression)) is None
 
 
 class TestMethodScope:
@@ -774,26 +696,19 @@ class TestClassification:
 
 
 class TestDomainElementClassification:
-    def test_a_registered_aggregate_use_site_resolves_and_classifies(
-        self, element_domain
+    @pytest.mark.parametrize("name", ["Wallet", "WalletOpened"])
+    def test_a_registered_element_use_site_resolves_and_classifies(
+        self, element_domain, name
     ):
-        """The issue's first case: a module-level ``Wallet`` used as ``Wallet``
-        resolves to its FQN, and that FQN is a registered domain element."""
+        """A module-level element used by name resolves to its FQN, and that
+        FQN is a registered domain element, not a framework symbol."""
         resolver = SymbolResolver(element_domain)
 
-        fqn = resolver.resolve(ELEMENTS_MODULE, _use_site("Wallet"))
+        fqn = resolver.resolve(ELEMENTS_MODULE, _use_site(name))
 
-        assert fqn == f"{ELEMENTS_MODULE}.Wallet"
+        assert fqn == f"{ELEMENTS_MODULE}.{name}"
         assert resolver.is_domain_element(fqn)
         assert not resolver.is_framework_symbol(fqn)
-
-    def test_a_registered_event_is_a_domain_element(self, element_domain):
-        resolver = SymbolResolver(element_domain)
-
-        fqn = resolver.resolve(ELEMENTS_MODULE, _use_site("WalletOpened"))
-
-        assert fqn == f"{ELEMENTS_MODULE}.WalletOpened"
-        assert resolver.is_domain_element(fqn)
 
     def test_a_framework_import_resolves_and_classifies_as_framework(
         self, element_domain

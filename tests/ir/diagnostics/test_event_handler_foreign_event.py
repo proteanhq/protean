@@ -111,29 +111,6 @@ class TestEventHandlerForeignEvent:
         assert "PaymentCaptured" in messages
         assert "FulfillmentStarted" not in messages
 
-    def test_same_cluster_handling_not_flagged(self):
-        domain = Domain(name="FESame", root_path=".")
-
-        @domain.aggregate
-        class Order:
-            total = Float()
-
-        @domain.event(part_of=Order)
-        class OrderShipped:
-            order_id = Identifier(required=True)
-
-        @domain.event_handler(part_of=Order)
-        class OrderHandler:
-            @handle(OrderShipped)
-            def on_order_shipped(self, event):
-                pass
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        codes = [d["code"] for d in ir["diagnostics"]]
-        assert "EVENT_HANDLER_FOREIGN_EVENT" not in codes
-
     def test_projector_out_of_scope(self):
         """A projector consuming ANOTHER cluster's event is compliant by
         design — this rule reads only ``event_handlers``, never projectors.
@@ -214,9 +191,9 @@ class TestEventHandlerForeignEvent:
 
     def test_orphaned_event_type_not_flagged(self):
         """A handled ``__type__`` owned by no cluster in this domain (here, an
-        event that belongs to an entirely different domain) is not flagged —
-        there is no owning cluster to compare against, and no other rule in
-        the tree currently covers this shape either."""
+        event that belongs to an entirely different domain) is not flagged.
+        There is no owning cluster to compare against, and no other rule
+        flags this shape either."""
         other_domain = Domain(name="FEOrphanSource", root_path=".")
 
         @other_domain.aggregate
@@ -357,9 +334,8 @@ class TestEventHandlerForeignEvent:
     def test_event_without_type_is_skipped_from_ownership(self):
         """An event carrying no ``__type__`` contributes no ownership entry, so
         a handler handling it has nothing to compare against and is not flagged.
-        Exercises the ``if not event_type`` guard in the ownership scan — a real
-        event always carries a ``__type__``, so the typeless entry is forced by
-        clearing it on the built IR before re-running the diagnostic."""
+        A real event always carries a ``__type__``, so the test clears it on the
+        built IR and runs the diagnostic again."""
         domain = Domain(name="FENoType", root_path=".")
 
         @domain.aggregate

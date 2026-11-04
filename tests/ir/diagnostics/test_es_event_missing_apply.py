@@ -42,9 +42,11 @@ class TestEsEventMissingApply:
         ]
         assert len(missing) == 1
         assert "FundsAdded" in missing[0]["element"]
+        assert missing[0]["level"] == "warning"
         assert "Wallet" in missing[0]["message"]
+        assert "@apply handler" in missing[0]["message"]
 
-    def test_no_missing_apply_when_all_covered(self):
+    def test_no_missing_apply_when_every_event_has_apply(self):
         from tests.ir.elements import build_es_aggregate_domain
 
         domain = build_es_aggregate_domain()
@@ -86,23 +88,3 @@ class TestEsEventMissingApply:
         ]
         # Fact event should not be flagged
         assert len(missing) == 0
-
-    def test_missing_apply_format(self):
-        domain = Domain(name="EsFmt", root_path=".")
-
-        @domain.event(part_of="Ledger")
-        class EntryAdded:
-            amount = Float(required=True)
-
-        @domain.aggregate(event_sourced=True)
-        class Ledger:
-            total = Float(default=0.0)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-        missing = [
-            d for d in ir["diagnostics"] if d["code"] == "ES_EVENT_MISSING_APPLY"
-        ]
-        assert len(missing) == 1
-        assert missing[0]["level"] == "warning"
-        assert "@apply handler" in missing[0]["message"]

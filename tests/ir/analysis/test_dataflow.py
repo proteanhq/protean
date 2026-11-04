@@ -80,22 +80,6 @@ def _load(scope, name):
 
 
 class TestStatementOrdering:
-    def test_statements_carry_a_document_order_index(self, tmp_path):
-        flow, node = _setup(
-            tmp_path,
-            """
-            def m():
-                a = 1
-                b = 2
-            """,
-        )
-
-        first, second = node.body[0], node.body[1]
-
-        assert flow.order_of(first) == 0
-        assert flow.order_of(second) == 1
-        assert flow.order_of(first) < flow.order_of(second)
-
     def test_nested_statements_are_indexed_in_document_order(self, tmp_path):
         flow, node = _setup(
             tmp_path,
@@ -173,27 +157,6 @@ class TestReachingDefinitions:
 
         assert len(reaching) == 1
         assert reaching[0].node is node.body[0]
-
-    def test_a_name_assigned_in_both_arms_resolves_to_the_set(self, tmp_path):
-        flow, node = _setup(
-            tmp_path,
-            """
-            def m(cond, a, b):
-                if cond:
-                    x = a
-                else:
-                    x = b
-                use(x)
-            """,
-        )
-        branch = node.body[0]
-        use = _load(node.body[1], "x")
-
-        reaching = flow.reaching(use)
-        binders = {definition.node for definition in reaching}
-
-        assert len(reaching) == 2
-        assert binders == {branch.body[0], branch.orelse[0]}
 
     def test_a_name_assigned_in_only_one_arm_may_reach(self, tmp_path):
         """An ``if`` without an ``else`` leaves the pre-branch value reaching the
@@ -1259,6 +1222,8 @@ class TestDeterminism:
         assert _shape(first, first_use)  # non-empty: the branch reaches two defs
 
     def test_reaching_order_is_stable(self, tmp_path):
+        """A name assigned in both arms of an ``if`` reaches the use from each
+        arm, in document order."""
         flow, node = _setup(
             tmp_path,
             """

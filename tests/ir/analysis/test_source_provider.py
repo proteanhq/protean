@@ -5,8 +5,8 @@ import importlib
 import logging
 import os
 import sys
+import zipfile
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -126,29 +126,30 @@ class TestParseCache:
 
 
 class TestFailOpen:
-    """Every branch that cannot produce a tree returns ``None`` and does not
-    raise, so a diagnostics pass is never aborted by unreadable source."""
-
-    def test_nonexistent_module(self, provider):
-        assert provider.tree("definitely_not_a_module") is None
+    """Every module whose source cannot be found, read or parsed gives
+    ``None`` and does not raise, so a diagnostics pass is never aborted by
+    unreadable source."""
 
     def test_module_whose_parent_is_not_a_package(self, provider):
         # ``os`` is a module, not a package, so find_spec raises here.
         assert provider.tree("os.no_such_sub") is None
 
-    def test_find_spec_raising(self, provider, monkeypatch, caplog):
-        def boom(name, *args, **kwargs):
-            raise RuntimeError("parent __init__ blew up")
-
-        monkeypatch.setattr(source_provider_module, "find_spec", boom)
+    def test_a_parent_package_whose_init_raises(self, tmp_path, monkeypatch, caplog):
+        """Locating ``pkg.mod`` imports ``pkg`` first; an ``__init__`` that
+        raises is logged and gives no tree."""
+        root = tmp_path / "raisinginitpkg"
+        _write(root / "__init__.py", "raise RuntimeError('parent __init__ blew up')\n")
+        _write(root / "mod.py", "VALUE = 1\n")
+        monkeypatch.syspath_prepend(str(tmp_path))
+        importlib.invalidate_caches()
 
         with caplog.at_level(
             logging.DEBUG, logger="protean.ir.analysis.source_provider"
         ):
-            assert provider.tree(REAL_MODULE) is None
+            assert _provider_for(tmp_path).tree("raisinginitpkg.mod") is None
 
         assert (
-            f"Cannot locate module {REAL_MODULE}: "
+            "Cannot locate module raisinginitpkg.mod: "
             "RuntimeError('parent __init__ blew up')"
         ) in caplog.text
 
@@ -167,59 +168,64 @@ class TestFailOpen:
         with pytest.raises(TypeError, match="not a readable path"):
             provider.tree(REAL_MODULE)
 
-    @pytest.mark.parametrize("origin", [None, "built-in", "frozen"])
-    def test_spec_without_usable_origin_is_never_opened(
-        self, provider, monkeypatch, origin
+    @pytest.mark.parametrize(
+        "module_name",
+        [
+            pytest.param("sys", id="built-in"),
+            pytest.param("__hello__", id="frozen"),
+            pytest.param("namespacepkg", id="namespace-package"),
+        ],
+    )
+    def test_module_without_a_file_origin_is_never_opened(
+        self, tmp_path, monkeypatch, module_name
     ):
-        """``built-in`` and ``frozen`` are not paths, so the guard must reject
-        them before anything tries to read them as files."""
-        parsed = []
-        monkeypatch.setattr(
-            source_provider_module,
-            "find_spec",
-            lambda *a, **k: SimpleNamespace(origin=origin),
-        )
-        monkeypatch.setattr(
-            SourceProvider, "_parse", staticmethod(lambda path: parsed.append(path))
-        )
+        """A built-in module reports ``built-in`` and a frozen one ``frozen``
+        as its origin. Neither is a path: valid source in files of those names
+        in the working directory must not be read as the module's tree. A
+        namespace package has no origin at all."""
+        (tmp_path / "namespacepkg").mkdir()
+        _write(tmp_path / "built-in", "VALUE = 1\n")
+        _write(tmp_path / "frozen", "VALUE = 1\n")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.syspath_prepend(str(tmp_path))
+        importlib.invalidate_caches()
+        provider = _provider_for(tmp_path)
 
-        assert provider.tree(REAL_MODULE) is None
-        assert parsed == []
+        assert provider.tree(module_name) is None
+        assert provider.origin(module_name) is None
 
-    def test_unreadable_file(self, provider, monkeypatch, tmp_path):
-        # A directory as the origin: reading it raises IsADirectoryError.
-        monkeypatch.setattr(
-            source_provider_module,
-            "find_spec",
-            lambda *a, **k: SimpleNamespace(origin=str(tmp_path)),
-        )
+    def test_module_inside_a_zip_archive_has_no_readable_file(
+        self, tmp_path, monkeypatch
+    ):
+        """A module imported from a zip archive reports a path inside the
+        archive, which cannot be read from disk."""
+        archive = tmp_path / "bundle.zip"
+        with zipfile.ZipFile(archive, "w") as bundle:
+            bundle.writestr("zippedpkg/__init__.py", "")
+            bundle.writestr("zippedpkg/mod.py", "VALUE = 1\n")
+        monkeypatch.syspath_prepend(str(archive))
+        importlib.invalidate_caches()
+        provider = _provider_for(tmp_path)
 
-        assert provider.tree(REAL_MODULE) is None
-
-    def test_syntax_error(self, tmp_path, monkeypatch):
-        package = _importable(tmp_path, monkeypatch, "brokensyntaxpkg", bad=b"def (:\n")
-
-        assert _provider_for(tmp_path).tree(f"{package}.bad") is None
-
-    def test_source_with_nul_byte(self, tmp_path, monkeypatch):
-        package = _importable(
-            tmp_path, monkeypatch, "nulbytepkg", bad=b"VALUE = 1\x00\n"
+        assert provider.tree("zippedpkg.mod") is None
+        assert provider.origin("zippedpkg.mod") == os.path.join(
+            str(archive), "zippedpkg", "mod.py"
         )
 
-        assert _provider_for(tmp_path).tree(f"{package}.bad") is None
-
-    def test_undecodable_source(self, tmp_path, monkeypatch):
-        package = _importable(
-            tmp_path, monkeypatch, "badencodingpkg", bad=b"VALUE = '\xff\xfe'\n"
-        )
-
-        assert _provider_for(tmp_path).tree(f"{package}.bad") is None
-
-    def test_source_the_parser_cannot_handle(self, tmp_path, monkeypatch):
-        """Pathological source exhausts the parser (``MemoryError``), which is
-        neither an ``OSError`` nor a ``SyntaxError`` — it still fails open."""
-        bomb = ("x = " + "not " * 50000 + "1\n").encode()
-        package = _importable(tmp_path, monkeypatch, "parserbombpkg", bad=bomb)
+    @pytest.mark.parametrize(
+        "source",
+        [
+            pytest.param(b"VALUE = 1\x00\n", id="nul-byte"),
+            pytest.param(b"VALUE = '\xff\xfe'\n", id="undecodable"),
+            # Exhausts the parser (``MemoryError``), which is neither an
+            # ``OSError`` nor a ``SyntaxError``.
+            pytest.param(
+                ("x = " + "not " * 50000 + "1\n").encode(), id="parser-exhaustion"
+            ),
+        ],
+    )
+    def test_source_that_does_not_parse(self, tmp_path, monkeypatch, source):
+        package = _importable(tmp_path, monkeypatch, "unparseablepkg", bad=source)
 
         assert _provider_for(tmp_path).tree(f"{package}.bad") is None
 
@@ -229,21 +235,18 @@ class TestSourceEncoding:
     UTF-8 — otherwise a module with a BOM or a coding declaration silently
     yields no tree and every rule reports nothing for it."""
 
-    def test_utf8_bom_is_parsed(self, tmp_path, monkeypatch):
-        package = _importable(
-            tmp_path, monkeypatch, "bompkg", mod=b"\xef\xbb\xbfimport os\n"
-        )
-
-        tree = _provider_for(tmp_path).tree(f"{package}.mod")
-
-        assert tree is not None
-        assert [n.names[0].name for n in tree.body if isinstance(n, ast.Import)] == [
-            "os"
-        ]
-
-    def test_pep263_coding_declaration_is_honoured(self, tmp_path, monkeypatch):
-        source = b"# -*- coding: latin-1 -*-\nimport os\nS = 'caf\xe9'\n"
-        package = _importable(tmp_path, monkeypatch, "latinpkg", mod=source)
+    @pytest.mark.parametrize(
+        "source",
+        [
+            pytest.param(b"\xef\xbb\xbfimport os\n", id="utf8-bom"),
+            pytest.param(
+                b"# -*- coding: latin-1 -*-\nimport os\nS = 'caf\xe9'\n",
+                id="pep263-coding-declaration",
+            ),
+        ],
+    )
+    def test_declared_encoding_is_honoured(self, tmp_path, monkeypatch, source):
+        package = _importable(tmp_path, monkeypatch, "encodedpkg", mod=source)
 
         tree = _provider_for(tmp_path).tree(f"{package}.mod")
 
@@ -255,6 +258,8 @@ class TestSourceEncoding:
 
 class TestEnumeration:
     def test_lists_package_modules(self, tmp_path):
+        """The exact, sorted list leaves out ``__pycache__``, non-Python files,
+        a directory named like a module and a nested domain."""
         root = _build_package(tmp_path, "enumpkg")
 
         assert _provider_for(root).modules() == (
@@ -263,22 +268,6 @@ class TestEnumeration:
             "enumpkg.sub",
             "enumpkg.sub.thing",
         )
-
-    def test_excludes_pycache_non_python_and_nested_domains(self, tmp_path):
-        root = _build_package(tmp_path, "exclusionpkg")
-
-        modules = _provider_for(root).modules()
-
-        assert not [m for m in modules if "__pycache__" in m or "junk" in m]
-        assert not [m for m in modules if "notes" in m]
-        # ``nested`` carries its own domain.toml — it is a separate domain.
-        assert not [m for m in modules if m.startswith("exclusionpkg.nested")]
-
-    def test_excludes_a_directory_named_like_a_module(self, tmp_path):
-        """``weird.py`` is a directory; only files become modules."""
-        root = _build_package(tmp_path, "dirnamepkg")
-
-        assert not [m for m in _provider_for(root).modules() if "weird" in m]
 
     def test_a_file_named_only_py_is_not_a_module(self, tmp_path):
         root = tmp_path / "dotpypkg"
@@ -347,15 +336,6 @@ class TestEnumeration:
         and enumerate whatever happens to be there."""
         assert SourceProvider(Domain(name="EmptyRoot", root_path="")).modules() == ()
 
-    def test_order_is_sorted_and_stable_across_providers(self, tmp_path):
-        root = _build_package(tmp_path, "orderpkg")
-
-        first = _provider_for(root).modules()
-        second = _provider_for(root).modules()
-
-        assert first == second
-        assert list(first) == sorted(first)
-
     def test_the_walk_runs_once_per_provider(self, tmp_path):
         root = _build_package(tmp_path, "memopkg")
         provider = _provider_for(root)
@@ -370,12 +350,21 @@ class TestEnumeration:
         read or parse a single file."""
         root = _build_package(tmp_path, "lazypkg")
         parsed = []
-        monkeypatch.setattr(
-            SourceProvider, "_parse", staticmethod(lambda path: parsed.append(path))
-        )
+        real_parse = SourceProvider._parse
 
-        assert len(_provider_for(root).modules()) == 4
+        def counting_parse(path):
+            parsed.append(path)
+            return real_parse(path)
+
+        monkeypatch.setattr(SourceProvider, "_parse", staticmethod(counting_parse))
+        provider = _provider_for(root)
+
+        assert len(provider.modules()) == 4
         assert parsed == []
+
+        # The spy does count parses: the walk that follows parses every module.
+        list(provider.iter_trees())
+        assert len(parsed) == 4
 
 
 class TestIterTrees:

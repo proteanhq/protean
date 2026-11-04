@@ -8,6 +8,8 @@ import pytest
 
 from protean.ir.builder import IRBuilder
 from protean.ir.generators.schema import (
+    _collect_defs,
+    _field_to_schema,
     generate_element_schema,
     generate_schemas,
 )
@@ -244,9 +246,6 @@ class TestRefAndDefs:
         assert array_schema["type"] == "array"
         assert array_schema["items"]["$ref"] == "#/$defs/LineItem"
 
-    def test_defs_present(self):
-        assert "$defs" in self.schema
-
     def test_defs_shipping_address(self):
         defs = self.schema["$defs"]
         assert "ShippingAddress" in defs
@@ -339,18 +338,13 @@ class TestOptionalFields:
 class TestRequiredList:
     """Verify the ``required`` array is correct and sorted."""
 
-    def test_required_fields(self):
+    def test_required_holds_only_required_fields_in_sorted_order(self):
         ir = _ir_for(build_cluster_test_domain)
         element = _find_element(ir, "Order")
         schema = generate_element_schema(element)
         assert "customer_name" in schema["required"]
         assert "id" in schema["required"]
         assert schema["required"] == sorted(schema["required"])
-
-    def test_optional_fields_not_in_required(self):
-        ir = _ir_for(build_cluster_test_domain)
-        element = _find_element(ir, "Order")
-        schema = generate_element_schema(element)
         assert "total" not in schema["required"]
         assert "shipping_address" not in schema["required"]
 
@@ -484,19 +478,16 @@ class TestExtensionMetadata:
 class TestDefaultValues:
     """Verify default values appear in the schema."""
 
-    def test_literal_default(self):
+    @pytest.mark.parametrize(
+        ("field", "expected"), [("is_active", True), ("score", 0.0)]
+    )
+    def test_literal_default_is_written(self, field, expected):
         ir = _ir_for(build_field_test_domain)
         element = _find_element(ir, "Product")
         schema = generate_element_schema(element)
-        p = schema["properties"]["is_active"]
-        assert p["default"] is True
-
-    def test_numeric_default(self):
-        ir = _ir_for(build_field_test_domain)
-        element = _find_element(ir, "Product")
-        schema = generate_element_schema(element)
-        p = schema["properties"]["score"]
-        assert p["default"] == 0.0
+        default = schema["properties"][field]["default"]
+        assert default == expected
+        assert type(default) is type(expected)
 
     def test_callable_default_omitted(self):
         """Callable defaults should not appear in JSON Schema."""
@@ -505,6 +496,7 @@ class TestDefaultValues:
         schema = generate_element_schema(element)
         p = schema["properties"]["items_cache"]
         assert "default" not in p
+        assert "<callable>" not in json.dumps(p)
 
 
 # ---------------------------------------------------------------------------
@@ -573,21 +565,10 @@ class TestGenerateSchemas:
     def test_returns_dict(self):
         assert isinstance(self.schemas, dict)
 
-    def test_includes_aggregate(self):
-        found = any("Order" in fqn for fqn in self.schemas if "Memory" not in fqn)
-        assert found, (
-            f"Order aggregate not found in schemas: {list(self.schemas.keys())}"
-        )
-
-    def test_includes_entity(self):
-        found = any("LineItem" in fqn for fqn in self.schemas)
-        assert found, (
-            f"LineItem entity not found in schemas: {list(self.schemas.keys())}"
-        )
-
-    def test_includes_value_object(self):
-        found = any("ShippingAddress" in fqn for fqn in self.schemas)
-        assert found
+    @pytest.mark.parametrize("name", ["Order", "LineItem", "ShippingAddress"])
+    def test_includes_each_data_element(self, name):
+        found = any(name in fqn and "Memory" not in fqn for fqn in self.schemas)
+        assert found, f"{name} not found in schemas: {list(self.schemas.keys())}"
 
     def test_fqns_sorted(self):
         keys = list(self.schemas.keys())
@@ -621,13 +602,9 @@ class TestGenerateSchemasWithCommandsEvents:
         ir = _ir_for(build_command_event_test_domain)
         self.schemas = generate_schemas(ir)
 
-    def test_includes_commands(self):
-        found = any("PlaceOrder" in fqn for fqn in self.schemas)
-        assert found
-
-    def test_includes_events(self):
-        found = any("OrderPlaced" in fqn for fqn in self.schemas)
-        assert found
+    @pytest.mark.parametrize("name", ["PlaceOrder", "OrderPlaced"])
+    def test_includes_commands_and_events(self, name):
+        assert any(name in fqn for fqn in self.schemas)
 
 
 # ---------------------------------------------------------------------------
@@ -671,15 +648,11 @@ class TestIntegrationDomain:
         self.schemas = generate_schemas(ir)
         self.ir = ir
 
-    def test_projection_included(self):
-        found = any("OrderDashboard" in fqn for fqn in self.schemas)
-        assert found
-
-    def test_projection_extensions(self):
-        for fqn, schema in self.schemas.items():
-            if "OrderDashboard" in fqn:
-                assert schema["x-protean-element-type"] == "projection"
-                break
+    def test_projection_is_included_with_its_element_type(self):
+        projections = [s for fqn, s in self.schemas.items() if "OrderDashboard" in fqn]
+        assert projections
+        for schema in projections:
+            assert schema["x-protean-element-type"] == "projection"
 
     def test_nested_vo_in_entity(self):
         """LineItem has a Money value object — verify $defs resolution."""
@@ -703,13 +676,13 @@ class TestIntegrationDomain:
 
 
 # ---------------------------------------------------------------------------
-# Edge cases
+# Minimal elements, hand-written field dicts and cyclic references
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.no_test_domain
-class TestEdgeCases:
-    """Edge cases and boundary conditions."""
+class TestMinimalElementsAndFieldShapes:
+    """Schemas for minimal elements, single field dicts and cyclic references."""
 
     def test_element_without_fields(self):
         """An element with no fields should produce a minimal schema."""
@@ -742,39 +715,33 @@ class TestEdgeCases:
             for def_schema in schema["$defs"].values():
                 assert def_schema == {"type": "object"}
 
-    def test_list_without_mapped_content_type(self):
-        """List field with unmapped content_type produces array without items."""
-        from protean.ir.generators.schema import _field_to_schema
-
-        field = {"kind": "list", "type": "List", "content_type": "UnknownType"}
-        schema = _field_to_schema(field)
-        assert schema["type"] == "array"
-        assert "items" not in schema
-
-    def test_list_without_content_type(self):
-        """List field with no content_type produces bare array."""
-        from protean.ir.generators.schema import _field_to_schema
-
-        field = {"kind": "list", "type": "List"}
-        schema = _field_to_schema(field)
-        assert schema == {"type": "array"}
+    @pytest.mark.parametrize(
+        ("field", "expected"),
+        [
+            ({"kind": "list", "type": "List"}, {"type": "array"}),
+            (
+                {"kind": "list", "type": "List", "content_type": "UnknownType"},
+                {"type": "array"},
+            ),
+            ({"kind": "auto", "type": "Auto", "increment": True}, {"type": "integer"}),
+            ({"kind": "auto", "type": "Auto"}, {"type": "string"}),
+        ],
+        ids=[
+            "list-without-content-type",
+            "list-with-unmapped-content-type",
+            "auto-with-increment",
+            "auto-without-increment",
+        ],
+    )
+    def test_field_maps_to_exact_schema(self, field, expected):
+        assert _field_to_schema(field) == expected
 
     def test_value_object_list_produces_array_with_ref(self):
         """value_object_list kind produces array with $ref items."""
-        from protean.ir.generators.schema import _field_to_schema
-
         field = {"kind": "value_object_list", "target": "app.Money"}
         schema = _field_to_schema(field)
         assert schema["type"] == "array"
         assert schema["items"]["$ref"] == "#/$defs/Money"
-
-    def test_max_value_constraint(self):
-        """max_value maps to JSON Schema maximum."""
-        from protean.ir.generators.schema import _field_to_schema
-
-        field = {"kind": "standard", "type": "Integer", "max_value": 100}
-        schema = _field_to_schema(field)
-        assert schema["maximum"] == 100
 
     def test_published_event_extension(self):
         """Published events get x-protean-published."""
@@ -783,35 +750,8 @@ class TestEdgeCases:
         schema = generate_element_schema(element)
         assert schema.get("x-protean-published") is True
 
-    def test_event_sourced_aggregate_extension(self):
-        """Event-sourced aggregate gets x-protean-is-event-sourced."""
-        from .elements import build_es_aggregate_domain
-
-        ir = _ir_for(build_es_aggregate_domain)
-        element = _find_element(ir, "BankAccount")
-        schema = generate_element_schema(element)
-        assert schema.get("x-protean-is-event-sourced") is True
-
-    def test_auto_increment_maps_to_integer(self):
-        """Auto field with increment=True should map to integer."""
-        from protean.ir.generators.schema import _field_to_schema
-
-        field = {"kind": "auto", "type": "Auto", "increment": True}
-        schema = _field_to_schema(field)
-        assert schema == {"type": "integer"}
-
-    def test_auto_without_increment_maps_to_string(self):
-        """Auto field without increment should map to string."""
-        from protean.ir.generators.schema import _field_to_schema
-
-        field = {"kind": "auto", "type": "Auto"}
-        schema = _field_to_schema(field)
-        assert schema == {"type": "string"}
-
     def test_cyclic_reference_does_not_recurse(self):
         """Cyclic references should not cause infinite recursion."""
-        from protean.ir.generators.schema import _collect_defs
-
         all_elements = {
             "app.A": {
                 "fields": {

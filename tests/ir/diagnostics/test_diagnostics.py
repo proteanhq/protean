@@ -28,12 +28,6 @@ class TestDiagnostics:
             assert "level" in diag
             assert "message" in diag
 
-    def test_diagnostics_sorted_by_code(self):
-        domain = build_diagnostics_test_domain()
-        ir = IRBuilder(domain).build()
-        codes = [d["code"] for d in ir["diagnostics"]]
-        assert codes == sorted(codes)
-
     def test_no_unhandled_when_all_handled(self):
         domain = Domain(name="NoWarn", root_path=".")
 
@@ -74,10 +68,10 @@ class TestDiagnostics:
         domain = build_published_event_domain()
         ir = IRBuilder(domain).build()
         unhandled = [d for d in ir["diagnostics"] if d["code"] == "UNHANDLED_EVENT"]
-        # AccountCreated is published — should not appear
+        # AccountCreated is published, so it is not flagged
         unhandled_fqns = [d["element"] for d in unhandled]
         assert not any("AccountCreated" in f for f in unhandled_fqns)
-        # AccountUpdated is NOT published — should appear
+        # AccountUpdated is not published, so it is flagged
         assert any("AccountUpdated" in f for f in unhandled_fqns)
 
     def test_fact_events_excluded_from_unhandled(self):

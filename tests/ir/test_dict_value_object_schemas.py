@@ -227,10 +227,17 @@ class TestAvro:
         assert record["name"] == "Address"
         assert [f["name"] for f in record["fields"]] == ["city", "street"]
 
-    def test_untyped_dict_stays_a_string_map(self, flat):
+    @pytest.mark.parametrize(
+        ("aggregate", "name"),
+        [(Contact, "tags"), (Score, "counts")],
+        ids=["untyped-dict", "dict-of-a-non-value-object"],
+    )
+    def test_dict_without_a_value_object_stays_a_string_map(
+        self, flat, aggregate, name
+    ):
         _, index = flat
-        schema = generate_avro_schema(_element(index, Contact), all_elements=index)
-        assert self._field_type(schema, "tags") == {"type": "map", "values": "string"}
+        schema = generate_avro_schema(_element(index, aggregate), all_elements=index)
+        assert self._field_type(schema, name) == {"type": "map", "values": "string"}
 
     def test_two_addresses_round_trip(self, flat):
         _, index = flat
@@ -289,14 +296,6 @@ class TestAvro:
         assert record["namespace"] == schema["namespace"]
         assert record["fields"] == [{"name": "number", "type": "string"}]
 
-    def test_dict_of_a_non_value_object_stays_a_string_map(self, flat):
-        _, index = flat
-        schema = generate_avro_schema(_element(index, Score), all_elements=index)
-        assert self._field_type(schema, "counts") == {
-            "type": "map",
-            "values": "string",
-        }
-
 
 class TestProtobuf:
     def test_typed_dict_is_a_map_of_the_value_object_message(self, flat):
@@ -307,10 +306,17 @@ class TestProtobuf:
         )
         assert text.count("message Address {") == 1
 
-    def test_untyped_dict_stays_a_string_map(self, flat):
+    @pytest.mark.parametrize(
+        ("aggregate", "name"),
+        [(Contact, "tags"), (Score, "counts")],
+        ids=["untyped-dict", "dict-of-a-non-value-object"],
+    )
+    def test_dict_without_a_value_object_stays_a_string_map(
+        self, flat, aggregate, name
+    ):
         _, index = flat
-        text = generate_proto_schema(_element(index, Contact), all_elements=index)
-        assert re.search(r"^  map<string, string> tags = \d+;$", text, re.MULTILINE)
+        text = generate_proto_schema(_element(index, aggregate), all_elements=index)
+        assert re.search(rf"^  map<string, string> {name} = \d+;$", text, re.MULTILINE)
 
     def test_value_object_used_twice_has_one_message(self, flat):
         _, index = flat
@@ -327,11 +333,6 @@ class TestProtobuf:
         _, index = flat
         text = generate_proto_schema(_element(index, Directory), all_elements=index)
         assert "message Phone {\n  string number = 1;\n}" in text
-
-    def test_dict_of_a_non_value_object_stays_a_string_map(self, flat):
-        _, index = flat
-        text = generate_proto_schema(_element(index, Score), all_elements=index)
-        assert re.search(r"^  map<string, string> counts = \d+;$", text, re.MULTILINE)
 
     def test_entry_named_value_object_is_written_by_full_name(self, flat):
         _, index = flat

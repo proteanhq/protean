@@ -25,29 +25,22 @@ class TestIRShowJSON:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_json_output_is_valid(self):
+    def test_json_is_default_format(self):
         change_working_directory_to("test7")
+        # No --format flag: the output is the IR as a JSON object.
         result = runner.invoke(app, ["ir", "show", "-d", "publishing7.py"])
         assert result.exit_code == 0
         ir = json.loads(result.output)
         assert isinstance(ir, dict)
-
-    def test_json_output_has_top_level_keys(self):
-        change_working_directory_to("test7")
-        result = runner.invoke(app, ["ir", "show", "-d", "publishing7.py"])
-        ir = json.loads(result.output)
-        assert "$schema" in ir
-        assert "ir_version" in ir
-        assert "checksum" in ir
-        assert "clusters" in ir
-        assert "domain" in ir
-        assert "elements" in ir
-
-    def test_json_is_default_format(self):
-        change_working_directory_to("test7")
-        result = runner.invoke(app, ["ir", "show", "-d", "publishing7.py"])
-        # Should parse as JSON without --format flag
-        ir = json.loads(result.output)
+        for key in (
+            "$schema",
+            "ir_version",
+            "checksum",
+            "clusters",
+            "domain",
+            "elements",
+        ):
+            assert key in ir
         assert ir["domain"]["name"] == "TEST7"
 
 
@@ -62,7 +55,7 @@ class TestIRShowCanonical:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_canonical_omits_generated_at(self):
+    def test_canonical_omits_generated_at_and_keeps_content_keys(self):
         change_working_directory_to("test7")
         result = runner.invoke(
             app, ["ir", "show", "-d", "publishing7.py", "--canonical"]
@@ -70,13 +63,6 @@ class TestIRShowCanonical:
         assert result.exit_code == 0
         ir = json.loads(result.output)
         assert "generated_at" not in ir
-
-    def test_canonical_retains_content_keys(self):
-        change_working_directory_to("test7")
-        result = runner.invoke(
-            app, ["ir", "show", "-d", "publishing7.py", "--canonical"]
-        )
-        ir = json.loads(result.output)
         for key in ("$schema", "ir_version", "checksum", "elements", "domain"):
             assert key in ir, f"canonical output dropped {key!r}"
 
@@ -139,34 +125,16 @@ class TestIRShowSummary:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_summary_output_contains_domain_name(self):
+    def test_summary_lists_domain_version_checksum_and_counts(self):
+        # ir show accepts 'summary' although ir check does not, so each
+        # command checks --format against its own valid set.
         change_working_directory_to("test7")
         result = runner.invoke(
             app, ["ir", "show", "-d", "publishing7.py", "-f", "summary"]
         )
         assert result.exit_code == 0
-        assert "Domain:" in result.output
-
-    def test_summary_output_contains_ir_version(self):
-        change_working_directory_to("test7")
-        result = runner.invoke(
-            app, ["ir", "show", "-d", "publishing7.py", "-f", "summary"]
-        )
-        assert "IR Version:" in result.output
-
-    def test_summary_output_contains_checksum(self):
-        change_working_directory_to("test7")
-        result = runner.invoke(
-            app, ["ir", "show", "-d", "publishing7.py", "-f", "summary"]
-        )
-        assert "Checksum:" in result.output
-
-    def test_summary_output_contains_element_counts(self):
-        change_working_directory_to("test7")
-        result = runner.invoke(
-            app, ["ir", "show", "-d", "publishing7.py", "-f", "summary"]
-        )
-        assert "Element Counts" in result.output
+        for label in ("Domain:", "IR Version:", "Checksum:", "Element Counts"):
+            assert label in result.output
 
 
 class TestIRFormatValidation:
@@ -191,16 +159,6 @@ class TestIRFormatValidation:
         assert "invalid --format" in result.output
         # Lists the values ir show actually accepts.
         assert "summary" in result.output
-
-    def test_show_still_accepts_summary(self):
-        # Guards Decision 4's shared-set trap: ir show accepts 'summary', which a
-        # single shared valid set would wrongly reject.
-        change_working_directory_to("test7")
-        result = runner.invoke(
-            app, ["ir", "show", "-d", "publishing7.py", "-f", "summary"]
-        )
-        assert result.exit_code == 0
-        assert "Domain:" in result.output
 
     def test_check_rejects_bogus_format(self):
         result = runner.invoke(

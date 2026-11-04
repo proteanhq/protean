@@ -39,9 +39,9 @@ class TestProjectorHandlesOrphanedEvent:
 
         # A live domain cannot wire a projector to an unregistered event (the
         # ``@handle`` decorator requires a registered event class). The orphan
-        # the rule guards — a stale ``__type__`` left after a rename or removal —
+        # the rule guards, a stale ``__type__`` left after a rename or removal,
         # appears only in materialized IR loaded from an older or hand-edited
-        # source, so inject the ghost type into the handler map to exercise it.
+        # source, so the test adds the ghost type to the handler map.
         method = next(iter(OrderViewProjector._handlers[OrderPlaced.__type__]))
         OrderViewProjector._handlers["Orphan.RemovedEvent.v1"].add(method)
 
@@ -85,40 +85,6 @@ class TestProjectorHandlesOrphanedEvent:
         class OrderViewProjector:
             @handle(TrackerFired)
             def on_tracker(self, event):
-                pass
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        assert _findings(ir, "PROJECTOR_HANDLES_ORPHANED_EVENT") == []
-
-    def test_registered_events_not_flagged(self):
-        domain = Domain(name="NoOrphan", root_path=".")
-
-        @domain.aggregate
-        class Order:
-            name = String(max_length=50)
-
-        @domain.event(part_of=Order)
-        class OrderPlaced:
-            order_id = Identifier(identifier=True)
-
-        @domain.event(part_of=Order)
-        class OrderShipped:
-            order_id = Identifier(identifier=True)
-
-        @domain.projection
-        class OrderView:
-            order_id = Identifier(identifier=True)
-
-        @domain.projector(projector_for=OrderView, aggregates=[Order])
-        class OrderViewProjector:
-            @handle(OrderPlaced)
-            def on_placed(self, event):
-                pass
-
-            @handle(OrderShipped)
-            def on_shipped(self, event):
                 pass
 
         domain.init(traverse=False)

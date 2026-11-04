@@ -9,19 +9,6 @@ class TestAggregateWithoutCommandHandler:
     """Detect aggregates with no command handler (no write path)."""
 
     def test_aggregate_without_handler_detected(self):
-        domain = Domain(name="NoHandlerTest", root_path=".")
-
-        @domain.aggregate
-        class Product:
-            name = String(max_length=100, required=True)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        codes = [d["code"] for d in ir["diagnostics"]]
-        assert "AGGREGATE_WITHOUT_COMMAND_HANDLER" in codes
-
-    def test_aggregate_without_handler_format(self):
         domain = Domain(name="NoHandlerFmt", root_path=".")
 
         @domain.aggregate

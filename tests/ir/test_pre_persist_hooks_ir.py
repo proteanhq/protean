@@ -1,4 +1,4 @@
-"""IR coverage of what a save writes: ``auto_now`` flags and enrichers.
+"""The IR records what a save writes: ``auto_now`` flags and enrichers.
 
 A ``DateTime``/``Date`` field records ``auto_now`` / ``auto_now_add`` when set.
 Registered enrichers appear in a top-level ``enrichers`` section, by kind and
@@ -79,18 +79,18 @@ def _schema():
 
 
 class TestAutoNowFlags:
-    def test_auto_now_is_recorded(self):
-        assert _account_fields(_build())["updated_at"]["auto_now"] is True
-
-    def test_auto_now_add_is_recorded(self):
-        fields = _account_fields(_build())
-        assert fields["created_at"]["auto_now_add"] is True
-        assert fields["opened_on"]["auto_now_add"] is True
-
-    def test_each_flag_appears_only_where_it_is_set(self):
-        fields = _account_fields(_build())
-        assert "auto_now_add" not in fields["updated_at"]
-        assert "auto_now" not in fields["created_at"]
+    @pytest.mark.parametrize(
+        ("field", "flag", "other_flag"),
+        [
+            ("updated_at", "auto_now", "auto_now_add"),
+            ("created_at", "auto_now_add", "auto_now"),
+            ("opened_on", "auto_now_add", "auto_now"),
+        ],
+    )
+    def test_only_the_flag_that_is_set_is_recorded(self, field, flag, other_flag):
+        entry = _account_fields(_build())[field]
+        assert entry[flag] is True
+        assert other_flag not in entry
 
     def test_a_plain_temporal_field_carries_neither_flag(self):
         closed_at = _account_fields(_build())["closed_at"]
@@ -154,19 +154,22 @@ class TestSchemaRejectsMalformedEntries:
         validator = jsonschema.Draft202012Validator(_schema())
         return list(validator.iter_errors(ir))
 
-    def test_a_non_boolean_flag_is_rejected(self):
-        ir = _build()
-        _account_fields(ir)["updated_at"]["auto_now"] = "yes"
-        assert self._errors(ir)
-
-    def test_an_unknown_enricher_kind_is_rejected(self):
-        ir = _build(aggregate=[stamp_actor])
-        ir["enrichers"]["query"] = ["app.stamp"]
-        assert self._errors(ir)
-
-    def test_an_empty_enricher_list_is_rejected(self):
-        ir = _build(aggregate=[stamp_actor])
-        ir["enrichers"]["command"] = []
+    @pytest.mark.parametrize(
+        ("enrichers", "path", "value"),
+        [
+            ({}, ("updated_at", "auto_now"), "yes"),
+            ({"aggregate": [stamp_actor]}, ("enrichers", "query"), ["app.stamp"]),
+            ({"aggregate": [stamp_actor]}, ("enrichers", "command"), []),
+        ],
+        ids=["non-boolean-flag", "unknown-enricher-kind", "empty-enricher-list"],
+    )
+    def test_a_malformed_entry_is_rejected(self, enrichers, path, value):
+        ir = _build(**enrichers)
+        parent, key = path
+        target = (
+            ir["enrichers"] if parent == "enrichers" else _account_fields(ir)[parent]
+        )
+        target[key] = value
         assert self._errors(ir)
 
 

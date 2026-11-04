@@ -49,28 +49,15 @@ class TestESAggregateExtraction:
     def test_is_event_sourced(self, bank_cluster):
         assert bank_cluster["aggregate"]["options"]["is_event_sourced"] is True
 
-    def test_apply_handlers_present(self, bank_cluster):
-        assert "apply_handlers" in bank_cluster["aggregate"]
-
-    def test_apply_handlers_map_events(self, bank_cluster):
+    def test_apply_handlers_map_each_event_to_its_method(self, bank_cluster):
         handlers = bank_cluster["aggregate"]["apply_handlers"]
+        keys = list(handlers)
+
         assert len(handlers) == 2
-
-    def test_apply_handlers_values_are_method_names(self, bank_cluster):
-        handlers = bank_cluster["aggregate"]["apply_handlers"]
-        method_names = list(handlers.values())
-        assert "opened" in method_names
-        assert "deposited" in method_names
-
-    def test_apply_handlers_keys_are_event_fqns(self, bank_cluster):
-        handlers = bank_cluster["aggregate"]["apply_handlers"]
-        for key in handlers:
-            assert "AccountOpened" in key or "DepositMade" in key
-
-    def test_apply_handlers_keys_sorted(self, bank_cluster):
-        handlers = bank_cluster["aggregate"]["apply_handlers"]
-        keys = list(handlers.keys())
+        assert sorted(handlers.values()) == ["deposited", "opened"]
         assert keys == sorted(keys)
+        for key in keys:
+            assert "AccountOpened" in key or "DepositMade" in key
 
     def test_events_in_cluster(self, bank_cluster):
         assert len(bank_cluster["events"]) >= 2
@@ -84,10 +71,7 @@ class TestReservedOptionExtraction:
         cluster = _order_cluster(reserved=["note", "archived"])
         assert cluster["aggregate"]["options"]["reserved"] == ["archived", "note"]
 
-    def test_reserved_absent_when_not_declared(self):
-        cluster = _order_cluster()
-        assert "reserved" not in cluster["aggregate"]["options"]
-
-    def test_reserved_absent_when_empty(self):
-        cluster = _order_cluster(reserved=[])
+    @pytest.mark.parametrize("reserved", [None, []], ids=["not-declared", "empty"])
+    def test_reserved_absent_when_not_declared_or_empty(self, reserved):
+        cluster = _order_cluster(reserved=reserved)
         assert "reserved" not in cluster["aggregate"]["options"]

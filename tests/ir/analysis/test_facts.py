@@ -373,6 +373,9 @@ class TestConstructionFacts:
 
         assert construction.fqn == f"{BEHAVIOR_MODULE}.Order"
         assert "status" in construction.field_names
+        # ``Order(order_id=..., status=...)`` passes no positional argument, so
+        # its keyword names are the whole field set.
+        assert construction.positional_template is False
 
     def test_a_construction_is_not_also_a_call(self, order_catalog):
         """A construction is recorded once, as a construction, never doubled as
@@ -416,15 +419,6 @@ class TestConstructionFacts:
         assert construction.dynamic_kwargs is False
         assert construction.field_names == ("status",)
 
-    def test_a_keyword_only_construction_names_no_positional_template(
-        self, order_catalog
-    ):
-        """The other side of that flag: ``Order(order_id=..., status=...)`` passes
-        no positional argument, so its keyword names are the whole field set."""
-        facts = order_catalog.element_facts(behavior.OrderRepository)["seed"]
-
-        assert facts.constructions[0].positional_template is False
-
     def test_a_nested_construction_is_recorded(self, order_catalog):
         """``self.raise_(OrderShipped(...))`` records the inner ``OrderShipped``
         construction in its own right, beside the outer ``raise_`` call."""
@@ -457,104 +451,53 @@ class TestReceiverConservatism:
         assert query.receiver_role is ReceiverRole.UNKNOWN
         assert "status" in query.field_names
 
-    def test_an_attribute_chain_rooted_at_a_variable_is_left_unknown(self, tmp_path):
-        """A chain rooted at a local variable (``repo.query.filter``) is as
-        unresolvable as the bare variable, so it too is ``UNKNOWN``."""
-        catalog, index = _walked_catalog(
-            _make_pkg(
-                tmp_path,
-                """
-                class Service:
-                    def run(self):
-                        repo = get_repo()
-                        repo.query.filter(status="active")
-                """,
-            )
-        )
+    @pytest.mark.parametrize(
+        ("body", "method"),
+        [
+            # A chain rooted at a local variable is as unresolvable as the bare
+            # variable.
+            pytest.param(
+                'repo = get_repo()\n        repo.query.filter(status="active")',
+                "filter",
+                id="attribute-chain-rooted-at-a-variable",
+            ),
+            # A method named ``add`` on a plain variable is not statically a
+            # repository, so it is not misclassified as a query.
+            pytest.param(
+                "items = collect()\n        items.add(value=1)",
+                "add",
+                id="variable-held-object-named-add",
+            ),
+            # A method on an arbitrary call result is less knowable than a
+            # variable: its callee resolves to nothing.
+            pytest.param(
+                'get_repo().filter(status="active")',
+                "filter",
+                id="call-result",
+            ),
+            # A subscript has no static root to recognize.
+            pytest.param(
+                'handlers[0].filter(status="active")',
+                "filter",
+                id="subscript",
+            ),
+            # A recognized ``self`` receiver whose method is none of the known
+            # surfaces is not defaulted to a role.
+            pytest.param("self.compute()", "compute", id="non-surface-method"),
+        ],
+    )
+    def test_a_receiver_with_no_recognizable_root_is_left_unknown(
+        self, tmp_path, body, method
+    ):
+        """A receiver the catalog cannot place statically gets ``UNKNOWN``
+        rather than being waved through as a query."""
+        source = f"class Service:\n    def run(self, handlers):\n        {body}\n"
+        catalog, index = _walked_catalog(_make_pkg(tmp_path, source))
         facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
 
-        query = next(c for c in facts.calls if c.method == "filter")
+        call = next(c for c in facts.calls if c.method == method)
 
-        assert query.receiver_role is ReceiverRole.UNKNOWN
-
-    def test_a_variable_held_object_named_add_is_not_a_repository(self, tmp_path):
-        """A method named ``add`` on a plain variable is not statically a
-        repository, so it is not misclassified as a query."""
-        catalog, index = _walked_catalog(
-            _make_pkg(
-                tmp_path,
-                """
-                class Service:
-                    def run(self):
-                        items = collect()
-                        items.add(value=1)
-                """,
-            )
-        )
-        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
-
-        add = next(c for c in facts.calls if c.method == "add")
-
-        assert add.receiver_role is ReceiverRole.UNKNOWN
-
-    def test_a_call_result_receiver_is_left_unknown(self, tmp_path):
-        """A method on an arbitrary call result (``get_repo().filter(...)``) is
-        *less* knowable than a variable, not more: its callee resolves to
-        nothing, so the receiver is not waved through as a repository."""
-        catalog, index = _walked_catalog(
-            _make_pkg(
-                tmp_path,
-                """
-                class Service:
-                    def run(self):
-                        get_repo().filter(status="active")
-                """,
-            )
-        )
-        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
-
-        query = next(c for c in facts.calls if c.method == "filter")
-
-        assert query.receiver_role is ReceiverRole.UNKNOWN
-
-    def test_a_subscript_receiver_is_left_unknown(self, tmp_path):
-        """A receiver that is neither a name/attribute chain nor a construction
-        (``handlers[0].filter(...)``) has no static root to recognize, so it is
-        left ``UNKNOWN`` rather than waved through as a query."""
-        catalog, index = _walked_catalog(
-            _make_pkg(
-                tmp_path,
-                """
-                class Service:
-                    def run(self, handlers):
-                        handlers[0].filter(status="active")
-                """,
-            )
-        )
-        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
-
-        query = next(c for c in facts.calls if c.method == "filter")
-
-        assert query.receiver_role is ReceiverRole.UNKNOWN
-
-    def test_a_recognized_receiver_with_a_non_surface_method_is_unknown(self, tmp_path):
-        """A recognized ``self`` receiver whose method is none of the known
-        surfaces (``self.compute()``) is ``UNKNOWN``, not defaulted to a role."""
-        catalog, index = _walked_catalog(
-            _make_pkg(
-                tmp_path,
-                """
-                class Service:
-                    def run(self):
-                        self.compute()
-                """,
-            )
-        )
-        facts = _method_facts(catalog, index, "pkg.mod", "Service", "run")
-
-        compute = next(c for c in facts.calls if c.method == "compute")
-
-        assert compute.receiver_role is ReceiverRole.UNKNOWN
+        assert call.receiver_role is ReceiverRole.UNKNOWN
 
     def test_a_self_rooted_generic_method_is_a_known_false_positive(self, tmp_path):
         """A documented precision limit, pinned so a change to it is noticed: ``self.cache.get(...)`` shares a name with the

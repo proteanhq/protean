@@ -11,14 +11,11 @@ from protean.ir import SCHEMA_PATH, load_schema
 class TestSchemaFile:
     """Verify the schema file is loadable and well-formed."""
 
-    def test_schema_file_exists(self):
+    def test_schema_file_loads_as_a_json_schema_object(self):
         assert SCHEMA_PATH.exists(), f"Schema file missing at {SCHEMA_PATH}"
-
-    def test_schema_is_valid_json(self):
         data = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
         assert isinstance(data, dict)
 
-    def test_load_schema_returns_dict(self):
         schema = load_schema()
         assert isinstance(schema, dict)
         assert "properties" in schema

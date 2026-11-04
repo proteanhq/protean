@@ -173,12 +173,10 @@ class TestLoadIrFromCommit:
             load_ir_from_commit("HEAD")
 
     def test_raises_git_error_when_git_not_found(self, monkeypatch):
-        import protean.ir.git as git_mod
-
-        def fake_run(*args, **kwargs):
-            raise FileNotFoundError("git not found")
-
-        monkeypatch.setattr(git_mod.subprocess, "run", fake_run)
+        # A PATH that holds only an empty directory leaves no git to run.
+        empty_bin = self.tmp_path / "empty_bin"
+        empty_bin.mkdir()
+        monkeypatch.setenv("PATH", str(empty_bin))
         with pytest.raises(GitError, match="git is not installed"):
             load_ir_from_commit("HEAD")
 

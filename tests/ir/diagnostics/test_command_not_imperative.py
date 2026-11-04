@@ -124,130 +124,29 @@ class TestCommandNotImperative:
         for diag in findings:
             _assert_naming_diagnostic_shape(diag)
 
-    def test_imperative_commands_not_flagged(self):
-        domain = Domain(name="CommandNamingClean", root_path=".")
-
-        @domain.command(part_of="Order")
-        class CreateOrder:
-            order_id = Identifier(identifier=True)
-
-        @domain.command(part_of="Order")
-        class PlaceOrder:
-            order_id = Identifier(identifier=True)
-
-        @domain.command(part_of="Order")
-        class CancelReservation:
-            order_id = Identifier(identifier=True)
-
-        @domain.command(part_of="Order")
-        class ProcessPayment:
-            order_id = Identifier(identifier=True)
-
-        @domain.aggregate
-        class Order:
-            name = String(max_length=50)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-        findings = [
-            d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
-        ]
-        assert findings == []
-
-    def test_prefix_match_is_case_insensitive(self):
-        """A CapWords name (`CreateOrder`) starts with `C`, not the lowercased
-        prefix `create` — so a naive case-sensitive ``startswith`` would flag it.
-        Its absence from the findings proves the match lowercases both sides."""
-        domain = Domain(name="CommandNamingCase", root_path=".")
-
-        @domain.command(part_of="Order")
-        class CreateOrder:
-            order_id = Identifier(identifier=True)
-
-        @domain.aggregate
-        class Order:
-            name = String(max_length=50)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-        findings = [
-            d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
-        ]
-        assert findings == []
-
-    def test_pinned_verbs_not_flagged(self):
-        """Every verb the issue pins must pass. Guards against a membership
-        drift that drops a listed verb and flags a textbook imperative command
-        (e.g. `TransferFunds`, `ActivateAccount`, `ResetPassword`)."""
-        domain = Domain(name="CommandNamingPinned", root_path=".")
-
-        @domain.command(part_of="Order")
-        class TransferFunds:
-            order_id = Identifier(identifier=True)
-
-        @domain.command(part_of="Order")
-        class ActivateAccount:
-            order_id = Identifier(identifier=True)
-
-        @domain.command(part_of="Order")
-        class RequestRefund:
-            order_id = Identifier(identifier=True)
-
-        @domain.command(part_of="Order")
-        class ResetPassword:
-            order_id = Identifier(identifier=True)
-
-        @domain.command(part_of="Order")
-        class MergeAccounts:
-            order_id = Identifier(identifier=True)
-
-        @domain.command(part_of="Order")
-        class SplitInvoice:
-            order_id = Identifier(identifier=True)
-
-        @domain.aggregate
-        class Order:
-            name = String(max_length=50)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-        findings = [
-            d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
-        ]
-        assert findings == []
-
-    def test_verb_prefix_requires_camelcase_boundary(self):
-        """`AddressChange` lowercases to `addresschange`, a naive substring
-        prefix match would see it starts with `add` and wrongly treat it as
-        imperative. It must still be flagged since `Address` is not `Add`
-        followed by a capitalized word."""
-        domain = Domain(name="CommandNamingBoundary", root_path=".")
-
-        @domain.command(part_of="Order")
-        class AddressChange:
-            order_id = Identifier(identifier=True)
-
-        @domain.command(part_of="Order")
-        class AddItem:
-            order_id = Identifier(identifier=True)
-
-        @domain.aggregate
-        class Order:
-            name = String(max_length=50)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-        findings = [
-            d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
-        ]
-        flagged = {d["element"] for d in findings}
-        assert any("AddressChange" in f for f in flagged)
-        assert not any("AddItem" in f for f in flagged)
+    @pytest.mark.parametrize(
+        ("names", "expected_flagged"),
+        [
+            (("AddressChange", "AddItem"), {"AddressChange"}),
+            (("Closeness", "Openness"), {"Closeness", "Openness"}),
+        ],
+        ids=["add-letters-in-a-noun", "close-and-open-letters-in-a-noun"],
+    )
+    def test_verb_prefix_requires_camelcase_boundary(self, names, expected_flagged):
+        """A name that starts with a verb's letters but has no CamelCase
+        boundary after them is still flagged. `AddressChange` lowercases to
+        `addresschange`, which starts with `add`, yet `Address` is not `Add`
+        followed by a capitalized word. `AddItem` has the boundary and passes.
+        `Closeness` and `Openness` start with `close` and `open` and are
+        flagged."""
+        assert _flagged_commands(None, *names) == expected_flagged
 
     @pytest.mark.parametrize("verb", EXPECTED_IMPERATIVE_VERBS)
     def test_every_listed_verb_is_accepted(self, verb):
         """A command named `<Verb>Ticket` passes for every verb in the list,
-        such as `CloseTicket`, `RestockTicket` or `MakeTicket`."""
+        such as `CloseTicket`, `RestockTicket` or `MakeTicket`. The check
+        lowercases the name before it compares, so the capital first letter
+        does not get the command flagged."""
         domain = Domain(name="CommandNamingCommonVerbs", root_path=".")
 
         command_name = f"{verb.capitalize()}Ticket"
@@ -270,34 +169,6 @@ class TestCommandNotImperative:
             d for d in ir["diagnostics"] if d["code"] == "COMMAND_NOT_IMPERATIVE"
         ]
         assert findings == []
-
-    def test_verb_letters_without_camelcase_boundary_are_flagged(self):
-        """`Closeness` and `Openness` start with the letters of `close` and
-        `open` but have no CamelCase boundary after them, so they are still
-        flagged."""
-        domain = Domain(name="CommandNamingVerbLettersBoundary", root_path=".")
-
-        @domain.command(part_of="Ticket")
-        class Closeness:
-            ticket_id = Identifier(identifier=True)
-
-        @domain.command(part_of="Ticket")
-        class Openness:
-            ticket_id = Identifier(identifier=True)
-
-        @domain.aggregate
-        class Ticket:
-            name = String(max_length=50)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-        flagged = {
-            d["element"]
-            for d in ir["diagnostics"]
-            if d["code"] == "COMMAND_NOT_IMPERATIVE"
-        }
-        assert any("Closeness" in f for f in flagged)
-        assert any("Openness" in f for f in flagged)
 
 
 def _flagged_commands(command_verbs=None, *names):
@@ -333,17 +204,14 @@ def _flagged_commands(command_verbs=None, *names):
 class TestProjectCommandVerbs:
     """``[lint].command_verbs`` adds a project's own verbs to the built-in list."""
 
-    def test_unknown_verb_is_flagged_by_default(self):
-        assert _flagged_commands(None, "AdjustStock") == {"AdjustStock"}
-
-    def test_project_verb_is_accepted(self):
-        assert _flagged_commands(["adjust"], "AdjustStock") == set()
+    @pytest.mark.parametrize(
+        "command_verbs", [None, []], ids=["setting-absent", "empty-list"]
+    )
+    def test_unknown_verb_is_flagged_without_project_verbs(self, command_verbs):
+        assert _flagged_commands(command_verbs, "AdjustStock") == {"AdjustStock"}
 
     def test_project_verb_is_matched_case_insensitively(self):
         assert _flagged_commands(["Adjust"], "AdjustStock") == set()
-
-    def test_empty_list_behaves_as_default(self):
-        assert _flagged_commands([], "AdjustStock") == {"AdjustStock"}
 
     def test_noun_name_is_still_flagged(self):
         assert _flagged_commands(["adjust"], "OrderCreation") == {"OrderCreation"}
@@ -358,4 +226,5 @@ class TestProjectCommandVerbs:
         assert _flagged_commands(["void"], "VoidInvoice", "Voidance") == {"Voidance"}
 
     def test_built_in_verbs_still_pass(self):
+        """A project verb is accepted alongside the built-in list."""
         assert _flagged_commands(["adjust"], "PlaceOrder", "AdjustStock") == set()

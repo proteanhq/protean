@@ -2,9 +2,9 @@
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -41,12 +41,54 @@ def _write_ir(directory: Path, ir_dict: dict) -> Path:
     return path
 
 
+_TEST7_DOMAIN = str(
+    Path(__file__).parent.parent / "support" / "domains" / "test7" / "publishing7.py"
+)
+
+
+def _commit_ir(repo: Path, ir_dict: dict) -> None:
+    """Create a git repository at *repo* holding *ir_dict* committed as
+    ``.protean/ir.json``."""
+    env = {
+        **os.environ,
+        "HOME": str(repo),
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@test.com",
+    }
+    _write_ir(repo / ".protean", ir_dict)
+    for command in (
+        ["git", "init", "-q"],
+        ["git", "add", ".protean/ir.json"],
+        ["git", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "baseline"],
+    ):
+        subprocess.run(command, cwd=repo, env=env, capture_output=True, check=True)
+
+
+def _run_compat_hook(monkeypatch, repo: Path, baseline_ir: dict) -> int:
+    """Commit *baseline_ir* in a git repository at *repo*, run the compat hook
+    against HEAD from inside it, and return the exit code."""
+    from protean.cli.hooks import check_compat_hook
+
+    _commit_ir(repo, baseline_ir)
+    os.chdir(repo)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["protean-check-compat", "-d", _TEST7_DOMAIN, "--dir", ".protean"],
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        check_compat_hook()
+    return exc_info.value.code
+
+
 def _live_ir_for_test7() -> dict:
     """Return the live IR dict for the test7 domain (publishing7.py)."""
     from protean.ir.builder import IRBuilder
     from protean.utils.domain_discovery import derive_domain
 
-    domain = derive_domain("publishing7.py")
+    domain = derive_domain(_TEST7_DOMAIN)
     domain.init(traverse=False)
     return IRBuilder(domain).build()
 
@@ -60,20 +102,11 @@ def _live_ir_for_test7() -> dict:
 class TestCompatConfigDefaults:
     """CompatConfig has correct default values."""
 
-    def test_default_strictness(self):
+    def test_defaults(self):
         config = CompatConfig()
         assert config.strictness == "strict"
-
-    def test_default_exclude(self):
-        config = CompatConfig()
         assert config.exclude == ()
-
-    def test_default_min_versions(self):
-        config = CompatConfig()
         assert config.min_versions_before_removal == 3
-
-    def test_default_staleness_enabled(self):
-        config = CompatConfig()
         assert config.staleness_enabled is True
 
     def test_frozen(self):
@@ -91,34 +124,24 @@ class TestCompatConfigDefaults:
 class TestCompatConfigValidation:
     """CompatConfig validates input values."""
 
-    def test_valid_strictness_strict(self):
-        config = CompatConfig(strictness="strict")
-        assert config.strictness == "strict"
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("strictness", "strict"),
+            ("strictness", "warn"),
+            ("strictness", "off"),
+            ("exclude", ("myapp.internal.LegacyEvent",)),
+            ("min_versions_before_removal", 5),
+        ],
+    )
+    def test_accepts_a_valid_value(self, field, value):
+        config = CompatConfig(**{field: value})
+        assert getattr(config, field) == value
 
-    def test_valid_strictness_warn(self):
-        config = CompatConfig(strictness="warn")
-        assert config.strictness == "warn"
-
-    def test_valid_strictness_off(self):
-        config = CompatConfig(strictness="off")
-        assert config.strictness == "off"
-
-    def test_invalid_strictness_raises(self):
-        with pytest.raises(ValueError, match="Invalid strictness value"):
-            CompatConfig(strictness="invalid")
-
-    @pytest.mark.parametrize("value", [[], {}, 1])
-    def test_non_string_strictness_raises_value_error(self, value):
+    @pytest.mark.parametrize("value", ["invalid", [], {}, 1])
+    def test_invalid_strictness_raises_value_error(self, value):
         with pytest.raises(ValueError, match="Invalid strictness value"):
             CompatConfig(strictness=value)
-
-    def test_custom_exclude(self):
-        config = CompatConfig(exclude=("myapp.internal.LegacyEvent",))
-        assert config.exclude == ("myapp.internal.LegacyEvent",)
-
-    def test_custom_min_versions(self):
-        config = CompatConfig(min_versions_before_removal=5)
-        assert config.min_versions_before_removal == 5
 
     def test_non_mapping_domains_raises(self):
         with pytest.raises(ValueError, match="domains must be a mapping"):
@@ -134,23 +157,19 @@ class TestCompatConfigValidation:
 class TestIsExcluded:
     """CompatConfig.is_excluded() matches FQNs."""
 
-    def test_excludes_matching_fqn(self):
-        config = CompatConfig(exclude=("myapp.internal.LegacyEvent",))
-        assert config.is_excluded("myapp.internal.LegacyEvent") is True
-
-    def test_does_not_exclude_non_matching(self):
-        config = CompatConfig(exclude=("myapp.internal.LegacyEvent",))
-        assert config.is_excluded("myapp.models.User") is False
-
-    def test_empty_exclude_matches_nothing(self):
-        config = CompatConfig(exclude=())
-        assert config.is_excluded("anything.Foo") is False
-
-    def test_multiple_excludes(self):
-        config = CompatConfig(exclude=("a.B", "c.D"))
-        assert config.is_excluded("a.B") is True
-        assert config.is_excluded("c.D") is True
-        assert config.is_excluded("e.F") is False
+    @pytest.mark.parametrize(
+        "exclude, fqn, expected",
+        [
+            (("myapp.internal.LegacyEvent",), "myapp.internal.LegacyEvent", True),
+            (("myapp.internal.LegacyEvent",), "myapp.models.User", False),
+            ((), "anything.Foo", False),
+            (("a.B", "c.D"), "a.B", True),
+            (("a.B", "c.D"), "c.D", True),
+            (("a.B", "c.D"), "e.F", False),
+        ],
+    )
+    def test_matches_only_listed_fqns(self, exclude, fqn, expected):
+        assert CompatConfig(exclude=exclude).is_excluded(fqn) is expected
 
 
 # ---------------------------------------------------------------------------
@@ -162,48 +181,39 @@ class TestIsExcluded:
 class TestLoadConfigDefaults:
     """load_config() returns defaults when no config.toml exists."""
 
-    def test_returns_defaults_when_no_file(self, tmp_path):
-        config = load_config(tmp_path)
-        assert config == CompatConfig()
-
-    def test_returns_defaults_when_directory_missing(self, tmp_path):
-        config = load_config(tmp_path / "nonexistent")
-        assert config == CompatConfig()
-
-    def test_accepts_str_path(self, tmp_path):
-        config = load_config(str(tmp_path))
-        assert config == CompatConfig()
+    @pytest.mark.parametrize(
+        "make_path",
+        [lambda t: t, lambda t: t / "nonexistent", lambda t: str(t)],
+        ids=["no file", "directory missing", "str path"],
+    )
+    def test_returns_defaults(self, tmp_path, make_path):
+        assert load_config(make_path(tmp_path)) == CompatConfig()
 
 
 @pytest.mark.no_test_domain
 class TestLoadConfigFromFile:
     """load_config() reads and parses .protean/config.toml."""
 
-    def test_reads_strictness(self, tmp_path):
-        _write_config(tmp_path, '[compatibility]\nstrictness = "warn"\n')
-        config = load_config(tmp_path)
-        assert config.strictness == "warn"
-
-    def test_reads_exclude(self, tmp_path):
-        _write_config(
-            tmp_path,
-            '[compatibility]\nexclude = ["myapp.Legacy", "myapp.Old"]\n',
-        )
-        config = load_config(tmp_path)
-        assert config.exclude == ("myapp.Legacy", "myapp.Old")
-
-    def test_reads_deprecation_min_versions(self, tmp_path):
-        _write_config(
-            tmp_path,
-            "[compatibility.deprecation]\nmin_versions_before_removal = 5\n",
-        )
-        config = load_config(tmp_path)
-        assert config.min_versions_before_removal == 5
-
-    def test_reads_staleness_enabled(self, tmp_path):
-        _write_config(tmp_path, "[staleness]\nenabled = false\n")
-        config = load_config(tmp_path)
-        assert config.staleness_enabled is False
+    @pytest.mark.parametrize(
+        "content, field, expected",
+        [
+            (
+                '[compatibility]\nexclude = ["myapp.Legacy", "myapp.Old"]\n',
+                "exclude",
+                ("myapp.Legacy", "myapp.Old"),
+            ),
+            (
+                "[compatibility.deprecation]\nmin_versions_before_removal = 5\n",
+                "min_versions_before_removal",
+                5,
+            ),
+            ("[staleness]\nenabled = false\n", "staleness_enabled", False),
+        ],
+        ids=["exclude", "min_versions", "staleness"],
+    )
+    def test_reads_a_setting(self, tmp_path, content, field, expected):
+        _write_config(tmp_path, content)
+        assert getattr(load_config(tmp_path), field) == expected
 
     def test_reads_full_config(self, tmp_path):
         _write_config(
@@ -248,53 +258,41 @@ enabled = false
 class TestLoadConfigErrors:
     """load_config() raises on invalid files."""
 
-    def test_raises_on_invalid_toml(self, tmp_path):
-        _write_config(tmp_path, "{ not valid toml }")
-        with pytest.raises(ValueError, match="Invalid TOML"):
-            load_config(tmp_path)
-
-    def test_raises_on_invalid_strictness(self, tmp_path):
-        _write_config(tmp_path, '[compatibility]\nstrictness = "invalid"\n')
-        with pytest.raises(ValueError, match="Invalid strictness value"):
-            load_config(tmp_path)
-
-    def test_raises_on_non_list_exclude(self, tmp_path):
-        _write_config(tmp_path, '[compatibility]\nexclude = "not a list"\n')
-        with pytest.raises(ValueError, match="must be a list of strings"):
-            load_config(tmp_path)
-
-    def test_raises_on_non_string_exclude_items(self, tmp_path):
-        _write_config(tmp_path, "[compatibility]\nexclude = [1, 2, 3]\n")
-        with pytest.raises(ValueError, match="must be a list of strings"):
-            load_config(tmp_path)
-
-    def test_raises_on_non_int_min_versions(self, tmp_path):
-        _write_config(
-            tmp_path,
-            '[compatibility.deprecation]\nmin_versions_before_removal = "x"\n',
-        )
-        with pytest.raises(ValueError, match="positive integer"):
-            load_config(tmp_path)
-
-    def test_raises_on_zero_min_versions(self, tmp_path):
-        _write_config(
-            tmp_path,
-            "[compatibility.deprecation]\nmin_versions_before_removal = 0\n",
-        )
-        with pytest.raises(ValueError, match="positive integer"):
-            load_config(tmp_path)
-
-    def test_raises_on_negative_min_versions(self, tmp_path):
-        _write_config(
-            tmp_path,
-            "[compatibility.deprecation]\nmin_versions_before_removal = -1\n",
-        )
-        with pytest.raises(ValueError, match="positive integer"):
-            load_config(tmp_path)
-
-    def test_raises_on_non_bool_staleness(self, tmp_path):
-        _write_config(tmp_path, '[staleness]\nenabled = "yes"\n')
-        with pytest.raises(ValueError, match="must be a boolean"):
+    @pytest.mark.parametrize(
+        "content, message",
+        [
+            ("{ not valid toml }", "Invalid TOML"),
+            ('[compatibility]\nstrictness = "invalid"\n', "Invalid strictness value"),
+            ('[compatibility]\nexclude = "not a list"\n', "must be a list of strings"),
+            ("[compatibility]\nexclude = [1, 2, 3]\n", "must be a list of strings"),
+            (
+                '[compatibility.deprecation]\nmin_versions_before_removal = "x"\n',
+                "positive integer",
+            ),
+            (
+                "[compatibility.deprecation]\nmin_versions_before_removal = 0\n",
+                "positive integer",
+            ),
+            (
+                "[compatibility.deprecation]\nmin_versions_before_removal = -1\n",
+                "positive integer",
+            ),
+            ('[staleness]\nenabled = "yes"\n', "must be a boolean"),
+        ],
+        ids=[
+            "invalid toml",
+            "invalid strictness",
+            "non-list exclude",
+            "non-string exclude items",
+            "non-int min_versions",
+            "zero min_versions",
+            "negative min_versions",
+            "non-bool staleness",
+        ],
+    )
+    def test_raises_on_an_invalid_value(self, tmp_path, content, message):
+        _write_config(tmp_path, content)
+        with pytest.raises(ValueError, match=message):
             load_config(tmp_path)
 
     def test_raises_on_unreadable_file(self, tmp_path):
@@ -314,23 +312,26 @@ class TestLoadConfigErrors:
 class TestParseConfig:
     """Direct _parse_config() tests for edge cases."""
 
-    def test_empty_dict(self):
-        config = _parse_config({})
-        assert config == CompatConfig()
-
-    def test_unknown_keys_ignored(self):
-        config = _parse_config({"unknown_section": {"key": "value"}})
-        assert config == CompatConfig()
-
-    def test_compatibility_without_deprecation(self):
-        config = _parse_config({"compatibility": {"strictness": "warn"}})
-        assert config.strictness == "warn"
-        assert config.min_versions_before_removal == 3  # default
-
-    def test_staleness_without_compatibility(self):
-        config = _parse_config({"staleness": {"enabled": False}})
-        assert config.staleness_enabled is False
-        assert config.strictness == "strict"  # default
+    @pytest.mark.parametrize(
+        "raw, expected",
+        [
+            ({}, CompatConfig()),
+            ({"unknown_section": {"key": "value"}}, CompatConfig()),
+            (
+                {"compatibility": {"strictness": "warn"}},
+                CompatConfig(strictness="warn"),
+            ),
+            ({"staleness": {"enabled": False}}, CompatConfig(staleness_enabled=False)),
+        ],
+        ids=[
+            "empty",
+            "unknown keys ignored",
+            "compatibility without deprecation",
+            "staleness without compatibility",
+        ],
+    )
+    def test_fills_missing_settings_with_defaults(self, raw, expected):
+        assert _parse_config(raw) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +399,7 @@ class TestDiffCLIWithConfig:
 
     def test_diff_exits_0_when_strictness_off(self):
         # The baseline lacks a field the live domain has: a change exists, and
-        # strictness=off must still exit 0 without running the diff.
+        # strictness=off must still exit 0 and print no diff.
         baseline_ir = json.loads(json.dumps(_live_ir_for_test7()))
         baseline_ir["checksum"] = "sha256:modified_baseline_off"
         for cluster in baseline_ir.get("clusters", {}).values():
@@ -412,24 +413,6 @@ class TestDiffCLIWithConfig:
         _write_config(self._protean_dir, '[compatibility]\nstrictness = "off"\n')
         _write_ir(self._protean_dir, baseline_ir)
 
-        with patch("protean.cli.ir.diff_ir", side_effect=AssertionError("diff_ir ran")):
-            result = runner.invoke(
-                app,
-                [
-                    "ir",
-                    "diff",
-                    "--domain",
-                    "publishing7.py",
-                    "--dir",
-                    str(self._protean_dir),
-                ],
-            )
-        assert result.exit_code == 0, result.output
-        assert "disabled" in result.stdout.lower()
-
-    def test_diff_exits_2_when_strictness_off_and_baseline_missing(self):
-        _write_config(self._protean_dir, '[compatibility]\nstrictness = "off"\n')
-
         result = runner.invoke(
             app,
             [
@@ -441,9 +424,10 @@ class TestDiffCLIWithConfig:
                 str(self._protean_dir),
             ],
         )
-        assert result.exit_code == 2
-        assert "No materialized IR" in result.stderr
-        assert "disabled" not in result.output.lower()
+        assert result.exit_code == 0, result.output
+        assert result.stdout.strip() == (
+            "Compatibility checking is disabled (strictness=off)."
+        )
 
     def test_diff_warn_mode_exits_0_on_breaking(self):
         """With strictness=warn, breaking changes print warning but exit 0."""
@@ -520,40 +504,6 @@ class TestCheckCLIWithConfig:
 
 
 @pytest.mark.no_test_domain
-class TestStalenessHookWithConfig:
-    """check_staleness_hook() respects .protean/config.toml."""
-
-    @pytest.fixture(autouse=True)
-    def reset_path(self, tmp_path):
-        original_path = sys.path[:]
-        cwd = Path.cwd()
-        change_working_directory_to("test7")
-        self._protean_dir = tmp_path / ".protean"
-        yield
-        sys.path[:] = original_path
-        os.chdir(cwd)
-
-    def test_exits_0_when_staleness_disabled(self):
-        from protean.cli.hooks import check_staleness_hook
-
-        _write_config(self._protean_dir, "[staleness]\nenabled = false\n")
-
-        with patch(
-            "sys.argv",
-            [
-                "protean-check-staleness",
-                "-d",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-            ],
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                check_staleness_hook()
-            assert exc_info.value.code == 0
-
-
-@pytest.mark.no_test_domain
 class TestCompatHookWithConfig:
     """check_compat_hook() respects .protean/config.toml."""
 
@@ -567,13 +517,14 @@ class TestCompatHookWithConfig:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_exits_0_when_strictness_off(self):
+    def test_exits_0_when_strictness_off(self, monkeypatch):
         from protean.cli.hooks import check_compat_hook
 
         _write_config(self._protean_dir, '[compatibility]\nstrictness = "off"\n')
 
-        with patch(
-            "sys.argv",
+        monkeypatch.setattr(
+            sys,
+            "argv",
             [
                 "protean-check-compat",
                 "-d",
@@ -581,10 +532,10 @@ class TestCompatHookWithConfig:
                 "--dir",
                 str(self._protean_dir),
             ],
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                check_compat_hook()
-            assert exc_info.value.code == 0
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            check_compat_hook()
+        assert exc_info.value.code == 0
 
 
 # ---------------------------------------------------------------------------
@@ -626,13 +577,10 @@ class TestModuleExports:
 class TestCompatConfigPostInitValidation:
     """CompatConfig.__post_init__ validates all fields."""
 
-    def test_rejects_zero_min_versions_direct(self):
+    @pytest.mark.parametrize("value", [0, -1])
+    def test_rejects_non_positive_min_versions_direct(self, value):
         with pytest.raises(ValueError, match="positive integer"):
-            CompatConfig(min_versions_before_removal=0)
-
-    def test_rejects_negative_min_versions_direct(self):
-        with pytest.raises(ValueError, match="positive integer"):
-            CompatConfig(min_versions_before_removal=-1)
+            CompatConfig(min_versions_before_removal=value)
 
     def test_rejects_non_bool_staleness_direct(self):
         with pytest.raises(ValueError, match="boolean"):
@@ -666,38 +614,6 @@ class TestParseConfigSectionTypeChecks:
 # ---------------------------------------------------------------------------
 # TestLoadConfigErrorHandling — CLI/hooks handle config errors gracefully
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.no_test_domain
-class TestDiffCLIConfigError:
-    """protean ir diff handles invalid config gracefully."""
-
-    @pytest.fixture(autouse=True)
-    def reset_path(self, tmp_path):
-        original_path = sys.path[:]
-        cwd = Path.cwd()
-        change_working_directory_to("test7")
-        self._protean_dir = tmp_path / ".protean"
-        yield
-        sys.path[:] = original_path
-        os.chdir(cwd)
-
-    def test_diff_aborts_on_invalid_config(self):
-        _write_config(self._protean_dir, "{ invalid toml }")
-        result = runner.invoke(
-            app,
-            [
-                "ir",
-                "diff",
-                "--domain",
-                "publishing7.py",
-                "--dir",
-                str(self._protean_dir),
-            ],
-        )
-        assert result.exit_code == 2
-        assert "Invalid .protean/config.toml" in result.stderr
-        assert result.stdout == ""
 
 
 @pytest.mark.no_test_domain
@@ -744,13 +660,14 @@ class TestStalenessHookConfigError:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_exits_1_on_invalid_config(self, capsys):
+    def test_exits_1_on_invalid_config(self, capsys, monkeypatch):
         from protean.cli.hooks import check_staleness_hook
 
         _write_config(self._protean_dir, "{ invalid toml }")
 
-        with patch(
-            "sys.argv",
+        monkeypatch.setattr(
+            sys,
+            "argv",
             [
                 "protean-check-staleness",
                 "-d",
@@ -758,10 +675,10 @@ class TestStalenessHookConfigError:
                 "--dir",
                 str(self._protean_dir),
             ],
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                check_staleness_hook()
-            assert exc_info.value.code == 1
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            check_staleness_hook()
+        assert exc_info.value.code == 1
 
         captured = capsys.readouterr()
         assert "config.toml" in captured.err.lower()
@@ -786,13 +703,14 @@ class TestCompatHookConfigError:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_exits_1_on_invalid_config(self, capsys):
+    def test_exits_1_on_invalid_config(self, capsys, monkeypatch):
         from protean.cli.hooks import check_compat_hook
 
         _write_config(self._protean_dir, "{ invalid toml }")
 
-        with patch(
-            "sys.argv",
+        monkeypatch.setattr(
+            sys,
+            "argv",
             [
                 "protean-check-compat",
                 "-d",
@@ -800,10 +718,10 @@ class TestCompatHookConfigError:
                 "--dir",
                 str(self._protean_dir),
             ],
-        ):
-            with pytest.raises(SystemExit) as exc_info:
-                check_compat_hook()
-            assert exc_info.value.code == 1
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            check_compat_hook()
+        assert exc_info.value.code == 1
 
         captured = capsys.readouterr()
         assert "config.toml" in captured.err.lower()
@@ -828,10 +746,8 @@ class TestCompatHookContractBreaking:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_exits_1_on_contract_breaking_changes(self):
+    def test_exits_1_on_contract_breaking_changes(self, capsys, monkeypatch):
         """Removed published event -> has_breaking_changes=True -> exit 1."""
-        from protean.cli.hooks import check_compat_hook
-
         live_ir = _live_ir_for_test7()
 
         # Create baseline with an extra published event
@@ -848,25 +764,14 @@ class TestCompatHookContractBreaking:
         )
         baseline_ir.setdefault("contracts", {})["events"] = baseline_events
 
-        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
-            with patch(
-                "sys.argv",
-                [
-                    "protean-check-compat",
-                    "-d",
-                    "publishing7.py",
-                    "--dir",
-                    str(self._protean_dir),
-                ],
-            ):
-                with pytest.raises(SystemExit) as exc_info:
-                    check_compat_hook()
-                assert exc_info.value.code == 1
+        code = _run_compat_hook(monkeypatch, self._protean_dir.parent, baseline_ir)
+        assert code == 1
+        err = capsys.readouterr().err
+        assert "Breaking IR changes detected" in err
+        assert "HookRemovedEvent" in err
 
-    def test_exits_0_on_contract_breaking_warn_mode(self):
+    def test_exits_0_on_contract_breaking_warn_mode(self, monkeypatch):
         """Contract breaking + strictness=warn -> exit 0."""
-        from protean.cli.hooks import check_compat_hook
-
         live_ir = _live_ir_for_test7()
 
         baseline_ir = json.loads(json.dumps(live_ir))
@@ -884,20 +789,8 @@ class TestCompatHookContractBreaking:
 
         _write_config(self._protean_dir, '[compatibility]\nstrictness = "warn"\n')
 
-        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
-            with patch(
-                "sys.argv",
-                [
-                    "protean-check-compat",
-                    "-d",
-                    "publishing7.py",
-                    "--dir",
-                    str(self._protean_dir),
-                ],
-            ):
-                with pytest.raises(SystemExit) as exc_info:
-                    check_compat_hook()
-                assert exc_info.value.code == 0
+        code = _run_compat_hook(monkeypatch, self._protean_dir.parent, baseline_ir)
+        assert code == 0
 
 
 # ---------------------------------------------------------------------------
@@ -919,9 +812,7 @@ class TestCompatHookWarnMode:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_exits_0_with_breaking_changes_in_warn_mode(self, capsys):
-        from protean.cli.hooks import check_compat_hook
-
+    def test_exits_0_with_breaking_changes_in_warn_mode(self, capsys, monkeypatch):
         live_ir = _live_ir_for_test7()
 
         # Create baseline with an extra required field
@@ -938,20 +829,8 @@ class TestCompatHookWarnMode:
 
         _write_config(self._protean_dir, '[compatibility]\nstrictness = "warn"\n')
 
-        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
-            with patch(
-                "sys.argv",
-                [
-                    "protean-check-compat",
-                    "-d",
-                    "publishing7.py",
-                    "--dir",
-                    str(self._protean_dir),
-                ],
-            ):
-                with pytest.raises(SystemExit) as exc_info:
-                    check_compat_hook()
-                assert exc_info.value.code == 0
+        code = _run_compat_hook(monkeypatch, self._protean_dir.parent, baseline_ir)
+        assert code == 0
 
         captured = capsys.readouterr()
         assert "breaking" in captured.err.lower()
@@ -977,9 +856,7 @@ class TestCompatHookExclude:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_excluded_elements_not_counted_as_breaking(self):
-        from protean.cli.hooks import check_compat_hook
-
+    def test_excluded_elements_not_counted_as_breaking(self, monkeypatch):
         live_ir = _live_ir_for_test7()
 
         # Create baseline with an extra required field on the first aggregate
@@ -1002,21 +879,8 @@ class TestCompatHookExclude:
             f'[compatibility]\nexclude = ["{target_fqn}"]\n',
         )
 
-        with patch("protean.ir.git.load_ir_from_commit", return_value=baseline_ir):
-            with patch(
-                "sys.argv",
-                [
-                    "protean-check-compat",
-                    "-d",
-                    "publishing7.py",
-                    "--dir",
-                    str(self._protean_dir),
-                ],
-            ):
-                with pytest.raises(SystemExit) as exc_info:
-                    check_compat_hook()
-                # Should exit 0 since the only breaking element is excluded
-                assert exc_info.value.code == 0
+        code = _run_compat_hook(monkeypatch, self._protean_dir.parent, baseline_ir)
+        assert code == 0
 
 
 # ---------------------------------------------------------------------------

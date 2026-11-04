@@ -1,5 +1,7 @@
 """Diagnostics: TestSuppressionAllowList."""
 
+import pytest
+
 from protean import Domain
 from protean.fields.simple import String
 from protean.ir.builder import IRBuilder
@@ -19,15 +21,9 @@ class TestSuppressionAllowList:
             if d["code"] == "AGGREGATE_WITHOUT_COMMAND_HANDLER"
         )
 
-    def test_count_grandfathers_first_n(self):
-        domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 2})
-        ir = IRBuilder(domain).build()
-        survivors = self._handler_gap_elements(ir)
-        assert len(survivors) == 3
-
     def test_survivors_are_the_deterministic_tail(self):
         """The survivors are exactly those ranked *after* position N in the
-        (code, element, field, message) total order — not merely count − N."""
+        (code, element, field, message) total order, not just count minus N."""
         domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 2})
         ir = IRBuilder(domain).build()
 
@@ -49,19 +45,19 @@ class TestSuppressionAllowList:
         second = IRBuilder(domain).build()["diagnostics"]
         assert first == second
 
-    def test_absent_suppressions_keeps_all(self):
-        domain = _build_five_finding_domain()
-        ir = IRBuilder(domain).build()
-        assert len(self._handler_gap_elements(ir)) == 5
-
-    def test_zero_count_suppresses_nothing(self):
-        domain = _build_five_finding_domain({"AGGREGATE_WITHOUT_COMMAND_HANDLER": 0})
+    @pytest.mark.parametrize(
+        "suppressions",
+        [None, {"AGGREGATE_WITHOUT_COMMAND_HANDLER": 0}],
+        ids=["no-suppressions-key", "zero-count"],
+    )
+    def test_no_count_or_zero_count_keeps_every_finding(self, suppressions):
+        domain = _build_five_finding_domain(suppressions)
         ir = IRBuilder(domain).build()
         assert len(self._handler_gap_elements(ir)) == 5
 
     def test_custom_rule_findings_are_subject_to_allow_list(self):
         """Custom findings with only the minimal keys are still allow-listed
-        and default to category='custom' — no KeyError on the absent keys."""
+        and default to category='custom'. The absent keys raise no KeyError."""
         domain = Domain(name="CustomAllowList", root_path=".")
         domain.config["lint"] = {
             "rules": [f"{_FIXTURES}.repeated_code_rule"],
@@ -82,7 +78,7 @@ class TestSuppressionAllowList:
     def test_grandfathered_set_follows_sort_not_emission_order(self):
         """The load-bearing ``survivors.sort(...)``: findings emitted OUT of
         sort order (z, a, q, b, k) must be grandfathered by *sorted* order, so
-        the first two removed are ``a``/``b`` — not the first two *emitted*
+        the first two removed are ``a``/``b``, not the first two *emitted*
         (``z``/``a``). Replacing the sort with a no-op would fail this."""
         domain = Domain(name="ScrambledAllowList", root_path=".")
         domain.config["lint"] = {

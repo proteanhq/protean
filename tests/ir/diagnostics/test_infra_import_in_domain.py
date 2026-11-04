@@ -1,5 +1,9 @@
 """Diagnostics: TestInfraImportInDomain."""
 
+import importlib.util
+
+import pytest
+
 from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
@@ -21,35 +25,8 @@ class TestInfraImportInDomain:
     """INFRA_IMPORT_IN_DOMAIN (opt-in) flags domain elements whose source module
     imports from ``protean.adapters``."""
 
-    def test_on_path_flags_infra_importing_aggregate(self):
-        domain = _build_infra_domain("InfraOn", {"check_infra_imports": True})
-        ir = IRBuilder(domain).build()
-
-        agg_fqn = fqn(infra_import_domain.InfraOrder)
-        agg = [d for d in _infra_findings(ir) if d["element"] == agg_fqn]
-        assert len(agg) == 1
-        d = agg[0]
-        assert d["level"] == "warning"
-        assert d["category"] == "bounded_context"
-        assert infra_import_domain.InfraOrder.__module__ in d["message"]
-        assert "protean.adapters" in d["message"]
-
-    def test_emits_once_per_element_in_the_module(self):
-        """The aggregate and the value object both live in the infra-importing
-        module, so each is flagged with its own FQN."""
-        domain = _build_infra_domain("InfraPerElement", {"check_infra_imports": True})
-        ir = IRBuilder(domain).build()
-
-        elements = sorted(d["element"] for d in _infra_findings(ir))
-        assert elements == sorted(
-            [
-                fqn(infra_import_domain.InfraOrder),
-                fqn(infra_import_domain.Money),
-            ]
-        )
-
     def test_default_off_emits_nothing(self):
-        """With the flag absent the method returns immediately — no file is
+        """With the flag absent the method returns immediately: no file is
         parsed, no diagnostic is emitted, even though the module does import
         infra."""
         domain = _build_infra_domain("InfraOff")
@@ -59,7 +36,7 @@ class TestInfraImportInDomain:
 
     def test_clean_domain_with_flag_on_is_not_flagged(self):
         """An element module importing only ``protean.fields`` (this test
-        module) must not be flagged, even with the rule on — no over-flagging on
+        module) must not be flagged, even with the rule on. The rule does not flag
         legitimate framework imports."""
         domain = Domain(name="CleanInfra", root_path=".")
         domain.config["lint"] = {"check_infra_imports": True}
@@ -89,7 +66,7 @@ class TestInfraImportInDomain:
 
     def test_suppressions_allow_list_grandfathers_first_n(self):
         """Two infra-importing elements with ``suppressions = {code: 1}`` leaves
-        exactly one survivor — the deterministically-ranked tail."""
+        exactly one survivor: the deterministically-ranked tail."""
         domain = _build_infra_domain(
             "InfraAllowList",
             {
@@ -112,8 +89,8 @@ class TestInfraImportInDomain:
 
     def test_non_cluster_element_is_scanned(self):
         """A repository is not an aggregate-cluster member, yet it lives in the
-        infra-importing module. The scan covers *every* registered domain
-        element, so the repository is flagged too — not just the aggregate and
+        infra-importing module. The scan includes *every* registered domain
+        element, so the repository is flagged too, not just the aggregate and
         value object inside the cluster."""
         domain = _build_infra_domain("InfraRepo", {"check_infra_imports": True})
         domain.register(
@@ -128,7 +105,7 @@ class TestInfraImportInDomain:
 
     def test_from_import_alias_form_is_detected(self):
         """``from protean import adapters`` (module ``protean``, alias
-        ``adapters``) must be caught — the rule inspects imported alias names,
+        ``adapters``) must be caught. The rule inspects imported alias names,
         not only ``ImportFrom.module``."""
         domain = Domain(name="InfraFromForm", root_path=".")
         domain.config["lint"] = {"check_infra_imports": True}
@@ -142,7 +119,7 @@ class TestInfraImportInDomain:
     def test_guarded_and_lazy_imports_are_not_flagged(self):
         """An adapter import reachable only under ``TYPE_CHECKING`` or inside a
         method body introduces no module-level runtime coupling, so it must not
-        be flagged — those are the idiomatic ways to avoid coupling."""
+        be flagged. Those are the idiomatic ways to avoid coupling."""
         domain = Domain(name="InfraGuarded", root_path=".")
         domain.config["lint"] = {"check_infra_imports": True}
         domain.register(infra_guarded_domain.GuardedOrder)
@@ -151,18 +128,22 @@ class TestInfraImportInDomain:
 
         assert _infra_findings(ir) == []
 
-    def test_unresolvable_module_fails_open(self):
-        """When ``find_spec`` raises (e.g. a ``__module__`` whose parent is not a
-        package), the rule fails open — the module is skipped, no diagnostic is
-        emitted, and the diagnostics pass is not aborted."""
-        domain = Domain(name="InfraUnresolvable", root_path=".")
+    @pytest.mark.parametrize(
+        "module_name",
+        ["os.no_such_sub", ""],
+        ids=["parent-is-not-a-package", "empty-module-name"],
+    )
+    def test_element_with_no_source_file_is_skipped(self, module_name):
+        """When an element's ``__module__`` resolves to no source file, the rule
+        skips it without error and the diagnostics pass is not aborted. For
+        ``os.no_such_sub``, ``find_spec`` raises because ``os`` is a module, not
+        a package. An empty module name is skipped before any lookup."""
+        domain = Domain(name="InfraNoSource", root_path=".")
         domain.config["lint"] = {"check_infra_imports": True}
-        # ``os`` is a module, not a package, so ``find_spec('os.no_such_sub')``
-        # raises ModuleNotFoundError.
         broken = type(
             "BrokenModuleVO",
             (BaseValueObject,),
-            {"__module__": "os.no_such_sub", "amount": String(max_length=5)},
+            {"__module__": module_name, "amount": String(max_length=5)},
         )
         domain.register(broken)
         domain.init(traverse=False)
@@ -170,22 +151,44 @@ class TestInfraImportInDomain:
 
         assert _infra_findings(ir) == []
 
-    def test_unparseable_source_fails_open(self, monkeypatch):
+    def test_unparseable_source_fails_open(self, tmp_path, monkeypatch):
         """When a resolved source file cannot be AST-parsed, the rule fails open:
         the module is treated as not importing infra rather than crashing the
-        build."""
-        monkeypatch.setattr(
-            "protean.ir.builder.ast.parse",
-            lambda *a, **k: (_ for _ in ()).throw(SyntaxError("boom")),
+        build. The module imports ``protean.adapters`` when it is loaded, and
+        its file is then overwritten with invalid source, so a parse of the
+        original source would flag it. The domain's root is the same
+        directory, so the walk over the domain's package meets the broken file
+        too and skips it."""
+        module_name = "infra_unparseable_module"
+        source = tmp_path / f"{module_name}.py"
+        source.write_text(
+            "from protean.adapters.broker.inline import InlineBroker\n"
+            "from protean.core.aggregate import BaseAggregate\n"
+            "from protean.fields import String\n"
+            "\n"
+            "\n"
+            "class UnparseableOrder(BaseAggregate):\n"
+            "    name = String(max_length=50)\n"
         )
-        domain = _build_infra_domain("InfraUnparseable", {"check_infra_imports": True})
+        monkeypatch.syspath_prepend(str(tmp_path))
+        # Loaded from its file without entering sys.modules, so no other test
+        # sees it.
+        spec = importlib.util.spec_from_file_location(module_name, source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        source.write_text("def broken(:\n")
+
+        domain = Domain(name="InfraUnparseable", root_path=str(tmp_path))
+        domain.config["lint"] = {"check_infra_imports": True}
+        domain.register(module.UnparseableOrder)
+        domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 
         assert _infra_findings(ir) == []
 
     def test_duplicate_fqn_is_scanned_once(self):
         """Two distinct classes sharing a fully-qualified name (same module and
-        name, different element buckets) are scanned once, not twice — the
+        name, different element buckets) are scanned once, not twice. The
         ``seen`` guard dedupes by FQN, so the infra-importing FQN is flagged a
         single time."""
         domain = Domain(name="InfraDup", root_path=".")
@@ -209,22 +212,6 @@ class TestInfraImportInDomain:
         dup_fqn = f"{module}.DupElement"
         assert [d["element"] for d in _infra_findings(ir)].count(dup_fqn) == 1
 
-    def test_element_without_module_is_skipped(self):
-        """An element whose ``__module__`` is empty contributes no source file to
-        scan, so it is skipped without error."""
-        domain = Domain(name="InfraNoModule", root_path=".")
-        domain.config["lint"] = {"check_infra_imports": True}
-        no_module = type(
-            "NoModuleVO",
-            (BaseValueObject,),
-            {"__module__": "", "amount": String(max_length=5)},
-        )
-        domain.register(no_module)
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        assert _infra_findings(ir) == []
-
     def test_the_rule_runs_through_domain_to_ir(self):
         """``IRBuilder`` is not the only entry point: ``Domain.to_ir()`` is what
         the CLI, the hooks and the observatory go through."""
@@ -240,11 +227,10 @@ class TestInfraImportInDomain:
         )
 
     def test_emitted_diagnostics_match_the_frozen_expectation(self):
-        """The full emitted payload for the infra fixtures — codes, elements,
-        order, levels, messages and rule text — pinned verbatim.
+        """The full emitted payload for the infra fixtures (codes, elements,
+        order, levels, messages and rule text), pinned verbatim.
 
-        A characterization test, not a before/after proof: the expectation was
-        written from the current output. Its job is forward-looking — any later
+        The expectation was written from the current output. Any later
         change to how source is located, parsed or cached shows up as a diff
         here instead of passing silently.
         """

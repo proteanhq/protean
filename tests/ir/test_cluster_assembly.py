@@ -1,4 +1,4 @@
-"""Tests for IRBuilder cluster assembly — aggregates, entities, value objects."""
+"""Tests for IRBuilder cluster assembly of aggregates, entities and value objects."""
 
 import pytest
 
@@ -132,21 +132,12 @@ class TestAggregateExtraction:
 class TestEntityExtraction:
     """Verify entity appears in the correct cluster."""
 
-    def test_entity_in_cluster(self, order_cluster):
+    def test_entity_is_the_single_line_item_part_of_the_aggregate(self, order_cluster):
         assert len(order_cluster["entities"]) == 1
-
-    def test_entity_element_type(self, order_cluster):
         entity = next(iter(order_cluster["entities"].values()))
         assert entity["element_type"] == "ENTITY"
-
-    def test_entity_name(self, order_cluster):
-        entity = next(iter(order_cluster["entities"].values()))
         assert entity["name"] == "LineItem"
-
-    def test_entity_part_of(self, order_cluster):
-        entity = next(iter(order_cluster["entities"].values()))
-        agg_fqn = order_cluster["aggregate"]["fqn"]
-        assert entity["part_of"] == agg_fqn
+        assert entity["part_of"] == order_cluster["aggregate"]["fqn"]
 
     def test_entity_identity_field(self, order_cluster):
         entity = next(iter(order_cluster["entities"].values()))
@@ -170,9 +161,10 @@ class TestEntityExtraction:
         assert "is_event_sourced" not in opts
         assert "stream_category" not in opts
 
-    def test_entity_keys_sorted(self, order_cluster):
-        entity = next(iter(order_cluster["entities"].values()))
-        keys = list(entity.keys())
+    @pytest.mark.parametrize("section", ["entities", "value_objects"])
+    def test_member_element_keys_sorted(self, order_cluster, section):
+        element = next(iter(order_cluster[section].values()))
+        keys = list(element.keys())
         assert keys == sorted(keys)
 
 
@@ -180,21 +172,14 @@ class TestEntityExtraction:
 class TestValueObjectExtraction:
     """Verify value object appears in the correct cluster."""
 
-    def test_vo_in_cluster(self, order_cluster):
+    def test_vo_is_the_single_shipping_address_part_of_the_aggregate(
+        self, order_cluster
+    ):
         assert len(order_cluster["value_objects"]) == 1
-
-    def test_vo_element_type(self, order_cluster):
         vo = next(iter(order_cluster["value_objects"].values()))
         assert vo["element_type"] == "VALUE_OBJECT"
-
-    def test_vo_name(self, order_cluster):
-        vo = next(iter(order_cluster["value_objects"].values()))
         assert vo["name"] == "ShippingAddress"
-
-    def test_vo_part_of(self, order_cluster):
-        vo = next(iter(order_cluster["value_objects"].values()))
-        agg_fqn = order_cluster["aggregate"]["fqn"]
-        assert vo["part_of"] == agg_fqn
+        assert vo["part_of"] == order_cluster["aggregate"]["fqn"]
 
     def test_vo_description(self, order_cluster):
         vo = next(iter(order_cluster["value_objects"].values()))
@@ -213,11 +198,6 @@ class TestValueObjectExtraction:
         vo = next(iter(order_cluster["value_objects"].values()))
         assert "options" not in vo
 
-    def test_vo_keys_sorted(self, order_cluster):
-        vo = next(iter(order_cluster["value_objects"].values()))
-        keys = list(vo.keys())
-        assert keys == sorted(keys)
-
 
 @pytest.mark.no_test_domain
 class TestClusterKeySorting:
@@ -227,10 +207,7 @@ class TestClusterKeySorting:
         keys = list(cluster_ir["clusters"].keys())
         assert keys == sorted(keys)
 
-    def test_entity_keys_sorted_within_cluster(self, order_cluster):
-        keys = list(order_cluster["entities"].keys())
-        assert keys == sorted(keys)
-
-    def test_vo_keys_sorted_within_cluster(self, order_cluster):
-        keys = list(order_cluster["value_objects"].keys())
+    @pytest.mark.parametrize("section", ["entities", "value_objects"])
+    def test_member_keys_sorted_within_cluster(self, order_cluster, section):
+        keys = list(order_cluster[section].keys())
         assert keys == sorted(keys)

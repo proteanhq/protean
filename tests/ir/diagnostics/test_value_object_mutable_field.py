@@ -1,5 +1,7 @@
 """Diagnostics: TestValueObjectMutableField."""
 
+import pytest
+
 from protean import Domain
 from protean.fields import Dict, List
 from protean.fields.simple import Float, String
@@ -14,8 +16,9 @@ class TestValueObjectMutableField:
     """VALUE_OBJECT_MUTABLE_FIELD flags a value object with a ``list``/``dict``
     field (mutable state breaks equality-by-value)."""
 
-    def test_list_field_flagged(self):
-        domain = Domain(name="VOList", root_path=".")
+    @pytest.mark.parametrize("mutable_field", [List, Dict], ids=["list", "dict"])
+    def test_mutable_field_flagged(self, mutable_field):
+        domain = Domain(name="VOMutable", root_path=".")
 
         @domain.aggregate
         class Order:
@@ -24,7 +27,7 @@ class TestValueObjectMutableField:
         @domain.value_object(part_of=Order)
         class ShippingLabel:
             carrier = String()
-            tags = List()
+            tags = mutable_field()
 
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
@@ -41,28 +44,6 @@ class TestValueObjectMutableField:
         assert d["rule"]["rationale"]
         assert d["rule"]["fix"]
         assert d["suggestion"] == d["rule"]["fix"]
-
-    def test_dict_field_flagged(self):
-        domain = Domain(name="VODict", root_path=".")
-
-        @domain.aggregate
-        class Order:
-            total = Float()
-
-        @domain.value_object(part_of=Order)
-        class Metadata:
-            label = String()
-            attrs = Dict()
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        diags = [
-            d for d in ir["diagnostics"] if d["code"] == "VALUE_OBJECT_MUTABLE_FIELD"
-        ]
-        assert len(diags) == 1
-        assert diags[0]["element"] == fqn(Metadata)
-        assert diags[0]["field"] == "attrs"
 
     def test_scalar_only_vo_not_flagged(self):
         domain = Domain(name="VOScalar", root_path=".")
