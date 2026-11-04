@@ -28,6 +28,7 @@ import json
 import re
 from typing import Annotated, Any
 
+import structlog
 import typer
 from rich import print
 from rich.markup import escape
@@ -116,6 +117,10 @@ def upgrade_check(
     route_logs_to_stderr(
         log_already_configured=bool(parent_obj.get(CTX_LOG_CONFIGURED))
     )
+    # A logger first used while the domain imports would cache the current
+    # processor chain and keep it after apply_domain_logging adds the
+    # [logging].redact processor. configure_logging turns the cache back on.
+    structlog.configure(cache_logger_on_first_use=False)
 
     _validate_options(format, opportunities, pinned_version)
     derived_domain = _load_domain(domain)

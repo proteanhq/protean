@@ -4,6 +4,7 @@ import json
 import sys
 
 import pytest
+import structlog
 import typer
 from typer.testing import CliRunner
 
@@ -269,6 +270,33 @@ class TestUpgradeCheckExitCodes:
         assert result.exit_code == 2
         assert "Error: ValueError: bad [logging]" in _stderr(result)
         assert result.stdout == ""
+
+    def test_a_logger_first_used_at_import_still_redacts(self, tmp_path, monkeypatch):
+        # Production caching: the session fixture in tests/conftest.py turns
+        # structlog's logger cache off, which would hide a stale chain.
+        monkeypatch.setattr(structlog, "configure", structlog.configure.__wrapped__)
+        module = tmp_path / "redacting_upgrade_domain.py"
+        module.write_text(
+            "from protean import Domain\n"
+            "from protean.utils.logging import get_logger\n"
+            "log = get_logger('redacting_upgrade_domain')\n"
+            "log.info('domain.importing')\n"
+            "domain = Domain(name='Redacting',"
+            " config={'logging': {'redact': ['password']}})\n",
+            encoding="utf-8",
+        )
+
+        def log_secret(domain):
+            sys.modules["redacting_upgrade_domain"].log.warning(
+                "domain.connecting", password="hunter2"
+            )
+            return []
+
+        monkeypatch.setattr(upgrade_cli, "run_upgrade_checks", log_secret)
+        result = runner.invoke(app, ["upgrade-check", "-d", str(module)])
+        assert result.exit_code == 0
+        assert "domain.connecting" in result.stderr
+        assert "hunter2" not in result.stderr
 
     def test_markup_in_a_finding_prints_literally(self, monkeypatch):
         # A CHECK_FAILED detail can repeat a driver error that holds square
