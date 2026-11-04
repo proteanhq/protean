@@ -76,7 +76,7 @@ class TestReplayOrder:
         current_domain.repository_for(User).add(user)
         txn = Transaction.transact(user_id=user.id, amount=200.0)
         current_domain.repository_for(Transaction).add(txn)
-        _truncate_projection(test_domain, Balances)
+        _truncate_projection(test_domain, Balances, [TransactionProjector])
 
         categories = [Transaction.meta_.stream_category, User.meta_.stream_category]
         dispatched, skipped = _replay_projector(
@@ -154,30 +154,23 @@ class TestCacheBackedProjectionTruncation:
         mock_domain = MagicMock()
         mock_domain.cache_for.return_value = mock_cache
 
-        _truncate_projection(mock_domain, mock_projection_cls)
+        _truncate_projection(mock_domain, mock_projection_cls, [])
 
         mock_domain.cache_for.assert_called_once_with(mock_projection_cls)
         # Keys are `name:::identifier`, so the truncation glob is the name,
         # the three-colon separator, then `*`.
         mock_cache.remove_by_key_pattern.assert_called_once_with("cached_view:::*")
 
-    def test_truncate_uses_dao_when_database_backed(self):
-        """_truncate_projection uses dao._delete_all for database-backed projections."""
-        mock_dao = MagicMock()
-        mock_repo = MagicMock()
-        mock_repo._dao = mock_dao
+    def test_truncate_deletes_rows_when_database_backed(self, test_domain):
+        """_truncate_projection deletes every row of a database-backed projection."""
+        user = User.register(email="truncate@example.com", name="Truncate")
+        current_domain.repository_for(User).add(user)
+        repo = current_domain.repository_for(Balances)
+        assert repo._dao.query.all().total == 1
 
-        mock_projection_cls = MagicMock()
-        mock_projection_cls.meta_.cache = None
-        mock_projection_cls.__name__ = "DbView"
+        _truncate_projection(test_domain, Balances, [TransactionProjector])
 
-        mock_domain = MagicMock()
-        mock_domain.repository_for.return_value = mock_repo
-
-        _truncate_projection(mock_domain, mock_projection_cls)
-
-        mock_domain.repository_for.assert_called_once_with(mock_projection_cls)
-        mock_dao._delete_all.assert_called_once()
+        assert repo._dao.query.all().total == 0
 
 
 class TestHandlerExceptionSkipsEvent:

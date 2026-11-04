@@ -7,6 +7,11 @@ The rebuild process:
 
 1. Discovers all projectors targeting a given projection class.
 2. Truncates existing projection data (database rows or cache entries).
+   For a database-backed projection, the same unit of work also deletes the
+   delivery markers of its idempotent projectors, so the replay is not
+   skipped as a redelivery and writes fresh markers. On a relational or
+   in-memory provider a failed marker delete rolls back the row delete;
+   Elasticsearch has no transactions, so it gives no such rollback.
 3. Reads events from each projector's stream categories, merges them by
    ``global_position`` for correct cross-aggregate ordering, and dispatches
    each event through the projector's ``_handle()`` method.
@@ -20,13 +25,16 @@ scratch with no checkpointing or partial state.
 """
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError
-from protean.utils import DomainObjects
+from protean.utils import DomainObjects, fqn
 from protean.utils.eventing import Message
 from protean.utils.inflection import underscore
+from protean.utils.query import Q
 from protean.utils.telemetry import describe_exception
 
 if TYPE_CHECKING:
@@ -81,6 +89,10 @@ def rebuild_projection(
     truncated. A projection with no
     projectors is not truncated, and the result carries an error.
 
+    For a database-backed projection, the truncate also deletes the delivery
+    markers of every idempotent projector targeting it, in the same
+    transaction as the row delete. The replay then writes fresh markers.
+
     Must be called after ``domain.init()`` and within
     ``domain.domain_context()``.
 
@@ -103,7 +115,7 @@ def rebuild_projection(
         return result
 
     # Truncate projection data
-    _truncate_projection(domain, projection_cls)
+    _truncate_projection(domain, projection_cls, projectors)
     logger.info("Truncated projection `%s`", projection_cls.__name__)
 
     # Replay events through each projector
@@ -156,11 +168,15 @@ def rebuild_all_projections(
 
 
 def _truncate_projection(
-    domain: "Domain", projection_cls: "type[BaseProjection]"
+    domain: "Domain",
+    projection_cls: "type[BaseProjection]",
+    projectors: "Iterable[type[BaseProjector]]",
 ) -> None:
     """Truncate all data for a projection.
 
-    Handles both database-backed and cache-backed projections.
+    Handles both database-backed and cache-backed projections. For a
+    database-backed projection, also deletes the delivery markers of the
+    idempotent projectors in ``projectors``, in one transaction with the rows.
     """
     if projection_cls.meta_.cache:
         cache = domain.cache_for(projection_cls)
@@ -168,9 +184,40 @@ def _truncate_projection(
         # projection is the name, the three-colon separator, then `*`.
         key_pattern = f"{underscore(projection_cls.__name__)}:::*"
         cache.remove_by_key_pattern(key_pattern)
-    else:
-        repo = domain.repository_for(projection_cls)
+        return
+
+    # A marker left behind makes the replay skip its event as an
+    # already-processed redelivery, so the truncated projection stays empty.
+    # The ids must match what dispatch writes: ``fqn`` of each handler method.
+    handler_ids = sorted(
+        {
+            fqn(cast(Any, method))
+            for projector_cls in projectors
+            if projector_cls.meta_.idempotent
+            for methods in projector_cls._handlers.values()
+            for method in methods
+        }
+    )
+
+    marker_repo = None
+    if handler_ids:
+        provider_name = projection_cls.meta_.provider
+        try:
+            marker_repo = domain._get_processed_message_repo(provider_name)
+        except KeyError:
+            # Same fallback as dispatch: this provider has no marker store.
+            marker_repo = None
+
+    repo = domain.repository_for(projection_cls)
+    # Rows first, markers second, in one unit of work: on a provider with
+    # transactions (relational, memory) a failed marker delete rolls back the
+    # row delete, so a failed rebuild leaves the projection as it was instead
+    # of empty with its markers still in place. Elasticsearch has no
+    # transactions and writes each delete at once, so it gets no rollback.
+    with UnitOfWork():
         repo._dao._delete_all()
+        if marker_repo is not None:
+            marker_repo._dao._delete_all(Q(handler__in=handler_ids))
 
 
 def _global_position(message: Message) -> int:
