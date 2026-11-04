@@ -1244,7 +1244,9 @@ class Message(Element, BaseModel, OptionsMixin):
         - Fact event:  ``<category>-fact-<id>``
         - Command:     ``<category>:command-<id>``
 
-        Returns ``None`` when stream or stream_category is unavailable.
+        Returns ``None`` when the message has no stream. When the stream
+        category is missing or is not a prefix of the stream, the id is parsed
+        from the stream name alone, which can also give ``None``.
         """
         if not self.metadata or not self.metadata.headers:
             return None
