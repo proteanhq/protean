@@ -455,11 +455,11 @@ class TestCachesMapping:
         with pytest.raises(KeyError):
             domain.caches["extra"]
 
-    def test_deleting_before_init_raises_assertion_error(self):
-        # TODO(#2019): a mapping raises KeyError here; Caches raises AssertionError.
+    def test_deleting_before_init_raises_key_error(self):
+        """Deleting a name before init raises KeyError naming it (#2019)."""
         domain = Domain(name="Test")
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(KeyError, match="default"):
             del domain.caches["default"]
 
     def test_deleting_a_cache_after_init_removes_it(self):
@@ -471,11 +471,12 @@ class TestCachesMapping:
         assert "default" not in domain.caches
         assert len(domain.caches) == 0
 
-    def test_deleting_a_missing_cache_after_init_changes_nothing(self):
-        # TODO(#2019): a mapping raises KeyError here; Caches passes silently.
+    def test_deleting_a_missing_cache_after_init_raises_key_error(self):
+        """Deleting an unconfigured name raises KeyError and keeps the rest (#2019)."""
         domain = Domain(name="Test")
         domain.init(traverse=False)
 
-        del domain.caches["missing"]
+        with pytest.raises(KeyError, match="missing"):
+            del domain.caches["missing"]
 
         assert list(domain.caches) == ["default"]
