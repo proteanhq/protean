@@ -100,8 +100,11 @@ class UnitOfWork:
 
     In a domain with ``command_processing = "sync"``, a command processed with
     ``domain.process(command, asynchronous=True)`` inside the block is stored
-    with the block's writes and handled after the block commits, in its own
-    UnitOfWork. A rollback discards it unhandled.
+    at once and handled after the block commits, in its own UnitOfWork. The
+    deferred commands run in the order they were processed, after the sync
+    event handlers of this commit. A command that one of those event handlers
+    defers belongs to the handler's own UnitOfWork, so it runs first. A
+    rollback means they never run.
     """
 
     def __init__(self) -> None:
@@ -143,8 +146,9 @@ class UnitOfWork:
         self._deferred_commands: list[Callable[[], None]] = []
 
         # Results of commands processed inside this transaction, by idempotency
-        # key. Their keys reach the idempotency store only on commit, so a
-        # repeat of the same key before then is caught here instead.
+        # key, with None for a deferred command. Their keys reach the
+        # idempotency store only on commit, so a repeat of the same key before
+        # then is caught here instead.
         self._pending_idempotency_results: dict[str, Any] = {}
 
     @property
@@ -641,17 +645,7 @@ class UnitOfWork:
                 session.commit()
                 self._advance_next_versions(provider_name)
 
-            self._run_after_commit()
-
-            # Dispatch messages to their designated broker
-            for stream, message, broker_name in self._messages_to_dispatch:
-                if broker_name and broker_name in self.domain.brokers:
-                    self.domain.brokers[broker_name].publish(stream, message)
-                else:
-                    # No specific broker designated; publish to default
-                    self.domain.brokers["default"].publish(stream, message)
-
-            self._run_post_commit_handlers(span, all_events)
+            self._run_post_commit_work(span, all_events)
 
             # Clear events from items in identity map
             self._clear_events_from_items()
@@ -704,6 +698,43 @@ class UnitOfWork:
 
         self._reset()
 
+    def _run_post_commit_work(
+        self, span: Any, all_events: defaultdict[str, list[Any]]
+    ) -> None:
+        """Run the after-commit callbacks, publish to brokers, dispatch events
+        under sync event processing, then run the deferred commands.
+
+        Raises:
+            TransactionError: If an event handler or a deferred command failed.
+            Exception: The failure of a callback or a publish, unchanged, when
+                every deferred command then ran without failing. The events
+                are not dispatched.
+        """
+        try:
+            self._run_after_commit()
+            self._publish_messages()
+        except Exception as exc:
+            # The deferred commands are already stored as handled by Protean,
+            # so the engine will never handle them. Run them before this
+            # failure is reported, or nothing ever will.
+            deferred_failures = self._run_deferred_commands()
+            if deferred_failures:
+                self._raise_post_commit_failures(
+                    span, all_events, [exc, *deferred_failures]
+                )
+            raise
+
+        self._run_post_commit_handlers(span, all_events)
+
+    def _publish_messages(self) -> None:
+        """Dispatch this commit's messages to their designated broker."""
+        for stream, message, broker_name in self._messages_to_dispatch:
+            if broker_name and broker_name in self.domain.brokers:
+                self.domain.brokers[broker_name].publish(stream, message)
+            else:
+                # No specific broker designated; publish to default
+                self.domain.brokers["default"].publish(stream, message)
+
     def _run_post_commit_handlers(
         self, span: Any, all_events: defaultdict[str, list[Any]]
     ) -> None:
@@ -715,12 +746,6 @@ class UnitOfWork:
                 with that failure (or an ``ExceptionGroup`` of several) as its
                 cause. The rest still ran.
         """
-        # Every write of this commit is durable by now, so a failure is reported
-        # as a TransactionError, whatever its type. An ExpectedVersionError
-        # passed through unchanged would make the enclosing handler's version
-        # retry run it again: the command would save its write a second time,
-        # and a call to an outside system before a deferred command would be
-        # repeated.
         failures: list[Exception] = []
 
         # Consume all events produced in this session — breadth-first.
@@ -739,15 +764,44 @@ class UnitOfWork:
             except Exception as exc:  # noqa: BLE001 - collected and raised below
                 failures.append(exc)
 
-        # Deferred commands run whatever the event processing setting, and
-        # each runs even when an earlier one failed: they are independent
-        # requests, and each was already stored as handled by Protean.
-        for run_command in self._deferred_commands:
+        failures.extend(self._run_deferred_commands())
+        self._raise_post_commit_failures(span, all_events, failures)
+
+    def _run_deferred_commands(self) -> list[Exception]:
+        """Run every deferred command once, in the order deferred, and return
+        the failures."""
+        # Take the list first, so a second ``commit()`` after a failed one does
+        # not run a command again.
+        commands, self._deferred_commands = self._deferred_commands, []
+
+        # Each command runs even when an earlier one failed: they are
+        # independent requests, and each was already stored as handled by
+        # Protean. A BaseException (KeyboardInterrupt, SystemExit) stops the
+        # process, which leaves the rest unhandled like any stop after commit.
+        failures: list[Exception] = []
+        for run_command in commands:
             try:
                 run_command()
-            except Exception as exc:  # noqa: BLE001 - collected and raised below
+            except Exception as exc:  # noqa: BLE001 - collected and returned
                 failures.append(exc)
+        return failures
 
+    def _raise_post_commit_failures(
+        self,
+        span: Any,
+        all_events: defaultdict[str, list[Any]],
+        failures: list[Exception],
+    ) -> None:
+        """Raise ``TransactionError`` when ``failures`` is not empty.
+
+        Its cause is the one failure, or an ``ExceptionGroup`` of several.
+        """
+        # Every write of this commit is durable by now, so a failure is reported
+        # as a TransactionError, whatever its type. An ExpectedVersionError
+        # passed through unchanged would make the enclosing handler's version
+        # retry run it again: the command would save its write a second time,
+        # and a call to an outside system before a deferred command would be
+        # repeated.
         if not failures:
             return
 

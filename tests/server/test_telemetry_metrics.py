@@ -34,6 +34,7 @@ from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import CommandExpiredError
 from protean.fields import Identifier, String
 from protean.server import Engine
@@ -441,6 +442,27 @@ class TestCommandMetrics:
             if dict(p.attributes).get("status") == "enqueued"
         ]
         assert duration.sum > 0
+
+    def test_deferred_command_is_counted_once_when_it_runs(
+        self, test_domain, telemetry
+    ):
+        _, metric_reader = telemetry
+        test_domain.config["command_processing"] = "sync"
+
+        with UnitOfWork():
+            test_domain.process(
+                OpenAccount(account_id=str(uuid4()), name="Later Corp"),
+                asynchronous=True,
+            )
+            # Nothing recorded yet, so the reader has no snapshot at all
+            assert metric_reader.get_metrics_data() is None
+
+        processed = _points_in(
+            metric_reader.get_metrics_data(), "protean.command.processed"
+        )
+        assert [(dict(p.attributes)["status"], p.value) for p in processed] == [
+            ("ok", 1)
+        ]
 
     def test_sync_expiry_increments_expired_counter(self, test_domain, telemetry):
         _, metric_reader = telemetry

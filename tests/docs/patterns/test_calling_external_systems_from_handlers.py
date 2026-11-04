@@ -1,8 +1,11 @@
 """Run the examples on ``docs/patterns/calling-external-systems-from-handlers.md``."""
 
+import threading
+
 import httpx
 import pytest
 
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import TransactionError
 from protean.utils.globals import current_uow
 from tests.docs.support import load_example
@@ -342,3 +345,46 @@ def test_a_failing_record_step_reports_a_transaction_error_after_one_send(
         assert channel.sends == [("ada@example.com", "Hi")]
         notification = example.domain.repository_for(example.Notification).get("n1")
         assert notification.status == "DISPATCHING"
+
+
+def test_a_conflict_on_the_record_step_retries_it_and_sends_once(monkeypatch):
+    example = load_example("patterns/calling-external-systems-from-handlers/005.py")
+    with _context(example):
+        channel = _Channel()
+        monkeypatch.setattr(example, "channel", channel)
+        monkeypatch.setattr("protean.utils.mixins.time.sleep", lambda seconds: None)
+        record_result = example.Notification.record_result
+        attempts = []
+
+        def record_after_a_concurrent_write(self, status):
+            attempts.append(status)
+            if len(attempts) == 1:
+                _save_from_another_thread(example, self.notification_id)
+            record_result(self, status)
+
+        monkeypatch.setattr(
+            example.Notification, "record_result", record_after_a_concurrent_write
+        )
+
+        repo = _dispatch(example)
+
+        assert channel.sends == [("ada@example.com", "Hi")]
+        assert attempts == ["SENT", "SENT"]
+        assert repo.get("n1").status == "SENT"
+
+
+def _save_from_another_thread(example, notification_id):
+    """Save the notification from another thread, so the record step that
+    loaded it before this write fails its version check."""
+
+    def save():
+        with example.domain.domain_context():
+            with UnitOfWork():
+                repo = example.domain.repository_for(example.Notification)
+                notification = repo.get(notification_id)
+                notification.body = "Hi again"
+                repo.add(notification)
+
+    thread = threading.Thread(target=save)
+    thread.start()
+    thread.join()

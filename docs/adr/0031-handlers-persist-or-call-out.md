@@ -128,7 +128,7 @@ class OrderReactions:
 
     @handle(OrderPlaced)
     def notify_partner(self, event):
-        # No repository access, so this method runs no transaction.
+        # The channel call reaches no repository.
         httpx.post(PARTNER_URL, json={"order_id": event.order_id})
 ```
 
@@ -189,7 +189,7 @@ The sending method calls the channel, then hands the write to a command with
 class NotificationDispatcher:
     @handle(NotificationDispatchStarted)
     def send(self, event):
-        # No repository access, so this method runs no transaction.
+        # The channel call reaches no repository.
         outcome = channel.send(event.recipient, event.body)
         current_domain.process(
             RecordDispatchResult(
@@ -202,10 +202,11 @@ class NotificationDispatcher:
 
 In a domain with `command_processing = "sync"`, a call to
 `domain.process(command, asynchronous=True)` inside an active unit of work
-stores the command with the caller's writes and returns `None`. The command is
+stores the command and returns `None`. The command is
 handled after the caller's unit of work commits, in its own unit of work with
 its own version retry. The same applies whoever opened the unit of work: a
-handler, a `@use_case` method or a `with UnitOfWork():` block. It applies under
+handler, a `@use_case` method, a `with UnitOfWork():` block or an explicit
+`UnitOfWork.start()`. It applies under
 both `event_processing` settings. This is how sync event processing already runs
 event handlers (ADR-0016), and `asynchronous=True` already means "outside my
 transaction". Called outside any unit of work, the same call still handles the
@@ -215,7 +216,13 @@ So a version conflict on the record step retries the record step alone, and the
 send runs once. When the record step still fails, or its deadline passes before
 it runs, the caller's commit raises `TransactionError`. It never raises
 `ExpectedVersionError`, which would make the caller's own version retry run the
-send again. A rollback of the caller discards the command unhandled.
+send again. A rollback of the caller means the command never runs.
+
+A `TransactionError` from the record step still reaches whatever runs the
+caller. Under `event_processing = "async"`, the engine then delivers the event
+again, up to its retry limit, and each delivery sends again. Protean leaves
+those repeats to the remote system: pass the channel an idempotency key, and
+the remote system drops a repeated send.
 
 Protean stores every command it handles itself, at once or after the commit,
 with `asynchronous = False`. The engine's command subscription skips such a

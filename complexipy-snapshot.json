@@ -423,7 +423,7 @@
     "functions": [
       {
         "name": "UnitOfWork::_do_commit",
-        "complexity": 62
+        "complexity": 57
       }
     ]
   },

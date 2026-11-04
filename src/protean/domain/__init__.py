@@ -2277,11 +2277,15 @@ class Domain:
 
         When ``command_processing`` is ``"sync"`` and ``asynchronous`` is
         ``True``, a call inside an active unit of work (a handler, a
-        ``@use_case`` method or a ``with UnitOfWork():`` block) defers the
-        command. It is stored with the caller's writes and handled after the
-        caller's unit of work commits, in its own unit of work. A failure there,
-        including an expired deadline, makes the caller's commit raise
-        ``TransactionError``. A rollback of the caller discards the command.
+        ``@use_case`` method, a ``with UnitOfWork():`` block or an explicit
+        ``UnitOfWork.start()``) defers the command. It is stored at once and
+        handled after the caller's unit of work commits, in its own unit of
+        work. A failure while it runs, such as a deadline that passed before
+        the commit, makes the caller's commit raise ``TransactionError``. A
+        rollback of the caller means the command never runs. The memory event
+        store discards it with the caller's writes; an event store that writes
+        outside the unit of work, such as Message DB, keeps it stored and
+        unhandled.
 
         Args:
             command: Instance of a ``@domain.command``-decorated class.
@@ -2303,8 +2307,9 @@ class Domain:
 
         Returns:
             The command handler's return value when the command is handled
-            synchronously. ``None`` when the command is deferred. Otherwise,
-            the command's position in the event store.
+            synchronously. ``None`` when the command is deferred, and for a
+            repeat of a deferred command's idempotency key in the same unit of
+            work. Otherwise, the command's position in the event store.
 
         Raises:
             IncorrectUsageError: If the command is not registered with the

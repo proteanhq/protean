@@ -72,7 +72,7 @@ class NotificationCommandHandler:
 class NotificationDispatcher:
     @handle(NotificationDispatchStarted)
     def send(self, event):
-        # No repository access, so this method runs no transaction.
+        # The channel call reaches no repository.
         outcome = channel.send(event.recipient, event.body)
         current_domain.process(
             RecordDispatchResult(

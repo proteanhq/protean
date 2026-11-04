@@ -24,10 +24,11 @@ from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
-from protean.core.unit_of_work import UnitOfWork
+from protean.core.unit_of_work import UnitOfWork, run_after_commit
 from protean.domain import Domain
 from protean.exceptions import (
     CommandExpiredError,
+    DuplicateCommandError,
     ExpectedVersionError,
     TransactionError,
 )
@@ -80,6 +81,7 @@ class Probe:
     conflicts_left: int = 0
     fail_with: Exception | None = None
     recorded_events: list[str] = []
+    handled: list[str] = []
 
     @classmethod
     def reset(cls) -> None:
@@ -88,6 +90,7 @@ class Probe:
         cls.conflicts_left = 0
         cls.fail_with = None
         cls.recorded_events = []
+        cls.handled = []
 
 
 def _write_concurrently(notification_id: str) -> None:
@@ -112,6 +115,7 @@ class RecordResultHandler(BaseCommandHandler):
     @handle(RecordResult)
     def record(self, command: RecordResult) -> str:
         Probe.attempts += 1
+        Probe.handled.append(command.status)
         if Probe.fail_with is not None:
             raise Probe.fail_with
         repo = current_domain.repository_for(Notification)
@@ -397,6 +401,8 @@ class TestInsideUnitOfWork:
 
         assert Probe.attempts == 0
         assert _status(test_domain, notification_id) == "PENDING"
+        # The memory event store writes through the caller's unit of work
+        assert _stored_commands(test_domain) == []
 
     def test_stored_as_not_asynchronous_and_skipped_by_the_subscription(
         self, test_domain
@@ -426,7 +432,6 @@ class TestInsideUnitOfWork:
         assert Probe.recorded_events == ["SENT"]
 
     def test_every_deferred_command_runs_when_one_fails(self, test_domain):
-        first = _create_notification(test_domain)
         second = _create_notification(test_domain)
 
         with pytest.raises(TransactionError) as exc_info:
@@ -442,7 +447,6 @@ class TestInsideUnitOfWork:
 
         assert Probe.attempts == 2
         assert _status(test_domain, second) == "SENT"
-        assert _status(test_domain, first) == "PENDING"
         assert exc_info.value.__cause__.__class__.__name__ == "ObjectNotFoundError"
 
     def test_several_failures_are_reported_together(self, test_domain):
@@ -461,18 +465,135 @@ class TestInsideUnitOfWork:
         assert isinstance(cause, ExceptionGroup)
         assert [str(e) for e in cause.exceptions] == ["record failed"] * 2
 
+    def test_deferred_commands_run_in_the_order_they_were_processed(self, test_domain):
+        first = _create_notification(test_domain)
+        second = _create_notification(test_domain)
+
+        with UnitOfWork():
+            test_domain.process(
+                RecordResult(notification_id=first, status="FIRST"),
+                asynchronous=True,
+            )
+            test_domain.process(
+                RecordResult(notification_id=second, status="SECOND"),
+                asynchronous=True,
+            )
+
+        assert Probe.handled == ["FIRST", "SECOND"]
+
+    def test_event_handlers_run_before_the_callers_deferred_commands(self, test_domain):
+        test_domain.config["event_processing"] = Processing.SYNC.value
+        first = _create_notification(test_domain)
+
+        with UnitOfWork():
+            test_domain.process(
+                RecordResult(notification_id=first, status="FIRST"),
+                asynchronous=True,
+            )
+            notification = Notification.start()
+            test_domain.repository_for(Notification).add(notification)
+
+        # The dispatcher ran in the drain and its own command ran when the
+        # dispatcher's unit of work committed, before the caller's command.
+        assert Probe.channel == [notification.id]
+        assert Probe.handled == ["SENT", "FIRST"]
+        assert _status(test_domain, notification.id) == "SENT"
+        assert _status(test_domain, first) == "FIRST"
+
+    def test_deferred_commands_run_when_an_event_handler_fails(self, test_domain):
+        test_domain.config["event_processing"] = Processing.SYNC.value
+        Probe.fail_with = RuntimeError("record failed")
+
+        with pytest.raises(TransactionError) as exc_info:
+            with UnitOfWork():
+                test_domain.process(
+                    RecordResult(notification_id=str(uuid4()), status="FIRST"),
+                    asynchronous=True,
+                )
+                test_domain.repository_for(Notification).add(Notification.start())
+
+        # The dispatcher's command failed, so the drain failed, and the
+        # caller's command still ran
+        assert Probe.handled == ["SENT", "FIRST"]
+        cause = exc_info.value.__cause__
+        assert isinstance(cause, ExceptionGroup)
+        drain_failure, command_failure = cause.exceptions
+        assert isinstance(drain_failure, TransactionError)
+        assert str(command_failure) == "record failed"
+
+    def test_deferred_commands_run_when_an_after_commit_callback_fails(
+        self, test_domain
+    ):
+        notification_id = _create_notification(test_domain)
+
+        def boom() -> None:
+            raise RuntimeError("callback failed")
+
+        with pytest.raises(TransactionError) as exc_info:
+            with UnitOfWork():
+                test_domain.process(
+                    RecordResult(notification_id=notification_id, status="SENT"),
+                    asynchronous=True,
+                )
+                run_after_commit(boom)
+
+        assert str(exc_info.value.__cause__) == "callback failed"
+        assert Probe.attempts == 1
+        assert _status(test_domain, notification_id) == "SENT"
+
+    def test_after_commit_and_command_failures_are_reported_together(self, test_domain):
+        Probe.fail_with = RuntimeError("record failed")
+
+        def boom() -> None:
+            raise RuntimeError("callback failed")
+
+        with pytest.raises(TransactionError) as exc_info:
+            with UnitOfWork():
+                test_domain.process(
+                    RecordResult(notification_id=str(uuid4()), status="SENT"),
+                    asynchronous=True,
+                )
+                run_after_commit(boom)
+
+        assert Probe.attempts == 1
+        cause = exc_info.value.__cause__
+        assert isinstance(cause, ExceptionGroup)
+        assert [str(e) for e in cause.exceptions] == [
+            "callback failed",
+            "record failed",
+        ]
+
+    def test_a_second_commit_does_not_run_a_failed_command_again(self, test_domain):
+        notification_id = _create_notification(test_domain)
+        Probe.fail_with = RuntimeError("record failed")
+
+        uow = UnitOfWork()
+        uow.start()
+        test_domain.process(
+            RecordResult(notification_id=notification_id, status="SENT"),
+            asynchronous=True,
+        )
+        with pytest.raises(TransactionError):
+            uow.commit()
+        assert uow.in_progress
+
+        Probe.fail_with = None
+        uow.commit()
+
+        assert Probe.attempts == 1
+        assert _status(test_domain, notification_id) == "PENDING"
+
 
 class TestAsyncDomainIsUnchanged:
     def test_returns_the_position_and_defers_nothing(self, test_domain):
         test_domain.config["command_processing"] = Processing.ASYNC.value
         notification_id = _create_notification(test_domain)
 
-        with UnitOfWork() as uow:
+        with UnitOfWork():
             result = test_domain.process(
                 RecordResult(notification_id=notification_id, status="SENT"),
                 asynchronous=True,
             )
-            assert uow._deferred_commands == []
 
         assert isinstance(result, int)
         assert Probe.attempts == 0
@@ -515,7 +636,10 @@ class TestDeadline:
 
             assert isinstance(exc_info.value.__cause__, CommandExpiredError)
             assert Probe.attempts == 0
-            assert idempotency_store.entries["k"]["status"] == "error"
+            assert idempotency_store.entries["k"] == {
+                "status": "error",
+                "error": "command_expired",
+            }
 
             with UnitOfWork():
                 test_domain.process(
@@ -527,6 +651,24 @@ class TestDeadline:
 
         assert Probe.attempts == 1
         assert _status(test_domain, notification_id) == "SENT"
+
+    def test_expired_before_commit_without_a_key(self, test_domain):
+        notification_id = _create_notification(test_domain)
+        now = test_domain.clock.now()
+
+        with patch.object(test_domain.clock, "now", return_value=now):
+            with pytest.raises(TransactionError) as exc_info:
+                with UnitOfWork():
+                    test_domain.process(
+                        RecordResult(notification_id=notification_id, status="SENT"),
+                        asynchronous=True,
+                        timeout=timedelta(seconds=5),
+                    )
+                    test_domain.clock.now.return_value = now + timedelta(seconds=10)
+
+        assert isinstance(exc_info.value.__cause__, CommandExpiredError)
+        assert Probe.attempts == 0
+        assert _status(test_domain, notification_id) == "PENDING"
 
 
 class _DictIdempotencyStore:
@@ -594,6 +736,46 @@ class TestIdempotency:
         assert result == "recorded-SENT"
         assert Probe.attempts == 1
         assert len(_stored_commands(test_domain)) == 1
+
+    def test_repeat_in_the_same_transaction_defers_once(
+        self, test_domain, idempotency_store
+    ):
+        notification_id = _create_notification(test_domain)
+
+        with UnitOfWork():
+            results = [
+                test_domain.process(
+                    RecordResult(notification_id=notification_id, status="SENT"),
+                    asynchronous=True,
+                    idempotency_key="k",
+                )
+                for _ in range(2)
+            ]
+            # Not in the store until the command runs
+            assert "k" not in idempotency_store.entries
+
+        assert results == [None, None]
+        assert Probe.attempts == 1
+        assert len(_stored_commands(test_domain)) == 1
+        assert idempotency_store.entries["k"] == {
+            "status": "success",
+            "result": "recorded-SENT",
+        }
+
+    def test_repeat_in_the_same_transaction_raises_on_duplicate(self, test_domain):
+        notification_id = _create_notification(test_domain)
+
+        with pytest.raises(DuplicateCommandError):
+            with UnitOfWork():
+                for _ in range(2):
+                    test_domain.process(
+                        RecordResult(notification_id=notification_id, status="SENT"),
+                        asynchronous=True,
+                        idempotency_key="k",
+                        raise_on_duplicate=True,
+                    )
+
+        assert Probe.attempts == 0
 
 
 @pytest.mark.postgresql

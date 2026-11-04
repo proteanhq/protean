@@ -47,6 +47,7 @@ from protean.utils.telemetry import (
 )
 
 if TYPE_CHECKING:
+    from protean.core.unit_of_work import UnitOfWork
     from protean.domain import Domain
     from protean.utils.idempotency import IdempotencyStore
 
@@ -322,11 +323,15 @@ class CommandProcessor:
 
         When ``command_processing`` is ``"sync"`` and ``asynchronous`` is
         ``True``, a call inside an active unit of work (a handler, a
-        ``@use_case`` method or a ``with UnitOfWork():`` block) defers the
-        command. It is stored with the caller's writes and handled after the
-        caller's unit of work commits, in its own unit of work. A failure there,
-        including an expired deadline, makes the caller's commit raise
-        ``TransactionError``. A rollback of the caller discards the command.
+        ``@use_case`` method, a ``with UnitOfWork():`` block or an explicit
+        ``UnitOfWork.start()``) defers the command. It is stored at once and
+        handled after the caller's unit of work commits, in its own unit of
+        work. A failure while it runs, such as a deadline that passed before
+        the commit, makes the caller's commit raise ``TransactionError``. A
+        rollback of the caller means the command never runs. The memory event
+        store discards it with the caller's writes; an event store that writes
+        outside the unit of work, such as Message DB, keeps it stored and
+        unhandled.
 
         Args:
             command: Instance of a ``@domain.command``-decorated class.
@@ -350,8 +355,9 @@ class CommandProcessor:
 
         Returns:
             The command handler's return value when the command is handled
-            synchronously. ``None`` when the command is deferred. Otherwise,
-            the command's position in the event store.
+            synchronously. ``None`` when the command is deferred, and for a
+            repeat of a deferred command's idempotency key in the same unit of
+            work. Otherwise, the command's position in the event store.
 
         Raises:
             IncorrectUsageError: If the command is not registered with the
@@ -433,9 +439,11 @@ class CommandProcessor:
                 or domain.config["command_processing"] == Processing.SYNC.value
             )
 
-            # A command Protean handles itself is stored as not asynchronous, so
-            # the engine's command subscription skips it instead of handling it
-            # a second time.
+            # A command handled in this process is stored as not asynchronous,
+            # so the engine's command subscription skips it instead of handling
+            # it a second time. This includes a command with no handler in a
+            # sync domain: the engine registers subscriptions only for
+            # registered handlers, so no engine would handle it either.
             command_with_metadata = self.enrich(
                 command,
                 not will_handle_sync,
@@ -471,16 +479,13 @@ class CommandProcessor:
                 # own unit of work, so a conflict there never re-runs the caller.
                 outer_uow = _uow_stack.top
                 if asynchronous and outer_uow is not None:
-                    outer_uow._deferred_commands.append(
-                        partial(
-                            self._run_deferred,
-                            command_with_metadata,
-                            handler_class,
-                            idempotency_key,
-                            resolved_priority,
-                        )
+                    self._defer(
+                        outer_uow,
+                        command_with_metadata,
+                        handler_class,
+                        idempotency_key,
+                        resolved_priority,
                     )
-                    self._record_metrics(command_type, "deferred", process_start)
                     return None
 
                 return self._run_handler(
@@ -507,6 +512,27 @@ class CommandProcessor:
         attrs = {"command_type": command_type, "status": status}
         metrics.command_processed.add(1, attrs)
         metrics.command_duration.record(time.monotonic() - process_start, attrs)
+
+    def _defer(
+        self,
+        uow: UnitOfWork,
+        command: BaseCommand,
+        handler_class: type[BaseCommandHandler],
+        idempotency_key: str | None,
+        priority: int,
+    ) -> None:
+        """Handle ``command`` once ``uow`` has committed."""
+        uow._deferred_commands.append(
+            partial(
+                self._run_deferred, command, handler_class, idempotency_key, priority
+            )
+        )
+        # A repeat of the key in this transaction finds it here and returns None
+        # instead of deferring a second copy. The outcome reaches the store when
+        # the command runs.
+        if idempotency_key and self._domain.idempotency_store.is_active:
+            uow._pending_idempotency_results[idempotency_key] = None
+        # No metric yet: the run records "ok" or "error" once.
 
     def _run_deferred(
         self,
