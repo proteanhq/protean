@@ -487,12 +487,18 @@ class TestBrokerReclaim:
 
     def test_error_after_a_claimed_page_returns_that_pages_counts(self, domain, caplog):
         """A broker error on the second page stops the scan. The entries the
-        first page claimed keep their delivery counts."""
+        first page claimed keep their delivery counts: each page reads its
+        counts in the same call that claims it."""
         broker = domain.brokers["default"]
         broker._ensure_group("group", "partial")
         for i in range(150):
             broker.redis_instance.xadd("partial", {"i": str(i)})
         _leave_pending(domain, "partial", "group", 150)
+        # A second delivery of every entry to the stopped worker.
+        broker.redis_instance.xreadgroup(
+            "group", STOPPED_CONSUMER, {"partial": "0"}, count=150
+        )
+        time.sleep(RECLAIM_IDLE_SECONDS * 2)
 
         claim = broker._lua_autoclaim_justid
         calls = 0
@@ -509,7 +515,7 @@ class TestBrokerReclaim:
             counts = broker._reclaim_idle_pending("partial", "group", "new", 10)
 
         assert len(counts) == 100
-        assert set(counts.values()) == {1}
+        assert set(counts.values()) == {2}
         assert "Stopped claiming idle entries for group on partial after 100" in (
             caplog.text
         )

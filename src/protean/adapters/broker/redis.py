@@ -120,14 +120,24 @@ if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
 return redis.call('XACK', KEYS[2], ARGV[2], ARGV[3])
 """
 
-# Claim one page of a group's idle pending entries. JUSTID leaves each entry's
-# delivery counter as it was, so repeated claims do not add deliveries. It runs
-# in Lua because redis-py drops the cursor from a JUSTID reply.
+# Claim one page of a group's idle pending entries and read each claimed
+# entry's delivery count. JUSTID leaves each entry's delivery counter as it was,
+# so repeated claims do not add deliveries. It runs in Lua because redis-py drops
+# the cursor from a JUSTID reply, and so that a page's claim and its counts
+# succeed or fail together: a claim whose counts are lost would restart the
+# entries' retry history.
 # KEYS are the stream. ARGV are the group, the consumer, the minimum idle time
-# in milliseconds, the start id and the count. Returns the raw XAUTOCLAIM reply.
+# in milliseconds, the start id and the count. Returns the next cursor, the
+# claimed ids, and their delivery counts in the same order.
 _LUA_AUTOCLAIM_JUSTID = """
-return redis.call('XAUTOCLAIM', KEYS[1], ARGV[1], ARGV[2], ARGV[3], ARGV[4],
-                  'COUNT', ARGV[5], 'JUSTID')
+local reply = redis.call('XAUTOCLAIM', KEYS[1], ARGV[1], ARGV[2], ARGV[3],
+                         ARGV[4], 'COUNT', ARGV[5], 'JUSTID')
+local counts = {}
+for i, id in ipairs(reply[2]) do
+    local row = redis.call('XPENDING', KEYS[1], ARGV[1], id, id, 1)
+    counts[i] = row[1] and row[1][4] or 0
+end
+return {reply[1], reply[2], counts}
 """
 
 # Race-safe cold-partition reap. KEYS[1]=index_set, KEYS[2..]=every physical
@@ -1141,10 +1151,10 @@ class RedisBroker(BaseBroker):
         """Claim the group's entries idle for *min_idle_ms* into *consumer_name*.
 
         Uses ``XAUTOCLAIM`` with ``JUSTID``, which does not count the claim as
-        a delivery, then reads each claimed entry's delivery count with
-        ``XPENDING``, and returns the counts by entry id. Entries whose
-        message the stream no longer holds (it was trimmed) are dropped from
-        the pending list by ``XAUTOCLAIM`` and are not returned. A missing
+        a delivery, reads each claimed entry's delivery count with
+        ``XPENDING`` in the same script, and returns the counts by entry id.
+        Entries whose message the stream no longer holds (it was trimmed) are
+        dropped from the pending list by ``XAUTOCLAIM`` and are not returned. A missing
         group means nothing to claim.
 
         A broker error on a claim page after earlier pages claimed entries
@@ -1153,26 +1163,11 @@ class RedisBroker(BaseBroker):
 
         Raises:
             redis.RedisError: A broker error other than a missing group on a
-                claim page while no entry is claimed yet, or a broker error
-                while reading the delivery counts, which happens after the
-                entries are claimed into *consumer*.
+                claim page while no entry is claimed yet.
         """
         consumer = consumer_name or self._consumer_name
         self._ensure_group(group_name, stream)
-        claimed = self._claim_idle_ids(stream, group_name, consumer, min_idle_ms)
-        if not claimed:
-            return {}
-        return self._delivery_counts(stream, group_name, consumer, claimed)
-
-    def _claim_idle_ids(
-        self, stream: str, group_name: str, consumer: str, min_idle_ms: int
-    ) -> list[str]:
-        """Page through the group's idle entries, claiming each into *consumer*.
-
-        Returns the claimed ids. A broker error after a page has claimed
-        entries stops the scan and returns those ids.
-        """
-        claimed: list[str] = []
+        claimed: dict[str, int] = {}
         cursor = STREAM_ID_START + "-0"
         while True:
             try:
@@ -1192,8 +1187,8 @@ class RedisBroker(BaseBroker):
                 return claimed
             if page is None:
                 return claimed
-            cursor, ids = page
-            claimed.extend(ids)
+            cursor, counts = page
+            claimed.update(counts)
             # A "0-0" cursor means the scan reached the end of the pending list.
             if cursor == STREAM_ID_START + "-0":
                 return claimed
@@ -1205,8 +1200,9 @@ class RedisBroker(BaseBroker):
         consumer: str,
         min_idle_ms: int,
         cursor: str,
-    ) -> tuple[str, list[str]] | None:
-        """Claim one page of idle entries; return the next cursor and the ids.
+    ) -> tuple[str, dict[str, int]] | None:
+        """Claim one page of idle entries; return the next cursor and the
+        claimed entries' delivery counts by id.
 
         Returns None when the group is missing, after creating it again.
         """
@@ -1224,38 +1220,11 @@ class RedisBroker(BaseBroker):
             return None
         return (
             self._decode_if_bytes(reply[0]),
-            [self._decode_if_bytes(mid) for mid in reply[1]],
+            {
+                self._decode_if_bytes(mid): int(count)
+                for mid, count in zip(reply[1], reply[2], strict=True)
+            },
         )
-
-    def _delivery_counts(
-        self, stream: str, group_name: str, consumer: str, ids: list[str]
-    ) -> dict[str, int]:
-        """Return how many times the group delivered each of *ids*.
-
-        Pages through *consumer*'s pending list, which holds the claimed ids
-        and any entries the consumer already had.
-        """
-        wanted = set(ids)
-        counts: dict[str, int] = {}
-        start = "-"
-        while len(counts) < len(wanted):
-            rows = self._client.xpending_range(
-                stream,
-                group_name,
-                min=start,
-                max="+",
-                count=_RECLAIM_BATCH_SIZE,
-                consumername=consumer,
-            )
-            for row in rows:
-                message_id = self._decode_if_bytes(row["message_id"])
-                if message_id in wanted:
-                    counts[message_id] = int(row["times_delivered"])
-            if len(rows) < _RECLAIM_BATCH_SIZE:
-                break
-            # "(" makes the next page start after the last id read.
-            start = "(" + self._decode_if_bytes(rows[-1]["message_id"])
-        return counts
 
     def _info(self) -> dict[str, Any]:
         """Get information about consumer groups and consumers"""
