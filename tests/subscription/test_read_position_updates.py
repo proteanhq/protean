@@ -284,3 +284,42 @@ async def test_subscription_poll_test_mode_sleep_zero(test_domain):
 
     # Verify tick was called multiple times (means the loop ran and hit sleep lines)
     assert tick_call_count >= 3
+
+
+def test_shutdown_writes_the_position_reached_in_the_drain_window(test_domain):
+    """Shutdown starts while a batch is in flight. The batch finishes in the
+    drain window, below the position write interval, and shutdown still writes
+    the position past it, so a restart does not handle the batch again."""
+    engine = Engine(test_domain, test_mode=True)
+    subscription = engine._subscriptions[fqn(EmailEventHandler)]
+
+    email_address = "john.doe@gmail.com"
+    email = Email(id=str(uuid4()), email=email_address, sent_at=datetime.now(UTC))
+    for _ in range(3):
+        email.raise_(Sent(email=email_address, sent_at=datetime.now(UTC)))
+        test_domain.event_store.store.append(email._events[-1])
+
+    handle_message = engine.handle_message
+
+    async def pause_then_handle(handler, message, **kwargs):
+        # Shutdown starts during this pause, before the first message is handled.
+        await asyncio.sleep(0.02)
+        return await handle_message(handler, message, **kwargs)
+
+    engine.handle_message = pause_then_handle  # type: ignore[method-assign]
+
+    async def run():
+        await subscription.load_position_on_start()
+        messages = await subscription.get_next_batch_of_messages()
+        assert len(messages) == 3
+        batch = asyncio.ensure_future(subscription.process_batch(messages))
+        await asyncio.sleep(0.01)
+        await engine.shutdown()
+        return batch, messages[-1].metadata.event_store.global_position
+
+    batch, last_position = engine.loop.run_until_complete(run())
+
+    assert batch.result() == 3
+    assert subscription.position_update_interval > 3
+    # Shutdown stopped the engine's loop, so read the position on a new one.
+    assert asyncio.run(subscription.fetch_last_position()) == last_position

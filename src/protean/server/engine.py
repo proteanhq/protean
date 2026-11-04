@@ -44,6 +44,7 @@ from .dlq_maintenance import DLQMaintenanceTask
 from .health import HealthServer
 from .outbox_processor import OutboxProcessor
 from .subscription.broker_subscription import BrokerSubscription
+from .subscription.event_store_subscription import EventStoreSubscription
 from .subscription.factory import (
     SubscriptionFactory,
     broker_supports_partitioning,
@@ -1271,7 +1272,8 @@ class Engine:
 
         Shutdown ordering:
         1. Signal all subscriptions to stop accepting new messages
-        2. Wait for in-flight tasks to complete (bounded timeout), then cancel stragglers
+        2. Wait for in-flight tasks to complete (bounded timeout), then cancel
+           stragglers, then write event-store subscriptions' read positions
         3. Close domain infrastructure (event store, brokers, caches, providers)
         4. Clean up signal handlers and stop the event loop
 
@@ -1345,6 +1347,19 @@ class Engine:
                     for task in pending:
                         task.cancel()
                     await asyncio.gather(*pending, return_exceptions=True)
+
+            # Step 2b: Write each event-store subscription's read position
+            # again. Step 1 wrote it before the in-flight batch finished, and a
+            # handler that completed since then moved the position in memory
+            # only. Without this write, a restart handles those messages again.
+            await asyncio.gather(
+                *(
+                    subscription.update_current_position_to_store()
+                    for subscription in self._subscriptions.values()
+                    if isinstance(subscription, EventStoreSubscription)
+                ),
+                return_exceptions=True,
+            )
 
             # Step 3: Close domain infrastructure connections
             try:
