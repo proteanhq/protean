@@ -889,6 +889,19 @@ class TestDiffGitBaseline:
         assert parsed["summary"]["has_changes"] is False
         assert result.exit_code == 0
 
+    def test_callers_git_ignore_file_does_not_stop_the_baseline_commit(
+        self, monkeypatch, tmp_path_factory
+    ):
+        """A caller ignore file that matches ``.protean/`` does not reach the
+        baseline repository's ``git add``."""
+        config_home = tmp_path_factory.mktemp("xdg")
+        (config_home / "git").mkdir()
+        (config_home / "git" / "ignore").write_text(".protean/\n", encoding="utf-8")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+        commit_ir(self._repo, self._live_ir())
+        result = self._diff("-f", "json")
+        assert result.exit_code == 0
+
     def test_base_custom_dir(self):
         """--dir names the directory inside the commit that holds ir.json."""
         commit_ir(self._repo, _minimal_ir(), ir_dir="custom_ir")
