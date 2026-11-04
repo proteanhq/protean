@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+import yaml
 from typer.testing import CliRunner
 
 from protean.cli import app
@@ -337,6 +338,58 @@ class TestTemplateGeneration:
             assert "[event_store]" in domain_toml
             assert "[event_stores" not in domain_toml
             assert 'provider = "message_db"' in domain_toml
+
+    def test_message_db_project_runs_the_message_db_version_the_repo_runs(self):
+        """A generated Message DB project runs one Message DB image in its CI
+        workflow and its docker-compose.yml, and it is the image the repo's
+        own docker-compose.yml runs (#2117)."""
+        repo_compose = yaml.safe_load(
+            (Path(__file__).resolve().parents[2] / "docker-compose.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        match = re.fullmatch(
+            r"\$\{MESSAGE_DB_IMAGE:-(.+)\}",
+            repo_compose["services"]["message-db"]["image"],
+        )
+        assert match, "docker-compose.yml no longer defaults MESSAGE_DB_IMAGE"
+        repo_image = match.group(1)
+
+        with isolated_filesystem() as project_dir:
+            args = [
+                "new",
+                "test_message_db_version",
+                "-o",
+                project_dir,
+                "--defaults",
+                "--skip-setup",
+                "-d",
+                "author_name=Test",
+                "-d",
+                "author_email=test@test.com",
+                "-d",
+                "event_store=message-db",
+            ]
+            result = runner.invoke(app, args)
+            assert result.exit_code == 0
+
+            project_path = Path(project_dir) / "test_message_db_version"
+            workflow = yaml.safe_load(
+                (project_path / ".github" / "workflows" / "ci.yml").read_text(
+                    encoding="utf-8"
+                )
+            )
+            compose = yaml.safe_load(
+                (project_path / "docker-compose.yml").read_text(encoding="utf-8")
+            )
+
+            workflow_images = [
+                job["services"]["message-db"]["image"]
+                for job in workflow["jobs"].values()
+                if "message-db" in job.get("services", {})
+            ]
+            assert workflow_images == [repo_image]
+            assert compose["services"]["message-db"]["image"] == repo_image
 
     def test_copier_answers_file_is_created(self):
         """Test that .copier-answers.yml is created with correct answers."""
