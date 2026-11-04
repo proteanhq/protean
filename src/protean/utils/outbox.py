@@ -1611,14 +1611,6 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     external_brokers: list[str] = outbox_config.get("external_brokers", [])
     outbox_repo = domain._get_outbox_repo(provider_name)
 
-    def _existing_brokers(message_id: str) -> set[str]:
-        return {
-            row.target_broker for row in outbox_repo.find_all_by_message_id(message_id)
-        }
-
-    def _internal_row_exists(message_id: str) -> bool:
-        return internal_broker in _existing_brokers(message_id)
-
     # Fast path: if the newest message is an event reconcile repairs and
     # already has its internal row, the last unit of work committed fully
     # and there is nothing at the tail to repair. This keeps the startup sweep
@@ -1627,10 +1619,82 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # Only the last unit of work can sit in that window, so a lost row hidden
     # behind a later event-sourced commit that landed is not found here or below.
     if _is_repairable_event(domain, last, provider_name) and _internal_row_exists(
-        last.metadata.headers.id
+        outbox_repo, internal_broker, last.metadata.headers.id
     ):
         return 0
 
+    missing, existing_brokers = _messages_missing_internal_row(
+        domain, provider_name, last, limit, outbox_repo, internal_broker
+    )
+    if not missing:
+        return 0
+
+    partition_keys = domain._partition_keys
+    backfill_suffix = backfill_suffix_from_config(domain.config)
+
+    created = 0
+    with UnitOfWork():
+        # The rebuilt rows form one commit, so number them in event store
+        # order the way the Unit of Work numbers the events of a commit.
+        for sequence_number, message in enumerate(missing):
+            partition_key, abandon_reason = _rebuilt_partition_key_or_reason(
+                message, partition_keys, backfill_suffix
+            )
+
+            # The unit of work writes one row per external broker for a
+            # ``published`` event, all in the same commit as the internal row.
+            # Neither the ``published`` flag nor ``external_brokers`` is stored
+            # with the event, so both come from the current settings.
+            target_brokers = [internal_broker] + [
+                broker
+                for broker in _published_external_brokers(
+                    domain, message, provider_name, external_brokers
+                )
+                if broker not in existing_brokers[message.metadata.headers.id]
+            ]
+
+            created += _save_rebuilt_rows(
+                outbox_repo,
+                message,
+                sequence_number,
+                target_brokers,
+                partition_key,
+                abandon_reason,
+            )
+
+    return created
+
+
+def _existing_brokers(outbox_repo: Any, message_id: str) -> set[str]:
+    """Return the target brokers that already hold an outbox row for
+    *message_id*."""
+    return {row.target_broker for row in outbox_repo.find_all_by_message_id(message_id)}
+
+
+def _internal_row_exists(
+    outbox_repo: Any, internal_broker: str, message_id: str
+) -> bool:
+    """Return True if *message_id* already has its row for *internal_broker*."""
+    return internal_broker in _existing_brokers(outbox_repo, message_id)
+
+
+def _messages_missing_internal_row(
+    domain: Any,
+    provider_name: str,
+    last: Any,
+    limit: int,
+    outbox_repo: Any,
+    internal_broker: str,
+) -> tuple[list[Any], dict[str, set[str]]]:
+    """Return the repairable events in the window of *limit* messages ending at
+    *last* that have no internal outbox row, in event store order.
+
+    Also returns the brokers that already hold a row for each repairable event,
+    keyed by message id. Returns an empty list when the newest repairable event
+    in the window has its internal row.
+    """
+    store = domain.event_store.store
+    outbox_config = domain.config.get("outbox", {})
     tail = last.metadata.event_store.global_position
     start = max(0, tail - limit + 1)
     messages = store.read("$all", position=start, no_of_messages=limit)
@@ -1650,11 +1714,13 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
         for m in messages
         if _is_repairable_event(domain, m, provider_name) and _written_after(m, cutoff)
     ]
-    if not qualifying or _internal_row_exists(qualifying[-1].metadata.headers.id):
-        return 0
+    if not qualifying or _internal_row_exists(
+        outbox_repo, internal_broker, qualifying[-1].metadata.headers.id
+    ):
+        return [], {}
 
     existing_brokers = {
-        m.metadata.headers.id: _existing_brokers(m.metadata.headers.id)
+        m.metadata.headers.id: _existing_brokers(outbox_repo, m.metadata.headers.id)
         for m in qualifying
     }
     missing = [
@@ -1666,70 +1732,70 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     # all of a message's rows in one commit.
     if not missing:  # pragma: no cover - race guard: a concurrent sweep can
         # insert the rows between the check above and this query.
-        return 0
+        return [], {}
 
-    partition_keys = domain._partition_keys
-    backfill_suffix = backfill_suffix_from_config(domain.config)
+    return missing, existing_brokers
 
+
+def _rebuilt_partition_key_or_reason(
+    message: Any, partition_keys: dict[str, str], backfill_suffix: str
+) -> tuple[str | None, str | None]:
+    """Return the rebuilt ``partition_key`` of *message* and None, or None and
+    the reason its rows are saved as abandoned when the key cannot be computed."""
+    try:
+        return (
+            _rebuilt_partition_key(message, partition_keys, backfill_suffix),
+            None,
+        )
+    except (DeserializationError, ValidationError) as exc:
+        # A row without its key would be published to the base
+        # category, where no partitioned handler reads it.
+        abandon_reason = f"partition_key could not be computed: {exc}"
+        logger.error(
+            "outbox.reconcile: saving the row(s) for message %s as "
+            "abandoned, because its %s",
+            message.metadata.headers.id,
+            abandon_reason,
+        )
+        return None, abandon_reason
+
+
+def _save_rebuilt_rows(
+    outbox_repo: Any,
+    message: Any,
+    sequence_number: int,
+    target_brokers: list[str],
+    partition_key: str | None,
+    abandon_reason: str | None,
+) -> int:
+    """Save one rebuilt outbox row for *message* per broker in
+    *target_brokers*, and return how many rows were written.
+
+    The rows are marked abandoned when *abandon_reason* is set. A row that
+    already exists is skipped and not counted.
+    """
+    domain_meta = message.metadata.domain
     created = 0
-    with UnitOfWork():
-        # The rebuilt rows form one commit, so number them in event store
-        # order the way the Unit of Work numbers the events of a commit.
-        for sequence_number, message in enumerate(missing):
-            message_id = message.metadata.headers.id
-            domain_meta = message.metadata.domain
-            abandon_reason = None
-            try:
-                partition_key = _rebuilt_partition_key(
-                    message, partition_keys, backfill_suffix
-                )
-            except (DeserializationError, ValidationError) as exc:
-                # A row without its key would be published to the base
-                # category, where no partitioned handler reads it.
-                partition_key = None
-                abandon_reason = f"partition_key could not be computed: {exc}"
-                logger.error(
-                    "outbox.reconcile: saving the row(s) for message %s as "
-                    "abandoned, because its %s",
-                    message_id,
-                    abandon_reason,
-                )
-
-            # The unit of work writes one row per external broker for a
-            # ``published`` event, all in the same commit as the internal row.
-            # Neither the ``published`` flag nor ``external_brokers`` is stored
-            # with the event, so both come from the current settings.
-            target_brokers = [internal_broker] + [
-                broker
-                for broker in _published_external_brokers(
-                    domain, message, provider_name, external_brokers
-                )
-                if broker not in existing_brokers[message_id]
-            ]
-
-            for target_broker in target_brokers:
-                # ``priority`` is left at its default: the original request's
-                # priority is not stored with the event.
-                outbox_message = Outbox.create_message(
-                    message_id=message_id,
-                    stream_name=message.metadata.headers.stream,
-                    message_type=message.metadata.headers.type,
-                    data=message.data,
-                    metadata=message.metadata,
-                    correlation_id=getattr(domain_meta, "correlation_id", None),
-                    causation_id=getattr(domain_meta, "causation_id", None),
-                    sequence_number=sequence_number,
-                    target_broker=target_broker,
-                    partition_key=partition_key,
-                    stream_category=getattr(domain_meta, "stream_category", None),
-                )
-                if abandon_reason is not None:
-                    outbox_message.mark_abandoned(
-                        abandon_reason, cause="Invalid partition key"
-                    )
-                # A live unit of work, or another sweep, may write this row
-                # after the check above. Its row is kept and this one skipped.
-                if outbox_repo._dao.save_if_absent(outbox_message) is not None:
-                    created += 1
-
+    for target_broker in target_brokers:
+        # ``priority`` is left at its default: the original request's
+        # priority is not stored with the event.
+        outbox_message = Outbox.create_message(
+            message_id=message.metadata.headers.id,
+            stream_name=message.metadata.headers.stream,
+            message_type=message.metadata.headers.type,
+            data=message.data,
+            metadata=message.metadata,
+            correlation_id=getattr(domain_meta, "correlation_id", None),
+            causation_id=getattr(domain_meta, "causation_id", None),
+            sequence_number=sequence_number,
+            target_broker=target_broker,
+            partition_key=partition_key,
+            stream_category=getattr(domain_meta, "stream_category", None),
+        )
+        if abandon_reason is not None:
+            outbox_message.mark_abandoned(abandon_reason, cause="Invalid partition key")
+        # A live unit of work, or another sweep, may write this row
+        # after the check above. Its row is kept and this one skipped.
+        if outbox_repo._dao.save_if_absent(outbox_message) is not None:
+            created += 1
     return created

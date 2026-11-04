@@ -173,6 +173,61 @@ def _truncate_projection(
         repo._dao._delete_all()
 
 
+def _global_position(message: Message) -> int:
+    """Return the store's ``global_position`` of *message*, or 0 when it has
+    none."""
+    # Defensive: event-store messages always carry metadata/event_store;
+    # this guards only against corrupt store data.
+    if (
+        message.metadata is None or message.metadata.event_store is None
+    ):  # pragma: no cover
+        return 0
+    return message.metadata.event_store.global_position or 0
+
+
+def _position_label(message: Message) -> object:
+    """Return the ``global_position`` of *message* for a log line, or
+    ``"unknown"`` when it has no event store metadata."""
+    return (
+        message.metadata.event_store.global_position
+        if message.metadata and message.metadata.event_store
+        else "unknown"
+    )
+
+
+def _dispatch_message(projector_cls: "type[BaseProjector]", message: Message) -> bool:
+    """Dispatch *message* through *projector_cls*.
+
+    Returns True when the projector handled it. Returns False and logs the
+    error when dispatch raised, so the caller counts the message as skipped.
+    """
+    try:
+        projector_cls._handle(message)
+        return True
+    except ConfigurationError as exc:
+        # Unresolvable event type (deprecated event without upcaster)
+        logger.warning(
+            "Skipping unresolvable message type `%s` at position %s: %s",
+            message.metadata.headers.type
+            if message.metadata and message.metadata.headers
+            else "unknown",
+            _position_label(message),
+            exc,
+        )
+        return False
+    except Exception as exc:
+        # `exc_info` matters more than it looks: a skipped message means the
+        # projection is wrong, and `str()` of an exception group names none
+        # of its members, so without the traceback there is nothing to act on.
+        logger.error(
+            "Error processing message at position %s: %s",
+            _position_label(message),
+            describe_exception(exc),
+            exc_info=exc,
+        )
+        return False
+
+
 def _replay_projector(
     domain: "Domain",
     projector_cls: "type[BaseProjector]",
@@ -214,49 +269,15 @@ def _replay_projector(
         all_messages.extend(event_store.read_all(category, page_size=batch_size))
 
     # Sort by global_position for correct cross-category ordering
-    def _global_position(message: Message) -> int:
-        # Defensive: event-store messages always carry metadata/event_store;
-        # this guards only against corrupt store data.
-        if (
-            message.metadata is None or message.metadata.event_store is None
-        ):  # pragma: no cover
-            return 0
-        return message.metadata.event_store.global_position or 0
-
     all_messages.sort(key=_global_position)
 
     dispatched = 0
     skipped = 0
 
     for message in all_messages:
-        try:
-            projector_cls._handle(message)
+        if _dispatch_message(projector_cls, message):
             dispatched += 1
-        except ConfigurationError as exc:
-            # Unresolvable event type (deprecated event without upcaster)
-            logger.warning(
-                "Skipping unresolvable message type `%s` at position %s: %s",
-                message.metadata.headers.type
-                if message.metadata and message.metadata.headers
-                else "unknown",
-                message.metadata.event_store.global_position
-                if message.metadata and message.metadata.event_store
-                else "unknown",
-                exc,
-            )
-            skipped += 1
-        except Exception as exc:
-            # `exc_info` matters more than it looks: a skipped message means the
-            # projection is wrong, and `str()` of an exception group names none
-            # of its members, so without the traceback there is nothing to act on.
-            logger.error(
-                "Error processing message at position %s: %s",
-                message.metadata.event_store.global_position
-                if message.metadata and message.metadata.event_store
-                else "unknown",
-                describe_exception(exc),
-                exc_info=exc,
-            )
+        else:
             skipped += 1
 
     logger.info(

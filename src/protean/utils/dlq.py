@@ -174,6 +174,30 @@ def _is_partitioned_process_manager(domain: Domain, pm_cls: type) -> bool:
 
 # A handler that the engine subscribes to one stream category, paired with the
 # ``SubscriptionInfo`` flags that mark its kind.
+def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
+    """Walk the domain registry and return subscription metadata.
+
+    Inspects event handlers, command handlers, projectors, and process managers
+    to derive their stream categories and DLQ stream names.
+    """
+    server_config = domain.config.get("server", {})
+    lanes_config = server_config.get("priority_lanes", {})
+    lanes_enabled = lanes_config.get("enabled", False)
+    backfill_suffix = lanes_config.get("backfill_suffix", "backfill")
+
+    candidates = [
+        _event_store_subscription_info(target, lanes_enabled, backfill_suffix)
+        for target in _single_category_targets(domain) + _multi_category_targets(domain)
+    ]
+    candidates += _broker_subscription_infos(domain)
+
+    # Keep the first subscription found for each (handler, stream) pair.
+    seen_streams: dict[str, SubscriptionInfo] = {}
+    for info in candidates:
+        seen_streams.setdefault(f"{info.handler_fqn}:{info.stream_category}", info)
+    return list(seen_streams.values())
+
+
 _SubscriptionTarget = tuple[type, str, dict[str, bool]]
 
 
@@ -265,30 +289,6 @@ def _broker_subscription_infos(domain: Domain) -> list[SubscriptionInfo]:
                 )
             )
     return infos
-
-
-def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
-    """Walk the domain registry and return subscription metadata.
-
-    Inspects event handlers, command handlers, projectors, and process managers
-    to derive their stream categories and DLQ stream names.
-    """
-    server_config = domain.config.get("server", {})
-    lanes_config = server_config.get("priority_lanes", {})
-    lanes_enabled = lanes_config.get("enabled", False)
-    backfill_suffix = lanes_config.get("backfill_suffix", "backfill")
-
-    candidates = [
-        _event_store_subscription_info(target, lanes_enabled, backfill_suffix)
-        for target in _single_category_targets(domain) + _multi_category_targets(domain)
-    ]
-    candidates += _broker_subscription_infos(domain)
-
-    # Keep the first subscription found for each (handler, stream) pair.
-    seen_streams: dict[str, SubscriptionInfo] = {}
-    for info in candidates:
-        seen_streams.setdefault(f"{info.handler_fqn}:{info.stream_category}", info)
-    return list(seen_streams.values())
 
 
 def collect_dlq_streams(domain: Domain) -> list[str]:

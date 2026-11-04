@@ -893,6 +893,51 @@ def _generate_identity(
 _ElementT = TypeVar("_ElementT", bound="Element")
 
 
+def clone_class(cls: type[_ElementT], new_name: str) -> type[_ElementT]:
+    """Return a copy of ``cls`` with a new name.
+
+    The copy has the same attributes, methods and metaclass as ``cls``.
+
+    Args:
+        cls: The class to clone.
+        new_name: The name for the new class.
+
+    Returns:
+        The new class.
+
+    Raises:
+        TypeError: If ``cls`` is not a class or ``new_name`` is not a string.
+        ValueError: If ``new_name`` is empty, is not a valid Python
+            identifier, or is a reserved keyword.
+    """
+    _check_clone_arguments(cls, new_name)
+
+    # For Pydantic models, creating a thin subclass is safer than
+    # re-creating the class from __dict__.  Pydantic internalises field
+    # defaults into model_fields during class creation, so a dict-copy
+    # clone loses them.  A subclass inherits everything through the MRO.
+    if issubclass(cls, BaseModel):
+        pydantic_metaclass = cast(type, type(cls))
+        new_cls = pydantic_metaclass(new_name, (cls,), {"__annotations__": {}})
+        new_cls.__qualname__ = new_name
+        return cast("type[_ElementT]", new_cls)
+
+    # Create the new class with the metaclass of ``cls``, so a custom
+    # metaclass keeps its behavior on the copy.
+    metaclass = cast(type, type(cls))
+    new_cls = metaclass(new_name, cls.__bases__, _clonable_attrs(cls))
+
+    # Set the qualified name to match the class name
+    # This ensures proper representation in debugging and introspection
+    new_cls.__qualname__ = new_name
+
+    # Fix zero-argument super() calls: rebind __class__ closure cells
+    # from the original cls to new_cls (PEP 3135).
+    _rebind_class_cells(new_cls, cls)
+
+    return cast("type[_ElementT]", new_cls)
+
+
 def _check_clone_arguments(cls: Any, new_name: Any) -> None:
     """Raise ``TypeError`` or ``ValueError`` if *cls* is not a class or
     *new_name* is not a usable class name."""
@@ -945,51 +990,6 @@ def _clonable_attrs(cls: type) -> dict[str, Any]:
         for key, value in cls.__dict__.items()
         if key not in excluded_attrs and key not in slot_names
     }
-
-
-def clone_class(cls: type[_ElementT], new_name: str) -> type[_ElementT]:
-    """Return a copy of ``cls`` with a new name.
-
-    The copy has the same attributes, methods and metaclass as ``cls``.
-
-    Args:
-        cls: The class to clone.
-        new_name: The name for the new class.
-
-    Returns:
-        The new class.
-
-    Raises:
-        TypeError: If ``cls`` is not a class or ``new_name`` is not a string.
-        ValueError: If ``new_name`` is empty, is not a valid Python
-            identifier, or is a reserved keyword.
-    """
-    _check_clone_arguments(cls, new_name)
-
-    # For Pydantic models, creating a thin subclass is safer than
-    # re-creating the class from __dict__.  Pydantic internalises field
-    # defaults into model_fields during class creation, so a dict-copy
-    # clone loses them.  A subclass inherits everything through the MRO.
-    if issubclass(cls, BaseModel):
-        pydantic_metaclass = cast(type, type(cls))
-        new_cls = pydantic_metaclass(new_name, (cls,), {"__annotations__": {}})
-        new_cls.__qualname__ = new_name
-        return cast("type[_ElementT]", new_cls)
-
-    # Create the new class with the metaclass of ``cls``, so a custom
-    # metaclass keeps its behavior on the copy.
-    metaclass = cast(type, type(cls))
-    new_cls = metaclass(new_name, cls.__bases__, _clonable_attrs(cls))
-
-    # Set the qualified name to match the class name
-    # This ensures proper representation in debugging and introspection
-    new_cls.__qualname__ = new_name
-
-    # Fix zero-argument super() calls: rebind __class__ closure cells
-    # from the original cls to new_cls (PEP 3135).
-    _rebind_class_cells(new_cls, cls)
-
-    return cast("type[_ElementT]", new_cls)
 
 
 __all__ = [

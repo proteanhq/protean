@@ -1348,36 +1348,6 @@
     ]
   },
   {
-    "path": "src/protean/utils/outbox.py",
-    "file_name": "outbox.py",
-    "functions": [
-      {
-        "name": "_reconcile_outbox",
-        "complexity": 25
-      }
-    ]
-  },
-  {
-    "path": "src/protean/utils/projection_rebuilder.py",
-    "file_name": "projection_rebuilder.py",
-    "functions": [
-      {
-        "name": "_replay_projector",
-        "complexity": 22
-      }
-    ]
-  },
-  {
-    "path": "src/protean/utils/reflection.py",
-    "file_name": "reflection.py",
-    "functions": [
-      {
-        "name": "attributes",
-        "complexity": 16
-      }
-    ]
-  },
-  {
     "path": "tests/adapters/broker/inline/test_message_timeout.py",
     "file_name": "test_message_timeout.py",
     "functions": [

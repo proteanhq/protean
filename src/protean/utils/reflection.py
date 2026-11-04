@@ -75,26 +75,31 @@ def attributes(class_or_instance: type[Element] | Element) -> dict[str, Field]:
 
     Accepts an element or an instance of one.
     """
-    from protean.fields.association import Association, Reference  # noqa: PLC0415
-    from protean.fields.embedded import ValueObject  # noqa: PLC0415
-
     attributes_dict: dict[str, Field] = {}
 
     for field_obj in fields(class_or_instance).values():
-        if isinstance(field_obj, ValueObject):
-            for _, shadow_field in field_obj.get_shadow_fields():
-                if shadow_field.attribute_name is not None:
-                    attributes_dict[shadow_field.attribute_name] = shadow_field
-        elif isinstance(field_obj, Reference):
-            attributes_dict[field_obj.get_attribute_name()] = field_obj.relation
-        elif isinstance(field_obj, Association):
-            pass  # HasOne/HasMany are not direct attributes
-        else:
-            attr_name = field_obj.get_attribute_name()
-            if attr_name is not None:
-                attributes_dict[attr_name] = field_obj
+        attributes_dict.update(_field_attributes(field_obj))
 
     return attributes_dict
+
+
+def _field_attributes(field_obj: Field) -> dict[str, Field]:
+    """Return the attributes that *field_obj* stores, keyed by attribute name."""
+    from protean.fields.association import Association, Reference  # noqa: PLC0415
+    from protean.fields.embedded import ValueObject  # noqa: PLC0415
+
+    if isinstance(field_obj, ValueObject):
+        return {
+            shadow_field.attribute_name: shadow_field
+            for _, shadow_field in field_obj.get_shadow_fields()
+            if shadow_field.attribute_name is not None
+        }
+    if isinstance(field_obj, Reference):
+        return {field_obj.get_attribute_name(): field_obj.relation}
+    if isinstance(field_obj, Association):
+        return {}  # HasOne/HasMany are not direct attributes
+    attr_name = field_obj.get_attribute_name()
+    return {attr_name: field_obj} if attr_name is not None else {}
 
 
 def unique_fields(class_or_instance: type[Element] | Element) -> dict[str, Field]:
