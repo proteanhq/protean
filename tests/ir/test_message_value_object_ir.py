@@ -65,6 +65,7 @@ class Moved(BaseEvent):
 class Relocated(BaseEvent):
     acct_id = Identifier()
     addr: ValueObject(Addr)
+    home: Addr
 
 
 class Move(BaseCommand):
@@ -76,6 +77,7 @@ class Move(BaseCommand):
 class Relocate(BaseCommand):
     acct_id = Identifier()
     addr: ValueObject(Addr)
+    home: Addr
 
 
 class AcctView(BaseProjection):
@@ -136,6 +138,15 @@ class TestIRField:
             "target": fqn(Addr),
         }
 
+    @pytest.mark.parametrize("message", [Relocated, Relocate], ids=["event", "command"])
+    def test_bare_annotation_is_a_value_object_entry(self, flat, message):
+        _, index = flat
+        assert _fields(index, message)["home"] == {
+            "kind": "value_object",
+            "required": True,
+            "target": fqn(Addr),
+        }
+
     def test_plain_string_field_stays_standard(self, flat):
         _, index = flat
         assert _fields(index, Moved)["note"] == {
@@ -181,6 +192,77 @@ class TestCluster:
         ir, _ = flat
         assert fqn(Pinned) in ir["clusters"][fqn(Other)]["value_objects"]
         assert fqn(Pinned) not in ir["clusters"][fqn(Acct)]["value_objects"]
+
+
+class Tagged(BaseValueObject):
+    tags = List(content_type=String)
+
+
+class Left(BaseAggregate):
+    left_id = Identifier(identifier=True)
+
+
+class Right(BaseAggregate):
+    right_id = Identifier(identifier=True)
+
+
+class LeftMoved(BaseEvent):
+    left_id = Identifier()
+    tagged = ValueObject(Tagged)
+
+
+class TagRight(BaseCommand):
+    right_id = Identifier()
+    tagged = ValueObject(Tagged)
+
+
+class Tagging(BaseEvent):
+    tagged = ValueObject(Tagged)
+
+
+class LeftTagged(Tagging):
+    left_id = Identifier()
+
+
+class TestClusterOrder:
+    def test_command_is_scanned_before_an_event(self, test_domain):
+        # The event registers first, but commands are scanned before events.
+        test_domain.register(Tagged)
+        test_domain.register(Left)
+        test_domain.register(Right)
+        test_domain.register(LeftMoved, part_of=Left)
+        test_domain.register(TagRight, part_of=Right)
+        test_domain.init(traverse=False)
+        clusters = test_domain.to_ir()["clusters"]
+        assert list(clusters[fqn(Right)]["value_objects"]) == [fqn(Tagged)]
+        assert list(clusters[fqn(Left)]["value_objects"]) == []
+
+    def test_abstract_base_event_does_not_hide_its_subclass_cluster(self, test_domain):
+        # The abstract base registers first and has no aggregate. The value
+        # object must still join the cluster of the concrete subclass.
+        test_domain.register(Tagged)
+        test_domain.register(Left)
+        test_domain.register(Tagging, abstract=True)
+        test_domain.register(LeftTagged, part_of=Left)
+        test_domain.init(traverse=False)
+        clusters = test_domain.to_ir()["clusters"]
+        assert list(clusters[fqn(Left)]["value_objects"]) == [fqn(Tagged)]
+
+
+class TestDiagnostics:
+    def test_mutable_field_on_a_message_only_value_object_is_reported(
+        self, test_domain
+    ):
+        test_domain.register(Tagged)
+        test_domain.register(Left)
+        test_domain.register(LeftMoved, part_of=Left)
+        test_domain.init(traverse=False)
+        findings = [
+            (d["element"], d["field"])
+            for d in test_domain.to_ir()["diagnostics"]
+            if d["code"] == "VALUE_OBJECT_MUTABLE_FIELD"
+        ]
+        assert findings == [(fqn(Tagged), "tags")]
 
 
 class TestJsonSchema:
@@ -272,5 +354,5 @@ class TestCompatibility:
     @pytest.mark.no_test_domain
     def test_rename_on_a_message_only_value_object_is_reported(self):
         changes = self._value_object_changes(held_by_aggregate=False)
-        assert changes
+        assert changes == [("book.Addr", "field_renamed", None, "safe")]
         assert changes == self._value_object_changes(held_by_aggregate=True)

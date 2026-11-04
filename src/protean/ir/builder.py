@@ -535,18 +535,18 @@ class IRBuilder:
         """Return the value object class a command or event field holds, if any.
 
         A command or event turns its ``ValueObject`` fields into plain resolved
-        fields typed by the value object class (``Addr`` or ``Addr | None``).
-        Fields of any other element, and list or dict fields, return ``None``.
+        fields typed by the value object class (``Addr`` or ``Addr | None``), the
+        same type a bare annotation such as ``addr: Addr`` gives. Fields of any
+        other element, and list or dict fields, return ``None``.
         """
         if getattr(cls, "element_type", None) not in (
             DomainObjects.COMMAND,
             DomainObjects.EVENT,
         ):
             return None
-        python_type: Any = field._python_type
-        base_type = self._unwrap_type(python_type)
-        if self._is_list_type(base_type) or self._is_dict_type(base_type, python_type):
-            return None
+        # ``list[Addr]`` and ``dict[str, Addr]`` are generic aliases, not classes,
+        # so the class check below already returns ``None`` for them.
+        base_type = self._unwrap_type(field._python_type)
         return base_type if _is_value_object_class(base_type) else None
 
     def _dict_value_object(self, field: ResolvedField) -> type | None:
@@ -1734,8 +1734,11 @@ class IRBuilder:
     def _map_message_value_objects(self, vo_map: dict[str, type]) -> None:
         """Add to ``vo_map`` each value object a command or event field holds.
 
-        A value object already in ``vo_map`` keeps its cluster. Messages with no
-        resolvable aggregate are skipped.
+        A value object already in ``vo_map`` keeps its cluster. When messages of
+        two aggregates hold the same value object, the first message scanned
+        wins: commands are scanned before events, each in registration order.
+        Messages with no resolvable aggregate, such as an abstract base event,
+        are skipped.
         """
         registry = self._domain._domain_registry
         for element_type in ("COMMAND", "EVENT"):
@@ -3461,7 +3464,8 @@ class IRBuilder:
         field, which gives it mutable state and breaks equality-by-value.
 
         Only value objects reachable from a (non-abstract) aggregate cluster are
-        checked — a VO is embedded in an aggregate/entity or carries ``part_of``.
+        checked: a VO an aggregate, an entity, a command or an event holds in a
+        field, or one that carries ``part_of``.
         Emits one finding per offending field, naming it in the optional
         ``field`` key (mirroring ``DEPRECATED_FIELD``).
         """
