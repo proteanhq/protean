@@ -253,6 +253,22 @@ class TestStoppedWorkerStates:
         assert handled == ["flaky"]
         assert _pending_by_consumer(domain, category, second.consumer_group) == {}
 
+    async def test_restarts_count_only_the_failed_attempts(self, domain):
+        """Three workers each fail the message once and stop. With
+        max_retries=4 the third failure is still a retry, not a dead letter."""
+        category = Shipment.meta_.stream_category
+        _publish(domain, category, "flaky")
+        failing_labels.add("flaky")
+        for attempt in (1, 2, 3):
+            worker = _stream_subscription(domain, max_retries=4)
+            await _start(worker)
+            await _read_and_process(worker)
+            assert list(worker.retry_counts.values()) == [attempt]
+            await asyncio.sleep(RECLAIM_IDLE_SECONDS * 2)
+
+        client = domain.brokers["default"].redis_instance
+        assert client.xlen(worker.dlq_stream) == 0
+
     async def test_claims_a_message_held_by_an_open_circuit_breaker(self, domain):
         category = Shipment.meta_.stream_category
         first = _stream_subscription(domain, circuit_breaker_threshold=1)
@@ -394,6 +410,21 @@ class TestBrokerReclaim:
         assert len(counts) == 250
         assert set(counts.values()) == {1}
         assert _pending_by_consumer(domain, "bulk", "group") == {"new": 250}
+
+    def test_a_claim_does_not_count_as_a_delivery(self, domain):
+        """A worker that claims and stops before reading adds no delivery."""
+        broker = domain.brokers["default"]
+        broker._ensure_group("group", "again")
+        broker.redis_instance.xadd("again", {"i": "1"})
+        _leave_pending(domain, "again", "group", 1)
+
+        assert list(
+            broker._reclaim_idle_pending("again", "group", "a", 10).values()
+        ) == [1]
+        time.sleep(RECLAIM_IDLE_SECONDS * 2)
+        assert list(
+            broker._reclaim_idle_pending("again", "group", "b", 10).values()
+        ) == [1]
 
     def test_missing_group_claims_nothing(self, domain):
         broker = domain.brokers["default"]

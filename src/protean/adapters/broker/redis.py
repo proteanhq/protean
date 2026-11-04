@@ -120,6 +120,16 @@ if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
 return redis.call('XACK', KEYS[2], ARGV[2], ARGV[3])
 """
 
+# Claim one page of a group's idle pending entries. JUSTID leaves each entry's
+# delivery counter as it was, so repeated claims do not add deliveries. It runs
+# in Lua because redis-py drops the cursor from a JUSTID reply.
+# KEYS are the stream. ARGV are the group, the consumer, the minimum idle time
+# in milliseconds, the start id and the count. Returns the raw XAUTOCLAIM reply.
+_LUA_AUTOCLAIM_JUSTID = """
+return redis.call('XAUTOCLAIM', KEYS[1], ARGV[1], ARGV[2], ARGV[3], ARGV[4],
+                  'COUNT', ARGV[5], 'JUSTID')
+"""
+
 # Race-safe cold-partition reap. KEYS[1]=index_set, KEYS[2..]=every physical
 # stream for the key (the main partition stream and, when priority lanes are on,
 # its backfill lane); ARGV[1]=key, ARGV[2]=min_idle_ms. A stream is shared by
@@ -223,6 +233,7 @@ class RedisBroker(BaseBroker):
         self._lua_read_fenced = self._client.register_script(_LUA_READ_FENCED)
         self._lua_ack_fenced = self._client.register_script(_LUA_ACK_FENCED)
         self._lua_reap_partition = self._client.register_script(_LUA_REAP_PARTITION)
+        self._lua_autoclaim_justid = self._client.register_script(_LUA_AUTOCLAIM_JUSTID)
 
         # Add compatibility attributes for generic tests
         # Redis Streams handle these differently but tests expect these attributes
@@ -1092,12 +1103,11 @@ class RedisBroker(BaseBroker):
     ) -> dict[str, int]:
         """Claim the group's entries idle for *min_idle_ms* into *consumer_name*.
 
-        Uses ``XAUTOCLAIM``, then reads each claimed entry's delivery count
-        with ``XPENDING``. ``XAUTOCLAIM`` counts the claim as one delivery, so
-        that delivery is taken off the count returned. Entries whose message
-        the stream no longer holds (it was trimmed) are dropped from the
-        pending list by ``XAUTOCLAIM`` and are not returned. A missing group
-        means nothing to claim.
+        Uses ``XAUTOCLAIM`` with ``JUSTID``, which does not count the claim as
+        a delivery, then reads each claimed entry's delivery count with
+        ``XPENDING``. Entries whose message the stream no longer holds (it was
+        trimmed) are dropped from the pending list by ``XAUTOCLAIM`` and are
+        not returned. A missing group means nothing to claim.
 
         Raises:
             redis.RedisError: Any broker error other than a missing group.
@@ -1108,15 +1118,16 @@ class RedisBroker(BaseBroker):
         cursor = STREAM_ID_START + "-0"
         while True:
             try:
-                reply = self._client.xautoclaim(
-                    stream,
-                    group_name,
-                    consumer,
-                    min_idle_time=min_idle_ms,
-                    start_id=cursor,
-                    count=_RECLAIM_BATCH_SIZE,
-                    # redis-py drops the cursor from a JUSTID reply, which
-                    # would end the scan after the first batch.
+                reply = self._lua_autoclaim_justid(
+                    keys=[stream],
+                    args=[
+                        group_name,
+                        consumer,
+                        min_idle_ms,
+                        cursor,
+                        _RECLAIM_BATCH_SIZE,
+                    ],
+                    client=self._client,
                 )
             except redis.ResponseError as e:
                 if "NOGROUP" in str(e):
@@ -1124,7 +1135,7 @@ class RedisBroker(BaseBroker):
                     self._ensure_group(group_name, stream)
                     break
                 raise
-            claimed.extend(self._decode_if_bytes(mid) for mid, _fields in reply[1])
+            claimed.extend(self._decode_if_bytes(mid) for mid in reply[1])
             cursor = self._decode_if_bytes(reply[0])
             # A "0-0" cursor means the scan reached the end of the pending list.
             if cursor == STREAM_ID_START + "-0":
@@ -1137,8 +1148,7 @@ class RedisBroker(BaseBroker):
     def _delivery_counts(
         self, stream: str, group_name: str, consumer: str, ids: list[str]
     ) -> dict[str, int]:
-        """Return how many times the group delivered each of *ids* before the
-        claim that moved it to *consumer*.
+        """Return how many times the group delivered each of *ids*.
 
         Pages through *consumer*'s pending list, which holds the claimed ids
         and any entries the consumer already had.
@@ -1158,7 +1168,7 @@ class RedisBroker(BaseBroker):
             for row in rows:
                 message_id = self._decode_if_bytes(row["message_id"])
                 if message_id in wanted:
-                    counts[message_id] = int(row["times_delivered"]) - 1
+                    counts[message_id] = int(row["times_delivered"])
             if len(rows) < _RECLAIM_BATCH_SIZE:
                 break
             # "(" makes the next page start after the last id read.
