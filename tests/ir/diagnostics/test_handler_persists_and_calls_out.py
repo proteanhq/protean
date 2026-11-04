@@ -110,7 +110,7 @@ class TestTheRuleStaysSilent:
         - `urllib.parse.urlencode` is rooted in an I/O module and does no I/O.
           The module alone is not enough; the call has to be named like a
           request.
-        - `requests.Session()` builds a client; it sends nothing.
+        - `httpx.Client()` builds a client; it sends nothing.
         - A call through a local alias does not resolve. Reporting nothing keeps
           the verdict reproducible."""
         domain = _build_handler_io_domain(f"Io{handler.__name__}", handler)
