@@ -1624,7 +1624,7 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
         return 0
 
     missing, existing_brokers = _messages_missing_internal_row(
-        domain, provider_name, last, limit, outbox_repo, internal_broker
+        domain, provider_name, last, limit, outbox_repo, outbox_config, internal_broker
     )
     if not missing:
         return 0
@@ -1684,6 +1684,7 @@ def _messages_missing_internal_row(
     last: Any,
     limit: int,
     outbox_repo: Any,
+    outbox_config: dict[str, Any],
     internal_broker: str,
 ) -> tuple[list[Any], dict[str, set[str]]]:
     """Return the repairable events in the window of *limit* messages ending at
@@ -1696,7 +1697,6 @@ def _messages_missing_internal_row(
     has its internal row.
     """
     store = domain.event_store.store
-    outbox_config = domain.config.get("outbox", {})
     tail = last.metadata.event_store.global_position
     start = max(0, tail - limit + 1)
     messages = store.read("$all", position=start, no_of_messages=limit)
