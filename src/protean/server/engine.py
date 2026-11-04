@@ -1352,14 +1352,7 @@ class Engine:
             # again. Step 1 wrote it before the in-flight batch finished, and a
             # handler that completed since then moved the position in memory
             # only. Without this write, a restart handles those messages again.
-            await asyncio.gather(
-                *(
-                    subscription.update_current_position_to_store()
-                    for subscription in self._subscriptions.values()
-                    if isinstance(subscription, EventStoreSubscription)
-                ),
-                return_exceptions=True,
-            )
+            await self._write_store_positions()
 
             # Step 3: Close domain infrastructure connections
             try:
@@ -1371,6 +1364,29 @@ class Engine:
             self._cleanup_signal_handlers()
         finally:
             self.loop.stop()
+
+    async def _write_store_positions(self) -> None:
+        """Write each event-store subscription's read position, logging each
+        write that fails instead of raising."""
+        store_subscriptions = [
+            subscription
+            for subscription in self._subscriptions.values()
+            if isinstance(subscription, EventStoreSubscription)
+        ]
+        results = await asyncio.gather(
+            *(
+                subscription.update_current_position_to_store()
+                for subscription in store_subscriptions
+            ),
+            return_exceptions=True,
+        )
+        for subscription, result in zip(store_subscriptions, results, strict=True):
+            if isinstance(result, BaseException):
+                logger.error(
+                    "engine.position_write_failed",
+                    extra={"subscriber": subscription.subscriber_name},
+                    exc_info=result,
+                )
 
     def _reconcile_outbox_on_startup(self) -> int:
         """Recover the ADR-0015 crash window on startup: create outbox rows for

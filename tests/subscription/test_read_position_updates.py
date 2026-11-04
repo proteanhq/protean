@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -323,3 +324,21 @@ def test_shutdown_writes_the_position_reached_in_the_drain_window(test_domain):
     assert subscription.position_update_interval > 3
     # Shutdown stopped the engine's loop, so read the position on a new one.
     assert asyncio.run(subscription.fetch_last_position()) == last_position
+
+
+def test_shutdown_logs_a_position_write_that_fails(test_domain, caplog):
+    """A failed write is logged with the subscriber and shutdown still finishes."""
+    engine = Engine(test_domain, test_mode=True)
+    subscription = engine._subscriptions[fqn(EmailEventHandler)]
+    subscription.update_current_position_to_store = AsyncMock(
+        side_effect=ConnectionError("store down")
+    )
+
+    with caplog.at_level(logging.ERROR, logger="protean.server.engine"):
+        engine.loop.run_until_complete(engine.shutdown())
+
+    failures = [
+        r for r in caplog.records if r.getMessage() == "engine.position_write_failed"
+    ]
+    assert [r.subscriber for r in failures] == [fqn(EmailEventHandler)]
+    assert failures[0].exc_info[1].args == ("store down",)
