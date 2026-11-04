@@ -162,7 +162,7 @@ packages** built against the public conformance suite.
 
 - Have a question, or a real-world use case to share? [Start a discussion](https://github.com/proteanhq/protean/discussions). Questions are answered there, and the thread stays searchable for the next person who hits the same thing.
 - Found a bug? [Open an issue](https://github.com/proteanhq/protean/issues). Clear, reproducible reports are the most valuable contribution you can make, and they are answered as a priority.
-- Planning a non-trivial code change? Open an issue to discuss it first, before investing in a pull request. Unsolicited large PRs may not be merged. Small, obvious fixes are welcome directly.
+- Planning a code or documentation change? Open an issue that describes it. Only collaborators can open pull requests.
 - Building an adapter? Adapters live in their own packages, certified against the conformance suite. See the [contributing guide](https://docs.proteanhq.com/community/contributing/setup/).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the

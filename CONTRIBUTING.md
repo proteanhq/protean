@@ -29,24 +29,24 @@ you. The contributions below are genuinely valuable and actively wanted.
    Adapters live in their own packages, owned by their authors, rather than in
    the core. See
    [Building Adapters](https://docs.proteanhq.com/reference/adapters/building-adapters/).
-4. **Improve documentation.** Corrections and clarifications are welcome, and
-   small doc fixes can go straight to a pull request.
+4. **Improve documentation.** Corrections and clarifications are welcome. Open
+   an [issue](https://github.com/proteanhq/protean/issues) that names the page
+   and the fix.
 
 ## Code contributions
 
-- **Small, obvious fixes** (typos, docstrings, a clearly correct one-line bug
-  fix) are welcome directly as pull requests.
-- **Anything non-trivial**, such as a new feature, a behavioral change, or a
-  refactor, should start with an issue so we can agree on the approach before
-  you invest time. Unsolicited large pull requests may not be merged, however
-  good the code; the cost of a change is in its design fit and long-term
-  maintenance, not the diff.
-- **AI-assisted contributions** are held to the same bar, and the bar is
-  understanding, not output. A PR must be tied to an agreed issue, and you must
-  be able to explain every part of the change and why it fits Protean's design.
-  Pull requests that read as unreviewed AI output — no linked issue, generated
-  boilerplate, or changes the author cannot speak to — will be closed. Judgment
-  about design fit is the actual work here, and it cannot be delegated to a tool.
+Only collaborators can open pull requests on this repository. Anyone can read
+the code, open issues and Discussions, and comment on pull requests.
+
+To propose a code or documentation change, open an issue. Describe the problem,
+the change you have in mind, and why it fits Protean's design. The maintainer
+then makes the change. A contributor who has worked through several issues with
+the maintainer may be invited to become a collaborator.
+
+AI tools can now write a pull request in minutes, but reviewing one still takes
+the maintainer hours. The review decides whether a change fits the design, and
+that judgement needs someone who understands the framework. Starting from an
+issue keeps review time for contributors who have that understanding.
 
 This is not a reflection on your work. It is how the project keeps a single,
 coherent design under one maintainer. If that trade-off does not suit you, the
@@ -64,6 +64,6 @@ core will not be relicensed to a proprietary or source-available license.
 
 ## Setting up locally
 
-If you are fixing a bug, adding a discussed change, or building an adapter, the
-[local setup guide](https://docs.proteanhq.com/community/contributing/setup/)
+If you are a collaborator, are building an adapter, or want to run Protean from
+source, the [local setup guide](https://docs.proteanhq.com/community/contributing/setup/)
 walks through getting Protean running for development.

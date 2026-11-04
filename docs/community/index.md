@@ -73,8 +73,9 @@ Protean without touching it. See
 
 ### Improve documentation
 
-Corrections and clarifications are welcome, and small doc fixes can go straight
-to a pull request.
+Corrections and clarifications are welcome. Open an
+[issue](https://github.com/proteanhq/protean/issues) that names the page and the
+fix.
 
 ### Spread the word
 
@@ -83,8 +84,8 @@ others discover the framework.
 
 ---
 
-**How code contributions are handled.** Small, obvious fixes are welcome
-directly as pull requests. Anything larger should start with an issue so the
-approach can be agreed first; unsolicited large pull requests may not be merged.
-The full policy, including the bar for AI-assisted pull requests, is in
-[CONTRIBUTING](https://github.com/proteanhq/protean/blob/main/CONTRIBUTING.md).
+**How code contributions are handled.** Only collaborators can open pull
+requests. To propose a change, open an issue that describes the problem, the
+change, and why it fits Protean's design.
+[CONTRIBUTING](https://github.com/proteanhq/protean/blob/main/CONTRIBUTING.md)
+gives the full policy.

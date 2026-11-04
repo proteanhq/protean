@@ -1,20 +1,4 @@
-<!--
-Protean is developed under a single-maintainer model. Please read CONTRIBUTING.md
-before opening a pull request:
-https://github.com/proteanhq/protean/blob/main/CONTRIBUTING.md
--->
-
-## Before you open this PR
-
-Protean is single-maintainer, and its coherence depends on changes fitting a
-single design view. **Unsolicited non-trivial PRs without a linked, agreed-upon
-issue may be closed unread** — this is not about code quality; see
-[CONTRIBUTING.md](https://github.com/proteanhq/protean/blob/main/CONTRIBUTING.md).
-
-Confirm one of the following (delete the other):
-
-- [ ] This is a **small, obvious fix** — a typo, a docstring, a clearly correct one-line bug fix.
-- [ ] This implements an issue a **maintainer has already agreed to**: closes #\_\_\_
+<!-- If this PR resolves an issue, put "Closes #<number>" on the first line. -->
 
 ## Summary
 

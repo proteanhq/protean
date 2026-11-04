@@ -13,9 +13,9 @@ to a high correctness bar. In practice:
 - The roadmap, the public API, and what gets accepted are the maintainer's call.
 - Bug reports, reproductions, use-case feedback, adapters, and documentation fixes
   are the most valuable contributions and are actively wanted.
-- Non-trivial code changes start from an issue and an agreed approach before any
-  code. A good diff with no design fit is still a maintenance cost, and may be
-  declined on that basis alone.
+- Only collaborators can open pull requests. A code or documentation change
+  starts from an issue. A good diff with no design fit is still a maintenance
+  cost, and may be declined on that basis alone.
 
 There is no committee and no voting. Disagreement is welcome as discussion; the
 maintainer decides.

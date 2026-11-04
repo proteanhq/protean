@@ -1,6 +1,9 @@
 # Setting up Protean locally
 
-Thank you for considering contributing to Protean!
+This guide is for collaborators, adapter authors, and anyone who wants to run
+Protean from source. Only collaborators can open pull requests on Protean.
+[CONTRIBUTING](https://github.com/proteanhq/protean/blob/main/CONTRIBUTING.md)
+explains how to propose a change.
 
 ## First time local setup
 
@@ -13,18 +16,11 @@ $ git config --global user.email 'your email'
 ```
 
 - Make sure you have a [GitHub account](https://github.com/join).
-- Fork Protean to your GitHub account by clicking the [fork](https://github.com/proteanhq/protean/fork) button.
-- [Clone](https://docs.github.com/en/github/getting-started-with-github/fork-a-repo#step-2-create-a-local-clone-of-your-fork) the main repository locally.
+- [Clone](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) the repository locally.
 
 ```sh
 $ git clone https://github.com/proteanhq/protean
 $ cd protean
-```
-
-- Add your fork as a remote to push your work to. Replace `username` with your GitHub username. This names the remote "fork", the default Protean remote is "origin".
-
-```sh
-$ git remote add fork https://github.com/{username}/protean
 ```
 
 - Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
@@ -49,17 +45,7 @@ $ pre-commit install --install-hooks
 
 ## Start coding
 
-- Create a branch to identify the issue you would like to work on. If
-    you're submitting a bug or documentation fix, branch off of the
-    latest ".x" branch.
-
-```sh
-$ git fetch origin
-$ git checkout -b your-branch-name origin/0.11.x
-```
-
-If you're submitting a feature addition or change, branch off of the
-    "main" branch.
+- Create a branch off `main` for the issue you are working on.
 
 ```sh
 $ git fetch origin
@@ -70,13 +56,13 @@ $ git checkout -b your-branch-name origin/main
         https://afraid-to-commit.readthedocs.io/en/latest/git/commandlinegit.html#commit-your-changes).
 - Include tests that cover any code changes you make. Make sure the test fails
 without your patch. Run the tests as described below.
-- Push your commits to your fork on GitHub and [create a pull request](
+- Push your branch to GitHub and [create a pull request](
         https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/
         proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request).
 - Link to the issue being addressed with `fixes #123` or `closes #123` in the pull request.
 
 ```sh
-$ git push --set-upstream fork your-branch-name
+$ git push --set-upstream origin your-branch-name
 ```
 
 ## Running Tests
