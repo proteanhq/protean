@@ -76,7 +76,7 @@ class TestReplayOrder:
         current_domain.repository_for(User).add(user)
         txn = Transaction.transact(user_id=user.id, amount=200.0)
         current_domain.repository_for(Transaction).add(txn)
-        _truncate_projection(test_domain, Balances)
+        _truncate_projection(test_domain, Balances, [TransactionProjector])
 
         categories = [Transaction.meta_.stream_category, User.meta_.stream_category]
         dispatched, skipped = _replay_projector(
