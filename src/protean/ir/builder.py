@@ -1697,7 +1697,9 @@ class IRBuilder:
 
         Value objects don't get ``aggregate_cluster`` set by the resolver,
         so we derive it from which aggregate/entity embeds them via
-        ``ValueObject``, ``ValueObjectList`` or value-object ``Dict`` fields.
+        ``ValueObject``, ``ValueObjectList`` or value-object ``Dict`` fields,
+        then from an explicit ``part_of``. A value object none of these place
+        goes to the aggregate of a command or event that holds it in a field.
         """
         registry = self._domain._domain_registry
         vo_map: dict[str, type] = {}
