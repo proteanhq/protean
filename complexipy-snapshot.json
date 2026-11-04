@@ -1348,20 +1348,6 @@
     ]
   },
   {
-    "path": "src/protean/utils/mixins.py",
-    "file_name": "mixins.py",
-    "functions": [
-      {
-        "name": "HandlerMixin::_handle",
-        "complexity": 16
-      },
-      {
-        "name": "handle::__call__",
-        "complexity": 37
-      }
-    ]
-  },
-  {
     "path": "src/protean/utils/outbox.py",
     "file_name": "outbox.py",
     "functions": [
