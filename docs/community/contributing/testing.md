@@ -176,7 +176,7 @@ use these exact refs when overriding:
 | `ELASTICSEARCH_IMAGE` | `ghcr.io/proteanhq/mirror/elasticsearch:8.7.0` |
 | `REDIS_IMAGE` | `ghcr.io/proteanhq/mirror/redis:7` |
 | `POSTGRES_IMAGE` | `ghcr.io/proteanhq/mirror/postgres:16` |
-| `MESSAGE_DB_IMAGE` | `ghcr.io/proteanhq/mirror/message-db:1.2.6` |
+| `MESSAGE_DB_IMAGE` | `ghcr.io/proteanhq/mirror/message-db:1.3.1` |
 | `MSSQL_IMAGE` | `ghcr.io/proteanhq/mirror/mssql-server:2022-latest` |
 | `MYSQL_IMAGE` | `ghcr.io/proteanhq/mirror/mysql:8.4` |
 | `MARIADB_IMAGE` | `ghcr.io/proteanhq/mirror/mariadb:11.4` |
