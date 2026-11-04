@@ -532,7 +532,8 @@ class CommandProcessor:
         # the command runs.
         if idempotency_key and self._domain.idempotency_store.is_active:
             uow._pending_idempotency_results[idempotency_key] = None
-        # No metric yet: the run records "ok" or "error" once.
+        # No metric yet: the run records one, "ok" or "error", or counts the
+        # command as expired.
 
     def _run_deferred(
         self,
