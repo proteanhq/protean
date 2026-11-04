@@ -1687,11 +1687,12 @@ def _messages_missing_internal_row(
     internal_broker: str,
 ) -> tuple[list[Any], dict[str, set[str]]]:
     """Return the repairable events in the window of *limit* messages ending at
-    *last* that have no internal outbox row, in event store order.
+    *last* that were written at or after the cleanup cutoff and have no
+    internal outbox row, in event store order.
 
-    Also returns the brokers that already hold a row for each repairable event,
-    keyed by message id. Returns an empty list when the newest repairable event
-    in the window has its internal row.
+    Also returns the brokers that already hold a row for each repairable event
+    that passes the cutoff, keyed by message id. Returns an empty list when no event in the window
+    passes the cutoff, or when the newest one that does has its internal row.
     """
     store = domain.event_store.store
     outbox_config = domain.config.get("outbox", {})

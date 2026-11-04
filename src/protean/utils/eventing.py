@@ -1281,7 +1281,8 @@ class Message(Element, BaseModel, OptionsMixin):
     @staticmethod
     def _subject_without_category(stream: str) -> str | None:
         """Return the identifier part of *stream*, parsed without knowing its
-        category, or None if *stream* has no separator."""
+        category, or None if *stream* has no separator or nothing follows
+        its first "-"."""
         # Command format: <anything>:command-<id>
         cmd_marker = ":command-"
         if cmd_marker in stream:

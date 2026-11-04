@@ -172,13 +172,12 @@ def _is_partitioned_process_manager(domain: Domain, pm_cls: type) -> bool:
     return broker_supports_partitioning(domain)
 
 
-# A handler that the engine subscribes to one stream category, paired with the
-# ``SubscriptionInfo`` flags that mark its kind.
 def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
     """Walk the domain registry and return subscription metadata.
 
-    Inspects event handlers, command handlers, projectors, and process managers
-    to derive their stream categories and DLQ stream names.
+    Inspects event handlers, command handlers, projectors, process managers,
+    and subscribers with an external stream to derive their stream categories
+    and DLQ stream names.
     """
     server_config = domain.config.get("server", {})
     lanes_config = server_config.get("priority_lanes", {})
@@ -198,6 +197,8 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
     return list(seen_streams.values())
 
 
+# A handler that the engine subscribes to one stream category, paired with the
+# ``SubscriptionInfo`` flags that mark its kind.
 _SubscriptionTarget = tuple[type, str, dict[str, bool]]
 
 
