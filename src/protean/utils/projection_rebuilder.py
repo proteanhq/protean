@@ -7,9 +7,11 @@ The rebuild process:
 
 1. Discovers all projectors targeting a given projection class.
 2. Truncates existing projection data (database rows or cache entries).
-   For a database-backed projection, the same transaction also deletes the
+   For a database-backed projection, the same unit of work also deletes the
    delivery markers of its idempotent projectors, so the replay is not
-   skipped as a redelivery and writes fresh markers.
+   skipped as a redelivery and writes fresh markers. On a relational or
+   in-memory provider a failed marker delete rolls back the row delete;
+   Elasticsearch has no transactions, so it gives no such rollback.
 3. Reads events from each projector's stream categories, merges them by
    ``global_position`` for correct cross-aggregate ordering, and dispatches
    each event through the projector's ``_handle()`` method.
@@ -207,9 +209,11 @@ def _truncate_projection(
             marker_repo = None
 
     repo = domain.repository_for(projection_cls)
-    # Rows first, markers second, in one transaction: a failed marker delete
-    # rolls back the row delete, so a failed rebuild leaves the projection as
-    # it was instead of empty with its markers still in place.
+    # Rows first, markers second, in one unit of work: on a provider with
+    # transactions (relational, memory) a failed marker delete rolls back the
+    # row delete, so a failed rebuild leaves the projection as it was instead
+    # of empty with its markers still in place. Elasticsearch has no
+    # transactions and writes each delete at once, so it gets no rollback.
     with UnitOfWork():
         repo._dao._delete_all()
         if marker_repo is not None:

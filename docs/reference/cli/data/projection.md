@@ -240,10 +240,12 @@ Existing projection data is cleared:
 - **Database-backed projections** (the default): All rows are deleted via
   the DAO's `_delete_all()` method. When a projector of the projection is
   registered with `idempotent=True`, its delivery markers are deleted in the
-  same transaction as the rows. Without this, the replay would find a marker
+  same unit of work as the rows. Without this, the replay would find a marker
   for every event, skip it as a redelivery, and leave the projection empty.
-  The replay writes fresh markers. If the marker delete fails, the row delete
-  rolls back with it.
+  The replay writes fresh markers. On a relational or in-memory provider, a
+  failed marker delete rolls back the row delete. Elasticsearch has no
+  transactions, so there a failed marker delete leaves the rows deleted and
+  the markers in place.
 - **Cache-backed projections**: Keys matching the projection's naming
   pattern are removed via `remove_by_key_pattern()`.
 
