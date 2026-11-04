@@ -173,6 +173,65 @@ def confirm_and_notify(self, event):
     httpx.post(PARTNER_URL, json={"order_id": event.order_id})   # holds locks
 ```
 
+#### When the call comes first and the write needs its result
+
+Some flows run the other way: make the call, then save what it returned. A
+notification dispatcher sends a message through a channel and then records
+whether the send worked. The record step needs the send's result, so it cannot
+come first. The sending method has no aggregate to raise an event from, so it
+cannot pass the result on through an event either.
+
+The sending method calls the channel, then hands the write to a command with
+`domain.process(command, asynchronous=True)`:
+
+```python
+@domain.event_handler(part_of=Notification)
+class NotificationDispatcher:
+    @handle(NotificationDispatchStarted)
+    def send(self, event):
+        # No repository access, so this method runs no transaction.
+        outcome = channel.send(event.recipient, event.body)
+        current_domain.process(
+            RecordDispatchResult(
+                notification_id=event.notification_id,
+                status="SENT" if outcome.ok else "FAILED",
+            ),
+            asynchronous=True,
+        )
+```
+
+In a domain with `command_processing = "sync"`, a call to
+`domain.process(command, asynchronous=True)` inside an active unit of work
+stores the command with the caller's writes and returns `None`. The command is
+handled after the caller's unit of work commits, in its own unit of work with
+its own version retry. The same applies whoever opened the unit of work: a
+handler, a `@use_case` method or a `with UnitOfWork():` block. It applies under
+both `event_processing` settings. This is how sync event processing already runs
+event handlers (ADR-0016), and `asynchronous=True` already means "outside my
+transaction". Called outside any unit of work, the same call still handles the
+command at once and returns its result.
+
+So a version conflict on the record step retries the record step alone, and the
+send runs once. When the record step still fails, or its deadline passes before
+it runs, the caller's commit raises `TransactionError`. It never raises
+`ExpectedVersionError`, which would make the caller's own version retry run the
+send again. A rollback of the caller discards the command unhandled.
+
+Protean stores every command it handles itself, at once or after the commit,
+with `asynchronous = False`. The engine's command subscription skips such a
+command, so a running engine does not handle it a second time. The cost is the
+same one sync events carry: if the process stops after the caller commits and
+before the command runs, the stored command is not handled.
+
+With an `idempotency_key`, the command records its outcome when its handler
+runs. A repeat call after a success returns the cached result. A repeat call
+after a failure stores the command and defers it again.
+
+Two other answers were rejected. A version retry scoped to one step would make
+atomicity depend on the order in which the method reaches its repositories. A
+"requires new" block that commits on its own would be new public API, and it
+brings back the nesting questions this ADR avoids.
+
 **No new API is added.** Everything else the request asked for already exists: the
 outbox for outbound messages, `idempotent=True` for redelivery, event chains for
 sequencing, and separate handler classes for full independence with their own

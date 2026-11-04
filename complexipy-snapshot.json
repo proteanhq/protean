@@ -423,7 +423,7 @@
     "functions": [
       {
         "name": "UnitOfWork::_do_commit",
-        "complexity": 69
+        "complexity": 62
       }
     ]
   },
@@ -473,7 +473,7 @@
       },
       {
         "name": "CommandProcessor::process",
-        "complexity": 51
+        "complexity": 27
       }
     ]
   },

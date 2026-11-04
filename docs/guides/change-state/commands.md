@@ -181,9 +181,14 @@ In code:
 
 By default, Protean sets `command_processing` to `async` in the domain configuration.
 
-When `command_processing` is `"sync"`, Protean handles every command at once,
-even one submitted with `asynchronous=True`. Passing `asynchronous=False`
-handles a command at once in an `"async"` domain.
+When `command_processing` is `"sync"`, Protean handles every command itself,
+even one submitted with `asynchronous=True`. Such a command is handled at once,
+unless a Unit of Work is active. Inside a handler, a `@use_case` method or a
+`with UnitOfWork():` block, `process` stores the command with the caller's
+writes and returns `None`, and the command runs after the caller commits. See
+[Calling external systems from
+handlers](../../patterns/calling-external-systems-from-handlers.md#recording-the-result-of-a-call).
+Passing `asynchronous=False` handles a command at once in an `"async"` domain.
 
 ### When to use each mode
 

@@ -2275,6 +2275,14 @@ class Domain:
         or when the ``command_processing`` config is ``"sync"``. Otherwise the
         engine handles it later.
 
+        When ``command_processing`` is ``"sync"`` and ``asynchronous`` is
+        ``True``, a call inside an active unit of work (a handler, a
+        ``@use_case`` method or a ``with UnitOfWork():`` block) defers the
+        command. It is stored with the caller's writes and handled after the
+        caller's unit of work commits, in its own unit of work. A failure there,
+        including an expired deadline, makes the caller's commit raise
+        ``TransactionError``. A rollback of the caller discards the command.
+
         Args:
             command: Instance of a ``@domain.command``-decorated class.
             asynchronous: Whether to handle the command later. Defaults to the
@@ -2295,8 +2303,8 @@ class Domain:
 
         Returns:
             The command handler's return value when the command is handled
-            synchronously. Otherwise, the command's position in the event
-            store.
+            synchronously. ``None`` when the command is deferred. Otherwise,
+            the command's position in the event store.
 
         Raises:
             IncorrectUsageError: If the command is not registered with the

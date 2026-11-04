@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -319,6 +320,14 @@ class CommandProcessor:
         or when the ``command_processing`` config is ``"sync"``. Otherwise the
         engine handles it later.
 
+        When ``command_processing`` is ``"sync"`` and ``asynchronous`` is
+        ``True``, a call inside an active unit of work (a handler, a
+        ``@use_case`` method or a ``with UnitOfWork():`` block) defers the
+        command. It is stored with the caller's writes and handled after the
+        caller's unit of work commits, in its own unit of work. A failure there,
+        including an expired deadline, makes the caller's commit raise
+        ``TransactionError``. A rollback of the caller discards the command.
+
         Args:
             command: Instance of a ``@domain.command``-decorated class.
             asynchronous: Whether to handle the command later. Defaults to the
@@ -341,8 +350,8 @@ class CommandProcessor:
 
         Returns:
             The command handler's return value when the command is handled
-            synchronously. Otherwise, the command's position in the event
-            store.
+            synchronously. ``None`` when the command is deferred. Otherwise,
+            the command's position in the event store.
 
         Raises:
             IncorrectUsageError: If the command is not registered with the
@@ -417,9 +426,19 @@ class CommandProcessor:
                 deadline, timeout, now=domain.clock.now()
             )
 
+            # Protean handles the command itself, now or after the caller
+            # commits, unless it is asynchronous in an async domain.
+            will_handle_sync = (
+                not asynchronous
+                or domain.config["command_processing"] == Processing.SYNC.value
+            )
+
+            # A command Protean handles itself is stored as not asynchronous, so
+            # the engine's command subscription skips it instead of handling it
+            # a second time.
             command_with_metadata = self.enrich(
                 command,
-                asynchronous,
+                not will_handle_sync,
                 idempotency_key=idempotency_key,
                 priority=resolved_priority,
                 correlation_id=correlation_id,
@@ -436,11 +455,6 @@ class CommandProcessor:
                     "protean.correlation_id", cmd_meta.domain.correlation_id
                 )
 
-            will_handle_sync = (
-                not asynchronous
-                or domain.config["command_processing"] == Processing.SYNC.value
-            )
-
             # Reject stale commands before they are written to the store when
             # they will be handled synchronously (mirrors the pre-append
             # idempotency check above). Async commands are stored and the engine
@@ -450,132 +464,206 @@ class CommandProcessor:
 
             position = domain._require_event_store().append(command_with_metadata)
 
-            if will_handle_sync:
-                handler_class = self.handler_for(command)
-                if handler_class:
-                    # Extract trace metadata from the enriched command
-                    message_id = cmd_meta.headers.id if cmd_meta.headers else "unknown"
-                    message_type = (
-                        cmd_meta.headers.type if cmd_meta.headers else "unknown"
-                    )
-                    stream = getattr(
-                        command.meta_.part_of.meta_,
-                        "stream_category",
-                        "unknown",
-                    )
-                    handler_name = handler_class.__name__
-
-                    emitter = domain.trace_emitter
-
-                    # Emit handler.started trace
-                    emitter.emit(
-                        event="handler.started",
-                        stream=stream,
-                        message_id=message_id,
-                        message_type=message_type,
-                        handler=handler_name,
-                        worker_id="api",
-                    )
-
-                    start_time = time.monotonic()
-                    # Save any existing message context (e.g. a broker stub
-                    # message) so it can be restored after this command
-                    # finishes.  This keeps the outer correlation chain intact
-                    # when a subscriber dispatches multiple commands.
-                    _prev_context = g.get("message_in_context")
-                    try:
-                        # Build a Message for context propagation so that events
-                        # raised during sync handling inherit trace IDs.
-                        command_message = Message.from_domain_object(
-                            command_with_metadata
+            handler_class = self.handler_for(command) if will_handle_sync else None
+            if handler_class is not None:
+                # `asynchronous=True` inside a transaction means "outside my
+                # transaction": run the command once the caller commits, in its
+                # own unit of work, so a conflict there never re-runs the caller.
+                outer_uow = _uow_stack.top
+                if asynchronous and outer_uow is not None:
+                    outer_uow._deferred_commands.append(
+                        partial(
+                            self._run_deferred,
+                            command_with_metadata,
+                            handler_class,
+                            idempotency_key,
+                            resolved_priority,
                         )
-                        g.message_in_context = command_message
-
-                        # Set the processing priority context so that UoW.commit()
-                        # can read it when creating outbox records
-                        with processing_priority(resolved_priority):
-                            result = handler_class._handle(command_with_metadata)
-                    # records the failure on span and metrics, then re-raises
-                    except Exception as exc:
-                        duration_ms = (time.monotonic() - start_time) * 1000
-                        duration_s = time.monotonic() - process_start
-
-                        # Record exception on the OTEL span
-                        set_span_error(span, exc)
-
-                        # Record OTel metrics for failed command
-                        cmd_attrs = {"command_type": command_type, "status": "error"}
-                        metrics.command_processed.add(1, cmd_attrs)
-                        metrics.command_duration.record(duration_s, cmd_attrs)
-
-                        # Emit handler.failed trace
-                        emitter.emit(
-                            event="handler.failed",
-                            stream=stream,
-                            message_id=message_id,
-                            message_type=message_type,
-                            status="error",
-                            handler=handler_name,
-                            duration_ms=round(duration_ms, 2),
-                            error=str(exc),
-                            worker_id="api",
-                        )
-
-                        # Validation errors that cross the command boundary
-                        # are potential abuse/attack signals — route them to
-                        # the dedicated protean.security logger so operators
-                        # can alert independently of the access log.
-                        if isinstance(exc, ValidationError):
-                            self._emit_validation_failed(
-                                exc, command_type, handler_name
-                            )
-
-                        # Record failure with short TTL to allow retry
-                        if idempotency_key and store.is_active:
-                            store.record_error(idempotency_key, "handler_failed")
-                        raise
-                    finally:
-                        # Restore the previous message context (or remove if
-                        # there was none) so the outer caller's context is
-                        # preserved.
-                        if _prev_context is not None:
-                            g.message_in_context = _prev_context
-                        else:
-                            g.pop("message_in_context", None)
-
-                    duration_ms = (time.monotonic() - start_time) * 1000
-                    duration_s = time.monotonic() - process_start
-
-                    # Record OTel metrics for successful command
-                    cmd_attrs = {"command_type": command_type, "status": "ok"}
-                    metrics.command_processed.add(1, cmd_attrs)
-                    metrics.command_duration.record(duration_s, cmd_attrs)
-
-                    # Emit handler.completed trace
-                    emitter.emit(
-                        event="handler.completed",
-                        stream=stream,
-                        message_id=message_id,
-                        message_type=message_type,
-                        handler=handler_name,
-                        duration_ms=round(duration_ms, 2),
-                        worker_id="api",
                     )
+                    self._record_metrics(command_type, "deferred", process_start)
+                    return None
 
-                    if idempotency_key and store.is_active:
-                        _record_idempotency_success(store, idempotency_key, result)
-                    return result
+                return self._run_handler(
+                    command_with_metadata,
+                    handler_class,
+                    span,
+                    idempotency_key,
+                    resolved_priority,
+                    process_start,
+                )
 
             # Async path: record enqueue (actual processing happens later)
-            async_attrs = {"command_type": command_type, "status": "enqueued"}
-            metrics.command_processed.add(1, async_attrs)
-            duration_s = time.monotonic() - process_start
-            metrics.command_duration.record(duration_s, async_attrs)
+            self._record_metrics(command_type, "enqueued", process_start)
 
             if idempotency_key and store.is_active:
                 store.record_success(idempotency_key, position)
 
             return position
+
+    def _record_metrics(
+        self, command_type: str, status: str, process_start: float
+    ) -> None:
+        metrics = get_domain_metrics(self._domain)
+        attrs = {"command_type": command_type, "status": status}
+        metrics.command_processed.add(1, attrs)
+        metrics.command_duration.record(time.monotonic() - process_start, attrs)
+
+    def _run_deferred(
+        self,
+        command: BaseCommand,
+        handler_class: type[BaseCommandHandler],
+        idempotency_key: str | None,
+        priority: int,
+    ) -> None:
+        """Handle a command deferred to the commit of the unit of work it was
+        processed in.
+
+        Raises:
+            CommandExpiredError: If the command's deadline passed before it ran.
+                The handler does not run.
+        """
+        process_start = time.monotonic()
+        command_type = command.__class__.__type__
+        headers = command._metadata.headers
+        store = self._domain.idempotency_store
+
+        with self._domain.tracer.start_as_current_span(
+            "protean.command.process",
+            context=extract_context_from_traceparent(
+                headers.traceparent if headers else None
+            ),
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            span.set_attribute("protean.command.type", command_type)
+            try:
+                raise_if_expired(
+                    headers, command_type, get_domain_metrics(self._domain)
+                )
+            except CommandExpiredError as exc:
+                set_span_error(span, exc)
+                # An error record, not a success, so a repeat call runs again.
+                if idempotency_key and store.is_active:
+                    store.record_error(idempotency_key, "command_expired")
+                raise
+
+            self._run_handler(
+                command, handler_class, span, idempotency_key, priority, process_start
+            )
+
+    def _run_handler(
+        self,
+        command: BaseCommand,
+        handler_class: type[BaseCommandHandler],
+        span: Any,
+        idempotency_key: str | None,
+        priority: int,
+        process_start: float,
+    ) -> Any:
+        """Run ``handler_class`` on an enriched command and return its result.
+
+        Records the outcome on the span, the metrics, the trace emitter and,
+        when ``idempotency_key`` is given, the idempotency store.
+        """
+        domain = self._domain
+        store = domain.idempotency_store
+        command_type = command.__class__.__type__
+        cmd_meta = command._metadata
+
+        # Extract trace metadata from the enriched command
+        message_id = cmd_meta.headers.id if cmd_meta.headers else "unknown"
+        message_type = cmd_meta.headers.type if cmd_meta.headers else "unknown"
+        stream = getattr(command.meta_.part_of.meta_, "stream_category", "unknown")
+        handler_name = handler_class.__name__
+
+        emitter = domain.trace_emitter
+
+        # Emit handler.started trace
+        emitter.emit(
+            event="handler.started",
+            stream=stream,
+            message_id=message_id,
+            message_type=message_type,
+            handler=handler_name,
+            worker_id="api",
+        )
+
+        start_time = time.monotonic()
+        # Save any existing message context (e.g. a broker stub message) so it
+        # can be restored after this command finishes. This keeps the outer
+        # correlation chain intact when a subscriber dispatches multiple
+        # commands.
+        _prev_context = g.get("message_in_context")
+        try:
+            # Build a Message for context propagation so that events raised
+            # during sync handling inherit trace IDs.
+            g.message_in_context = Message.from_domain_object(command)
+
+            # Set the processing priority context so that UoW.commit() can read
+            # it when creating outbox records
+            with processing_priority(priority):
+                result = handler_class._handle(command)
+        # records the failure on span and metrics, then re-raises
+        except Exception as exc:
+            duration_ms = (time.monotonic() - start_time) * 1000
+
+            # Record exception on the OTEL span
+            set_span_error(span, exc)
+
+            # Record OTel metrics for failed command
+            self._record_metrics(command_type, "error", process_start)
+
+            # Emit handler.failed trace
+            emitter.emit(
+                event="handler.failed",
+                stream=stream,
+                message_id=message_id,
+                message_type=message_type,
+                status="error",
+                handler=handler_name,
+                duration_ms=round(duration_ms, 2),
+                error=str(exc),
+                worker_id="api",
+            )
+
+            # Validation errors that cross the command boundary are potential
+            # abuse/attack signals — route them to the dedicated
+            # protean.security logger so operators can alert independently of
+            # the access log.
+            if isinstance(exc, ValidationError):
+                self._emit_validation_failed(exc, command_type, handler_name)
+
+            # Record failure with short TTL to allow retry
+            if idempotency_key and store.is_active:
+                store.record_error(idempotency_key, "handler_failed")
+            raise
+        finally:
+            # Restore the previous message context (or remove if there was
+            # none) so the outer caller's context is preserved.
+            if _prev_context is not None:
+                g.message_in_context = _prev_context
+            else:
+                g.pop("message_in_context", None)
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+
+        # Record OTel metrics for successful command
+        self._record_metrics(command_type, "ok", process_start)
+
+        # Emit handler.completed trace
+        emitter.emit(
+            event="handler.completed",
+            stream=stream,
+            message_id=message_id,
+            message_type=message_type,
+            handler=handler_name,
+            duration_ms=round(duration_ms, 2),
+            worker_id="api",
+        )
+
+        if idempotency_key and store.is_active:
+            _record_idempotency_success(store, idempotency_key, result)
+        return result
 
     def handler_for(self, command: Any) -> type[BaseCommandHandler] | None:
         """Return Command Handler for a specific command.
