@@ -2,9 +2,9 @@
 
 A command or event turns its ``ValueObject`` fields into plain resolved fields
 typed by the value object class. The IR records each one as a ``value_object``
-field with the value object's FQN as ``target``, the same entry an aggregate's
-``ValueObject`` field gets, and a value object that only messages hold joins
-the message's aggregate cluster.
+field with the value object's FQN as ``target``, the kind and target an
+aggregate's ``ValueObject`` field gets, and a value object that only messages
+hold joins the message's aggregate cluster.
 """
 
 import re
