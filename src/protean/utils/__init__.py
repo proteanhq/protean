@@ -466,6 +466,78 @@ def _rebind_class_cells(new_cls: type, original_cls: type) -> None:
                 type.__setattr__(new_cls, attr_name, fixed)
 
 
+def _public_items(mapping: dict[str, Any]) -> list[tuple[str, Any]]:
+    """Return the ``(name, value)`` pairs of *mapping* whose name has no leading
+    underscore."""
+    return [
+        (name, value) for name, value in mapping.items() if not name.startswith("_")
+    ]
+
+
+def _field_info_is_identifier(value: Any) -> bool:
+    """Return True if *value* is a Pydantic ``FieldInfo`` whose
+    ``json_schema_extra`` marks it as the identifier."""
+    if not isinstance(value, FieldInfo):
+        return False
+    extra = getattr(value, "json_schema_extra", None) or {}
+    return isinstance(extra, dict) and bool(extra.get("identifier"))
+
+
+def _string_annotation_is_identifier(annotation: Any) -> bool:
+    """Return True if *annotation* is a string that declares ``identifier: True``."""
+    return isinstance(annotation, str) and (
+        '"identifier": True' in annotation or "'identifier': True" in annotation
+    )
+
+
+def _annotated_is_identifier(annotation: Any) -> bool:
+    """Return True if *annotation* is ``Annotated[type, Field(...)]`` with a
+    ``FieldInfo`` marked as the identifier."""
+    if get_origin(annotation) is not Annotated:
+        return False
+    return any(_field_info_is_identifier(arg) for arg in get_args(annotation)[1:])
+
+
+def _namespace_declares_identifier(
+    new_dict: dict[str, Any], annots: dict[str, Any]
+) -> bool:
+    """Return True if the class namespace already declares an identifier field.
+
+    Names that start with an underscore are skipped. The identifier can be a
+    ``FieldSpec`` value or annotation, a string annotation, an ``Annotated``
+    annotation carrying a ``FieldInfo``, or a ``FieldInfo`` default of an
+    annotated name.
+    """
+    from protean.fields.spec import FieldSpec  # noqa: PLC0415
+
+    public_values = _public_items(new_dict)
+    public_annots = _public_items(annots)
+
+    if any(isinstance(v, FieldSpec) and v.identifier for _, v in public_values):
+        return True
+    if any(isinstance(a, FieldSpec) and a.identifier for _, a in public_annots):
+        return True
+    return any(
+        _string_annotation_is_identifier(annotation)
+        or _annotated_is_identifier(annotation)
+        or _field_info_is_identifier(new_dict.get(attr_name))
+        for attr_name, annotation in public_annots
+    )
+
+
+def _inject_auto_id(new_dict: dict[str, Any], annots: dict[str, Any]) -> None:
+    """Add a Pydantic-compatible auto-generated ``id`` field to the namespace."""
+    annots["id"] = Annotated[str | int | UUID, BeforeValidator(_coerce_uuid_to_str)]
+    new_dict["id"] = PydanticField(
+        default_factory=_generate_identity,
+        validate_default=True,
+        json_schema_extra={
+            "identifier": True,
+            "_auto_generated": True,
+        },
+    )
+
+
 def _prepare_pydantic_namespace(
     new_dict: dict[str, Any],
     base_cls: type[OptionsMixin],
@@ -493,72 +565,12 @@ def _prepare_pydantic_namespace(
     )
     auto_add = opts.get("auto_add_id_field", True)
 
-    if needs_identity and auto_add is not False:
-        # Check if an identifier is already declared
-        from protean.fields.spec import FieldSpec  # noqa: PLC0415
-
-        has_id = False
-
-        # Check namespace values for FieldSpec with identifier=True
-        for attr_name, attr_val in new_dict.items():
-            if attr_name.startswith("_"):
-                continue
-            if isinstance(attr_val, FieldSpec) and attr_val.identifier:
-                has_id = True
-                break
-
-        # Check annotations for FieldSpec with identifier=True
-        if not has_id:
-            for attr_name, annotation in annots.items():
-                if attr_name.startswith("_"):
-                    continue
-                if isinstance(annotation, FieldSpec) and annotation.identifier:
-                    has_id = True
-                    break
-
-        if not has_id:
-            for attr_name, annotation in annots.items():
-                if attr_name.startswith("_"):
-                    continue
-
-                if isinstance(annotation, str) and '"identifier": True' in annotation:
-                    has_id = True
-                    break
-                if isinstance(annotation, str) and "'identifier': True" in annotation:
-                    has_id = True
-                    break
-
-                # Check Annotated[type, Field(..., json_schema_extra={"identifier": True})]
-                if get_origin(annotation) is Annotated:
-                    for arg in get_args(annotation)[1:]:
-                        if isinstance(arg, FieldInfo):
-                            extra = getattr(arg, "json_schema_extra", None) or {}
-                            if isinstance(extra, dict) and extra.get("identifier"):
-                                has_id = True
-                                break
-                if has_id:
-                    break
-
-                # Check direct default: field_name = Field(json_schema_extra={"identifier": True})
-                attr_val = new_dict.get(attr_name)
-                if isinstance(attr_val, FieldInfo):
-                    extra = getattr(attr_val, "json_schema_extra", None) or {}
-                    if isinstance(extra, dict) and extra.get("identifier"):
-                        has_id = True
-                        break
-
-        if not has_id:
-            annots["id"] = Annotated[
-                str | int | UUID, BeforeValidator(_coerce_uuid_to_str)
-            ]
-            new_dict["id"] = PydanticField(
-                default_factory=_generate_identity,
-                validate_default=True,
-                json_schema_extra={
-                    "identifier": True,
-                    "_auto_generated": True,
-                },
-            )
+    if (
+        needs_identity
+        and auto_add is not False
+        and not _namespace_declares_identifier(new_dict, annots)
+    ):
+        _inject_auto_id(new_dict, annots)
 
     new_dict["__annotations__"] = annots
 
@@ -655,16 +667,9 @@ def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] 
     )
 
 
-def _derive_element_class(
-    element_cls: type[_T],
-    base_cls: type[OptionsMixin],
-    **opts: Any,
-) -> type[_T]:
-    # Extract and normalize the universal `deprecated` option before
-    # checking against element-specific known options.
-    raw_deprecated = opts.pop("deprecated", None)
-    normalized_deprecated = _normalize_deprecated(raw_deprecated)
-
+def _check_element_options(base_cls: type[OptionsMixin], opts: dict[str, Any]) -> None:
+    """Raise ``ConfigurationError`` if *opts* holds an unknown option or one
+    the framework sets itself."""
     # Ensure options being passed in are known
     known_options = [name for (name, _) in base_cls._default_options]
     if not all(opt in known_options for opt in opts):
@@ -680,54 +685,73 @@ def _derive_element_class(
             f"provided directly."
         )
 
-    if not issubclass(element_cls, base_cls):
-        try:
-            original_cls = element_cls
 
-            new_dict = element_cls.__dict__.copy()
-            new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
+def _rebuild_on_base(
+    element_cls: type[_T], base_cls: type[OptionsMixin], opts: dict[str, Any]
+) -> type[_T]:
+    """Return a new class with *element_cls*'s namespace and *base_cls* as its
+    only base, carrying ``meta_`` built from *opts*."""
+    try:
+        original_cls = element_cls
 
-            # PEP 649/749 (Python 3.14+): annotations are stored via a
-            # descriptor and no longer appear in __dict__.  Ensure they
-            # are present in new_dict so downstream helpers (e.g.
-            # _prepare_pydantic_namespace) can access them.
-            if "__annotations__" not in new_dict:
-                new_dict["__annotations__"] = getattr(
-                    element_cls, "__annotations__", {}
-                ).copy()
+        new_dict = element_cls.__dict__.copy()
+        new_dict.pop("__dict__", None)  # Remove __dict__ to prevent recursion
 
-            new_dict["meta_"] = Options(opts)
+        # PEP 649/749 (Python 3.14+): annotations are stored via a
+        # descriptor and no longer appear in __dict__.  Ensure they
+        # are present in new_dict so downstream helpers (e.g.
+        # _prepare_pydantic_namespace) can access them.
+        if "__annotations__" not in new_dict:
+            new_dict["__annotations__"] = getattr(
+                element_cls, "__annotations__", {}
+            ).copy()
 
-            # When routing to a Pydantic base, prepare the namespace so that
-            # Pydantic's ModelMetaclass can process it correctly.
-            if issubclass(base_cls, BaseModel):
-                _prepare_pydantic_namespace(new_dict, base_cls, opts)
+        new_dict["meta_"] = Options(opts)
 
-            element_cls = cast(
-                "type[_T]", type(element_cls.__name__, (base_cls,), new_dict)
-            )
-
-            # Fix zero-argument super() calls: rebind __class__ closure cells
-            # from original_cls to the newly created element_cls (PEP 3135).
-            _rebind_class_cells(element_cls, original_cls)
-        except BaseException as exc:
-            logger.debug("Error during Element registration: %s", repr(exc))
-            raise
-    else:
-        cast("type[OptionsMixin]", element_cls).meta_ = Options(opts)
-
-        # For Pydantic-based elements that explicitly inherit from the base,
-        # ensure meta_ has a ClassVar annotation so that Pydantic ignores it
-        # during clone_class and other dynamic class operations.
+        # When routing to a Pydantic base, prepare the namespace so that
+        # Pydantic's ModelMetaclass can process it correctly.
         if issubclass(base_cls, BaseModel):
-            annots = inspect.get_annotations(element_cls)
-            annots["meta_"] = ClassVar[Options]
-            element_cls.__annotations__ = annots
+            _prepare_pydantic_namespace(new_dict, base_cls, opts)
 
-    # `element_cls` is now guaranteed to be an ``OptionsMixin`` subclass
-    # (either it already was, or it was rebuilt on top of ``base_cls``).
-    element_with_meta = cast("type[OptionsMixin]", element_cls)
+        element_cls = cast(
+            "type[_T]", type(element_cls.__name__, (base_cls,), new_dict)
+        )
 
+        # Fix zero-argument super() calls: rebind __class__ closure cells
+        # from original_cls to the newly created element_cls (PEP 3135).
+        _rebind_class_cells(element_cls, original_cls)
+    except BaseException as exc:
+        logger.debug("Error during Element registration: %s", repr(exc))
+        raise
+    return element_cls
+
+
+def _set_meta_on_subclass(
+    element_cls: type[Any], base_cls: type[OptionsMixin], opts: dict[str, Any]
+) -> None:
+    """Set ``meta_`` from *opts* on a class that already subclasses *base_cls*."""
+    cast("type[OptionsMixin]", element_cls).meta_ = Options(opts)
+
+    # For Pydantic-based elements that explicitly inherit from the base,
+    # ensure meta_ has a ClassVar annotation so that Pydantic ignores it
+    # during clone_class and other dynamic class operations.
+    if issubclass(base_cls, BaseModel):
+        annots = inspect.get_annotations(element_cls)
+        annots["meta_"] = ClassVar[Options]
+        element_cls.__annotations__ = annots
+
+
+def _finalize_element_meta(
+    element_with_meta: type[OptionsMixin],
+    normalized_deprecated: dict[str, str] | None,
+) -> None:
+    """Fill in default options, ``deprecated``, the message version and the
+    identity field on a class whose ``meta_`` is set.
+
+    Raises:
+        ConfigurationError: If ``meta_.superseded_by`` is neither a class nor
+            a string.
+    """
     # Assign default options for remaining items
     element_with_meta._set_defaults()
 
@@ -762,9 +786,33 @@ def _derive_element_class(
     # class creation __pydantic_init_subclass__ skips __track_id_field()
     # because the inherited meta_.abstract is still True at that point.
     if not element_with_meta.meta_.abstract and not hasattr(
-        element_cls, _ID_FIELD_NAME
+        element_with_meta, _ID_FIELD_NAME
     ):
-        _track_id_field(element_cls)
+        _track_id_field(element_with_meta)
+
+
+def _derive_element_class(
+    element_cls: type[_T],
+    base_cls: type[OptionsMixin],
+    **opts: Any,
+) -> type[_T]:
+    # Extract and normalize the universal `deprecated` option before
+    # checking against element-specific known options.
+    raw_deprecated = opts.pop("deprecated", None)
+    normalized_deprecated = _normalize_deprecated(raw_deprecated)
+
+    _check_element_options(base_cls, opts)
+
+    if not issubclass(element_cls, base_cls):
+        element_cls = _rebuild_on_base(element_cls, base_cls, opts)
+    else:
+        _set_meta_on_subclass(element_cls, base_cls, opts)
+
+    # `element_cls` is now guaranteed to be an ``OptionsMixin`` subclass
+    # (either it already was, or it was rebuilt on top of ``base_cls``).
+    _finalize_element_meta(
+        cast("type[OptionsMixin]", element_cls), normalized_deprecated
+    )
 
     return element_cls
 
@@ -779,6 +827,44 @@ def _coerce_uuid_to_str(v: Any) -> Any:
     explicitly-declared ``Auto``/``Identifier`` fields already carry.
     """
     return str(v) if isinstance(v, UUID) else v
+
+
+def _generate_uuid_identity(identity_type: str | None) -> str | int:
+    """Generate a UUID-based identity in the form *identity_type* asks for,
+    falling back to the domain's configured identity type."""
+    id_type = identity_type or current_domain.config["identity_type"]
+
+    if id_type == IdentityType.INTEGER.value:
+        return uuid4().int
+    if id_type == IdentityType.STRING.value:
+        return str(uuid4())
+    if id_type == IdentityType.UUID.value:
+        # A UUID identity is a UUID *string* in Python (ADR-0021): identities
+        # cross a JSON boundary constantly (event/command payloads, the event
+        # store, API responses), and a native uuid.UUID is not JSON
+        # serializable. The value is still a valid UUID, and adapters that
+        # support a native UUID column (e.g. SQLAlchemy's GUID type) store it
+        # as one; the Python-side identity stays an opaque string.
+        return str(uuid4())
+    raise ConfigurationError(f"Unknown Identity Type '{id_type}'")
+
+
+def _generate_function_identity(
+    identity_function: Callable[[], Any] | None,
+    identity_type: str | None,
+) -> Any:
+    """Call *identity_function*, falling back to the domain's identity function."""
+    # Run the function configured as part of the Auto field. If not provided, fall back
+    #   to the function defined at the domain level.
+    id_function = identity_function or current_domain._identity_function
+    # This strategy ignores the identity type. The read stays so that, with no
+    # active domain, a call that passes a function but no identity type raises
+    # AttributeError.
+    _ = identity_type or current_domain.config["identity_type"]
+
+    if callable(id_function):
+        return id_function()
+    raise ConfigurationError("Identity function is invalid")
 
 
 def _generate_identity(
@@ -796,37 +882,10 @@ def _generate_identity(
     #   domain's configuration.
     id_strategy = identity_strategy or current_domain.config["identity_strategy"]
 
-    # UUID Strategy
     if id_strategy == IdentityStrategy.UUID.value:
-        id_type = identity_type or current_domain.config["identity_type"]
-
-        if id_type == IdentityType.INTEGER.value:
-            id_value = uuid4().int
-        elif id_type == IdentityType.STRING.value:
-            id_value = str(uuid4())
-        elif id_type == IdentityType.UUID.value:
-            # A UUID identity is a UUID *string* in Python (ADR-0021): identities
-            # cross a JSON boundary constantly (event/command payloads, the event
-            # store, API responses), and a native uuid.UUID is not JSON
-            # serializable. The value is still a valid UUID, and adapters that
-            # support a native UUID column (e.g. SQLAlchemy's GUID type) store it
-            # as one; the Python-side identity stays an opaque string.
-            id_value = str(uuid4())
-        else:
-            raise ConfigurationError(f"Unknown Identity Type '{id_type}'")
-
-    # Function Strategy
+        id_value = _generate_uuid_identity(identity_type)
     elif id_strategy == IdentityStrategy.FUNCTION.value:
-        # Run the function configured as part of the Auto field. If not provided, fall back
-        #   to the function defined at the domain level.
-        id_function = identity_function or current_domain._identity_function
-        id_type = identity_type or current_domain.config["identity_type"]
-
-        if callable(id_function):
-            id_value = id_function()
-        else:
-            raise ConfigurationError("Identity function is invalid")
-
+        id_value = _generate_function_identity(identity_function, identity_type)
     else:
         raise ConfigurationError(f"Unknown Identity Strategy {id_strategy}")
 
@@ -857,6 +916,37 @@ def clone_class(cls: type[_ElementT], new_name: str) -> type[_ElementT]:
         ValueError: If ``new_name`` is empty, is not a valid Python
             identifier, or is a reserved keyword.
     """
+    _check_clone_arguments(cls, new_name)
+
+    # For Pydantic models, creating a thin subclass is safer than
+    # re-creating the class from __dict__.  Pydantic internalises field
+    # defaults into model_fields during class creation, so a dict-copy
+    # clone loses them.  A subclass inherits everything through the MRO.
+    if issubclass(cls, BaseModel):
+        pydantic_metaclass = cast(type, type(cls))
+        new_cls = pydantic_metaclass(new_name, (cls,), {"__annotations__": {}})
+        new_cls.__qualname__ = new_name
+        return cast("type[_ElementT]", new_cls)
+
+    # Create the new class with the metaclass of ``cls``, so a custom
+    # metaclass keeps its behavior on the copy.
+    metaclass = cast(type, type(cls))
+    new_cls = metaclass(new_name, cls.__bases__, _clonable_attrs(cls))
+
+    # Set the qualified name to match the class name
+    # This ensures proper representation in debugging and introspection
+    new_cls.__qualname__ = new_name
+
+    # Fix zero-argument super() calls: rebind __class__ closure cells
+    # from the original cls to new_cls (PEP 3135).
+    _rebind_class_cells(new_cls, cls)
+
+    return cast("type[_ElementT]", new_cls)
+
+
+def _check_clone_arguments(cls: Any, new_name: Any) -> None:
+    """Raise ``TypeError`` or ``ValueError`` if *cls* is not a class or
+    *new_name* is not a usable class name."""
     if not isinstance(cls, type):
         raise TypeError(f"Expected a class, got {type(cls).__name__}")
 
@@ -872,6 +962,21 @@ def clone_class(cls: type[_ElementT], new_name: str) -> type[_ElementT]:
     if keyword.iskeyword(new_name):
         raise ValueError(f"'{new_name}' is a reserved Python keyword")
 
+
+def _slot_names(cls: type) -> set[str]:
+    """Return the names in ``cls.__slots__`` when it is a string, tuple or
+    list, and an empty set otherwise."""
+    slots = getattr(cls, "__slots__", None)
+    if isinstance(slots, (tuple, list)):
+        return set(slots)
+    if isinstance(slots, str):
+        return {slots}
+    return set()
+
+
+def _clonable_attrs(cls: type) -> dict[str, Any]:
+    """Return a shallow copy of ``cls.__dict__`` without the entries a new
+    class must not inherit by copy."""
     # Collect attributes, excluding auto-generated and special ones
     # These should not be copied to avoid conflicts and maintain proper behavior
     excluded_attrs = {
@@ -879,58 +984,16 @@ def clone_class(cls: type[_ElementT], new_name: str) -> type[_ElementT]:
         "__weakref__",  # Weak reference support
         "__module__",  # Will be set automatically by type()
         "__doc__",  # Will be inherited or can be set separately
-        "__qualname__",  # Will be set explicitly below
+        "__qualname__",  # clone_class sets it on the new class
     }
+    # Skip slot descriptors to avoid conflicts when cloning classes with __slots__
+    slot_names = _slot_names(cls)
 
-    # For Pydantic models, creating a thin subclass is safer than
-    # re-creating the class from __dict__.  Pydantic internalises field
-    # defaults into model_fields during class creation, so a dict-copy
-    # clone loses them.  A subclass inherits everything through the MRO.
-    if isinstance(cls, type) and issubclass(cls, BaseModel):
-        pydantic_metaclass = cast(type, type(cls))
-        new_cls = pydantic_metaclass(new_name, (cls,), {"__annotations__": {}})
-        new_cls.__qualname__ = new_name
-        return cast("type[_ElementT]", new_cls)
-
-    # Create a shallow copy of class attributes, excluding the unwanted ones
-    attrs = {}
-    slots = getattr(cls, "__slots__", None)
-    slot_names = set()
-
-    # If the class has __slots__, collect slot names to avoid conflicts
-    if slots is not None:
-        if isinstance(slots, (tuple, list)):
-            slot_names = set(slots)
-        elif isinstance(slots, str):
-            slot_names = {slots}
-
-    for key, value in cls.__dict__.items():
-        if key not in excluded_attrs:
-            # Skip slot descriptors to avoid conflicts when cloning classes with __slots__
-            if slots is not None and key in slot_names:
-                # Skip the descriptor created by __slots__ to avoid conflicts
-                continue
-            attrs[key] = value
-
-    # Create the new class using type(), preserving the metaclass
-    # Pass the metaclass explicitly to preserve metaclass behavior
-    metaclass = cast(type, type(cls))
-    if metaclass is not type:
-        # Custom metaclass - preserve it
-        new_cls = metaclass(new_name, cls.__bases__, attrs)
-    else:
-        # Standard type metaclass
-        new_cls = type(new_name, cls.__bases__, attrs)
-
-    # Set the qualified name to match the class name
-    # This ensures proper representation in debugging and introspection
-    new_cls.__qualname__ = new_name
-
-    # Fix zero-argument super() calls: rebind __class__ closure cells
-    # from the original cls to new_cls (PEP 3135).
-    _rebind_class_cells(new_cls, cls)
-
-    return cast("type[_ElementT]", new_cls)
+    return {
+        key: value
+        for key, value in cls.__dict__.items()
+        if key not in excluded_attrs and key not in slot_names
+    }
 
 
 __all__ = [

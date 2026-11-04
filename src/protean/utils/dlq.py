@@ -175,101 +175,112 @@ def _is_partitioned_process_manager(domain: Domain, pm_cls: type) -> bool:
 def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
     """Walk the domain registry and return subscription metadata.
 
-    Inspects event handlers, command handlers, projectors, and process managers
-    to derive their stream categories and DLQ stream names.
+    Inspects event handlers, command handlers, projectors, process managers,
+    and subscribers with an external stream to derive their stream categories
+    and DLQ stream names.
     """
     server_config = domain.config.get("server", {})
     lanes_config = server_config.get("priority_lanes", {})
     lanes_enabled = lanes_config.get("enabled", False)
     backfill_suffix = lanes_config.get("backfill_suffix", "backfill")
 
+    candidates = [
+        _event_store_subscription_info(target, lanes_enabled, backfill_suffix)
+        for target in _single_category_targets(domain) + _multi_category_targets(domain)
+    ]
+    candidates += _broker_subscription_infos(domain)
+
+    # Keep the first subscription found for each (handler, stream) pair.
     seen_streams: dict[str, SubscriptionInfo] = {}
-    infos: list[SubscriptionInfo] = []
+    for info in candidates:
+        seen_streams.setdefault(f"{info.handler_fqn}:{info.stream_category}", info)
+    return list(seen_streams.values())
 
-    def _add(
-        handler_cls: type,
-        stream_cat: str,
-        *,
-        is_command_handler: bool = False,
-        is_projector: bool = False,
-        is_process_manager: bool = False,
-    ) -> None:
-        key = f"{fqn(handler_cls)}:{stream_cat}"
-        if key in seen_streams:
-            return
 
-        backfill_dlq = f"{stream_cat}:{backfill_suffix}:dlq" if lanes_enabled else None
-        info = SubscriptionInfo(
-            handler_name=handler_cls.__name__,
-            handler_fqn=fqn(handler_cls),
-            stream_category=stream_cat,
-            dlq_stream=f"{stream_cat}:dlq",
-            backfill_dlq_stream=backfill_dlq,
-            is_command_handler=is_command_handler,
-            is_projector=is_projector,
-            is_process_manager=is_process_manager,
+# A handler that the engine subscribes to one stream category, paired with the
+# ``SubscriptionInfo`` flags that mark its kind.
+_SubscriptionTarget = tuple[type, str, dict[str, bool]]
+
+
+def _registered_classes(domain: Domain, element_type: DomainObjects) -> list[type]:
+    """Return the classes registered in *domain* as *element_type*."""
+    return [
+        record.cls
+        for record in domain.registry._elements.get(element_type.value, {}).values()
+    ]
+
+
+def _declared_stream_categories(handler_cls: type) -> list[str]:
+    """Return the ``meta_.stream_categories`` of *handler_cls*, or an empty list."""
+    return getattr(getattr(handler_cls, "meta_", None), "stream_categories", None) or []
+
+
+def _single_category_targets(domain: Domain) -> list[_SubscriptionTarget]:
+    """Return the event handlers, then the command handlers, each with the one
+    stream category it subscribes to."""
+    targets: list[_SubscriptionTarget] = []
+    for element_type, flags in (
+        (DomainObjects.EVENT_HANDLER, {}),
+        (DomainObjects.COMMAND_HANDLER, {"is_command_handler": True}),
+    ):
+        for handler_cls in _registered_classes(domain, element_type):
+            stream_cat = _infer_stream_category(handler_cls)
+            if stream_cat:
+                targets.append((handler_cls, stream_cat, flags))
+    return targets
+
+
+def _multi_category_targets(domain: Domain) -> list[_SubscriptionTarget]:
+    """Return the projectors, then the process managers, with one target per
+    stream category each subscribes to."""
+    targets: list[_SubscriptionTarget] = []
+    for handler_cls in _registered_classes(domain, DomainObjects.PROJECTOR):
+        targets.extend(
+            (handler_cls, stream_cat, {"is_projector": True})
+            for stream_cat in _declared_stream_categories(handler_cls)
         )
-        seen_streams[key] = info
-        infos.append(info)
 
-    # Event handlers
-    for record in domain.registry._elements.get(
-        DomainObjects.EVENT_HANDLER.value, {}
-    ).values():
-        handler_cls = record.cls
-        stream_cat = _infer_stream_category(handler_cls)
-        if stream_cat:
-            _add(handler_cls, stream_cat)
-
-    # Command handlers
-    for record in domain.registry._elements.get(
-        DomainObjects.COMMAND_HANDLER.value, {}
-    ).values():
-        handler_cls = record.cls
-        stream_cat = _infer_stream_category(handler_cls)
-        if stream_cat:
-            _add(handler_cls, stream_cat, is_command_handler=True)
-
-    # Projectors (may subscribe to multiple stream categories)
-    for record in domain.registry._elements.get(
-        DomainObjects.PROJECTOR.value, {}
-    ).values():
-        handler_cls = record.cls
-        stream_categories = getattr(
-            getattr(handler_cls, "meta_", None), "stream_categories", None
-        )
-        if stream_categories:
-            for stream_cat in stream_categories:
-                _add(handler_cls, stream_cat, is_projector=True)
-
-    # Process managers (one subscription per stream category, like projectors).
     # A partitioned process manager is the exception: the engine gives it a
     # single broker-backed subscription across its categories, which writes no
     # failed-positions stream.
-    for record in domain.registry._elements.get(
-        DomainObjects.PROCESS_MANAGER.value, {}
-    ).values():
-        handler_cls = record.cls
+    for handler_cls in _registered_classes(domain, DomainObjects.PROCESS_MANAGER):
         if _is_partitioned_process_manager(domain, handler_cls):
             continue
-        stream_categories = getattr(
-            getattr(handler_cls, "meta_", None), "stream_categories", None
+        targets.extend(
+            (handler_cls, stream_cat, {"is_process_manager": True})
+            for stream_cat in _declared_stream_categories(handler_cls)
         )
-        if stream_categories:
-            for stream_cat in stream_categories:
-                _add(handler_cls, stream_cat, is_process_manager=True)
+    return targets
 
-    # Subscribers (broker subscriptions with external streams)
-    for record in domain.registry._elements.get(
-        DomainObjects.SUBSCRIBER.value, {}
-    ).values():
-        handler_cls = record.cls
+
+def _event_store_subscription_info(
+    target: _SubscriptionTarget, lanes_enabled: bool, backfill_suffix: str
+) -> SubscriptionInfo:
+    """Build the ``SubscriptionInfo`` for one event-store subscription.
+
+    The subscription has a backfill DLQ stream only when *lanes_enabled* is true.
+    """
+    handler_cls, stream_cat, flags = target
+    backfill_dlq = f"{stream_cat}:{backfill_suffix}:dlq" if lanes_enabled else None
+    return SubscriptionInfo(
+        handler_name=handler_cls.__name__,
+        handler_fqn=fqn(handler_cls),
+        stream_category=stream_cat,
+        dlq_stream=f"{stream_cat}:dlq",
+        backfill_dlq_stream=backfill_dlq,
+        **flags,
+    )
+
+
+def _broker_subscription_infos(domain: Domain) -> list[SubscriptionInfo]:
+    """Return a ``SubscriptionInfo`` for each subscriber with an external stream."""
+    infos: list[SubscriptionInfo] = []
+    for handler_cls in _registered_classes(domain, DomainObjects.SUBSCRIBER):
         meta = getattr(handler_cls, "meta_", None)
         stream = getattr(meta, "stream", None) if meta else None
         if stream:
-            key = f"{fqn(handler_cls)}:{stream}"
-            if key not in seen_streams:
-                info = SubscriptionInfo(
+            infos.append(
+                SubscriptionInfo(
                     handler_name=handler_cls.__name__,
                     handler_fqn=fqn(handler_cls),
                     stream_category=stream,
@@ -277,9 +288,7 @@ def discover_subscriptions(domain: Domain) -> list[SubscriptionInfo]:
                     backfill_dlq_stream=None,  # Broker subscriptions don't use priority lanes
                     is_broker=True,
                 )
-                seen_streams[key] = info
-                infos.append(info)
-
+            )
     return infos
 
 

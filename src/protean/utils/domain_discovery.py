@@ -50,6 +50,41 @@ def find_domain_in_module(module: ModuleType) -> Domain:
     )
 
 
+def _domain_from_attribute(module: ModuleType, name: str) -> object:
+    """Return the attribute *name* of *module*."""
+    try:
+        return getattr(module, name)
+    except AttributeError as e:
+        raise NoDomainException(
+            f"Failed to find attribute {name!r} in {module.__name__!r}."
+        ) from e
+
+
+def _domain_from_call(
+    module: ModuleType, function_name: str, args: list[ast.expr], domain_name: str
+) -> object:
+    """Call the function *function_name* of *module* and return its result.
+
+    Raises ``NoDomainException`` if the call passes *args*, since only a
+    call without arguments is supported.
+    """
+    if args:
+        raise NoDomainException(
+            f"Function calls with arguments are not supported: {domain_name!r}."
+        )
+    try:
+        domain_function = getattr(module, function_name)
+        if callable(domain_function):
+            return domain_function()  # Call the function to get the domain
+        raise NoDomainException(
+            f"{function_name!r} is not callable in {module.__name__!r}."
+        )
+    except AttributeError as e:
+        raise NoDomainException(
+            f"Failed to find function {function_name!r} in {module.__name__!r}."
+        ) from e
+
+
 def find_domain_by_string(module: ModuleType, domain_name: str) -> Domain:
     """Check if the given string is a variable name or a function. Call
     a function to get the app instance, or return the variable directly.
@@ -64,36 +99,9 @@ def find_domain_by_string(module: ModuleType, domain_name: str) -> Domain:
         ) from e
 
     if isinstance(expr, ast.Name):
-        # Handle attribute name
-        name = expr.id
-        try:
-            domain = getattr(module, name)
-        except AttributeError as e:
-            raise NoDomainException(
-                f"Failed to find attribute {name!r} in {module.__name__!r}."
-            ) from e
+        domain = _domain_from_attribute(module, expr.id)
     elif isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name):
-        # Handle function call, ensuring it's a simple function call without arguments
-        function_name = expr.func.id
-        if (
-            not expr.args
-        ):  # Checking for simplicity; no arguments allowed for this example
-            try:
-                domain_function = getattr(module, function_name)
-                if callable(domain_function):
-                    domain = domain_function()  # Call the function to get the domain
-                else:
-                    raise NoDomainException(
-                        f"{function_name!r} is not callable in {module.__name__!r}."
-                    )
-            except AttributeError as e:
-                raise NoDomainException(
-                    f"Failed to find function {function_name!r} in {module.__name__!r}."
-                ) from e
-        else:
-            raise NoDomainException(
-                f"Function calls with arguments are not supported: {domain_name!r}."
-            )
+        domain = _domain_from_call(module, expr.func.id, expr.args, domain_name)
     else:
         raise NoDomainException(
             f"Failed to parse {domain_name!r} as an attribute name."

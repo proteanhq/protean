@@ -233,11 +233,25 @@ class TestOutboxReconciliation:
 
         assert positions == [0]
 
-    def test_reconcile_is_a_noop_when_nothing_is_missing(self, domain_and_repo):
+    def test_reconcile_is_a_noop_when_nothing_is_missing(
+        self, domain_and_repo, monkeypatch
+    ):
         domain, _ = domain_and_repo
         _fund(domain)
+        store = domain.event_store.store
+
+        positions = []
+        real_read = store.read
+
+        def spy(*args, **kwargs):
+            positions.append(kwargs.get("position"))
+            return real_read(*args, **kwargs)
+
+        monkeypatch.setattr(store, "read", spy)
+
         # Fast path: newest event already has its row → no scan, nothing done.
         assert reconcile_outbox(domain) == 0
+        assert positions == []
 
     def test_reconcile_noop_when_no_events(self, domain_and_repo):
         domain, _ = domain_and_repo

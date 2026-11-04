@@ -23,6 +23,7 @@ from protean.utils.eventing import Message
 from protean.utils.globals import _domain_now, current_domain, g
 from protean.utils.logging import access_log_handler
 from protean.utils.telemetry import (
+    DomainMetrics,
     describe_exception,
     get_domain_metrics,
     set_span_error,
@@ -414,6 +415,142 @@ def _carry_discarded_failures(
         )
 
 
+def _invoke_in_uow(
+    fn: Callable[..., Any],
+    instance: Any,
+    target_obj: Any,
+    idempotency: Any,
+) -> Any:
+    """Run the handler method *fn* once inside a fresh ``UnitOfWork``.
+
+    When *idempotency* is a ``(repo, message_id, handler_id)`` triple, a
+    message already marked as processed is skipped and returns None, and a
+    newly processed one is marked in the same ``UnitOfWork``.
+    """
+    with UnitOfWork():
+        if idempotency is not None:
+            repo, message_id, handler_id = idempotency
+            if repo.is_processed(message_id, handler_id):
+                return None  # redelivery — already applied, skip
+            result = fn(instance, target_obj)
+            repo.mark(message_id, handler_id)
+            return result
+        return fn(instance, target_obj)
+
+
+def _version_retry_delay(
+    fn: Callable[..., Any],
+    attempt: int,
+    version_max: int,
+    version_cfg: dict[str, Any],
+) -> float | None:
+    """Return how long to wait before version retry *attempt* of *fn*, or
+    None when the conflict should propagate instead."""
+    if attempt >= version_max:
+        return None
+    # Version (OCC) retry is always exponential.
+    delay = _transient_backoff_delay(
+        "exponential",
+        attempt,
+        version_cfg["base_delay_seconds"],
+        version_cfg["max_delay_seconds"],
+    )
+    # Never sleep into an attempt that would start past the
+    # command deadline — surface the conflict instead.
+    if _deadline_exceeded_after(delay):
+        logger.debug(
+            "Command deadline would elapse before retrying %s; stopping version retry",
+            fn.__qualname__,
+        )
+        return None
+    logger.debug(
+        "Version conflict in %s, retrying (%d/%d) after %.3fs",
+        fn.__qualname__,
+        attempt + 1,
+        version_max,
+        delay,
+    )
+    return delay
+
+
+def _transient_retry_delay(
+    fn: Callable[..., Any],
+    exc: BaseException,
+    attempt: int,
+    transient_cfg: dict[str, Any],
+) -> float | None:
+    """Return how long to wait before transient retry *attempt* of *fn*
+    after *exc*, or None when *exc* should propagate instead."""
+    transient_max = transient_cfg["max_retries"]
+    if attempt >= transient_max:
+        return None
+    delay = _transient_backoff_delay(
+        transient_cfg["backoff"],
+        attempt,
+        transient_cfg["base_delay_seconds"],
+        transient_cfg["max_delay_seconds"],
+    )
+    # Never sleep into an attempt that would start past the
+    # command deadline — surface the transient failure instead.
+    if _deadline_exceeded_after(delay):
+        logger.debug(
+            "Command deadline would elapse before retrying %s; "
+            "stopping transient retry",
+            fn.__qualname__,
+        )
+        return None
+    logger.debug(
+        "Transient error %s in %s, retrying (%d/%d) after %.3fs",
+        type(exc).__name__,
+        fn.__qualname__,
+        attempt + 1,
+        transient_max,
+        delay,
+    )
+    return delay
+
+
+def _run_with_retries(
+    fn: Callable[..., Any],
+    instance: Any,
+    target_obj: Any,
+    idempotency: Any,
+    version_cfg: dict[str, Any],
+    transient_cfg: dict[str, Any],
+) -> Any:
+    """Run *fn* through ``_invoke_in_uow`` until it returns, re-running it
+    under the version and transient retry policies.
+
+    Raises the last exception once a policy's attempts are used up or the
+    next attempt would start past the command deadline.
+    """
+    version_max = _version_retry_limit(version_cfg)
+    # `except ()` matches nothing, so an empty tuple cleanly disables the
+    # transient branch when no policy is active.
+    transient_excs: tuple[type[BaseException], ...] = (
+        transient_cfg["exceptions"] if transient_cfg["max_retries"] > 0 else ()
+    )
+
+    version_attempt = 0
+    transient_attempt = 0
+    while True:
+        try:
+            return _invoke_in_uow(fn, instance, target_obj, idempotency)
+        except ExpectedVersionError:
+            delay = _version_retry_delay(fn, version_attempt, version_max, version_cfg)
+            if delay is None:
+                raise
+            version_attempt += 1
+            time.sleep(delay)
+        except transient_excs as exc:
+            delay = _transient_retry_delay(fn, exc, transient_attempt, transient_cfg)
+            if delay is None:
+                raise
+            _record_handler_retry(instance, exc)
+            transient_attempt += 1
+            time.sleep(delay)
+
+
 _Owner = TypeVar("_Owner")
 _Message = TypeVar("_Message")
 _Result = TypeVar("_Result")
@@ -479,19 +616,11 @@ class handle:
             # whole transaction rollback-only: a retry in place would write into
             # a transaction that is then discarded. The exception propagates so
             # the outermost handler, if any, re-runs the whole chain in a fresh
-            # UnitOfWork. Checked here, before `_invoke` pushes its own UoW.
+            # UnitOfWork. Checked here, before `_invoke_in_uow` pushes its own UoW.
             nested = _uow_stack.top is not None
 
             version_cfg = _get_version_retry_config()
             transient_cfg = _get_transient_retry_config(instance)
-
-            version_max = _version_retry_limit(version_cfg)
-            transient_max = transient_cfg["max_retries"]
-            # `except ()` matches nothing, so an empty tuple cleanly disables the
-            # transient branch when no policy is active.
-            transient_excs: tuple[type[BaseException], ...] = (
-                transient_cfg["exceptions"] if transient_max > 0 else ()
-            )
 
             # Consume-side idempotency (opt-in). When active, each attempt checks
             # a (message_id, handler) marker before running and writes it after,
@@ -505,83 +634,16 @@ class handle:
             # body runs. The contract is about the invocation, not the body.
             idempotency = resolve_dispatch_context(instance, fn, target_obj)
 
-            def _invoke() -> Any:
-                with UnitOfWork():
-                    if idempotency is not None:
-                        repo, message_id, handler_id = idempotency
-                        if repo.is_processed(message_id, handler_id):
-                            return None  # redelivery — already applied, skip
-                        result = fn(instance, target_obj)
-                        repo.mark(message_id, handler_id)
-                        return result
-                    return fn(instance, target_obj)
-
             # Fast path: nested, or neither policy active: run once, no retry.
-            if nested or (version_max == 0 and transient_max == 0):
-                return _invoke()
+            if nested or (
+                _version_retry_limit(version_cfg) == 0
+                and transient_cfg["max_retries"] == 0
+            ):
+                return _invoke_in_uow(fn, instance, target_obj, idempotency)
 
-            version_attempt = 0
-            transient_attempt = 0
-            while True:
-                try:
-                    return _invoke()
-                except ExpectedVersionError:
-                    if version_attempt >= version_max:
-                        raise
-                    # Version (OCC) retry is always exponential.
-                    delay = _transient_backoff_delay(
-                        "exponential",
-                        version_attempt,
-                        version_cfg["base_delay_seconds"],
-                        version_cfg["max_delay_seconds"],
-                    )
-                    # Never sleep into an attempt that would start past the
-                    # command deadline — surface the conflict instead.
-                    if _deadline_exceeded_after(delay):
-                        logger.debug(
-                            "Command deadline would elapse before retrying %s; "
-                            "stopping version retry",
-                            fn.__qualname__,
-                        )
-                        raise
-                    logger.debug(
-                        "Version conflict in %s, retrying (%d/%d) after %.3fs",
-                        fn.__qualname__,
-                        version_attempt + 1,
-                        version_max,
-                        delay,
-                    )
-                    version_attempt += 1
-                    time.sleep(delay)
-                except transient_excs as exc:
-                    if transient_attempt >= transient_max:
-                        raise
-                    delay = _transient_backoff_delay(
-                        transient_cfg["backoff"],
-                        transient_attempt,
-                        transient_cfg["base_delay_seconds"],
-                        transient_cfg["max_delay_seconds"],
-                    )
-                    # Never sleep into an attempt that would start past the
-                    # command deadline — surface the transient failure instead.
-                    if _deadline_exceeded_after(delay):
-                        logger.debug(
-                            "Command deadline would elapse before retrying %s; "
-                            "stopping transient retry",
-                            fn.__qualname__,
-                        )
-                        raise
-                    logger.debug(
-                        "Transient error %s in %s, retrying (%d/%d) after %.3fs",
-                        type(exc).__name__,
-                        fn.__qualname__,
-                        transient_attempt + 1,
-                        transient_max,
-                        delay,
-                    )
-                    _record_handler_retry(instance, exc)
-                    transient_attempt += 1
-                    time.sleep(delay)
+            return _run_with_retries(
+                fn, instance, target_obj, idempotency, version_cfg, transient_cfg
+            )
 
         setattr(wrapper, "_target_cls", self._target_cls)
         setattr(wrapper, "_start", self._start)
@@ -627,6 +689,40 @@ class read:
 
         setattr(wrapper, "_target_cls", self._target_cls)
         return wrapper
+
+
+def _tag_span_with_message_ids(span: Any) -> None:
+    """Set the correlation and causation IDs of the message being handled
+    on *span*, when the message carries them."""
+    # Propagate correlation/causation IDs from the message being handled
+    msg = g.get("message_in_context")
+    if msg is None or not hasattr(msg, "metadata") or not msg.metadata:
+        return
+    domain_meta = getattr(msg.metadata, "domain", None)
+    if domain_meta is not None:
+        if domain_meta.correlation_id:
+            span.set_attribute("protean.correlation_id", domain_meta.correlation_id)
+        if domain_meta.causation_id:
+            span.set_attribute("protean.causation_id", domain_meta.causation_id)
+
+
+def _record_handler_metrics(
+    metrics: DomainMetrics,
+    handler_name: str,
+    handler_type: str,
+    status: str,
+    handler_start: float,
+) -> None:
+    """Count one handler invocation with *status* and record its duration
+    since *handler_start*, a ``time.monotonic()`` reading."""
+    duration_s = time.monotonic() - handler_start
+    handler_attrs = {
+        "handler_name": handler_name,
+        "handler_type": handler_type,
+        "status": status,
+    }
+    metrics.handler_invocations.add(1, handler_attrs)
+    metrics.handler_duration.record(duration_s, handler_attrs)
 
 
 class HandlerMixin:
@@ -683,46 +779,21 @@ class HandlerMixin:
             span.set_attribute("protean.handler.name", cls.__name__)
             span.set_attribute("protean.handler.type", handler_type)
 
-            # Propagate correlation/causation IDs from the message being handled
-            msg = g.get("message_in_context")
-            if msg is not None and hasattr(msg, "metadata") and msg.metadata:
-                domain_meta = getattr(msg.metadata, "domain", None)
-                if domain_meta is not None:
-                    if domain_meta.correlation_id:
-                        span.set_attribute(
-                            "protean.correlation_id", domain_meta.correlation_id
-                        )
-                    if domain_meta.causation_id:
-                        span.set_attribute(
-                            "protean.causation_id", domain_meta.causation_id
-                        )
+            _tag_span_with_message_ids(span)
 
             try:
                 result = cls._dispatch_handlers(handlers, item)
             # records error metrics on the span, then re-raises
             except Exception as exc:
                 set_span_error(span, exc)
-
-                # Record handler metrics on error
-                duration_s = time.monotonic() - handler_start
-                handler_attrs = {
-                    "handler_name": cls.__name__,
-                    "handler_type": handler_type,
-                    "status": "error",
-                }
-                metrics.handler_invocations.add(1, handler_attrs)
-                metrics.handler_duration.record(duration_s, handler_attrs)
+                _record_handler_metrics(
+                    metrics, cls.__name__, handler_type, "error", handler_start
+                )
                 raise
 
-            # Record handler metrics on success
-            duration_s = time.monotonic() - handler_start
-            handler_attrs = {
-                "handler_name": cls.__name__,
-                "handler_type": handler_type,
-                "status": "ok",
-            }
-            metrics.handler_invocations.add(1, handler_attrs)
-            metrics.handler_duration.record(duration_s, handler_attrs)
+            _record_handler_metrics(
+                metrics, cls.__name__, handler_type, "ok", handler_start
+            )
             return result
 
     @classmethod
