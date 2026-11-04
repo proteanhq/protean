@@ -119,9 +119,11 @@ available). When a signal is received:
    `SIGKILL`.
 
 Messages a worker read and did not handle before it stopped stay pending in
-Redis. When a worker starts, it claims the pending messages that have waited
-[`server.reclaim_idle_seconds`](hardening.md#serverreclaim_idle_seconds) or
-longer, and handles them.
+Redis. When a worker starts, it claims the pending messages last delivered at
+least [`server.reclaim_idle_seconds`](hardening.md#serverreclaim_idle_seconds)
+earlier, and handles them. A partitioned subscription (`sequential_by`) does
+not wait for this threshold: the partition's next owner claims its pending
+messages through the lease handover.
 
 Sending a second signal while shutdown is already in progress is ignored.
 

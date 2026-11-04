@@ -40,10 +40,12 @@ seconds by default), and close providers, brokers, caches, and the event
 store before systemd escalates to `SIGKILL`. If you raise
 `server.drain_timeout` above 25, raise `TimeoutStopSec` above the drain
 window plus 5 seconds too. Messages a stopped worker read and did not handle
-stay pending in Redis. The next start claims the ones that have waited
+stay pending in Redis. The next start claims the ones last delivered at least
 [`server.reclaim_idle_seconds`](../../reference/server/hardening.md#serverreclaim_idle_seconds)
-(120 seconds by default), so a restart within that time leaves them for a later
-start. See [Shut down gracefully](./hardening.md#shut-down-gracefully).
+(120 seconds by default) earlier and leaves the rest for a later start. A
+partitioned subscription (`sequential_by`) does not wait for this threshold:
+the partition's next owner claims its pending messages through the lease
+handover. See [Shut down gracefully](./hardening.md#shut-down-gracefully).
 
 ## Docker
 
