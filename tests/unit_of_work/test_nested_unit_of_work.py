@@ -247,3 +247,23 @@ class TestOuterCommitOfADoomedTransaction:
 
         assert uow._rollback_cause is None
         assert uow.in_progress is False
+
+    def test_an_ended_participant_does_not_record_the_cause(self, test_domain):
+        """An exception raised after a nested ``commit()`` dooms nothing, so a
+        later nested failure is the one the outermost commit raises."""
+        later = RuntimeError("later")
+        with pytest.raises(RuntimeError) as excinfo:
+            with UnitOfWork():
+                try:
+                    with UnitOfWork() as inner:
+                        inner.commit()
+                        raise KeyError("after commit")
+                except KeyError:
+                    pass
+                try:
+                    with UnitOfWork():
+                        raise later
+                except RuntimeError:
+                    pass
+        assert excinfo.value is later
+        assert _uow_context_stack.top is None

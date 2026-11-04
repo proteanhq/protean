@@ -153,14 +153,16 @@ class UnitOfWork:
         exc_tb: TracebackType | None,
     ) -> bool | None:
         if exc_type is not None:  # something blew up inside the block
-            if self._nested:
-                outermost = _uow_stack.top
-                if outermost is not None and outermost._rollback_cause is None:
-                    outermost._rollback_cause = exc_val
             # An explicit commit or rollback inside the block may have ended the
             # transaction already. A second rollback would raise
-            # InvalidOperationError and hide the exception in flight.
+            # InvalidOperationError and hide the exception in flight. A
+            # participant that has ended does not doom the transaction here, so
+            # its exception is not the cause either.
             if self._in_progress:
+                if self._nested:
+                    outermost = _uow_stack.top
+                    if outermost is not None and outermost._rollback_cause is None:
+                        outermost._rollback_cause = exc_val
                 self.rollback()
             return False  # re-raise the original exception
 
