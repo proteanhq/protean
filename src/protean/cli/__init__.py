@@ -375,7 +375,11 @@ def _run_supervisor(
 def _refuse_event_store_subscriptions(
     derived_domain: "Domain", domain: str, workers: int
 ) -> None:
-    """Abort when the domain has event-store subscriptions."""
+    """Abort when the domain has event-store subscriptions.
+
+    Skips the check, and does not abort, when the domain fails to initialize
+    here.
+    """
     from protean.server.subscription import (  # noqa: PLC0415
         event_store_multi_worker_error,
         event_store_subscription_handlers,

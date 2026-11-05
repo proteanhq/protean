@@ -572,7 +572,7 @@ def _print_element_sections(result: dict[str, Any]) -> None:
 
 
 def _print_contract_changes(contracts: dict[str, Any]) -> None:
-    """Print the published events added and removed (non-breaking additions)."""
+    """Print the published events added and removed."""
     contract_added = contracts.get("added", [])
     contract_removed = contracts.get("removed", [])
     if contract_added or contract_removed:
