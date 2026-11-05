@@ -1,12 +1,14 @@
 """An idle event-store subscription waits longer between reads, up to a cap.
 
-The wait starts at 10 ms after the first empty read, doubles on each further
-empty read up to ``max_tick_interval`` under ``[server.event_store_subscription]``
-(default 1 second), and drops back to ``tick_interval`` when a read returns
-messages. ``max_tick_interval = 0`` keeps the wait at ``tick_interval``.
+With ``tick_interval`` 0 the wait starts at 10 ms after the first empty read;
+otherwise it doubles from ``tick_interval``. Each further empty read doubles it
+again, up to ``max_tick_interval`` under ``[server.event_store_subscription]``
+(default 1 second). A read that returns messages to handle sets the wait back
+to ``tick_interval``. ``max_tick_interval = 0`` keeps the wait at
+``tick_interval``.
 
-Each test ticks the subscription by hand and reads the wait from the backoff,
-so no test sleeps or measures time.
+Most tests tick the subscription by hand and read the wait from the backoff.
+The two pause tests sleep for real, bounded by a 0.3-second timeout.
 """
 
 import asyncio

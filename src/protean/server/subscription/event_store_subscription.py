@@ -379,11 +379,14 @@ class EventStoreSubscription(BaseSubscription):
       wait at a missing lower ``global_position`` before abandoning it as a
       rolled-back gap (see ADR-0025).
     - ``max_tick_interval`` (default 1): the longest wait between reads while the
-      subscription finds no new messages. The wait starts at 10 ms after the
-      first empty read, doubles on each further empty read up to this cap, and
-      drops back to ``tick_interval`` as soon as a read returns messages. ``0``
-      keeps the wait at ``tick_interval``. A value above 0 and below
-      ``tick_interval`` is ignored with a warning.
+      subscription finds no new messages. With ``tick_interval`` 0 the wait
+      starts at 10 ms after the first empty read; otherwise it doubles from
+      ``tick_interval``. Each further empty read doubles it again, up to this
+      cap. A read that returns messages to handle sets the wait back to
+      ``tick_interval``. A read whose messages are all dropped by the
+      ``origin_stream`` filter, or held back at a ``$all`` gap, counts as
+      empty. ``0`` keeps the wait at ``tick_interval``. A value
+      above 0 and below ``tick_interval`` is ignored with a warning.
 
     The constructor arguments named after the recovery settings override them
     per subscription. ``max_tick_interval`` has no constructor argument.

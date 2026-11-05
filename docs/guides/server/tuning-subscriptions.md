@@ -197,13 +197,14 @@ staleness fields and the cases it does not yet cover.
 
 ## Trade pickup delay for event store load
 
-An idle event-store subscription waits longer between reads. The wait starts at
-10 ms after the first empty read and doubles on each further empty read, up to
-`max_tick_interval` (1 second by default). The first read that returns messages
-sets the wait back to `tick_interval`.
+An idle event-store subscription waits longer between reads. With the default
+`tick_interval` of 0, the wait starts at 10 ms after the first empty read. With a
+longer `tick_interval`, it doubles from `tick_interval`. Each further empty read
+doubles it again, up to `max_tick_interval` (1 second by default). The first
+read that returns messages to handle sets the wait back to `tick_interval`.
 
 The longest delay before an idle subscription picks up a new event equals
-`max_tick_interval`. Each subscription runs about one read per
+`max_tick_interval`, or `tick_interval` when that is longer. Each subscription runs about one read per
 `max_tick_interval` seconds while idle. Set the value for the whole domain:
 
 ```toml

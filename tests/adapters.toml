@@ -195,6 +195,7 @@ paths = [
     "tests/adapters/test_pool_configuration.py",
     "tests/event_sourced_repository/test_all_default_vo_roundtrip.py",
     "tests/outbox/test_reconciliation.py",
+    "tests/server/test_event_store_subscription_backoff.py",
     "tests/unit_of_work/test_stale_event_sourced_outbox.py",
     "tests/workflows/test_event_flows.py",
     "docs_src/adapters/eventstore/index/",

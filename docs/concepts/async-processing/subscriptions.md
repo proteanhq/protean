@@ -144,8 +144,9 @@ async def poll(self):
             # Process the batch
             await self.process_batch(messages)
 
-        # Sleep between ticks (if configured)
-        await asyncio.sleep(self.tick_interval)
+        # Sleep between ticks: tick_interval, or a longer idle wait for
+        # an event-store subscription that read nothing new
+        await asyncio.sleep(self._next_tick_wait())
 ```
 
 ### Message Processing

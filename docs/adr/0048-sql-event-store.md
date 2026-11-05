@@ -40,7 +40,8 @@ Relevant Protean behaviour:
 - SQLite permits one writer per file. An event store writing to the aggregates'
   file on a separate connection waits for the Unit of Work's write lock and
   fails at the busy timeout.
-- With `tick_interval = 0`, an idle event-store subscription polls continuously
+- With `tick_interval = 0` and `max_tick_interval = 0`, an idle event-store
+  subscription polls continuously
   ([#959](https://github.com/proteanhq/protean/issues/959)).
 
 Event stores in other ecosystems (Rails Event Store, Sequent, Marten,
