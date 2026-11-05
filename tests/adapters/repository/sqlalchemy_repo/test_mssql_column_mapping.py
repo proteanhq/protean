@@ -2,11 +2,10 @@
 
 Nothing here opens a connection. A provider constructed on its own skips the
 liveness check, so the core suite can pin the column types the adapter picks
-when it builds a model. The round-trip against a live SQL Server lives in
-``mssql/``.
+when it builds a model.
 
-SQL Server's ``DATETIME`` rounds to increments of about 3 ms, so two timestamps
-written microseconds apart can read back equal without any error.
+SQL Server's ``DATETIME`` holds no UTC offset, so a ``DateTime`` field's column
+is wrapped in ``UTCDateTime`` and its DDL stays ``DATETIME``.
 """
 
 import types
@@ -117,18 +116,18 @@ def column_ddl(table, name):
 
 
 class TestDateTimeOnSqlServer:
-    def test_datetime_is_a_datetime2(self):
+    def test_datetime_stores_utc_in_a_datetime_column(self):
         table = table_for(Booking)
 
         assert isinstance(table.c["booked_at"].type, UTCDateTime)
-        assert isinstance(table.c["booked_at"].type.impl, mssql_dialect.DATETIME2)
-        assert column_ddl(table, "booked_at") == "booked_at DATETIME2 NOT NULL"
+        assert type(table.c["booked_at"].type.impl) is sa_types.DateTime
+        assert column_ddl(table, "booked_at") == "booked_at DATETIME NOT NULL"
 
     def test_an_optional_datetime_stays_nullable(self):
         table = table_for(Booking)
 
-        assert isinstance(table.c["cancelled_at"].type.impl, mssql_dialect.DATETIME2)
-        assert column_ddl(table, "cancelled_at") == "cancelled_at DATETIME2 NULL"
+        assert isinstance(table.c["cancelled_at"].type, UTCDateTime)
+        assert column_ddl(table, "cancelled_at") == "cancelled_at DATETIME NULL"
 
     def test_date_is_not_widened(self):
         table = table_for(Booking)
@@ -142,19 +141,20 @@ class TestDateTimeOnSqlServer:
         assert column_ddl(table, "reference") == "reference VARCHAR(50) NULL"
         assert isinstance(table.c["extra"].type, MSSQLJSON)
 
-    def test_a_value_object_datetime_is_a_datetime2(self):
+    def test_a_value_object_datetime_stores_utc(self):
         table = table_for(Slot)
 
-        assert column_ddl(table, "window_opens_at") == "window_opens_at DATETIME2 NULL"
+        assert isinstance(table.c["window_opens_at"].type, UTCDateTime)
+        assert column_ddl(table, "window_opens_at") == "window_opens_at DATETIME NULL"
         assert column_ddl(table, "window_opens_on") == "window_opens_on DATE NULL"
 
-    def test_the_processed_message_timestamp_is_a_datetime2(self):
+    def test_the_processed_message_timestamp_stores_utc(self):
         table = table_for(ProcessedMessage)
 
-        assert column_ddl(table, "processed_at") == "processed_at DATETIME2 NULL"
+        assert isinstance(table.c["processed_at"].type, UTCDateTime)
+        assert column_ddl(table, "processed_at") == "processed_at DATETIME NULL"
 
-    def test_every_outbox_timestamp_is_a_datetime2(self):
-        """The claim orders on ``created_at``, so rounding it reorders rows."""
+    def test_every_outbox_timestamp_stores_utc(self):
         table = table_for(Outbox)
         timestamps = [
             "created_at",
@@ -165,12 +165,12 @@ class TestDateTimeOnSqlServer:
         ]
 
         for name in timestamps:
-            assert isinstance(table.c[name].type.impl, mssql_dialect.DATETIME2), name
-        assert column_ddl(table, "created_at") == "created_at DATETIME2 NULL"
+            assert isinstance(table.c[name].type, UTCDateTime), name
+        assert column_ddl(table, "created_at") == "created_at DATETIME NULL"
 
 
 class TestDateTimeOnOtherDatabases:
-    """The ``DATETIME2`` swap is gated on the SQL Server dialect."""
+    """Only PostgreSQL, which stores the offset, keeps the plain type."""
 
     def test_postgresql_keeps_timestamp(self):
         column = table_for(Booking, PostgresqlProvider, POSTGRES_URI).c["booked_at"]
