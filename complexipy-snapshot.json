@@ -1114,31 +1114,5 @@
         "complexity": 17
       }
     ]
-  },
-  {
-    "path": "src/protean/upgrade_opportunities.py",
-    "file_name": "upgrade_opportunities.py",
-    "functions": [
-      {
-        "name": "_custom_middleware_sites",
-        "complexity": 17
-      },
-      {
-        "name": "_sqlalchemy_text_names",
-        "complexity": 22
-      },
-      {
-        "name": "_scan_scope",
-        "complexity": 28
-      },
-      {
-        "name": "_split_scopes",
-        "complexity": 29
-      },
-      {
-        "name": "_apply_import",
-        "complexity": 38
-      }
-    ]
   }
 ]

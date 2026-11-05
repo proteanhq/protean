@@ -130,18 +130,26 @@ def _sqlalchemy_text_names(tree: ast.Module) -> tuple[set[str], set[str]]:
     module_aliases: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "sqlalchemy" or alias.name.startswith("sqlalchemy."):
-                    module_aliases.add(alias.asname or alias.name.split(".")[0])
-        elif (
-            isinstance(node, ast.ImportFrom)
-            and node.module
-            and node.module.split(".")[0] == "sqlalchemy"
-        ):
-            for alias in node.names:
-                if alias.name == "text":
-                    direct.add(alias.asname or "text")
+            module_aliases.update(_sqlalchemy_module_aliases(node))
+        elif isinstance(node, ast.ImportFrom):
+            direct.update(_sqlalchemy_text_imports(node))
     return direct, module_aliases
+
+
+def _sqlalchemy_module_aliases(node: ast.Import) -> list[str]:
+    """Names an ``import`` binds to the ``sqlalchemy`` module."""
+    return [
+        alias.asname or alias.name.split(".")[0]
+        for alias in node.names
+        if alias.name == "sqlalchemy" or alias.name.startswith("sqlalchemy.")
+    ]
+
+
+def _sqlalchemy_text_imports(node: ast.ImportFrom) -> list[str]:
+    """Names a ``from sqlalchemy... import`` binds to ``text``."""
+    if not node.module or node.module.split(".")[0] != "sqlalchemy":
+        return []
+    return [alias.asname or "text" for alias in node.names if alias.name == "text"]
 
 
 def _leftmost_name(node: ast.expr) -> str | None:
@@ -310,22 +318,32 @@ def _custom_middleware_sites(trees: list[Tree]) -> list[str]:
     sites: list[str] = []
     for module_name, tree in trees:
         aliases = _import_aliases(tree)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef) and _is_custom_middleware_class(node):
-                sites.append(f"{module_name}:{node.lineno}")
-            elif (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "add_middleware"
-                and node.args
-            ):
-                added = _symbol_name(node.args[0])
-                if added is None:
-                    continue
-                resolved = aliases.get(added, added)
-                if resolved not in _FRAMEWORK_MIDDLEWARES:
-                    sites.append(f"{module_name}:{node.lineno}")
+        sites.extend(
+            f"{module_name}:{node.lineno}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef | ast.Call)
+            and _is_custom_middleware_site(node, aliases)
+        )
     return sites
+
+
+def _is_custom_middleware_site(
+    node: ast.ClassDef | ast.Call, aliases: dict[str, str]
+) -> bool:
+    """Whether *node* defines a custom middleware or registers a non-framework one."""
+    if isinstance(node, ast.ClassDef):
+        return _is_custom_middleware_class(node)
+    if (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == "add_middleware"
+        and node.args
+    ):
+        added = _symbol_name(node.args[0])
+        if added is None:
+            return False
+        resolved = aliases.get(added, added)
+        return resolved not in _FRAMEWORK_MIDDLEWARES
+    return False
 
 
 def _detect_custom_middleware(
@@ -546,37 +564,57 @@ def _apply_import(
     but not ``protean.other.String``.
     """
     if isinstance(node, ast.ImportFrom):
-        module = node.module or ""
-        for alias in node.names:
-            if alias.name == "*":
-                # ``from protean.fields import *`` binds every name the module
-                # exports, so assume the tracked ones under their own spelling.
-                # Leaving them unbound would drop the whole module from the
-                # migration checklist without saying so.
-                if _module_is_fields(module):
-                    factories.update({name: name for name in _TRACKED_SYMBOLS})
-                    continue
-                # A star import from anywhere else may or may not export these
-                # names, and the scan cannot tell. Drop the tracked bindings
-                # rather than keep one that may have been overwritten, the same
-                # way an unreadable argument skips a site.
-                for name in _TRACKED_SYMBOLS:
-                    factories.pop(name, None)
-                    modules.pop(name, None)
-                continue
-            local = alias.asname or alias.name
-            factories.pop(local, None)
-            modules.pop(local, None)
-            if _module_is_fields(module) and alias.name in _TRACKED_SYMBOLS:
-                factories[local] = alias.name
-                continue
-            # ``from protean import fields`` names a submodule, reached by
-            # attribute access at the call site.
-            path = f"{module}.{alias.name}" if module else alias.name
-            if _module_is_fields(path):
-                modules[local] = path
-        return
+        _apply_import_from(node, factories, modules)
+    else:
+        _apply_plain_import(node, factories, modules)
 
+
+def _apply_import_from(
+    node: ast.ImportFrom, factories: dict[str, str], modules: dict[str, str]
+) -> None:
+    """Fold a ``from ... import`` into the binding maps."""
+    module = node.module or ""
+    for alias in node.names:
+        if alias.name == "*":
+            _apply_star_import(module, factories, modules)
+            continue
+        local = alias.asname or alias.name
+        factories.pop(local, None)
+        modules.pop(local, None)
+        if _module_is_fields(module) and alias.name in _TRACKED_SYMBOLS:
+            factories[local] = alias.name
+            continue
+        # ``from protean import fields`` names a submodule, reached by
+        # attribute access at the call site.
+        path = f"{module}.{alias.name}" if module else alias.name
+        if _module_is_fields(path):
+            modules[local] = path
+
+
+def _apply_star_import(
+    module: str, factories: dict[str, str], modules: dict[str, str]
+) -> None:
+    """Fold a ``from <module> import *`` into the binding maps."""
+    # ``from protean.fields import *`` binds every name the module
+    # exports, so assume the tracked ones under their own spelling.
+    # Leaving them unbound would drop the whole module from the
+    # migration checklist without saying so.
+    if _module_is_fields(module):
+        factories.update({name: name for name in _TRACKED_SYMBOLS})
+        return
+    # A star import from anywhere else may or may not export these
+    # names, and the scan cannot tell. Drop the tracked bindings
+    # rather than keep one that may have been overwritten, the same
+    # way an unreadable argument skips a site.
+    for name in _TRACKED_SYMBOLS:
+        factories.pop(name, None)
+        modules.pop(name, None)
+
+
+def _apply_plain_import(
+    node: ast.Import, factories: dict[str, str], modules: dict[str, str]
+) -> None:
+    """Fold an ``import ...`` into the binding maps."""
     for alias in node.names:
         # ``import a.b.c`` binds ``a``; ``import a.b.c as x`` binds ``x`` to the
         # full path.
@@ -616,50 +654,70 @@ def _split_scopes(stmt: ast.stmt) -> tuple[list[ast.AST], list[_Scope], set[str]
     while stack:
         node = stack.pop()
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            # The decorators, base classes and default arguments run in the
-            # enclosing scope; only the body opens a new one. The name itself is
-            # bound out here.
+            # The name itself is bound out here.
             bound.add(node.name)
-            stack.extend(node.decorator_list)
-            if isinstance(node, ast.ClassDef):
-                nested.append(_Scope(node.body, frozenset()))
-                stack.extend(node.bases)
-                stack.extend(keyword.value for keyword in node.keywords)
-            else:
-                nested.append(_Scope(node.body, _parameter_names(node.args)))
-                stack.extend(ast.iter_child_nodes(node.args))
+            nested.append(_definition_scope(node, stack))
             continue
         if isinstance(node, ast.Lambda):
-            # ``lambda String: String()`` shadows the name for its body, and the
-            # scan cannot know what the caller passes.
-            nested.append(
-                _Scope([_as_statement(node.body)], _parameter_names(node.args))
-            )
-            stack.extend(ast.iter_child_nodes(node.args))
+            nested.append(_lambda_scope(node, stack))
             continue
         if isinstance(
             node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
         ):
-            targets: set[str] = set()
-            body: list[ast.stmt] = []
-            for generator in node.generators:
-                targets.update(_stored_names(generator.target))
-                # The iterables are evaluated outside the comprehension's own
-                # scope, so they keep the enclosing bindings.
-                stack.append(generator.iter)
-                body.extend(_as_statement(test) for test in generator.ifs)
-            if isinstance(node, ast.DictComp):
-                body.append(_as_statement(node.key))
-                body.append(_as_statement(node.value))
-            else:
-                body.append(_as_statement(node.elt))
-            nested.append(_Scope(body, frozenset(targets)))
+            nested.append(_comprehension_scope(node, stack))
             continue
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
             bound.add(node.id)
         own.append(node)
         stack.extend(ast.iter_child_nodes(node))
     return own, nested, bound
+
+
+def _definition_scope(
+    node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, stack: list[ast.AST]
+) -> _Scope:
+    """The scope a function or class body opens.
+
+    Pushes the parts that run in the enclosing scope onto *stack*.
+    """
+    # The decorators, base classes and default arguments run in the
+    # enclosing scope; only the body opens a new one.
+    stack.extend(node.decorator_list)
+    if isinstance(node, ast.ClassDef):
+        stack.extend(node.bases)
+        stack.extend(keyword.value for keyword in node.keywords)
+        return _Scope(node.body, frozenset())
+    stack.extend(ast.iter_child_nodes(node.args))
+    return _Scope(node.body, _parameter_names(node.args))
+
+
+def _lambda_scope(node: ast.Lambda, stack: list[ast.AST]) -> _Scope:
+    """The scope a lambda body opens; pushes its argument nodes onto *stack*."""
+    # ``lambda String: String()`` shadows the name for its body, and the
+    # scan cannot know what the caller passes.
+    stack.extend(ast.iter_child_nodes(node.args))
+    return _Scope([_as_statement(node.body)], _parameter_names(node.args))
+
+
+def _comprehension_scope(
+    node: ast.ListComp | ast.SetComp | ast.GeneratorExp | ast.DictComp,
+    stack: list[ast.AST],
+) -> _Scope:
+    """The scope a comprehension opens; pushes its iterables onto *stack*."""
+    targets: set[str] = set()
+    body: list[ast.stmt] = []
+    for generator in node.generators:
+        targets.update(_stored_names(generator.target))
+        # The iterables are evaluated outside the comprehension's own
+        # scope, so they keep the enclosing bindings.
+        stack.append(generator.iter)
+        body.extend(_as_statement(test) for test in generator.ifs)
+    if isinstance(node, ast.DictComp):
+        body.append(_as_statement(node.key))
+        body.append(_as_statement(node.value))
+    else:
+        body.append(_as_statement(node.elt))
+    return _Scope(body, frozenset(targets))
 
 
 def _as_statement(expr: ast.expr) -> ast.stmt:
@@ -811,28 +869,7 @@ def _scan_scope(
     for stmt in body:
         own, nested_scopes, bound = _split_scopes(stmt)
 
-        # Imports and calls are interleaved by source position, not batched.
-        # An import anywhere in this statement takes effect from where it
-        # appears, so a guarded import (``try: from protean.fields import
-        # String``) binds the name for what follows, while a call that sits
-        # above a later import still resolves against the binding it actually
-        # had.
-        interesting = [
-            node
-            for node in own
-            if isinstance(node, (ast.Import, ast.ImportFrom, ast.Call))
-        ]
-        interesting.sort(key=lambda node: (node.lineno, node.col_offset))
-        spec_calls = _content_spec_calls(own, factories, modules)
-        for node in interesting:
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                _apply_import(node, factories, modules)
-                continue
-            factory = _resolved_symbol(node.func, factories, modules)
-            if factory not in _FIELD_FACTORIES:
-                continue
-            if _relies_on_the_old_default(node, factory, spec_calls):
-                sites.append(f"{module_name}:{node.lineno}")
+        _scan_own_nodes(module_name, own, factories, modules, sites)
 
         # Two shapes are read positionally, where Python differs: a name bound
         # anywhere in a function is local to the whole function (a call above
@@ -858,6 +895,40 @@ def _scan_scope(
         for name in bound:
             factories.pop(name, None)
             modules.pop(name, None)
+
+
+def _scan_own_nodes(
+    module_name: str,
+    own: list[ast.AST],
+    factories: dict[str, str],
+    modules: dict[str, str],
+    sites: list[str],
+) -> None:
+    """Scan one statement's own nodes, in source order.
+
+    Appends ``module:line`` to ``sites`` for each reliant call, and applies each
+    import to ``factories`` and ``modules`` in place.
+    """
+    # Imports and calls are interleaved by source position, not batched.
+    # An import anywhere in this statement takes effect from where it
+    # appears, so a guarded import (``try: from protean.fields import
+    # String``) binds the name for what follows, while a call that sits
+    # above a later import still resolves against the binding it actually
+    # had.
+    interesting = [
+        node for node in own if isinstance(node, (ast.Import, ast.ImportFrom, ast.Call))
+    ]
+    interesting.sort(key=lambda node: (node.lineno, node.col_offset))
+    spec_calls = _content_spec_calls(own, factories, modules)
+    for node in interesting:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            _apply_import(node, factories, modules)
+            continue
+        factory = _resolved_symbol(node.func, factories, modules)
+        if factory not in _FIELD_FACTORIES:
+            continue
+        if _relies_on_the_old_default(node, factory, spec_calls):
+            sites.append(f"{module_name}:{node.lineno}")
 
 
 def _sanitize_reliant_sites(trees: list[Tree]) -> list[str]:
