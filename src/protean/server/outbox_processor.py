@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, cast
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker, BrokerCapabilities
 from protean.utils import ensure_utc_aware, outbox_trace
+from protean.utils.backoff import AdaptiveBackoff
 from protean.utils.eventing import Message
 from protean.utils.outbox import (
     Outbox,
@@ -97,24 +98,26 @@ class OutboxProcessor(BaseSubscription):
         # Initialize parent class - use dummy handler to satisfy BaseSubscription requirements
         super().__init__(engine, messages_per_tick, tick_interval)
 
-        # Adaptive polling backoff: remember the base interval so we can reset
-        # to it when a non-empty batch is found.  When ``max_tick_interval`` is
-        # ``None`` or is configured at/below the base, backoff is disabled and
-        # ``tick_interval`` stays constant.
-        self._base_tick_interval = float(tick_interval)
+        # Adaptive polling backoff: the wait doubles on empty polls and drops
+        # back to ``tick_interval`` when a batch is found. When
+        # ``max_tick_interval`` is ``None`` or at/below the base, the wait
+        # stays at ``tick_interval``.
+        base = float(tick_interval)
         if max_tick_interval is None:
-            self.max_tick_interval = self._base_tick_interval
+            cap = base
         else:
             cap = float(max_tick_interval)
-            if cap < self._base_tick_interval:
+            if cap < base:
                 logger.warning(
                     "outbox.max_tick_interval_ignored",
                     extra={
-                        "tick_interval": self._base_tick_interval,
+                        "tick_interval": base,
                         "max_tick_interval": cap,
                     },
                 )
-            self.max_tick_interval = max(cap, self._base_tick_interval)
+        self._backoff = AdaptiveBackoff(base, cap)
+        self._base_tick_interval = self._backoff.base
+        self.max_tick_interval = self._backoff.cap
 
         self.is_external = is_external
         suffix = "-external" if is_external else ""
@@ -375,11 +378,10 @@ class OutboxProcessor(BaseSubscription):
         """
         messages = await self.get_next_batch_of_messages()
         if messages:
-            self.tick_interval = self._base_tick_interval
+            self.tick_interval = self._backoff.on_activity()
             await self.process_batch(messages)
-        elif self.max_tick_interval > self._base_tick_interval:
-            # Double the wait, capped at the configured maximum.
-            self.tick_interval = min(self.tick_interval * 2, self.max_tick_interval)
+        else:
+            self.tick_interval = self._backoff.on_idle()
 
         # Increment tick counter and check if cleanup is due
         self.tick_count += 1
