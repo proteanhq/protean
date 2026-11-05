@@ -90,6 +90,36 @@ error comes from a column with no length, such as `max_length=None`. A column
 with no length is fine on MSSQL as an ordinary column. Protean raises only when
 that column is a primary key or is `unique=True`.
 
+<<<<<<< HEAD
+=======
+## Date and time columns
+
+| Field      | Column      |
+|------------|-------------|
+| `DateTime` | `DATETIME2` |
+| `Date`     | `DATE`      |
+
+SQL Server's `DATETIME` rounds to increments of about 3 milliseconds: the last
+digit of the milliseconds becomes 0, 3 or 7, so `.125` is stored as `.127`.
+Protean writes microsecond-precision timestamps, so two values written less
+than 3 ms apart could read back equal, and a value read back could differ from
+the one written. `DATETIME2` keeps 100-nanosecond steps, so every `DateTime`
+column Protean generates uses it.
+
+A table created before 0.19 keeps its `DATETIME` columns, because Protean does
+not change an existing table. See
+[SQL Server stores `DateTime` as `DATETIME2`](../../migration/v0-19.md#sql-server-stores-datetime-as-datetime2)
+for the statements that convert them.
+
+A `DATETIME2` column holds no UTC offset, so Protean converts each value to
+UTC before it writes it or compares it in a filter, and reads a naive value as
+UTC. A load returns a UTC-aware `datetime`. A filter value in any offset then
+matches the same instant. Rows written before 0.18.1 hold the wall-clock time
+they were saved with; see
+[Datetimes are compared and stored as UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc)
+to convert them.
+
+>>>>>>> 7138d7bc (Compare and store DateTime values as UTC instants on every provider (#2146))
 ## SQLAlchemy model
 
 You can supply a custom SQLAlchemy model in place of the one Protean generates,
