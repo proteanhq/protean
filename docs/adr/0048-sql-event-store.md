@@ -81,7 +81,9 @@ One name covers both databases because one code path writes to both (decision
 - Inside a Unit of Work, the store collects every message appended during the
   handler, including commands and process manager transition events, and writes
   them at commit with the aggregate events. A command sent by a handler that
-  fails rolls back with it.
+  fails rolls back with it. A handler that sends a command and reaches no
+  repository opens its transaction at commit, after its body returns
+  ([ADR-0031](0031-handlers-persist-or-call-out.md), as amended).
 - With no active Unit of Work, as for an API endpoint's `domain.process()` call
   or a subscription's position write, the store commits the append in its own
   transaction.

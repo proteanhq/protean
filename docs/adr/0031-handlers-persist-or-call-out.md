@@ -3,7 +3,8 @@
 **Status:** Accepted
 
 > Amended October 2026, see "Siblings are independent in failure" under
-> Decision.
+> Decision. Amended November 2026, see "No repository access, no
+> transaction" under Decision.
 
 **Date:** August 2026
 
@@ -62,6 +63,16 @@ Around it:
   `idempotent=True` reads its `(message_id, handler)` marker before the body
   runs, and when the marker store is DB-backed that read is itself a repository
   access, so those invocations open a session before the body.
+
+  *Amended (November 2026): when the SQL event store shares the `default`
+  database ([ADR-0048](0048-sql-event-store.md)), a handler method that sends
+  a command and reaches no repository still runs its body with no
+  transaction. The Unit of Work holds the command until the body returns. At
+  commit it opens one transaction on `default`, appends the command and
+  commits. The invocation holds a connection only for that append, and an
+  external call in the body runs outside any transaction. On Message DB, and
+  on a SQL event store with its own `database_uri`, the store appends the
+  command on its own connection when the handler sends it.*
 
 - **Both in one method**: A handler that needs an external result to compute its
   local write does both in one method, and the transaction stays open for the
