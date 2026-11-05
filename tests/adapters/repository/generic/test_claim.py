@@ -660,7 +660,8 @@ def _claim_in_key_order(test_domain, run: _KeyOrderRun) -> None:
 
 
 def _record_out_of_order(claimed: list, run: _KeyOrderRun) -> None:
-    """Record each claimed row whose earlier rows of its key have not finished."""
+    """Record each claimed row that has an earlier row of its key neither
+    finished nor claimed in the same batch."""
     claimed_ids = {job.id for job in claimed}
     with run.lock:
         for job in claimed:

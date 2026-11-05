@@ -438,7 +438,8 @@ def _call_reaches_another_aggregate(
     helpers: dict[str, ast.FunctionDef],
     followed: frozenset[str],
 ) -> bool:
-    """True when this one call issues a command or loads a different aggregate."""
+    """True when this call issues a command or loads a different aggregate,
+    or calls a module-level function whose body does either."""
     func = call.func
     if isinstance(func, ast.Name) and func.id in helpers:
         return func.id not in followed and _reaches_another_aggregate(
