@@ -4,6 +4,8 @@ store whose relational outbox row did not land."""
 import logging
 import threading
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import text
@@ -379,6 +381,19 @@ class TestReconcileRepairsALostRowBehindALaterCommit:
         assert reconcile_outbox(domain) == 1
         for message_id in message_ids:
             assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
+
+    def test_lookup_reads_a_legacy_null_broker_as_the_default(self):
+        """A legacy row holding NULL in ``target_broker`` counts as the
+        default broker's row, so reconcile does not rebuild it and publish the
+        event again. The column is NOT NULL, so a stub query returns the row."""
+        outbox_repo = MagicMock()
+        query = outbox_repo._dao.query.filter.return_value.only.return_value
+        query.limit.return_value.all.return_value.items = [
+            SimpleNamespace(message_id="m1", target_broker=None)
+        ]
+
+        existing = outbox_module._existing_brokers_by_message(outbox_repo, ["m1"])
+        assert existing == {"m1": {"default"}}
 
 
 @pytest.mark.message_db

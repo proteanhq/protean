@@ -1678,7 +1678,9 @@ def _existing_brokers_by_message(
             .items
         )
         for row in rows:
-            existing[row.message_id].add(row.target_broker)
+            # A projected record skips the model's validators, so a legacy row
+            # holding NULL is coerced here as it is on a full read.
+            existing[row.message_id].add(_coerce_target_broker(row.target_broker))
     return existing
 
 
