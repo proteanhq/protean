@@ -84,48 +84,70 @@ def _http_names(tree: ast.Module) -> set[str]:
     does ``self._client = httpx.Client()`` in its constructor and
     ``self._client.post(...)`` later is matched on the second line.
     """
-    names: set[str] = set()
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name.split(".")[0] in _HTTP_MODULES:
-                    names.add(alias.asname or alias.name.split(".")[0])
-        elif (
-            isinstance(node, ast.ImportFrom)
-            and node.module
-            and node.module.split(".")[0] in _HTTP_MODULES
-        ):
-            for alias in node.names:
-                names.add(alias.asname or alias.name)
-
+    names = _imported_http_names(tree)
     if not names:
         return names
 
     # Propagate through assignment until it settles: `s = requests.Session()`,
     # then `self._c = s`, then `self._c.post(...)`.
     for _ in range(3):
-        grew = False
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign):
-                continue
-            source = node.value
-            origin = (
-                _root_name(source.func) if isinstance(source, ast.Call) else None
-            ) or _root_name(source)
-            if origin is None:
-                continue
-            if not any(origin == n or origin.startswith(f"{n}.") for n in names):
-                continue
-            for target in node.targets:
-                bound = _root_name(target)
-                if bound and bound not in names:
-                    names.add(bound)
-                    grew = True
-        if not grew:
+        if not _propagate_through_assignments(tree, names):
             break
 
     return names
+
+
+def _imported_http_names(tree: ast.Module) -> set[str]:
+    """Names bound by an ``import`` or ``from ... import`` of an HTTP library."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(_http_import_names(node))
+        elif isinstance(node, ast.ImportFrom):
+            names.update(_http_import_from_names(node))
+    return names
+
+
+def _http_import_names(node: ast.Import) -> list[str]:
+    """Names an ``import`` binds for an HTTP library."""
+    return [
+        alias.asname or alias.name.split(".")[0]
+        for alias in node.names
+        if alias.name.split(".")[0] in _HTTP_MODULES
+    ]
+
+
+def _http_import_from_names(node: ast.ImportFrom) -> list[str]:
+    """Names a ``from ... import`` binds from an HTTP library."""
+    if not node.module or node.module.split(".")[0] not in _HTTP_MODULES:
+        return []
+    return [alias.asname or alias.name for alias in node.names]
+
+
+def _propagate_through_assignments(tree: ast.Module, names: set[str]) -> bool:
+    """Add to *names* each assignment target bound from an HTTP client name.
+
+    Makes one pass over the module and returns whether *names* grew. A name
+    added early in the pass already counts for the assignments after it.
+    """
+    grew = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        source = node.value
+        origin = (
+            _root_name(source.func) if isinstance(source, ast.Call) else None
+        ) or _root_name(source)
+        if origin is None:
+            continue
+        if not any(origin == n or origin.startswith(f"{n}.") for n in names):
+            continue
+        for target in node.targets:
+            bound = _root_name(target)
+            if bound and bound not in names:
+                names.add(bound)
+                grew = True
+    return grew
 
 
 def _external_io_in(block: ast.AST, http_names: set[str]) -> list[tuple[str, int]]:

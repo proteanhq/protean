@@ -1140,15 +1140,5 @@
         "complexity": 38
       }
     ]
-  },
-  {
-    "path": "src/protean/upgrade_uow.py",
-    "file_name": "upgrade_uow.py",
-    "functions": [
-      {
-        "name": "_http_names",
-        "complexity": 41
-      }
-    ]
   }
 ]
