@@ -615,9 +615,9 @@ def _legacy_unique_index_finding(
     indexes: list[ReflectedIndex],
 ) -> UpgradeFinding | None:
     """The OUTBOX_UNIQUE_INDEX_LEGACY finding, or ``None`` when not needed."""
-    # (0.16.1) composite unique index. Only flag when the legacy single-column
-    # unique index exists and the composite one does not — the index is
-    # recommended, not framework-created, so its absence means nothing to do.
+    # (0.16.1) composite unique index. Flag only when the legacy single-column
+    # unique index exists. The composite index is recommended, not
+    # framework-created, so a database with neither index has nothing to fix.
     # Compared as sets, not tuples: an index over (target_broker, message_id)
     # is as composite as (message_id, target_broker) for idempotency, and
     # flagging it would tell someone to drop a working index.
