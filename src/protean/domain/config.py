@@ -232,8 +232,9 @@ def _default_config() -> dict[str, Any]:
             "ttl": 86400,  # Default TTL for success entries: 24 hours (in seconds)
             "error_ttl": 60,  # TTL for error entries: 60 seconds
         },
-        # Consume-side idempotency for projectors (the ProcessedMessage marker,
-        # distinct from the command idempotency store above). See ADR-0017.
+        # Consume-side idempotency for projectors and subscribers (the
+        # ProcessedMessage marker, distinct from the command idempotency store
+        # above). See ADR-0017.
         "consume_idempotency": {
             "cleanup": {
                 "retention_hours": 168,  # 7 days — prune markers older than this

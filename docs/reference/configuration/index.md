@@ -510,7 +510,8 @@ Read more in [Command Idempotency](../../patterns/command-idempotency.md).
 ### `consume_idempotency`
 
 This section configures cleanup of the consume-side idempotency markers used
-by projectors to detect and skip already-processed messages (the
+by projectors and subscribers with `idempotent=True` to detect and skip
+already-processed messages (the
 `ProcessedMessage` marker; distinct from the command idempotency store
 above). See [ADR-0017](../../adr/0017-consume-side-idempotency-for-projectors.md).
 

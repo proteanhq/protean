@@ -222,11 +222,14 @@ duplicate delivery is harmless: guard on state, upsert rather than accumulate,
 and treat "already applied" as a no-op. See
 [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md).
 
-Unlike projectors, event handlers have no built-in `idempotent=True` option: a
-handler may write to arbitrary aggregates across providers, so no single atomic
-dedup marker applies. The framework-managed deduplication described in
-[Projectors](./projectors.md#opting-into-built-in-deduplication) is projector-only
-because a projector has one known projection provider.
+Unlike projectors and subscribers, event handlers have no built-in
+`idempotent=True` option: a handler may write to arbitrary aggregates across
+providers, so no single atomic dedup marker applies. Protean offers
+framework-managed deduplication only where it knows the one provider that holds
+the writes: a projector's projection provider (see
+[Projectors](./projectors.md#opting-into-built-in-deduplication)) and an
+idempotent subscriber's `provider` (see
+[Subscribers](./subscribers.md#idempotent-optional-default-false)).
 
 ## Configuration Options
 

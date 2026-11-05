@@ -72,6 +72,8 @@ class PaymentConfirmationSubscriber:
 |--------|---------|----------|
 | `stream` | Name of the external broker stream to consume | Yes |
 | `broker` | Broker name (defaults to `"default"`) | No |
+| `idempotent` | Skip a redelivered payload, keyed on its `metadata.headers.id` (defaults to `False`) | No |
+| `provider` | Database provider for the idempotency marker (defaults to `"default"`) | No |
 | `suppress_checks` | Diagnostic codes to suppress for this subscriber | No |
 
 ## Quick example: Multiple subscribers

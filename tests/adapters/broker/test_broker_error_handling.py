@@ -297,6 +297,7 @@ class TestBrokerErrorHandling:
         subscriber_class.__name__ = "TestSubscriber"
         subscriber_class.meta_ = Mock()
         subscriber_class.meta_.stream = "test_stream"
+        subscriber_class.meta_.idempotent = False
 
         # Register subscriber
         broker.register(subscriber_class)

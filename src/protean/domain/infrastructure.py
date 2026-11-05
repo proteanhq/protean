@@ -126,8 +126,9 @@ class InfrastructureManager:
         """Initialize a consume-side idempotency marker per managed provider.
 
         Synthesizes a per-provider ``ProcessedMessage`` aggregate + repository
-        so an ``idempotent=True`` projector can record a ``(message_id,
-        handler)`` marker in the same transaction as its read-model write.
+        so an ``idempotent=True`` projector or subscriber can record a
+        ``(message_id, handler)`` marker in the same transaction as its
+        writes.
         See ADR-0017.
         """
         self._initialize_per_provider(

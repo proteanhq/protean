@@ -166,7 +166,8 @@ Keep three boundaries in mind:
   marker's unique index. The in-memory provider enforces neither, so there the
   option only skips ordinary sequential redeliveries.
 - **Adding the option to an existing deployment needs a schema change**: The
-  marker table appears only once a projector sets `idempotent=True`; run
+  marker table appears only once a projector or a subscriber sets
+  `idempotent=True`; run
   `protean db setup` (or your migration tool) before deploying, or the first
   delivery fails querying a missing table.
 - **Markers accumulate**: One row is written per `(message_id, handler)`. Prune

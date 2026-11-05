@@ -264,3 +264,70 @@ def test_a_long_message_id_is_recorded_and_deduplicated():
         )
 
     assert shipments.total == 1
+
+
+def test_an_idempotent_subscriber_applies_a_redelivered_payload_once():
+    example = load_example("guides/consume-state/subscribers/005.py")
+    example.domain.init(traverse=False)
+    engine = Engine(domain=example.domain, test_mode=True)
+    payload = {
+        "order_id": "order-8",
+        "items": ["mug"],
+        "metadata": {"headers": {"id": "sales::order-order-8-1"}},
+    }
+
+    for message_id in ("delivery-1", "delivery-2"):
+        handled = asyncio.run(
+            engine.handle_broker_message(
+                example.OrderSubscriber,
+                payload,
+                message_id=message_id,
+                stream="orders",
+            )
+        )
+        assert handled is True
+
+    with example.domain.domain_context():
+        shipments = example.domain.repository_for(example.Shipment).find(
+            Q(order_id="order-8")
+        )
+
+    assert shipments.total == 1
+
+
+def test_an_idempotent_subscriber_rejects_a_payload_without_an_id(caplog):
+    example = load_example("guides/consume-state/subscribers/005.py")
+    example.domain.init(traverse=False)
+    engine = Engine(domain=example.domain, test_mode=True)
+
+    with caplog.at_level(logging.ERROR):
+        handled = asyncio.run(
+            engine.handle_broker_message(
+                example.OrderSubscriber,
+                {"order_id": "order-9", "items": ["mug"]},
+                message_id="delivery-1",
+                stream="orders",
+            )
+        )
+
+    with example.domain.domain_context():
+        shipments = example.domain.repository_for(example.Shipment).find(
+            Q(order_id="order-9")
+        )
+
+    assert handled is False
+    assert (
+        "received a payload with no non-blank string `metadata.headers.id`"
+        in caplog.text
+    )
+    assert shipments.total == 0
+
+
+def test_an_idempotent_subscriber_on_an_unconfigured_provider_fails_init():
+    example = load_example("guides/consume-state/subscribers/005.py")
+    example.OrderSubscriber.meta_.provider = "reporting"
+
+    with pytest.raises(
+        ConfigurationError, match="`reporting`, which is not configured"
+    ):
+        example.domain.init(traverse=False)
