@@ -36,7 +36,8 @@ class CheckpointEvent(TypedDict):
     """One ``_gap_safe_batch`` call's raw observation of the gap-safe advance.
 
     ``cursor`` is the read watermark the batch started from; ``present`` is the
-    sorted set of ``global_position`` values in the batch (all above the cursor);
+    sorted set of ``global_position`` values in the batch (all above the cursor),
+    snapshot rows included even though the batch does not return them;
     ``abandoned`` is the sorted set of holes this batch stepped over after their
     gap timer elapsed; ``safe`` is the settled watermark the cursor advances to.
     All positions are raw ``global_position`` values, never a derived verdict.

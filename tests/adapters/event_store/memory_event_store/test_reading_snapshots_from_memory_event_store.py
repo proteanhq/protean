@@ -259,3 +259,24 @@ def test_read_with_snapshot_positions_without_snapshots_reports_none(test_domain
 
     assert _ns(messages) == [0, 1]
     assert snapshot_positions == []
+
+
+def test_read_with_snapshot_positions_leaves_out_a_snapshot_with_no_position(
+    test_domain,
+):
+    """A snapshot row with no ``global_position`` is skipped and left out of
+    the reported positions."""
+    store = test_domain.event_store.store
+    _write_event(store, "user-1", 0)
+    rows = store._read("$all")
+    snapshot_rows = [
+        {"type": "SNAPSHOT", "global_position": None},
+        {"type": "SNAPSHOT"},
+        {"type": "SNAPSHOT", "global_position": 7},
+    ]
+
+    with patch.object(store, "_read", return_value=rows + snapshot_rows):
+        messages, snapshot_positions = store._read_with_snapshot_positions("$all")
+
+    assert _ns(messages) == [0]
+    assert snapshot_positions == [7]

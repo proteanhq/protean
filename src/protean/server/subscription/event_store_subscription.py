@@ -388,7 +388,8 @@ class EventStoreSubscription(BaseSubscription):
       cap. A read that returns messages sets the wait back to
       ``tick_interval``. A read whose messages are all dropped by the
       ``origin_stream`` filter, or held back at a ``$all`` gap, counts as
-      empty. ``0`` keeps the wait at ``tick_interval``. A value
+      empty. A ``$all`` read that moves the cursor past snapshot rows or an
+      abandoned gap counts as a read that returns messages. ``0`` keeps the wait at ``tick_interval``. A value
       above 0 and below ``tick_interval`` is ignored with a warning. A value
       that is not a finite number of 0 or more is ignored with a warning, and
       the default applies.
@@ -740,25 +741,33 @@ class EventStoreSubscription(BaseSubscription):
         messages forward (one at a time, so an interrupted batch leaves the cursor
         at the last one actually processed), advance ``current_position`` to the
         gap-safe watermark set by ``_gap_safe_batch``. This steps over abandoned
-        holes, which carry no message for ``process_batch`` to advance through.
+        holes and snapshot positions, which carry no message for ``process_batch``
+        to advance through.
         Running it *after* ``process_batch`` is what keeps it crash-safe — an
         exception there skips this and leaves the cursor at real progress. It is a
         no-op for single-category subscriptions (``_gap_watermark`` stays -1).
+
+        Returns ``True`` when the tick processed messages or moved the cursor.
         """
         messages = await self.get_next_batch_of_messages()
-        # Only messages read here reset the idle wait. A failed position waiting
-        # for recovery keeps ``poll()`` busy, but reading nothing new is idle.
-        backoff = self._synced_backoff()
         if messages:
-            backoff.on_activity()
             await self.process_batch(messages)
+
+        advanced = self._gap_watermark > self.current_position
+        if advanced:
+            await self.update_read_position(self._gap_watermark)
+
+        # Only progress made here resets the idle wait. A read of nothing but
+        # snapshot rows has no messages yet moves the cursor, and more rows may
+        # follow, so it counts as activity. A failed position waiting for
+        # recovery keeps ``poll()`` busy, but reading nothing new is idle.
+        backoff = self._synced_backoff()
+        if messages or advanced:
+            backoff.on_activity()
         else:
             backoff.on_idle()
 
-        if self._gap_watermark > self.current_position:
-            await self.update_read_position(self._gap_watermark)
-
-        return bool(messages)
+        return bool(messages) or advanced
 
     def _read_max_tick_interval(self, es_config: dict[str, Any]) -> float | None:
         """Return the ``max_tick_interval`` setting, or ``None`` when it is unset.
@@ -880,11 +889,10 @@ class EventStoreSubscription(BaseSubscription):
         See ADR-0025 for why a ``$all`` subscription waits at gaps.
 
         ``snapshot_positions`` are the ``global_position`` values of snapshot rows
-        the read skipped. They count as present, so the walk steps over them, and
-        no snapshot is ever returned.
+        the read skipped. They count as present, so the walk steps over them.
 
         Sets ``self._gap_watermark`` to the highest settled position, abandoned holes
-        included. ``tick`` advances the cursor to it after processing the batch.
+        and snapshot positions included. ``tick`` advances the cursor to it after processing the batch.
         """
         positioned = [
             (m.metadata.event_store.global_position, m)
