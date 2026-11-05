@@ -319,8 +319,8 @@ class _Run:
     """What one ``recover --verify-checkpoints`` run found and changed.
 
     ``statuses`` holds only the event-store subscriptions, with ``verdicts`` in
-    the same order. The four reset lists stay empty unless ``reset_beyond_head``
-    is set.
+    the same order. The reset lists stay empty unless ``reset_beyond_head`` is
+    set.
     """
 
     reset_beyond_head: bool

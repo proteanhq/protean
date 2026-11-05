@@ -279,10 +279,12 @@ def _load_source_ir(type: str, ir: str, source_domain: str) -> dict[str, Any] | 
 
 
 def _emit_generated(content: str, target_path: str, check: bool) -> None:
-    """Check the snapshot for drift, then write *content* to a file or stdout.
+    """Check the snapshot, or write *content* to a file or stdout.
 
-    Aborts when ``--check`` has no snapshot path; :func:`_check_snapshot`
-    exits on drift.
+    With *check* set, this never writes: it aborts when there is no snapshot
+    path, and otherwise :func:`_check_snapshot` exits with ``EXIT_OK`` on a
+    match and ``EXIT_FAILURE`` on drift. Without *check*, it writes *content*
+    to *target_path*, or to stdout when *target_path* is empty.
     """
     # --- Drift check (llms only, writes nothing) --------------------------
     if check:

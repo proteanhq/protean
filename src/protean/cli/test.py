@@ -1066,8 +1066,8 @@ def _run_pytest_for_marker(
     """Run pytest for a single capability marker and parse results.
 
     Uses ``--tb=no -q`` by default for clean output, or ``-v`` in verbose mode.
-    Results are captured via pytest's JSON report plugin (if available) or
-    parsed from the exit code and summary line.
+    The status comes from the pytest exit code, and the counts from the
+    summary line pytest prints to stdout.
     """
     cmd = _marker_command(marker, db_name, generic_test_dir, verbose)
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)

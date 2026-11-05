@@ -281,7 +281,11 @@ def _bounds_check_failed(name: str, exc: Exception) -> UpgradeFinding:
 def _bounds_alters(
     dialect: str, columns: dict[str, ReflectedColumn], bounds: dict[str, int]
 ) -> list[str]:
-    """Return one ALTER per outbox string column that is wider than its bound."""
+    """Return one ALTER per bounded outbox column that needs narrowing.
+
+    A column needs one when it is not a string type, has no length, or is
+    longer than its bound. Columns missing from *columns* are skipped.
+    """
     from sqlalchemy.types import String as SAString  # noqa: PLC0415
 
     alters: list[str] = []
