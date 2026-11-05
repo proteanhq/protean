@@ -278,10 +278,12 @@ the event store in a tight loop. With `tick_interval` 0, it waits 10 ms after
 the first empty read. With a longer `tick_interval`, the wait doubles from
 `tick_interval`. Each further empty read doubles it again, up to
 `max_tick_interval`. A read that returns messages sets the wait back
-to `tick_interval`. A read whose messages are all dropped by the
-`origin_stream` filter counts as empty. On a `$all` subscription, a read held
-at a gap counts as empty, and a read that moves the cursor past snapshot rows
-or an abandoned gap counts as a read that returns messages. The backoff adds at most
+to `tick_interval`. On a category subscription, a read whose messages are all
+dropped by the `origin_stream` filter counts as empty. On a `$all`
+subscription, a read held at a gap counts as empty, and a read that moves the
+cursor counts as a read that returns messages. The cursor moves past snapshot
+rows, an abandoned gap, and messages the `origin_stream` filter drops. The
+backoff adds at most
 `max_tick_interval` seconds, or `tick_interval` seconds when that is longer,
 before the subscription reads a new message.
 

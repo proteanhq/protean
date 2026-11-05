@@ -700,3 +700,27 @@ async def test_tick_held_at_a_gap_counts_as_idle(all_subscription, monkeypatch):
     assert had_work is False
     assert sub.current_position == 0
     assert sub._synced_backoff().current > 0
+
+
+@pytest.mark.asyncio
+async def test_tick_past_messages_the_origin_filter_drops_counts_as_activity(
+    all_subscription, test_domain
+):
+    """On ``$all``, the cursor moves past messages the ``origin_stream`` filter
+    drops, so the tick reports work and resets the idle wait."""
+    sub = all_subscription
+    sub.origin_stream = "no-such-stream"
+    store = test_domain.event_store.store
+    for identifier in ("t1", "t2"):
+        thing = Thing(id=identifier, name="thing")
+        thing.raise_(Pinged(id=identifier))
+        store.append(thing._events[-1])
+    backoff = sub._synced_backoff()
+    backoff.on_idle()
+    assert backoff.current > 0
+
+    had_work = await sub.tick()
+
+    assert had_work is True
+    assert sub.current_position == 2
+    assert backoff.current == sub.tick_interval

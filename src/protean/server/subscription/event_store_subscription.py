@@ -386,10 +386,12 @@ class EventStoreSubscription(BaseSubscription):
       starts at 10 ms after the first empty read; otherwise it doubles from
       ``tick_interval``. Each further empty read doubles it again, up to this
       cap. A read that returns messages sets the wait back to
-      ``tick_interval``. A read whose messages are all dropped by the
-      ``origin_stream`` filter, or held back at a ``$all`` gap, counts as
-      empty. A ``$all`` read that moves the cursor past snapshot rows or an
-      abandoned gap counts as a read that returns messages. ``0`` keeps the wait at ``tick_interval``. A value
+      ``tick_interval``. On a category subscription, a read whose messages
+      are all dropped by the ``origin_stream`` filter counts as empty. On a
+      ``$all`` subscription, a read held back at a gap counts as empty, and a
+      read that moves the cursor counts as a read that returns messages. The
+      cursor moves past snapshot rows, an abandoned gap, and messages the
+      ``origin_stream`` filter drops. ``0`` keeps the wait at ``tick_interval``. A value
       above 0 and below ``tick_interval`` is ignored with a warning. A value
       that is not a finite number of 0 or more is ignored with a warning, and
       the default applies.
