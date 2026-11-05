@@ -122,7 +122,9 @@ At commit, the store takes the category locks for all collected messages in
 sorted key order, then writes the messages in the order they were produced. A
 fixed lock order means two appending transactions cannot deadlock on each
 other's category locks. For any other lock cycle, PostgreSQL aborts one
-transaction and Protean's handler retry runs it again.
+transaction with a deadlock error, and the handler fails. Version retry covers
+only `ExpectedVersionError`, so the handler runs again only when transient
+retry is configured.
 
 Lock keys and position rules are a stable contract. Old and new code append
 side by side during a rolling deploy, so changing either requires stopping
