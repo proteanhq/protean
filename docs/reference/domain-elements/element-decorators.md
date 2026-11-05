@@ -341,8 +341,8 @@ anti-corruption layer, translating external payloads into domain operations.
 |--------|---------|-------------|
 | **`stream`** | — | **Required.** Broker stream name to subscribe to |
 | `broker` | `"default"` | Broker provider name |
-| `idempotent` | `False` | Record a marker per payload `metadata.headers.id` and skip a message that was already processed |
-| `provider` | `"default"` | Database provider that stores the markers of an `idempotent` subscriber |
+| `idempotent` | `False` | Skip a message whose payload `metadata.headers.id` this subscriber already processed |
+| `provider` | `"default"` | Database provider that stores the idempotency markers when `idempotent=True` |
 
 Guide: [Subscribers](../../guides/consume-state/subscribers.md)
 

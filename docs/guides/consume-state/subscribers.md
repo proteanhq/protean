@@ -136,9 +136,11 @@ is an error for an idempotent subscriber: Protean logs it, does not call
 `InsufficientDataError` to `handle_error`. In synchronous mode, `publish`
 raises it.
 
-The marker table is created by `domain.init()` only when a projector or
-subscriber sets `idempotent=True`. `protean idempotency cleanup` removes old
-markers, as it does for projectors.
+Protean registers the marker table only when a projector or subscriber sets
+`idempotent=True`. Run `protean db setup` (or your migration tool) to create it
+before you deploy, or the first delivery fails when it queries the missing
+table. `protean idempotency cleanup` removes old markers, as it does for
+projectors.
 
 On the in-memory provider, Protean skips a message whose marker it finds, but
 it does not stop two concurrent deliveries from both running. A relational
