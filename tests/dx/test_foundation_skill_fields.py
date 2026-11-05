@@ -102,6 +102,22 @@ def _declared_fields(tree: ast.Module) -> Iterator[tuple[int, str, ast.Call]]:
             yield node.lineno, name, value
 
 
+def _money_fields(tree: ast.Module) -> Iterator[tuple[int, str, ast.Call]]:
+    """Yield the declared number fields whose name says they hold money."""
+    for lineno, name, call in _declared_fields(tree):
+        if _callee(call) in _NUMBER_FIELDS and _MONEY_NAME.search(name):
+            yield lineno, name, call
+
+
+def _is_decimal_19_4(call: ast.Call) -> bool:
+    options = {k.arg: ast.unparse(k.value) for k in call.keywords}
+    return (
+        _callee(call) == "Decimal"
+        and options.get("precision") == "19"
+        and options.get("scale") == "4"
+    )
+
+
 def money_problems(root: Path) -> tuple[int, list[str]]:
     """Return the number of money fields seen and the ones not ``Decimal(19, 4)``."""
     seen = 0
@@ -110,17 +126,9 @@ def money_problems(root: Path) -> tuple[int, list[str]]:
         tree = _parse(source)
         if tree is None:
             continue
-        for lineno, name, call in _declared_fields(tree):
-            kind = _callee(call)
-            if kind not in _NUMBER_FIELDS or not _MONEY_NAME.search(name):
-                continue
+        for lineno, name, call in _money_fields(tree):
             seen += 1
-            options = {k.arg: ast.unparse(k.value) for k in call.keywords}
-            if not (
-                kind == "Decimal"
-                and options.get("precision") == "19"
-                and options.get("scale") == "4"
-            ):
+            if not _is_decimal_19_4(call):
                 problems.append(
                     f"{location} (+{lineno - 1}): {name}: {ast.unparse(call)}"
                 )
@@ -155,6 +163,17 @@ def _decorator_part_of(cls: ast.ClassDef) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _reference_calls(
+    tree: ast.Module,
+) -> Iterator[tuple[ast.ClassDef, str | None, str | None, ast.Call]]:
+    """Yield each ``Reference(...)`` call with its class, element kind and ``part_of``."""
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+        kind, part_of = _decorator_part_of(cls)
+        for node in ast.walk(cls):
+            if isinstance(node, ast.Call) and _callee(node) == "Reference":
+                yield cls, kind, part_of, node
+
+
 def reference_problems(root: Path) -> tuple[int, list[str]]:
     """Return the number of runnable ``Reference`` fields and the misplaced ones."""
     seen = 0
@@ -163,18 +182,14 @@ def reference_problems(root: Path) -> tuple[int, list[str]]:
         tree = _parse(source)
         if fragment or tree is None:
             continue
-        for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
-            kind, part_of = _decorator_part_of(cls)
-            for node in ast.walk(cls):
-                if not (isinstance(node, ast.Call) and _callee(node) == "Reference"):
-                    continue
-                seen += 1
-                target = _string_or_name(node.args[0]) if node.args else None
-                if kind != "entity" or target != part_of:
-                    problems.append(
-                        f"{location} (+{node.lineno - 1}): {kind} {cls.name} "
-                        f"(part_of={part_of}) references {target}"
-                    )
+        for cls, kind, part_of, node in _reference_calls(tree):
+            seen += 1
+            target = _string_or_name(node.args[0]) if node.args else None
+            if kind != "entity" or target != part_of:
+                problems.append(
+                    f"{location} (+{node.lineno - 1}): {kind} {cls.name} "
+                    f"(part_of={part_of}) references {target}"
+                )
     return seen, problems
 
 

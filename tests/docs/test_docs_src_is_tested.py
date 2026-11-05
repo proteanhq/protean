@@ -115,17 +115,24 @@ def loaded_examples(test_files: list[Path], root: Path) -> set[str]:
         tree = ast.parse(test_file.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
-                name = _call_name(node)
-                if name in LOADERS and not any(
-                    kw.arg == "root" for kw in node.keywords
-                ):
-                    path = _string_arg(node, "path")
-                    if path is not None and name == "run_example_tests":
-                        loaded |= _pytest_run_files(path, root, packages)
-                    elif path is not None:
-                        loaded.add(path)
+                loaded |= _files_loaded_by_call(node, root, packages)
         loaded |= imported_package_files(tree, root, packages)
     return loaded
+
+
+def _files_loaded_by_call(
+    node: ast.Call, root: Path, packages: dict[str, Path]
+) -> set[str]:
+    """Return the ``root``-relative paths one loader call loads, if it is one."""
+    name = _call_name(node)
+    if name not in LOADERS or any(kw.arg == "root" for kw in node.keywords):
+        return set()
+    path = _string_arg(node, "path")
+    if path is None:
+        return set()
+    if name == "run_example_tests":
+        return _pytest_run_files(path, root, packages)
+    return {path}
 
 
 def coverage_problems(

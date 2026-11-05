@@ -293,6 +293,30 @@ def _skill_asset_and_reference_files(root: Path, skill_dir: Path) -> list[str]:
     return files
 
 
+def _skill_references(
+    root: Path, skill: str, skill_dir: Path
+) -> tuple[list[Reference], set[str]]:
+    """Return a skill's references and the targets its SKILL.md links to."""
+    references: list[Reference] = []
+    skill_md_targets: set[str] = set()
+    for source in _skill_sources(skill_dir):
+        for ref in _references_in(root, skill, source):
+            references.append(ref)
+            if source.name == SKILL_FILE and ref.from_link:
+                skill_md_targets.add(ref.target)
+    return references, skill_md_targets
+
+
+def _orphans(root: Path, skill: str, skill_dir: Path) -> list[str]:
+    """Return the skill's asset and reference files its SKILL.md cannot reach."""
+    reachable = _reachable_files(root, skill, skill_dir)
+    return [
+        shipped
+        for shipped in _skill_asset_and_reference_files(root, skill_dir)
+        if shipped not in reachable
+    ]
+
+
 def scan_pack(pack_root: Path) -> PackIntegrityReport:
     """Walk the pack and report its reference integrity.
 
@@ -316,25 +340,14 @@ def scan_pack(pack_root: Path) -> PackIntegrityReport:
 
     for skill in skills:
         skill_dir = skills_root / skill
-
-        skill_md_targets: set[str] = set()
-        for source in _skill_sources(skill_dir):
-            for ref in _references_in(root, skill, source):
-                references.append(ref)
-                if not (root / ref.target).is_file():
-                    dangling.append(ref)
-                if source.name == SKILL_FILE and ref.from_link:
-                    skill_md_targets.add(ref.target)
-
+        skill_references, skill_md_targets = _skill_references(root, skill, skill_dir)
+        references += skill_references
+        dangling += [
+            ref for ref in skill_references if not (root / ref.target).is_file()
+        ]
         if VERIFY_TARGET not in skill_md_targets:
             skills_missing_verify.append(skill)
-
-        reachable = _reachable_files(root, skill, skill_dir)
-        orphans += [
-            shipped
-            for shipped in _skill_asset_and_reference_files(root, skill_dir)
-            if shipped not in reachable
-        ]
+        orphans += _orphans(root, skill, skill_dir)
 
     return PackIntegrityReport(
         skills=skills,

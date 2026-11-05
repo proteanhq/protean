@@ -1374,110 +1374,12 @@
     ]
   },
   {
-    "path": "tests/docs/test_docs_src_is_tested.py",
-    "file_name": "test_docs_src_is_tested.py",
-    "functions": [
-      {
-        "name": "loaded_examples",
-        "complexity": 18
-      }
-    ]
-  },
-  {
-    "path": "tests/dx/test_cross_aggregate_assets_redelivery.py",
-    "file_name": "test_cross_aggregate_assets_redelivery.py",
-    "functions": [
-      {
-        "name": "_reaches_another_aggregate",
-        "complexity": 26
-      }
-    ]
-  },
-  {
-    "path": "tests/dx/test_event_command_skill_claims.py",
-    "file_name": "test_event_command_skill_claims.py",
-    "functions": [
-      {
-        "name": "init_methods_that_raise_events",
-        "complexity": 17
-      }
-    ]
-  },
-  {
-    "path": "tests/dx/test_foundation_skill_fields.py",
-    "file_name": "test_foundation_skill_fields.py",
-    "functions": [
-      {
-        "name": "money_problems",
-        "complexity": 16
-      },
-      {
-        "name": "reference_problems",
-        "complexity": 26
-      }
-    ]
-  },
-  {
-    "path": "tests/dx/test_pack_integrity.py",
-    "file_name": "test_pack_integrity.py",
-    "functions": [
-      {
-        "name": "scan_pack",
-        "complexity": 23
-      }
-    ]
-  },
-  {
     "path": "tests/dx/test_plugin.py",
     "file_name": "test_plugin.py",
     "functions": [
       {
         "name": "test_relative_links_resolve_inside_the_render",
         "complexity": 28
-      }
-    ]
-  },
-  {
-    "path": "tests/ir/test_deprecation_coverage_audit.py",
-    "file_name": "test_deprecation_coverage_audit.py",
-    "functions": [
-      {
-        "name": "TestRegistryIsTheOnlyWarnPath::_uses_bare_primitive",
-        "complexity": 23
-      }
-    ]
-  },
-  {
-    "path": "tests/ir/test_schema_formats.py",
-    "file_name": "test_schema_formats.py",
-    "functions": [
-      {
-        "name": "_parse_proto",
-        "complexity": 18
-      },
-      {
-        "name": "_assert_valid_proto_tree",
-        "complexity": 35
-      }
-    ]
-  },
-  {
-    "path": "tests/ir/test_sequential_by_ir.py",
-    "file_name": "test_sequential_by_ir.py",
-    "functions": [
-      {
-        "name": "_path_to",
-        "complexity": 17
-      }
-    ]
-  },
-  {
-    "path": "tests/test_provider_capability_matrix_is_current.py",
-    "file_name": "test_provider_capability_matrix_is_current.py",
-    "functions": [
-      {
-        "name": "_matrix",
-        "complexity": 16
       }
     ]
   },

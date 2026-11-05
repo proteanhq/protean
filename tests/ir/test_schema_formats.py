@@ -697,18 +697,7 @@ def _parse_proto(text: str) -> dict[str, Any]:
             if header["import"]:
                 imports.append(header["import"])
             continue
-        if opened := _MESSAGE_OPEN_RE.match(line):
-            assert len(opened["indent"]) == 2 * len(scope), line
-            scope.append(opened["name"])
-            messages.append(".".join(scope))
-            continue
-        if line == "  " * (len(scope) - 1) + "}" and scope:
-            scope.pop()
-            continue
-        field = _FIELD_RE.match(line)
-        assert field is not None and scope, f"unexpected line: {line!r}"
-        assert len(field["indent"]) == 2 * len(scope), line
-        types.append((".".join(scope), field["type"]))
+        _parse_message_line(line, scope, messages, types)
     assert scope == [], "unclosed message block"
     assert len(packages) == 1, packages
     assert len(imports) == len(set(imports)), f"duplicate import in {imports}"
@@ -718,6 +707,28 @@ def _parse_proto(text: str) -> dict[str, Any]:
         "messages": messages,
         "types": types,
     }
+
+
+def _parse_message_line(
+    line: str, scope: list[str], messages: list[str], types: list[tuple[str, str]]
+) -> None:
+    """Read a message opening, a closing brace or a field into the parse state.
+
+    ``scope`` holds the enclosing message names and changes as blocks open and
+    close. Any other line fails the test.
+    """
+    if opened := _MESSAGE_OPEN_RE.match(line):
+        assert len(opened["indent"]) == 2 * len(scope), line
+        scope.append(opened["name"])
+        messages.append(".".join(scope))
+        return
+    if line == "  " * (len(scope) - 1) + "}" and scope:
+        scope.pop()
+        return
+    field = _FIELD_RE.match(line)
+    assert field is not None and scope, f"unexpected line: {line!r}"
+    assert len(field["indent"]) == 2 * len(scope), line
+    types.append((".".join(scope), field["type"]))
 
 
 def _assert_valid_proto_tree(schemas_dir: Path) -> dict[str, dict[str, Any]]:
@@ -735,6 +746,16 @@ def _assert_valid_proto_tree(schemas_dir: Path) -> dict[str, dict[str, Any]]:
     }
     assert files, "the tree holds no .proto files"
 
+    _assert_each_message_defined_once(files)
+    for path, parsed in files.items():
+        own = {f"{parsed['package']}.{m}" for m in parsed["messages"]}
+        visible = own | _imported_messages(path, parsed, files)
+        for scope, proto_type in parsed["types"]:
+            _assert_type_resolves(path, parsed, scope, proto_type, own, visible)
+    return files
+
+
+def _assert_each_message_defined_once(files: dict[str, dict[str, Any]]) -> None:
     defined_in: dict[str, list[str]] = {}
     for path, parsed in files.items():
         for message in parsed["messages"]:
@@ -742,35 +763,46 @@ def _assert_valid_proto_tree(schemas_dir: Path) -> dict[str, dict[str, Any]]:
     duplicates = {name: paths for name, paths in defined_in.items() if len(paths) > 1}
     assert duplicates == {}
 
-    for path, parsed in files.items():
-        package = parsed["package"]
-        own = {f"{package}.{m}" for m in parsed["messages"]}
-        visible = set(own)
-        for imported in parsed["imports"]:
-            if imported == _TIMESTAMP_IMPORT:
-                continue
-            assert imported in files, f"{path} imports missing {imported}"
-            target = files[imported]
-            visible |= {f"{target['package']}.{m}" for m in target["messages"]}
 
-        for scope, proto_type in parsed["types"]:
-            if proto_type in _PROTO_SCALARS or proto_type == "map<string, string>":
-                continue
-            if proto_type == ".google.protobuf.Timestamp":
-                assert _TIMESTAMP_IMPORT in parsed["imports"]
-                continue
-            if proto_type.startswith("."):
-                assert proto_type[1:] in visible, f"{path}: {proto_type} unresolved"
-                continue
-            # A bare name names a message in this file, searched from the
-            # innermost scope outwards.
-            parts = scope.split(".")
-            candidates = [
-                ".".join([package, *parts[:depth], proto_type])
-                for depth in range(len(parts), -1, -1)
-            ]
-            assert any(c in own for c in candidates), f"{path}: {proto_type}"
-    return files
+def _imported_messages(
+    path: str, parsed: dict[str, Any], files: dict[str, dict[str, Any]]
+) -> set[str]:
+    """Return the full names of the messages in the files ``parsed`` imports."""
+    imported_messages: set[str] = set()
+    for imported in parsed["imports"]:
+        if imported == _TIMESTAMP_IMPORT:
+            continue
+        assert imported in files, f"{path} imports missing {imported}"
+        target = files[imported]
+        imported_messages |= {f"{target['package']}.{m}" for m in target["messages"]}
+    return imported_messages
+
+
+def _assert_type_resolves(
+    path: str,
+    parsed: dict[str, Any],
+    scope: str,
+    proto_type: str,
+    own: set[str],
+    visible: set[str],
+) -> None:
+    """Check that a field type is a scalar or a message the file can see."""
+    if proto_type in _PROTO_SCALARS or proto_type == "map<string, string>":
+        return
+    if proto_type == ".google.protobuf.Timestamp":
+        assert _TIMESTAMP_IMPORT in parsed["imports"]
+        return
+    if proto_type.startswith("."):
+        assert proto_type[1:] in visible, f"{path}: {proto_type} unresolved"
+        return
+    # A bare name names a message in this file, searched from the
+    # innermost scope outwards.
+    parts = scope.split(".")
+    candidates = [
+        ".".join([parsed["package"], *parts[:depth], proto_type])
+        for depth in range(len(parts), -1, -1)
+    ]
+    assert any(c in own for c in candidates), f"{path}: {proto_type}"
 
 
 def _vo_field(target: str, kind: str = "value_object") -> dict[str, Any]:
