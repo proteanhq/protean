@@ -2,10 +2,18 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.exceptions import NoDomainException
+from tests.outbox.test_reconciliation import (
+    Account,
+    _fund,
+    _funded_message_ids,
+    _lose_rows,
+    _make_domain,
+)
 
 runner = CliRunner()
 
@@ -89,6 +97,29 @@ class TestOutboxReconcile:
         output = " ".join(result.output.split())  # undo terminal line wrapping
         assert 'default_subscription_type = "stream" under [server]' in output
         assert "enable_outbox = true" in output
+
+    @pytest.mark.no_test_domain
+    def test_reconcile_repairs_a_lost_row_behind_a_later_commit(self, tmp_path):
+        domain = _make_domain(tmp_path)
+        with domain.domain_context():
+            provider = domain.providers["default"]
+            domain.repository_for(Account)._dao
+            outbox_repo = domain._get_outbox_repo("default")
+            outbox_repo._dao
+            provider._metadata.create_all(provider._engine)
+            _fund(domain)
+            _fund(domain)
+            older_id, newer_id = _funded_message_ids(domain)
+            _lose_rows(outbox_repo, older_id)
+
+        with patch("protean.cli.outbox.load_domain", return_value=domain):
+            result = runner.invoke(app, ["outbox", "reconcile", "--domain", "x"])
+
+        assert result.exit_code == 0, result.output
+        assert "Reconciled 1 outbox row(s) from the event store." in result.output
+        with domain.domain_context():
+            assert len(outbox_repo.find_all_by_message_id(older_id)) == 1
+            assert len(outbox_repo.find_all_by_message_id(newer_id)) == 1
 
     def test_reconcile_aborts_when_domain_not_found(self):
         with patch(

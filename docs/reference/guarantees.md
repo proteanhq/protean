@@ -171,11 +171,11 @@ commit follows it non-atomically.
     ([ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md)) is marked
     *Proposed*: the window between the event-store append and the relational/outbox
     commit is closed by a reconciliation sweep on startup for event-sourced
-    aggregates. When the newest event-sourced aggregate's event has lost its
-    internal outbox row, the sweep rebuilds the rows of every recent
-    event-sourced aggregate's event that lost its internal row, including the
-    external-broker rows of a `published` event. A state-based aggregate's
-    event with no outbox row is not rebuilt. On a transactional provider its
+    aggregates. The sweep rebuilds the rows of every recent event-sourced
+    aggregate's event that has lost its internal outbox row, including the
+    external-broker rows of a `published` event. It skips events older than the
+    cleanup retention. A state-based aggregate's event with no outbox row is not
+    rebuilt. On a transactional provider its
     aggregate row commits or rolls back together with its outbox rows. On a
     provider without transactions, such as Elasticsearch, the row can be saved
     while its outbox row is lost, and that event stays unpublished. Treat this

@@ -129,8 +129,10 @@ Negative:
   the framework code must handle both.
 - A reconciliation and repair capability is new surface to build, test, and
   operate: a repair command and a startup sweep. The startup sweep adds bounded
-  work to server boot (a scan for unreconciled events) and must be cheap in the
-  common case where there is nothing to repair. It is the price of not having
+  work to server boot (a scan for unreconciled events) and must stay bounded
+  in the common case where there is nothing to repair: it reads at most the
+  configured window of recent messages and looks up their outbox rows in
+  batches. It is the price of not having
   true cross-store atomicity.
 - This is not two-phase commit. A narrow window remains in which events are
   durable but their outbox rows are not yet committed. The design makes that

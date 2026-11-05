@@ -281,12 +281,11 @@ rebuilt on restart with no operator action:
 $ protean server --domain=my_domain
 ```
 
-The sweep reads nothing when no event-sourced aggregate is on the provider. It
-checks only the newest stored message when that message is an event-sourced
-aggregate's event and has its row. Otherwise it reads the newest 1,000
-messages. That happens when the newest message is missing its row, belongs to
-another domain sharing the store, is a command, or is a state-based aggregate's
-event. The sweep never blocks boot (a failure is logged and startup continues),
+The sweep reads nothing when no event-sourced aggregate is on the provider.
+Otherwise it reads the newest 1,000 messages and rebuilds the row of every
+event-sourced aggregate's event among them that is missing its row. This
+covers a row lost behind a later commit by another process in the same domain.
+The sweep never blocks boot (a failure is logged and startup continues),
 and is safe under `--workers N`, because the composite unique index on
 (`message_id`, `target_broker`) makes concurrent sweeps idempotent. A sweep is
 also safe while a command is committing. If the sweep writes a row before the
@@ -339,7 +338,13 @@ Cleanup deletes delivered rows after `published_retention_hours` and abandoned
 rows after `abandoned_retention_hours`. A deleted row looks the same as a row
 lost in a crash. So reconciliation skips events older than the shorter of the
 two retentions, which keeps a restart from sending old events again. An event
-lost in a crash and left unrepaired for longer than that is not repaired.
+lost in a crash and left unrepaired for longer than that is not repaired. The
+cutoff uses the current retentions. If you raise a retention after cleanup ran
+with a lower one, the next sweep rebuilds the rows cleanup deleted in between,
+and those events are published again.
+
+A rebuilt row is created when the sweep saves it, with priority 0. So an event
+rebuilt behind a later commit can be delivered after that commit's events.
 
 See the
 [`protean outbox reconcile` reference](../../reference/cli/data/outbox.md) for
