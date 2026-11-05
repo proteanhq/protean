@@ -225,3 +225,64 @@ def test_new_skips_setup_with_skip_setup(monkeypatch: pytest.MonkeyPatch) -> Non
 
     assert result.exit_code == 0, result.output
     assert calls == []
+
+
+def _make_activation_scripts(project_dir: Path) -> None:
+    scripts = project_dir / "scripts"
+    scripts.mkdir()
+    for name in ("activate.sh", "activate.bat", "activate.fish"):
+        (scripts / name).write_text("", encoding="utf-8")
+
+
+@pytest.mark.usefixtures("uv_found", "fake_subprocess")
+class TestQuickStart:
+    @pytest.mark.parametrize(
+        ("os_name", "shell", "expected"),
+        [
+            ("posix", "/bin/bash", "source scripts/activate.sh"),
+            ("posix", "/usr/bin/fish", "source scripts/activate.fish"),
+            ("nt", "/bin/bash", "scripts/activate.bat"),
+        ],
+    )
+    def test_prints_the_activation_script_for_the_platform(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        os_name: str,
+        shell: str,
+        expected: str,
+    ) -> None:
+        _make_activation_scripts(tmp_path)
+        monkeypatch.setenv("SHELL", shell)
+        monkeypatch.setattr(new_module, "os", _OsWithName(os_name))
+
+        new_module.run_project_setup(str(tmp_path))
+
+        out = _flat(capsys.readouterr().out)
+        assert f"💡 Quick Start: {expected} This will:" in out
+
+    def test_makes_the_posix_scripts_executable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _make_activation_scripts(tmp_path)
+        monkeypatch.setattr(new_module, "os", _OsWithName("posix"))
+
+        new_module.run_project_setup(str(tmp_path))
+
+        scripts = tmp_path / "scripts"
+        assert (scripts / "activate.sh").stat().st_mode & 0o777 == 0o755
+        assert (scripts / "activate.fish").stat().st_mode & 0o777 == 0o755
+
+    def test_prints_no_script_when_the_template_has_none(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(new_module, "os", _OsWithName("posix"))
+
+        new_module.run_project_setup(str(tmp_path))
+
+        out = _flat(capsys.readouterr().out)
+        assert "💡 Quick Start: This will:" in out
