@@ -110,28 +110,6 @@
     ]
   },
   {
-    "path": "src/protean/cli/test.py",
-    "file_name": "test.py",
-    "functions": [
-      {
-        "name": "TestRunner::run_full_suite_with_matrix_first",
-        "complexity": 18
-      },
-      {
-        "name": "_run_pytest_for_marker",
-        "complexity": 19
-      },
-      {
-        "name": "test_adapter",
-        "complexity": 23
-      },
-      {
-        "name": "test",
-        "complexity": 25
-      }
-    ]
-  },
-  {
     "path": "src/protean/core/aggregate.py",
     "file_name": "aggregate.py",
     "functions": [
