@@ -170,91 +170,66 @@ def _select_service_tests(config, items) -> None:
         items[:] = selected
 
 
+# The markers whose tests run only when the option of the same name is given,
+# in the order their skips are added to a test.
+OPT_IN_MARKERS = (
+    "slow",
+    "pending",
+    "sqlite",
+    "postgresql",
+    "elasticsearch",
+    "mssql",
+    "mysql",
+    "redis",
+    "message_db",
+)
+
+# The database capability markers whose tests need the ``db`` fixture.
+DATABASE_CAPABILITY_MARKERS = (
+    "basic_storage",
+    "transactional",
+    "atomic_transactions",
+    "raw_queries",
+    "schema_management",
+    "native_json",
+    "native_array",
+    "sa_provider",
+)
+
+
+def _skip_opt_in_tests(config, items) -> None:
+    """Skip each test that carries an opt-in marker whose option was not given."""
+    skips = {
+        marker: pytest.mark.skip(reason=f"need --{marker} option to run")
+        for marker in OPT_IN_MARKERS
+        if not config.getoption(f"--{marker}")
+    }
+    for item in items:
+        for marker, skip in skips.items():
+            if marker in item.keywords:
+                item.add_marker(skip)
+
+
+def _needs_database(item) -> bool:
+    """Whether ``item`` is marked ``database`` or with a database capability."""
+    if item.get_closest_marker("database"):
+        return True
+    return any(
+        item.get_closest_marker(marker_name)
+        for marker_name in DATABASE_CAPABILITY_MARKERS
+    )
+
+
 def pytest_collection_modifyitems(config, items):
     """Configure special markers on tests, so as to control execution"""
     _select_service_tests(config, items)
+    _skip_opt_in_tests(config, items)
 
-    run_slow = run_pending = run_sqlite = run_postgresql = run_elasticsearch = (
-        run_redis
-    ) = run_message_db = run_mssql = run_mysql = False
-
-    if config.getoption("--slow"):
-        # --slow given in cli: do not skip slow tests
-        run_slow = True
-
-    if config.getoption("--pending"):
-        run_pending = True
-
-    if config.getoption("--sqlite"):
-        run_sqlite = True
-
-    if config.getoption("--postgresql"):
-        run_postgresql = True
-
-    if config.getoption("--elasticsearch"):
-        run_elasticsearch = True
-
-    if config.getoption("--mssql"):
-        run_mssql = True
-
-    if config.getoption("--mysql"):
-        run_mysql = True
-
-    if config.getoption("--redis"):
-        run_redis = True
-
-    if config.getoption("--message_db"):
-        run_message_db = True
-
-    skip_slow = pytest.mark.skip(reason="need --slow option to run")
-    skip_pending = pytest.mark.skip(reason="need --pending option to run")
-    skip_sqlite = pytest.mark.skip(reason="need --sqlite option to run")
-    skip_postgresql = pytest.mark.skip(reason="need --postgresql option to run")
-    skip_elasticsearch = pytest.mark.skip(reason="need --elasticsearch option to run")
-    skip_mssql = pytest.mark.skip(reason="need --mssql option to run")
-    skip_mysql = pytest.mark.skip(reason="need --mysql option to run")
-    skip_redis = pytest.mark.skip(reason="need --redis option to run")
-    skip_message_db = pytest.mark.skip(reason="need --message_db option to run")
-
+    # Add the `db` fixture to tests that need a database, to setup and
+    #   destroy database artifacts
     for item in items:
-        if "slow" in item.keywords and run_slow is False:
-            item.add_marker(skip_slow)
-        if "pending" in item.keywords and run_pending is False:
-            item.add_marker(skip_pending)
-        if "sqlite" in item.keywords and run_sqlite is False:
-            item.add_marker(skip_sqlite)
-        if "postgresql" in item.keywords and run_postgresql is False:
-            item.add_marker(skip_postgresql)
-        if "elasticsearch" in item.keywords and run_elasticsearch is False:
-            item.add_marker(skip_elasticsearch)
-        if "mssql" in item.keywords and run_mssql is False:
-            item.add_marker(skip_mssql)
-        if "mysql" in item.keywords and run_mysql is False:
-            item.add_marker(skip_mysql)
-        if "redis" in item.keywords and run_redis is False:
-            item.add_marker(skip_redis)
-        if "message_db" in item.keywords and run_message_db is False:
-            item.add_marker(skip_message_db)
-
-        # Automatically add the `db` fixture to tests marked with `database`
-        #   or any database capability marker, to setup and destroy database artifacts
-        if item.get_closest_marker("database"):
+        if _needs_database(item):
             item.fixturenames.append("db")
-        else:
-            capability_markers = [
-                "basic_storage",
-                "transactional",
-                "atomic_transactions",
-                "raw_queries",
-                "schema_management",
-                "native_json",
-                "native_array",
-                "sa_provider",
-            ]
-            for marker_name in capability_markers:
-                if item.get_closest_marker(marker_name):
-                    item.fixturenames.append("db")
-                    break  # Only need to add db once
 
 
 @pytest.fixture(scope="session")

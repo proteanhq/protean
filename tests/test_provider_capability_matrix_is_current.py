@@ -51,11 +51,7 @@ def _matrix() -> tuple[list[str], dict[str, list[bool]]]:
 
     header: list[str] | None = None
     rows: dict[str, list[bool]] = {}
-    for line in lines[start:]:
-        if not line.startswith("|"):
-            if header is not None:
-                break
-            continue
+    for line in _first_table(lines[start:]):
         cells = [cell.strip() for cell in line.strip("|").split("|")]
         if header is None:
             header = cells[1:]
@@ -66,6 +62,17 @@ def _matrix() -> tuple[list[str], dict[str, list[bool]]]:
 
     assert header is not None, "no capability matrix found on the page"
     return header, rows
+
+
+def _first_table(lines: list[str]) -> list[str]:
+    """Return the first run of consecutive table lines in ``lines``."""
+    table: list[str] = []
+    for line in lines:
+        if line.startswith("|"):
+            table.append(line)
+        elif table:
+            break
+    return table
 
 
 def _provider_names() -> set[str]:

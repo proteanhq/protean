@@ -114,15 +114,23 @@ class LoggingSnapshot:
         Loggers created since the snapshot get the stdlib defaults. The
         handlers pytest attaches for its own log capture are left alone.
         """
-        manager = logging.Logger.manager
-        if manager.disable != self.disable_level:
+        if logging.Logger.manager.disable != self.disable_level:
             logging.disable(self.disable_level)
         if _structlog_config() != self.structlog_config:
             structlog.configure(**self.structlog_config)
         structlog.contextvars.clear_contextvars()
 
         attached_before = _attached_handlers()
+        self._restore_loggers()
 
+        # A handler the test attached and nothing holds any more would stay
+        # open until garbage collection, a log file included.
+        for handler in attached_before - _attached_handlers():
+            if not _is_pytest_handler(handler):
+                handler.close()
+
+    def _restore_loggers(self) -> None:
+        """Put back the root logger, the named loggers and the root handler filters."""
         root = logging.getLogger()
         level, handlers, filters, propagate, disabled = self.root
         pytest_handlers = [h for h in root.handlers if _is_pytest_handler(h)]
@@ -130,16 +138,10 @@ class LoggingSnapshot:
         _restore_logger(
             root, (level, own_handlers + pytest_handlers, filters, propagate, disabled)
         )
-        for name, logger in list(manager.loggerDict.items()):
+        for name, logger in list(logging.Logger.manager.loggerDict.items()):
             if isinstance(logger, logging.Logger):
                 state = self.named.get(name) or _new_logger_state(logger)
                 _restore_logger(logger, state)
         for handler, handler_filters in self.root_handler_filters:
             if handler.filters != handler_filters:
                 handler.filters = handler_filters
-
-        # A handler the test attached and nothing holds any more would stay
-        # open until garbage collection, a log file included.
-        for handler in attached_before - _attached_handlers():
-            if not _is_pytest_handler(handler):
-                handler.close()

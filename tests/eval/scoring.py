@@ -172,39 +172,57 @@ def _signature_sources(ir: dict[str, Any]) -> dict[Signature, set[str]]:
     if not isinstance(ir, dict):
         return {}
     sources: dict[Signature, set[str]] = defaultdict(set)
-
     elements = ir.get("elements")
     if isinstance(elements, dict):
-        for ir_key, category in _SCORED_CATEGORIES.items():
-            for fqn in elements.get(ir_key) or []:
-                if isinstance(fqn, str):
-                    sources[(category, _class_name(fqn))].add(fqn)
-
+        _add_element_sources(sources, elements)
     clusters = ir.get("clusters")
     if isinstance(clusters, dict):
-        for cluster_key, cluster in clusters.items():
-            if not isinstance(cluster, dict):
-                continue
-            aggregate = cluster.get("aggregate")
-            if not isinstance(aggregate, dict):
-                continue
-            fields = aggregate.get("fields")
-            if not isinstance(fields, dict):
-                continue
-            aggregate_name = aggregate.get("name") or _class_name(
-                str(aggregate.get("fqn", ""))
-            )
-            if not aggregate_name:
-                # No name and no fqn: skip rather than key every field under the
-                # empty string, where two such aggregates would collide. Real IR
-                # always carries a name, so this only guards a malformed input.
-                continue
-            for field_name in fields:
-                sources[("field", str(aggregate_name), str(field_name))].add(
-                    f"{cluster_key}.{field_name}"
-                )
-
+        _add_field_sources(sources, clusters)
     return dict(sources)
+
+
+def _add_element_sources(
+    sources: dict[Signature, set[str]], elements: dict[str, Any]
+) -> None:
+    """Add each scored category element under ``elements`` to ``sources``."""
+    for ir_key, category in _SCORED_CATEGORIES.items():
+        for fqn in elements.get(ir_key) or []:
+            if isinstance(fqn, str):
+                sources[(category, _class_name(fqn))].add(fqn)
+
+
+def _add_field_sources(
+    sources: dict[Signature, set[str]], clusters: dict[str, Any]
+) -> None:
+    """Add each aggregate field in ``clusters`` to ``sources``."""
+    for cluster_key, cluster in clusters.items():
+        named_fields = _aggregate_fields(cluster)
+        if named_fields is None:
+            continue
+        aggregate_name, fields = named_fields
+        for field_name in fields:
+            sources[("field", aggregate_name, str(field_name))].add(
+                f"{cluster_key}.{field_name}"
+            )
+
+
+def _aggregate_fields(cluster: Any) -> tuple[str, dict[str, Any]] | None:
+    """Return a cluster's aggregate name and fields, or ``None`` when malformed."""
+    if not isinstance(cluster, dict):
+        return None
+    aggregate = cluster.get("aggregate")
+    if not isinstance(aggregate, dict):
+        return None
+    fields = aggregate.get("fields")
+    if not isinstance(fields, dict):
+        return None
+    aggregate_name = aggregate.get("name") or _class_name(str(aggregate.get("fqn", "")))
+    if not aggregate_name:
+        # No name and no fqn: skip rather than key every field under the
+        # empty string, where two such aggregates would collide. Real IR
+        # always carries a name, so this only guards a malformed input.
+        return None
+    return str(aggregate_name), fields
 
 
 def element_signatures(ir: dict[str, Any]) -> set[Signature]:

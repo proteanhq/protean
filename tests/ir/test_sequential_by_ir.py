@@ -191,6 +191,17 @@ def _error_paths(ir):
 
 def _path_to(ir, name):
     """Return the JSON path to ``name``'s ``sequential_by`` key."""
+    path = (
+        _handler_path(ir, name)
+        or _projector_path(ir, name)
+        or _process_manager_path(ir, name)
+    )
+    if path is None:
+        pytest.fail(f"{name} not found in the IR")
+    return path
+
+
+def _handler_path(ir, name):
     cluster_fqn, cluster = next(
         (fqn, c)
         for fqn, c in ir["clusters"].items()
@@ -200,6 +211,10 @@ def _path_to(ir, name):
         for fqn, element in cluster[section].items():
             if element["name"] == name:
                 return ["clusters", cluster_fqn, section, fqn, "sequential_by"]
+    return None
+
+
+def _projector_path(ir, name):
     for projection_fqn, projection in ir["projections"].items():
         for fqn, element in projection["projectors"].items():
             if element["name"] == name:
@@ -210,10 +225,14 @@ def _path_to(ir, name):
                     fqn,
                     "sequential_by",
                 ]
+    return None
+
+
+def _process_manager_path(ir, name):
     for fqn, element in ir["flows"]["process_managers"].items():
         if element["name"] == name:
             return ["flows", "process_managers", fqn, "sequential_by"]
-    pytest.fail(f"{name} not found in the IR")
+    return None
 
 
 @pytest.mark.no_test_domain

@@ -168,6 +168,13 @@ class TestDeprecationValidation:
             )
 
 
+def _refers_to(target: ast.expr, name: str) -> bool:
+    """True if ``target`` is the bare name ``name`` or an attribute ``.name``."""
+    return (isinstance(target, ast.Name) and target.id == name) or (
+        isinstance(target, ast.Attribute) and target.attr == name
+    )
+
+
 class TestRegistryIsTheOnlyWarnPath:
     """The central guarantee of #1121: a framework-API deprecation cannot warn
     without a registry entry, because every warn site routes through
@@ -196,22 +203,13 @@ class TestRegistryIsTheOnlyWarnPath:
         ``TestBarePrimitiveMatchForms``.
         """
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and (
-                (isinstance(node.func, ast.Name) and node.func.id == "warn_deprecated")
-                or (
-                    isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "warn_deprecated"
-                )
+            if isinstance(node, ast.Call) and _refers_to(node.func, "warn_deprecated"):
+                return True
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(
+                _refers_to(dec.func if isinstance(dec, ast.Call) else dec, "deprecated")
+                for dec in node.decorator_list
             ):
                 return True
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                for dec in node.decorator_list:
-                    target = dec.func if isinstance(dec, ast.Call) else dec
-                    if (isinstance(target, ast.Name) and target.id == "deprecated") or (
-                        isinstance(target, ast.Attribute)
-                        and target.attr == "deprecated"
-                    ):
-                        return True
         return False
 
     @classmethod

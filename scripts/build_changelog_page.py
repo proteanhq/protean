@@ -128,22 +128,26 @@ def parse(text: str) -> list[Release]:
 
         heading = _GROUP.match(line)
         if heading:
-            name = heading.group(1)
-            # 0.15.0 declares Added and Fixed twice each. On a page that reads
-            # as the same label repeating, so the entries join the first block
-            # of that name instead.
-            existing = next((b for n, b in current.groups if n == name), None)
-            if existing is not None:
-                group = existing
-            else:
-                group = []
-                current.groups.append((name, group))
+            group = _group_named(current, heading.group(1))
             continue
 
         if group is not None:
             group.append(line)
 
     return releases
+
+
+def _group_named(release: Release, name: str) -> list[str]:
+    """Return the release's block of entries under ``name``, adding it if new."""
+    # 0.15.0 declares Added and Fixed twice each. On a page that reads
+    # as the same label repeating, so the entries join the first block
+    # of that name instead.
+    existing = next((b for n, b in release.groups if n == name), None)
+    if existing is not None:
+        return existing
+    group: list[str] = []
+    release.groups.append((name, group))
+    return group
 
 
 def rewrite_links(line: str) -> str:

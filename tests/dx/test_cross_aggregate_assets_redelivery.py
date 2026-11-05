@@ -425,28 +425,40 @@ def _reaches_another_aggregate(
     another aggregate. A call to a function defined at module level is
     followed into that function. A method on another object is not.
     """
-    for child in ast.walk(node):
-        if not isinstance(child, ast.Call):
-            continue
-        func = child.func
-        if isinstance(func, ast.Name) and func.id in helpers:
-            if func.id not in followed and _reaches_another_aggregate(
-                helpers[func.id], part_of, helpers, followed | {func.id}
-            ):
-                return True
-            continue
-        if not isinstance(func, ast.Attribute):
-            continue
-        if func.attr == "process":
-            return True
-        if func.attr == "repository_for" and child.args:
-            target = child.args[0]
-            if isinstance(target, ast.Name) and target.id == part_of:
-                continue
-            if isinstance(target, ast.Constant) and target.value == part_of:
-                continue
-            return True
+    return any(
+        _call_reaches_another_aggregate(child, part_of, helpers, followed)
+        for child in ast.walk(node)
+        if isinstance(child, ast.Call)
+    )
+
+
+def _call_reaches_another_aggregate(
+    call: ast.Call,
+    part_of: str,
+    helpers: dict[str, ast.FunctionDef],
+    followed: frozenset[str],
+) -> bool:
+    """True when this call issues a command or loads a different aggregate,
+    or calls a module-level function whose body does either."""
+    func = call.func
+    if isinstance(func, ast.Name) and func.id in helpers:
+        return func.id not in followed and _reaches_another_aggregate(
+            helpers[func.id], part_of, helpers, followed | {func.id}
+        )
+    if not isinstance(func, ast.Attribute):
+        return False
+    if func.attr == "process":
+        return True
+    if func.attr == "repository_for" and call.args:
+        return not _names_aggregate(call.args[0], part_of)
     return False
+
+
+def _names_aggregate(target: ast.expr, part_of: str) -> bool:
+    """True when ``target`` names ``part_of``, as a class or as a string."""
+    if isinstance(target, ast.Name):
+        return target.id == part_of
+    return isinstance(target, ast.Constant) and target.value == part_of
 
 
 def _module_functions(tree: ast.Module) -> dict[str, ast.FunctionDef]:

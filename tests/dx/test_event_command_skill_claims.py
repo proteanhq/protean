@@ -80,20 +80,23 @@ def decorator_names(node: ast.ClassDef) -> list[str]:
 
 
 def init_methods_that_raise_events(classes) -> list[str]:
-    found = []
-    for label, node in classes:
-        for item in node.body:
-            if isinstance(item, ast.FunctionDef) and item.name == "__init__":
-                calls = [
-                    call
-                    for call in ast.walk(item)
-                    if isinstance(call, ast.Call)
-                    and isinstance(call.func, ast.Attribute)
-                    and call.func.attr == "raise_"
-                ]
-                if calls:
-                    found.append(f"{label}: {node.name}.__init__")
-    return found
+    return [
+        f"{label}: {node.name}.__init__"
+        for label, node in classes
+        for item in node.body
+        if isinstance(item, ast.FunctionDef)
+        and item.name == "__init__"
+        and _calls_raise(item)
+    ]
+
+
+def _calls_raise(function: ast.FunctionDef) -> bool:
+    return any(
+        isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "raise_"
+        for call in ast.walk(function)
+    )
 
 
 def test_every_skill_has_runnable_code():

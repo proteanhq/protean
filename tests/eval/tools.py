@@ -316,33 +316,11 @@ def _decode_envelope(stdout: str) -> dict[str, Any] | None:
 def _summarize_verify(stdout: str, exit_code: int, stderr: str = "") -> VerifyResult:
     envelope = _decode_envelope(stdout)
     if envelope is None:
-        # verify crashed or emitted no JSON envelope. Keep a stderr tail in the
-        # error so the failure is diagnosable without re-running by hand.
-        detail = stderr.strip().splitlines()[-5:]
-        suffix = f": {' / '.join(detail)}" if detail else ""
-        return {
-            "ok": False,
-            "verdict": "fail",
-            "counts": dict(_EMPTY_COUNTS),
-            "codes": [],
-            "errors": [],
-            "exit_code": exit_code,
-            "error": f"verify did not emit a parseable JSON envelope{suffix}",
-        }
+        return _unparseable_verify(exit_code, stderr)
 
-    data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
-    stages = data.get("stages") if isinstance(data.get("stages"), dict) else {}
-
-    def _stage(name: str) -> dict[str, Any]:
-        stage = stages.get(name)
-        return stage if isinstance(stage, dict) else {}
-
-    init, check, tests = _stage("init"), _stage("check"), _stage("tests")
-
-    diagnostics = check.get("diagnostics")
-    diagnostics = diagnostics if isinstance(diagnostics, list) else []
-    check_errors = check.get("errors")
-    check_errors = check_errors if isinstance(check_errors, list) else []
+    init, check, tests = _verify_stages(envelope)
+    diagnostics = _list_at(check, "diagnostics")
+    check_errors = _list_at(check, "errors")
     counts = (
         check.get("counts")
         if isinstance(check.get("counts"), dict)
@@ -356,6 +334,71 @@ def _summarize_verify(stdout: str, exit_code: int, stderr: str = "") -> VerifyRe
         err["code"] for err in check_errors if isinstance(err, dict) and err.get("code")
     }
 
+    # A pass is derived from the stage tree, not the top-level verdict field:
+    # every stage must report pass and the process must have exited 0. A
+    # truncated envelope missing a stage, or one claiming pass alongside a
+    # non-zero exit, is a fail.
+    passed = exit_code == 0 and all(
+        stage.get("status") == "pass" for stage in (init, check, tests)
+    )
+    return {
+        "ok": passed,
+        "verdict": "pass" if passed else "fail",
+        "counts": counts,
+        "codes": sorted(codes),
+        "errors": _stage_errors(init, check_errors, tests),
+        "exit_code": exit_code,
+    }
+
+
+def _unparseable_verify(exit_code: int, stderr: str) -> VerifyResult:
+    """Return the failed result of a verify that emitted no JSON envelope."""
+    # verify crashed or emitted no JSON envelope. Keep a stderr tail in the
+    # error so the failure is diagnosable without re-running by hand.
+    detail = stderr.strip().splitlines()[-5:]
+    suffix = f": {' / '.join(detail)}" if detail else ""
+    return {
+        "ok": False,
+        "verdict": "fail",
+        "counts": dict(_EMPTY_COUNTS),
+        "codes": [],
+        "errors": [],
+        "exit_code": exit_code,
+        "error": f"verify did not emit a parseable JSON envelope{suffix}",
+    }
+
+
+def _verify_stages(
+    envelope: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Return the envelope's init, check and tests stages.
+
+    A stage that is absent or not an object comes back as ``{}``.
+    """
+    data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
+    stages = data.get("stages") if isinstance(data.get("stages"), dict) else {}
+
+    def _stage(name: str) -> dict[str, Any]:
+        stage = stages.get(name)
+        return stage if isinstance(stage, dict) else {}
+
+    return _stage("init"), _stage("check"), _stage("tests")
+
+
+def _list_at(stage: dict[str, Any], key: str) -> list[Any]:
+    """Return ``stage[key]`` when it is a list, else an empty list."""
+    value = stage.get(key)
+    return value if isinstance(value, list) else []
+
+
+def _stage_errors(
+    init: dict[str, Any], check_errors: list[Any], tests: dict[str, Any]
+) -> list[str]:
+    """Return the error lines the agent sees from a verify run.
+
+    The lines are init's error when init failed, every check error message
+    whatever the check status, and a summary line when tests failed.
+    """
     # Surface every stage's failure detail, not just check's: an init import
     # error (exit 3) or a failing test suite (exit 5) is the actionable feedback
     # run_verify exists to give the agent.
@@ -372,19 +415,4 @@ def _summarize_verify(stdout: str, exit_code: int, stderr: str = "") -> VerifyRe
             f"tests failed (returncode {tests.get('returncode')}, "
             f"{tests.get('failed')} failed)"
         )
-
-    # A pass is derived from the stage tree, not the top-level verdict field:
-    # every stage must report pass and the process must have exited 0. A
-    # truncated envelope missing a stage, or one claiming pass alongside a
-    # non-zero exit, is a fail.
-    passed = exit_code == 0 and all(
-        stage.get("status") == "pass" for stage in (init, check, tests)
-    )
-    return {
-        "ok": passed,
-        "verdict": "pass" if passed else "fail",
-        "counts": counts,
-        "codes": sorted(codes),
-        "errors": errors,
-        "exit_code": exit_code,
-    }
+    return errors
