@@ -54,7 +54,7 @@ for one port. The Decision below states the shape all ports share, and its
 tables gather every decided name. Every name is copied from the sub-issue that
 decides it. Where two sub-issues disagree, or a member has no deciding
 sub-issue, the conflict is listed under
-[Four conflicts wait for a ruling](#19-four-conflicts-between-sub-issues-wait-for-a-ruling).
+[Five conflicts wait for a ruling](#19-five-conflicts-between-sub-issues-wait-for-a-ruling).
 
 ## Decision
 
@@ -194,7 +194,7 @@ or it gates members of the core Port. Three of these cases need a note:
 
 The broker table is `SUB_PROTOCOLS: dict[BrokerCapabilities, type[BrokerPort]]`
 in `src/protean/port/broker.py`, as #2070 writes it. Conflict 1 under
-[Four conflicts wait for a ruling](#19-four-conflicts-between-sub-issues-wait-for-a-ruling)
+[Five conflicts wait for a ruling](#19-five-conflicts-between-sub-issues-wait-for-a-ruling)
 concerns its value type. The members it checks for a flag are the
 sub-protocol's `__abstractmethods__` minus `BrokerPort.__abstractmethods__`, so
 the table needs no second list of names. The cache table lives in
@@ -386,9 +386,9 @@ with a `DeprecationWarning` that names their removal in 0.20.0:
 `--db`, `--db-provider`, `--db-uri` and `--db-extra` options, and the
 `protean test test-adapter` flags that change.
 
-### 19. Four conflicts between sub-issues wait for a ruling
+### 19. Five conflicts between sub-issues wait for a ruling
 
-The sub-issues disagree in three places, and one member has no deciding
+The sub-issues disagree in four places, and one member has no deciding
 sub-issue. Each needs the maintainer's ruling before the sub-issue that
 implements it starts. Where a conflict touches a table row, the row copies the
 sub-issue in its "Decided in" column.
@@ -421,6 +421,15 @@ sub-issue in its "Decided in" column.
    removed, it needs a Port member name, and a choice between a no-op default
    on `BrokerPort` and a sub-protocol behind a flag. The broker tables do not
    list it.
+5. **The target of the Unit of Work's transaction calls.** #2083 has
+   `UnitOfWork` call `provider.flush(session)`, `provider.commit(session)` and
+   `provider.rollback(session)`, the `ProviderPort` members from #2080. #2085
+   lands after #2083 and makes `domain.providers[name]` return the `Provider`
+   service, which has no `flush`, `commit` or `rollback` and reaches every
+   other operation through `provider.adapter`. When #2085 lands, the Unit of
+   Work either calls `provider.adapter.flush(session)` and the other two, or
+   the `Provider` service gains three delegates. The `Provider` service method
+   list follows #2085 and has no delegates.
 
 ### Name tables
 
@@ -1070,7 +1079,8 @@ with no criteria keeps its current meaning. Three modules split it:
 - `dao_tracking` (#2083): the `is_standalone` property, `track(entity) ->
   BaseEntity` and `tracked_instance(entity) -> BaseAggregate | None`.
   `outside_uow()` returns a new service. The Unit of Work flushes, commits and
-  rolls back through the provider's `flush`, `commit` and `rollback`.
+  rolls back through the provider's `flush`, `commit` and `rollback`
+  (conflict 5 in Section 19).
 
 ## Consequences
 
