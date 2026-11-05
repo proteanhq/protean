@@ -20,7 +20,10 @@ from protean.exceptions import ConfigurationError, InsufficientDataError
 from protean.fields import String
 from protean.server import Engine
 from protean.utils import fqn
-from protean.utils.consume_idempotency import cleanup_processed_messages
+from protean.utils.consume_idempotency import (
+    MESSAGE_ID_MAX_LENGTH,
+    cleanup_processed_messages,
+)
 from protean.utils.globals import current_domain
 from tests.shared import FrozenClock
 
@@ -60,6 +63,16 @@ class SaveThenFail(BaseSubscriber):
         raise RuntimeError("downstream failure")
 
 
+class SeesItsMarker(BaseSubscriber):
+    marked_during_call: list[bool] = []
+
+    def __call__(self, payload: dict) -> None:
+        repo = current_domain._get_processed_message_repo("default")
+        type(self).marked_during_call.append(
+            repo.is_processed(payload["metadata"]["headers"]["id"], fqn(type(self)))
+        )
+
+
 class RecordingErrors(BaseSubscriber):
     calls: list[dict] = []
     errors: list[Exception] = []
@@ -80,6 +93,7 @@ def _reset_state(test_domain):
     for cls in (RecordReceipt, AuditReceipt, SaveThenFail, RecordingErrors):
         cls.calls = []
     RecordingErrors.errors = []
+    SeesItsMarker.marked_during_call = []
     yield
 
 
@@ -262,6 +276,14 @@ class TestEngineDelivery:
         assert _deliver(test_domain, SaveThenFail, _payload()) is False
         assert len(SaveThenFail.calls) == 2
 
+    def test_the_marker_is_written_after_the_subscriber_returns(self, test_domain):
+        _register(test_domain, SeesItsMarker, idempotent=True)
+
+        assert _deliver(test_domain, SeesItsMarker, _payload()) is True
+
+        assert SeesItsMarker.marked_during_call == [False]
+        assert _is_marked(test_domain, "default", SeesItsMarker, MESSAGE_ID)
+
     def test_two_subscribers_on_one_stream_each_apply_once(self, test_domain):
         _register(test_domain, RecordReceipt, AuditReceipt, idempotent=True)
 
@@ -281,8 +303,9 @@ class TestEngineDelivery:
             {"reference": "r-1"},
             {"reference": "r-1", "metadata": {"headers": {}}},
             {"reference": "r-1", "metadata": {"headers": {"id": "   "}}},
+            {"reference": "r-1", "metadata": {"headers": {"id": 42}}},
         ],
-        ids=["no-metadata", "headers-without-id", "blank-id"],
+        ids=["no-metadata", "headers-without-id", "blank-id", "non-string-id"],
     )
     def test_a_payload_without_an_id_is_an_error(self, test_domain, caplog, payload):
         _register(test_domain, RecordingErrors, idempotent=True)
@@ -302,6 +325,36 @@ class TestEngineDelivery:
             fqn(RecordingErrors) in m and "metadata.headers.id" in m for m in messages
         )
         assert not _is_marked(test_domain, "default", RecordingErrors, "broker-1")
+
+    def test_an_over_long_id_is_an_error(self, test_domain, caplog):
+        _register(test_domain, RecordingErrors, idempotent=True)
+        long_id = "x" * (MESSAGE_ID_MAX_LENGTH + 1)
+
+        with caplog.at_level(logging.ERROR):
+            result = _deliver(test_domain, RecordingErrors, _payload(long_id))
+
+        assert result is False
+        assert RecordingErrors.calls == []
+        assert len(RecordingErrors.errors) == 1
+        assert isinstance(RecordingErrors.errors[0], InsufficientDataError)
+        assert f"longer than {MESSAGE_ID_MAX_LENGTH} characters" in str(
+            RecordingErrors.errors[0]
+        )
+        messages = [
+            r.getMessage() for r in caplog.records if r.levelno == logging.ERROR
+        ]
+        assert any(fqn(RecordingErrors) in m and "longer than" in m for m in messages)
+
+    def test_an_id_at_the_length_limit_is_applied_once(self, test_domain):
+        _register(test_domain, RecordingErrors, idempotent=True)
+        limit_id = "x" * MESSAGE_ID_MAX_LENGTH
+
+        assert _deliver(test_domain, RecordingErrors, _payload(limit_id)) is True
+        assert _deliver(test_domain, RecordingErrors, _payload(limit_id)) is True
+
+        assert len(RecordingErrors.calls) == 1
+        assert RecordingErrors.errors == []
+        assert _is_marked(test_domain, "default", RecordingErrors, limit_id)
 
     def test_a_payload_without_an_id_runs_without_the_option(self, test_domain):
         _register(test_domain, RecordingErrors)
@@ -344,6 +397,14 @@ class TestSyncDelivery:
 
         with pytest.raises(InsufficientDataError, match=r"metadata\.headers\.id"):
             _publish(test_domain, {"reference": "r-1"})
+
+        assert RecordingErrors.calls == []
+
+    def test_an_over_long_id_raises(self, test_domain):
+        _register(test_domain, RecordingErrors, idempotent=True)
+
+        with pytest.raises(InsufficientDataError, match="longer than"):
+            _publish(test_domain, _payload("x" * (MESSAGE_ID_MAX_LENGTH + 1)))
 
         assert RecordingErrors.calls == []
 

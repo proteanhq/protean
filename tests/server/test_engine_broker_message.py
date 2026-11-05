@@ -270,7 +270,7 @@ class TestExtractSourceMessageId:
             ),
         ],
     )
-    def testextract_payload_message_id(self, message, expected):
+    def test_extract_payload_message_id(self, message, expected):
         assert extract_payload_message_id(message) == expected
 
 

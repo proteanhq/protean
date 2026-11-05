@@ -28,7 +28,8 @@ The strength of the guarantee depends on the projection's provider:
 A broker subscriber marked ``idempotent=True`` gets the same marker, keyed on
 the payload's ``metadata.headers.id`` and the subscriber's fully-qualified name,
 and written to the subscriber's ``provider`` in the same UnitOfWork as its
-writes. A payload with no such id is an error: the subscriber does not run.
+writes. A payload with no such id, or one longer than the marker column, is an
+error: the subscriber does not run.
 
 See ADR-0017.
 """
@@ -53,6 +54,8 @@ from protean.utils.query import Q
 
 logger = logging.getLogger(__name__)
 
+MESSAGE_ID_MAX_LENGTH = 255
+
 
 class ProcessedMessage(BaseAggregate):
     """A marker recording that a handler has processed a message.
@@ -67,7 +70,7 @@ class ProcessedMessage(BaseAggregate):
     # ``message_id`` is a composite Protean message id (headers.id), e.g.
     # ``testdomain::order-<aggregate-id>-3``, not a bare UUID — so it needs the
     # same 255 ceiling as the outbox table for the (message_id, handler) index.
-    message_id: Annotated[str, Field(max_length=255)]
+    message_id: Annotated[str, Field(max_length=MESSAGE_ID_MAX_LENGTH)]
     handler: Annotated[str, Field(max_length=255)]
     # ``mark()`` stamps this from the domain clock, so a marker's age is measured
     # on the same clock ``cleanup_old_markers`` reads. The default factory only
@@ -197,24 +200,16 @@ def dispatch_to_subscriber(subscriber_cls: Any, message: dict[str, Any]) -> None
 
     Raises:
         InsufficientDataError: The subscriber is idempotent and the payload has
-            no ``metadata.headers.id``. The subscriber does not run.
+            no non-blank string ``metadata.headers.id``, or that id is longer
+            than ``MESSAGE_ID_MAX_LENGTH`` characters. The subscriber does not
+            run.
     """
     if not getattr(subscriber_cls.meta_, "idempotent", False):
         subscriber_cls()(message)
         return
 
     handler_id = fqn(subscriber_cls)
-    message_id = extract_payload_message_id(message)
-    if message_id is None:
-        # The broker-assigned delivery id is not a fallback key: a redelivery
-        # can carry a new one, so it would not deduplicate.
-        error = (
-            f"Idempotent subscriber `{handler_id}` received a payload with no "
-            "`metadata.headers.id`; it needs that id to deduplicate the message"
-        )
-        logger.error(error)
-        raise InsufficientDataError(error)
-
+    message_id = _subscriber_message_id(handler_id, message)
     repo = cast(
         ProcessedMessageRepository,
         current_domain._get_processed_message_repo(subscriber_cls.meta_.provider),
@@ -224,6 +219,37 @@ def dispatch_to_subscriber(subscriber_cls: Any, message: dict[str, Any]) -> None
             return  # redelivery — already applied, skip
         subscriber_cls()(message)
         repo.mark(message_id, handler_id)
+
+
+def _subscriber_message_id(handler_id: str, message: dict[str, Any]) -> str:
+    """Return the payload id an idempotent subscriber dedupes on.
+
+    Raises:
+        InsufficientDataError: The id is missing, blank, not a string, or too
+            long for the marker column. The error is also logged.
+    """
+    # The broker-assigned delivery id is not a fallback key: a redelivery can
+    # carry a new one, so it would not deduplicate.
+    message_id = extract_payload_message_id(message)
+    if message_id is None:
+        error = (
+            f"Idempotent subscriber `{handler_id}` received a payload with no "
+            "non-blank string `metadata.headers.id`; it needs that id to "
+            "deduplicate the message"
+        )
+    elif len(message_id) > MESSAGE_ID_MAX_LENGTH:
+        # Rejected before the call: the marker write would fail only after the
+        # subscriber ran, and every redelivery would repeat that.
+        error = (
+            f"Idempotent subscriber `{handler_id}` received a payload whose "
+            f"`metadata.headers.id` is longer than {MESSAGE_ID_MAX_LENGTH} "
+            "characters; the marker cannot store it"
+        )
+    else:
+        return message_id
+
+    logger.error(error)
+    raise InsufficientDataError(error)
 
 
 def cleanup_processed_messages(

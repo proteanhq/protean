@@ -316,7 +316,10 @@ def test_an_idempotent_subscriber_rejects_a_payload_without_an_id(caplog):
         )
 
     assert handled is False
-    assert "received a payload with no `metadata.headers.id`" in caplog.text
+    assert (
+        "received a payload with no non-blank string `metadata.headers.id`"
+        in caplog.text
+    )
     assert shipments.total == 0
 
 
