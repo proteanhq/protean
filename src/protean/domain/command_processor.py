@@ -502,8 +502,9 @@ class CommandProcessor:
 
     def _handles_in_process(self, asynchronous: bool) -> bool:
         """Return whether Protean handles the command itself, now or after the
-        caller commits, instead of leaving it to the engine. Only an
-        asynchronous command in an async domain is left to the engine."""
+        caller commits, instead of leaving it to the engine. An asynchronous
+        command in an async domain is left to the engine, and so is an
+        asynchronous command with no registered handler in a sync domain."""
         return (
             not asynchronous
             or self._domain.config["command_processing"] == Processing.SYNC.value
@@ -537,7 +538,8 @@ class CommandProcessor:
         if idempotency_key and self._domain.idempotency_store.is_active:
             uow._pending_idempotency_results[idempotency_key] = None
         # No metric yet: the run records one, "ok" or "error", or counts the
-        # command as expired.
+        # command as expired. A run whose idempotency key already has a
+        # recorded success returns early and records no metric.
 
     def _run_deferred(
         self,
