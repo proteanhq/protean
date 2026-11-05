@@ -73,6 +73,12 @@ class RecordResult(BaseCommand):
     status = String(required=True)
 
 
+class ArchiveNotification(BaseCommand):
+    """A command this domain registers no handler for."""
+
+    notification_id = Identifier(identifier=True)
+
+
 class Probe:
     """What the handlers did, reset per test."""
 
@@ -172,6 +178,7 @@ def _register(domain: Domain) -> None:
     domain.register(DispatchStarted, part_of=Notification)
     domain.register(ResultRecorded, part_of=Notification)
     domain.register(RecordResult, part_of=Notification)
+    domain.register(ArchiveNotification, part_of=Notification)
     domain.register(RecordResultHandler, part_of=Notification)
     domain.register(Dispatcher, part_of=Notification)
     domain.register(RecordedListener, part_of=Notification)
@@ -300,6 +307,18 @@ class TestOutsideAnyUnitOfWork:
         assert Probe.attempts == 1
         stored = _stored_commands(test_domain)
         assert [m.metadata.domain.asynchronous for m in stored] == [False]
+
+    def test_command_without_a_handler_stays_asynchronous(self, test_domain):
+        notification_id = _create_notification(test_domain)
+
+        result = test_domain.process(
+            ArchiveNotification(notification_id=notification_id),
+            asynchronous=True,
+        )
+
+        assert isinstance(result, int)
+        stored = _stored_commands(test_domain)
+        assert [m.metadata.domain.asynchronous for m in stored] == [True]
 
     def test_command_subscription_skips_it(self, test_domain):
         notification_id = _create_notification(test_domain)

@@ -432,21 +432,17 @@ class CommandProcessor:
                 deadline, timeout, now=domain.clock.now()
             )
 
-            # Protean handles the command itself, now or after the caller
-            # commits, unless it is asynchronous in an async domain.
-            will_handle_sync = (
-                not asynchronous
-                or domain.config["command_processing"] == Processing.SYNC.value
-            )
+            will_handle_sync = self._handles_in_process(asynchronous)
+
+            handler_class = self.handler_for(command) if will_handle_sync else None
 
             # A command handled in this process is stored as not asynchronous,
             # so the engine's command subscription skips it instead of handling
-            # it a second time. This includes a command with no handler in a
-            # sync domain: the engine registers subscriptions only for
-            # registered handlers, so no engine would handle it either.
+            # it a second time. An asynchronous command with no local handler
+            # keeps its flag, so a worker that has the handler still runs it.
             command_with_metadata = self.enrich(
                 command,
-                not will_handle_sync,
+                asynchronous and handler_class is None,
                 idempotency_key=idempotency_key,
                 priority=resolved_priority,
                 correlation_id=correlation_id,
@@ -472,7 +468,6 @@ class CommandProcessor:
 
             position = domain._require_event_store().append(command_with_metadata)
 
-            handler_class = self.handler_for(command) if will_handle_sync else None
             if handler_class is not None:
                 # `asynchronous=True` inside a transaction means "outside my
                 # transaction": run the command once the caller commits, in its
@@ -504,6 +499,15 @@ class CommandProcessor:
                 store.record_success(idempotency_key, position)
 
             return position
+
+    def _handles_in_process(self, asynchronous: bool) -> bool:
+        """Return whether Protean handles the command itself, now or after the
+        caller commits, instead of leaving it to the engine. Only an
+        asynchronous command in an async domain is left to the engine."""
+        return (
+            not asynchronous
+            or self._domain.config["command_processing"] == Processing.SYNC.value
+        )
 
     def _record_metrics(
         self, command_type: str, status: str, process_start: float
