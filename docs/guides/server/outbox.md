@@ -385,8 +385,8 @@ and every discarded row. A deleted row
 looks the same as a row lost in a crash. So reconciliation skips events older than the shorter of the
 two retentions, which keeps a restart from sending old events again. An event
 lost in a crash and left unrepaired for longer than that is not repaired. The
-cutoff uses the current retentions. If you raise a retention after cleanup ran
-with a lower one, the next sweep rebuilds the rows cleanup deleted in between,
+cutoff uses the current retentions. If you raise the shorter retention after cleanup
+ran with a lower value, the next sweep rebuilds the rows cleanup deleted in between,
 and those events are published again.
 
 A rebuilt row is created when the sweep saves it, with priority 0. For a

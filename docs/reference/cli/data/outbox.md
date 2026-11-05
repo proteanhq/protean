@@ -125,8 +125,8 @@ retention is not repaired. An event with no stored time is also skipped,
 because its age is unknown.
 
 The cutoff uses the retentions configured when the run starts. Cleanup deleted
-rows under the retentions configured when it ran. If you raise a retention
-after cleanup ran with a lower one, the next run rebuilds the rows cleanup
+rows under the retentions configured when it ran. If you raise the shorter
+retention after cleanup ran with a lower value, the next run rebuilds the rows cleanup
 deleted in between, and those events are published again.
 
 A row the reconciler abandons records `last_processed_at`, so
