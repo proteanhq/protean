@@ -138,6 +138,12 @@ It also does not cover side effects outside the database, such as an HTTP call.
 Write the handlers of such commands, and any such side effects, so that they are
 safe to repeat.
 
+An idempotent subscriber runs inside a unit of work, so `broker.publish` does
+not send the message at once. Protean keeps the message in memory, not in the
+outbox, and sends it after the marker commits. If the send fails, or the process stops before it, the marker is already stored. The next
+delivery then skips `__call__`, and Protean never sends the message.
+[#2157](https://github.com/proteanhq/protean/issues/2157) tracks a fix.
+
 The broker's own delivery id is never used as the key, because a redelivery
 can carry a new one. A payload whose `metadata.headers.id` is missing, blank,
 not a string, or longer than 255 characters is an error for an idempotent

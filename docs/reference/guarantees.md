@@ -245,7 +245,10 @@ You can opt in at three places:
   concurrent duplicates. On the in-memory provider it covers redelivery one
   after another only. A command the subscriber issues through `domain.process`
   is not rolled back on an event store that writes outside the unit of work,
-  such as Message DB, so a redelivery after a raise issues it again. Markers
+  such as Message DB, so a redelivery after a raise issues it again. Protean
+  sends a message the subscriber publishes only after the marker commits, and
+  it does not retry a failed send
+  ([#2157](https://github.com/proteanhq/protean/issues/2157)). Markers
   are pruned after the same retention window
   ([ADR-0017](../adr/0017-consume-side-idempotency-for-projectors.md)).
 - **Commands**: A command with an `idempotency_key` is deduplicated against
