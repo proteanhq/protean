@@ -80,7 +80,7 @@ Handlers](../../patterns/calling-external-systems-from-handlers.md).
 | **Source** | Internal event store | Internal event store | External message broker | `domain.dispatch()` |
 | **Association** | `part_of` (aggregate) | `projector_for` (projection) | `stream` (broker stream) | `part_of` (projection) |
 | **Returns** | Nothing | Nothing | Nothing | Always returns data |
-| **UoW** | Yes (per handler method) | Yes (per handler method) | No | No |
+| **UoW** | Yes (per handler method) | Yes (per handler method) | Only with `idempotent=True` | No |
 
 ## Best Practices
 
