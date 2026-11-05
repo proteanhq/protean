@@ -1,4 +1,4 @@
-# ADR-NNNN: Title
+# ADR-NNNN: A full sentence that states the decision
 
 **Status:** Proposed | Accepted | Deprecated | Superseded by ADR-XXXX
 
@@ -6,24 +6,35 @@
 
 ## Context
 
-What forces are at play? What problem needed solving? What constraints or requirements
-shaped the decision? Write in prose, explain the situation as you would to a
-new team member who has domain context but wasn't present for the discussion.
+What problem needed solving, and what facts and constraints shaped the
+decision? Write in prose for a reader who has domain context but missed the
+discussion. Describe the state before the decision as "Before this decision,
+...".
 
 ## Decision
 
-What we chose, stated in active voice. "We will use X" or "We chose Y because Z."
-Be specific enough that someone could implement or verify this decision from the
-description alone.
+### 1. A full sentence that states the first decision
+
+The decision as a short statement or a few bullets, specific enough to
+implement or check. Then one or two sentences of reason.
 
 ## Consequences
 
-What becomes easier or harder as a result of this decision. Include both
-positive and negative consequences. Every decision has trade-offs. State them
-plainly without editorializing.
+**Positive:**
+
+- What becomes easier.
+
+**Negative:**
+
+- What becomes harder, and what the decision costs.
 
 ## Alternatives Considered
 
-*(Optional, include when multiple viable options were evaluated.)*
+*(Optional, include when more than one option was weighed.)*
 
-Briefly describe other approaches that were considered and why they were not chosen.
+- **The option, stated as a sentence.** Rejected: the reason.
+
+## Dependencies
+
+*(Optional, include when the decision needs a capability that does not exist
+yet. Name the capability.)*
