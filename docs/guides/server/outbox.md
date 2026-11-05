@@ -389,10 +389,12 @@ cutoff uses the current retentions. If you raise a retention after cleanup ran
 with a lower one, the next sweep rebuilds the rows cleanup deleted in between,
 and those events are published again.
 
-A rebuilt row is created when the sweep saves it. For a `sequential_by` key,
-the processor publishes the key's rows in the order they were created, so an
-event rebuilt behind a later commit is delivered after that commit's events
-for the same key.
+A rebuilt row is created when the sweep saves it, with priority 0. For a
+`sequential_by` key, the processor publishes the key's rows in the order they
+were created within one priority lane. So an event rebuilt behind a later
+commit is delivered after that commit's events for the same key when both rows
+are in the same lane. When the later row is in the other lane, either one can
+be delivered first.
 
 See the
 [`protean outbox reconcile` reference](../../reference/cli/data/outbox.md) for

@@ -81,10 +81,12 @@ every event-sourced aggregate's event in it. It repairs each of those events
 that has no internal-broker row and is inside the cleanup retention, wherever
 the event sits in the window.
 
-A rebuilt row is created when the run saves it. For a
+A rebuilt row is created when the run saves it, with priority 0. For a
 [`sequential_by`](../../server/sequential-by.md) key, the processor publishes
-the key's rows in the order they were created, so an event rebuilt behind a
-later commit is delivered after that commit's events for the same key.
+the key's rows in the order they were created within one priority lane. So an
+event rebuilt behind a later commit is delivered after that commit's events for
+the same key when both rows are in the same lane. When the later row is in the
+other lane, either one can be delivered first.
 
 Reconciliation is idempotent. A run skips a row whose (`message_id`,
 `target_broker`) pair is already saved, so running it repeatedly never
