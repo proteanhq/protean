@@ -1,5 +1,7 @@
 """Doubling wait between polls that find no work, reset when work arrives."""
 
+import math
+
 
 class AdaptiveBackoff:
     """A wait that doubles on each idle poll, up to a cap, and resets on activity.
@@ -11,13 +13,15 @@ class AdaptiveBackoff:
     ``start`` is given: the first idle poll then sets the wait to ``start``, and
     later idle polls double it from there.
 
-    A ``cap`` below ``base`` is raised to ``base``, so the wait never grows. The
-    caller decides whether to warn about such a cap.
+    A ``cap`` below ``base``, or a ``cap`` of NaN, is raised to ``base``, so the
+    wait never grows. The caller decides whether to warn about such a cap.
     """
 
     def __init__(self, base: float, cap: float, start: float | None = None) -> None:
         self._base = float(base)
-        self._cap = max(float(cap), self._base)
+        cap = float(cap)
+        # ``max(nan, base)`` returns NaN, and ``min(wait, nan)`` never caps
+        self._cap = self._base if math.isnan(cap) else max(cap, self._base)
         self._start = start
         self.current: float = self._base
 

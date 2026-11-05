@@ -70,6 +70,13 @@ def test_cap_below_base_is_raised_to_base():
     assert [backoff.on_idle() for _ in range(3)] == [2.0, 2.0, 2.0]
 
 
+def test_nan_cap_is_raised_to_base():
+    backoff = AdaptiveBackoff(0.01, float("nan"))
+
+    assert backoff.cap == 0.01
+    assert [backoff.on_idle() for _ in range(3)] == [0.01, 0.01, 0.01]
+
+
 def test_cap_equal_to_base_never_grows():
     backoff = AdaptiveBackoff(1, 1)
 

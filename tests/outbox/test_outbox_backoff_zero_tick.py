@@ -88,3 +88,23 @@ def test_cap_above_tick_interval_logs_no_warning(outbox_domain, caplog):
     )
 
     assert "outbox.max_tick_interval_ignored" not in caplog.text
+
+
+@pytest.mark.database
+@pytest.mark.asyncio
+async def test_nan_cap_keeps_the_wait_at_tick_interval(outbox_domain):
+    processor = OutboxProcessor(
+        MockEngine(outbox_domain),
+        "default",
+        "default",
+        tick_interval=0.01,
+        max_tick_interval=float("nan"),
+    )
+    await processor.initialize()
+
+    waits = []
+    for _ in range(4):
+        assert await processor.tick() is False
+        waits.append(processor.tick_interval)
+
+    assert waits == [0.01, 0.01, 0.01, 0.01]
