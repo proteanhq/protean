@@ -81,7 +81,9 @@ supported, and `protean check` will not warn you before they move.
 ## What is Provisional
 
 - **The port ABCs** (`BaseProvider`, `BaseBroker`, `BaseEventStore`,
-  `BaseCache`) for third-party adapter authors. These stay provisional until
+  `BaseCache`) for third-party adapter authors, with the `BaseDAO` and
+  `BaseLookup` classes a database provider subclasses in `protean.port.dao`.
+  These stay provisional until
   the adapter conformance suite ships publicly and has been exercised by an
   adapter Protean does not maintain.
 - **`Field`** as the base class for custom field types.
