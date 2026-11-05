@@ -290,14 +290,23 @@ class UTCDateTime(TypeDecorator[_datetime]):
     def __repr__(self) -> str:
         # The default repr lists the wrapped type's arguments, such as
         # ``UTCDateTime(fsp=6)``, which ``__init__`` does not accept. Schema
-        # tools such as Alembic autogenerate render a column type from its repr.
-        return f"{type(self).__name__}({self.impl!r})"
+        # tools such as Alembic autogenerate render a column type from its repr,
+        # and qualify only the outer name. The wrapped type is qualified here
+        # through ``sa``, the name an Alembic migration imports SQLAlchemy as.
+        module = type(self.impl).__module__
+        if module.startswith("sqlalchemy.dialects."):
+            prefix = "sa.dialects." + module.split(".")[2] + "."
+        else:
+            prefix = "sa."
+        return f"{type(self).__name__}({prefix}{self.impl!r})"
 
     def coerce_compared_value(self, op: typing.Any, value: typing.Any) -> typing.Any:
         # A TypeDecorator binds every operand with itself by default, so a
         # string in ``startswith`` would reach the datetime bind processor,
         # which rejects it. Only a datetime operand needs the UTC conversion.
-        if isinstance(value, _datetime):
+        # SQLAlchemy types an ``in`` list from its first value, so a leading
+        # None must keep this type for the datetimes after it.
+        if value is None or isinstance(value, _datetime):
             return self
         return self.impl_instance.coerce_compared_value(op, value)
 

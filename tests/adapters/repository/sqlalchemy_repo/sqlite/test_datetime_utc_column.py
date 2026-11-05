@@ -82,6 +82,16 @@ def test_exact_and_in_match_the_same_instant_with_a_different_offset(slot_repo):
     assert _names(slot_repo, at__in=[EARLIER, LATER]) == []
 
 
+@pytest.mark.parametrize(
+    "values",
+    [[None, SAME_INSTANT], [SAME_INSTANT, None]],
+    ids=["none_first", "none_last"],
+)
+def test_in_with_a_none_converts_the_other_values_to_utc(slot_repo, values):
+    """SQLAlchemy types an ``in`` list from its first value, which may be None."""
+    assert _names(slot_repo, at__in=values) == ["noon"]
+
+
 def test_naive_filter_value_is_read_as_utc(slot_repo):
     naive_noon = datetime(2026, 10, 20, 12, 0)
     assert _names(slot_repo, at__lte=naive_noon) == ["noon"]

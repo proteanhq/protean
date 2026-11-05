@@ -14,6 +14,7 @@ assertion is the only thing standing between the adapter and a wrong answer.
 import logging
 
 import pytest
+import sqlalchemy
 from sqlalchemy import Column
 from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import mysql as mysql_dialect
@@ -240,9 +241,18 @@ class TestColumnTypes:
         """A schema tool such as Alembic renders a column type from its repr."""
         column_type = table_for(Article).c["published_at"].type
 
-        assert repr(column_type) == "UTCDateTime(DATETIME(fsp=6))"
-        rebuilt = UTCDateTime(mysql_dialect.DATETIME(fsp=6))
-        assert repr(rebuilt) == repr(column_type)
+        rendered = repr(column_type)
+        assert rendered == "UTCDateTime(sa.dialects.mysql.DATETIME(fsp=6))"
+        # An Alembic migration imports SQLAlchemy as ``sa``.
+        rebuilt = eval(rendered, {"sa": sqlalchemy, "UTCDateTime": UTCDateTime})
+        assert isinstance(rebuilt.impl, mysql_dialect.DATETIME)
+        assert rebuilt.impl.fsp == 6
+
+    def test_plain_datetime_repr_rebuilds_the_same_type(self):
+        rendered = repr(UTCDateTime())
+        assert rendered == "UTCDateTime(sa.DateTime())"
+        rebuilt = eval(rendered, {"sa": sqlalchemy, "UTCDateTime": UTCDateTime})
+        assert type(rebuilt.impl) is sa_types.DateTime
 
     def test_datetime_without_a_wrapped_type_wraps_a_plain_datetime(self):
         assert isinstance(UTCDateTime().impl, sa_types.DateTime)
