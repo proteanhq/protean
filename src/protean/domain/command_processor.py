@@ -545,6 +545,9 @@ class CommandProcessor:
         """Handle a command deferred to the commit of the unit of work it was
         processed in.
 
+        Does not run the handler when ``idempotency_key`` already has a
+        recorded success.
+
         Raises:
             CommandExpiredError: If the command's deadline passed before it ran.
                 The handler does not run.
@@ -553,6 +556,13 @@ class CommandProcessor:
         command_type = command.__class__.__type__
         headers = command._metadata.headers
         store = self._domain.idempotency_store
+
+        # A sync event handler of the same commit runs before this command and
+        # outside the caller's unit of work, so it can run the same key first.
+        if idempotency_key and store.is_active:
+            existing = store.check(idempotency_key)
+            if existing and existing.get("status") == "success":
+                return
 
         with self._domain.tracer.start_as_current_span(
             "protean.command.process",

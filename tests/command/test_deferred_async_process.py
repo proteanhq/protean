@@ -82,6 +82,7 @@ class Probe:
     fail_with: Exception | None = None
     recorded_events: list[str] = []
     handled: list[str] = []
+    resubmit_key: str | None = None
 
     @classmethod
     def reset(cls) -> None:
@@ -91,6 +92,7 @@ class Probe:
         cls.fail_with = None
         cls.recorded_events = []
         cls.handled = []
+        cls.resubmit_key = None
 
 
 def _write_concurrently(notification_id: str) -> None:
@@ -145,6 +147,12 @@ class RecordedListener(BaseEventHandler):
     @handle(ResultRecorded)
     def on_recorded(self, event: ResultRecorded) -> None:
         Probe.recorded_events.append(event.status)
+        key, Probe.resubmit_key = Probe.resubmit_key, None
+        if key is not None:
+            current_domain.process(
+                RecordResult(notification_id=event.notification_id, status="EVENT"),
+                idempotency_key=key,
+            )
 
 
 class NotificationService(BaseApplicationService):
@@ -761,6 +769,27 @@ class TestIdempotency:
             "status": "success",
             "result": "recorded-SENT",
         }
+
+    def test_key_that_succeeds_before_the_deferred_command_runs_skips_it(
+        self, test_domain
+    ):
+        notification_id = _create_notification(test_domain)
+        Probe.resubmit_key = "k"
+
+        with UnitOfWork():
+            repo = test_domain.repository_for(Notification)
+            notification = repo.get(notification_id)
+            notification.record("FIRST")
+            repo.add(notification)
+            test_domain.process(
+                RecordResult(notification_id=notification_id, status="DEFERRED"),
+                asynchronous=True,
+                idempotency_key="k",
+            )
+
+        # The sync event handler ran the key first; the deferred copy skips
+        assert Probe.handled == ["EVENT"]
+        assert _status(test_domain, notification_id) == "EVENT"
 
     def test_repeat_in_the_same_transaction_raises_on_duplicate(self, test_domain):
         notification_id = _create_notification(test_domain)
