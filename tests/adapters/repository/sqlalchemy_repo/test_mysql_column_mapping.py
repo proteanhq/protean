@@ -236,6 +236,17 @@ class TestColumnTypes:
         assert isinstance(column.type.impl, mysql_dialect.DATETIME)
         assert column.type.impl.fsp == 6
 
+    def test_datetime_repr_rebuilds_the_same_type(self):
+        """A schema tool such as Alembic renders a column type from its repr."""
+        column_type = table_for(Article).c["published_at"].type
+
+        assert repr(column_type) == "UTCDateTime(DATETIME(fsp=6))"
+        rebuilt = UTCDateTime(mysql_dialect.DATETIME(fsp=6))
+        assert repr(rebuilt) == repr(column_type)
+
+    def test_datetime_without_a_wrapped_type_wraps_a_plain_datetime(self):
+        assert isinstance(UTCDateTime().impl, sa_types.DateTime)
+
     @pytest.mark.parametrize("attribute", ["tags", "extra"])
     def test_dict_and_list_map_to_json(self, attribute):
         """MySQL has a JSON type and no array type, so a list goes to JSON too."""

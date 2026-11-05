@@ -272,10 +272,10 @@ class GUID(TypeDecorator[uuid.UUID]):
 class UTCDateTime(TypeDecorator[_datetime]):
     """A datetime column that holds UTC on a database with no offset storage.
 
-    Wraps the dialect's own datetime type, so the column DDL is unchanged. A
-    bound value, whether written or compared in a filter, is converted to UTC
-    and stored without an offset. A naive value is read as UTC. A loaded value
-    is returned UTC-aware.
+    Wraps the dialect's own datetime type, or a plain ``DateTime`` when none
+    is given, so the column DDL is unchanged. A bound value, whether written or
+    compared in a filter, is converted to UTC and stored without an offset. A
+    naive value is read as UTC. A loaded value is returned UTC-aware.
     """
 
     impl: sa_types.TypeEngine[typing.Any] | type[sa_types.TypeEngine[typing.Any]] = (
@@ -283,9 +283,15 @@ class UTCDateTime(TypeDecorator[_datetime]):
     )
     cache_ok = True
 
-    def __init__(self, impl: sa_types.DateTime) -> None:
+    def __init__(self, impl: sa_types.DateTime | None = None) -> None:
         super().__init__()
-        self.impl = impl
+        self.impl = impl if impl is not None else sa_types.DateTime()
+
+    def __repr__(self) -> str:
+        # The default repr lists the wrapped type's arguments, such as
+        # ``UTCDateTime(fsp=6)``, which ``__init__`` does not accept. Schema
+        # tools such as Alembic autogenerate render a column type from its repr.
+        return f"{type(self).__name__}({self.impl!r})"
 
     def process_bind_param(self, value: typing.Any, dialect: typing.Any) -> typing.Any:
         if isinstance(value, _datetime):
