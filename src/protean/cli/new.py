@@ -15,7 +15,7 @@ from protean.scaffold.create_project import create_project
 console = Console()
 
 
-def run_project_setup(project_directory: str) -> None:  # pragma: no cover
+def run_project_setup(project_directory: str) -> None:
     """Run post-generation setup for the new project.
 
     This method handles:
@@ -44,81 +44,14 @@ def run_project_setup(project_directory: str) -> None:  # pragma: no cover
             )
             return
 
-        # Install project dependencies with uv (creates .venv automatically)
-        console.print("📚 Installing dependencies with uv...", style="cyan")
-        subprocess.run(
-            [uv_path, "sync", "--all-extras", "--all-groups"],
-            check=True,
-        )
-
-        # Initialize git repository first (required for pre-commit)
-        console.print("📝 Initializing Git repository...", style="cyan")
-        subprocess.run(["git", "init"], check=True, capture_output=True)
-        subprocess.run(["git", "add", "."], check=True, capture_output=True)
-
-        # Install pre-commit hooks if pre-commit is available
-        console.print("🔧 Installing pre-commit hooks...", style="cyan")
-        pre_commit_path = (
-            os.path.join(".venv", "bin", "pre-commit")
-            if os.name != "nt"
-            else os.path.join(".venv", "Scripts", "pre-commit")
-        )
-        if os.path.exists(pre_commit_path):
-            # Run pre-commit install with the venv environment
-            subprocess.run([pre_commit_path, "install"], check=True)
-        else:
-            console.print(
-                "  Pre-commit not found, skipping hook installation", style="yellow"
-            )
+        _install_dependencies(uv_path)
+        _init_git()
+        _install_pre_commit()
 
         console.print("\n✅ Project setup complete!", style="bold green")
 
-        # Generate activation command based on shell and OS
-        shell = os.environ.get("SHELL", "").lower()
-        if os.name == "nt":  # Windows
-            activate_cmd = ".venv\\Scripts\\activate"
-        elif "fish" in shell:
-            activate_cmd = "source .venv/bin/activate.fish"
-        elif "csh" in shell or "tcsh" in shell:
-            activate_cmd = "source .venv/bin/activate.csh"
-        else:  # Default to bash/zsh
-            activate_cmd = "source .venv/bin/activate"
-
-        console.print("\nTo start working on your project:", style="yellow")
-        console.print(f"  cd {project_directory}", style="bold")
-        console.print(f"  {activate_cmd}", style="bold")
-        console.print("\nThen you can start developing with:", style="yellow")
-        console.print("  protean shell", style="bold")
-        console.print("  protean test", style="bold")
-
-        # The activation scripts are created by the template in scripts/ folder
-        # Make sure they have the right permissions
-        # Since we're already in the project directory, use relative paths
-        activate_sh = "scripts/activate.sh"
-        activate_bat = "scripts/activate.bat"
-        activate_fish = "scripts/activate.fish"
-
-        if os.path.exists(activate_sh):
-            os.chmod(activate_sh, 0o755)
-        if os.path.exists(activate_fish):
-            os.chmod(activate_fish, 0o755)
-
-        # Detect user's shell
-        shell = os.environ.get("SHELL", "")
-
-        # Show quick start based on OS and shell
-        console.print("\n💡 Quick Start:", style="cyan bold")
-        if os.name == "nt" and os.path.exists(activate_bat):
-            console.print(f"  {activate_bat}", style="bold green")
-        elif "fish" in shell and os.path.exists(activate_fish):
-            console.print(f"  source {activate_fish}", style="bold green")
-        elif os.path.exists(activate_sh):
-            console.print(f"  source {activate_sh}", style="bold green")
-
-        console.print("\nThis will:", style="yellow")
-        console.print("  • Change to your project directory", style="white")
-        console.print("  • Deactivate any current virtual environment", style="white")
-        console.print("  • Activate your project's virtual environment", style="white")
+        _print_next_steps(project_directory)
+        _print_quick_start()
 
     except subprocess.CalledProcessError as e:
         console.print(f"\n⚠️  Setup encountered an error: {e}", style="bold red")
@@ -127,6 +60,98 @@ def run_project_setup(project_directory: str) -> None:  # pragma: no cover
         # Return to original directory for now
         # (can't change parent shell's directory from subprocess)
         os.chdir(original_dir)
+
+
+def _install_dependencies(uv_path: str) -> None:
+    """Run ``uv sync``, which creates ``.venv`` and installs every extra and group."""
+    console.print("📚 Installing dependencies with uv...", style="cyan")
+    subprocess.run(
+        [uv_path, "sync", "--all-extras", "--all-groups"],
+        check=True,
+    )
+
+
+def _init_git() -> None:
+    """Initialize a git repository and stage every file.
+
+    Runs before the pre-commit install, which needs a repository.
+    """
+    console.print("📝 Initializing Git repository...", style="cyan")
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "add", "."], check=True, capture_output=True)
+
+
+def _install_pre_commit() -> None:
+    """Install the pre-commit hooks with the project's own ``pre-commit``, if present."""
+    console.print("🔧 Installing pre-commit hooks...", style="cyan")
+    pre_commit_path = (
+        os.path.join(".venv", "bin", "pre-commit")
+        if os.name != "nt"
+        else os.path.join(".venv", "Scripts", "pre-commit")
+    )
+    if os.path.exists(pre_commit_path):
+        # Run pre-commit install with the venv environment
+        subprocess.run([pre_commit_path, "install"], check=True)
+    else:
+        console.print(
+            "  Pre-commit not found, skipping hook installation", style="yellow"
+        )
+
+
+def _activation_command() -> str:
+    """Return the command that activates ``.venv`` for this OS and ``SHELL``."""
+    shell = os.environ.get("SHELL", "").lower()
+    if os.name == "nt":  # Windows
+        return ".venv\\Scripts\\activate"
+    if "fish" in shell:
+        return "source .venv/bin/activate.fish"
+    if "csh" in shell or "tcsh" in shell:
+        return "source .venv/bin/activate.csh"
+    # Default to bash/zsh
+    return "source .venv/bin/activate"
+
+
+def _print_next_steps(project_directory: str) -> None:
+    """Print how to enter the project, activate it, and start working."""
+    activate_cmd = _activation_command()
+    console.print("\nTo start working on your project:", style="yellow")
+    console.print(f"  cd {project_directory}", style="bold")
+    console.print(f"  {activate_cmd}", style="bold")
+    console.print("\nThen you can start developing with:", style="yellow")
+    console.print("  protean shell", style="bold")
+    console.print("  protean test", style="bold")
+
+
+def _print_quick_start() -> None:
+    """Make the template's activation scripts executable and print the one to run."""
+    # The activation scripts are created by the template in scripts/ folder
+    # Make sure they have the right permissions
+    # Since we're already in the project directory, use relative paths
+    activate_sh = "scripts/activate.sh"
+    activate_bat = "scripts/activate.bat"
+    activate_fish = "scripts/activate.fish"
+
+    if os.path.exists(activate_sh):
+        os.chmod(activate_sh, 0o755)
+    if os.path.exists(activate_fish):
+        os.chmod(activate_fish, 0o755)
+
+    # Detect user's shell
+    shell = os.environ.get("SHELL", "")
+
+    # Show quick start based on OS and shell
+    console.print("\n💡 Quick Start:", style="cyan bold")
+    if os.name == "nt" and os.path.exists(activate_bat):
+        console.print(f"  {activate_bat}", style="bold green")
+    elif "fish" in shell and os.path.exists(activate_fish):
+        console.print(f"  source {activate_fish}", style="bold green")
+    elif os.path.exists(activate_sh):
+        console.print(f"  source {activate_sh}", style="bold green")
+
+    console.print("\nThis will:", style="yellow")
+    console.print("  • Change to your project directory", style="white")
+    console.print("  • Deactivate any current virtual environment", style="white")
+    console.print("  • Activate your project's virtual environment", style="white")
 
 
 def _run_from_model(
@@ -378,4 +403,4 @@ def new(
     # Run post-generation setup unless skipped.
     project_directory = os.path.join(output_folder, project_name)
     if not skip_setup:
-        run_project_setup(project_directory)  # pragma: no cover
+        run_project_setup(project_directory)

@@ -110,16 +110,6 @@
     ]
   },
   {
-    "path": "src/protean/cli/new.py",
-    "file_name": "new.py",
-    "functions": [
-      {
-        "name": "run_project_setup",
-        "complexity": 17
-      }
-    ]
-  },
-  {
     "path": "src/protean/cli/test.py",
     "file_name": "test.py",
     "functions": [
