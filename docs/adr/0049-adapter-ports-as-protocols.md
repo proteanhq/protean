@@ -103,10 +103,15 @@ members and mypy's check of signatures.
 - A flag without a sub-protocol declares a guarantee, such as durability, or
   gates members or arguments of the core Port, such as the schema operations
   behind `SCHEMA_MANAGEMENT`.
-- An adapter that declares a flag implements every member of the flag's
-  sub-protocol. The service checks this when it is built, because
-  `capabilities` is a property of the adapter instance, and raises
-  `ConfigurationError` naming the flag and the class.
+- An adapter that declares a flag subclasses the flag's sub-protocol. The
+  service checks this when it is built, because `capabilities` is a property
+  of the adapter instance. It looks for the sub-protocol in the adapter class's
+  `__mro__` and raises `ConfigurationError` naming the flag and the class.
+  Python refuses to build a subclass that is missing an abstract member, so an
+  adapter that passes the check has every member of the sub-protocol.
+- A table that maps flags to sub-protocols types its values `type[object]`.
+  Strict mypy rejects a Protocol with abstract members where `type[<Port>]` is
+  expected, and the check reads only `__mro__`.
 - The check runs one way. A class may implement a sub-protocol without
   declaring its flag, because one class can serve several databases with
   different capabilities.
@@ -133,14 +138,16 @@ supports `in`, so the helpers were a second way to write the same check.
 
 - `domain.event_store`, `domain.brokers[name]`, `domain.caches[name]` and
   `domain.providers[name]` each return a service.
-- Every service exposes its adapter as `.adapter`, typed with the Port.
+- Every service holds its adapter in the private attribute `_adapter`, typed
+  with the Port.
 - The services are `EventStore`, `Broker`, `Cache`, `Provider` and `DAO`.
 - A domain has one event store, so `domain.event_store` is the `EventStore`
   service. Brokers, caches and providers keep their containers: `Brokers`,
   `Caches` and `Providers`.
 
-Callers reach every framework feature through one object, and code that needs
-adapter internals shows it by reading `.adapter`.
+Callers reach every framework feature through one object. Application code
+that needs the native client calls the service's `get_connection()`
+(decision 10). A test that needs adapter internals reads `_adapter`.
 
 ### 7. Services, containers and the registry live in `protean.infra`
 
@@ -214,8 +221,9 @@ without narrowing it, and mypy would not report a wrong assumption.
 - The event-store, broker, cache and provider Ports share one set of
   lifecycle members, with the same names on every Port: the adapter's name and
   capabilities, a liveness check, a health record, the native handle, closing
-  the adapter, and clearing its data. A Port whose adapter can own a schema adds
-  schema creation and removal, behind a `SCHEMA_MANAGEMENT` flag.
+  the adapter, and clearing its data. Closing has a no-op default on every
+  Port. A Port whose adapter can own a schema adds schema creation and removal,
+  behind a `SCHEMA_MANAGEMENT` flag.
 
 ### 12. Conformance suites live in the repository
 
@@ -242,6 +250,34 @@ and skip a test.
   working with a `DeprecationWarning` that names its removal version, as
   [ADR-0004](0004-release-workflow-and-breaking-change-policy.md) requires.
 
+### 14. Framework code calls an adapter only through its service
+
+- A service has a method for each Port member that framework code outside the
+  service calls, including a method that only forwards the call.
+- A test walks the modules under `src/protean`, outside `protean.infra` and
+  `protean.adapters`, and fails on a call of a method on `<expr>._adapter`.
+  Reading an adapter attribute and an `isinstance` check stay allowed.
+
+A change that applies to every call of an adapter operation, such as a span, a
+timer or a retry, then goes in one service method. Before this decision the
+base classes were that place, because every call went through them. If
+framework code called the adapter directly, such a change would first move
+every caller onto the service.
+
+### 15. A service method is public only when application code calls it
+
+- A service method that application code has a reason to call has a public
+  name, such as `publish`, `read`, `raw`, `clear` or `get_connection`.
+- A service method that only framework code calls has a leading underscore,
+  such as `_commit`, `_create_group` or `_register_projection`.
+- Port members keep public names. Adapter authors implement them, and only the
+  service calls them.
+
+`docs/reference/stable-surface.md` makes an underscore name Internal at any
+depth, so the underscore is enough to keep framework calls out of the
+Provisional surface. Without it, every method a service forwards for the
+framework would become a public name that application code may call.
+
 ## Consequences
 
 **Positive:**
@@ -257,13 +293,17 @@ and skip a test.
 - Mypy checks the fields callers read from records and the narrowing of native
   handles.
 - Built-in and outside adapters register through the same registry.
+- A change that applies to every call of an adapter operation is made in one
+  service method.
 
 **Negative:**
 
 - Every adapter, container and test fixture changes. An adapter maintained
   outside Protean is rewritten against its Port.
-- Each port has two classes, the adapter and the service, and code that needs
-  adapter internals goes through `.adapter`.
+- Each port has two classes, the adapter and the service, and a test that
+  needs adapter internals goes through the private `_adapter`.
+- A service carries a forwarding method for each Port member that framework
+  code calls, even when the method adds nothing.
 - A model class whose metaclass conflicts with `Protocol` gets mypy's
   structural check only. Python does not refuse an incomplete one.
 - Mypy does not compare an adapter's `__init__` with the Port's.
@@ -291,6 +331,12 @@ and skip a test.
   Rejected: the package would mix the framework with the adapters it wraps, and
   the `protean check` diagnostic on `protean.adapters` imports would flag
   framework imports.
+- **Give a service only the methods that add behaviour, and let framework code
+  call the adapter for the rest.** Rejected: a later change that applies to
+  every call would first move every caller onto the service.
+- **Expose the adapter as a public `adapter` attribute.** Rejected: application
+  code could call the adapter and skip the service's unit-of-work recording
+  and retries.
 - **Keep deprecation shims for the renamed port methods.** Rejected: the port
   classes are Provisional, so the stable-surface policy lets them change in a
   minor release, and the migration guide gives each caller the new name.
