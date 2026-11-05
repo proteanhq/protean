@@ -14,7 +14,7 @@ Usage::
 """
 
 import json
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich import print
@@ -22,6 +22,9 @@ from rich.table import Table
 
 from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions, load_domain
 from protean.cli.result import build_envelope, route_logs_to_stderr
+
+if TYPE_CHECKING:
+    from protean.server.subscription_status import SubscriptionStatus
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -84,8 +87,13 @@ def status(
         print("No subscriptions found in domain.")
         return
 
-    # Rich table
-    table = Table(title=f"Subscriptions: {derived_domain.name}")
+    _print_table(derived_domain.name, statuses)
+    _print_summary(statuses)
+
+
+def _print_table(domain_name: str, statuses: list["SubscriptionStatus"]) -> None:
+    """Print one row per subscription with its lag, pending, DLQ and status."""
+    table = Table(title=f"Subscriptions: {domain_name}")
     table.add_column("Handler", style="bold")
     table.add_column("Type")
     table.add_column("Stream")
@@ -116,7 +124,9 @@ def status(
 
     print(table)
 
-    # Summary line
+
+def _print_summary(statuses: list["SubscriptionStatus"]) -> None:
+    """Print the subscription count, the non-zero counts per status and the total lag."""
     total = len(statuses)
     ok_count = sum(1 for s in statuses if s.status == "ok")
     lagging_count = sum(1 for s in statuses if s.status == "lagging")

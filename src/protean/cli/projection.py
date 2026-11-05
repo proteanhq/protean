@@ -27,6 +27,7 @@ from protean.utils import DomainObjects
 if TYPE_CHECKING:
     from protean.core.projection import BaseProjection
     from protean.domain import Domain
+    from protean.server.projection_status import ProjectionStatus
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -191,7 +192,13 @@ def status(
         print("No projections found in domain.")
         return
 
-    table = Table(title=f"Projections: {derived_domain.name}")
+    _print_table(derived_domain.name, statuses)
+    _print_summary(statuses)
+
+
+def _print_table(domain_name: str, statuses: list["ProjectionStatus"]) -> None:
+    """Print one row per projection with its staleness, lag, rows and status."""
+    table = Table(title=f"Projections: {domain_name}")
     table.add_column("Projection", style="bold")
     table.add_column("Projectors")
     table.add_column("Last Updated")
@@ -219,6 +226,9 @@ def status(
 
     print(table)
 
+
+def _print_summary(statuses: list["ProjectionStatus"]) -> None:
+    """Print the projection count and the non-zero counts per status."""
     total = len(statuses)
     ok_count = sum(1 for s in statuses if s.status == "ok")
     lagging_count = sum(1 for s in statuses if s.status == "lagging")
