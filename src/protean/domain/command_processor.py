@@ -501,10 +501,11 @@ class CommandProcessor:
             return position
 
     def _handles_in_process(self, asynchronous: bool) -> bool:
-        """Return whether Protean handles the command itself, now or after the
-        caller commits, instead of leaving it to the engine. An asynchronous
-        command in an async domain is left to the engine, and so is an
-        asynchronous command with no registered handler in a sync domain."""
+        """Return whether the processing mode lets Protean handle the command
+        itself, now or after the caller commits. Returns ``False`` only for an
+        asynchronous command in an async domain. In a sync domain it returns
+        ``True`` for every command, and ``process`` still leaves a command with
+        no registered handler to the engine."""
         return (
             not asynchronous
             or self._domain.config["command_processing"] == Processing.SYNC.value
