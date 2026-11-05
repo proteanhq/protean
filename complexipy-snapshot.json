@@ -110,52 +110,6 @@
     ]
   },
   {
-    "path": "src/protean/cli/__init__.py",
-    "file_name": "__init__.py",
-    "functions": [
-      {
-        "name": "main",
-        "complexity": 17
-      },
-      {
-        "name": "server",
-        "complexity": 28
-      }
-    ]
-  },
-  {
-    "path": "src/protean/cli/check.py",
-    "file_name": "check.py",
-    "functions": [
-      {
-        "name": "check",
-        "complexity": 17
-      },
-      {
-        "name": "_print_rich",
-        "complexity": 27
-      }
-    ]
-  },
-  {
-    "path": "src/protean/cli/docs.py",
-    "file_name": "docs.py",
-    "functions": [
-      {
-        "name": "_load_domain_snapshot_config",
-        "complexity": 16
-      },
-      {
-        "name": "_generate_handlers",
-        "complexity": 17
-      },
-      {
-        "name": "generate",
-        "complexity": 26
-      }
-    ]
-  },
-  {
     "path": "src/protean/cli/dx.py",
     "file_name": "dx.py",
     "functions": [
@@ -176,28 +130,6 @@
       {
         "name": "_check_compat_single",
         "complexity": 16
-      }
-    ]
-  },
-  {
-    "path": "src/protean/cli/ir.py",
-    "file_name": "ir.py",
-    "functions": [
-      {
-        "name": "_print_check_text",
-        "complexity": 18
-      },
-      {
-        "name": "_print_element_changes",
-        "complexity": 29
-      },
-      {
-        "name": "_print_diff_text",
-        "complexity": 31
-      },
-      {
-        "name": "diff",
-        "complexity": 38
       }
     ]
   },

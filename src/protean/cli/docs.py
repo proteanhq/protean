@@ -182,6 +182,48 @@ def generate(
         print("[red]Error:[/red] --domain and --ir are mutually exclusive")
         raise typer.Abort()
 
+    _validate_generate_args(type, format, cluster, annotations, check)
+
+    # --- Resolve the opt-in domain snapshot (llms only) -------------------
+    # The `[tool.protean.docs].domain_snapshot` key is docs-local tooling
+    # config, absent by default. When set, it fills in the domain and the
+    # output path that `--domain`/`--output` otherwise carry, so `--type=llms`
+    # and `--check` run with no repeated flags. An explicit flag always wins.
+    # A configured value is relative to the config file that declares it; a
+    # flag is relative to the current directory, as flags always are.
+    snapshot = _load_domain_snapshot_config() if type == "llms" else None
+    source_domain = domain or (snapshot["domain"] if snapshot else "")
+    target_path = output or (snapshot["path"] if snapshot else "")
+
+    # --- Load IR ----------------------------------------------------------
+    # --type=llms and --type=agents run with no source. agents is derived only
+    # from the diagnostics registry, so its source is truly ignored: skip the
+    # IR load entirely, otherwise a broken --domain/--ir would abort the command
+    # before the registry-only pack is printed. llms loads a source when given
+    # (it adds a project overlay) and emits the framework layer alone without one.
+    ir_data = _load_source_ir(type, ir, source_domain)
+
+    # --- Load annotations (event-model only) ------------------------------
+    # Loaded and validated here, before any generation or file write, so a
+    # malformed file aborts the command without leaving partial output.
+    annotations_map = _resolve_annotations(type, annotations)
+
+    # --- Generate output --------------------------------------------------
+    content = _generate_output(
+        ir_data,
+        doc_type=type,
+        output_format=format,
+        cluster_fqn=cluster,
+        annotations=annotations_map,
+    )
+
+    _emit_generated(content, target_path, check)
+
+
+def _validate_generate_args(
+    type: str, format: str, cluster: str, annotations: str, check: bool
+) -> None:
+    """Abort with a message when the ``docs generate`` options do not fit together."""
     if type not in _VALID_TYPES:
         print(
             f"[red]Error:[/red] invalid --type: {type!r}. "
@@ -224,47 +266,24 @@ def generate(
         )
         raise typer.Abort()
 
-    # --- Resolve the opt-in domain snapshot (llms only) -------------------
-    # The `[tool.protean.docs].domain_snapshot` key is docs-local tooling
-    # config, absent by default. When set, it fills in the domain and the
-    # output path that `--domain`/`--output` otherwise carry, so `--type=llms`
-    # and `--check` run with no repeated flags. An explicit flag always wins.
-    # A configured value is relative to the config file that declares it; a
-    # flag is relative to the current directory, as flags always are.
-    snapshot = _load_domain_snapshot_config() if type == "llms" else None
-    source_domain = domain or (snapshot["domain"] if snapshot else "")
-    target_path = output or (snapshot["path"] if snapshot else "")
 
-    # --- Load IR ----------------------------------------------------------
-    # --type=llms and --type=agents run with no source. agents is derived only
-    # from the diagnostics registry, so its source is truly ignored: skip the
-    # IR load entirely, otherwise a broken --domain/--ir would abort the command
-    # before the registry-only pack is printed. llms loads a source when given
-    # (it adds a project overlay) and emits the framework layer alone without one.
-    ir_data: dict[str, Any] | None
+def _load_source_ir(type: str, ir: str, source_domain: str) -> dict[str, Any] | None:
+    """Load the IR the doc type needs, or return ``None`` when it needs none."""
     if type == "agents":
-        ir_data = None
-    elif ir:
-        ir_data = load_ir_file(ir)
-    elif source_domain:
-        ir_data = load_domain_ir(source_domain)
-    else:
-        ir_data = None
+        return None
+    if ir:
+        return load_ir_file(ir)
+    if source_domain:
+        return load_domain_ir(source_domain)
+    return None
 
-    # --- Load annotations (event-model only) ------------------------------
-    # Loaded and validated here, before any generation or file write, so a
-    # malformed file aborts the command without leaving partial output.
-    annotations_map = _resolve_annotations(type, annotations)
 
-    # --- Generate output --------------------------------------------------
-    content = _generate_output(
-        ir_data,
-        doc_type=type,
-        output_format=format,
-        cluster_fqn=cluster,
-        annotations=annotations_map,
-    )
+def _emit_generated(content: str, target_path: str, check: bool) -> None:
+    """Check the snapshot for drift, then write *content* to a file or stdout.
 
+    Aborts when ``--check`` has no snapshot path; :func:`_check_snapshot`
+    exits on drift.
+    """
     # --- Drift check (llms only, writes nothing) --------------------------
     if check:
         if not target_path:
@@ -501,26 +520,16 @@ def _generate_handlers(ir_data: dict[str, Any], output_format: str) -> str:
     compatibility.
     """
     from protean.ir.generators.handlers import (  # noqa: PLC0415
-        generate_cluster_command_handler_diagram,
         generate_event_handler_diagram,
         generate_handler_wiring_diagram,
         generate_process_manager_diagram,
-        generate_single_projector_diagram,
         generate_subscriber_diagram,
     )
 
     if output_format == "mermaid":
         return generate_handler_wiring_diagram(ir_data)
 
-    sections: list[str] = []
-
-    # Command handlers — one diagram per aggregate cluster
-    clusters = ir_data.get("clusters", {})
-    for cfqn in sorted(clusters):
-        raw = generate_cluster_command_handler_diagram(ir_data, cfqn)
-        if raw != "flowchart LR":
-            name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
-            sections.append(mermaid_fence(raw, title=f"Command Handlers: {name}"))
+    sections = _command_handler_sections(ir_data)
 
     # Event handlers, process managers, subscribers — one diagram each
     for title, gen in [
@@ -532,17 +541,43 @@ def _generate_handlers(ir_data: dict[str, Any], output_format: str) -> str:
         if raw != "flowchart TD":
             sections.append(mermaid_fence(raw, title=title))
 
-    # Projectors — one diagram per projection
+    sections += _projector_sections(ir_data)
+
+    return "\n\n".join(sections) or mermaid_fence(
+        "flowchart TD", title="Handler Wiring"
+    )
+
+
+def _command_handler_sections(ir_data: dict[str, Any]) -> list[str]:
+    """Return one fenced command-handler diagram per aggregate cluster that has any."""
+    from protean.ir.generators.handlers import (  # noqa: PLC0415
+        generate_cluster_command_handler_diagram,
+    )
+
+    sections: list[str] = []
+    clusters = ir_data.get("clusters", {})
+    for cfqn in sorted(clusters):
+        raw = generate_cluster_command_handler_diagram(ir_data, cfqn)
+        if raw != "flowchart LR":
+            name = cfqn.rsplit(".", 1)[-1] if "." in cfqn else cfqn
+            sections.append(mermaid_fence(raw, title=f"Command Handlers: {name}"))
+    return sections
+
+
+def _projector_sections(ir_data: dict[str, Any]) -> list[str]:
+    """Return one fenced projector diagram per projection that has any."""
+    from protean.ir.generators.handlers import (  # noqa: PLC0415
+        generate_single_projector_diagram,
+    )
+
+    sections: list[str] = []
     projections = ir_data.get("projections", {})
     for pfqn in sorted(projections):
         raw = generate_single_projector_diagram(ir_data, pfqn)
         if raw != "flowchart LR":
             name = pfqn.rsplit(".", 1)[-1] if "." in pfqn else pfqn
             sections.append(mermaid_fence(raw, title=f"Projector: {name}"))
-
-    return "\n\n".join(sections) or mermaid_fence(
-        "flowchart TD", title="Handler Wiring"
-    )
+    return sections
 
 
 def _generate_event_model(
@@ -728,24 +763,40 @@ def _load_domain_snapshot_config() -> dict[str, str] | None:
         print(f"[red]Error:[/red] could not read {config_path}: {exc}")
         raise typer.Abort() from exc
 
-    if config_path.name == "pyproject.toml":
-        section_label = "[tool.protean.docs]"
-        section: object = data
-        for level in ("tool", "protean", "docs"):
-            if not isinstance(section, dict):
-                return None
-            section = section.get(level, {})
-        docs_section = section
-    else:
-        section_label = "[docs]"
-        docs_section = data.get("docs", {})
-
+    section_label, docs_section = _docs_section(config_path, data)
     if not isinstance(docs_section, dict):
         return None
     snapshot = docs_section.get("domain_snapshot")
     if snapshot is None:
         return None
+    return _resolve_snapshot(snapshot, section_label, config_path)
 
+
+def _docs_section(config_path: Path, data: dict[str, Any]) -> tuple[str, object]:
+    """Return the label and contents of the docs table in a parsed config file.
+
+    The contents are ``None`` when a ``pyproject.toml`` has a non-table value
+    on the way to ``[tool.protean.docs]``.
+    """
+    if config_path.name != "pyproject.toml":
+        return "[docs]", data.get("docs", {})
+    section: object = data
+    for level in ("tool", "protean", "docs"):
+        if not isinstance(section, dict):
+            return "[tool.protean.docs]", None
+        section = section.get(level, {})
+    return "[tool.protean.docs]", section
+
+
+def _resolve_snapshot(
+    snapshot: object, section_label: str, config_path: Path
+) -> dict[str, str]:
+    """Validate the ``domain_snapshot`` value and resolve it against its file.
+
+    Raises:
+        typer.Abort: When the value is not a table with a non-empty string
+            ``path`` and a non-empty string ``domain``.
+    """
     if not isinstance(snapshot, dict):
         print(
             f"[red]Error:[/red] {escape(section_label)}.domain_snapshot in "

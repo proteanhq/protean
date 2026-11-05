@@ -18,7 +18,7 @@ Why does this file exist, and why not put this in __main__?
 import json
 import os
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich import print
@@ -60,6 +60,9 @@ from protean.exceptions import NoDomainException
 from protean.server.engine import Engine
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import configure_logging, get_logger
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 logger = get_logger(__name__)
 
@@ -145,40 +148,54 @@ def main(
     ctx.ensure_object(dict)
 
     if log_config is not None:
-        try:
-            payload = json.loads(log_config.read_text(encoding="utf-8"))
-        except OSError as exc:
-            print(f"Error: Unable to read log config '{log_config}': {exc}")
-            raise typer.Exit(code=2) from exc
-        except json.JSONDecodeError as exc:
-            print(f"Error: Invalid JSON in log config '{log_config}': {exc}")
-            raise typer.Exit(code=2) from exc
+        payload = _read_log_config(log_config)
         configure_logging(dict_config=payload)
         ctx.obj[CTX_LOG_CONFIGURED] = True
         ctx.obj[CTX_LOG_DICT_CONFIG] = payload
     elif log_level is not None or log_format is not None:
-        kwargs: dict[str, Any] = {}
-        if log_level is not None:
-            upper = log_level.upper()
-            if upper not in _LOG_LEVELS:
-                print(
-                    f"Error: Invalid log level '{log_level}'. "
-                    f"Choose from: {', '.join(_LOG_LEVELS)}"
-                )
-                raise typer.Exit(code=2)
-            kwargs["level"] = upper
-        if log_format is not None:
-            if log_format not in _LOG_FORMATS:
-                print(
-                    f"Error: Invalid log format '{log_format}'. "
-                    f"Choose from: {', '.join(_LOG_FORMATS)}"
-                )
-                raise typer.Exit(code=2)
-            kwargs["format"] = log_format
+        kwargs = _logging_kwargs(log_level, log_format)
         configure_logging(**kwargs)
         ctx.obj[CTX_LOG_CONFIGURED] = True
         ctx.obj[CTX_LOG_LEVEL] = kwargs.get("level")
         ctx.obj[CTX_LOG_FORMAT] = kwargs.get("format")
+
+
+def _read_log_config(log_config: Path) -> Any:
+    """Return the parsed ``--log-config`` JSON, or exit 2 if it cannot be read."""
+    try:
+        return json.loads(log_config.read_text(encoding="utf-8"))
+    except OSError as exc:
+        print(f"Error: Unable to read log config '{log_config}': {exc}")
+        raise typer.Exit(code=2) from exc
+    except json.JSONDecodeError as exc:
+        print(f"Error: Invalid JSON in log config '{log_config}': {exc}")
+        raise typer.Exit(code=2) from exc
+
+
+def _logging_kwargs(log_level: str | None, log_format: str | None) -> dict[str, Any]:
+    """Return the ``configure_logging`` arguments for the flags that were given.
+
+    Exits 2 when the level or the format is not one of the accepted values.
+    """
+    kwargs: dict[str, Any] = {}
+    if log_level is not None:
+        upper = log_level.upper()
+        if upper not in _LOG_LEVELS:
+            print(
+                f"Error: Invalid log level '{log_level}'. "
+                f"Choose from: {', '.join(_LOG_LEVELS)}"
+            )
+            raise typer.Exit(code=2)
+        kwargs["level"] = upper
+    if log_format is not None:
+        if log_format not in _LOG_FORMATS:
+            print(
+                f"Error: Invalid log format '{log_format}'. "
+                f"Choose from: {', '.join(_LOG_FORMATS)}"
+            )
+            raise typer.Exit(code=2)
+        kwargs["format"] = log_format
+    return kwargs
 
 
 @app.command()
@@ -227,113 +244,164 @@ def server(
             raise typer.Abort()
 
         if reload:
-            # Development path: outer Reloader watches source files and
-            # restarts the inner Engine process on change.
-            try:
-                from protean.server.reloader import Reloader  # noqa: PLC0415
-            except ModuleNotFoundError as exc:
-                # Only translate the missing-watchfiles case into the
-                # install hint. Any other ModuleNotFoundError almost
-                # certainly indicates a real bug inside the reloader (or
-                # one of its imports) and must be re-raised so it isn't
-                # masked.
-                if exc.name != "watchfiles":
-                    raise
-                msg = (
-                    "Error: --reload requires the 'watchfiles' package. "
-                    "Install it with 'pip install \"protean[dev]\"'."
-                )
-                print(msg)
-                logger.error("%s (%s)", msg, exc)
-                raise typer.Abort() from exc
-
-            reloader = Reloader(
-                domain_path=domain,
-                test_mode=test_mode,
-                log_level=parent_obj.get(CTX_LOG_LEVEL),
-                log_format=parent_obj.get(CTX_LOG_FORMAT),
-                log_config=parent_obj.get(CTX_LOG_DICT_CONFIG),
-            )
-            reloader.run()
-
-            if reloader.exit_code != 0:
-                raise typer.Exit(code=reloader.exit_code)
+            _run_with_reloader(domain, test_mode, parent_obj)
             return
 
-        try:
-            derived_domain = derive_domain(domain)
-        except NoDomainException as exc:
-            msg = f"Error loading Protean domain: {exc.args[0]}"
-            print(msg)  # Required for tests to capture output
-            logger.error(msg)
-
-            raise typer.Abort() from exc
-
-        assert derived_domain is not None
+        derived_domain = _derive_server_domain(domain)
 
         # Apply [logging] before init() and before the Supervisor is built, so
         # the supervisor's QueueListener copies handlers at the configured level.
         apply_domain_logging(derived_domain, parent_obj)
 
         if workers == 1:
-            # Single-worker path: no supervisor, zero overhead.
-            # Traverse and initialize domain — loads all aggregates, entities,
-            # services, and other domain elements.
-            derived_domain.init()
-
-            with derived_domain.domain_context():
-                engine = Engine(derived_domain, test_mode=test_mode)
-                engine.run()
-
-            if engine.exit_code != 0:
-                raise typer.Exit(code=engine.exit_code)
+            _run_single_worker(derived_domain, test_mode)
         else:
-            # Multi-worker path: Supervisor spawns N independent Engine processes.
-            # Each worker derives and initializes the domain independently.
-            from protean.server.subscription import (  # noqa: PLC0415
-                event_store_multi_worker_error,
-                event_store_subscription_handlers,
+            _run_supervisor(
+                derived_domain,
+                domain,
+                workers,
+                test_mode,
+                allow_event_store_multiworker,
+                parent_obj,
             )
-            from protean.server.supervisor import Supervisor  # noqa: PLC0415
 
-            # Refuse to start when the domain has event-store subscriptions,
-            # which are single-writer: multiple workers would double-process
-            # their events. Init in the parent (workers re-init independently)
-            # only to resolve subscription types for the guard, then close it so
-            # the parent holds no infrastructure connections while the workers
-            # run.
-            if not allow_event_store_multiworker:
-                offenders: list[str] = []
-                try:
-                    derived_domain.init()
-                    try:
-                        offenders = event_store_subscription_handlers(derived_domain)
-                    finally:
-                        derived_domain.close()
-                # The guard is best effort; workers report init errors; logged.
-                except Exception:
-                    logger.debug(
-                        "Event-store single-writer guard skipped: domain '%s' could "
-                        "not be initialized; deferring to workers",
-                        domain,
-                        exc_info=True,
-                    )
-                if offenders:
-                    print(
-                        f"Error: {event_store_multi_worker_error(offenders, workers)}"
-                    )
-                    raise typer.Abort()
 
-            supervisor = Supervisor(
-                domain_path=domain,
-                num_workers=workers,
-                test_mode=test_mode,
-                acknowledge_event_store_risk=allow_event_store_multiworker,
-                log_level=parent_obj.get(CTX_LOG_LEVEL),
-                log_format=parent_obj.get(CTX_LOG_FORMAT),
-                log_config=parent_obj.get(CTX_LOG_DICT_CONFIG),
-            )
-            supervisor.run()
+def _run_with_reloader(
+    domain: str, test_mode: bool, parent_obj: dict[str, Any]
+) -> None:
+    """Run the engine under the file-watching reloader until it stops.
 
-            if supervisor.exit_code != 0:
-                raise typer.Exit(code=supervisor.exit_code)
+    Aborts when ``watchfiles`` is not installed, and exits with the reloader's
+    exit code when it is not zero.
+    """
+    # Development path: outer Reloader watches source files and
+    # restarts the inner Engine process on change.
+    try:
+        from protean.server.reloader import Reloader  # noqa: PLC0415
+    except ModuleNotFoundError as exc:
+        # Only translate the missing-watchfiles case into the
+        # install hint. Any other ModuleNotFoundError almost
+        # certainly indicates a real bug inside the reloader (or
+        # one of its imports) and must be re-raised so it isn't
+        # masked.
+        if exc.name != "watchfiles":
+            raise
+        msg = (
+            "Error: --reload requires the 'watchfiles' package. "
+            "Install it with 'pip install \"protean[dev]\"'."
+        )
+        print(msg)
+        logger.error("%s (%s)", msg, exc)
+        raise typer.Abort() from exc
+
+    reloader = Reloader(
+        domain_path=domain,
+        test_mode=test_mode,
+        log_level=parent_obj.get(CTX_LOG_LEVEL),
+        log_format=parent_obj.get(CTX_LOG_FORMAT),
+        log_config=parent_obj.get(CTX_LOG_DICT_CONFIG),
+    )
+    reloader.run()
+
+    if reloader.exit_code != 0:
+        raise typer.Exit(code=reloader.exit_code)
+
+
+def _derive_server_domain(domain: str) -> "Domain":
+    """Load the domain at *domain*, or print the error and abort."""
+    try:
+        derived_domain = derive_domain(domain)
+    except NoDomainException as exc:
+        msg = f"Error loading Protean domain: {exc.args[0]}"
+        print(msg)  # Required for tests to capture output
+        logger.error(msg)
+
+        raise typer.Abort() from exc
+
+    assert derived_domain is not None
+    return derived_domain
+
+
+def _run_single_worker(derived_domain: "Domain", test_mode: bool) -> None:
+    """Run one engine in this process; exit with its code when it is not zero."""
+    # Single-worker path: no supervisor, zero overhead.
+    # Traverse and initialize domain — loads all aggregates, entities,
+    # services, and other domain elements.
+    derived_domain.init()
+
+    with derived_domain.domain_context():
+        engine = Engine(derived_domain, test_mode=test_mode)
+        engine.run()
+
+    if engine.exit_code != 0:
+        raise typer.Exit(code=engine.exit_code)
+
+
+def _run_supervisor(
+    derived_domain: "Domain",
+    domain: str,
+    workers: int,
+    test_mode: bool,
+    allow_event_store_multiworker: bool,
+    parent_obj: dict[str, Any],
+) -> None:
+    """Run *workers* engine processes under a supervisor.
+
+    Aborts when the domain has event-store subscriptions and the override flag
+    is not set. Exits with the supervisor's exit code when it is not zero.
+    """
+    # Multi-worker path: Supervisor spawns N independent Engine processes.
+    # Each worker derives and initializes the domain independently.
+    from protean.server.supervisor import Supervisor  # noqa: PLC0415
+
+    if not allow_event_store_multiworker:
+        _refuse_event_store_subscriptions(derived_domain, domain, workers)
+
+    supervisor = Supervisor(
+        domain_path=domain,
+        num_workers=workers,
+        test_mode=test_mode,
+        acknowledge_event_store_risk=allow_event_store_multiworker,
+        log_level=parent_obj.get(CTX_LOG_LEVEL),
+        log_format=parent_obj.get(CTX_LOG_FORMAT),
+        log_config=parent_obj.get(CTX_LOG_DICT_CONFIG),
+    )
+    supervisor.run()
+
+    if supervisor.exit_code != 0:
+        raise typer.Exit(code=supervisor.exit_code)
+
+
+def _refuse_event_store_subscriptions(
+    derived_domain: "Domain", domain: str, workers: int
+) -> None:
+    """Abort when the domain has event-store subscriptions."""
+    from protean.server.subscription import (  # noqa: PLC0415
+        event_store_multi_worker_error,
+        event_store_subscription_handlers,
+    )
+
+    # Refuse to start when the domain has event-store subscriptions,
+    # which are single-writer: multiple workers would double-process
+    # their events. Init in the parent (workers re-init independently)
+    # only to resolve subscription types for the guard, then close it so
+    # the parent holds no infrastructure connections while the workers
+    # run.
+    offenders: list[str] = []
+    try:
+        derived_domain.init()
+        try:
+            offenders = event_store_subscription_handlers(derived_domain)
+        finally:
+            derived_domain.close()
+    # The guard is best effort; workers report init errors; logged.
+    except Exception:
+        logger.debug(
+            "Event-store single-writer guard skipped: domain '%s' could "
+            "not be initialized; deferring to workers",
+            domain,
+            exc_info=True,
+        )
+    if offenders:
+        print(f"Error: {event_store_multi_worker_error(offenders, workers)}")
+        raise typer.Abort()
