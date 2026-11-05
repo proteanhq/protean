@@ -227,7 +227,7 @@ tracking and no retry.
 
 ### Exactly-once effect
 
-You can opt in at two places:
+You can opt in at three places:
 
 - **Projectors**: `@domain.projector(idempotent=True)` on a relational
   provider records `(message_id, handler)` in the same transaction as the
@@ -237,6 +237,14 @@ You can opt in at two places:
   covers redelivery one after another and does not cover concurrent delivery.
   Markers are pruned after a retention window (7 days by default), and a
   redelivery after that is applied again.
+- **Subscribers**: `@domain.subscriber(idempotent=True)` records
+  `(message_id, handler)` in the database named by its `provider` option, in
+  the same unit of work as the subscriber's writes. The message id is the
+  payload's `metadata.headers.id`, and a payload without it fails. On a
+  relational provider a unique index also stops concurrent duplicates. On the
+  in-memory provider it covers redelivery one after another only. Markers are
+  pruned after the same retention window
+  ([ADR-0017](../adr/0017-consume-side-idempotency-for-projectors.md)).
 - **Commands**: A command with an `idempotency_key` is deduplicated against
   the idempotency store, and only when that store is active. Successful entries
   expire after 24 hours and failed ones after 60 seconds, so a failed command

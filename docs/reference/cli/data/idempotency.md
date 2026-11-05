@@ -1,8 +1,9 @@
 # `protean idempotency`
 
 The `protean idempotency` command group manages the **consume-side idempotency
-markers** used by [`idempotent=True` projectors](../../../guides/consume-state/projectors.md#opting-into-built-in-deduplication).
-Each processed event writes one `(message_id, handler)` marker
+markers** used by [`idempotent=True` projectors](../../../guides/consume-state/projectors.md#opting-into-built-in-deduplication)
+and [`idempotent=True` subscribers](../../../guides/consume-state/subscribers.md#idempotent-optional-default-false).
+Each processed message writes one `(message_id, handler)` marker
 (`ProcessedMessage`); this group prunes markers that are no longer needed.
 
 All commands accept a `--domain` option to specify the domain module path
@@ -44,7 +45,8 @@ protean idempotency cleanup --retention-hours=24 --batch-size=1000 --domain=my_d
 Deleted 1240 idempotency marker(s).
 ```
 
-When no projector opts into idempotency, or nothing is old enough to prune:
+When no projector or subscriber opts into idempotency, or nothing is old enough
+to prune:
 
 ```
 No idempotency markers to clean up.
