@@ -399,7 +399,7 @@ def _print_counts(counts: dict[str, int]) -> None:
 
 
 def _print_diagnostics(diagnostics: list[dict[str, Any]], marker: str) -> None:
-    """Print each diagnostic as one line led by *marker* and its code."""
+    """Print each diagnostic as one line: *marker*, the code if any, the message."""
     for diag in diagnostics:
         code = diag.get("code", "")
         prefix = f"[dim]{escape(code)}:[/dim] " if code else ""

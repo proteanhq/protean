@@ -654,7 +654,7 @@ def _split_scopes(stmt: ast.stmt) -> tuple[list[ast.AST], list[_Scope], set[str]
     while stack:
         node = stack.pop()
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            # The name itself is bound out here.
+            # The name itself is bound in the enclosing scope.
             bound.add(node.name)
             nested.append(_definition_scope(node, stack))
             continue

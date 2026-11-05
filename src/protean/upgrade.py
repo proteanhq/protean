@@ -187,7 +187,8 @@ def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
 
     For SQL providers whose ``outbox`` table has string columns that are
     unbounded (the pre-0.16 ``TEXT`` shape) or wider than the model's bound,
-    generate the exact backend ``ALTER`` to apply the ``VARCHAR(N)`` bounds. SQLite enforces no lengths, so it is a no-op.
+    generate the exact backend ``ALTER`` to apply the ``VARCHAR(N)`` bounds.
+    SQLite enforces no lengths, so it is a no-op.
     """
     try:
         from sqlalchemy import inspect as sa_inspect  # noqa: F401, PLC0415

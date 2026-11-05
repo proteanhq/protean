@@ -88,8 +88,9 @@ def _http_names(tree: ast.Module) -> set[str]:
     if not names:
         return names
 
-    # Propagate through assignment until it settles: `s = requests.Session()`,
-    # then `self._c = s`, then `self._c.post(...)`.
+    # Propagate through assignment for up to three passes, stopping early once a
+    # pass adds nothing: `s = requests.Session()`, then `self._c = s`, then
+    # `self._c.post(...)`.
     for _ in range(3):
         if not _propagate_through_assignments(tree, names):
             break
@@ -125,7 +126,7 @@ def _http_import_from_names(node: ast.ImportFrom) -> list[str]:
 
 
 def _propagate_through_assignments(tree: ast.Module, names: set[str]) -> bool:
-    """Add to *names* each assignment target bound from an HTTP client name.
+    """Add to *names* each assignment target bound from a name in *names*.
 
     Makes one pass over the module and returns whether *names* grew. A name
     added early in the pass already counts for the assignments after it.

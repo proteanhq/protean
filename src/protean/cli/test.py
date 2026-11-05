@@ -1257,7 +1257,7 @@ def test_adapter(
             print(f"Skipped capabilities (not declared): {', '.join(markers_to_skip)}")
         raise typer.Exit(code=0)
 
-    # 4. Determine test directory
+    # Determine test directory
     generic_dir = _generic_test_dir(test_dir)
 
     # Determine the --db flag value (uppercase provider name)
@@ -1272,11 +1272,11 @@ def test_adapter(
         print(f"Capabilities to skip: {', '.join(markers_to_skip)}")
     print()
 
-    # 5. Run tests per capability
+    # Run tests per capability
     results = _run_markers(markers_to_run, db_name, generic_dir, verbose)
     has_failures = any(r.status == "FAIL" for r in results)
 
-    # 6. Print report
+    # Print report
     _print_conformance_report(provider, provider_class_name, results, markers_to_skip)
 
     if has_failures:
@@ -1294,14 +1294,14 @@ def _load_provider_capabilities(
     from protean.domain import Domain  # noqa: PLC0415
     from protean.port.provider import ProviderRegistry  # noqa: PLC0415
 
-    # 1. Verify provider is registered
+    # Verify provider is registered
     try:
         ProviderRegistry.get(provider)
     except Exception as e:  # any lookup error exits 1 with the message
         print(f"Error: {e}")
         raise typer.Exit(code=1) from e
 
-    # 2. Get provider capabilities (instantiate temporarily to access property)
+    # Get provider capabilities (instantiate temporarily to access property)
     #    We need a minimal domain to instantiate the provider for capabilities
     try:
         domain = Domain(name="ConformanceTest")
@@ -1330,7 +1330,7 @@ def _requested_capabilities(capabilities: str | None) -> list[str] | None:
 
     Raises ``typer.Exit(1)`` with a message on an unknown capability.
     """
-    # 3. Determine which capabilities to test
+    # Determine which capabilities to test
     if not capabilities:
         return None
     requested = [c.strip() for c in capabilities.split(",")]

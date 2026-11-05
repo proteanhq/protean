@@ -339,7 +339,8 @@ def _verify(derived_domain: Domain, reset_beyond_head: bool) -> _Run:
     """Collect the checkpoint and recovery-tracking findings.
 
     With *reset_beyond_head*, resets the beyond-head checkpoints and the stale
-    recovery findings. Unknown recovery findings are reported and never reset.
+    recovery findings. Unknown recovery findings are left for the report and
+    never reset.
     """
     from protean.server.subscription_status import (  # noqa: PLC0415
         collect_recovery_checkpoint_statuses,
@@ -594,9 +595,9 @@ def _print_checkpoint_resets(run: _Run) -> None:
             )
     elif not run.reset_failures and not run.recovery_stale:
         # Genuinely nothing beyond head in either lane. Say so only when no
-        # reset was even attempted; when an attempt failed, or a recovery
-        # entry was cleared, the blocks below report it, so "none to reset"
-        # would contradict them.
+        # reset was even attempted. A failed checkpoint reset is reported just
+        # below, and a found stale recovery entry by `_print_recovery_resets`,
+        # so "none to reset" would contradict them.
         print("\n[green]No beyond-head checkpoints to reset.[/green]")
     if run.reset_failures:
         print(

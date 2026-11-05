@@ -123,7 +123,12 @@ def _print_next_steps(project_directory: str) -> None:
 
 
 def _print_quick_start() -> None:
-    """Make the template's activation scripts executable and print the one to run."""
+    """Print the quick-start block for the template's activation scripts.
+
+    Makes the POSIX scripts executable and names the one for this platform and
+    shell. Prints the heading and the "This will:" lines even when the template
+    has no scripts.
+    """
     # The activation scripts are created by the template in scripts/ folder
     # Make sure they have the right permissions
     # Since we're already in the project directory, use relative paths
