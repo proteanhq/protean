@@ -162,3 +162,4 @@ See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 | [0046](0046-one-aggregate-instance-per-unit-of-work.md) | One aggregate instance per Unit of Work |
 | [0047](0047-mypy-plugin-subclasses-decorated-elements.md) | The mypy plugin makes a decorated element a subclass of its base |
 | [0048](0048-sql-event-store.md) | Protean stores events in SQLite and PostgreSQL through SQLAlchemy |
+| [0049](0049-adapter-ports-as-protocols.md) | An adapter port is a Protocol of adapter operations, wrapped by a framework service |
