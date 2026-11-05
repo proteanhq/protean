@@ -158,6 +158,51 @@ def _without_markers(lines: list[str]) -> list[str]:
     return [line for line in lines if not _SECTION_MARKER.match(line)]
 
 
+def _parse_include_spec(spec: str) -> tuple[str, re.Match[str] | None]:
+    """Return the include's file path and its range or section match.
+
+    The match is ``None`` for a whole-file include.
+    """
+    if ":" not in spec:
+        path, match = spec, None
+    elif (match := _RANGE.match(spec)) or (match := _SECTION.match(spec)):
+        path = match.group("file")
+    else:
+        raise SnippetError(f"unknown include form {spec!r}")
+    if not path:
+        raise SnippetError(f"unknown include form {spec!r}")
+    return path, match
+
+
+def _range_lines(
+    lines: list[str], match: re.Match[str], spec: str, path: str
+) -> list[str]:
+    start, end = int(match.group("start")), int(match.group("end"))
+    # The docs build stops a range at the end of the file, so an end
+    # past it is accepted. A range with no lines in it is not.
+    if start < 1 or end < start or start > len(lines):
+        raise SnippetError(
+            f"include {spec!r} asks for lines {start} to {end}, "
+            f"but {path} has {len(lines)} lines"
+        )
+    return lines[start - 1 : end]
+
+
+def _section_lines(lines: list[str], name: str, spec: str, path: str) -> list[str]:
+    bounds = [
+        (index, marker.group("kind"))
+        for index, line in enumerate(lines)
+        if (marker := _SECTION_MARKER.match(line)) and marker.group("name") == name
+    ]
+    starts = [index for index, kind in bounds if kind == "start"]
+    if not starts:
+        raise SnippetError(f"include {spec!r}: no section {name!r} in {path}")
+    ends = [index for index, kind in bounds if kind == "end" and index > starts[0]]
+    if not ends:
+        raise SnippetError(f"include {spec!r}: section {name!r} has no end marker")
+    return lines[starts[0] + 1 : ends[0]]
+
+
 def read_include(spec: str, bases: Sequence[Path]) -> str:
     """Return the code ``--8<-- "<spec>"`` includes.
 
@@ -168,46 +213,15 @@ def read_include(spec: str, bases: Sequence[Path]) -> str:
     Section marker lines are left out of every form. Any other form raises
     :class:`SnippetError`.
     """
-    if ":" not in spec:
-        path, form = spec, "file"
-    elif match := _RANGE.match(spec):
-        path, form = match.group("file"), "range"
-    elif match := _SECTION.match(spec):
-        path, form = match.group("file"), "section"
-    else:
-        raise SnippetError(f"unknown include form {spec!r}")
-    if not path:
-        raise SnippetError(f"unknown include form {spec!r}")
+    path, match = _parse_include_spec(spec)
     lines = _resolve(path, bases).read_text(encoding="utf-8").splitlines()
 
-    if form == "file":
+    if match is None:
         selected = lines
-    elif form == "range":
-        assert match is not None
-        start, end = int(match.group("start")), int(match.group("end"))
-        # The docs build stops a range at the end of the file, so an end
-        # past it is accepted. A range with no lines in it is not.
-        if start < 1 or end < start or start > len(lines):
-            raise SnippetError(
-                f"include {spec!r} asks for lines {start} to {end}, "
-                f"but {path} has {len(lines)} lines"
-            )
-        selected = lines[start - 1 : end]
+    elif match.re is _RANGE:
+        selected = _range_lines(lines, match, spec, path)
     else:
-        assert match is not None
-        name = match.group("name")
-        bounds = [
-            (index, marker.group("kind"))
-            for index, line in enumerate(lines)
-            if (marker := _SECTION_MARKER.match(line)) and marker.group("name") == name
-        ]
-        starts = [index for index, kind in bounds if kind == "start"]
-        if not starts:
-            raise SnippetError(f"include {spec!r}: no section {name!r} in {path}")
-        ends = [index for index, kind in bounds if kind == "end" and index > starts[0]]
-        if not ends:
-            raise SnippetError(f"include {spec!r}: section {name!r} has no end marker")
-        selected = lines[starts[0] + 1 : ends[0]]
+        selected = _section_lines(lines, match.group("name"), spec, path)
     return "\n".join(_without_markers(selected))
 
 
@@ -785,86 +799,112 @@ def run_snippets(
     while len(results) < len(entries):
         attempt += 1
         pending = entries[len(results) :]
-        job_path = work / f"job-{attempt}.json"
-        report_path = work / f"report-{attempt}.jsonl"
         job = {
             "timeout": timeout,
             "hard_timeout": hard_timeout,
             "stuck_exit": _STUCK_EXIT,
             "shutdown_exit": _SHUTDOWN_EXIT,
             "held_exit": _HELD_EXIT,
-            "report": str(report_path),
+            "report": str(work / f"report-{attempt}.jsonl"),
             "first_index": len(results),
             "pythonpath": [str(Path(folder).resolve()) for folder in pythonpath],
             "files": pending,
         }
-        job_path.write_text(json.dumps(job), encoding="utf-8")
-        # Each file may use the hard limit for its blocks and again for its
-        # cleanup, and the shutdown after the last file gets one more.
-        budget = hard_timeout * (2 * len(pending) + 1) + 60
-        try:
-            result = subprocess.run(
-                [sys.executable, "-c", _RUNNER, str(job_path)],
-                capture_output=True,
-                text=True,
-                cwd=work,
-                stdin=subprocess.DEVNULL,
-                check=False,
-                timeout=budget,
-            )
-            returncode: int | None = result.returncode
-            clean = returncode == 0
-            stuck = returncode == _STUCK_EXIT
-            stopped = f"exit {returncode}"
-            stderr = result.stderr
-        except subprocess.TimeoutExpired as exc:
-            returncode = None
-            clean = False
-            stuck = True
-            stopped = "killed"
-            raw = exc.stderr or ""
-            stderr = raw.decode(errors="replace") if isinstance(raw, bytes) else raw
-        done, step, lingering, late = _read_report(report_path)
+        child = _run_child(work, attempt, job)
+        done, step, lingering, late = _read_report(Path(job["report"]))
         results.extend(done)
         if len(results) == len(entries):
-            if returncode in (_SHUTDOWN_EXIT, _HELD_EXIT):
-                stopped += (
-                    f"; its shutdown was still running at {hard_timeout} "
-                    "seconds and the runner ended it"
-                )
-            if late:
-                stopped += "; still running: " + "; ".join(late)
-            # A thread a failed page left running holds up the shutdown until
-            # the shutdown watchdog ends it. That failure already covers it.
-            expected = lingering and not late and returncode == _HELD_EXIT
-            assert clean or expected, (
-                f"the snippet runner stopped after its last file ({stopped}):\n"
-                f"{stderr[-4000:]}"
-            )
+            _check_last_child(child, hard_timeout, lingering, late)
             break
         assert step is not None, (
-            f"the snippet runner stopped outside a file ({stopped}):\n{stderr[-4000:]}"
+            f"the snippet runner stopped outside a file ({child.stopped}):\n"
+            f"{child.stderr[-4000:]}"
         )
-        if stuck:
-            failure = (
-                f"{step['step']}: still running at {hard_timeout} seconds, "
-                f"past the {timeout}-second timeout; the runner stopped it"
-            )
-        else:
-            # A thread an earlier page left running can also end the child.
-            # The step names the page that was running when it did.
-            failure = (
-                f"{step['step']}: the runner crashed ({stopped}): "
-                f"{stderr[-2000:].strip()}"
-            )
         results.append(
             {
                 "file": pending[len(done)]["file"],
-                "failure": failure,
+                "failure": _child_failure(child, step, timeout, hard_timeout),
                 "not_run": step["not_run"],
             }
         )
     return results
+
+
+@dataclass(frozen=True)
+class _ChildExit:
+    """How one child interpreter ended."""
+
+    returncode: int | None  # None when the parent killed it
+    stuck: bool
+    stopped: str
+    stderr: str
+
+
+def _run_child(work: Path, attempt: int, job: dict) -> _ChildExit:
+    """Write ``job`` to a file and run the child interpreter on it."""
+    job_path = work / f"job-{attempt}.json"
+    job_path.write_text(json.dumps(job), encoding="utf-8")
+    # Each file may use the hard limit for its blocks and again for its
+    # cleanup, and the shutdown after the last file gets one more.
+    budget = job["hard_timeout"] * (2 * len(job["files"]) + 1) + 60
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", _RUNNER, str(job_path)],
+            capture_output=True,
+            text=True,
+            cwd=work,
+            stdin=subprocess.DEVNULL,
+            check=False,
+            timeout=budget,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raw = exc.stderr or ""
+        stderr = raw.decode(errors="replace") if isinstance(raw, bytes) else raw
+        return _ChildExit(None, True, "killed", stderr)
+    return _ChildExit(
+        result.returncode,
+        result.returncode == _STUCK_EXIT,
+        f"exit {result.returncode}",
+        result.stderr,
+    )
+
+
+def _check_last_child(
+    child: _ChildExit, hard_timeout: float, lingering: bool, late: list[str]
+) -> None:
+    """Fail unless the child that reported the last file exited as expected."""
+    stopped = child.stopped
+    if child.returncode in (_SHUTDOWN_EXIT, _HELD_EXIT):
+        stopped += (
+            f"; its shutdown was still running at {hard_timeout} "
+            "seconds and the runner ended it"
+        )
+    if late:
+        stopped += "; still running: " + "; ".join(late)
+    # A thread a failed page left running holds up the shutdown until
+    # the shutdown watchdog ends it. That failure already covers it.
+    expected = lingering and not late and child.returncode == _HELD_EXIT
+    assert child.returncode == 0 or expected, (
+        f"the snippet runner stopped after its last file ({stopped}):\n"
+        f"{child.stderr[-4000:]}"
+    )
+
+
+def _child_failure(
+    child: _ChildExit, step: dict, timeout: float, hard_timeout: float
+) -> str:
+    """Return the failure of the file that was running when ``child`` stopped."""
+    if child.stuck:
+        return (
+            f"{step['step']}: still running at {hard_timeout} seconds, "
+            f"past the {timeout}-second timeout; the runner stopped it"
+        )
+    # A thread an earlier page left running can also end the child.
+    # The step names the page that was running when it did.
+    return (
+        f"{step['step']}: the runner crashed ({child.stopped}): "
+        f"{child.stderr[-2000:].strip()}"
+    )
 
 
 def describe(result: dict) -> str:

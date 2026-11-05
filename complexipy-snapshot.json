@@ -1374,16 +1374,6 @@
     ]
   },
   {
-    "path": "tests/docs/support.py",
-    "file_name": "support.py",
-    "functions": [
-      {
-        "name": "imported_package_files",
-        "complexity": 24
-      }
-    ]
-  },
-  {
     "path": "tests/docs/test_docs_src_is_tested.py",
     "file_name": "test_docs_src_is_tested.py",
     "functions": [
@@ -1448,36 +1438,6 @@
     ]
   },
   {
-    "path": "tests/eval/scoring.py",
-    "file_name": "scoring.py",
-    "functions": [
-      {
-        "name": "_signature_sources",
-        "complexity": 31
-      }
-    ]
-  },
-  {
-    "path": "tests/eval/spec.py",
-    "file_name": "spec.py",
-    "functions": [
-      {
-        "name": "read_spec",
-        "complexity": 17
-      }
-    ]
-  },
-  {
-    "path": "tests/eval/tools.py",
-    "file_name": "tools.py",
-    "functions": [
-      {
-        "name": "_summarize_verify",
-        "complexity": 18
-      }
-    ]
-  },
-  {
     "path": "tests/ir/test_deprecation_coverage_audit.py",
     "file_name": "test_deprecation_coverage_audit.py",
     "functions": [
@@ -1508,30 +1468,6 @@
       {
         "name": "_path_to",
         "complexity": 17
-      }
-    ]
-  },
-  {
-    "path": "tests/logging_isolation.py",
-    "file_name": "logging_isolation.py",
-    "functions": [
-      {
-        "name": "LoggingSnapshot::restore",
-        "complexity": 16
-      }
-    ]
-  },
-  {
-    "path": "tests/support/snippets.py",
-    "file_name": "snippets.py",
-    "functions": [
-      {
-        "name": "run_snippets",
-        "complexity": 23
-      },
-      {
-        "name": "read_include",
-        "complexity": 26
       }
     ]
   },

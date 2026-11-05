@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from protean.scaffold.slice_generator import split_words
 from tests.eval.transcript import TASK_FILE, TASKS_DIRNAME
@@ -140,6 +141,36 @@ def _eval_root() -> Path:
     return Path(__file__).resolve().parent
 
 
+def _read_aggregates(
+    task_id: str, data: dict[str, Any]
+) -> tuple[tuple[tuple[str, tuple[str, ...]], ...], tuple[str, ...]]:
+    """Return the spec's contexts and its aggregates, from either form.
+
+    The contexts are empty when the spec uses the flat ``aggregates`` list.
+    """
+    # Branch on the key being there, not on its value: a spec that writes
+    # ``"contexts": null`` supplied the field, so it is a malformed contexts
+    # object for :func:`_read_contexts` to reject, not an absent one that falls
+    # back to the flat ``aggregates`` list.
+    if "contexts" not in data:
+        return (), tuple(
+            _class_name(aggregate) if isinstance(aggregate, str) else aggregate
+            for aggregate in data.get("aggregates") or ()
+        )
+    contexts = _read_contexts(task_id, data["contexts"])
+    # After the contexts object itself is checked, so a spec that is
+    # malformed as well as contradictory is reported as malformed first.
+    if "aggregates" in data:
+        raise ValueError(
+            f"spec for task {task_id!r} names both contexts and aggregates; "
+            "the two are alternative forms of the same list, so a spec must "
+            "use one or the other"
+        )
+    return contexts, tuple(
+        aggregate for _, members in contexts for aggregate in members
+    )
+
+
 def read_spec(task_id: str, *, root: Path | None = None) -> TaskSpec:
     """Load task *task_id*'s :class:`TaskSpec` from its ``spec.json``.
 
@@ -157,30 +188,7 @@ def read_spec(task_id: str, *, root: Path | None = None) -> TaskSpec:
     if not project_name:
         raise ValueError(f"spec for task {task_id!r} has no project_name")
 
-    # Branch on the key being there, not on its value: a spec that writes
-    # ``"contexts": null`` supplied the field, so it is a malformed contexts
-    # object for :func:`_read_contexts` to reject, not an absent one that falls
-    # back to the flat ``aggregates`` list.
-    if "contexts" in data:
-        contexts = _read_contexts(task_id, data["contexts"])
-        # After the contexts object itself is checked, so a spec that is
-        # malformed as well as contradictory is reported as malformed first.
-        if "aggregates" in data:
-            raise ValueError(
-                f"spec for task {task_id!r} names both contexts and aggregates; "
-                "the two are alternative forms of the same list, so a spec must "
-                "use one or the other"
-            )
-        aggregates = tuple(
-            aggregate for _, members in contexts for aggregate in members
-        )
-    else:
-        contexts = ()
-        aggregates = tuple(
-            _class_name(aggregate) if isinstance(aggregate, str) else aggregate
-            for aggregate in data.get("aggregates") or ()
-        )
-
+    contexts, aggregates = _read_aggregates(task_id, data)
     if not aggregates:
         raise ValueError(f"spec for task {task_id!r} names no aggregates")
     return TaskSpec(

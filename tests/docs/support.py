@@ -217,6 +217,14 @@ def imported_package_files(
     ``shop/models.py``, and ``import shop.orders.models`` loads
     ``shop/orders/models.py``. Paths are relative to ``root``.
     """
+    loaded: set[str] = set()
+    for name in _imported_names(tree):
+        loaded |= _package_files_for(name, root, packages)
+    return loaded
+
+
+def _imported_names(tree: ast.AST) -> list[str]:
+    """Return the dotted names the absolute imports in ``tree`` may load."""
     dotted: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -225,20 +233,22 @@ def imported_package_files(
             dotted.append(node.module)
             # ``from shop import models`` may name a module, not an attribute.
             dotted.extend(f"{node.module}.{alias.name}" for alias in node.names)
+    return dotted
 
-    loaded: set[str] = set()
-    for name in dotted:
-        package, _, rest = name.partition(".")
-        folder = packages.get(package)
-        if folder is None:
-            continue
-        loaded.add((folder / "__init__.py").relative_to(root).as_posix())
-        # ``shop.orders.models`` may name a module in a plain subfolder.
-        for part in rest.split(".") if rest else []:
-            if (folder / f"{part}.py").is_file():
-                loaded.add((folder / f"{part}.py").relative_to(root).as_posix())
-                break
-            folder = folder / part
-            if not folder.is_dir():
-                break
+
+def _package_files_for(name: str, root: Path, packages: dict[str, Path]) -> set[str]:
+    """Return the package files under ``root`` that importing ``name`` loads."""
+    package, _, rest = name.partition(".")
+    folder = packages.get(package)
+    if folder is None:
+        return set()
+    loaded = {(folder / "__init__.py").relative_to(root).as_posix()}
+    # ``shop.orders.models`` may name a module in a plain subfolder.
+    for part in rest.split(".") if rest else []:
+        if (folder / f"{part}.py").is_file():
+            loaded.add((folder / f"{part}.py").relative_to(root).as_posix())
+            break
+        folder = folder / part
+        if not folder.is_dir():
+            break
     return loaded
