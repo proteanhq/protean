@@ -17,7 +17,7 @@ name: Backport
 # On a conflict it opens as a draft, and the action comments on the original PR
 # with the steps to finish it.
 #
-# The protean-backport GitHub App (secrets BACKPORT_APP_ID and
+# The protean-backport GitHub App (its public client ID below, and the secret
 # BACKPORT_APP_PRIVATE_KEY) makes every call, because a PR opened with
 # GITHUB_TOKEN starts no workflows and so gets no CI. Its token can push to
 # workflow files, so no step checks out or runs code from the PR's head: the
@@ -51,7 +51,7 @@ jobs:
       - uses: actions/create-github-app-token@v3
         id: app-token
         with:
-          app-id: ${{ secrets.BACKPORT_APP_ID }}
+          client-id: Iv23lixqCt4mOcwKdMrE
           private-key: ${{ secrets.BACKPORT_APP_PRIVATE_KEY }}
 
       # Prints one {pr, target, milestone, milestone_title} object per backport;
@@ -190,7 +190,7 @@ jobs:
       - uses: actions/create-github-app-token@v3
         id: app-token
         with:
-          app-id: ${{ secrets.BACKPORT_APP_ID }}
+          client-id: Iv23lixqCt4mOcwKdMrE
           private-key: ${{ secrets.BACKPORT_APP_PRIVATE_KEY }}
 
       # The base branch, never the PR's head. The App token pushes the backport
