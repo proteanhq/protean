@@ -59,7 +59,9 @@ class BaseSubscriber(Element, OptionsMixin):
         stop the engine.
 
         Args:
-            exc: The exception raised by the subscriber's ``__call__``.
+            exc: The exception raised by the subscriber's ``__call__``, or
+                the ``InsufficientDataError`` raised before the call when the
+                subscriber is idempotent and the payload's id is unusable.
             message: The message payload being processed when the exception
                 occurred.
         """
