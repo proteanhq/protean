@@ -226,13 +226,6 @@ class TestOutboxReconciliation:
 
         assert positions == [0]
 
-<<<<<<< HEAD
-    def test_reconcile_is_a_noop_when_nothing_is_missing(self, domain_and_repo):
-        domain, _ = domain_and_repo
-        _fund(domain)
-        # Fast path: newest event already has its row → no scan, nothing done.
-        assert reconcile_outbox(domain) == 0
-=======
     def test_reconcile_is_a_noop_when_nothing_is_missing(
         self, domain_and_repo, monkeypatch
     ):
@@ -253,7 +246,6 @@ class TestOutboxReconciliation:
         assert reconcile_outbox(domain) == 0
         assert positions == [0]
         assert len(outbox_repo._dao.query.all().items) == 1
->>>>>>> 20709b3c (Repair a lost outbox row even behind a later commit (#2129))
 
     def test_reconcile_noop_when_no_events(self, domain_and_repo):
         domain, _ = domain_and_repo

@@ -77,12 +77,8 @@ every event-sourced aggregate's event in it. It repairs each of those events
 that has no internal-broker row and is inside the cleanup retention, wherever
 the event sits in the window.
 
-A rebuilt row is created when the run saves it, with priority 0. For a
-[`sequential_by`](../../server/sequential-by.md) key, the processor publishes
-the key's rows in the order they were created within one priority lane. So an
-event rebuilt behind a later commit is delivered after that commit's events for
-the same key when both rows are in the same lane. When the later row is in the
-other lane, either one can be delivered first.
+A rebuilt row is created when the run saves it, with priority 0. So an event
+rebuilt behind a later commit can be delivered after that commit's events.
 
 Reconciliation is idempotent. A run skips a row whose (`message_id`,
 `target_broker`) pair is already saved, so running it repeatedly never
@@ -120,151 +116,11 @@ event again. An event lost in a crash and left unrepaired for longer than that
 retention is not repaired. An event with no stored time is also skipped,
 because its age is unknown.
 
-<<<<<<< HEAD
-=======
 The cutoff uses the retentions configured when the run starts. Cleanup deleted
 rows under the retentions configured when it ran. If you raise a retention
 after cleanup ran with a lower one, the next run rebuilds the rows cleanup
 deleted in between, and those events are published again.
 
-A row the reconciler abandons records `last_processed_at`, so
-`cleanup_old_abandoned()` removes it once `abandoned_retention_hours` has
-passed. A row abandoned because its partition key is invalid carries
-`last_error["reason"]` of "Invalid partition key".
-
-## `protean outbox halted`
-
-Lists the partition keys whose earliest row that still holds the key is
-`abandoned`. Rows that are `pending`, `processing`, `failed` or `abandoned`
-hold the key. `published` and `discarded` rows do not, so they are skipped. A
-partition key is the value set by a handler's
-[`sequential_by`](../../server/sequential-by.md), and the processor publishes a
-key's rows in commit order. Rows are grouped by target broker, stream
-category, partition key and [priority lane](../../../guides/server/using-priority-lanes.md),
-the same groups the processor uses, so a key is listed exactly when its
-earliest holding row is abandoned. The listing includes a key with no rows
-behind it yet, because the processor will hold any later row. A key whose earliest
-holding row is `pending`, `processing` or `failed` also has its later rows
-held, but it is not listed, because the processor will still publish or retry
-that row.
-
-```bash
-protean outbox halted --domain=my_domain
-protean outbox halted --json --domain=my_domain
-```
-
-**Options**
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--domain` | Domain module path | `.` (current directory) |
-| `--provider` | Provider whose outbox to inspect | `default` |
-| `--json` | Print the [result envelope](../conventions.md#the-result-envelope) as JSON | off |
-
-**Output**
-
-```
-1 halted group(s) of broker, stream category, partition key and lane:
-- default shop::order key=cust-42 lane=primary: head row 6f1c2a9e-... is abandoned (broker rejected the payload), 3 row(s) waiting
-```
-
-Each line names the target broker, the stream category, the partition key and
-the lane, then the abandoned row at the head of the key, the message from its
-`last_error`, and how many later rows of the key are waiting. There is one
-line per group, so a key with rows for two brokers or in both lanes appears
-once for each. With no halted key it prints `No partition key is halted.` and
-exits 0. The scan reads the abandoned rows a page at a time, so a row whose
-status changes while it runs can be missed or listed twice.
-
-Under `--json`, `data.halted` holds one object per halted group. The
-`last_error` below is shortened. A real one also holds the `traceback`,
-`failed_at` and `retry_count` of the last failure, and prints across several
-lines:
-
-```json
-{
-  "data": {
-    "halted": [
-      {
-        "head_id": "6f1c2a9e-...",
-        "lane": "primary",
-        "last_error": {
-          "message": "broker rejected the payload",
-          "reason": "Max retries exceeded"
-        },
-        "partition_key": "cust-42",
-        "status": "abandoned",
-        "stream_category": "shop::order",
-        "target_broker": "default",
-        "waiting": 3
-      }
-    ]
-  },
-  "diagnostics": [],
-  "status": "pass",
-  "version": "0.1.0"
-}
-```
-
-`lane` is `primary` or `backfill`. `last_error` is the row's stored error, or
-`null` when it has none.
-
-## `protean outbox retry`
-
-Sends a `failed` or `abandoned` row back to `pending` with its retry count at
-zero and no retry delay, so it gets the full number of attempts again. A row
-whose `max_retries` is 0 gets one attempt. The processor can then claim the
-row, in the same priority and commit order as any other row, and still only
-after the earlier rows of its key. The later rows of its key publish after
-it.
-
-```bash
-protean outbox retry 6f1c2a9e-... --domain=my_domain
-```
-
-**Arguments and options**
-
-| Argument / Option | Description | Default |
-|-------------------|-------------|---------|
-| `ROW_ID` | Id of the outbox row, as shown by `halted` | required |
-| `--domain` | Domain module path | `.` (current directory) |
-| `--provider` | Provider whose outbox holds the row | `default` |
-
-**Output**
-
-```
-Outbox row 6f1c2a9e-... is pending and will be published again.
-```
-
-## `protean outbox discard`
-
-Skips a `failed` or `abandoned` row for good. The row is never published, so
-its event is dropped for that broker, and the later rows of its key publish
-without it. The row stays in the outbox with the `discarded` status. Its
-`last_error` keeps the original error and gains `discarded_at` and
-`discard_reason`. Cleanup deletes it `abandoned_retention_hours` after it was
-discarded. The reason cannot be empty.
-
-```bash
-protean outbox discard 6f1c2a9e-... --reason "payload rejected by the broker" --domain=my_domain
-```
-
-**Arguments and options**
-
-| Argument / Option | Description | Default |
-|-------------------|-------------|---------|
-| `ROW_ID` | Id of the outbox row, as shown by `halted` | required |
-| `--reason` | Why the row is skipped, stored on the row | required |
-| `--domain` | Domain module path | `.` (current directory) |
-| `--provider` | Provider whose outbox holds the row | `default` |
-
-**Output**
-
-```
-Outbox row 6f1c2a9e-... is discarded and will not be published.
-```
-
->>>>>>> 20709b3c (Repair a lost outbox row even behind a later commit (#2129))
 ## Automatic startup sweep
 
 The same reconciliation runs once automatically when the server boots, so an

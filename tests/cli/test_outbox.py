@@ -2,15 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.exceptions import NoDomainException
-<<<<<<< HEAD
-=======
-from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
-from protean.utils.outbox import Outbox, OutboxStatus
-from tests.cli._envelope import assert_envelope
 from tests.outbox.test_reconciliation import (
     Account,
     _fund,
@@ -18,7 +14,6 @@ from tests.outbox.test_reconciliation import (
     _lose_rows,
     _make_domain,
 )
->>>>>>> 20709b3c (Repair a lost outbox row even behind a later commit (#2129))
 
 runner = CliRunner()
 

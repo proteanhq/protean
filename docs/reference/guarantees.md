@@ -166,46 +166,20 @@ individual OCC-guarded appends; they are not a single atomic batch. The event-st
 append is the durable anchor of the commit sequence, and the relational/outbox
 commit follows it non-atomically.
 
-<<<<<<< HEAD
 !!! note "Interim, not yet a stable contract"
     The cross-store atomicity story
     ([ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md)) is marked
     *Proposed*: the window between the event-store append and the relational/outbox
     commit is closed by a reconciliation sweep on startup for event-sourced
-    aggregates. When the newest event-sourced aggregate's event has lost its
-    internal outbox row, the sweep rebuilds the rows of every recent
-    event-sourced aggregate's event that lost its internal row, including the
-    external-broker rows of a `published` event. A state-based aggregate's
-    event with no outbox row is not rebuilt. On a transactional provider its
+    aggregates. The sweep rebuilds the rows of every recent event-sourced
+    aggregate's event that has lost its internal outbox row, including the
+    external-broker rows of a `published` event. It skips events older than the
+    cleanup retention. A state-based aggregate's event with no outbox row is not
+    rebuilt. On a transactional provider its
     aggregate row commits or rolls back together with its outbox rows. On a
     provider without transactions, such as Elasticsearch, the row can be saved
     while its outbox row is lost, and that event stays unpublished. Treat this
     as interim; it may change.
-=======
-- **Append is per message**: A Unit of Work that raises several events makes
-  one OCC-checked append per event. They are not one atomic batch.
-- **MessageDB global gaps**: A rolled-back append uses up its
-  `global_position`, so positions across categories can have gaps. Within one
-  category there are none, because MessageDB holds a per-category advisory
-  lock until commit.
-- **Memory with concurrent writers**: An append deferred into an enclosing
-  Unit of Work publishes after the class lock is released, so overlapping Units
-  of Work on one stream are not serialized. Use it with one writer.
-
-!!! warning "Interim: not yet a stable contract"
-    The event-store append is written first, and the relational and outbox
-    commit follows it without a shared transaction. The window between them is
-    closed by a reconciliation sweep at startup for event-sourced aggregates.
-    The sweep rebuilds the rows of every recent event-sourced aggregate's event
-    that has lost its internal outbox row, including the external-broker rows
-    of a `published` event. It skips events older than the cleanup retention. A state-based aggregate's event with no outbox row is not rebuilt.
-    On a transactional provider its aggregate row commits or rolls back
-    together with its outbox rows. On a provider without transactions, such as
-    Elasticsearch, the row can be saved while its outbox row is lost, and that
-    event stays unpublished.
-    [ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md) is still
-    *Proposed*, and this behavior can change.
->>>>>>> 20709b3c (Repair a lost outbox row even behind a later commit (#2129))
 
 ---
 
