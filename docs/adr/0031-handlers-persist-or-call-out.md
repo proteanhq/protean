@@ -202,7 +202,8 @@ class NotificationDispatcher:
 
 In a domain with `command_processing = "sync"`, a call to
 `domain.process(command, asynchronous=True)` inside an active unit of work
-stores the command and returns `None`. The command is
+stores the command and returns `None` when the command has a registered
+handler. A command with no registered handler still goes to the engine. The command is
 handled after the caller's unit of work commits, in its own unit of work with
 its own version retry. The same applies whoever opened the unit of work: a
 handler, a `@use_case` method, a `with UnitOfWork():` block or an explicit
