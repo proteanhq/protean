@@ -1338,29 +1338,5 @@
         "complexity": 41
       }
     ]
-  },
-  {
-    "path": "scripts/build_changelog_page.py",
-    "file_name": "build_changelog_page.py",
-    "functions": [
-      {
-        "name": "parse",
-        "complexity": 20
-      }
-    ]
-  },
-  {
-    "path": "scripts/test_audit.py",
-    "file_name": "test_audit.py",
-    "functions": [
-      {
-        "name": "load_arcsets",
-        "complexity": 18
-      },
-      {
-        "name": "find_duplicates",
-        "complexity": 24
-      }
-    ]
   }
 ]

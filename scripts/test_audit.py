@@ -206,12 +206,7 @@ def load_arcsets(data: Any, tests: Iterable[str]) -> dict[str, frozenset[int]]:
     """
     keep = set(tests)
     data.set_query_contexts(None)
-    touched: dict[str, set[str]] = defaultdict(set)
-    for filename in data.measured_files():
-        for contexts in data.contexts_by_lineno(filename).values():
-            for context in contexts:
-                if context in keep:
-                    touched[context].add(filename)
+    touched = _files_touched(data, keep)
 
     ids: dict[tuple[str, int, int], int] = {}
     arcsets: dict[str, set[int]] = defaultdict(set)
@@ -223,6 +218,17 @@ def load_arcsets(data: Any, tests: Iterable[str]) -> dict[str, frozenset[int]]:
                 arcs.add(ids.setdefault((filename, start, end), len(ids)))
     data.set_query_contexts(None)
     return {test: frozenset(arcs) for test, arcs in arcsets.items()}
+
+
+def _files_touched(data: Any, keep: set[str]) -> dict[str, set[str]]:
+    """The measured files each context in ``keep`` ran a line of."""
+    touched: dict[str, set[str]] = defaultdict(set)
+    for filename in data.measured_files():
+        for contexts in data.contexts_by_lineno(filename).values():
+            for context in contexts:
+                if context in keep:
+                    touched[context].add(filename)
+    return touched
 
 
 def find_duplicates(arcsets: Mapping[str, frozenset[Any]]) -> list[Duplicate]:
@@ -243,23 +249,32 @@ def find_duplicates(arcsets: Mapping[str, frozenset[Any]]) -> list[Duplicate]:
         arcs = arcsets[name]
         if not arcs:
             continue
-        # Every covering test has the test's rarest arc, so only the tests that
-        # share that arc need the full subset check.
-        rarest = min(arcs, key=lambda arc: len(postings[arc]))
-        best: str | None = None
-        for other in postings[rarest]:
-            if other == name:
-                continue
-            other_arcs = arcsets[other]
-            if not arcs <= other_arcs:
-                continue
-            if other_arcs == arcs and other > name:
-                continue
-            if best is None or (len(other_arcs), other) < (len(arcsets[best]), best):
-                best = other
+        best = _covering_test(name, arcsets, postings)
         if best is not None:
             duplicates.append(Duplicate(name, best, len(arcs), len(arcsets[best])))
     return duplicates
+
+
+def _covering_test(
+    name: str,
+    arcsets: Mapping[str, frozenset[Any]],
+    postings: Mapping[Any, list[str]],
+) -> str | None:
+    """The test that covers ``name``'s arcs, chosen as ``find_duplicates`` says."""
+    arcs = arcsets[name]
+    # Every covering test has the test's rarest arc, so only the tests that
+    # share that arc need the full subset check.
+    rarest = min(arcs, key=lambda arc: len(postings[arc]))
+    best: str | None = None
+    for other in postings[rarest]:
+        other_arcs = arcsets[other]
+        if other == name or not arcs <= other_arcs:
+            continue
+        if other_arcs == arcs and other > name:
+            continue
+        if best is None or (len(other_arcs), other) < (len(arcsets[best]), best):
+            best = other
+    return best
 
 
 def analyse_coverage(
