@@ -29,6 +29,7 @@ from protean.adapters.repository.sqlalchemy import (
     MysqlProvider,
     PostgresqlProvider,
     SqliteProvider,
+    UTCDateTime,
     _check_mysql_index_key_widths,
     _mysql_table_kwargs,
     render_index_ddl,
@@ -231,8 +232,9 @@ class TestColumnTypes:
         """A plain DATETIME has zero fractional-second digits and drops them."""
         column = table_for(Article).c["published_at"]
 
-        assert isinstance(column.type, mysql_dialect.DATETIME)
-        assert column.type.fsp == 6
+        assert isinstance(column.type, UTCDateTime)
+        assert isinstance(column.type.impl, mysql_dialect.DATETIME)
+        assert column.type.impl.fsp == 6
 
     @pytest.mark.parametrize("attribute", ["tags", "extra"])
     def test_dict_and_list_map_to_json(self, attribute):

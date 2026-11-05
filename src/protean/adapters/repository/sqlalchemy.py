@@ -12,6 +12,7 @@ import typing
 import uuid
 from abc import abstractmethod
 from collections.abc import Callable, Sequence
+from datetime import UTC
 from datetime import date as _date
 from datetime import datetime as _datetime
 from enum import Enum
@@ -78,6 +79,7 @@ from protean.utils import (
     IdentityStrategy,
     IdentityType,
     _fully_qualified_name,
+    ensure_utc_aware,
     occ_trace,
 )
 from protean.utils.container import Options
@@ -265,6 +267,58 @@ class GUID(TypeDecorator[uuid.UUID]):
             if not isinstance(value, uuid.UUID):
                 value = uuid.UUID(value)
             return value
+
+
+class UTCDateTime(TypeDecorator[_datetime]):
+    """A datetime column that holds UTC on a database with no offset storage.
+
+    Wraps the dialect's own datetime type, so the column DDL is unchanged. A
+    bound value, whether written or compared in a filter, is converted to UTC
+    and stored without an offset. A naive value is read as UTC. A loaded value
+    is returned UTC-aware.
+    """
+
+    impl: sa_types.TypeEngine[typing.Any] | type[sa_types.TypeEngine[typing.Any]] = (
+        sa_types.DateTime
+    )
+    cache_ok = True
+
+    def __init__(self, impl: sa_types.DateTime) -> None:
+        super().__init__()
+        self.impl = impl
+
+    def process_bind_param(self, value: typing.Any, dialect: typing.Any) -> typing.Any:
+        if isinstance(value, _datetime):
+            return ensure_utc_aware(value).astimezone(UTC).replace(tzinfo=None)
+        return value
+
+    def process_result_value(
+        self, value: typing.Any, dialect: typing.Any
+    ) -> typing.Any:
+        if isinstance(value, _datetime):
+            return ensure_utc_aware(value).astimezone(UTC)
+        return value
+
+
+# Dialects whose datetime column stores no UTC offset, so a ``DateTime`` field
+# is mapped to ``UTCDateTime`` there.
+_UTC_DATETIME_DIALECTS = frozenset({"sqlite", "mysql", "mariadb", "mssql"})
+
+
+def _with_utc_storage(
+    column_type: typing.Any, *, dialect_name: str, resolved_type: type | None
+) -> typing.Any:
+    """Wrap a ``DateTime`` field's column type in ``UTCDateTime`` where needed.
+
+    Returns ``column_type`` unchanged on PostgreSQL and for any other field.
+    """
+    if (
+        dialect_name in _UTC_DATETIME_DIALECTS
+        and resolved_type is _datetime
+        and isinstance(column_type, sa_types.DateTime)
+    ):
+        return UTCDateTime(column_type)
+    return column_type
 
 
 class _IntegerIdentity(TypeDecorator[int]):
@@ -884,6 +938,8 @@ def _mysql_fixed_column_key_width(column_type: typing.Any) -> int:
     contributes nothing, which keeps an exotic column from being rejected on a
     guess; one that overruns still gets MySQL's own error.
     """
+    if isinstance(column_type, UTCDateTime):
+        column_type = column_type.impl
     if isinstance(column_type, sa_types.DateTime):
         return _mysql_datetime_key_width(getattr(column_type, "fsp", None))
 
@@ -1561,8 +1617,14 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                     ):
                         sa_type_cls = mssql.DATETIME2
 
+                    column_type = _with_utc_storage(
+                        sa_type_cls(*type_args, **type_kwargs),
+                        dialect_name=dialect_name,
+                        resolved_type=resolved_type,
+                    )
+
                     # Update the attributes of the class
-                    column = Column(sa_type_cls(*type_args, **type_kwargs), **col_args)
+                    column = Column(column_type, **col_args)
                     setattr(cls, attribute_name, column)  # Set class attribute
 
         # Translate portable Index declarations into table-level indexes.

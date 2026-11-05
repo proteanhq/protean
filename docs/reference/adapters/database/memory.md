@@ -89,6 +89,14 @@ evaluated against in-memory records:
 The query string is parsed as JSON and interpreted as filter criteria using the
 same lookup syntax as the QuerySet API.
 
+## Datetime lookups
+
+`exact`, `in`, `lt`, `lte`, `gt`, `gte`, `any` and `overlap` compare two
+datetimes as UTC instants, so `12:00+00:00` equals `14:00+02:00`. A naive
+datetime on either side is read as UTC. `contains`, `startswith` and
+`endswith` compare the string form, and so does a datetime filtered with a
+string.
+
 ## Limitations
 
 - **No Persistence**: Data is lost on process restart. The Memory provider
