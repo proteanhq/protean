@@ -1402,10 +1402,9 @@ class Engine:
         repaired.
 
         State-based aggregates' events are not repaired. Reads nothing
-        when no event-sourced aggregate is on the provider, only the newest
-        message when it is such an aggregate's event and has its row, and the
-        ``limit`` window otherwise. A failure here
-        must never block the engine from starting. With ``server --workers N``
+        when no event-sourced aggregate is on the provider. Otherwise reads the
+        ``limit`` window and repairs every event in it that is missing its
+        row. A failure here must never block the engine from starting. With ``server --workers N``
         it runs once per worker. The sweep can run beside another sweep, and
         beside a live unit of work that has appended its events and not yet
         saved their outbox rows. :func:`~protean.utils.outbox.reconcile_outbox`

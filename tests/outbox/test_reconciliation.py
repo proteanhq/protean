@@ -4,6 +4,8 @@ store whose relational outbox row did not land."""
 import logging
 import threading
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import text
@@ -17,6 +19,7 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.upcaster import BaseUpcaster
 from protean.domain import Domain
 from protean.fields import Identifier, Integer, String
+from protean.server.engine import Engine
 from protean.utils import outbox as outbox_module
 from protean.utils.eventing import Message, MessageHeaders, Metadata
 from protean.utils.globals import current_domain
@@ -124,6 +127,15 @@ def _newest_message_id(domain):
     return domain.event_store.store.read_last_message("$all").metadata.headers.id
 
 
+def _lose_rows(outbox_repo, message_id):
+    """Delete every outbox row of *message_id*, as a crash before the outbox
+    commit leaves it, while the other messages keep their rows."""
+    rows = outbox_repo.find_all_by_message_id(message_id)
+    assert rows
+    for row in rows:
+        outbox_repo._dao.delete(row)
+
+
 @pytest.fixture
 def domain_and_repo(tmp_path):
     """A domain with the outbox + aggregate tables created, inside its context."""
@@ -214,11 +226,34 @@ class TestOutboxReconciliation:
 
         assert positions == [0]
 
+<<<<<<< HEAD
     def test_reconcile_is_a_noop_when_nothing_is_missing(self, domain_and_repo):
         domain, _ = domain_and_repo
         _fund(domain)
         # Fast path: newest event already has its row → no scan, nothing done.
         assert reconcile_outbox(domain) == 0
+=======
+    def test_reconcile_is_a_noop_when_nothing_is_missing(
+        self, domain_and_repo, monkeypatch
+    ):
+        domain, outbox_repo = domain_and_repo
+        _fund(domain)
+        store = domain.event_store.store
+
+        positions = []
+        real_read = store.read
+
+        def spy(*args, **kwargs):
+            positions.append(kwargs.get("position"))
+            return real_read(*args, **kwargs)
+
+        monkeypatch.setattr(store, "read", spy)
+
+        # Every run reads the window once, and finds every row in place.
+        assert reconcile_outbox(domain) == 0
+        assert positions == [0]
+        assert len(outbox_repo._dao.query.all().items) == 1
+>>>>>>> 20709b3c (Repair a lost outbox row even behind a later commit (#2129))
 
     def test_reconcile_noop_when_no_events(self, domain_and_repo):
         domain, _ = domain_and_repo
@@ -234,8 +269,6 @@ class TestOutboxReconciliation:
 
     def test_engine_startup_sweep_repairs_the_crash_window(self, domain_and_repo):
         """The engine's startup sweep recreates a missing outbox row on boot."""
-        from protean.server.engine import Engine
-
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         message_id = _newest_message_id(domain)
@@ -247,6 +280,106 @@ class TestOutboxReconciliation:
         engine = Engine(domain, test_mode=True)
         assert engine._reconcile_outbox_on_startup() == 1
         assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
+
+
+@pytest.mark.no_test_domain
+class TestReconcileRepairsALostRowBehindALaterCommit:
+    """Several processes can write to one domain. A crash in one process loses
+    an event's outbox row, and another process then commits a later event with
+    its row. The lost row must still be rebuilt."""
+
+    def test_lost_row_behind_a_later_commit_is_repaired(self, domain_and_repo):
+        domain, outbox_repo = domain_and_repo
+        _fund(domain)
+        _fund(domain)
+        older_id, newer_id = _funded_message_ids(domain)
+        _lose_rows(outbox_repo, older_id)
+
+        assert reconcile_outbox(domain) == 1
+        rows = outbox_repo.find_all_by_message_id(older_id)
+        assert len(rows) == 1
+        assert rows[0].target_broker == "default"
+        assert len(outbox_repo.find_all_by_message_id(newer_id)) == 1
+
+    def test_engine_startup_sweep_repairs_a_lost_row_behind_a_later_commit(
+        self, domain_and_repo
+    ):
+        domain, outbox_repo = domain_and_repo
+        _fund(domain)
+        _fund(domain)
+        older_id, newer_id = _funded_message_ids(domain)
+        _lose_rows(outbox_repo, older_id)
+
+        engine = Engine(domain, test_mode=True)
+        assert engine._reconcile_outbox_on_startup() == 1
+        assert len(outbox_repo.find_all_by_message_id(older_id)) == 1
+        assert len(outbox_repo.find_all_by_message_id(newer_id)) == 1
+
+    def test_every_row_in_place_is_a_noop(self, domain_and_repo):
+        domain, outbox_repo = domain_and_repo
+        _fund(domain)
+        _fund(domain)
+
+        assert reconcile_outbox(domain) == 0
+        assert len(outbox_repo._dao.query.all().items) == 2
+
+    def test_only_the_lost_row_in_the_middle_is_rebuilt(self, domain_and_repo):
+        domain, outbox_repo = domain_and_repo
+        for _ in range(3):
+            _fund(domain)
+        first_id, middle_id, last_id = _funded_message_ids(domain)
+        _lose_rows(outbox_repo, middle_id)
+
+        assert reconcile_outbox(domain) == 1
+        for message_id in (first_id, middle_id, last_id):
+            assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
+
+    def test_lookup_finds_every_row_past_the_default_query_limit(self, domain_and_repo):
+        """The outbox query returns 100 rows unless told otherwise. A window
+        with more events must still see every existing row."""
+        domain, outbox_repo = domain_and_repo
+        for _ in range(105):
+            _fund(domain)
+        message_ids = _funded_message_ids(domain)
+        assert len(message_ids) == 105
+
+        existing = outbox_module._existing_brokers_by_message(outbox_repo, message_ids)
+        assert existing == {message_id: {"default"} for message_id in message_ids}
+
+        _lose_rows(outbox_repo, message_ids[2])
+        assert reconcile_outbox(domain) == 1
+        assert len(outbox_repo.find_all_by_message_id(message_ids[2])) == 1
+        assert len(outbox_repo._dao.query.limit(None).all().items) == 105
+
+    def test_lookup_spans_several_chunks(self, domain_and_repo, monkeypatch):
+        monkeypatch.setattr(outbox_module, "_BROKER_LOOKUP_CHUNK_SIZE", 2)
+        domain, outbox_repo = domain_and_repo
+        for _ in range(5):
+            _fund(domain)
+        message_ids = _funded_message_ids(domain)
+        _lose_rows(outbox_repo, message_ids[3])
+
+        existing = outbox_module._existing_brokers_by_message(outbox_repo, message_ids)
+        assert existing == {
+            message_id: set() if message_id == message_ids[3] else {"default"}
+            for message_id in message_ids
+        }
+        assert reconcile_outbox(domain) == 1
+        for message_id in message_ids:
+            assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
+
+    def test_lookup_reads_a_legacy_null_broker_as_the_default(self):
+        """A legacy row holding NULL in ``target_broker`` counts as the
+        default broker's row, so reconcile does not rebuild it and publish the
+        event again. The column is NOT NULL, so a stub query returns the row."""
+        outbox_repo = MagicMock()
+        query = outbox_repo._dao.query.filter.return_value.only.return_value
+        query.limit.return_value.all.return_value.items = [
+            SimpleNamespace(message_id="m1", target_broker=None)
+        ]
+
+        existing = outbox_module._existing_brokers_by_message(outbox_repo, ["m1"])
+        assert existing == {"m1": {"default"}}
 
 
 @pytest.mark.message_db
@@ -288,6 +421,17 @@ class TestOutboxReconciliationOnMessageDB:
         # Before the fix this returned 0 (read_last_message("$all") was None).
         assert reconcile_outbox(domain) == 1
         assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
+
+    def test_lost_row_behind_a_later_commit_is_repaired(self, domain_and_repo):
+        domain, outbox_repo = domain_and_repo
+        _fund(domain)
+        _fund(domain)
+        older_id, newer_id = _funded_message_ids(domain)
+        _lose_rows(outbox_repo, older_id)
+
+        assert reconcile_outbox(domain) == 1
+        assert len(outbox_repo.find_all_by_message_id(older_id)) == 1
+        assert len(outbox_repo.find_all_by_message_id(newer_id)) == 1
 
 
 @pytest.mark.no_test_domain
@@ -416,8 +560,7 @@ class TestReconcileBesideALiveUnitOfWorkOnPostgres:
 #
 # Only events raised by this domain's aggregates get outbox rows from the unit
 # of work, so only those may be repaired. Foreign events in a shared store,
-# commands, and process manager transitions must be skipped, both in the
-# fast-path check and in the repair set.
+# commands, and process manager transitions must be skipped.
 
 
 class Fund(BaseCommand):
@@ -573,22 +716,20 @@ class TestReconcileSkipsForeignEvents:
         assert rows[0].type == Funded.__type__
         assert outbox_repo.find_all_by_message_id(foreign_id) == []
 
-    def test_newest_own_event_with_its_row_stops_the_repair(
+    def test_lost_row_behind_a_later_own_commit_and_a_foreign_tail_is_repaired(
         self, domain_and_repo, foreign_domain
     ):
-        """When the newest own event behind a foreign tail has its row, the last
-        commit finished. An older own event whose published row was cleaned up
-        must not be rebuilt and published again."""
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         _fund(domain)
         older_id, newer_id = _funded_message_ids(domain)
-        outbox_repo._dao.delete(outbox_repo.find_all_by_message_id(older_id)[0])
-        _append_foreign_event(domain, foreign_domain)
+        _lose_rows(outbox_repo, older_id)
+        foreign_id = _append_foreign_event(domain, foreign_domain)
 
-        assert reconcile_outbox(domain) == 0
-        assert outbox_repo.find_all_by_message_id(older_id) == []
+        assert reconcile_outbox(domain) == 1
+        assert len(outbox_repo.find_all_by_message_id(older_id)) == 1
         assert len(outbox_repo.find_all_by_message_id(newer_id)) == 1
+        assert outbox_repo.find_all_by_message_id(foreign_id) == []
 
     def test_window_with_only_foreign_messages_creates_nothing(
         self, domain_and_repo, foreign_domain
@@ -622,8 +763,6 @@ class TestReconcileSkipsForeignEvents:
     def test_engine_startup_sweep_repairs_behind_a_foreign_tail(
         self, domain_and_repo, foreign_domain
     ):
-        from protean.server.engine import Engine
-
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         [own_id] = _funded_message_ids(domain)
@@ -1334,6 +1473,18 @@ class TestReconcileExternalBrokers:
             assert reconcile_outbox(domain) == 0
             assert self._brokers(outbox_repo, message_id) == ["default", "ext-a"]
 
+    def test_lost_rows_behind_a_later_commit_get_every_broker_back(self, tmp_path):
+        domain = self._domain(tmp_path, "ext-a")
+        with domain.domain_context():
+            outbox_repo = _create_tables(domain)
+            older_id = self._credit(domain)
+            newer_id = self._credit(domain)
+            _lose_rows(outbox_repo, older_id)
+
+            assert reconcile_outbox(domain) == 2
+            assert self._brokers(outbox_repo, older_id) == ["default", "ext-a"]
+            assert self._brokers(outbox_repo, newer_id) == ["default", "ext-a"]
+
 
 @pytest.mark.no_test_domain
 class TestReconcileSkipsRowsCleanupMayHaveDeleted:
@@ -1402,6 +1553,22 @@ class TestReconcileSkipsRowsCleanupMayHaveDeleted:
             _, new_id = self._credit_and_lose_rows(domain)
 
             assert reconcile_outbox(domain) == 2
+            assert outbox_repo.find_all_by_message_id(old_id) == []
+            assert len(outbox_repo.find_all_by_message_id(new_id)) == 2
+
+    def test_old_rowless_event_behind_a_recent_commit_is_not_rebuilt(self, tmp_path):
+        """With every event in the window checked, the cutoff alone keeps a row
+        that cleanup deleted from being rebuilt and sent again."""
+        domain = self._domain(tmp_path)
+        with domain.domain_context():
+            outbox_repo, old_id = self._credit_and_lose_rows(domain)
+            domain.clock.advance(timedelta(hours=169))
+            wallet = Wallet()
+            wallet.raise_(Credited(wallet_id=wallet.id, amount=100))
+            domain.repository_for(Wallet).add(wallet)
+            new_id = _newest_message_id(domain)
+
+            assert reconcile_outbox(domain) == 0
             assert outbox_repo.find_all_by_message_id(old_id) == []
             assert len(outbox_repo.find_all_by_message_id(new_id)) == 2
 
