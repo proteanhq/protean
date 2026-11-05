@@ -59,7 +59,7 @@ In [2]: publishing.process(command)
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `command` | command instance | *required* | The command to process. |
-| `asynchronous` | `bool` or `None` | `None` | Override the domain's default processing mode. `None` uses the `command_processing` config. `False` always handles the command at once. `True` has no effect when `command_processing` is `"sync"`. |
+| `asynchronous` | `bool` or `None` | `None` | Override the domain's default processing mode. `None` uses the `command_processing` config. `False` always handles the command at once. When `command_processing` is `"sync"`, `True` handles the command at once outside a Unit of Work, and after the Unit of Work commits inside one, returning `None`. |
 | `idempotency_key` | `str` or `None` | `None` | Caller-provided key for submission-level deduplication (requires Redis). |
 | `raise_on_duplicate` | `bool` | `False` | When `True`, raises `DuplicateCommandError` on duplicate idempotency keys instead of silently returning the cached result. |
 | `priority` | `int` or `None` | `None` | Processing priority for events produced by this command. When priority lanes are enabled, events below the threshold are routed to a backfill stream. |
@@ -181,9 +181,14 @@ In code:
 
 By default, Protean sets `command_processing` to `async` in the domain configuration.
 
-When `command_processing` is `"sync"`, Protean handles every command at once,
-even one submitted with `asynchronous=True`. Passing `asynchronous=False`
-handles a command at once in an `"async"` domain.
+When `command_processing` is `"sync"`, Protean handles every command itself,
+even one submitted with `asynchronous=True`. Such a command is handled at once,
+unless a Unit of Work is active. Inside a handler, a `@use_case` method or a
+`with UnitOfWork():` block, `process` stores the command and returns `None`,
+and the command runs after the caller commits. See
+[Calling external systems from
+handlers](../../patterns/calling-external-systems-from-handlers.md#recording-the-result-of-a-call).
+Passing `asynchronous=False` handles a command at once in an `"async"` domain.
 
 ### When to use each mode
 

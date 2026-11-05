@@ -172,6 +172,52 @@ apply an older snapshot over a newer one. If the order matters, store the
 provider's sequence number or timestamp on `Subscriber` and skip a snapshot that
 is older than the last one applied.
 
+### Recording the result of a call
+
+A notification dispatcher sends a message through a channel, then records
+whether the send worked on the `Notification`. The record step needs the send's
+result, so the call has to come first. The aggregate and the command that
+records the result look like this:
+
+```python
+--8<-- "patterns/calling-external-systems-from-handlers/005.py:model"
+```
+
+The sending method makes the call and reaches no repository. It hands the write
+to the `RecordDispatchResult` command with `asynchronous=True`:
+
+```python
+--8<-- "patterns/calling-external-systems-from-handlers/005.py:dispatch"
+```
+
+The domain uses sync command processing. The `@handle` decorator opens a Unit
+of Work around `send`, so `domain.process` stores the command with that Unit of
+Work and returns `None`. The command runs after the Unit of Work commits, in its
+own Unit of Work with its own version retry. A version conflict on the
+`Notification` retries the record step alone, and the channel sends once.
+
+When the record step fails for good, the commit raises `TransactionError` with
+the failure as its cause, or with an `ExceptionGroup` as its cause when more
+than one command or event handler failed. It never raises a version conflict,
+so the caller's own version retry does not send again. The same deferral
+applies inside a `@use_case` method, a `with UnitOfWork():` block and an
+explicit `UnitOfWork.start()`. Outside any Unit of Work,
+`domain.process(command, asynchronous=True)` handles the command at once and
+returns its result. See [ADR-0031](../adr/0031-handlers-persist-or-call-out.md#when-the-call-comes-first-and-the-write-needs-its-result)
+for the reasons.
+
+A process that stops after the commit and before the command runs leaves the
+command stored and not handled, the same risk that events handled in sync mode
+carry. And if your domain lists `TransactionError` among the exceptions it
+retries as transient, that retry runs the whole method again and sends a second
+message. Leave `TransactionError` off that list.
+
+Under `event_processing = "async"`, the `TransactionError` from a failed record
+step also reaches the engine. The engine delivers the `NotificationDispatchStarted`
+event again, up to its retry limit, and each delivery sends another message.
+Pass the channel an idempotency key, such as the notification's id, so the
+channel drops the repeats.
+
 ### When the two genuinely cannot be split
 
 Sometimes the write needs the call's result, so the two cannot go in separate

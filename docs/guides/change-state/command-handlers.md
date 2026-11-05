@@ -145,9 +145,10 @@ command_processing = "sync"  # or "async"
 # ...
 ```
 
-When set to `"sync"`, every command is handled at once, even one submitted with
-`asynchronous=True`. When set to `"async"`, commands are queued for the server
-unless submitted with `asynchronous=False`.
+When set to `"sync"`, every command is handled at once, except one submitted
+with `asynchronous=True` while a Unit of Work is active. That command runs after
+the Unit of Work commits, in its own Unit of Work. When set to `"async"`,
+commands are queued for the server unless submitted with `asynchronous=False`.
 
 ## Idempotency in Handlers
 
