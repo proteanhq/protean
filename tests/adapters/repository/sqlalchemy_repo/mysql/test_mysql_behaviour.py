@@ -11,7 +11,7 @@ that is specific to these servers: collation, fractional seconds, the stored
 column types, and the isolation level.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import text
@@ -171,7 +171,7 @@ class TestStoredColumnTypes:
 class TestRoundTrips:
     def test_microseconds_survive(self, mysql_domain):
         """A plain DATETIME drops them on write with no error."""
-        written_at = datetime(2026, 9, 21, 13, 45, 6, 123456)
+        written_at = datetime(2026, 9, 21, 13, 45, 6, 123456, tzinfo=UTC)
         dao = mysql_domain.repository_for(Note)._dao
         note = dao.create(title="Timed", written_at=written_at)
 

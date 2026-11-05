@@ -90,6 +90,17 @@ error comes from a column with no length, such as `max_length=None`. A column
 with no length is fine on MSSQL as an ordinary column. Protean raises only when
 that column is a primary key or is `unique=True`.
 
+## Timestamps
+
+A `DateTime` field maps to a `DATETIME` column. A `DATETIME` column holds no
+UTC offset, so Protean converts each value to UTC before it writes it or
+compares it in a filter, and reads a naive value as UTC. A load returns a
+UTC-aware `datetime`. A filter value in any offset then matches the same
+instant. Rows written before 0.18.1 hold the wall-clock time they were saved
+with; see
+[Datetimes are compared and stored as UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc)
+to convert them.
+
 ## SQLAlchemy model
 
 You can supply a custom SQLAlchemy model in place of the one Protean generates,
