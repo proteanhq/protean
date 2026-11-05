@@ -377,8 +377,10 @@ def _refuse_event_store_subscriptions(
 ) -> None:
     """Abort when the domain has event-store subscriptions.
 
-    Skips the check, and does not abort, when the domain fails to initialize
-    here.
+    Skips the check, and does not abort, when initializing the domain or
+    reading its subscriptions raises. An error from closing the domain is
+    logged and swallowed, and the abort still happens when offenders were
+    found before it.
     """
     from protean.server.subscription import (  # noqa: PLC0415
         event_store_multi_worker_error,

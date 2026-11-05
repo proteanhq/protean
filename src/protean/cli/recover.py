@@ -336,7 +336,11 @@ class _Run:
 
 
 def _verify(derived_domain: Domain, reset_beyond_head: bool) -> _Run:
-    """Collect the checkpoint and recovery-tracking findings, resetting them on request."""
+    """Collect the checkpoint and recovery-tracking findings.
+
+    With *reset_beyond_head*, resets the beyond-head checkpoints and the stale
+    recovery findings. Unknown recovery findings are reported and never reset.
+    """
     from protean.server.subscription_status import (  # noqa: PLC0415
         collect_recovery_checkpoint_statuses,
         collect_subscription_statuses,

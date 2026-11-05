@@ -1124,7 +1124,11 @@ def _marker_command(
 
 
 def _parse_summary_counts(stdout: str) -> tuple[int, int, int, int]:
-    """Return the passed, failed, error and skipped counts from pytest output."""
+    """Return the passed, failed, error and skipped counts from pytest output.
+
+    The skipped count also takes a ``deselected`` count, and a later match
+    overwrites an earlier one.
+    """
     passed = failed = errors = skipped = 0
     for line in stdout.splitlines():
         line = line.strip()

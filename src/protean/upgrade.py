@@ -185,9 +185,9 @@ def _alter_statement(dialect: str, column: str, length: int, nullable: bool) -> 
 def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
     """Diff each live outbox table against the bounded Outbox model.
 
-    For SQL providers whose ``outbox`` table still has unbounded string columns
-    (the pre-0.16 ``TEXT`` shape), generate the exact backend ``ALTER`` to apply
-    the new ``VARCHAR(N)`` bounds. SQLite enforces no lengths, so it is a no-op.
+    For SQL providers whose ``outbox`` table has string columns that are
+    unbounded (the pre-0.16 ``TEXT`` shape) or wider than the model's bound,
+    generate the exact backend ``ALTER`` to apply the ``VARCHAR(N)`` bounds. SQLite enforces no lengths, so it is a no-op.
     """
     try:
         from sqlalchemy import inspect as sa_inspect  # noqa: F401, PLC0415

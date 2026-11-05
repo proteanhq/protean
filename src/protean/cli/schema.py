@@ -146,8 +146,10 @@ def write_index_ddl(
 ) -> list[Path]:
     """Render index DDL for every aggregate, entity, or projection with indexes.
 
-    Writes one ``<schema_name>.indexes.<dialect>.sql`` file per element per
-    dialect under ``<output_dir>/schemas/<cluster>/``. Returns the sorted list
+    Writes one ``<schema_name>.indexes.<dialect>.sql`` file per schema name
+    and dialect under ``<output_dir>/schemas/<cluster>/``. Elements that share
+    a schema name get one file, and a dialect that renders no statement for an
+    element gets no file. Returns the sorted list
     of written paths. This is the database-agnostic path: it never executes
     DDL, only renders it for review or manual application.
     """
