@@ -30,10 +30,12 @@ class _RecordingSubprocess:
 
     def __init__(self, fail_on: list[str] | None = None) -> None:
         self.calls: list[list[str]] = []
+        self.kwargs: list[dict[str, Any]] = []
         self.fail_on = fail_on
 
     def run(self, args: list[str], **kwargs: Any) -> None:
         self.calls.append(list(args))
+        self.kwargs.append(kwargs)
         if self.fail_on is not None and list(args) == self.fail_on:
             raise subprocess.CalledProcessError(returncode=1, cmd=args)
 
@@ -60,8 +62,8 @@ def uv_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(new_module, "shutil", SimpleNamespace(which=lambda _: UV_PATH))
 
 
-def _make_pre_commit(project_dir: Path) -> None:
-    pre_commit = project_dir / ".venv" / "bin" / "pre-commit"
+def _make_pre_commit(project_dir: Path, bin_dir: str = "bin") -> None:
+    pre_commit = project_dir / ".venv" / bin_dir / "pre-commit"
     pre_commit.parent.mkdir(parents=True)
     pre_commit.write_text("", encoding="utf-8")
 
@@ -85,6 +87,37 @@ class TestRunProjectSetupCommands:
             ["git", "init"],
             ["git", "add", "."],
             [os.path.join(".venv", "bin", "pre-commit"), "install"],
+        ]
+
+    def test_every_command_raises_on_failure(
+        self, tmp_path: Path, fake_subprocess: _RecordingSubprocess
+    ) -> None:
+        _make_pre_commit(tmp_path)
+
+        new_module.run_project_setup(str(tmp_path))
+
+        # ``check=True`` makes a failed command raise, which stops the setup.
+        assert fake_subprocess.kwargs == [
+            {"check": True},
+            {"check": True, "capture_output": True},
+            {"check": True, "capture_output": True},
+            {"check": True},
+        ]
+
+    def test_runs_the_scripts_folder_pre_commit_on_windows(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_subprocess: _RecordingSubprocess,
+    ) -> None:
+        _make_pre_commit(tmp_path, bin_dir="Scripts")
+        monkeypatch.setattr(new_module, "os", _OsWithName("nt"))
+
+        new_module.run_project_setup(str(tmp_path))
+
+        assert fake_subprocess.calls[-1] == [
+            os.path.join(".venv", "Scripts", "pre-commit"),
+            "install",
         ]
 
     def test_restores_the_working_directory(
@@ -126,7 +159,8 @@ class TestRunProjectSetupCommands:
         new_module.run_project_setup(str(tmp_path))
 
         out = _flat(capsys.readouterr().out)
-        assert "Setup encountered an error:" in out
+        error = subprocess.CalledProcessError(returncode=1, cmd=["git", "init"])
+        assert f"Setup encountered an error: {error}" in out
         assert "You can complete the setup manually." in out
         assert "Project setup complete!" not in out
         # The failure stops the setup: no ``git add`` after the failed init.
