@@ -16,7 +16,8 @@ unit-of-work recording.
 The two jobs have grown apart:
 
 - `BaseEventStore` has 41 methods, and the two event stores override 7 of
-  them. `BaseBroker` has 56 methods, and the three brokers override 18. An
+  them besides `__init__`. `BaseBroker` has 57 methods, and the three brokers
+  override 25 of them besides `__init__`. An
   adapter author has to read the whole class to find the methods they must
   write.
 - Adapters take more than one constructor shape. Providers, brokers and caches
@@ -344,13 +345,13 @@ Copied from #2056, with the flags from #2055.
 | `name` | `name: str` | attribute `name` in `src/protean/port/event_store.py` | #2056 |
 | `__init__` | `__init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None` | `__init__` in `src/protean/port/event_store.py` | #2056 |
 | `capabilities` | `@property capabilities(self) -> EventStoreCapabilities` | new | #2055, #2056 |
-| `write_message` | `write_message(self, stream_name: str, message_type: str, data: Mapping[str, Any], metadata: Mapping[str, Any] | None = None, expected_version: int | None = None) -> int` | `_write` in `src/protean/port/event_store.py` | #2056 |
+| `write_message` | <code>write&#95;message(self, stream&#95;name: str, message&#95;type: str, data: Mapping[str, Any], metadata: Mapping[str, Any] &#124; None = None, expected&#95;version: int &#124; None = None) -&gt; int</code> | `_write` in `src/protean/port/event_store.py` | #2056 |
 | `get_stream_messages` | `get_stream_messages(self, stream_name: str, position: int = 0, limit: int = 1000) -> list[RawMessage]` | `_read` in `src/protean/port/event_store.py` | #2056 |
-| `get_category_messages` | `get_category_messages(self, category: str, position: int = 0, limit: int = 1000, *, consumer_group_member: int | None = None, consumer_group_size: int | None = None) -> list[RawMessage]` | `_read` in `src/protean/port/event_store.py` | #2056 |
+| `get_category_messages` | <code>get&#95;category&#95;messages(self, category: str, position: int = 0, limit: int = 1000, &#42;, consumer&#95;group&#95;member: int &#124; None = None, consumer&#95;group&#95;size: int &#124; None = None) -&gt; list[RawMessage]</code> | `_read` in `src/protean/port/event_store.py` | #2056 |
 | `get_all_messages` | `get_all_messages(self, position: int = 0, limit: int = 1000) -> list[RawMessage]` | `_read` in `src/protean/port/event_store.py` | #2056 |
-| `get_last_stream_message` | `get_last_stream_message(self, stream_name: str) -> RawMessage | None` | `_read_last_message` in `src/protean/port/event_store.py` | #2056 |
-| `get_last_category_message` | `get_last_category_message(self, category: str) -> RawMessage | None` | `_read_last_message` in `src/protean/port/event_store.py` | #2056 |
-| `get_last_message` | `get_last_message(self) -> RawMessage | None` | `_read_last_message` in `src/protean/port/event_store.py` | #2056 |
+| `get_last_stream_message` | <code>get&#95;last&#95;stream&#95;message(self, stream&#95;name: str) -&gt; RawMessage &#124; None</code> | `_read_last_message` in `src/protean/port/event_store.py` | #2056 |
+| `get_last_category_message` | <code>get&#95;last&#95;category&#95;message(self, category: str) -&gt; RawMessage &#124; None</code> | `_read_last_message` in `src/protean/port/event_store.py` | #2056 |
+| `get_last_message` | <code>get&#95;last&#95;message(self) -&gt; RawMessage &#124; None</code> | `_read_last_message` in `src/protean/port/event_store.py` | #2056 |
 | `stream_ids` | `stream_ids(self, category: str) -> list[str]` | `_stream_identifiers` in `src/protean/port/event_store.py` | #2056 |
 | `ping` | `ping(self) -> bool` | new | #2056 |
 | `health` | `health(self) -> EventStoreHealth` | new | #2056 |
@@ -413,7 +414,7 @@ Copied from #2071. Unlocked by `DEAD_LETTER_QUEUE`.
 | Member | Signature | Replaces | Decided in |
 |--------|-----------|----------|------------|
 | `dlq_list` | `dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]` | `_dlq_list` in `src/protean/port/broker.py` | #2071 |
-| `dlq_get` | `dlq_get(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None` | `_dlq_inspect` in `src/protean/port/broker.py` | #2071 |
+| `dlq_get` | <code>dlq&#95;get(self, dlq&#95;stream: str, dlq&#95;id: str) -&gt; DLQEntry &#124; None</code> | `_dlq_inspect` in `src/protean/port/broker.py` | #2071 |
 | `dlq_replay` | `dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool` | `_dlq_replay` in `src/protean/port/broker.py` | #2071 |
 | `dlq_replay_all` | `dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int` | `_dlq_replay_all` in `src/protean/port/broker.py` | #2071 |
 | `dlq_purge` | `dlq_purge(self, dlq_stream: str) -> int` | `_dlq_purge` in `src/protean/port/broker.py` | #2071 |
@@ -428,8 +429,8 @@ Copied from #2072. Unlocked by `STREAM_PARTITIONING`.
 |--------|-----------|----------|------------|
 | `record_partition` | `record_partition(self, category: str, key: str) -> None` | `_record_partition` in `src/protean/port/broker.py` | #2072 |
 | `partition_keys` | `partition_keys(self, category: str) -> set[str]` | `_partition_keys` in `src/protean/port/broker.py` | #2072 |
-| `reap_partition` | `reap_partition(self, category: str, key: str, min_idle_ms: int, backfill_suffix: str | None) -> bool` | `_reap_partition` in `src/protean/port/broker.py` | #2072 |
-| `acquire_partition_lease` | `acquire_partition_lease(self, lease_key: str, generation_key: str, owner_id: str, ttl_ms: int) -> int | None` | `_acquire_partition_lease` in `src/protean/port/broker.py` | #2072 |
+| `reap_partition` | <code>reap&#95;partition(self, category: str, key: str, min&#95;idle&#95;ms: int, backfill&#95;suffix: str &#124; None) -&gt; bool</code> | `_reap_partition` in `src/protean/port/broker.py` | #2072 |
+| `acquire_partition_lease` | <code>acquire&#95;partition&#95;lease(self, lease&#95;key: str, generation&#95;key: str, owner&#95;id: str, ttl&#95;ms: int) -&gt; int &#124; None</code> | `_acquire_partition_lease` in `src/protean/port/broker.py` | #2072 |
 | `renew_partition_lease` | `renew_partition_lease(self, lease_key: str, fence_token: str, ttl_ms: int) -> bool` | `_renew_partition_lease` in `src/protean/port/broker.py` | #2072 |
 | `release_partition_lease` | `release_partition_lease(self, lease_key: str, fence_token: str) -> bool` | `_release_partition_lease` in `src/protean/port/broker.py` | #2072 |
 | `read_partition_fenced` | `read_partition_fenced(self, stream: str, consumer_group: str, consumer_name: str, lease_key: str, fence_token: str, limit: int, new_messages: bool) -> list[BrokerMessage]` | `_read_partition_fenced` in `src/protean/port/broker.py` | #2072 |
@@ -460,8 +461,8 @@ Copied from #2066, with the flags from #2065.
 | `get_connection` | `get_connection(self) -> object` | `get_connection` in `src/protean/port/cache.py` | #2066 |
 | `close` | `close(self) -> None: return None` | `close` in `src/protean/port/cache.py` | #2066 |
 | `clear` | `clear(self) -> None` | `flush_all` in `src/protean/port/cache.py` | #2066 |
-| `get` | `get(self, key: str) -> CacheEntry | None` | `get` in `src/protean/port/cache.py` | #2066 |
-| `put` | `put(self, key: str, value: CacheEntry, ttl: float | None) -> None` | `add` in `src/protean/port/cache.py` | #2066 |
+| `get` | <code>get(self, key: str) -&gt; CacheEntry &#124; None</code> | `get` in `src/protean/port/cache.py` | #2066 |
+| `put` | <code>put(self, key: str, value: CacheEntry, ttl: float &#124; None) -&gt; None</code> | `add` in `src/protean/port/cache.py` | #2066 |
 | `delete` | `delete(self, key: str) -> None` | `remove_by_key` in `src/protean/port/cache.py` | #2066 |
 
 The adapter members store JSON-ready dicts under string keys. The `Cache`
@@ -475,7 +476,7 @@ Copied from #2066. Unlocked by `TTL`.
 | Member | Signature | Replaces | Decided in |
 |--------|-----------|----------|------------|
 | `set_ttl` | `set_ttl(self, key: str, ttl: float) -> None` | `set_ttl` in `src/protean/port/cache.py` | #2066 |
-| `get_ttl` | `get_ttl(self, key: str) -> float | None` | `get_ttl` in `src/protean/port/cache.py` | #2066 |
+| `get_ttl` | <code>get&#95;ttl(self, key: str) -&gt; float &#124; None</code> | `get_ttl` in `src/protean/port/cache.py` | #2066 |
 
 #### CachePatternPort
 
@@ -510,7 +511,7 @@ Copied from #2076, with members added or narrowed by #2077, #2078 and #2080.
 | `create_schema` | `create_schema(self) -> None: return None` | `_create_database_artifacts` in `src/protean/port/provider.py` | #2076 |
 | `drop_schema` | `drop_schema(self) -> None: return None` | `_drop_database_artifacts` in `src/protean/port/provider.py` | #2076 |
 | `dao_for` | `dao_for(self, entity_cls: type[BaseEntity], model_cls: type[BaseDatabaseModel]) -> DAOPort` | `get_dao` in `src/protean/port/provider.py` | #2076, #2080 |
-| `model_for` | `model_for(self, entity_cls: type[BaseEntity], model_cls: type[BaseDatabaseModel] | None = None) -> type[DatabaseModelPort]` | `construct_database_model_class` and `decorate_database_model_class` in `src/protean/port/provider.py` | #2076, #2078 |
+| `model_for` | <code>model&#95;for(self, entity&#95;cls: type[BaseEntity], model&#95;cls: type[BaseDatabaseModel] &#124; None = None) -&gt; type[DatabaseModelPort]</code> | `construct_database_model_class` and `decorate_database_model_class` in `src/protean/port/provider.py` | #2076, #2078 |
 | `get_lookup` | `get_lookup(self, lookup_name: str) -> type[LookupPort]` | `get_lookup` in `src/protean/utils/query.py` | #2076, #2077 |
 | `get_lookups` | `@classmethod get_lookups(cls) -> Mapping[str, type[LookupPort]]` | `get_lookups` in `src/protean/utils/query.py` | #2077 |
 | `new_session` | `new_session(self) -> SessionProtocol` | `_get_session` in `src/protean/adapters/repository/sqlalchemy.py` | #2080 |
@@ -541,13 +542,13 @@ Copied from #2080, with `claim_lock` from #2079.
 | `entity_cls` | `entity_cls: type[BaseEntity]` | attribute `entity_cls` in `src/protean/port/dao.py` | #2080 |
 | `database_model_cls` | `database_model_cls: type[DatabaseModelPort]` | attribute `database_model_cls` in `src/protean/port/dao.py` | #2078, #2080 |
 | `schema_name` | `schema_name: str` | attribute `schema_name` in `src/protean/port/dao.py` | #2080 |
-| `filter` | `filter(self, session: SessionProtocol, criteria: Q, *, offset: int = 0, limit: int = 10, order_by: Sequence[str] = (), with_total: bool = True, fields: Sequence[str] | None = None) -> ResultSet` | `_filter` in `src/protean/port/dao.py` | #2080 |
+| `filter` | <code>filter(self, session: SessionProtocol, criteria: Q, &#42;, offset: int = 0, limit: int = 10, order&#95;by: Sequence[str] = (), with&#95;total: bool = True, fields: Sequence[str] &#124; None = None) -&gt; ResultSet</code> | `_filter` in `src/protean/port/dao.py` | #2080 |
 | `count` | `count(self, session: SessionProtocol, criteria: Q) -> int` | `_count` in `src/protean/port/dao.py` | #2080 |
 | `insert` | `insert(self, session: SessionProtocol, model: Any) -> Any` | `_create` in `src/protean/port/dao.py` | #2080 |
-| `update` | `update(self, session: SessionProtocol, model: Any, *, expected_version: int | None = None) -> Any` | `_update` in `src/protean/port/dao.py` | #2080 |
+| `update` | <code>update(self, session: SessionProtocol, model: Any, &#42;, expected&#95;version: int &#124; None = None) -&gt; Any</code> | `_update` in `src/protean/port/dao.py` | #2080 |
 | `update_all` | `update_all(self, session: SessionProtocol, criteria: Q, values: Mapping[str, Any]) -> int` | `_update_all` in `src/protean/port/dao.py` | #2080 |
 | `delete` | `delete(self, session: SessionProtocol, model: Any) -> Any` | `_delete` in `src/protean/port/dao.py` | #2080 |
-| `delete_all` | `delete_all(self, session: SessionProtocol, criteria: Q | None = None) -> int` | `_delete_all` in `src/protean/port/dao.py` | #2080 |
+| `delete_all` | <code>delete&#95;all(self, session: SessionProtocol, criteria: Q &#124; None = None) -&gt; int</code> | `_delete_all` in `src/protean/port/dao.py` | #2080 |
 | `has_table` | `has_table(self) -> bool` | `has_table` in `src/protean/port/dao.py` | #2080 |
 | `claim_lock` | `claim_lock(self, session: SessionProtocol) -> AbstractContextManager[object]: return nullcontext()` | new | #2079, #2080 |
 
@@ -570,7 +571,7 @@ Copied from #2079, with the `session` argument from #2080. Unlocked by
 
 | Member | Signature | Replaces | Decided in |
 |--------|-----------|----------|------------|
-| `claim` | `claim(self, session: SessionProtocol, criteria: Q, claim_fields: Mapping[str, Any], limit: int, order_by: Sequence[str] = (), hold_back: HoldBack | None = None) -> list[Any]` | `_claim` in `src/protean/port/dao.py` | #2079, #2080 |
+| `claim` | <code>claim(self, session: SessionProtocol, criteria: Q, claim&#95;fields: Mapping[str, Any], limit: int, order&#95;by: Sequence[str] = (), hold&#95;back: HoldBack &#124; None = None) -&gt; list[Any]</code> | `_claim` in `src/protean/port/dao.py` | #2079, #2080 |
 
 #### ClaimCandidatesPort
 
@@ -588,7 +589,7 @@ Copied from #2079, with the `session` argument from #2080. Unlocked by
 
 | Member | Signature | Replaces | Decided in |
 |--------|-----------|----------|------------|
-| `delete_top` | `delete_top(self, session: SessionProtocol, criteria: Q, limit: int, order_by: str | None = None) -> int` | `_delete_top` in `src/protean/port/dao.py` | #2079, #2080 |
+| `delete_top` | <code>delete&#95;top(self, session: SessionProtocol, criteria: Q, limit: int, order&#95;by: str &#124; None = None) -&gt; int</code> | `_delete_top` in `src/protean/port/dao.py` | #2079, #2080 |
 
 The `DAO` service keeps `portable_claim` and `portable_delete_top` as
 module functions for adapters without these flags.
@@ -600,7 +601,7 @@ Copied from #2080. Unlocked by `INSERT_IF_ABSENT`.
 | Member | Signature | Replaces | Decided in |
 |--------|-----------|----------|------------|
 | `insert_if_absent` | `insert_if_absent(self, session: SessionProtocol, model: Any) -> bool` | `save_if_absent` in `src/protean/adapters/repository/memory.py` | #2080 |
-| `update_if_absent` | `update_if_absent(self, session: SessionProtocol, model: Any, *, expected_version: int | None = None) -> bool` | `save_if_absent` in `src/protean/adapters/repository/sqlalchemy.py` | #2080 |
+| `update_if_absent` | <code>update&#95;if&#95;absent(self, session: SessionProtocol, model: Any, &#42;, expected&#95;version: int &#124; None = None) -&gt; bool</code> | `save_if_absent` in `src/protean/adapters/repository/sqlalchemy.py` | #2080 |
 
 Each member writes `model` only when no other stored row holds one of its
 unique keys, in one atomic step, and returns `False` without writing
@@ -615,8 +616,8 @@ Copied from #2077.
 | `lookup_name` | `lookup_name: ClassVar[str]` | attribute `lookup_name` in `src/protean/port/dao.py` | #2077 |
 | `source` | `source: Any` | attribute `source` in `src/protean/port/dao.py` | #2077 |
 | `target` | `target: Any` | attribute `target` in `src/protean/port/dao.py` | #2077 |
-| `database_model_cls` | `database_model_cls: type[BaseDatabaseModel] | None` | attribute `database_model_cls` in `src/protean/port/dao.py` | #2077 |
-| `__init__` | `__init__(self, source: Any, target: Any, *, database_model_cls: type[BaseDatabaseModel] | None = None) -> None` | `__init__` in `src/protean/port/dao.py` | #2077 |
+| `database_model_cls` | <code>database&#95;model&#95;cls: type[BaseDatabaseModel] &#124; None</code> | attribute `database_model_cls` in `src/protean/port/dao.py` | #2077 |
+| `__init__` | <code>&#95;&#95;init&#95;&#95;(self, source: Any, target: Any, &#42;, database&#95;model&#95;cls: type[BaseDatabaseModel] &#124; None = None) -&gt; None</code> | `__init__` in `src/protean/port/dao.py` | #2077 |
 
 `LookupPort` and `REQUIRED_LOOKUPS`, now a module-level constant, live in
 `src/protean/port/dao.py`. `split_lookup_key(key: str) -> tuple[str, str]` in
