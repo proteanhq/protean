@@ -104,10 +104,9 @@ members and mypy's check of signatures.
   gates members or arguments of the core Port, such as the schema operations
   behind `SCHEMA_MANAGEMENT`.
 - An adapter that declares a flag implements every member of the flag's
-  sub-protocol. The service checks this when it is built and raises
-  `ConfigurationError` naming the flag and the class. The check runs when the
-  service is built, because `capabilities` is a property of the adapter
-  instance.
+  sub-protocol. The service checks this when it is built, because
+  `capabilities` is a property of the adapter instance, and raises
+  `ConfigurationError` naming the flag and the class.
 - The check runs one way. A class may implement a sub-protocol without
   declaring its flag, because one class can serve several databases with
   different capabilities.
