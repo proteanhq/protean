@@ -1,0 +1,322 @@
+"""Tests for the post-generation setup that ``protean new`` runs.
+
+The setup shells out to ``uv``, ``git`` and ``pre-commit``. These tests replace
+the ``subprocess``, ``shutil`` and ``os`` names inside ``protean.cli.new`` with
+stand-ins, so no real tool runs and no global module is patched.
+"""
+
+import importlib
+import os
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+from typer.testing import CliRunner
+
+from protean.cli import app
+from tests.shared import isolated_filesystem
+
+new_module = importlib.import_module("protean.cli.new")
+
+UV_PATH = "/fake/bin/uv"
+
+
+class _RecordingSubprocess:
+    """Stand-in for the ``subprocess`` module that records each ``run`` call."""
+
+    CalledProcessError = subprocess.CalledProcessError
+
+    def __init__(self, fail_on: list[str] | None = None) -> None:
+        self.calls: list[list[str]] = []
+        self.kwargs: list[dict[str, Any]] = []
+        self.fail_on = fail_on
+
+    def run(self, args: list[str], **kwargs: Any) -> None:
+        self.calls.append(list(args))
+        self.kwargs.append(kwargs)
+        if self.fail_on is not None and list(args) == self.fail_on:
+            raise subprocess.CalledProcessError(returncode=1, cmd=args)
+
+
+class _OsWithName:
+    """Stand-in for the ``os`` module that reports a different ``os.name``."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __getattr__(self, attr: str) -> Any:
+        return getattr(os, attr)
+
+
+@pytest.fixture
+def fake_subprocess(monkeypatch: pytest.MonkeyPatch) -> _RecordingSubprocess:
+    fake = _RecordingSubprocess()
+    monkeypatch.setattr(new_module, "subprocess", fake)
+    return fake
+
+
+@pytest.fixture
+def uv_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(new_module, "shutil", SimpleNamespace(which=lambda _: UV_PATH))
+
+
+def _make_pre_commit(project_dir: Path, bin_dir: str = "bin") -> None:
+    pre_commit = project_dir / ".venv" / bin_dir / "pre-commit"
+    pre_commit.parent.mkdir(parents=True)
+    pre_commit.write_text("", encoding="utf-8")
+
+
+def _flat(text: str) -> str:
+    # Rich wraps at the terminal width; join the lines before matching.
+    return " ".join(text.split())
+
+
+@pytest.mark.usefixtures("uv_found")
+class TestRunProjectSetupCommands:
+    def test_runs_uv_git_and_pre_commit_in_order(
+        self, tmp_path: Path, fake_subprocess: _RecordingSubprocess
+    ) -> None:
+        _make_pre_commit(tmp_path)
+
+        new_module.run_project_setup(str(tmp_path))
+
+        assert fake_subprocess.calls == [
+            [UV_PATH, "sync", "--all-extras", "--all-groups"],
+            ["git", "init"],
+            ["git", "add", "."],
+            [os.path.join(".venv", "bin", "pre-commit"), "install"],
+        ]
+
+    def test_every_command_raises_on_failure(
+        self, tmp_path: Path, fake_subprocess: _RecordingSubprocess
+    ) -> None:
+        _make_pre_commit(tmp_path)
+
+        new_module.run_project_setup(str(tmp_path))
+
+        # ``check=True`` makes a failed command raise, which stops the setup.
+        assert fake_subprocess.kwargs == [
+            {"check": True},
+            {"check": True, "capture_output": True},
+            {"check": True, "capture_output": True},
+            {"check": True},
+        ]
+
+    def test_runs_the_scripts_folder_pre_commit_on_windows(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_subprocess: _RecordingSubprocess,
+    ) -> None:
+        _make_pre_commit(tmp_path, bin_dir="Scripts")
+        monkeypatch.setattr(new_module, "os", _OsWithName("nt"))
+
+        new_module.run_project_setup(str(tmp_path))
+
+        assert fake_subprocess.calls[-1] == [
+            os.path.join(".venv", "Scripts", "pre-commit"),
+            "install",
+        ]
+
+    def test_restores_the_working_directory(
+        self, tmp_path: Path, fake_subprocess: _RecordingSubprocess
+    ) -> None:
+        before = os.getcwd()
+
+        new_module.run_project_setup(str(tmp_path))
+
+        assert os.getcwd() == before
+
+    def test_skips_hook_install_when_pre_commit_is_missing(
+        self,
+        tmp_path: Path,
+        fake_subprocess: _RecordingSubprocess,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        new_module.run_project_setup(str(tmp_path))
+
+        assert "Pre-commit not found, skipping hook installation" in _flat(
+            capsys.readouterr().out
+        )
+        assert fake_subprocess.calls == [
+            [UV_PATH, "sync", "--all-extras", "--all-groups"],
+            ["git", "init"],
+            ["git", "add", "."],
+        ]
+
+    def test_reports_a_failed_command_and_restores_the_working_directory(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        fake = _RecordingSubprocess(fail_on=["git", "init"])
+        monkeypatch.setattr(new_module, "subprocess", fake)
+        before = os.getcwd()
+
+        new_module.run_project_setup(str(tmp_path))
+
+        out = _flat(capsys.readouterr().out)
+        error = subprocess.CalledProcessError(returncode=1, cmd=["git", "init"])
+        assert f"Setup encountered an error: {error}" in out
+        assert "You can complete the setup manually." in out
+        assert "Project setup complete!" not in out
+        # The failure stops the setup: no ``git add`` after the failed init.
+        assert fake.calls == [
+            [UV_PATH, "sync", "--all-extras", "--all-groups"],
+            ["git", "init"],
+        ]
+        assert os.getcwd() == before
+
+
+def test_stops_when_uv_is_not_found(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_subprocess: _RecordingSubprocess,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(new_module, "shutil", SimpleNamespace(which=lambda _: None))
+    before = os.getcwd()
+
+    new_module.run_project_setup(str(tmp_path))
+
+    out = _flat(capsys.readouterr().out)
+    assert "uv not found. Install it from https://docs.astral.sh/uv/" in out
+    assert "Project setup complete!" not in out
+    assert fake_subprocess.calls == []
+    assert os.getcwd() == before
+
+
+@pytest.mark.usefixtures("uv_found", "fake_subprocess")
+class TestActivationCommand:
+    @pytest.mark.parametrize(
+        ("shell", "expected"),
+        [
+            ("/bin/bash", "source .venv/bin/activate"),
+            ("/usr/bin/zsh", "source .venv/bin/activate"),
+            ("/usr/bin/fish", "source .venv/bin/activate.fish"),
+            ("/bin/csh", "source .venv/bin/activate.csh"),
+            ("/bin/tcsh", "source .venv/bin/activate.csh"),
+            ("", "source .venv/bin/activate"),
+        ],
+    )
+    def test_matches_the_shell_on_posix(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        shell: str,
+        expected: str,
+    ) -> None:
+        monkeypatch.setenv("SHELL", shell)
+        monkeypatch.setattr(new_module, "os", _OsWithName("posix"))
+
+        new_module.run_project_setup(str(tmp_path))
+
+        out = _flat(capsys.readouterr().out)
+        assert f"cd {tmp_path} {expected} Then you can start developing" in out
+
+    def test_uses_the_scripts_folder_on_windows(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("SHELL", "/usr/bin/fish")
+        monkeypatch.setattr(new_module, "os", _OsWithName("nt"))
+
+        new_module.run_project_setup(str(tmp_path))
+
+        out = _flat(capsys.readouterr().out)
+        assert f"cd {tmp_path} .venv\\Scripts\\activate Then you can start" in out
+
+
+def test_new_runs_setup_on_the_generated_project_without_skip_setup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(new_module, "run_project_setup", calls.append)
+
+    with isolated_filesystem() as output_dir:
+        result = CliRunner().invoke(
+            app, ["new", "foobar", "-o", output_dir, "--defaults"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [os.path.join(output_dir, "foobar")]
+
+
+def test_new_skips_setup_with_skip_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(new_module, "run_project_setup", calls.append)
+
+    with isolated_filesystem() as output_dir:
+        result = CliRunner().invoke(
+            app, ["new", "foobar", "-o", output_dir, "--defaults", "--skip-setup"]
+        )
+
+    assert result.exit_code == 0, result.output
+    assert calls == []
+
+
+def _make_activation_scripts(project_dir: Path) -> None:
+    scripts = project_dir / "scripts"
+    scripts.mkdir()
+    for name in ("activate.sh", "activate.bat", "activate.fish"):
+        (scripts / name).write_text("", encoding="utf-8")
+
+
+@pytest.mark.usefixtures("uv_found", "fake_subprocess")
+class TestQuickStart:
+    @pytest.mark.parametrize(
+        ("os_name", "shell", "expected"),
+        [
+            ("posix", "/bin/bash", "source scripts/activate.sh"),
+            ("posix", "/usr/bin/fish", "source scripts/activate.fish"),
+            ("nt", "/bin/bash", "scripts/activate.bat"),
+        ],
+    )
+    def test_prints_the_activation_script_for_the_platform(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        os_name: str,
+        shell: str,
+        expected: str,
+    ) -> None:
+        _make_activation_scripts(tmp_path)
+        monkeypatch.setenv("SHELL", shell)
+        monkeypatch.setattr(new_module, "os", _OsWithName(os_name))
+
+        new_module.run_project_setup(str(tmp_path))
+
+        out = _flat(capsys.readouterr().out)
+        assert f"💡 Quick Start: {expected} This will:" in out
+
+    def test_makes_the_posix_scripts_executable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _make_activation_scripts(tmp_path)
+        monkeypatch.setattr(new_module, "os", _OsWithName("posix"))
+
+        new_module.run_project_setup(str(tmp_path))
+
+        scripts = tmp_path / "scripts"
+        assert (scripts / "activate.sh").stat().st_mode & 0o777 == 0o755
+        assert (scripts / "activate.fish").stat().st_mode & 0o777 == 0o755
+
+    def test_prints_no_script_when_the_template_has_none(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(new_module, "os", _OsWithName("posix"))
+
+        new_module.run_project_setup(str(tmp_path))
+
+        out = _flat(capsys.readouterr().out)
+        assert "💡 Quick Start: This will:" in out

@@ -257,13 +257,18 @@ def _print_rich(domain_name: str, findings: list[UpgradeFinding]) -> None:
     print(f"  {', '.join(parts)}\n")
 
     for f in findings:
-        marker = "[yellow]![/yellow]" if f.level == "warning" else "[cyan]i[/cyan]"
-        loc = f" [dim]({escape(f.element)})[/dim]" if f.element else ""
-        print(f"  {marker} [bold]{escape(f.title)}[/bold]{loc}")
-        print(f"    [dim]{escape(f.code)}[/dim]  {escape(f.detail)}")
-        print(f"    [green]Remediation:[/green] {escape(f.remediation)}")
-        if f.sql:
-            print("    [green]Generated SQL:[/green]")
-            for line in f.sql.splitlines():
-                print(f"      [dim]{escape(line)}[/dim]")
-        print()
+        _print_finding(f)
+
+
+def _print_finding(f: UpgradeFinding) -> None:
+    """Print one finding: title, code and detail, remediation, and any SQL."""
+    marker = "[yellow]![/yellow]" if f.level == "warning" else "[cyan]i[/cyan]"
+    loc = f" [dim]({escape(f.element)})[/dim]" if f.element else ""
+    print(f"  {marker} [bold]{escape(f.title)}[/bold]{loc}")
+    print(f"    [dim]{escape(f.code)}[/dim]  {escape(f.detail)}")
+    print(f"    [green]Remediation:[/green] {escape(f.remediation)}")
+    if f.sql:
+        print("    [green]Generated SQL:[/green]")
+        for line in f.sql.splitlines():
+            print(f"      [dim]{escape(line)}[/dim]")
+    print()

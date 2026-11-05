@@ -40,7 +40,7 @@ from rich.table import Table
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
 from protean.cli.result import EXIT_FAILURE, EXIT_OK, emit_usage_error
 from protean.exceptions import ConfigurationError, NoDomainException
-from protean.ir.config import load_config
+from protean.ir.config import CompatConfig, load_config
 from protean.ir.constants import canonical_ir_json
 from protean.ir.diff import (
     CompatibilityReport,
@@ -191,9 +191,30 @@ def diff(
       2: usage, load or config error (message on stderr, no diff printed)
       3: non-breaking changes only
     """
-    # ------------------------------------------------------------------ #
-    # Validate the command line before reading config or loading any IR   #
-    # ------------------------------------------------------------------ #
+    _validate_diff_args(left, right, domain, base, format)
+    config = _load_compat_config(dir)
+    baseline_ir, current_ir = _load_diff_irs(left, right, domain, base, dir)
+
+    # Both sides load even when checking is off, so an input that cannot be
+    # found or parsed still exits 2. The comparison does not run, so an IR
+    # whose content only the comparison rejects passes under off.
+    if config.strictness == "off":
+        print("[dim]Compatibility checking is disabled (strictness=off).[/dim]")
+        raise typer.Exit(code=EXIT_OK)
+
+    result, report = _compare(baseline_ir, current_ir)
+    _drop_excluded(report, config)
+    _echo_diff(format, result, report, baseline_ir, current_ir)
+    _exit_for_diff(result, report, config)
+
+
+def _validate_diff_args(
+    left: str, right: str, domain: str, base: str, format: str
+) -> None:
+    """Exit 2 with a message when the ``ir diff`` options do not form a valid mode.
+
+    Runs before any config or IR is read.
+    """
     if format not in ("text", "json", "event-model"):
         emit_usage_error(
             as_json=False,
@@ -227,11 +248,11 @@ def diff(
             as_json=False, message="Error: provide either --left or --domain"
         )
 
-    # ------------------------------------------------------------------ #
-    # Load config                                                          #
-    # ------------------------------------------------------------------ #
+
+def _load_compat_config(protean_dir: str) -> CompatConfig:
+    """Load ``config.toml`` from *protean_dir*, or exit 2 if it is invalid."""
     try:
-        config = load_config(dir)
+        return load_config(protean_dir)
     # OSError: before Python 3.14, the existence check raises PermissionError
     # when the directory is not searchable.
     except (ValueError, OSError) as exc:
@@ -239,16 +260,18 @@ def diff(
             as_json=False, message=f"Error: Invalid .protean/config.toml: {exc}"
         )
 
-    # ------------------------------------------------------------------ #
-    # Load IRs based on mode                                              #
-    # ------------------------------------------------------------------ #
+
+def _load_diff_irs(
+    left: str, right: str, domain: str, base: str, protean_dir: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Load the baseline and current IR for the mode the options select."""
     if base:
         # Mode 4: git baseline — load IR from a commit
-        baseline_ir = _load_ir_from_git(base, dir)
+        baseline_ir = _load_ir_from_git(base, protean_dir)
         current_ir = load_domain_ir(domain, usage_exit=True)
     elif domain and not right:
         # Mode 3: auto-baseline — load .protean/ir.json as baseline
-        baseline_ir = _load_auto_baseline(dir)
+        baseline_ir = _load_auto_baseline(protean_dir)
         current_ir = load_domain_ir(domain, usage_exit=True)
     elif domain and right:
         # Mode 2: domain (left) vs file (right)
@@ -258,20 +281,11 @@ def diff(
         # Mode 1: explicit files
         baseline_ir = load_ir_file(left, usage_exit=True)
         current_ir = load_ir_file(right, usage_exit=True)
+    return baseline_ir, current_ir
 
-    # Both sides load even when checking is off, so an input that cannot be
-    # found or parsed still exits 2. The comparison does not run, so an IR
-    # whose content only the comparison rejects passes under off.
-    if config.strictness == "off":
-        print("[dim]Compatibility checking is disabled (strictness=off).[/dim]")
-        raise typer.Exit(code=EXIT_OK)
 
-    # ------------------------------------------------------------------ #
-    # Compute diff and classify                                           #
-    # ------------------------------------------------------------------ #
-    result, report = _compare(baseline_ir, current_ir)
-
-    # Filter out excluded elements from the report
+def _drop_excluded(report: CompatibilityReport, config: CompatConfig) -> None:
+    """Remove the changes to elements the config excludes from *report*."""
     if config.exclude:
         report.breaking_changes = [
             c for c in report.breaking_changes if not config.is_excluded(c.element_fqn)
@@ -280,22 +294,33 @@ def diff(
             c for c in report.safe_changes if not config.is_excluded(c.element_fqn)
         ]
 
+
+def _echo_diff(
+    format: str,
+    result: dict[str, Any],
+    report: CompatibilityReport,
+    baseline_ir: dict[str, Any],
+    current_ir: dict[str, Any],
+) -> None:
+    """Write the diff to stdout in the requested format."""
     if format == "json":
         # Attach the classified report (never rendered in JSON before) plus the
         # Avro verdict, as an additive `compatibility` block.
         result["compatibility"] = _compatibility_block(report)
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     elif format == "event-model":
-        # Render the same diff in slice vocabulary. Every loader mode above
-        # sets baseline_ir and current_ir, so both snapshots are available and
+        # Render the same diff in slice vocabulary. Every loader mode sets
+        # baseline_ir and current_ir, so both snapshots are available and
         # the renderer can judge each side by the side it lives on.
         typer.echo(_render_event_model(result, baseline_ir, current_ir))
     else:
         typer.echo(_render_text(result, report), nl=False)
 
-    # ------------------------------------------------------------------ #
-    # CI exit codes                                                       #
-    # ------------------------------------------------------------------ #
+
+def _exit_for_diff(
+    result: dict[str, Any], report: CompatibilityReport, config: CompatConfig
+) -> NoReturn:
+    """Exit with the CI exit code the diff and the strictness setting call for."""
     summary = result.get("summary", {})
     if not summary.get("has_changes", False):
         raise typer.Exit(code=EXIT_OK)
@@ -477,19 +502,7 @@ def _print_diff_text(
         print("[green]No changes detected.[/green]")
         return
 
-    # Header
-    print(
-        f"\n[bold]IR Diff[/bold]  "
-        f"left={summary.get('left_checksum', '?')[:16]}  "
-        f"right={summary.get('right_checksum', '?')[:16]}"
-    )
-
-    counts = summary.get("counts", {})
-    print(
-        f"  [green]+{counts.get('added', 0)} added[/green]  "
-        f"[red]-{counts.get('removed', 0)} removed[/red]  "
-        f"[yellow]~{counts.get('changed', 0)} changed[/yellow]"
-    )
+    _print_diff_header(summary)
 
     # Breaking changes (prominent). Two sources. The published-event contract
     # diff, and the classified report over every persisted element. The second
@@ -508,6 +521,32 @@ def _print_diff_text(
         for message in messages:
             print(f"  [red]! {message}[/red]")
 
+    _print_element_sections(result)
+    _print_contract_changes(result.get("contracts", {}))
+    _print_diagnostic_changes(result.get("diagnostics", {}))
+    _print_config_changes(result)
+
+    print()
+
+
+def _print_diff_header(summary: dict[str, Any]) -> None:
+    """Print the checksum header and the added/removed/changed counts."""
+    print(
+        f"\n[bold]IR Diff[/bold]  "
+        f"left={summary.get('left_checksum', '?')[:16]}  "
+        f"right={summary.get('right_checksum', '?')[:16]}"
+    )
+
+    counts = summary.get("counts", {})
+    print(
+        f"  [green]+{counts.get('added', 0)} added[/green]  "
+        f"[red]-{counts.get('removed', 0)} removed[/red]  "
+        f"[yellow]~{counts.get('changed', 0)} changed[/yellow]"
+    )
+
+
+def _print_element_sections(result: dict[str, Any]) -> None:
+    """Print the cluster, projection and flow changes, each under its heading."""
     # Clusters
     clusters = result.get("clusters", {})
     if clusters:
@@ -531,8 +570,9 @@ def _print_diff_text(
                 print(f"  [dim]{label}[/dim]")
                 _print_section_changes(sub, indent=4)
 
-    # Contracts (non-breaking additions)
-    contracts = result.get("contracts", {})
+
+def _print_contract_changes(contracts: dict[str, Any]) -> None:
+    """Print the published events added and removed."""
     contract_added = contracts.get("added", [])
     contract_removed = contracts.get("removed", [])
     if contract_added or contract_removed:
@@ -544,8 +584,9 @@ def _print_diff_text(
         for evt in contract_removed:
             print(f"  [red]- published event: {evt.get('type', evt.get('fqn'))}[/red]")
 
-    # Diagnostics
-    diagnostics = result.get("diagnostics", {})
+
+def _print_diagnostic_changes(diagnostics: dict[str, Any]) -> None:
+    """Print the diagnostics added and resolved."""
     if diagnostics:
         print("\n[bold]Diagnostics[/bold]")
         for diag in diagnostics.get("added", []):
@@ -553,6 +594,9 @@ def _print_diff_text(
         for diag in diagnostics.get("resolved", []):
             print(f"  [green]- resolved: {diag['code']}: {diag['message']}[/green]")
 
+
+def _print_config_changes(result: dict[str, Any]) -> None:
+    """Print the domain config and enricher changes."""
     # Domain config
     domain_diff = result.get("domain", {})
     domain_changed = domain_diff.get("changed", {})
@@ -570,8 +614,6 @@ def _print_diff_text(
             left = escape(", ".join(vals["left"] or []) or "none")
             right = escape(", ".join(vals["right"] or []) or "none")
             print(f"  [yellow]~ {kind}: {left} → {right}[/yellow]")
-
-    print()
 
 
 def _print_section_changes(
@@ -611,46 +653,15 @@ def _print_element_changes(
         print(f"{pad}[dim]aggregate:[/dim]")
         _print_element_changes(changes["aggregate"], indent + 2)
 
-    # Fields
-    fields = changes.get("fields", {})
-    if fields:
-        for name, field_info in sorted(fields.get("added", {}).items()):
-            kind = field_info.get("type", field_info.get("kind", ""))
-            req = ", required" if field_info.get("required") else ""
-            print(f"{pad}[green]+ field: {name} ({kind}{req})[/green]")
-
-        for name, field_info in sorted(fields.get("removed", {}).items()):
-            kind = field_info.get("type", field_info.get("kind", ""))
-            print(f"{pad}[red]- field: {name} ({kind})[/red]")
-
-        for name, attrs in sorted(fields.get("changed", {}).items()):
-            for attr, vals in sorted(attrs.items()):
-                print(
-                    f"{pad}[yellow]~ field {name}.{attr}: "
-                    f"{vals['left']} → {vals['right']}[/yellow]"
-                )
+    _print_field_changes(changes.get("fields") or {}, pad)
 
     # Options
     options = changes.get("options", {})
     for key, vals in sorted(options.get("changed", {}).items()):
         print(f"{pad}[yellow]~ option {key}: {vals['left']} → {vals['right']}[/yellow]")
 
-    # Handlers
-    handlers = changes.get("handlers", {})
-    if handlers:
-        for type_key in sorted(handlers.get("added", {})):
-            print(f"{pad}[green]+ handles: {type_key}[/green]")
-        for type_key in sorted(handlers.get("removed", {})):
-            print(f"{pad}[red]- handles: {type_key}[/red]")
-
-    # Invariants
-    invariants = changes.get("invariants", {})
-    for category in ("pre", "post"):
-        cat_changes = invariants.get(category, {})
-        for name in cat_changes.get("added", []):
-            print(f"{pad}[green]+ invariant ({category}): {name}[/green]")
-        for name in cat_changes.get("removed", []):
-            print(f"{pad}[red]- invariant ({category}): {name}[/red]")
+    _print_handler_changes(changes.get("handlers") or {}, pad)
+    _print_invariant_changes(changes.get("invariants", {}), pad)
 
     # Sub-sections (entities, commands, events, etc. within a cluster)
     for sub in (
@@ -672,6 +683,43 @@ def _print_element_changes(
             label = sub.replace("_", " ")
             print(f"{pad}[dim]{label}:[/dim]")
             _print_section_changes(sub_changes, indent + 2)
+
+
+def _print_field_changes(fields: dict[str, Any], pad: str) -> None:
+    """Print the fields added, removed and changed on an element."""
+    for name, field_info in sorted(fields.get("added", {}).items()):
+        kind = field_info.get("type", field_info.get("kind", ""))
+        req = ", required" if field_info.get("required") else ""
+        print(f"{pad}[green]+ field: {name} ({kind}{req})[/green]")
+
+    for name, field_info in sorted(fields.get("removed", {}).items()):
+        kind = field_info.get("type", field_info.get("kind", ""))
+        print(f"{pad}[red]- field: {name} ({kind})[/red]")
+
+    for name, attrs in sorted(fields.get("changed", {}).items()):
+        for attr, vals in sorted(attrs.items()):
+            print(
+                f"{pad}[yellow]~ field {name}.{attr}: "
+                f"{vals['left']} → {vals['right']}[/yellow]"
+            )
+
+
+def _print_handler_changes(handlers: dict[str, Any], pad: str) -> None:
+    """Print the message types a handler started or stopped handling."""
+    for type_key in sorted(handlers.get("added", {})):
+        print(f"{pad}[green]+ handles: {type_key}[/green]")
+    for type_key in sorted(handlers.get("removed", {})):
+        print(f"{pad}[red]- handles: {type_key}[/red]")
+
+
+def _print_invariant_changes(invariants: dict[str, Any], pad: str) -> None:
+    """Print the pre and post invariants added and removed."""
+    for category in ("pre", "post"):
+        cat_changes = invariants.get(category, {})
+        for name in cat_changes.get("added", []):
+            print(f"{pad}[green]+ invariant ({category}): {name}[/green]")
+        for name in cat_changes.get("removed", []):
+            print(f"{pad}[red]- invariant ({category}): {name}[/red]")
 
 
 @app.command()
@@ -760,36 +808,9 @@ def _print_check_text(result: StalenessResult, protean_dir: str = ".protean") ->
         if result.domain_checksum:
             print(f"  checksum: {result.domain_checksum[:16]}…")
     elif result.status == StalenessStatus.STALE:
-        print(
-            "[yellow]IR is stale: the domain has changed since last materialization.[/yellow]"
-        )
-        if result.stored_checksum:
-            print(f"  stored:  {escape(result.stored_checksum[:16])}…")
-        if result.domain_checksum:
-            print(f"  current: {result.domain_checksum[:16]}…")
-        if result.ir_file:
-            print(f"  file:    {result.ir_file}")
-        print(
-            "\n  Run [bold]protean ir show --domain <module> --canonical > "
-            ".protean/ir.json[/bold] to update."
-        )
+        _print_stale(result)
     elif result.status == StalenessStatus.VERSION_MISMATCH:
-        # stored_version comes from the on-disk baseline; escape it so a stray
-        # rich-markup tag in a corrupt file cannot raise MarkupError here (this
-        # runs outside check()'s try/except).
-        stored = escape(result.stored_version or "?")
-        current = escape(result.current_version or "?")
-        print(
-            "[yellow]IR schema version mismatch: the materialized baseline was "
-            f"built against schema {stored}, but the current "
-            f"schema is {current}.[/yellow]"
-        )
-        if result.ir_file:
-            print(f"  file:    {result.ir_file}")
-        print(
-            "\n  Regenerate the baseline: [bold]protean ir show --domain <module> "
-            "--canonical > .protean/ir.json[/bold]."
-        )
+        _print_version_mismatch(result)
     else:  # NO_IR
         location = str(result.ir_file) if result.ir_file else protean_dir
         print(f"[red]No materialized IR found in '{location}'.[/red]")
@@ -797,6 +818,43 @@ def _print_check_text(result: StalenessResult, protean_dir: str = ".protean") ->
             "\n  Run [bold]protean ir show --domain <module> --canonical > "
             ".protean/ir.json[/bold] to generate one."
         )
+
+
+def _print_stale(result: StalenessResult) -> None:
+    """Print the stale verdict with the stored and current checksums."""
+    print(
+        "[yellow]IR is stale: the domain has changed since last materialization.[/yellow]"
+    )
+    if result.stored_checksum:
+        print(f"  stored:  {escape(result.stored_checksum[:16])}…")
+    if result.domain_checksum:
+        print(f"  current: {result.domain_checksum[:16]}…")
+    if result.ir_file:
+        print(f"  file:    {result.ir_file}")
+    print(
+        "\n  Run [bold]protean ir show --domain <module> --canonical > "
+        ".protean/ir.json[/bold] to update."
+    )
+
+
+def _print_version_mismatch(result: StalenessResult) -> None:
+    """Print the schema-version mismatch between the baseline and the current schema."""
+    # stored_version comes from the on-disk baseline; escape it so a stray
+    # rich-markup tag in a corrupt file cannot raise MarkupError here (this
+    # runs outside check()'s try/except).
+    stored = escape(result.stored_version or "?")
+    current = escape(result.current_version or "?")
+    print(
+        "[yellow]IR schema version mismatch: the materialized baseline was "
+        f"built against schema {stored}, but the current "
+        f"schema is {current}.[/yellow]"
+    )
+    if result.ir_file:
+        print(f"  file:    {result.ir_file}")
+    print(
+        "\n  Regenerate the baseline: [bold]protean ir show --domain <module> "
+        "--canonical > .protean/ir.json[/bold]."
+    )
 
 
 def _print_summary(ir: dict[str, Any]) -> None:

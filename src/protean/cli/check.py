@@ -44,7 +44,7 @@ import importlib.util
 import json
 import logging
 import os
-from typing import Annotated, Any, NoReturn
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn
 
 import typer
 from rich import print
@@ -60,6 +60,9 @@ from protean.cli.result import (
 )
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +158,40 @@ def check(
 
     assert derived_domain is not None
 
+    lint_level = _lint_level(derived_domain, format)
+
+    try:
+        result = derived_domain.check()
+    # Traversal imports every sibling module of the domain file, and any of them
+    # can raise. Report it as one line, never a traceback.
+    except Exception as exc:  # noqa: BLE001 - CLI boundary: check runs user code
+        _fail_usage(
+            format, f"Error checking domain '{domain}': {type(exc).__name__}: {exc}"
+        )
+
+    # Exit code and every machine format come from the UNFILTERED result;
+    # ``--level`` is a display filter that shapes only the human rich/quiet views
+    # (applied below). A machine consumer (the JSON envelope, SARIF, or the
+    # annotations) must never have findings silently dropped — it can filter for
+    # itself. This keeps the JSON envelope consistent with the exit code: a
+    # ``status="fail"`` always carries the diagnostics and counts that caused it.
+    gates = _gates(result["counts"], lint_level)
+
+    _emit_result(result, derived_domain, format, level, gates, quiet)
+
+    # Exit codes use UNFILTERED counts — ``--level`` only affects display, not
+    # the CI result. Any findings failure collapses to exit 1 (the severity
+    # detail lives in the envelope); usage/IO errors exit 2 on the paths above.
+    if gates:
+        raise typer.Exit(code=EXIT_FAILURE)
+
+
+def _lint_level(derived_domain: "Domain", format: str) -> str:
+    """Validate the ``[lint]`` config table and return its ``level``.
+
+    Exits 2 through :func:`_fail_usage` when the table, the level or the
+    suppressions are invalid.
+    """
     # ``[lint].level`` is the config-driven exit-code floor (default "warn",
     # which reproduces the historical exit codes). Validate up front, mirroring
     # the ``--level`` validation, so a typo fails fast with a clear message.
@@ -183,24 +220,18 @@ def check(
     suppressions_error = validate_lint_suppressions(lint_config.get("suppressions", {}))
     if suppressions_error:
         _fail_usage(format, f"Invalid config: {suppressions_error}")
+    return lint_level
 
-    try:
-        result = derived_domain.check()
-    # Traversal imports every sibling module of the domain file, and any of them
-    # can raise. Report it as one line, never a traceback.
-    except Exception as exc:  # noqa: BLE001 - CLI boundary: check runs user code
-        _fail_usage(
-            format, f"Error checking domain '{domain}': {type(exc).__name__}: {exc}"
-        )
 
-    # Exit code and every machine format come from the UNFILTERED result;
-    # ``--level`` is a display filter that shapes only the human rich/quiet views
-    # (applied below). A machine consumer (the JSON envelope, SARIF, or the
-    # annotations) must never have findings silently dropped — it can filter for
-    # itself. This keeps the JSON envelope consistent with the exit code: a
-    # ``status="fail"`` always carries the diagnostics and counts that caused it.
-    gates = _gates(result["counts"], lint_level)
-
+def _emit_result(
+    result: dict[str, Any],
+    derived_domain: "Domain",
+    format: str,
+    level: str,
+    gates: bool,
+    quiet: bool,
+) -> None:
+    """Write the check result to stdout in the requested format."""
     if format == "json":
         # The shared CLI envelope: the check report under ``data``, the (full,
         # unfiltered) diagnostics at the top level, and a coarse status that
@@ -228,12 +259,6 @@ def check(
             _print_quiet(result)
         else:
             _print_rich(result)
-
-    # Exit codes use UNFILTERED counts — ``--level`` only affects display, not
-    # the CI result. Any findings failure collapses to exit 1 (the severity
-    # detail lives in the envelope); usage/IO errors exit 2 on the paths above.
-    if gates:
-        raise typer.Exit(code=EXIT_FAILURE)
 
 
 def _filter_for_display(result: dict[str, Any], level: str, gates: bool) -> None:
@@ -326,16 +351,7 @@ def _print_rich(result: dict[str, Any]) -> None:
     }
     print(f"\n  Domain: [bold]{domain_name}[/bold]  {status_style.get(status, status)}")
 
-    # Counts summary
-    parts = []
-    if counts["errors"]:
-        parts.append(f"[red]{counts['errors']} error(s)[/red]")
-    if counts["warnings"]:
-        parts.append(f"[yellow]{counts['warnings']} warning(s)[/yellow]")
-    if counts["infos"]:
-        parts.append(f"[cyan]{counts['infos']} info(s)[/cyan]")
-    if parts:
-        print(f"  {', '.join(parts)}")
+    _print_counts(counts)
 
     # Errors
     if result["errors"]:
@@ -349,17 +365,11 @@ def _print_rich(result: dict[str, Any]) -> None:
 
     if warnings:
         print(f"\n  [bold yellow]Warnings ({len(warnings)}):[/bold yellow]")
-        for diag in warnings:
-            code = diag.get("code", "")
-            prefix = f"[dim]{escape(code)}:[/dim] " if code else ""
-            print(f"    [yellow]![/yellow] {prefix}{escape(diag['message'])}")
+        _print_diagnostics(warnings, "[yellow]![/yellow]")
 
     if infos:
         print(f"\n  [bold cyan]Info ({len(infos)}):[/bold cyan]")
-        for diag in infos:
-            code = diag.get("code", "")
-            prefix = f"[dim]{escape(code)}:[/dim] " if code else ""
-            print(f"    [cyan]·[/cyan] {prefix}{escape(diag['message'])}")
+        _print_diagnostics(infos, "[cyan]·[/cyan]")
 
     if status == "pass":
         print("\n  [green]All checks passed.[/green]")
@@ -373,6 +383,27 @@ def _print_rich(result: dict[str, Any]) -> None:
         )
 
     print()
+
+
+def _print_counts(counts: dict[str, int]) -> None:
+    """Print the non-zero error, warning and info counts on one line."""
+    parts = []
+    if counts["errors"]:
+        parts.append(f"[red]{counts['errors']} error(s)[/red]")
+    if counts["warnings"]:
+        parts.append(f"[yellow]{counts['warnings']} warning(s)[/yellow]")
+    if counts["infos"]:
+        parts.append(f"[cyan]{counts['infos']} info(s)[/cyan]")
+    if parts:
+        print(f"  {', '.join(parts)}")
+
+
+def _print_diagnostics(diagnostics: list[dict[str, Any]], marker: str) -> None:
+    """Print each diagnostic as one line: *marker*, the code if any, the message."""
+    for diag in diagnostics:
+        code = diag.get("code", "")
+        prefix = f"[dim]{escape(code)}:[/dim] " if code else ""
+        print(f"    {marker} {prefix}{escape(diag['message'])}")
 
 
 def _element_module_map(domain: Any) -> dict[str, str]:

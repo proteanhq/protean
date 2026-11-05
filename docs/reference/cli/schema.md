@@ -206,8 +206,9 @@ MariaDB is not in the default set. It is accepted when you ask for it, and its
 
 **Output structure**
 
-One `.sql` file per element per dialect is written under
-`<output>/schemas/<cluster>/`:
+One `.sql` file per schema name per dialect is written under
+`<output>/schemas/<cluster>/`. Elements that share a schema name get one file,
+and a dialect that renders no index statement gets none:
 
 ```
 .protean/

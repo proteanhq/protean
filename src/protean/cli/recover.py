@@ -27,6 +27,7 @@ recovery-tracking stream.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
@@ -292,12 +293,59 @@ def recover(
             log_already_configured=bool((ctx.obj or {}).get(CTX_LOG_CONFIGURED))
         )
 
+    derived_domain = load_domain(domain, as_json=output_json)
+    run = _verify(derived_domain, reset_beyond_head)
+    envelope_status, exit_code = _outcome(run)
+
+    if output_json:
+        envelope = build_envelope(
+            status=envelope_status,
+            data=_json_data(run),
+            diagnostics=[],
+        )
+        typer.echo(json.dumps(envelope, indent=2, sort_keys=True, default=str))
+        raise typer.Exit(code=exit_code)
+
+    if not run.statuses:
+        print("No event-store subscriptions found in domain.")
+        return
+
+    _print_table(derived_domain.name, run)
+    _print_text_report(run, exit_code)
+
+
+@dataclass
+class _Run:
+    """What one ``recover --verify-checkpoints`` run found and changed.
+
+    ``statuses`` holds only the event-store subscriptions, with ``verdicts`` in
+    the same order. The reset lists stay empty unless ``reset_beyond_head`` is
+    set.
+    """
+
+    reset_beyond_head: bool
+    statuses: list[SubscriptionStatus]
+    verdicts: list[str]
+    recovery_findings: list[RecoveryCheckpointStatus]
+    recovery_stale: list[RecoveryCheckpointStatus]
+    recovery_unknown: list[RecoveryCheckpointStatus]
+    resets: list[dict[str, Any]] = field(default_factory=list)
+    reset_failures: list[dict[str, Any]] = field(default_factory=list)
+    recovery_resets: list[dict[str, Any]] = field(default_factory=list)
+    recovery_reset_failures: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _verify(derived_domain: Domain, reset_beyond_head: bool) -> _Run:
+    """Collect the checkpoint and recovery-tracking findings.
+
+    With *reset_beyond_head*, resets the beyond-head checkpoints and the stale
+    recovery findings. Unknown recovery findings are left for the report and
+    never reset.
+    """
     from protean.server.subscription_status import (  # noqa: PLC0415
         collect_recovery_checkpoint_statuses,
         collect_subscription_statuses,
     )
-
-    derived_domain = load_domain(domain, as_json=output_json)
 
     with derived_domain.domain_context():
         statuses = collect_subscription_statuses(derived_domain)
@@ -306,10 +354,6 @@ def recover(
     # subscriptions do not, so "beyond the restored head" does not apply.
     event_store_statuses = [s for s in statuses if s.subscription_type == "event_store"]
     verdicts = [_verdict(s) for s in event_store_statuses]
-    total = len(event_store_statuses)
-    beyond = verdicts.count("beyond_head")
-    unknown = verdicts.count("unknown")
-    consistent = verdicts.count("consistent")
 
     # A second class of restore damage: a subscription's recovery pass tracks
     # failed positions whose message the restore removed (a rolled-back category,
@@ -321,122 +365,129 @@ def recover(
     recovery_findings = collect_recovery_checkpoint_statuses(
         derived_domain, event_store_statuses
     )
-    recovery_stale = [f for f in recovery_findings if f.verdict == "stale"]
-    recovery_unknown = [f for f in recovery_findings if f.verdict == "unknown"]
+    run = _Run(
+        reset_beyond_head=reset_beyond_head,
+        statuses=event_store_statuses,
+        verdicts=verdicts,
+        recovery_findings=recovery_findings,
+        recovery_stale=[f for f in recovery_findings if f.verdict == "stale"],
+        recovery_unknown=[f for f in recovery_findings if f.verdict == "unknown"],
+    )
 
     # Only --reset-beyond-head writes; a plain --verify-checkpoints run never
     # modifies a checkpoint or a recovery-tracking stream. Only the stale findings
     # are reset; an unknown one has nothing reconstructed to rewrite.
-    resets: list[dict[str, Any]] = []
-    reset_failures: list[dict[str, Any]] = []
-    recovery_resets: list[dict[str, Any]] = []
-    recovery_reset_failures: list[dict[str, Any]] = []
     if reset_beyond_head:
-        resets, reset_failures = _perform_resets(
+        run.resets, run.reset_failures = _perform_resets(
             derived_domain, event_store_statuses, verdicts
         )
-        recovery_resets, recovery_reset_failures = _perform_recovery_resets(
-            derived_domain, recovery_stale
+        run.recovery_resets, run.recovery_reset_failures = _perform_recovery_resets(
+            derived_domain, run.recovery_stale
         )
+    return run
 
-    # Exit/verdict:
-    # - a reset write failure (checkpoint or recovery) is an environment error
-    #   -> "error", exit 2;
-    # - a plain verify run flags a beyond-head checkpoint or a stale
-    #   recovery-tracking entry -> "fail", exit 1 (with --reset-beyond-head those
-    #   are cleared, so they do not fail); an unknown recovery finding does not
-    #   fail, matching how an unknown checkpoint is handled;
-    # - otherwise the run passes -> exit 0.
-    envelope_status: EnvelopeStatus
-    if reset_failures or recovery_reset_failures:
-        envelope_status = "error"
-        exit_code = EXIT_USAGE
-    elif (beyond > 0 or recovery_stale) and not reset_beyond_head:
-        envelope_status = "fail"
-        exit_code = EXIT_FAILURE
-    else:
-        envelope_status = "pass"
-        exit_code = EXIT_OK
 
-    if output_json:
-        subscriptions = [
-            {
-                "name": s.name,
-                "handler_name": s.handler_name,
-                "stream_category": s.stream_category,
-                "checkpoint_position": s.current_position,
-                "head_position": s.head_position,
-                "beyond_head": v == "beyond_head",
-                "verdict": v,
-            }
-            for s, v in zip(event_store_statuses, verdicts, strict=True)
-        ]
-        summary: dict[str, Any] = {
-            "checked": total,
-            "consistent": consistent,
-            "beyond_head": beyond,
-            "unknown": unknown,
+def _outcome(run: _Run) -> tuple[EnvelopeStatus, int]:
+    """Return the envelope status and exit code for a finished run.
+
+    - a reset write failure (checkpoint or recovery) is an environment error
+      -> "error", exit 2;
+    - a plain verify run flags a beyond-head checkpoint or a stale
+      recovery-tracking entry -> "fail", exit 1 (with --reset-beyond-head those
+      are cleared, so they do not fail); an unknown recovery finding does not
+      fail, matching how an unknown checkpoint is handled;
+    - otherwise the run passes -> exit 0.
+    """
+    if run.reset_failures or run.recovery_reset_failures:
+        return "error", EXIT_USAGE
+    beyond = run.verdicts.count("beyond_head")
+    if (beyond > 0 or run.recovery_stale) and not run.reset_beyond_head:
+        return "fail", EXIT_FAILURE
+    return "pass", EXIT_OK
+
+
+def _json_data(run: _Run) -> dict[str, Any]:
+    """Build the ``data`` payload of the ``--json`` envelope."""
+    subscriptions = [
+        {
+            "name": s.name,
+            "handler_name": s.handler_name,
+            "stream_category": s.stream_category,
+            "checkpoint_position": s.current_position,
+            "head_position": s.head_position,
+            "beyond_head": v == "beyond_head",
+            "verdict": v,
         }
-        data: dict[str, Any] = {"subscriptions": subscriptions, "summary": summary}
-        # Only widen the payload under --reset-beyond-head so a plain
-        # --verify-checkpoints --json run keeps its exact documented shape.
-        if reset_beyond_head:
-            summary["reset"] = len(resets)
-            summary["reset_failed"] = len(reset_failures)
-            data["reset"] = resets
-            data["reset_failures"] = reset_failures
-        # Only widen the payload with recovery-tracking keys when there is a
-        # finding, so a run with no recovery finding keeps its exact shape.
-        if recovery_findings:
-            data["recovery"] = [
-                {
-                    "name": f.name,
-                    "handler_name": f.handler_name,
-                    "stream_category": f.stream_category,
-                    "recovery_checkpoint_stream": f.recovery_checkpoint_stream,
-                    "head_position": f.head_position,
-                    "verdict": f.verdict,
-                    "stale_positions": f.stale_positions,
-                }
-                for f in recovery_findings
-            ]
-            summary["recovery_stale"] = len(recovery_stale)
-            summary["recovery_stale_positions"] = sum(
-                len(f.stale_positions) for f in recovery_stale
-            )
-            summary["recovery_unknown"] = len(recovery_unknown)
-            if reset_beyond_head:
-                summary["recovery_reset"] = sum(
-                    len(r["cleared_positions"]) for r in recovery_resets
-                )
-                summary["recovery_reset_failed"] = len(recovery_reset_failures)
-                data["recovery_reset"] = recovery_resets
-                data["recovery_reset_failures"] = recovery_reset_failures
-        envelope = build_envelope(
-            status=envelope_status,
-            data=data,
-            diagnostics=[],
+        for s, v in zip(run.statuses, run.verdicts, strict=True)
+    ]
+    summary: dict[str, Any] = {
+        "checked": len(run.statuses),
+        "consistent": run.verdicts.count("consistent"),
+        "beyond_head": run.verdicts.count("beyond_head"),
+        "unknown": run.verdicts.count("unknown"),
+    }
+    data: dict[str, Any] = {"subscriptions": subscriptions, "summary": summary}
+    # Only widen the payload under --reset-beyond-head so a plain
+    # --verify-checkpoints --json run keeps its exact documented shape.
+    if run.reset_beyond_head:
+        summary["reset"] = len(run.resets)
+        summary["reset_failed"] = len(run.reset_failures)
+        data["reset"] = run.resets
+        data["reset_failures"] = run.reset_failures
+    # Only widen the payload with recovery-tracking keys when there is a
+    # finding, so a run with no recovery finding keeps its exact shape.
+    if run.recovery_findings:
+        _add_recovery_json(run, data, summary)
+    return data
+
+
+def _add_recovery_json(
+    run: _Run, data: dict[str, Any], summary: dict[str, Any]
+) -> None:
+    """Add the recovery-tracking keys to the ``--json`` payload and its summary."""
+    data["recovery"] = [
+        {
+            "name": f.name,
+            "handler_name": f.handler_name,
+            "stream_category": f.stream_category,
+            "recovery_checkpoint_stream": f.recovery_checkpoint_stream,
+            "head_position": f.head_position,
+            "verdict": f.verdict,
+            "stale_positions": f.stale_positions,
+        }
+        for f in run.recovery_findings
+    ]
+    summary["recovery_stale"] = len(run.recovery_stale)
+    summary["recovery_stale_positions"] = sum(
+        len(f.stale_positions) for f in run.recovery_stale
+    )
+    summary["recovery_unknown"] = len(run.recovery_unknown)
+    if run.reset_beyond_head:
+        summary["recovery_reset"] = sum(
+            len(r["cleared_positions"]) for r in run.recovery_resets
         )
-        typer.echo(json.dumps(envelope, indent=2, sort_keys=True, default=str))
-        raise typer.Exit(code=exit_code)
+        summary["recovery_reset_failed"] = len(run.recovery_reset_failures)
+        data["recovery_reset"] = run.recovery_resets
+        data["recovery_reset_failures"] = run.recovery_reset_failures
 
-    if not event_store_statuses:
-        print("No event-store subscriptions found in domain.")
-        return
 
-    table = Table(title=f"Checkpoint verification: {derived_domain.name}")
+_VERDICT_CELL = {
+    "beyond_head": "[red]beyond head[/red]",
+    "unknown": "[yellow]unknown[/yellow]",
+    "consistent": "[green]consistent[/green]",
+}
+
+
+def _print_table(domain_name: str, run: _Run) -> None:
+    """Print one row per event-store subscription with its verdict."""
+    table = Table(title=f"Checkpoint verification: {domain_name}")
     table.add_column("Handler", style="bold")
     table.add_column("Stream")
     table.add_column("Checkpoint", justify="right")
     table.add_column("Head", justify="right")
     table.add_column("Verdict")
 
-    _VERDICT_CELL = {
-        "beyond_head": "[red]beyond head[/red]",
-        "unknown": "[yellow]unknown[/yellow]",
-        "consistent": "[green]consistent[/green]",
-    }
-    for s, v in zip(event_store_statuses, verdicts, strict=True):
+    for s, v in zip(run.statuses, run.verdicts, strict=True):
         table.add_row(
             s.handler_name,
             s.stream_category,
@@ -447,118 +498,150 @@ def recover(
 
     print(table)
 
+
+def _unverified_text(unknown: int) -> str:
+    """Return the note on checkpoints that could not be verified, or ``""``."""
     # An unknown row was never actually verified, so a summary that folds it into
     # "consistent" would state a falsehood in the exact scenario this command
     # guards. Report the counts apart, and name both causes: the store may be
     # offline (no position recorded) or the stored position may not be numeric.
     # Unknown is not a violation, so it does not change the exit code.
-    unverified = (
+    if not unknown:
+        return ""
+    return (
         f" [yellow]{unknown} could not be verified (no position recorded, "
         f"or the position is not a number).[/yellow]"
-        if unknown
-        else ""
     )
+
+
+def _recovery_unverified_text(recovery_unknown: list[RecoveryCheckpointStatus]) -> str:
+    """Return the note naming each unreadable recovery-tracking subscription, or ``""``."""
     # A subscription whose recovery tracking could not be read is reported apart,
     # so it is never read as "no stale entry". Like an unknown checkpoint, it does
     # not change the exit code. Name each one, so with more than one an operator
     # can tell which handler and category to look at.
-    if recovery_unknown:
-        _lines = [
-            (
-                f"[yellow]{len(recovery_unknown)} recovery-tracking subscription(s) "
-                "could not be verified (the recovery streams, or a tracked message, "
-                "could not be read):[/yellow]"
-            )
-        ]
-        _lines += [
-            f"  {f.handler_name} ({f.stream_category})" for f in recovery_unknown
-        ]
-        recovery_unverified = "\n".join(_lines)
-    else:
-        recovery_unverified = ""
+    if not recovery_unknown:
+        return ""
+    lines = [
+        (
+            f"[yellow]{len(recovery_unknown)} recovery-tracking subscription(s) "
+            "could not be verified (the recovery streams, or a tracked message, "
+            "could not be read):[/yellow]"
+        )
+    ]
+    lines += [f"  {f.handler_name} ({f.stream_category})" for f in recovery_unknown]
+    return "\n".join(lines)
 
-    if reset_beyond_head:
-        if resets:
-            print(
-                f"\n[green]Reset {len(resets)} beyond-head checkpoint(s) to the "
-                f"stream head:[/green]"
-            )
-            for r in resets:
-                print(
-                    f"  {r['handler_name']} ({r['stream_category']}): "
-                    f"{r['previous_position']} -> {r['new_position']}"
-                )
-        elif not reset_failures and not recovery_stale:
-            # Genuinely nothing beyond head in either lane. Say so only when no
-            # reset was even attempted; when an attempt failed, or a recovery
-            # entry was cleared, the blocks below report it, so "none to reset"
-            # would contradict them.
-            print("\n[green]No beyond-head checkpoints to reset.[/green]")
-        if reset_failures:
-            print(
-                f"\n[red]{len(reset_failures)} checkpoint(s) could not be reset:[/red]"
-            )
-            for f in reset_failures:
-                print(f"  {f['handler_name']} ({f['stream_category']}): {f['error']}")
-        if recovery_resets:
-            cleared_count = sum(len(r["cleared_positions"]) for r in recovery_resets)
-            print(
-                f"\n[green]Cleared {cleared_count} stale recovery-tracking "
-                f"entry(ies) whose message the restore removed:[/green]"
-            )
-            for r in recovery_resets:
-                positions = ", ".join(str(p) for p in r["cleared_positions"])
-                print(f"  {r['handler_name']} ({r['stream_category']}): {positions}")
-        if recovery_reset_failures:
-            print(
-                f"\n[red]{len(recovery_reset_failures)} recovery checkpoint(s) "
-                f"could not be reset:[/red]"
-            )
-            for f in recovery_reset_failures:
-                print(f"  {f['handler_name']} ({f['stream_category']}): {f['error']}")
-        if unverified:
-            print(unverified.strip())
-        if recovery_unverified:
-            print(recovery_unverified)
+
+def _print_text_report(run: _Run, exit_code: int) -> None:
+    """Print the text summary under the table.
+
+    Raises ``typer.Exit`` with ``exit_code`` after a reset run or a run that
+    found a violation; returns for a run that found none.
+    """
+    beyond = run.verdicts.count("beyond_head")
+    unknown = run.verdicts.count("unknown")
+    unverified = _unverified_text(unknown)
+    recovery_unverified = _recovery_unverified_text(run.recovery_unknown)
+
+    if run.reset_beyond_head:
+        _print_checkpoint_resets(run)
+        _print_recovery_resets(run)
+        _print_unverified(unverified, recovery_unverified)
         raise typer.Exit(code=exit_code)
 
-    if beyond or recovery_stale:
-        if beyond:
-            print(
-                f"\n[red]{beyond} of {total} checkpoint(s) point past the "
-                f"restored head.[/red] Reset them before starting the engine."
-            )
-        if recovery_stale:
-            stale_count = sum(len(f.stale_positions) for f in recovery_stale)
-            print(
-                f"\n[red]{stale_count} recovery-tracking entry(ies) across "
-                f"{len(recovery_stale)} subscription(s) name a message the "
-                f"restored store no longer holds.[/red] Reset them before "
-                f"starting the engine."
-            )
-            for finding in recovery_stale:
-                positions = ", ".join(str(p) for p in finding.stale_positions)
-                print(
-                    f"  {finding.handler_name} ({finding.stream_category}): {positions}"
-                )
-        if unverified:
-            print(unverified.strip())
-        if recovery_unverified:
-            print(recovery_unverified)
+    if beyond or run.recovery_stale:
+        _print_violations(run, beyond)
+        _print_unverified(unverified, recovery_unverified)
         raise typer.Exit(code=exit_code)
 
-    if unknown or recovery_unknown:
+    if unknown or run.recovery_unknown:
         # No violation, but some subscription could not be verified. Report the
         # consistent count, then name what could not be checked (a checkpoint or a
         # recovery stream) so it is never read as clean.
         print(
-            f"\n[green]{consistent} checkpoint(s) consistent with the stream "
-            f"head.[/green]{unverified}"
+            f"\n[green]{run.verdicts.count('consistent')} checkpoint(s) consistent "
+            f"with the stream head.[/green]{unverified}"
         )
         if recovery_unverified:
             print(recovery_unverified)
         return
 
     print(
-        f"\n[green]All {total} checkpoint(s) consistent with the stream head.[/green]"
+        f"\n[green]All {len(run.statuses)} checkpoint(s) consistent with the "
+        f"stream head.[/green]"
     )
+
+
+def _print_unverified(unverified: str, recovery_unverified: str) -> None:
+    """Print the notes on what could not be verified, skipping empty ones."""
+    if unverified:
+        print(unverified.strip())
+    if recovery_unverified:
+        print(recovery_unverified)
+
+
+def _print_checkpoint_resets(run: _Run) -> None:
+    """Print the beyond-head checkpoints a reset run moved, and the ones it could not."""
+    if run.resets:
+        print(
+            f"\n[green]Reset {len(run.resets)} beyond-head checkpoint(s) to the "
+            f"stream head:[/green]"
+        )
+        for r in run.resets:
+            print(
+                f"  {r['handler_name']} ({r['stream_category']}): "
+                f"{r['previous_position']} -> {r['new_position']}"
+            )
+    elif not run.reset_failures and not run.recovery_stale:
+        # Genuinely nothing beyond head in either lane. Say so only when no
+        # reset was even attempted. A failed checkpoint reset is reported just
+        # below, and a found stale recovery entry by `_print_recovery_resets`,
+        # so "none to reset" would contradict them.
+        print("\n[green]No beyond-head checkpoints to reset.[/green]")
+    if run.reset_failures:
+        print(
+            f"\n[red]{len(run.reset_failures)} checkpoint(s) could not be reset:[/red]"
+        )
+        for f in run.reset_failures:
+            print(f"  {f['handler_name']} ({f['stream_category']}): {f['error']}")
+
+
+def _print_recovery_resets(run: _Run) -> None:
+    """Print the recovery-tracking entries a reset run cleared, and the ones it could not."""
+    if run.recovery_resets:
+        cleared_count = sum(len(r["cleared_positions"]) for r in run.recovery_resets)
+        print(
+            f"\n[green]Cleared {cleared_count} stale recovery-tracking "
+            f"entry(ies) whose message the restore removed:[/green]"
+        )
+        for r in run.recovery_resets:
+            positions = ", ".join(str(p) for p in r["cleared_positions"])
+            print(f"  {r['handler_name']} ({r['stream_category']}): {positions}")
+    if run.recovery_reset_failures:
+        print(
+            f"\n[red]{len(run.recovery_reset_failures)} recovery checkpoint(s) "
+            f"could not be reset:[/red]"
+        )
+        for f in run.recovery_reset_failures:
+            print(f"  {f['handler_name']} ({f['stream_category']}): {f['error']}")
+
+
+def _print_violations(run: _Run, beyond: int) -> None:
+    """Print the beyond-head checkpoints and stale recovery-tracking entries found."""
+    if beyond:
+        print(
+            f"\n[red]{beyond} of {len(run.statuses)} checkpoint(s) point past the "
+            f"restored head.[/red] Reset them before starting the engine."
+        )
+    if run.recovery_stale:
+        stale_count = sum(len(f.stale_positions) for f in run.recovery_stale)
+        print(
+            f"\n[red]{stale_count} recovery-tracking entry(ies) across "
+            f"{len(run.recovery_stale)} subscription(s) name a message the "
+            f"restored store no longer holds.[/red] Reset them before "
+            f"starting the engine."
+        )
+        for finding in run.recovery_stale:
+            positions = ", ".join(str(p) for p in finding.stale_positions)
+            print(f"  {finding.handler_name} ({finding.stream_category}): {positions}")

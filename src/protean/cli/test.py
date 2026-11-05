@@ -490,45 +490,50 @@ class TestRunner:
         remaining_suites = [s for s in suites if s.name not in FULL_MATRIX_SUITES]
 
         if matrix_suites:
-            print("🚀 Phase 1: Running full matrix test suite...")
-            for suite in matrix_suites:
-                result = self.run_single_suite(suite)
-                self.track_exit_code(result)
+            self._run_matrix_suites(matrix_suites)
 
-                # A failure is recorded, and the remaining suites still run.
-                if result != 0:
-                    print(
-                        f"⚠️  {suite.name} tests failed, but continuing with remaining suites..."
-                    )
-
-        # Run remaining suites in parallel
         if remaining_suites:
-            print(
-                f"\n🔄 Phase 2: Running {len(remaining_suites)} remaining test suites in parallel..."
-            )
-
-            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-                future_to_suite = {
-                    executor.submit(self.run_single_suite, suite, quiet=True): suite
-                    for suite in remaining_suites
-                }
-
-                for i, future in enumerate(as_completed(future_to_suite), 1):
-                    suite = future_to_suite[future]
-                    try:
-                        result = future.result()
-                        self.track_exit_code(result)
-                        print(
-                            f"📊 Progress: {i}/{len(remaining_suites)} remaining test suites completed"
-                        )
-                    except Exception as exc:  # noqa: BLE001 - one suite's crash must not stop the run
-                        print(
-                            f"💥 Test suite '{suite.name}' generated an exception: {exc}"
-                        )
-                        self.track_exit_code(1)
+            self._run_remaining_suites(remaining_suites)
 
         self._finalize_coverage_and_timing(start_time)
         return self.exit_status
+
+    def _run_matrix_suites(self, matrix_suites: list[TestSuite]) -> None:
+        """Run the full-matrix suites one after another, recording each exit code."""
+        print("🚀 Phase 1: Running full matrix test suite...")
+        for suite in matrix_suites:
+            result = self.run_single_suite(suite)
+            self.track_exit_code(result)
+
+            # A failure is recorded, and the remaining suites still run.
+            if result != 0:
+                print(
+                    f"⚠️  {suite.name} tests failed, but continuing with remaining suites..."
+                )
+
+    def _run_remaining_suites(self, remaining_suites: list[TestSuite]) -> None:
+        """Run the remaining suites in parallel, recording each exit code."""
+        print(
+            f"\n🔄 Phase 2: Running {len(remaining_suites)} remaining test suites in parallel..."
+        )
+
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            future_to_suite = {
+                executor.submit(self.run_single_suite, suite, quiet=True): suite
+                for suite in remaining_suites
+            }
+
+            for i, future in enumerate(as_completed(future_to_suite), 1):
+                suite = future_to_suite[future]
+                try:
+                    result = future.result()
+                    self.track_exit_code(result)
+                    print(
+                        f"📊 Progress: {i}/{len(remaining_suites)} remaining test suites completed"
+                    )
+                except Exception as exc:  # noqa: BLE001 - one suite's crash must not stop the run
+                    print(f"💥 Test suite '{suite.name}' generated an exception: {exc}")
+                    self.track_exit_code(1)
 
     def run_full_suite(
         self, sequential: bool = False, workers: str = DEFAULT_CORE_WORKERS
@@ -882,42 +887,62 @@ def test(
 
         case "FULL":
             exit_code = runner.run_full_suite(
-                sequential, "0" if sequential else validate_workers(workers)
+                sequential, _core_workers(sequential, workers)
             )
 
         case "COVERAGE":
-            exit_code = runner.run_full_suite(
-                sequential, "0" if sequential else validate_workers(workers)
-            )
-            if exit_code == 0:
-                runner.generate_diff_coverage_report()
-            else:
-                print("\n❌ Tests failed – skipping diff-cover report.")
+            exit_code = _run_coverage_category(runner, sequential, workers)
 
         case "PR":
-            if no_core and no_adapters:
-                raise typer.BadParameter(
-                    "--no-core and --no-adapters together leave nothing to run"
-                )
-            manifest = load_adapter_manifest()
-            adapters = []
-            if not no_adapters:
-                adapters = (
-                    manifest.resolve(adapter) if adapter else manifest.pr_adapters()
-                )
-            core_workers = None
-            if not no_core:
-                core_workers = "0" if sequential else validate_workers(workers)
-            exit_code = run_pr_lane(runner, adapters, core_workers)
+            exit_code = _run_pr_category(
+                runner, sequential, workers, adapter, no_core, no_adapters
+            )
 
         case _:  # CORE
             print("Running core tests…")
-            core_workers = "0" if sequential else validate_workers(workers)
-            core_command = runner.build_core_command(core_workers)
+            core_command = runner.build_core_command(_core_workers(sequential, workers))
             exit_code = runner.run_command(core_command)
 
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
+
+
+def _core_workers(sequential: bool, workers: str) -> str:
+    """Return the worker count for the core suite: ``"0"`` when sequential."""
+    return "0" if sequential else validate_workers(workers)
+
+
+def _run_coverage_category(runner: TestRunner, sequential: bool, workers: str) -> int:
+    """Run the full suite, then the diff-coverage report when it passes."""
+    exit_code = runner.run_full_suite(sequential, _core_workers(sequential, workers))
+    if exit_code == 0:
+        runner.generate_diff_coverage_report()
+    else:
+        print("\n❌ Tests failed – skipping diff-cover report.")
+    return exit_code
+
+
+def _run_pr_category(
+    runner: TestRunner,
+    sequential: bool,
+    workers: str,
+    adapter: list[str] | None,
+    no_core: bool,
+    no_adapters: bool,
+) -> int:
+    """Run the PR lane: CORE and the chosen adapter suites, unless skipped."""
+    if no_core and no_adapters:
+        raise typer.BadParameter(
+            "--no-core and --no-adapters together leave nothing to run"
+        )
+    manifest = load_adapter_manifest()
+    adapters = []
+    if not no_adapters:
+        adapters = manifest.resolve(adapter) if adapter else manifest.pr_adapters()
+    core_workers = None
+    if not no_core:
+        core_workers = _core_workers(sequential, workers)
+    return run_pr_lane(runner, adapters, core_workers)
 
 
 @app.command("select-adapters")
@@ -1041,47 +1066,12 @@ def _run_pytest_for_marker(
     """Run pytest for a single capability marker and parse results.
 
     Uses ``--tb=no -q`` by default for clean output, or ``-v`` in verbose mode.
-    Results are captured via pytest's JSON report plugin (if available) or
-    parsed from the exit code and summary line.
+    The status comes from the pytest exit code, and the counts from the
+    summary line pytest prints to stdout.
     """
-    cmd = [
-        sys.executable,
-        "-m",
-        "pytest",
-        str(generic_test_dir),
-        "-m",
-        marker,
-        f"--db={db_name}",
-        "--cache-clear",
-        "--ignore=tests/support/",
-        "--no-header",
-    ]
-
-    if verbose:
-        cmd.append("-v")
-    else:
-        cmd.extend(["--tb=no", "-q"])
-
+    cmd = _marker_command(marker, db_name, generic_test_dir, verbose)
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-
-    # Parse summary from pytest output
-    passed = failed = errors = skipped = 0
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        # Match pytest summary lines like "42 passed", "3 failed, 2 passed"
-        if "passed" in line or "failed" in line or "error" in line:
-            # This is likely the summary line
-            counts = re.findall(r"(\d+) (\w+)", line)
-            for count_str, label in counts:
-                count = int(count_str)
-                if label == "passed":
-                    passed = count
-                elif label == "failed":
-                    failed = count
-                elif label in ("error", "errors"):
-                    errors = count
-                elif label in ("skipped", "deselected"):
-                    skipped = count
+    passed, failed, errors, skipped = _parse_summary_counts(result.stdout)
 
     total = passed + failed + errors
 
@@ -1107,6 +1097,56 @@ def _run_pytest_for_marker(
         skipped=skipped,
         total=total,
     )
+
+
+def _marker_command(
+    marker: str, db_name: str, generic_test_dir: Path, verbose: bool
+) -> list[str]:
+    """Build the pytest command that runs one capability marker."""
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        str(generic_test_dir),
+        "-m",
+        marker,
+        f"--db={db_name}",
+        "--cache-clear",
+        "--ignore=tests/support/",
+        "--no-header",
+    ]
+
+    if verbose:
+        cmd.append("-v")
+    else:
+        cmd.extend(["--tb=no", "-q"])
+    return cmd
+
+
+def _parse_summary_counts(stdout: str) -> tuple[int, int, int, int]:
+    """Return the passed, failed, error and skipped counts from pytest output.
+
+    The skipped count also takes a ``deselected`` count, and a later match
+    overwrites an earlier one.
+    """
+    passed = failed = errors = skipped = 0
+    for line in stdout.splitlines():
+        line = line.strip()
+        # Match pytest summary lines like "42 passed", "3 failed, 2 passed"
+        if "passed" in line or "failed" in line or "error" in line:
+            # This is likely the summary line
+            counts = re.findall(r"(\d+) (\w+)", line)
+            for count_str, label in counts:
+                count = int(count_str)
+                if label == "passed":
+                    passed = count
+                elif label == "failed":
+                    failed = count
+                elif label in ("error", "errors"):
+                    errors = count
+                elif label in ("skipped", "deselected"):
+                    skipped = count
+    return passed, failed, errors, skipped
 
 
 def _print_conformance_report(
@@ -1202,17 +1242,66 @@ def test_adapter(
 
         protean test test-adapter --provider=postgresql --uri="postgresql://localhost/test" -v
     """
+    provider_capabilities, provider_class_name = _load_provider_capabilities(
+        provider, uri
+    )
+    requested = _requested_capabilities(capabilities)
+
+    markers_to_run, markers_to_skip = _get_applicable_markers(
+        provider_capabilities, requested
+    )
+
+    if not markers_to_run:
+        print(f"No applicable capabilities to test for provider '{provider}'.")
+        if markers_to_skip:
+            print(f"Skipped capabilities (not declared): {', '.join(markers_to_skip)}")
+        raise typer.Exit(code=0)
+
+    # Determine test directory
+    generic_dir = _generic_test_dir(test_dir)
+
+    # Determine the --db flag value (uppercase provider name)
+    db_name = provider.upper()
+
+    print(
+        f"Running conformance tests for provider '{provider}' "
+        f"({provider_class_name})..."
+    )
+    print(f"Capabilities to test: {', '.join(markers_to_run)}")
+    if markers_to_skip:
+        print(f"Capabilities to skip: {', '.join(markers_to_skip)}")
+    print()
+
+    # Run tests per capability
+    results = _run_markers(markers_to_run, db_name, generic_dir, verbose)
+    has_failures = any(r.status == "FAIL" for r in results)
+
+    # Print report
+    _print_conformance_report(provider, provider_class_name, results, markers_to_skip)
+
+    if has_failures:
+        raise typer.Exit(code=1)
+
+
+def _load_provider_capabilities(
+    provider: str, uri: str
+) -> tuple["DatabaseCapabilities", str]:
+    """Return the provider's capabilities and class name.
+
+    Raises ``typer.Exit(1)`` with a message when the provider is not registered
+    or does not initialize.
+    """
     from protean.domain import Domain  # noqa: PLC0415
     from protean.port.provider import ProviderRegistry  # noqa: PLC0415
 
-    # 1. Verify provider is registered
+    # Verify provider is registered
     try:
         ProviderRegistry.get(provider)
     except Exception as e:  # any lookup error exits 1 with the message
         print(f"Error: {e}")
         raise typer.Exit(code=1) from e
 
-    # 2. Get provider capabilities (instantiate temporarily to access property)
+    # Get provider capabilities (instantiate temporarily to access property)
     #    We need a minimal domain to instantiate the provider for capabilities
     try:
         domain = Domain(name="ConformanceTest")
@@ -1233,66 +1322,51 @@ def test_adapter(
         print(f"Error initializing provider '{provider}': {e}")
         raise typer.Exit(code=1) from e
 
-    # 3. Determine which capabilities to test
-    requested: list[str] | None = None
-    if capabilities:
-        requested = [c.strip() for c in capabilities.split(",")]
-        # Validate requested capabilities
-        for cap in requested:
-            if cap not in CAPABILITY_MARKER_MAP:
-                valid = ", ".join(sorted(CAPABILITY_MARKER_MAP.keys()))
-                print(f"Error: Unknown capability '{cap}'. Valid capabilities: {valid}")
-                raise typer.Exit(code=1)
+    return provider_capabilities, provider_class_name
 
-    markers_to_run, markers_to_skip = _get_applicable_markers(
-        provider_capabilities, requested
-    )
 
-    if not markers_to_run:
-        print(f"No applicable capabilities to test for provider '{provider}'.")
-        if markers_to_skip:
-            print(f"Skipped capabilities (not declared): {', '.join(markers_to_skip)}")
-        raise typer.Exit(code=0)
+def _requested_capabilities(capabilities: str | None) -> list[str] | None:
+    """Parse the comma-separated ``--capabilities`` value.
 
-    # 4. Determine test directory
+    Raises ``typer.Exit(1)`` with a message on an unknown capability.
+    """
+    # Determine which capabilities to test
+    if not capabilities:
+        return None
+    requested = [c.strip() for c in capabilities.split(",")]
+    # Validate requested capabilities
+    for cap in requested:
+        if cap not in CAPABILITY_MARKER_MAP:
+            valid = ", ".join(sorted(CAPABILITY_MARKER_MAP.keys()))
+            print(f"Error: Unknown capability '{cap}'. Valid capabilities: {valid}")
+            raise typer.Exit(code=1)
+    return requested
+
+
+def _generic_test_dir(test_dir: str | None) -> Path:
+    """Return the generic test directory; raises ``typer.Exit(1)`` when missing."""
     generic_dir = Path(test_dir) if test_dir else GENERIC_TEST_DIR
     if not generic_dir.is_dir():
         print(f"Error: Generic test directory not found: {generic_dir}")
         raise typer.Exit(code=1)
+    return generic_dir
 
-    # Determine the --db flag value (uppercase provider name)
-    db_name = provider.upper()
 
-    print(
-        f"Running conformance tests for provider '{provider}' "
-        f"({provider_class_name})..."
-    )
-    print(f"Capabilities to test: {', '.join(markers_to_run)}")
-    if markers_to_skip:
-        print(f"Capabilities to skip: {', '.join(markers_to_skip)}")
-    print()
-
-    # 5. Run tests per capability
+def _run_markers(
+    markers: list[str], db_name: str, generic_dir: Path, verbose: bool
+) -> list[CapabilityResult]:
+    """Run pytest once per capability marker and collect the results."""
     results: list[CapabilityResult] = []
-    has_failures = False
-
-    for marker in markers_to_run:
+    for marker in markers:
         if verbose:
             print(f"Testing capability: {marker}...")
 
-        cap_result = _run_pytest_for_marker(
-            marker=marker,
-            db_name=db_name,
-            generic_test_dir=generic_dir,
-            verbose=verbose,
+        results.append(
+            _run_pytest_for_marker(
+                marker=marker,
+                db_name=db_name,
+                generic_test_dir=generic_dir,
+                verbose=verbose,
+            )
         )
-        results.append(cap_result)
-
-        if cap_result.status == "FAIL":
-            has_failures = True
-
-    # 6. Print report
-    _print_conformance_report(provider, provider_class_name, results, markers_to_skip)
-
-    if has_failures:
-        raise typer.Exit(code=1)
+    return results
