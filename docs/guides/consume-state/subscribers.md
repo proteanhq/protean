@@ -112,6 +112,48 @@ configures an `analytics` broker next to the default one:
     See [Brokers](../../reference/adapters/broker/index.md) for details on configuring
     brokers.
 
+### `idempotent` (optional, default: `False`)
+
+A broker can deliver the same message more than once. With `idempotent=True`,
+Protean applies each message to the subscriber once:
+
+```python
+--8<-- "guides/consume-state/subscribers/005.py:subscriber"
+```
+
+Protean reads the message id from the payload at `metadata.headers.id`, which
+every message Protean publishes carries. It runs `__call__` inside a unit of
+work and, in the same unit of work, records a marker for the pair of that id
+and the subscriber's fully-qualified class name. When the same payload arrives
+again, Protean finds the marker and skips `__call__`. When `__call__` raises,
+its writes and the marker roll back together, so the next delivery runs it
+again. Two subscribers on the same stream keep separate markers.
+
+The broker's own delivery id is never used as the key, because a redelivery
+can carry a new one. A payload with no `metadata.headers.id`, or a blank one,
+is an error for an idempotent subscriber: Protean logs it, does not call
+`__call__`, and treats the message as failed. The Engine passes the
+`InsufficientDataError` to `handle_error`. In synchronous mode, `publish`
+raises it.
+
+The marker table is created by `domain.init()` only when a projector or
+subscriber sets `idempotent=True`. `protean idempotency cleanup` removes old
+markers, as it does for projectors.
+
+On the in-memory provider, Protean skips a message whose marker it finds, but
+it does not stop two concurrent deliveries from both running. A relational
+provider adds a unique index that stops the second one. See
+[ADR-0017](../../adr/0017-consume-side-idempotency-for-projectors.md).
+
+### `provider` (optional, default: `"default"`)
+
+The database provider that stores the markers of an `idempotent` subscriber.
+Use the provider the subscriber writes to, so that the marker and the writes
+commit in the same transaction. `domain.init()` raises a `ConfigurationError`
+when an idempotent subscriber names a provider that is not configured, or one
+with `managed = false`, which has no marker table. Protean ignores this option
+when `idempotent` is `False`.
+
 ## Processing Modes
 
 ### Synchronous Processing

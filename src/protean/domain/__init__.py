@@ -474,14 +474,16 @@ class Domain:
 
     @property
     def has_idempotent_consumers(self) -> bool:
-        """Whether any registered projector opts into consume-side idempotency.
+        """Whether any registered projector or subscriber opts into
+        consume-side idempotency.
 
         Gates creation of the per-provider ``ProcessedMessage`` marker table so
-        domains that don't use ``idempotent=True`` projectors pay nothing.
+        domains with no ``idempotent=True`` projector or subscriber pay nothing.
         """
         return any(
             getattr(record.cls.meta_, "idempotent", False)
-            for record in self.registry.projectors.values()
+            for records in (self.registry.projectors, self.registry.subscribers)
+            for record in records.values()
         )
 
     @property
@@ -688,9 +690,36 @@ class Domain:
         if self.has_outbox:
             self._initialize_outbox()
 
-        # Initialize consume-side idempotency markers when any projector opts in
+        # Initialize consume-side idempotency markers when any projector or
+        # subscriber opts in
         if self.has_idempotent_consumers:
+            self._validate_idempotent_subscriber_providers()
             self._initialize_processed_messages()
+
+    def _validate_idempotent_subscriber_providers(self) -> None:
+        """Raise ``ConfigurationError`` when an ``idempotent=True`` subscriber
+        names a provider that cannot store its delivery marker.
+
+        Markers live only in configured, managed providers. Running such a
+        subscriber without deduplication would ignore its explicit opt-in.
+        """
+        providers = self.providers._providers or {}
+        for record in self.registry.subscribers.values():
+            meta = record.cls.meta_
+            if not meta.idempotent:
+                continue
+            provider = providers.get(meta.provider)
+            if provider is None:
+                raise ConfigurationError(
+                    f"Idempotent subscriber `{record.cls.__name__}` uses provider "
+                    f"`{meta.provider}`, which is not configured"
+                )
+            if not provider.managed:
+                raise ConfigurationError(
+                    f"Idempotent subscriber `{record.cls.__name__}` uses provider "
+                    f"`{meta.provider}`, which is not managed and so has no "
+                    "marker store"
+                )
 
     def _auto_configure_logging(self) -> None:
         """Auto-configure logging during ``Domain.init()``.

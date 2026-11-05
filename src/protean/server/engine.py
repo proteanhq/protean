@@ -19,6 +19,10 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.port.broker import BrokerCapabilities
+from protean.utils.consume_idempotency import (
+    dispatch_to_subscriber,
+    extract_payload_message_id,
+)
 from protean.utils.dlq import COMMAND_DISPATCHER_MODULE, command_dispatcher_name
 from protean.utils.eventing import (
     DomainMeta,
@@ -157,28 +161,6 @@ class CommandDispatcher:
         handler_cls = self._last_resolved_handler
         if handler_cls and hasattr(handler_cls, "handle_error"):
             handler_cls.handle_error(exc, message)
-
-
-def _extract_source_message_id(message: dict[str, Any]) -> str | None:
-    """Extract the source event's message_id from an incoming broker message.
-
-    When Protean publishes events to a broker, the original event store
-    message_id is embedded at ``metadata.headers.id``.  This is the
-    identity that downstream commands should use as their ``causation_id``
-    so that the Observatory can stitch cross-domain causation trees.
-
-    Returns ``None`` when the payload does not carry a recognizable
-    source message_id (e.g. a raw external message not published by
-    Protean).
-    """
-    try:
-        value = message["metadata"]["headers"]["id"]
-    except (KeyError, TypeError):
-        return None
-
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
 
 
 def _extract_correlation_id(message: dict[str, Any]) -> str:
@@ -835,7 +817,7 @@ class Engine:
                 # Using the source message_id ensures downstream commands
                 # get the correct causation_id for cross-domain causation
                 # trees.
-                source_id = _extract_source_message_id(message) or message_id
+                source_id = extract_payload_message_id(message) or message_id
 
                 g.message_in_context = Message(
                     data=message,
@@ -849,8 +831,7 @@ class Engine:
                 )
 
             try:
-                subscriber = subscriber_cls()
-                subscriber(message)
+                dispatch_to_subscriber(subscriber_cls, message)
 
                 logger.debug(
                     "broker.message_processed",

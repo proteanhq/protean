@@ -130,6 +130,7 @@ def test_sync_message_processing_after_uow_exit(test_domain, broker):
     mock_subscriber = Mock()
     mock_subscriber_instance = Mock()
     mock_subscriber.return_value = mock_subscriber_instance
+    mock_subscriber.meta_.idempotent = False
 
     # Register the mock subscriber for the stream
     broker._subscribers["person_added"] = [mock_subscriber]

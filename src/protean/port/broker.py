@@ -16,6 +16,7 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.utils import Processing
+from protean.utils.consume_idempotency import dispatch_to_subscriber
 from protean.utils.globals import current_uow
 
 if TYPE_CHECKING:
@@ -292,8 +293,7 @@ class BaseBroker(metaclass=ABCMeta):
                 and self._subscribers[stream]
             ):
                 for subscriber_cls in self._subscribers[stream]:
-                    subscriber = subscriber_cls()
-                    subscriber(message)
+                    dispatch_to_subscriber(subscriber_cls, message)
 
             return identifier
 

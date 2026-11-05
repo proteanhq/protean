@@ -1,4 +1,4 @@
-"""Consume-side idempotency — a processed-message marker for exactly-once projectors.
+"""Consume-side idempotency — a processed-message marker for exactly-once consumers.
 
 Event delivery to projectors is **at-least-once**: after a publish-then-crash the
 outbox lock expires and the message is re-published, and a broker redelivery
@@ -25,6 +25,11 @@ The strength of the guarantee depends on the projection's provider:
 - For a **cache-backed** projection there is no marker at all (the option
   no-ops); such projectors must be written as idempotent upserts.
 
+A broker subscriber marked ``idempotent=True`` gets the same marker, keyed on
+the payload's ``metadata.headers.id`` and the subscriber's fully-qualified name,
+and written to the subscriber's ``provider`` in the same UnitOfWork as its
+writes. A payload with no such id is an error: the subscriber does not run.
+
 See ADR-0017.
 """
 
@@ -32,13 +37,15 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
 from protean.core.repository import BaseRepository
+from protean.core.unit_of_work import UnitOfWork
+from protean.exceptions import InsufficientDataError
 from protean.fields import Auto
 from protean.utils import StdlibDatetime, fqn
 from protean.utils.globals import current_domain
@@ -50,8 +57,9 @@ logger = logging.getLogger(__name__)
 class ProcessedMessage(BaseAggregate):
     """A marker recording that a handler has processed a message.
 
-    ``handler`` is the fully-qualified handler-method identity (``module.Class.method``)
-    so that distinct projectors/methods each dedupe the same message independently.
+    ``handler`` is the fully-qualified handler identity: ``module.Class.method``
+    for a projector method and ``module.Class`` for a subscriber, so that each
+    distinct handler dedupes the same message independently.
     """
 
     id = Auto(identifier=True)
@@ -161,6 +169,63 @@ def resolve_dispatch_context(
     return repo, message_id, fqn(handler_fn)
 
 
+def extract_payload_message_id(message: dict[str, Any]) -> str | None:
+    """Return the stripped ``metadata.headers.id`` of a broker payload, or ``None``.
+
+    Protean embeds the source message id at ``metadata.headers.id`` when it
+    publishes to a broker. Returns ``None`` when the payload has no such key or
+    the value is not a non-blank string (e.g. a raw external message).
+    """
+    try:
+        value = message["metadata"]["headers"]["id"]
+    except (KeyError, TypeError):
+        return None
+
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def dispatch_to_subscriber(subscriber_cls: Any, message: dict[str, Any]) -> None:
+    """Deliver ``message`` to a new instance of ``subscriber_cls``.
+
+    A subscriber without ``idempotent=True`` is called directly. An idempotent
+    subscriber runs inside a ``UnitOfWork`` that also checks and writes its
+    marker in ``meta_.provider``, keyed on the payload's ``metadata.headers.id``
+    and the subscriber's fully-qualified name; a message already marked is
+    skipped. Exceptions from the subscriber propagate, and leave no marker.
+
+    Raises:
+        InsufficientDataError: The subscriber is idempotent and the payload has
+            no ``metadata.headers.id``. The subscriber does not run.
+    """
+    if not getattr(subscriber_cls.meta_, "idempotent", False):
+        subscriber_cls()(message)
+        return
+
+    handler_id = fqn(subscriber_cls)
+    message_id = extract_payload_message_id(message)
+    if message_id is None:
+        # The broker-assigned delivery id is not a fallback key: a redelivery
+        # can carry a new one, so it would not deduplicate.
+        error = (
+            f"Idempotent subscriber `{handler_id}` received a payload with no "
+            "`metadata.headers.id`; it needs that id to deduplicate the message"
+        )
+        logger.error(error)
+        raise InsufficientDataError(error)
+
+    repo = cast(
+        ProcessedMessageRepository,
+        current_domain._get_processed_message_repo(subscriber_cls.meta_.provider),
+    )
+    with UnitOfWork():
+        if repo.is_processed(message_id, handler_id):
+            return  # redelivery — already applied, skip
+        subscriber_cls()(message)
+        repo.mark(message_id, handler_id)
+
+
 def cleanup_processed_messages(
     domain: Any,
     retention_hours: int | None = None,
@@ -172,7 +237,7 @@ def cleanup_processed_messages(
     that has a marker table, in bounded batches, and returns the total deleted.
     Defaults come from ``[consume_idempotency.cleanup]`` (7 days / 5000 rows).
     Intended to be run periodically (e.g. ``protean idempotency cleanup`` from a
-    cron job). A no-op when no projector opts into idempotency.
+    cron job). A no-op when no projector or subscriber opts into idempotency.
     """
     if not getattr(domain, "has_idempotent_consumers", False):
         return 0

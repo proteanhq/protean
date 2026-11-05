@@ -4,6 +4,9 @@
 
 **Date:** July 2026
 
+> Amended November 2026 (#1932), see
+[Amendment](#amendment-november-2026-broker-subscribers) below.
+
 ## Context
 
 Event delivery to projectors is **at-least-once**. Two independent paths replay
@@ -62,7 +65,9 @@ Provide **opt-in, atomic consume-side idempotency for projectors**.
    when a projector opts in (`Domain.has_idempotent_consumers`).
 6. **Scope: projectors**: Event handlers that write to arbitrary aggregates are
    out of scope for this decision (a projector has a single, known projection
-   provider, which is what makes the marker atomic).
+   provider, which is what makes the marker atomic). Broker subscribers opt in
+   too, under the
+   [Amendment](#amendment-november-2026-broker-subscribers).
 
 ## Consequences
 
@@ -118,3 +123,39 @@ projectors genuinely need dedup and cannot be expressed as pure upserts.
 read-model write are in different systems, so the marker would again be
 non-atomic, the same gap this decision closes by putting the marker *in the
 projection's transaction*.
+
+## Amendment (November 2026): broker subscribers
+
+**Context:** A broker subscriber has the same at-least-once delivery as a
+projector. A subscriber that issues a command or writes an aggregate applies a
+redelivered message twice. Its only defence was a hand-written marker table.
+
+**Amended decision:**
+
+1. **Opt in per subscriber:** `@domain.subscriber(idempotent=True)`. The option
+   is off by default, and a subscriber without it runs as before, with no unit
+   of work added.
+2. **The subscriber names the marker's provider:** `provider` (default
+   `"default"`). A subscriber has no projection to read a provider from, so it
+   states one. The marker goes to that provider in the same unit of work as the
+   subscriber's writes. `domain.init()` raises a `ConfigurationError` when an
+   idempotent subscriber names a provider that is not configured or not
+   managed, because such a provider has no marker table.
+3. **The key is the payload's id:** the marker is
+   `(metadata.headers.id, subscriber fully-qualified class name)`. The
+   broker-assigned delivery id is never the key, because a redelivery can carry
+   a new one.
+4. **A missing id is an error:** an idempotent subscriber that receives a
+   payload with no non-blank `metadata.headers.id` logs an error and raises
+   `InsufficientDataError` without calling the subscriber. The Engine treats it
+   as a failed message and calls `handle_error`; a synchronous `publish` raises
+   it. Running without deduplication would ignore the opt-in.
+5. **Same atomicity rules:** the check, the subscriber call and the marker
+   write share one unit of work, and the marker is written only after the
+   subscriber returns. The guarantees and limits of Decision point 4 and the
+   Consequences apply unchanged, keyed on the subscriber's provider.
+
+**Consequences:** `Domain.has_idempotent_consumers` also counts subscribers, so
+a domain whose only idempotent consumer is a subscriber gets the marker table
+and the cleanup. Renaming or moving a subscriber class orphans its markers, as
+renaming a projector method does.

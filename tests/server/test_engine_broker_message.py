@@ -10,7 +10,7 @@ import pytest
 from protean.core.subscriber import BaseSubscriber
 from protean.domain import Processing
 from protean.server import Engine
-from protean.server.engine import _extract_source_message_id
+from protean.utils.consume_idempotency import extract_payload_message_id
 from protean.utils.eventing import Message
 from protean.utils.globals import g
 
@@ -236,7 +236,7 @@ class TestContextCleanupOnFailure:
 
 
 # ---------------------------------------------------------------------------
-# 6. _extract_source_message_id unit tests
+# 6. extract_payload_message_id unit tests
 # ---------------------------------------------------------------------------
 class TestExtractSourceMessageId:
     @pytest.mark.parametrize(
@@ -270,8 +270,8 @@ class TestExtractSourceMessageId:
             ),
         ],
     )
-    def test_extract_source_message_id(self, message, expected):
-        assert _extract_source_message_id(message) == expected
+    def testextract_payload_message_id(self, message, expected):
+        assert extract_payload_message_id(message) == expected
 
 
 # ---------------------------------------------------------------------------

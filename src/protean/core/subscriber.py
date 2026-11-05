@@ -23,6 +23,8 @@ class BaseSubscriber(Element, OptionsMixin):
     |--------|------|-------------|
     | ``broker`` | ``str`` | The broker adapter name to consume from (default: ``"default"``). |
     | ``stream`` | ``str`` | The external stream/topic name to subscribe to. Required. |
+    | ``idempotent`` | ``bool`` | Record a delivery marker per message so a redelivered message is applied once. The payload must carry ``metadata.headers.id`` (default: ``False``). |
+    | ``provider`` | ``str`` | The database provider that stores the delivery marker when ``idempotent`` is set (default: ``"default"``). |
     """
 
     element_type = DomainObjects.SUBSCRIBER
@@ -36,6 +38,10 @@ class BaseSubscriber(Element, OptionsMixin):
         ("broker", "default"),
         ("stream", None),
         ("suppress_checks", ()),
+        # Consume-side idempotency: the marker is written to ``provider`` in
+        # the same UnitOfWork as the subscriber's writes. See ADR-0017.
+        ("idempotent", False),
+        ("provider", "default"),
     ]
 
     @abstractmethod
