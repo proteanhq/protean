@@ -1,5 +1,7 @@
 import asyncio
+import contextlib
 import logging
+import math
 import os
 import secrets
 import socket
@@ -13,6 +15,7 @@ from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
 from protean.port.event_store import BaseEventStore
 from protean.utils import checkpoint_trace, fqn, recovery_trace
+from protean.utils.backoff import AdaptiveBackoff
 from protean.utils.dlq import failed_positions_stream, recovery_checkpoint_stream
 from protean.utils.eventing import Message, MessageType
 
@@ -24,6 +27,14 @@ if TYPE_CHECKING:
     from .profiles import SubscriptionConfig
 
 logger = logging.getLogger(__name__)
+
+# The longest wait between reads of an idle subscription when the domain sets
+# no ``max_tick_interval`` under ``[server.event_store_subscription]``.
+DEFAULT_MAX_TICK_INTERVAL = 1.0
+
+# The wait after the first empty read when ``tick_interval`` is 0, so the idle
+# wait has a non-zero value to double from.
+IDLE_BACKOFF_START = 0.01
 
 
 class FailedPositionStatus(StrEnum):
@@ -369,8 +380,20 @@ class EventStoreSubscription(BaseSubscription):
     - ``gap_timeout_seconds`` (default 5): for a ``$all`` subscription, how long to
       wait at a missing lower ``global_position`` before abandoning it as a
       rolled-back gap (see ADR-0025).
+    - ``max_tick_interval`` (default 1): the longest wait between reads while the
+      subscription finds no new messages. With ``tick_interval`` 0 the wait
+      starts at 10 ms after the first empty read; otherwise it doubles from
+      ``tick_interval``. Each further empty read doubles it again, up to this
+      cap. A read that returns messages sets the wait back to
+      ``tick_interval``. A read whose messages are all dropped by the
+      ``origin_stream`` filter, or held back at a ``$all`` gap, counts as
+      empty. ``0`` keeps the wait at ``tick_interval``. A value
+      above 0 and below ``tick_interval`` is ignored with a warning. A value
+      that is not a finite number of 0 or more is ignored with a warning, and
+      the default applies.
 
-    The constructor arguments of the same names override these per subscription.
+    The constructor arguments named after the recovery settings override them
+    per subscription. ``max_tick_interval`` has no constructor argument.
     """
 
     def __init__(
@@ -498,6 +521,10 @@ class EventStoreSubscription(BaseSubscription):
         # Maps global_position -> {"retry_count": int, "stream_name": str|None, "stream_position": int|None}
         self._failed_positions: dict[int, dict[str, Any]] = {}
         self._last_recovery_time: float = 0.0
+
+        # Idle backoff: the wait between reads that find no new messages.
+        self._max_tick_interval_setting = self._read_max_tick_interval(es_config)
+        self._backoff = self._build_backoff(warn=True)
 
     @classmethod
     def from_config(
@@ -718,13 +745,94 @@ class EventStoreSubscription(BaseSubscription):
         no-op for single-category subscriptions (``_gap_watermark`` stays -1).
         """
         messages = await self.get_next_batch_of_messages()
+        # Only messages read here reset the idle wait. A failed position waiting
+        # for recovery keeps ``poll()`` busy, but reading nothing new is idle.
+        backoff = self._synced_backoff()
         if messages:
+            backoff.on_activity()
             await self.process_batch(messages)
+        else:
+            backoff.on_idle()
 
         if self._gap_watermark > self.current_position:
             await self.update_read_position(self._gap_watermark)
 
         return bool(messages)
+
+    def _read_max_tick_interval(self, es_config: dict[str, Any]) -> float | None:
+        """Return the ``max_tick_interval`` setting, or ``None`` when it is unset.
+
+        A value that is not a finite number of 0 or more (a boolean, ``None``,
+        nan, infinity or a negative number) logs
+        ``subscription.max_tick_interval_invalid`` and counts as unset, so the
+        default cap applies.
+        """
+        if "max_tick_interval" not in es_config:
+            return None
+        raw = es_config["max_tick_interval"]
+        value = math.nan
+        # bool is a subclass of int, so float(True) would silently give 1.0.
+        if not isinstance(raw, bool):
+            with contextlib.suppress(TypeError, ValueError):
+                value = float(raw)
+        # nan or infinity would remove the cap: min(wait, nan) returns wait.
+        if math.isfinite(value) and value >= 0:
+            return value
+        logger.warning(
+            "subscription.max_tick_interval_invalid",
+            extra={
+                "subscriber": self.subscriber_name,
+                "max_tick_interval": raw,
+                "default": DEFAULT_MAX_TICK_INTERVAL,
+            },
+        )
+        return None
+
+    def _resolve_max_tick_interval(self, *, warn: bool) -> float:
+        """Return the idle-wait cap from ``max_tick_interval`` and ``tick_interval``.
+
+        An unset ``max_tick_interval`` gives ``DEFAULT_MAX_TICK_INTERVAL``, or
+        ``tick_interval`` when that is longer. ``0`` gives ``tick_interval``, so
+        the wait never grows. A value above 0 and below ``tick_interval`` also
+        gives ``tick_interval``, and logs ``subscription.max_tick_interval_ignored``
+        when ``warn`` is true.
+        """
+        base = float(self.tick_interval)
+        setting = self._max_tick_interval_setting
+        if setting is None:
+            return max(DEFAULT_MAX_TICK_INTERVAL, base)
+        if 0 < setting < base and warn:
+            logger.warning(
+                "subscription.max_tick_interval_ignored",
+                extra={
+                    "subscriber": self.subscriber_name,
+                    "tick_interval": base,
+                    "max_tick_interval": setting,
+                },
+            )
+        return max(setting, base)
+
+    def _build_backoff(self, *, warn: bool) -> AdaptiveBackoff:
+        """Build the idle backoff for the current ``tick_interval``."""
+        return AdaptiveBackoff(
+            self.tick_interval,
+            self._resolve_max_tick_interval(warn=warn),
+            start=IDLE_BACKOFF_START,
+        )
+
+    def _synced_backoff(self) -> AdaptiveBackoff:
+        """Return the idle backoff, rebuilt first if ``tick_interval`` changed.
+
+        ``tick_interval`` is a plain attribute that callers may reassign after
+        construction; the backoff must then start from the new value.
+        """
+        if self._backoff.base != float(self.tick_interval):
+            self._backoff = self._build_backoff(warn=False)
+        return self._backoff
+
+    def _next_tick_wait(self) -> float:
+        """Wait the idle backoff's current value before the next tick."""
+        return self._synced_backoff().current
 
     async def get_next_batch_of_messages(self) -> list[Message]:
         """

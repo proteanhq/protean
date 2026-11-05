@@ -171,9 +171,13 @@ class BaseSubscription(ABC):
             return self.engine.batch_in_flight()
         return contextlib.nullcontext()
 
+    def _next_tick_wait(self) -> float:
+        """Return the seconds to wait before the next tick, before the test-mode clamp."""
+        return float(self.tick_interval)
+
     async def _pause_between_ticks(self) -> None:
-        """Sleep ``tick_interval`` (shorter in test mode), always yielding control."""
-        pause = self.tick_interval
+        """Sleep ``_next_tick_wait()`` (shorter in test mode), always yielding control."""
+        pause = self._next_tick_wait()
         if self.engine.test_mode is True:
             pause = min(pause, TEST_MODE_MAX_TICK_PAUSE)
         await asyncio.sleep(max(0, pause))

@@ -271,6 +271,17 @@ that were generated in response to specific commands:
 | `tick_interval` | 0 | Seconds between polling cycles |
 | `position_update_interval` | 10 | Messages between position writes |
 | `origin_stream` | None | Filter by origin stream |
+| `max_tick_interval` | 1 | Longest wait, in seconds, between reads while no new messages arrive. Domain-wide only, under `[server.event_store_subscription]`. `0` keeps the wait at `tick_interval` |
+
+An idle EventStoreSubscription waits longer between reads, so it does not query
+the event store in a tight loop. With `tick_interval` 0, it waits 10 ms after
+the first empty read. With a longer `tick_interval`, the wait doubles from
+`tick_interval`. Each further empty read doubles it again, up to
+`max_tick_interval`. A read that returns messages sets the wait back
+to `tick_interval`. A read whose messages are all dropped by the
+`origin_stream` filter counts as empty. The backoff adds at most
+`max_tick_interval` seconds, or `tick_interval` seconds when that is longer,
+before the subscription reads a new message.
 
 ### When to Use {#eventstore-when-to-use}
 

@@ -212,6 +212,14 @@ choose between these options.
 | `position_update_interval` | int | 10 | Messages between position writes |
 | `origin_stream` | string | None | Filter by origin stream category |
 
+One more setting applies to every event-store subscription in the domain. Set
+it under `[server.event_store_subscription]` in `domain.toml`. A handler or a
+profile cannot override it.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `max_tick_interval` | float | 1 | Longest wait, in seconds, between reads while a subscription finds no new messages. With `tick_interval` 0 the wait starts at 10 ms; otherwise it doubles from `tick_interval`. Each further empty read doubles it again, up to this value. A read that returns messages sets the wait back to `tick_interval`. `0` keeps the wait at `tick_interval`. A value above 0 and below `tick_interval` is ignored with a `subscription.max_tick_interval_ignored` warning. When the domain does not set it and `tick_interval` is above 1, the wait stays at `tick_interval`. A value that is not a finite number of 0 or more is ignored with a `subscription.max_tick_interval_invalid` warning, and the default applies |
+
 ## Configuration Methods
 
 ### 1. Handler Decorator Options
