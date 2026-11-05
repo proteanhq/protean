@@ -24,6 +24,7 @@ from protean.adapters.repository.sqlalchemy import (
     MysqlProvider,
     PostgresqlProvider,
     SqliteProvider,
+    UTCDateTime,
 )
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
@@ -119,13 +120,14 @@ class TestDateTimeOnSqlServer:
     def test_datetime_is_a_datetime2(self):
         table = table_for(Booking)
 
-        assert isinstance(table.c["booked_at"].type, mssql_dialect.DATETIME2)
+        assert isinstance(table.c["booked_at"].type, UTCDateTime)
+        assert isinstance(table.c["booked_at"].type.impl, mssql_dialect.DATETIME2)
         assert column_ddl(table, "booked_at") == "booked_at DATETIME2 NOT NULL"
 
     def test_an_optional_datetime_stays_nullable(self):
         table = table_for(Booking)
 
-        assert isinstance(table.c["cancelled_at"].type, mssql_dialect.DATETIME2)
+        assert isinstance(table.c["cancelled_at"].type.impl, mssql_dialect.DATETIME2)
         assert column_ddl(table, "cancelled_at") == "cancelled_at DATETIME2 NULL"
 
     def test_date_is_not_widened(self):
@@ -163,7 +165,7 @@ class TestDateTimeOnSqlServer:
         ]
 
         for name in timestamps:
-            assert isinstance(table.c[name].type, mssql_dialect.DATETIME2), name
+            assert isinstance(table.c[name].type.impl, mssql_dialect.DATETIME2), name
         assert column_ddl(table, "created_at") == "created_at DATETIME2 NULL"
 
 
@@ -178,10 +180,12 @@ class TestDateTimeOnOtherDatabases:
     def test_sqlite_keeps_datetime(self):
         column = table_for(Booking, SqliteProvider, "sqlite:///:memory:").c["booked_at"]
 
-        assert type(column.type) is sa_types.DateTime
+        assert isinstance(column.type, UTCDateTime)
+        assert type(column.type.impl) is sa_types.DateTime
 
     def test_mysql_keeps_datetime_with_microseconds(self):
         column = table_for(Booking, MysqlProvider, MYSQL_URI).c["booked_at"]
 
-        assert isinstance(column.type, mysql_dialect.DATETIME)
-        assert column.type.fsp == 6
+        assert isinstance(column.type, UTCDateTime)
+        assert isinstance(column.type.impl, mysql_dialect.DATETIME)
+        assert column.type.impl.fsp == 6

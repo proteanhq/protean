@@ -109,6 +109,14 @@ not change an existing table. See
 [SQL Server stores `DateTime` as `DATETIME2`](../../migration/v0-19.md#sql-server-stores-datetime-as-datetime2)
 for the statements that convert them.
 
+A `DATETIME2` column holds no UTC offset, so Protean converts each value to
+UTC before it writes it or compares it in a filter, and reads a naive value as
+UTC. A load returns a UTC-aware `datetime`. A filter value in any offset then
+matches the same instant. Rows written before 0.18.1 hold the wall-clock time
+they were saved with; see
+[Datetimes are compared and stored as UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc)
+to convert them.
+
 ## SQLAlchemy model
 
 You can supply a custom SQLAlchemy model in place of the one Protean generates,

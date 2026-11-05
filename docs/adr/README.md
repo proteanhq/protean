@@ -5,7 +5,7 @@ This directory contains Architecture Decision Records (ADRs) for the Protean fra
 ## What are ADRs?
 
 An Architecture Decision Record captures a single architectural decision along with its context
-and consequences. ADRs are short documents (readable in 2-3 minutes) that record why we made
+and consequences. ADRs are short documents that record why we made
 a particular choice at a particular time, so that future contributors can understand not just
 what the system does, but why it does it that way.
 
@@ -40,12 +40,54 @@ but a meta-document that captures the principles governing all Protean architect
 Each ADR has one of the following statuses:
 
 - **Proposed**: Under discussion, not yet committed to.
-- **Accepted**: The decision has been made and is in effect.
+- **Accepted**: The decision has been made and is in effect. An Accepted ADR has no open questions.
 - **Deprecated**: The decision is no longer relevant (technology changed, feature removed).
 - **Superseded by ADR-XXXX**: Replaced by a newer decision.
 
 Status changes are recorded by editing the ADR's Status field. The original ADR is never deleted;
 it remains as historical context.
+
+## An ADR states each decision with its reason
+
+An ADR follows `TEMPLATE.md`.
+
+- It records one decision, or a few decisions that stand or fall together. A
+  decision that someone could reopen on its own gets its own ADR.
+- The title and every decision heading are full sentences that state the
+  decision, such as "Provider `sql` serves SQLite and PostgreSQL".
+- Each decision is a short statement or a few bullets, followed by one or two
+  sentences of reason. A reader who missed the discussion follows it on one
+  read. Terms the reader already knows get no explanation.
+- Context states the problem and the facts that shaped the decision. The state
+  before the decision reads "Before this decision, ...".
+- Consequences has two lists, **Positive:** and **Negative:**. The Negative list
+  names what the decision costs.
+- Each alternative is a list item: the option in bold as a sentence, then
+  "Rejected:" and the reason.
+- A dependency names the capability the decision needs, under an optional
+  Dependencies heading.
+
+## An ADR stays true for as long as it stands
+
+When a decision stops being true, a new ADR supersedes it. Until then, every
+sentence in it holds. So an ADR leaves out:
+
+- Time words: "today", "currently", "already", "for now", "for this release",
+  "once X lands", "later". A future change is written as a rule that always
+  holds, such as "any replacement must pass the same conformance suite".
+- Open questions and open work. Questions go to issues, and an ADR is Accepted
+  only after they are answered.
+- Plans: which issue or pull request does what, in what order, or what holds
+  during a migration. Plans belong in issues.
+- Issues and epics as the source of a decision. The ADR makes the decision and
+  gives its reason. An issue link can serve as evidence, such as a bug report
+  that shows the problem.
+- Lists of names: method signatures, record fields, module lists and file
+  trees. Names belong in docstrings and reference pages. A name appears in an
+  ADR when the decision is about that name.
+- Counts of code facts, such as the number of methods on a class. The next
+  change makes them wrong.
+- Sentences about the ADR itself, such as "The tables below list...".
 
 ## Referencing ADRs
 

@@ -258,6 +258,14 @@ otherwise, and drops microseconds on write without an error. Protean writes
 microsecond-precision timestamps, so every `DateTime` field maps to
 `DATETIME(6)`.
 
+A `DateTime` column holds no UTC offset, so Protean converts each value to
+UTC before it writes it or compares it in a filter, and reads a naive value as
+UTC. A load returns a UTC-aware `datetime`. A filter value in any offset then
+matches the same instant. Rows written before 0.18.1 hold the wall-clock time
+they were saved with; see
+[Datetimes are compared and stored as UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc)
+to convert them.
+
 ## Indexes
 
 MySQL honors part of the [`Index`](../../domain-elements/indexes.md) surface,

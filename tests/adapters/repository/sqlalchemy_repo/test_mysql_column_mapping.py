@@ -14,6 +14,7 @@ assertion is the only thing standing between the adapter and a wrong answer.
 import logging
 
 import pytest
+import sqlalchemy
 from sqlalchemy import Column
 from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import mysql as mysql_dialect
@@ -29,6 +30,7 @@ from protean.adapters.repository.sqlalchemy import (
     MysqlProvider,
     PostgresqlProvider,
     SqliteProvider,
+    UTCDateTime,
     _check_mysql_index_key_widths,
     _mysql_table_kwargs,
     render_index_ddl,
@@ -231,8 +233,29 @@ class TestColumnTypes:
         """A plain DATETIME has zero fractional-second digits and drops them."""
         column = table_for(Article).c["published_at"]
 
-        assert isinstance(column.type, mysql_dialect.DATETIME)
-        assert column.type.fsp == 6
+        assert isinstance(column.type, UTCDateTime)
+        assert isinstance(column.type.impl, mysql_dialect.DATETIME)
+        assert column.type.impl.fsp == 6
+
+    def test_datetime_repr_rebuilds_the_same_type(self):
+        """A schema tool such as Alembic renders a column type from its repr."""
+        column_type = table_for(Article).c["published_at"].type
+
+        rendered = repr(column_type)
+        assert rendered == "UTCDateTime(sa.dialects.mysql.DATETIME(fsp=6))"
+        # An Alembic migration imports SQLAlchemy as ``sa``.
+        rebuilt = eval(rendered, {"sa": sqlalchemy, "UTCDateTime": UTCDateTime})
+        assert isinstance(rebuilt.impl, mysql_dialect.DATETIME)
+        assert rebuilt.impl.fsp == 6
+
+    def test_plain_datetime_repr_rebuilds_the_same_type(self):
+        rendered = repr(UTCDateTime())
+        assert rendered == "UTCDateTime(sa.DateTime())"
+        rebuilt = eval(rendered, {"sa": sqlalchemy, "UTCDateTime": UTCDateTime})
+        assert type(rebuilt.impl) is sa_types.DateTime
+
+    def test_datetime_without_a_wrapped_type_wraps_a_plain_datetime(self):
+        assert isinstance(UTCDateTime().impl, sa_types.DateTime)
 
     @pytest.mark.parametrize("attribute", ["tags", "extra"])
     def test_dict_and_list_map_to_json(self, attribute):

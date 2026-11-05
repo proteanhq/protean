@@ -1,8 +1,11 @@
 """Run the examples on ``docs/patterns/calling-external-systems-from-handlers.md``."""
 
+import threading
+
 import httpx
 import pytest
 
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import TransactionError
 from protean.utils.globals import current_uow
 from tests.docs.support import load_example
@@ -277,3 +280,111 @@ def test_calling_before_the_repository_is_not_flagged():
     example = load_example("patterns/calling-external-systems-from-handlers/004.py")
     with _context(example):
         assert "HANDLER_PERSISTS_AND_CALLS_OUT" not in _check_codes(example)
+
+
+class _Channel:
+    """Stands in for the notification channel and counts the sends."""
+
+    def __init__(self, ok=True):
+        self.ok = ok
+        self.sends = []
+
+    def send(self, recipient, body):
+        self.sends.append((recipient, body))
+        return type("Outcome", (), {"ok": self.ok})()
+
+
+def _dispatch(example, notification_id="n1"):
+    repo = example.domain.repository_for(example.Notification)
+    repo.add(
+        example.Notification(
+            notification_id=notification_id, recipient="ada@example.com", body="Hi"
+        )
+    )
+    notification = repo.get(notification_id)
+    notification.start_dispatch()
+    repo.add(notification)
+    return repo
+
+
+@pytest.mark.parametrize("ok, status", [(True, "SENT"), (False, "FAILED")])
+def test_the_dispatcher_sends_once_and_records_the_result(monkeypatch, ok, status):
+    example = load_example("patterns/calling-external-systems-from-handlers/005.py")
+    with _context(example):
+        channel = _Channel(ok=ok)
+        monkeypatch.setattr(example, "channel", channel)
+
+        repo = _dispatch(example)
+
+        assert channel.sends == [("ada@example.com", "Hi")]
+        assert repo.get("n1").status == status
+
+
+def test_a_failing_record_step_reports_a_transaction_error_after_one_send(
+    monkeypatch,
+):
+    example = load_example("patterns/calling-external-systems-from-handlers/005.py")
+    with _context(example):
+        channel = _Channel()
+        monkeypatch.setattr(example, "channel", channel)
+
+        def refuse(self, status):
+            raise ValueError("cannot record")
+
+        monkeypatch.setattr(example.Notification, "record_result", refuse)
+
+        with pytest.raises(TransactionError) as caught:
+            _dispatch(example)
+
+        # The dispatcher's commit raises the first TransactionError, and the
+        # commit of the write that raised the event wraps it in a second one.
+        cause = caught.value.__cause__
+        while isinstance(cause, TransactionError):
+            cause = cause.__cause__
+        assert isinstance(cause, ValueError)
+        assert channel.sends == [("ada@example.com", "Hi")]
+        notification = example.domain.repository_for(example.Notification).get("n1")
+        assert notification.status == "DISPATCHING"
+
+
+def test_a_conflict_on_the_record_step_retries_it_and_sends_once(monkeypatch):
+    example = load_example("patterns/calling-external-systems-from-handlers/005.py")
+    with _context(example):
+        channel = _Channel()
+        monkeypatch.setattr(example, "channel", channel)
+        monkeypatch.setattr("protean.utils.mixins.time.sleep", lambda seconds: None)
+        record_result = example.Notification.record_result
+        attempts = []
+
+        def record_after_a_concurrent_write(self, status):
+            attempts.append(status)
+            if len(attempts) == 1:
+                _save_from_another_thread(example, self.notification_id)
+            record_result(self, status)
+
+        monkeypatch.setattr(
+            example.Notification, "record_result", record_after_a_concurrent_write
+        )
+
+        repo = _dispatch(example)
+
+        assert channel.sends == [("ada@example.com", "Hi")]
+        assert attempts == ["SENT", "SENT"]
+        assert repo.get("n1").status == "SENT"
+
+
+def _save_from_another_thread(example, notification_id):
+    """Save the notification from another thread, so the record step that
+    loaded it before this write fails its version check."""
+
+    def save():
+        with example.domain.domain_context():
+            with UnitOfWork():
+                repo = example.domain.repository_for(example.Notification)
+                notification = repo.get(notification_id)
+                notification.body = "Hi again"
+                repo.add(notification)
+
+    thread = threading.Thread(target=save)
+    thread.start()
+    thread.join()
