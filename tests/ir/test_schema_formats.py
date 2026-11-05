@@ -769,7 +769,8 @@ def _imported_messages(
 ) -> set[str]:
     """Return the full names of the messages in the files ``parsed`` imports.
 
-    Asserts that every imported file is in ``files``.
+    Skips the Timestamp import and asserts that every other imported file is
+    in ``files``.
     """
     imported_messages: set[str] = set()
     for imported in parsed["imports"]:

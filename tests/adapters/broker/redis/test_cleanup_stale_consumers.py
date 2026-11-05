@@ -26,7 +26,7 @@ def _consumer_names(redis_broker, stream, group) -> set[str]:
 
 
 def _ack_pending(redis_broker, stream, group) -> None:
-    """Acknowledge the group's pending messages on the stream."""
+    """Acknowledge up to 10 of the group's pending messages on the stream."""
     pending = redis_broker.redis_instance.xpending_range(
         stream, group, min="-", max="+", count=10
     )
