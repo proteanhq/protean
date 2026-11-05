@@ -371,7 +371,10 @@ def _unparseable_verify(exit_code: int, stderr: str) -> VerifyResult:
 def _verify_stages(
     envelope: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """Return the envelope's init, check and tests stages, each ``{}`` if absent."""
+    """Return the envelope's init, check and tests stages.
+
+    A stage that is absent or not an object comes back as ``{}``.
+    """
     data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
     stages = data.get("stages") if isinstance(data.get("stages"), dict) else {}
 
@@ -391,7 +394,11 @@ def _list_at(stage: dict[str, Any], key: str) -> list[Any]:
 def _stage_errors(
     init: dict[str, Any], check_errors: list[Any], tests: dict[str, Any]
 ) -> list[str]:
-    """Return the failure detail of every stage that failed."""
+    """Return the error lines the agent sees from a verify run.
+
+    The lines are init's error when init failed, every check error message
+    whatever the check status, and a summary line when tests failed.
+    """
     # Surface every stage's failure detail, not just check's: an init import
     # error (exit 3) or a failing test suite (exit 5) is the actionable feedback
     # run_verify exists to give the agent.

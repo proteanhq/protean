@@ -767,7 +767,10 @@ def _assert_each_message_defined_once(files: dict[str, dict[str, Any]]) -> None:
 def _imported_messages(
     path: str, parsed: dict[str, Any], files: dict[str, dict[str, Any]]
 ) -> set[str]:
-    """Return the full names of the messages in the files ``parsed`` imports."""
+    """Return the full names of the messages in the files ``parsed`` imports.
+
+    Asserts that every imported file is in ``files``.
+    """
     imported_messages: set[str] = set()
     for imported in parsed["imports"]:
         if imported == _TIMESTAMP_IMPORT:

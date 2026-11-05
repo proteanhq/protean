@@ -237,7 +237,7 @@ def _imported_names(tree: ast.AST) -> list[str]:
 
 
 def _package_files_for(name: str, root: Path, packages: dict[str, Path]) -> set[str]:
-    """Return the package files under ``root`` that importing ``name`` loads."""
+    """Return the package files under ``root`` that importing ``name`` may load."""
     package, _, rest = name.partition(".")
     folder = packages.get(package)
     if folder is None:

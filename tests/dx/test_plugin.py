@@ -166,7 +166,10 @@ _LINK_PATTERN = re.compile(r"\]\(([^)]+)\)")
 
 
 def _relative_link_targets(text: str) -> list[str]:
-    """Return the relative link targets in ``text``, without their ``#`` part."""
+    """Return the link targets in ``text`` that are not URLs or bare anchors.
+
+    Each target loses its ``#`` part.
+    """
     targets = []
     for link in _LINK_PATTERN.findall(text):
         link = link.strip()
