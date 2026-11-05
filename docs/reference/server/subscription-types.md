@@ -277,11 +277,11 @@ An idle EventStoreSubscription waits longer between reads, so it does not query
 the event store in a tight loop. With `tick_interval` 0, it waits 10 ms after
 the first empty read. With a longer `tick_interval`, the wait doubles from
 `tick_interval`. Each further empty read doubles it again, up to
-`max_tick_interval`. A read that returns messages to handle sets the wait back
+`max_tick_interval`. A read that returns messages sets the wait back
 to `tick_interval`. A read whose messages are all dropped by the
-`origin_stream` filter counts as empty. A new message is picked up at most
-`max_tick_interval` seconds after it is written, or `tick_interval` seconds when
-that is longer.
+`origin_stream` filter counts as empty. The backoff adds at most
+`max_tick_interval` seconds, or `tick_interval` seconds when that is longer,
+before the subscription reads a new message.
 
 ### When to Use {#eventstore-when-to-use}
 

@@ -126,8 +126,9 @@ def _default_config() -> dict[str, Any]:
                 "enable_recovery": True,  # Enable failed position recovery
                 "recovery_interval_seconds": 30,  # How often to run recovery pass
                 # max_tick_interval: longest idle wait between reads, default 1
-                # second, 0 turns the idle backoff off. Left out of this dict so
-                # the subscription can tell an unset key from a set one.
+                # second or tick_interval when that is longer, 0 turns the idle
+                # backoff off. Left out of this dict so the subscription can
+                # tell an unset key from a set one.
             },
             # Stream subscription settings
             # Used when subscription_type is "stream"

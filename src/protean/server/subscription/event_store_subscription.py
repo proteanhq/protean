@@ -1,5 +1,7 @@
 import asyncio
+import contextlib
 import logging
+import math
 import os
 import secrets
 import socket
@@ -382,11 +384,13 @@ class EventStoreSubscription(BaseSubscription):
       subscription finds no new messages. With ``tick_interval`` 0 the wait
       starts at 10 ms after the first empty read; otherwise it doubles from
       ``tick_interval``. Each further empty read doubles it again, up to this
-      cap. A read that returns messages to handle sets the wait back to
+      cap. A read that returns messages sets the wait back to
       ``tick_interval``. A read whose messages are all dropped by the
       ``origin_stream`` filter, or held back at a ``$all`` gap, counts as
       empty. ``0`` keeps the wait at ``tick_interval``. A value
-      above 0 and below ``tick_interval`` is ignored with a warning.
+      above 0 and below ``tick_interval`` is ignored with a warning. A value
+      that is not a finite number of 0 or more is ignored with a warning, and
+      the default applies.
 
     The constructor arguments named after the recovery settings override them
     per subscription. ``max_tick_interval`` has no constructor argument.
@@ -519,11 +523,7 @@ class EventStoreSubscription(BaseSubscription):
         self._last_recovery_time: float = 0.0
 
         # Idle backoff: the wait between reads that find no new messages.
-        self._max_tick_interval_setting: float | None = (
-            float(es_config["max_tick_interval"])
-            if "max_tick_interval" in es_config
-            else None
-        )
+        self._max_tick_interval_setting = self._read_max_tick_interval(es_config)
         self._backoff = self._build_backoff(warn=True)
 
     @classmethod
@@ -758,6 +758,35 @@ class EventStoreSubscription(BaseSubscription):
             await self.update_read_position(self._gap_watermark)
 
         return bool(messages)
+
+    def _read_max_tick_interval(self, es_config: dict[str, Any]) -> float | None:
+        """Return the ``max_tick_interval`` setting, or ``None`` when it is unset.
+
+        A value that is not a finite number of 0 or more (a boolean, ``None``,
+        nan, infinity or a negative number) logs
+        ``subscription.max_tick_interval_invalid`` and counts as unset, so the
+        default cap applies.
+        """
+        if "max_tick_interval" not in es_config:
+            return None
+        raw = es_config["max_tick_interval"]
+        value = math.nan
+        # bool is a subclass of int, so float(True) would silently give 1.0.
+        if not isinstance(raw, bool):
+            with contextlib.suppress(TypeError, ValueError):
+                value = float(raw)
+        # nan or infinity would remove the cap: min(wait, nan) returns wait.
+        if math.isfinite(value) and value >= 0:
+            return value
+        logger.warning(
+            "subscription.max_tick_interval_invalid",
+            extra={
+                "subscriber": self.subscriber_name,
+                "max_tick_interval": raw,
+                "default": DEFAULT_MAX_TICK_INTERVAL,
+            },
+        )
+        return None
 
     def _resolve_max_tick_interval(self, *, warn: bool) -> float:
         """Return the idle-wait cap from ``max_tick_interval`` and ``tick_interval``.

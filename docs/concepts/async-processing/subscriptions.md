@@ -146,7 +146,7 @@ async def poll(self):
 
         # Sleep between ticks: tick_interval, or a longer idle wait for
         # an event-store subscription that read nothing new
-        await asyncio.sleep(self._next_tick_wait())
+        await self._pause_between_ticks()
 ```
 
 ### Message Processing

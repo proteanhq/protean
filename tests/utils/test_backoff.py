@@ -1,7 +1,12 @@
 """``AdaptiveBackoff``: a wait that doubles on idle polls, up to a cap."""
 
+import inspect
+import logging
+
 import pytest
 
+import protean.utils
+from protean.utils import backoff as backoff_module
 from protean.utils.backoff import AdaptiveBackoff
 
 
@@ -69,3 +74,22 @@ def test_cap_equal_to_base_never_grows():
     backoff = AdaptiveBackoff(1, 1)
 
     assert [backoff.on_idle() for _ in range(3)] == [1.0, 1.0, 1.0]
+
+
+def test_backoff_logs_nothing(caplog):
+    caplog.set_level(logging.DEBUG)
+    backoff = AdaptiveBackoff(0, 0.5, start=0.01)
+    for _ in range(8):
+        backoff.on_idle()
+    backoff.on_activity()
+    AdaptiveBackoff(2, 1)
+
+    assert caplog.records == []
+
+
+def test_protean_utils_does_not_re_export_the_helper():
+    assert not hasattr(protean.utils, "AdaptiveBackoff")
+
+
+def test_helper_source_names_no_event_store():
+    assert "event_store" not in inspect.getsource(backoff_module)

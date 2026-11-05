@@ -101,7 +101,8 @@ class OutboxProcessor(BaseSubscription):
         # Adaptive polling backoff: the wait doubles on empty polls and drops
         # back to ``tick_interval`` when a batch is found. When
         # ``max_tick_interval`` is ``None`` or at/below the base, the wait
-        # stays at ``tick_interval``.
+        # stays at ``tick_interval``. A zero ``tick_interval`` cannot double,
+        # so it stays 0 whatever the cap.
         base = float(tick_interval)
         if max_tick_interval is None:
             cap = base
