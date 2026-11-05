@@ -111,7 +111,9 @@ members and mypy's check of signatures.
   declaring its flag, because one class can serve several databases with
   different capabilities.
 - A service method that needs a feature checks the flag first. Without the
-  flag, it raises `NotSupportedError` or returns the empty value.
+  flag, it falls back to core Port operations, returns the empty value, or
+  raises `NotSupportedError`, as its docstring states. A blocking read, for
+  example, falls back to an ordinary read that returns the messages available.
 
 ### 5. Every port declares capability flags, and every flag gates a test
 
@@ -209,10 +211,11 @@ without narrowing it, and mypy would not report a wrong assumption.
   calls, and the adapter does not infer it from the stream name. The service
   computes a stream's version and a category's head position from the
   last-message reads.
-- The event-store, broker, cache and provider Ports each have `name`,
-  `capabilities`, `ping()`, `health()`, `get_connection()`, `close()` and
-  `clear()`. The provider and event-store Ports add `create_schema()` and
-  `drop_schema()`, behind `SCHEMA_MANAGEMENT`.
+- The event-store, broker, cache and provider Ports share one set of
+  lifecycle members, with the same names on every Port: the adapter's name and
+  capabilities, a liveness check, a health record, the native handle, closing
+  the adapter, and clearing its data. A Port whose adapter can own a schema adds
+  schema creation and removal, behind a `SCHEMA_MANAGEMENT` flag.
 
 ### 12. Conformance suites live in the repository
 
