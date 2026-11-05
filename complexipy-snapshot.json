@@ -222,16 +222,6 @@
     ]
   },
   {
-    "path": "src/protean/cli/recover.py",
-    "file_name": "recover.py",
-    "functions": [
-      {
-        "name": "recover",
-        "complexity": 107
-      }
-    ]
-  },
-  {
     "path": "src/protean/cli/schema.py",
     "file_name": "schema.py",
     "functions": [
