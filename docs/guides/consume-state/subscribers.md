@@ -115,23 +115,33 @@ configures an `analytics` broker next to the default one:
 ### `idempotent` (optional, default: `False`)
 
 A broker can deliver the same message more than once. With `idempotent=True`,
-Protean applies each message to the subscriber once:
+Protean skips a message the subscriber has already processed:
 
 ```python
 --8<-- "guides/consume-state/subscribers/005.py:subscriber"
 ```
 
 Protean reads the message id from the payload at `metadata.headers.id`, which
-every message Protean publishes carries. It runs `__call__` inside a unit of
+every event Protean publishes to a broker carries. It runs `__call__` inside a unit of
 work and, in the same unit of work, records a marker for the pair of that id
 and the subscriber's fully-qualified class name. When the same payload arrives
 again, Protean finds the marker and skips `__call__`. When `__call__` raises,
 its writes and the marker roll back together, so the next delivery runs it
 again. Two subscribers on the same stream keep separate markers.
 
+The rollback covers writes made through repositories on the subscriber's
+`provider`. It does not cover a command the subscriber issues with
+`domain.process`: that call stores the command in the event store at once, and
+an event store that writes outside the unit of work, such as Message DB, keeps
+it after a rollback. A redelivery after a raise then issues the command again.
+It also does not cover side effects outside the database, such as an HTTP call.
+Write the handlers of such commands, and any such side effects, so that they are
+safe to repeat.
+
 The broker's own delivery id is never used as the key, because a redelivery
-can carry a new one. A payload with no `metadata.headers.id`, or a blank one,
-is an error for an idempotent subscriber: Protean logs it, does not call
+can carry a new one. A payload whose `metadata.headers.id` is missing, blank,
+not a string, or longer than 255 characters is an error for an idempotent
+subscriber: Protean logs it, does not call
 `__call__`, and treats the message as failed. The Engine passes the
 `InsufficientDataError` to `handle_error`. In synchronous mode, `publish`
 raises it.

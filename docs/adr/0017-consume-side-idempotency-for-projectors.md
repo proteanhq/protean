@@ -146,14 +146,20 @@ redelivered message twice. Its only defence was a hand-written marker table.
    broker-assigned delivery id is never the key, because a redelivery can carry
    a new one.
 4. **A missing id is an error:** an idempotent subscriber that receives a
-   payload with no non-blank `metadata.headers.id` logs an error and raises
+   payload with no non-blank string `metadata.headers.id`, or one longer than
+   the marker's 255-character column, logs an error and raises
    `InsufficientDataError` without calling the subscriber. The Engine treats it
    as a failed message and calls `handle_error`; a synchronous `publish` raises
    it. Running without deduplication would ignore the opt-in.
 5. **Same atomicity rules:** the check, the subscriber call and the marker
    write share one unit of work, and the marker is written only after the
    subscriber returns. The guarantees and limits of Decision point 4 and the
-   Consequences apply unchanged, keyed on the subscriber's provider.
+   Consequences apply unchanged, keyed on the subscriber's provider. They cover
+   writes made through repositories on that provider. A command the subscriber
+   issues with `domain.process` is stored in the event store at once, and an
+   event store that writes outside the unit of work, such as Message DB, keeps
+   it after a rollback, so a redelivery after a raise issues it again. Side
+   effects outside the database repeat the same way.
 
 **Consequences:** `Domain.has_idempotent_consumers` also counts subscribers, so
 a domain whose only idempotent consumer is a subscriber gets the marker table

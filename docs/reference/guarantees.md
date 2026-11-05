@@ -240,10 +240,13 @@ You can opt in at three places:
 - **Subscribers**: `@domain.subscriber(idempotent=True)` records
   `(message_id, handler)` in the database named by its `provider` option, in
   the same unit of work as the subscriber's writes. The message id is the
-  payload's `metadata.headers.id`, and a payload without it fails. On a
-  relational provider a unique index also stops concurrent duplicates. On the
-  in-memory provider it covers redelivery one after another only. Markers are
-  pruned after the same retention window
+  payload's `metadata.headers.id`, and a payload without it, or with one over
+  255 characters, fails. On a relational provider a unique index also stops
+  concurrent duplicates. On the in-memory provider it covers redelivery one
+  after another only. A command the subscriber issues through `domain.process`
+  is not rolled back on an event store that writes outside the unit of work,
+  such as Message DB, so a redelivery after a raise issues it again. Markers
+  are pruned after the same retention window
   ([ADR-0017](../adr/0017-consume-side-idempotency-for-projectors.md)).
 - **Commands**: A command with an `idempotency_key` is deduplicated against
   the idempotency store, and only when that store is active. Successful entries
