@@ -474,6 +474,7 @@ nav:
       - "0046 · One aggregate instance per Unit of Work": adr/0046-one-aggregate-instance-per-unit-of-work.md
       - "0047 · Decorated elements subclass their base under mypy": adr/0047-mypy-plugin-subclasses-decorated-elements.md
       - "0048 · SQL event store for SQLite and PostgreSQL": adr/0048-sql-event-store.md
+      - "0049 · Adapter ports as Protocols with framework services": adr/0049-adapter-ports-as-protocols.md
     - Troubleshooting:
       - reference/troubleshooting.md
 
