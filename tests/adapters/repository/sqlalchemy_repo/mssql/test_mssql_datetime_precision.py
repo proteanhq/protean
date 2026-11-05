@@ -5,7 +5,7 @@ SQL Server's ``DATETIME`` rounds to increments of about 3 ms. The provider maps
 exactly as written.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import inspect, text
@@ -70,8 +70,8 @@ class TestDateTimePrecision:
             provider.close()
 
     def test_values_100_microseconds_apart_round_trip(self, test_domain):
-        earlier = datetime(2026, 10, 26, 12, 0, 0, 123400)
-        later = datetime(2026, 10, 26, 12, 0, 0, 123500)
+        earlier = datetime(2026, 10, 26, 12, 0, 0, 123400, tzinfo=UTC)
+        later = datetime(2026, 10, 26, 12, 0, 0, 123500, tzinfo=UTC)
         repo = test_domain.repository_for(MssqlTimestampedEntity)
         first = MssqlTimestampedEntity(label="earlier", occurred_at=earlier)
         second = MssqlTimestampedEntity(label="later", occurred_at=later)

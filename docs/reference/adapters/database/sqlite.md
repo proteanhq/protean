@@ -67,6 +67,17 @@ The SQLite provider supports the following capabilities:
 - :x: **NATIVE_JSON**: No native JSON column type (stored as text)
 - :x: **NATIVE_ARRAY**: No native array column type (stored as text)
 
+## Timestamps
+
+A `DateTime` field maps to a `DATETIME` column, which SQLite stores as text.
+A `DateTime` column holds no UTC offset, so Protean converts each value to
+UTC before it writes it or compares it in a filter, and reads a naive value as
+UTC. A load returns a UTC-aware `datetime`. A filter value in any offset then
+matches the same instant. Rows written before 0.18.1 hold the wall-clock time
+they were saved with; see
+[Datetimes are compared and stored as UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc)
+to convert them.
+
 ## Indexes
 
 SQLite honors most of the [`Index`](../../domain-elements/indexes.md) surface,

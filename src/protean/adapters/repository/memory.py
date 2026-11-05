@@ -6,7 +6,7 @@ import json
 import typing
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from itertools import count
 from threading import RLock
 from typing import cast
@@ -23,7 +23,7 @@ from protean.exceptions import (
 )
 from protean.port.dao import BaseDAO, BaseLookup, HoldBack
 from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
-from protean.utils import _fully_qualified_name, occ_trace
+from protean.utils import _fully_qualified_name, ensure_utc_aware, occ_trace
 from protean.utils.container import Options
 from protean.utils.globals import current_uow
 from protean.utils.query import F, Q
@@ -1082,6 +1082,26 @@ class MemoryLookup(BaseLookup):
             return str(value)
         return value
 
+    def _coerce_pair(
+        self, source: typing.Any, target: typing.Any
+    ) -> tuple[typing.Any, typing.Any]:
+        """Coerce a stored value and a filter value so they compare correctly.
+
+        Two datetimes compare as UTC instants, with a naive value read as UTC.
+        Any other pair, including a datetime against an ISO string, compares
+        in the string form ``_coerce`` gives.
+        """
+        if isinstance(source, datetime) and isinstance(target, datetime):
+            return (
+                ensure_utc_aware(source).astimezone(UTC),
+                ensure_utc_aware(target).astimezone(UTC),
+            )
+        return self._coerce(source), self._coerce(target)
+
+    def _matches(self, source: typing.Any, target: typing.Any) -> bool:
+        source, target = self._coerce_pair(source, target)
+        return bool(source == target)
+
     def as_expression(self) -> str:
         """Satisfy BaseLookup ABC — not used by Memory provider."""
         return ""
@@ -1098,7 +1118,7 @@ class Exact(MemoryLookup):
     lookup_name = "exact"
 
     def evaluate(self) -> bool:
-        return bool(self._coerce(self.source) == self._coerce(self.target))
+        return self._matches(self.source, self.target)
 
 
 @MemoryProvider.register_lookup
@@ -1158,7 +1178,8 @@ class GreaterThan(MemoryLookup):
     lookup_name = "gt"
 
     def evaluate(self) -> bool:
-        return bool(self._coerce(self.source) > self._coerce(self.target))
+        source, target = self._coerce_pair(self.source, self.target)
+        return bool(source > target)
 
 
 @MemoryProvider.register_lookup
@@ -1168,7 +1189,8 @@ class GreaterThanOrEqual(MemoryLookup):
     lookup_name = "gte"
 
     def evaluate(self) -> bool:
-        return bool(self._coerce(self.source) >= self._coerce(self.target))
+        source, target = self._coerce_pair(self.source, self.target)
+        return bool(source >= target)
 
 
 @MemoryProvider.register_lookup
@@ -1178,7 +1200,8 @@ class LessThan(MemoryLookup):
     lookup_name = "lt"
 
     def evaluate(self) -> bool:
-        return bool(self._coerce(self.source) < self._coerce(self.target))
+        source, target = self._coerce_pair(self.source, self.target)
+        return bool(source < target)
 
 
 @MemoryProvider.register_lookup
@@ -1188,7 +1211,8 @@ class LessThanOrEqual(MemoryLookup):
     lookup_name = "lte"
 
     def evaluate(self) -> bool:
-        return bool(self._coerce(self.source) <= self._coerce(self.target))
+        source, target = self._coerce_pair(self.source, self.target)
+        return bool(source <= target)
 
 
 @MemoryProvider.register_lookup
@@ -1201,7 +1225,7 @@ class In(MemoryLookup):
         target = (
             self.target if isinstance(self.target, (list, tuple)) else [self.target]
         )
-        return self._coerce(self.source) in [self._coerce(t) for t in target]
+        return any(self._matches(self.source, t) for t in target)
 
 
 @MemoryProvider.register_lookup
@@ -1217,11 +1241,10 @@ class Any(MemoryLookup):
         target = (
             self.target if isinstance(self.target, (list, tuple)) else [self.target]
         )
-        # A list (not a set) is intentional: list elements such as dicts (from
+        # Pairwise equality, not a set: list elements such as dicts (from
         # ``List(content_type=dict)`` or serialized value objects) are not
         # hashable, so membership must use equality, not hashing.
-        coerced_target = [self._coerce(t) for t in target]
-        return any(self._coerce(x) in coerced_target for x in source)
+        return any(self._matches(x, t) for x in source for t in target)
 
 
 @MemoryProvider.register_lookup
