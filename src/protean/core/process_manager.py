@@ -24,9 +24,9 @@ Example::
             self.mark_as_complete()
 """
 
+import contextlib
 import logging
 from collections.abc import Callable
-from datetime import date, datetime
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -38,8 +38,8 @@ from typing import (
     cast,
 )
 
-from pydantic import BaseModel, ConfigDict, PrivateAttr
-from pydantic_core import PydanticUndefined
+from pydantic import BaseModel, ConfigDict, PrivateAttr, ValidationError
+from pydantic_core import PydanticUndefined, to_jsonable_python
 
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
@@ -515,6 +515,16 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
             if getattr(domain_obj, "is_complete"):
                 pm._is_complete = True
 
+        # The stored state is JSON, so a date, a datetime or a decimal comes
+        # back as a string. Assigning through the model converts it to the
+        # field's type. A value that no longer validates, such as one written
+        # before the field's type changed, is kept as stored so the PM still loads.
+        for fname, value in list(pm_dict.items()):
+            if value is None:
+                continue
+            with contextlib.suppress(ValidationError):
+                setattr(pm, fname, value)
+
         return pm
 
     @classmethod
@@ -530,13 +540,12 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
             pm_instance: The PM instance whose state should be persisted.
             handler_name: The name of the handler method that triggered this transition.
         """
-        # Capture current state, serializing non-JSON-safe types
-        state: dict[str, Any] = {}
-        for fname in cls.model_fields:
-            value = getattr(pm_instance, fname, None)
-            if isinstance(value, (datetime, date)):
-                value = value.isoformat()
-            state[fname] = value
+        # The transition event stores the state as JSON, and its checksum is
+        # computed over it, so every field value must be JSON-safe.
+        state: dict[str, Any] = {
+            fname: to_jsonable_python(getattr(pm_instance, fname, None))
+            for fname in cls.model_fields
+        }
 
         transition_cls = cls._transition_event_cls
         if transition_cls is None:
