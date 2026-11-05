@@ -16,6 +16,25 @@ def redis_broker(test_domain) -> RedisBroker:
     return test_domain.brokers["default"]
 
 
+def _consumer_names(redis_broker, stream, group) -> set[str]:
+    """Return the names of the group's consumers on the stream."""
+    names = set()
+    for consumer in redis_broker.redis_instance.xinfo_consumers(stream, group):
+        name = consumer.get("name") or consumer.get(b"name")
+        names.add(name.decode() if isinstance(name, bytes) else str(name))
+    return names
+
+
+def _ack_pending(redis_broker, stream, group) -> None:
+    """Acknowledge the group's pending messages on the stream."""
+    pending = redis_broker.redis_instance.xpending_range(
+        stream, group, min="-", max="+", count=10
+    )
+    for p in pending:
+        mid = p.get("message_id") or p.get(b"message_id")
+        redis_broker.redis_instance.xack(stream, group, mid)
+
+
 @pytest.mark.redis
 class TestCleanupStaleConsumers:
     """Integration tests for _cleanup_stale_consumers() with real Redis."""
@@ -34,32 +53,15 @@ class TestCleanupStaleConsumers:
         redis_broker.redis_instance.xadd(stream, {"data": "msg1"})
         redis_broker.redis_instance.xreadgroup(group, stale, {stream: ">"}, count=1)
         # ACK so stale consumer has 0 pending
-        entries = redis_broker.redis_instance.xinfo_consumers(stream, group)
-        for e in entries:
-            name = e.get("name") or e.get(b"name")
-            if isinstance(name, bytes):
-                name = name.decode()
-            if name == stale:
-                # Find the pending message and ack it
-                pending = redis_broker.redis_instance.xpending_range(
-                    stream, group, min="-", max="+", count=10
-                )
-                for p in pending:
-                    mid = p.get("message_id") or p.get(b"message_id")
-                    redis_broker.redis_instance.xack(stream, group, mid)
+        if stale in _consumer_names(redis_broker, stream, group):
+            _ack_pending(redis_broker, stream, group)
 
         # Create current consumer
         redis_broker.redis_instance.xadd(stream, {"data": "msg2"})
         redis_broker.redis_instance.xreadgroup(group, current, {stream: ">"}, count=1)
 
         # Verify both consumers exist
-        consumers = redis_broker.redis_instance.xinfo_consumers(stream, group)
-        names = {
-            (c.get("name") or c.get(b"name")).decode()
-            if isinstance(c.get("name") or c.get(b"name"), bytes)
-            else str(c.get("name") or c.get(b"name"))
-            for c in consumers
-        }
+        names = _consumer_names(redis_broker, stream, group)
         assert stale in names
         assert current in names
 
@@ -68,13 +70,7 @@ class TestCleanupStaleConsumers:
         assert removed == 1
 
         # Verify stale consumer is gone
-        consumers_after = redis_broker.redis_instance.xinfo_consumers(stream, group)
-        names_after = {
-            (c.get("name") or c.get(b"name")).decode()
-            if isinstance(c.get("name") or c.get(b"name"), bytes)
-            else str(c.get("name") or c.get(b"name"))
-            for c in consumers_after
-        }
+        names_after = _consumer_names(redis_broker, stream, group)
         assert stale not in names_after
         assert current in names_after
 

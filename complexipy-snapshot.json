@@ -1340,30 +1340,6 @@
     ]
   },
   {
-    "path": "tests/adapters/broker/redis/test_cleanup_stale_consumers.py",
-    "file_name": "test_cleanup_stale_consumers.py",
-    "functions": [
-      {
-        "name": "TestCleanupStaleConsumers::test_removes_stale_consumer_with_same_prefix",
-        "complexity": 20
-      }
-    ]
-  },
-  {
-    "path": "tests/adapters/repository/generic/test_claim.py",
-    "file_name": "test_claim.py",
-    "functions": [
-      {
-        "name": "TestClaimNoDoubleClaim::test_no_double_claim_under_contention",
-        "complexity": 16
-      },
-      {
-        "name": "TestClaimHoldBackUnderContention::test_no_row_is_claimed_before_its_earlier_rows_finish",
-        "complexity": 27
-      }
-    ]
-  },
-  {
     "path": "scripts/build_changelog_page.py",
     "file_name": "build_changelog_page.py",
     "functions": [

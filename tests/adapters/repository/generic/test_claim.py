@@ -13,6 +13,8 @@ graceful skip, so it is not a supported concurrent claim store. See ADR-0013
 
 import threading
 import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 import pytest
 
@@ -206,6 +208,46 @@ class TestClaimConformance:
         assert dao.query.filter(status="ready").count() == 3
 
 
+def _run_in_threads(
+    target: Callable[[int], None], n_workers: int, join_timeout: float
+) -> None:
+    """Run ``target(idx)`` in ``n_workers`` threads and check that each one ends."""
+    threads = [threading.Thread(target=target, args=(i,)) for i in range(n_workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=join_timeout)
+        assert not t.is_alive()
+
+
+def _drain_claims(
+    test_domain,
+    idx: int,
+    start: threading.Barrier,
+    claimed_ids: list,
+    errors: list[Exception],
+) -> None:
+    """Claim ready rows as worker ``idx`` until none are left, recording their ids."""
+    ctx = test_domain.domain_context()
+    ctx.push()
+    try:
+        dao = test_domain.repository_for(ClaimJob)._dao
+        start.wait()
+        while True:
+            claimed = dao._claim(
+                Q(status="ready"),
+                {"status": "claimed", "locked_by": f"w{idx}"},
+                limit=3,
+            )
+            if not claimed:
+                break
+            claimed_ids.extend(j.id for j in claimed)
+    except Exception as exc:
+        errors.append(exc)
+    finally:
+        ctx.pop()
+
+
 @pytest.mark.atomic_transactions
 class TestClaimNoDoubleClaim:
     """No two workers ever claim the same row.
@@ -227,32 +269,11 @@ class TestClaimNoDoubleClaim:
         results: dict[int, list] = {i: [] for i in range(n_workers)}
         errors: list[Exception] = []
 
-        def worker(idx: int) -> None:
-            ctx = test_domain.domain_context()
-            ctx.push()
-            try:
-                dao = test_domain.repository_for(ClaimJob)._dao
-                start.wait()
-                while True:
-                    claimed = dao._claim(
-                        Q(status="ready"),
-                        {"status": "claimed", "locked_by": f"w{idx}"},
-                        limit=3,
-                    )
-                    if not claimed:
-                        break
-                    results[idx].extend(j.id for j in claimed)
-            except Exception as exc:
-                errors.append(exc)
-            finally:
-                ctx.pop()
-
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_workers)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=20)
-            assert not t.is_alive()
+        _run_in_threads(
+            lambda idx: _drain_claims(test_domain, idx, start, results[idx], errors),
+            n_workers,
+            join_timeout=20,
+        )
 
         # A worker that died by raising would otherwise leave the other to drain
         # every row, masking the crash behind a green count — surface it.
@@ -591,6 +612,76 @@ class TestClaimHoldBack:
         assert [job.id for job in page] == ["k2-0"]
 
 
+@dataclass
+class _KeyOrderRun:
+    """The state the workers of one key-order contention run share."""
+
+    start: threading.Barrier
+    done: set[str] = field(default_factory=set)
+    out_of_order: list[str] = field(default_factory=list)
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    errors: list[Exception] = field(default_factory=list)
+
+
+def _claim_in_key_order(test_domain, run: _KeyOrderRun) -> None:
+    """Claim keyed rows two at a time, check their order, and finish them.
+
+    Stops after 50 claims in a row that find nothing.
+    """
+    ctx = test_domain.domain_context()
+    ctx.push()
+    try:
+        repo = test_domain.repository_for(KeyedJob)
+        dao = repo._dao
+        run.start.wait()
+        idle = 0
+        while idle < 50:
+            claimed = dao._claim(
+                Q(status="ready"),
+                {"status": "claimed"},
+                limit=2,
+                order_by=["seq"],
+                hold_back=HOLD_BY_KEY,
+            )
+            if not claimed:
+                idle += 1
+                time.sleep(0.005)
+                continue
+            idle = 0
+            _record_out_of_order(claimed, run)
+            # Hold the claim open so the other worker tries to claim
+            # while these rows are still unfinished.
+            time.sleep(0.02)
+            _finish(repo, claimed, run)
+    except Exception as exc:
+        run.errors.append(exc)
+    finally:
+        ctx.pop()
+
+
+def _record_out_of_order(claimed: list, run: _KeyOrderRun) -> None:
+    """Record each claimed row whose earlier rows of its key have not finished."""
+    claimed_ids = {job.id for job in claimed}
+    with run.lock:
+        for job in claimed:
+            key, n = job.id.rsplit("-", 1)
+            earlier = {f"{key}-{m}" for m in range(int(n))}
+            if earlier - run.done - claimed_ids:
+                run.out_of_order.append(job.id)
+
+
+def _finish(repo, claimed: list, run: _KeyOrderRun) -> None:
+    """Mark each claimed row done and save it."""
+    for job in claimed:
+        # Recorded before the commit, so a claim that already
+        # sees the row finished never finds it missing here.
+        with run.lock:
+            run.done.add(job.id)
+        fresh = repo.get(job.id)
+        fresh.status = "done"
+        repo.add(fresh)
+
+
 @pytest.mark.atomic_transactions
 class TestClaimHoldBackUnderContention:
     """Two workers on separate connections never take a key's rows out of
@@ -648,63 +739,14 @@ class TestClaimHoldBackUnderContention:
         )
 
         n_workers = 2
-        start = threading.Barrier(n_workers, timeout=15)
-        done: set[str] = set()
-        out_of_order: list[str] = []
-        lock = threading.Lock()
-        errors: list[Exception] = []
+        run = _KeyOrderRun(start=threading.Barrier(n_workers, timeout=15))
 
-        def worker(idx: int) -> None:
-            ctx = test_domain.domain_context()
-            ctx.push()
-            try:
-                repo = test_domain.repository_for(KeyedJob)
-                dao = repo._dao
-                start.wait()
-                idle = 0
-                while idle < 50:
-                    claimed = dao._claim(
-                        Q(status="ready"),
-                        {"status": "claimed"},
-                        limit=2,
-                        order_by=["seq"],
-                        hold_back=HOLD_BY_KEY,
-                    )
-                    if not claimed:
-                        idle += 1
-                        time.sleep(0.005)
-                        continue
-                    idle = 0
-                    claimed_ids = {job.id for job in claimed}
-                    with lock:
-                        for job in claimed:
-                            key, n = job.id.rsplit("-", 1)
-                            earlier = {f"{key}-{m}" for m in range(int(n))}
-                            if earlier - done - claimed_ids:
-                                out_of_order.append(job.id)
-                    # Hold the claim open so the other worker tries to claim
-                    # while these rows are still unfinished.
-                    time.sleep(0.02)
-                    for job in claimed:
-                        # Recorded before the commit, so a claim that already
-                        # sees the row finished never finds it missing here.
-                        with lock:
-                            done.add(job.id)
-                        fresh = repo.get(job.id)
-                        fresh.status = "done"
-                        repo.add(fresh)
-            except Exception as exc:
-                errors.append(exc)
-            finally:
-                ctx.pop()
+        _run_in_threads(
+            lambda idx: _claim_in_key_order(test_domain, run),
+            n_workers,
+            join_timeout=30,
+        )
 
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_workers)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=30)
-            assert not t.is_alive()
-
-        assert not errors, f"worker(s) raised during claim: {errors}"
-        assert len(done) == len(keys) * per_key
-        assert out_of_order == []
+        assert not run.errors, f"worker(s) raised during claim: {run.errors}"
+        assert len(run.done) == len(keys) * per_key
+        assert run.out_of_order == []
