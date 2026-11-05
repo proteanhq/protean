@@ -229,3 +229,33 @@ def test_category_read_over_store_with_snapshot_unchanged(test_domain):
     assert _ns(direct) == [0, 1, 2]
     assert "SNAPSHOT" not in _types(paged)
     assert "SNAPSHOT" not in _types(direct)
+
+
+def test_read_with_snapshot_positions_reports_where_snapshots_sat(test_domain):
+    """The ``$all`` subscription's read returns the events and the
+    ``global_position`` of each snapshot row it skipped, so the gap check can
+    count those positions as present. ``read`` returns the same events."""
+    store = test_domain.event_store.store
+    _write_event(store, "user-1", 0)  # global position 1
+    _write_snapshot(store, "user", "1")  # global position 2
+    _write_event(store, "user-1", 1)  # global position 3
+    _write_snapshot(store, "user", "2")  # global position 4
+
+    messages, snapshot_positions = store._read_with_snapshot_positions("$all")
+
+    assert _ns(messages) == [0, 1]
+    assert [m.metadata.event_store.global_position for m in messages] == [1, 3]
+    assert snapshot_positions == [2, 4]
+    assert _ns(store.read("$all")) == _ns(messages)
+
+
+def test_read_with_snapshot_positions_without_snapshots_reports_none(test_domain):
+    """A read over a store with no snapshot rows reports no snapshot positions."""
+    store = test_domain.event_store.store
+    _write_event(store, "user-1", 0)
+    _write_event(store, "user-1", 1)
+
+    messages, snapshot_positions = store._read_with_snapshot_positions("$all")
+
+    assert _ns(messages) == [0, 1]
+    assert snapshot_positions == []

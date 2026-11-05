@@ -271,8 +271,9 @@ subscription processes only the contiguous run from its cursor and holds at
 the first gap ([ADR-0025](../adr/0025-all-subscription-gap-safety.md)). A gap
 that stays open for `gap_timeout_seconds` is treated as a rollback: the
 subscription logs it and moves on. A commit slower than that timeout is
-therefore logged and dropped. Single-category subscriptions have no gaps and
-skip this check.
+therefore logged and dropped. A snapshot row also takes a `global_position`.
+The subscription counts that position as present, so it never holds at a
+snapshot. Single-category subscriptions have no gaps and skip this check.
 
 ### Single writer
 
