@@ -142,16 +142,6 @@
     ]
   },
   {
-    "path": "src/protean/cli/upgrade.py",
-    "file_name": "upgrade.py",
-    "functions": [
-      {
-        "name": "_print_rich",
-        "complexity": 17
-      }
-    ]
-  },
-  {
     "path": "src/protean/core/aggregate.py",
     "file_name": "aggregate.py",
     "functions": [
