@@ -34,11 +34,12 @@ The two jobs have grown apart:
   Message DB store exposes its client as `client`, and the observatory reads
   `redis_instance` off a broker.
 
-Earlier decisions that this ADR keeps:
+Four earlier ADRs still hold:
 
 - [ADR-0023](0023-query-api-conformance-contract-and-capability-tiers.md)
-  defines capability flags with named tiers and a conformance suite that checks
-  them. The new event-store and cache flags follow it.
+  defines the conformance contract: a capability marker gates each conformance
+  test, and an adapter that declares a capability must pass every test tagged
+  with it. The new event-store and cache flags follow that contract.
 - [ADR-0028](0028-partition-per-key-sequential-processing.md) defines the
   partition contract. `PartitioningPort` lists its broker operations.
 - [ADR-0024](0024-event-store-read-position-contract.md) fixes which positions
@@ -47,11 +48,13 @@ Earlier decisions that this ADR keeps:
   committing in position order. The event-store Port keeps both guarantees, and
   two capability flags name them.
 
-The port sub-issues of epic
-[#2050](https://github.com/proteanhq/protean/issues/2050) each decide the names
-for one port. This ADR records the shape all ports share and gathers every
-decided name into one set of tables. Every name is copied from the sub-issue
-that decides it.
+Each port sub-issue of epic
+[#2050](https://github.com/proteanhq/protean/issues/2050) decides the names
+for one port. The Decision below states the shape all ports share, and its
+tables gather every decided name. Every name is copied from the sub-issue that
+decides it. Where two sub-issues disagree, or a member has no deciding
+sub-issue, the conflict is listed under
+[Four conflicts wait for a ruling](#19-four-conflicts-between-sub-issues-wait-for-a-ruling).
 
 ## Decision
 
@@ -97,14 +100,20 @@ conflicts with `Protocol`. These two classes do not subclass the Port, and the
 same assignment checks them structurally.
 
 While a `Base*` class remains during the migration, an adapter lists it first,
-as in `class RedisBroker(BaseBroker, BrokerPort)`. With the Port first, the
-Port's stub `__init__` would replace the base class's `__init__` with no error.
+as in `class RedisBroker(BaseBroker, BrokerPort)`. With the Port first, an
+adapter that defines no `__init__` of its own would get the Port's stub
+`__init__` instead of the base class's, with no error.
 
 ### 3. Required Port members are abstract, and no Port is `runtime_checkable`
 
-Every required member is an `@abstractmethod`, so Python refuses to build an
+Every required method is an `@abstractmethod`, so Python refuses to build an
 incomplete adapter. The registry rejects an incomplete class when it first
-loads it, and names the missing members from `__abstractmethods__`.
+loads it, and names the missing methods from `__abstractmethods__`.
+
+`__init__` and the attribute members, such as `name`, `domain` and `config`,
+are outside this rule. `__init__` is not abstract, and `__abstractmethods__`
+holds methods and properties only, so the registry check does not cover
+attributes.
 
 The Ports are not `runtime_checkable`. A runtime `isinstance` check against a
 Protocol sees method names only, not signatures. Code that must know whether a
@@ -124,9 +133,10 @@ abstract.
 ### 5. A declared flag requires its sub-protocol, checked when the service is built
 
 A declared capability flag requires every member of the sub-protocol it
-unlocks. The service checks this when it is built, because `capabilities` is a
-property of the adapter instance and the registry sees only the class. A
-missing member raises `ConfigurationError` that names the flag and the class.
+unlocks. The service runs this check when it is built, because
+`capabilities` is a property of the adapter instance and the registry holds
+only the class. A missing member raises `ConfigurationError` that names the
+flag and the class.
 
 The check runs one way. A class may implement a sub-protocol without declaring
 its flag, because one class can serve several databases with different
@@ -141,9 +151,10 @@ adapters of one technology share stays in that adapter's package, as the
 SQLAlchemy dialects already share `SAProvider`. `BaseDatabaseModel` stays as
 the base for model classes, and `RegisterLookupMixin` stays.
 
-### 7. Each optional feature is a sub-protocol unlocked by one flag
+### 7. An optional feature with its own methods is a sub-protocol unlocked by one flag
 
-A capability flag unlocks a sub-protocol that types the feature's methods. The
+A capability flag in the table below unlocks a sub-protocol that types the
+feature's methods. The
 flag declares the feature. A service method that needs the feature checks the
 flag, and raises `NotSupportedError` or returns the empty value when the
 adapter lacks it, as the service tables below state.
@@ -165,8 +176,26 @@ Each port keeps one flag-to-sub-protocol table:
 | DAO | `BOUNDED_DELETE` | `BoundedDeletePort` | #2079, #2080 |
 | DAO | `INSERT_IF_ABSENT` | `InsertIfAbsentPort` | #2080 |
 
+A flag outside this table unlocks no sub-protocol. It declares a guarantee,
+or it gates members of the core Port. Three of these cases need a note:
+
+- `SCHEMA_MANAGEMENT`, on event stores and providers, guards `create_schema`
+  and `drop_schema`, which are no-op defaults on the core Port.
+- The event-store `CONSUMER_GROUPS` flag gates the `consumer_group_member` and
+  `consumer_group_size` arguments of `get_category_messages`.
+- The broker flags `PUBLISH`, `SUBSCRIBE`, `CONSUMER_GROUPS`, `ACK_NACK`,
+  `DELIVERY_GUARANTEES`, `MESSAGE_ORDERING` and `REPLAY` have no
+  sub-protocol. They declare operations on `BrokerPort` or delivery
+  guarantees.
+
+`DAOPort` has no `capabilities` member. The DAO flags are
+`DatabaseCapabilities` flags, and the `DAO` service reads them from
+`provider.capabilities`.
+
 The broker table is `SUB_PROTOCOLS: dict[BrokerCapabilities, type[BrokerPort]]`
-in `src/protean/port/broker.py`. The members it checks for a flag are the
+in `src/protean/port/broker.py`, as #2070 writes it. Conflict 1 under
+[Four conflicts wait for a ruling](#19-four-conflicts-between-sub-issues-wait-for-a-ruling)
+concerns its value type. The members it checks for a flag are the
 sub-protocol's `__abstractmethods__` minus `BrokerPort.__abstractmethods__`, so
 the table needs no second list of names. The cache table lives in
 `src/protean/port/cache.py`. The provider and DAO checks read
@@ -182,9 +211,12 @@ adapter today return the service, and a test that needs adapter internals reads
 
 ### 9. Records cross a Port as typed values
 
-`dict[str, Any]` arguments and results become a `TypedDict`, a `NamedTuple` or
-a dataclass, following `DLQEntry`. The records are listed under
-[Typed records](#typed-records) below.
+The records listed under [Typed records](#typed-records) below replace
+`dict[str, Any]` arguments and results with a `TypedDict`, a `NamedTuple` or a
+dataclass, following `DLQEntry`. Free-form values keep a dict or mapping of
+`Any`: the message passed to `publish`, the data and metadata of
+`write_message`, the values of `update_all`, `BrokerHealth.configuration` and
+`CacheEntry`.
 
 Every `<Port>Health` record is a dataclass. `EventStoreHealth`, `CacheHealth`
 and `ProviderHealth` carry `pool: PoolStats | None`, and an adapter without a
@@ -198,12 +230,18 @@ The `Broker` service keeps the envelope it builds today (`status`,
 `connected`, `last_ping_ms`, `uptime_seconds`, `details`) and puts the
 adapter's record in `details`.
 
-### 10. All adapters share one constructor
+### 10. The four registered kinds of adapter share one constructor
 
-Every adapter is built as
+Every event store, broker, cache and provider is built as
 `__init__(self, name: str, domain: Domain, config: Mapping[str, Any])`. The
-registry builds every adapter through it. `conn_info` becomes `config` on all
+registry builds each of them through it. `conn_info` becomes `config` on all
 four ports.
+
+DAO and lookup adapters are not registered, and keep their own constructors.
+Today `BaseDAO` takes `(domain, provider, entity_cls, database_model_cls)`.
+After #2080, an adapter DAO is built as
+`(provider, entity_cls, database_model_cls)`, and the `DAO` service holds the
+domain. A lookup is built as `(source, target, *, database_model_cls=None)`.
 
 ### 11. One registry class serves all four ports
 
@@ -216,10 +254,9 @@ four ports.
 
 On the first `get()` of a name, the registry checks the class against
 `__abstractmethods__` and raises `ConfigurationError` naming the missing
-members. Each instance may pass an `after_load` check: the provider instance
+methods. Each instance may pass an `after_load` check: the provider instance
 rejects a provider whose `get_lookups()` lacks a name in `REQUIRED_LOOKUPS`. An
 unknown name raises `ConfigurationError` that lists the registered names.
-Discovery is the part an outside adapter author may later need changed.
 
 ### 12. Services and containers live in flat modules in `src/protean/infra/`
 
@@ -246,11 +283,15 @@ The method list each service keeps is under
 
 ### 13. Names follow four rules
 
-- A Port member's name is a verb and an object in snake case, with no leading
-  underscore.
+- A Port member's name is in snake case, with no leading underscore. An
+  operation's name is a verb and an object where one fits.
 - One concept has one name across every port. Arguments come in one order: the
   stream or key, then the group, then options. `limit` is the name for a count
-  of messages or rows.
+  of messages or rows. The broker sub-issues keep three exceptions: `ack`,
+  `nack` and `ack_partition_fenced` put the message ID between the stream and
+  the group, and `trim` takes `maxlen`, the name of the `retention_maxlen`
+  setting it serves. The `EventStore` service's `read_all` takes `page_size`,
+  because it sets the size of each page, not a total.
 - The event-store Port uses Message DB's function names where they exist:
   `write_message`, `get_stream_messages`, `get_category_messages`,
   `get_last_stream_message`. One read member per scope (stream, category, all)
@@ -258,8 +299,10 @@ The method list each service keeps is under
   version and a category's head position follow from the last-message reads,
   so the service computes them. The cache Port uses `get`, `put` and `delete`,
   with a `_matching` form for patterns.
-- Every Port has `name`, `capabilities`, `ping()`, `health()`,
-  `get_connection()`, `close()` and `clear()`. `clear()` replaces `_data_reset`
+- The event-store, broker, cache and provider Ports each have `name`,
+  `capabilities`, `ping()`, `health()`, `get_connection()`, `close()` and
+  `clear()`. `DAOPort`, `LookupPort` and `DatabaseModelPort` have none of
+  these. `clear()` replaces `_data_reset`
   and `flush_all`. `create_schema()` and `drop_schema()` are on the provider
   and event-store Ports only, behind a `SCHEMA_MANAGEMENT` flag.
 
@@ -268,12 +311,19 @@ The method list each service keeps is under
 Each adapter returns its native handle from `get_connection()`: a SQLAlchemy
 `Session`, the memory store's `MemorySession`, the `Elasticsearch` client, a
 `redis.Redis` client or a Message DB client. No common type covers these
-handles. A caller narrows the result with `isinstance`, as the observatory does
-for `redis.Redis`. `InlineBroker` returns `None`.
+handles. A caller narrows the result with `isinstance`. `InlineBroker`
+returns `None`.
+
+Today nine places in `src/protean/server` probe a broker with
+`hasattr(broker, "redis_instance")`, and two `_RedisStyleBroker` Protocols,
+in `src/protean/server/observatory/sse.py` and
+`src/protean/server/subscription_status.py`, type the probed broker. #2069
+replaces each probe with `broker.get_connection()` narrowed with
+`isinstance(conn, redis.Redis)`, and deletes both Protocols.
 
 `object` replaces `Any` on providers, keeps `object` on caches, and replaces
-`MessageDBStore.client`, the observatory's `redis_instance` probe and its
-`_RedisStyleBroker` type. `Any` would let a caller use the handle without
+`MessageDBStore.client`, the `redis_instance` probes and both
+`_RedisStyleBroker` types. `Any` would let a caller use the handle without
 narrowing it, and mypy would not report it.
 
 ### 15. `trim` is its own sub-protocol behind `STREAM_RETENTION`
@@ -288,8 +338,10 @@ a log-based broker can keep a bounded stream without partitions. Folding `trim`
 into `PartitioningPort` would force an adapter that only trims to write the
 lease members. A no-op default on `BrokerPort` would hide a retention limit
 that the adapter ignores. With its own flag, `StreamSubscription` logs one
-start-up warning when a subscription sets `retention_maxlen` on a broker
-without `STREAM_RETENTION`, and the `Broker` service's `trim` returns 0.
+start-up warning when a subscription sets `retention_maxlen` explicitly on a
+broker without `STREAM_RETENTION`, and the `Broker` service's `trim` returns
+0. A `retention_maxlen` that comes from a subscription profile's default logs
+nothing (#2072).
 
 ### 16. Capability checks read the flag directly
 
@@ -312,8 +364,18 @@ the command works today. `protean.testing` stays a single module, and
 
 ### 18. The port break ships without deprecation shims
 
-The port base classes and the partition contract are Provisional, so they may
-change in a minor release with a changelog notice. Each sub-issue that renames
+`docs/reference/stable-surface.md` lists `BaseProvider`, `BaseBroker`,
+`BaseEventStore`, `BaseCache` and the broker partition contract as
+Provisional, so they may change in a minor release with a changelog notice.
+The page does not name `BaseDAO` or `BaseLookup`. A provider's author
+subclasses both to write the provider, so this decision treats them as part
+of the Provisional provider port.
+
+`domain.event_store.store`, which
+`docs/reference/adapters/eventstore/index.md` and
+`docs/patterns/temporal-queries.md` document, becomes
+`domain.event_store.adapter`. #2058 keeps `.store` returning the same object
+until #2062 removes it. Each sub-issue that renames
 or removes a method a caller can reach adds its row to
 `docs/reference/migration/v0-19.md` and a `.changed.md` or `.removed.md`
 fragment in the same pull request.
@@ -324,17 +386,58 @@ with a `DeprecationWarning` that names their removal in 0.20.0:
 `--db`, `--db-provider`, `--db-uri` and `--db-extra` options, and the
 `protean test test-adapter` flags that change.
 
+### 19. Four conflicts between sub-issues wait for a ruling
+
+The sub-issues disagree in three places, and one member has no deciding
+sub-issue. Each needs the maintainer's ruling before the sub-issue that
+implements it starts. Where a conflict touches a table row, the row copies the
+sub-issue in its "Decided in" column.
+
+1. **The value type of `SUB_PROTOCOLS`.** #2070 types the broker table
+   `dict[BrokerCapabilities, type[BrokerPort]]`. Every value is a Protocol
+   with abstract methods, and mypy in strict mode rejects an abstract class
+   where `type[BrokerPort]` is expected (`type-abstract`). The project allows
+   no ignore comment, so the table needs another value type.
+2. **The type of a database model class.** `model_for` returns
+   `type[DatabaseModelPort]` (#2078), while `dao_for` takes
+   `model_cls: type[BaseDatabaseModel]` (#2076). The repository in
+   `src/protean/core/repository.py` passes the first into the second, which
+   mypy in strict mode rejects. `DAOPort.database_model_cls` is
+   `type[DatabaseModelPort]` (#2078, #2080), and
+   `LookupPort.database_model_cls` is `type[BaseDatabaseModel] | None`
+   (#2077). These four places give one concept two types.
+3. **The arguments of `claim_lock`.** #2079 decides
+   `claim_lock() -> AbstractContextManager[object]` and says #2080 keeps the
+   same signature. #2080 says the same in its prose, and its sketch writes
+   `claim_lock(self, session: SessionProtocol)`. The `DAOPort` table follows
+   the #2080 sketch.
+4. **A home for `_reclaim_idle_pending`.** `BaseBroker._reclaim_idle_pending(stream,
+   group_name, consumer_name, min_idle_ms) -> dict[str, int]` in
+   `src/protean/port/broker.py` has no Port member. `RedisBroker` overrides
+   it, and `src/protean/server/subscription/broker_subscription.py` and
+   `src/protean/server/subscription/stream_subscription.py` call it. It was
+   added after the broker sub-issues were written, so none of them names it.
+   Its default claims nothing and returns `{}`. Before `BaseBroker` is
+   removed, it needs a Port member name, and a choice between a no-op default
+   on `BrokerPort` and a sub-protocol behind a flag. The broker tables do not
+   list it.
+
 ### Name tables
 
-The tables show each Port after all port sub-issues land. Where a later
+The tables show each Port after all port sub-issues land, with two limits
+from Section 19: rows touched by conflicts 2 and 3 follow the sub-issue in
+their "Decided in" column, and the broker tables leave out
+`_reclaim_idle_pending` (conflict 4). Where a later
 sub-issue narrows a type that an earlier one set, the table gives the final
 type, and "Decided in" names every sub-issue that shaped the row.
 
 "Replaces" names the member whose work the new member takes over, and a source
 file at HEAD that defines it. `new` means the member has no predecessor. A row
 marked "attribute" replaces an attribute or class attribute, not a method.
-Members without a body in the Signature column are abstract. A member whose
-signature ends in `: return <value>` is a no-op default.
+A method without a body in the Signature column is abstract. A member whose
+signature ends in `: return <value>` is a no-op default. `__init__` and the
+attribute rows follow neither rule: `__init__` is not abstract, and an
+attribute has no body.
 
 #### EventStorePort
 
@@ -364,8 +467,9 @@ Copied from #2056, with the flags from #2055.
 `config: Mapping[str, Any]`, set by the constructor, replaces the attribute
 `conn_info`. `MessageDBStore.client` is a property today, so the row above
 names it as a method. `_stream_head_position` is removed: the service computes
-a category's head position from `get_last_category_message`. The memory
-adapter's name is `"default"`.
+a category's head position from `get_last_category_message`. Both event
+store adapters take the name `"default"`, because a domain has one event
+store.
 
 #### BrokerPort
 
@@ -484,11 +588,13 @@ Copied from #2066. Unlocked by `PATTERN_MATCH`.
 
 | Member | Signature | Replaces | Decided in |
 |--------|-----------|----------|------------|
-| `keys_matching` | `keys_matching(self, pattern: str) -> list[str]` | new | #2066 |
+| `keys_matching` | `keys_matching(self, pattern: str) -> list[str]` | `_get_all` in `src/protean/port/cache.py` | #2066 |
 | `count_matching` | `count_matching(self, pattern: str) -> int` | `count` in `src/protean/port/cache.py` | #2066 |
 | `delete_matching` | `delete_matching(self, pattern: str) -> None` | `remove_by_key_pattern` in `src/protean/port/cache.py` | #2066 |
 
-`keys_matching` returns distinct keys in ascending order.
+`keys_matching` returns distinct keys in ascending order. It takes over the
+key scan inside `_get_all`, and the `Cache` service reads each key with
+`get`.
 
 #### ProviderPort
 
@@ -515,14 +621,17 @@ Copied from #2076, with members added or narrowed by #2077, #2078 and #2080.
 | `get_lookup` | `get_lookup(self, lookup_name: str) -> type[LookupPort]` | `get_lookup` in `src/protean/utils/query.py` | #2076, #2077 |
 | `get_lookups` | `@classmethod get_lookups(cls) -> Mapping[str, type[LookupPort]]` | `get_lookups` in `src/protean/utils/query.py` | #2077 |
 | `new_session` | `new_session(self) -> SessionProtocol` | `_get_session` in `src/protean/adapters/repository/sqlalchemy.py` | #2080 |
-| `commit` | `commit(self, session: SessionProtocol) -> None` | new | #2080 |
-| `rollback` | `rollback(self, session: SessionProtocol) -> None` | new | #2080 |
+| `commit` | `commit(self, session: SessionProtocol) -> None` | `_commit_if_standalone` in `src/protean/port/dao.py` | #2080 |
+| `rollback` | `rollback(self, session: SessionProtocol) -> None` | `_rollback_if_standalone` in `src/protean/port/dao.py` | #2080 |
 | `flush` | `flush(self, session: SessionProtocol) -> None: return None` | `_flush` in `src/protean/adapters/repository/sqlalchemy.py` | #2080 |
 
 `close` is abstract on `ProviderPort`, while the event-store, broker and cache
 Ports give it a no-op default. `managed` is framework state: the `Provider`
-service reads it, and `ProviderPort` does not list it. `SessionProtocol` stays
-as it is.
+service reads it, and `ProviderPort` does not list it. #2080 writes
+`commit(session)`, `rollback(session)` and `flush(session)` without a type, and
+the table types `session` as `SessionProtocol`, the type `new_session()`
+returns. `SessionProtocol` loses its optional `begin()` note, because
+`get_session()` returns a session that has already begun (#2083).
 
 #### RawQueryProviderPort
 
@@ -552,7 +661,9 @@ Copied from #2080, with `claim_lock` from #2079.
 | `has_table` | `has_table(self) -> bool` | `has_table` in `src/protean/port/dao.py` | #2080 |
 | `claim_lock` | `claim_lock(self, session: SessionProtocol) -> AbstractContextManager[object]: return nullcontext()` | new | #2079, #2080 |
 
-An adapter DAO is built as `(provider, entity_cls, database_model_cls)`.
+After #2080, an adapter DAO is built as
+`(provider, entity_cls, database_model_cls)`, without the `domain` argument
+`BaseDAO` takes today.
 `DAOPort` has no `flush` member: flushing acts on the session, which the
 provider owns.
 
@@ -600,12 +711,12 @@ Copied from #2080. Unlocked by `INSERT_IF_ABSENT`.
 
 | Member | Signature | Replaces | Decided in |
 |--------|-----------|----------|------------|
-| `insert_if_absent` | `insert_if_absent(self, session: SessionProtocol, model: Any) -> bool` | `save_if_absent` in `src/protean/adapters/repository/memory.py` | #2080 |
-| `update_if_absent` | <code>update&#95;if&#95;absent(self, session: SessionProtocol, model: Any, &#42;, expected&#95;version: int &#124; None = None) -&gt; bool</code> | `save_if_absent` in `src/protean/adapters/repository/sqlalchemy.py` | #2080 |
+| `insert_if_absent` | `insert_if_absent(self, session: SessionProtocol, model: Any) -> bool` | `save_if_absent` in `src/protean/adapters/repository/memory.py` and `src/protean/adapters/repository/sqlalchemy.py` | #2080 |
+| `update_if_absent` | <code>update&#95;if&#95;absent(self, session: SessionProtocol, model: Any, &#42;, expected&#95;version: int &#124; None = None) -&gt; bool</code> | `save_if_absent` in `src/protean/adapters/repository/memory.py` and `src/protean/adapters/repository/sqlalchemy.py` | #2080 |
 
 Each member writes `model` only when no other stored row holds one of its
 unique keys, in one atomic step, and returns `False` without writing
-otherwise.
+otherwise. `DictDAO` and `SADAO` each implement both members.
 
 #### LookupPort
 
@@ -763,8 +874,10 @@ inline and Redis brokers, and `total_messages` on the Redis Pub/Sub broker.
 `consumer_groups` holds `count` and `names`, and `streams` holds `count` and
 `names`. `configuration` keeps `dict[str, Any]` because its keys differ per
 broker. `streams` and `memory_estimate_bytes` come from the inline and Redis
-brokers. `error`, `warning`, `hit_rate` and the Redis server fields come from
-the Redis and Redis Pub/Sub brokers.
+brokers. `error`, `warning` and `hit_rate` come from the Redis and Redis
+Pub/Sub brokers. Of the Redis server fields, `connected_clients`,
+`used_memory`, `used_memory_human`, `keyspace_hits` and `keyspace_misses` come
+from both Redis brokers, and the other ten come from the Redis broker only.
 
 ### Capability flags
 
@@ -829,7 +942,9 @@ Flags: `PUBLISH`, `SUBSCRIBE`, `CONSUMER_GROUPS`, `ACK_NACK`,
 | `ORDERED_MESSAGING` | `RELIABLE_MESSAGING`, `MESSAGE_ORDERING` |
 | `ENTERPRISE_STREAMING` | `ORDERED_MESSAGING`, `DEAD_LETTER_QUEUE`, `REPLAY`, `STREAM_PARTITIONING`, `BLOCKING_READ`, `STREAM_RETENTION` |
 
-`InlineBroker` declares `RELIABLE_MESSAGING | DEAD_LETTER_QUEUE`.
+`InlineBroker` declares `RELIABLE_MESSAGING | DEAD_LETTER_QUEUE`. #2071 gives
+it `dlq_trim` and `dlq_depth`, which it lacks today, so it implements all of
+`DeadLetterQueuePort`.
 `RedisBroker` declares `ORDERED_MESSAGING | BLOCKING_READ | DEAD_LETTER_QUEUE
 | STREAM_PARTITIONING`, and gains `STREAM_RETENTION`. `RedisPubSubBroker`
 declares `SIMPLE_QUEUING`.
@@ -883,6 +998,7 @@ sub-issue decides.
 - `category(stream: str) -> str`, a static method
 - `trace_causation`, `trace_effects`, `build_causation_tree` and `verify`,
   which call the module functions below
+- `close()` and `_initialize()`, which stay on the service from the container
 
 The `causation` module holds `CausationNode`, `trace_causation(adapter,
 message_id)`, `trace_effects(adapter, message_id, *, recursive=True)`,
@@ -923,8 +1039,11 @@ caller-facing names `add`, `get`, `_get_all`, `count`, `remove`,
 `get_connection`, `close` and `register_projection`, renames `flush_all` to
 `clear`, and adds `capabilities`. `count`, `_get_all` and
 `remove_by_key_pattern` raise `NotSupportedError` without `PATTERN_MATCH`, and
-`set_ttl` and `get_ttl` raise it without `TTL`. The module also holds the
-`Caches` container.
+`set_ttl` and `get_ttl` raise it without `TTL`. Without `TTL`, `add` stores
+an entry with no expiry, and `add(p, ttl=...)` with an explicit TTL raises
+`NotSupportedError` naming the cache and `TTL`. `_resolve_ttl`, `_ttl_unset`,
+`DEFAULT_TTL`, `TTLValue` and `GET_ALL_MAX` move into the service module, and
+the module also holds the `Caches` container.
 
 **`Provider`** in `src/protean/infra/provider.py` (#2085). It has `adapter:
 ProviderPort`, `name: str`, `managed: bool` (read from `config["managed"]`,
@@ -937,7 +1056,10 @@ and the `Providers` container. Code that needs a technology checks
 **`DAO`** in `src/protean/infra/dao.py` (#2080 to #2083), built as
 `DAO(domain, provider, adapter: DAOPort)`. It holds every method `BaseDAO` had
 except the adapter operations, plus `session_scope()` and the
-`INSERT_IF_ABSENT` dispatch in `save_if_absent`. Three modules split it:
+`INSERT_IF_ABSENT` dispatch in `save_if_absent`. The service's underscore
+methods that framework code outside the service calls take public names:
+`claim`, `delete_top`, `update_all` and `delete_all(criteria)`. `delete_all()`
+with no criteria keeps its current meaning. Three modules split it:
 
 - `dao_read` (#2081): `fetch(criteria, *, offset=0, limit=10, order_by=(),
   with_total=True, fields=None) -> ResultSet`, `count(criteria) -> int`,
@@ -960,8 +1082,9 @@ except the adapter operations, plus `session_scope()` and the
   is built.
 - Framework code calls services, so a feature such as retries or aggregate
   loading has one implementation and every adapter gets it.
-- Every port has capability flags, and each flag gates conformance tests. A
-  service can check what an adapter supports before it calls it.
+- Every port declares capability flags, so a service can check what an
+  adapter supports before it calls it. Each new event-store and cache flag
+  gates conformance tests.
 - Records crossing a Port have types, so mypy checks the keys and fields that
   callers read.
 - The break is large. Every adapter, container and fixture changes, and code
@@ -986,7 +1109,9 @@ A Protocol holds no logic, and the service holds the features once.
 **Use `runtime_checkable` Protocols with `isinstance` checks.** A runtime
 check sees method names only, so a member with the wrong signature passes.
 Explicit subclassing with `@abstractmethod` makes Python refuse an incomplete
-adapter, and the typed assignment makes mypy check signatures.
+adapter. Mypy reports a method with the wrong signature at the class
+definition, and a missing method at the typed assignment. Mypy does not
+compare an adapter's `__init__` with the Port's.
 
 **Put the services in `protean.services`.** "Service" already names domain
 services and application services in Protean, so the package name would
