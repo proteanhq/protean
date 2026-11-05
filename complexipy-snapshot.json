@@ -1340,16 +1340,6 @@
     ]
   },
   {
-    "path": "tests/adapters/broker/inline/test_message_timeout.py",
-    "file_name": "test_message_timeout.py",
-    "functions": [
-      {
-        "name": "test_message_timeout_multiple_messages",
-        "complexity": 16
-      }
-    ]
-  },
-  {
     "path": "tests/adapters/broker/redis/test_cleanup_stale_consumers.py",
     "file_name": "test_cleanup_stale_consumers.py",
     "functions": [
@@ -1370,26 +1360,6 @@
       {
         "name": "TestClaimHoldBackUnderContention::test_no_row_is_claimed_before_its_earlier_rows_finish",
         "complexity": 27
-      }
-    ]
-  },
-  {
-    "path": "tests/dx/test_plugin.py",
-    "file_name": "test_plugin.py",
-    "functions": [
-      {
-        "name": "test_relative_links_resolve_inside_the_render",
-        "complexity": 28
-      }
-    ]
-  },
-  {
-    "path": "tests/test_test_audit.py",
-    "file_name": "test_test_audit.py",
-    "functions": [
-      {
-        "name": "TestChildPytestCommands::test_every_child_pytest_command_turns_randomly_off",
-        "complexity": 19
       }
     ]
   },

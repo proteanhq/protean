@@ -147,35 +147,47 @@ def test_relative_links_resolve_inside_the_render() -> None:
     rendered file sits under it.
     """
     rendered = render_plugin_files(PACK_VERSION)
-    link_pattern = re.compile(r"\]\(([^)]+)\)")
 
     checked = 0
     dangling: list[str] = []
     for path, data in rendered.items():
         if not path.endswith(".md"):
             continue
-        for link in link_pattern.findall(data.decode("utf-8")):
-            link = link.strip()
-            # "[a](<b c.md>)" wraps the target in angle brackets;
-            # "[a](b.md "title")" follows it with a title.
-            if link.startswith("<"):
-                link = link[1:].split(">", 1)[0]
-            else:
-                link = link.split(maxsplit=1)[0] if link else ""
-            target = link.split("#", 1)[0]
-            if not target or re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", target):
-                continue
+        for target in _relative_link_targets(data.decode("utf-8")):
             checked += 1
-            resolved = posixpath.normpath(f"{path}/../{target}")
-            if target.endswith("/"):
-                found = any(p.startswith(f"{resolved}/") for p in rendered)
-            else:
-                found = resolved in rendered
-            if not found:
+            if not _resolves_in_render(path, target, rendered):
                 dangling.append(f"{path} -> {target}")
 
     assert checked
     assert dangling == []
+
+
+_LINK_PATTERN = re.compile(r"\]\(([^)]+)\)")
+
+
+def _relative_link_targets(text: str) -> list[str]:
+    """Return the relative link targets in ``text``, without their ``#`` part."""
+    targets = []
+    for link in _LINK_PATTERN.findall(text):
+        link = link.strip()
+        # "[a](<b c.md>)" wraps the target in angle brackets;
+        # "[a](b.md "title")" follows it with a title.
+        if link.startswith("<"):
+            link = link[1:].split(">", 1)[0]
+        else:
+            link = link.split(maxsplit=1)[0] if link else ""
+        target = link.split("#", 1)[0]
+        if target and not re.match(r"[A-Za-z][A-Za-z0-9+.-]*:", target):
+            targets.append(target)
+    return targets
+
+
+def _resolves_in_render(path: str, target: str, rendered: dict[str, bytes]) -> bool:
+    """Whether ``target``, linked from ``path``, names a rendered file or folder."""
+    resolved = posixpath.normpath(f"{path}/../{target}")
+    if target.endswith("/"):
+        return any(p.startswith(f"{resolved}/") for p in rendered)
+    return resolved in rendered
 
 
 def test_no_package_marker_is_projected() -> None:

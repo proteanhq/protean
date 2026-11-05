@@ -995,22 +995,31 @@ _READS_REPO_ADDOPTS = {
 }
 
 
+def _pytest_command_lists(file: Path) -> list[tuple[int, list[object]]]:
+    """Return the line and items of each list in ``file`` that runs ``-m pytest``.
+
+    An item that is not a constant reads as ``None``.
+    """
+    commands = []
+    for node in ast.walk(ast.parse(file.read_text(encoding="utf-8"))):
+        if not isinstance(node, ast.List):
+            continue
+        values = [e.value if isinstance(e, ast.Constant) else None for e in node.elts]
+        if ("-m", "pytest") in itertools.pairwise(values):
+            commands.append((node.lineno, values))
+    return commands
+
+
 class TestChildPytestCommands:
     """A child pytest that does not read the repo's ``addopts`` passes
     ``-p no:randomly``, so pytest-randomly does not shuffle it."""
 
     def test_every_child_pytest_command_turns_randomly_off(self):
-        commands = []
-        for file in sorted((REPO / "tests").rglob("*.py")):
-            path = file.relative_to(REPO).as_posix()
-            for node in ast.walk(ast.parse(file.read_text(encoding="utf-8"))):
-                if not isinstance(node, ast.List):
-                    continue
-                values = [
-                    e.value if isinstance(e, ast.Constant) else None for e in node.elts
-                ]
-                if ("-m", "pytest") in itertools.pairwise(values):
-                    commands.append((path, node.lineno, values))
+        commands = [
+            (file.relative_to(REPO).as_posix(), line, values)
+            for file in sorted((REPO / "tests").rglob("*.py"))
+            for line, values in _pytest_command_lists(file)
+        ]
 
         assert commands
         missing = [
