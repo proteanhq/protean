@@ -61,7 +61,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from protean.exceptions import ConfigurationError, NoDomainException
-from protean.ir.diff import breaking_change_messages, classify_changes, diff_ir
+from protean.ir.diff import (
+    CompatibilityReport,
+    breaking_change_messages,
+    classify_changes,
+    diff_ir,
+)
 from protean.ir.git import GitError
 from protean.ir.staleness import StalenessStatus, check_staleness
 
@@ -395,24 +400,34 @@ def _check_compat_single(
     has_breaking = report.is_breaking or summary.get("has_breaking_changes", False)
 
     if has_breaking:
-        # The contract list is not filtered by `exclude`, so a published event's
-        # break can block the commit after the report's copy was excluded.
-        messages = breaking_change_messages(result, report)
-        if messages:
-            print(f"Breaking IR changes detected for {domain_module}:", file=sys.stderr)
-            for message in messages:
-                print(f"  ! {message}", file=sys.stderr)
-
-        if config.strictness == "warn":
-            print(
-                "\n(strictness=warn, so the commit is not blocked)",
-                file=sys.stderr,
-            )
-            return True
-
-        return False
+        return _report_breaking(domain_module, result, report, config)
 
     return True
+
+
+def _report_breaking(
+    domain_module: str,
+    result: dict[str, Any],
+    report: CompatibilityReport,
+    config: Any,
+) -> bool:
+    """Print the breaking changes and return whether strictness lets them pass."""
+    # The contract list is not filtered by `exclude`, so a published event's
+    # break can block the commit after the report's copy was excluded.
+    messages = breaking_change_messages(result, report)
+    if messages:
+        print(f"Breaking IR changes detected for {domain_module}:", file=sys.stderr)
+        for message in messages:
+            print(f"  ! {message}", file=sys.stderr)
+
+    if config.strictness == "warn":
+        print(
+            "\n(strictness=warn, so the commit is not blocked)",
+            file=sys.stderr,
+        )
+        return True
+
+    return False
 
 
 def check_compat_hook() -> None:

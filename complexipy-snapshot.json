@@ -110,16 +110,6 @@
     ]
   },
   {
-    "path": "src/protean/cli/hooks.py",
-    "file_name": "hooks.py",
-    "functions": [
-      {
-        "name": "_check_compat_single",
-        "complexity": 16
-      }
-    ]
-  },
-  {
     "path": "src/protean/cli/new.py",
     "file_name": "new.py",
     "functions": [
