@@ -48,7 +48,7 @@ jobs:
     outputs:
       backports: ${{ steps.find.outputs.backports }}
     steps:
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.BACKPORT_APP_ID }}
@@ -187,7 +187,7 @@ jobs:
     concurrency:
       group: backport-${{ matrix.backport.pr }}-${{ matrix.backport.target }}
     steps:
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.BACKPORT_APP_ID }}
