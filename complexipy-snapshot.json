@@ -1116,20 +1116,6 @@
     ]
   },
   {
-    "path": "src/protean/upgrade.py",
-    "file_name": "upgrade.py",
-    "functions": [
-      {
-        "name": "_check_outbox_migrations",
-        "complexity": 21
-      },
-      {
-        "name": "_check_outbox_schema",
-        "complexity": 28
-      }
-    ]
-  },
-  {
     "path": "src/protean/upgrade_opportunities.py",
     "file_name": "upgrade_opportunities.py",
     "functions": [
