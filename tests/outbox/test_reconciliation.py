@@ -19,6 +19,7 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.upcaster import BaseUpcaster
 from protean.domain import Domain
 from protean.fields import Identifier, Integer, String
+from protean.server.engine import Engine
 from protean.utils import outbox as outbox_module
 from protean.utils.eventing import Message, MessageHeaders, Metadata
 from protean.utils.globals import current_domain
@@ -279,8 +280,6 @@ class TestOutboxReconciliation:
 
     def test_engine_startup_sweep_repairs_the_crash_window(self, domain_and_repo):
         """The engine's startup sweep recreates a missing outbox row on boot."""
-        from protean.server.engine import Engine
-
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         message_id = _newest_message_id(domain)
@@ -316,8 +315,6 @@ class TestReconcileRepairsALostRowBehindALaterCommit:
     def test_engine_startup_sweep_repairs_a_lost_row_behind_a_later_commit(
         self, domain_and_repo
     ):
-        from protean.server.engine import Engine
-
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         _fund(domain)
@@ -777,8 +774,6 @@ class TestReconcileSkipsForeignEvents:
     def test_engine_startup_sweep_repairs_behind_a_foreign_tail(
         self, domain_and_repo, foreign_domain
     ):
-        from protean.server.engine import Engine
-
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         [own_id] = _funded_message_ids(domain)
