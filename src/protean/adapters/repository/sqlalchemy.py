@@ -293,6 +293,14 @@ class UTCDateTime(TypeDecorator[_datetime]):
         # tools such as Alembic autogenerate render a column type from its repr.
         return f"{type(self).__name__}({self.impl!r})"
 
+    def coerce_compared_value(self, op: typing.Any, value: typing.Any) -> typing.Any:
+        # A TypeDecorator binds every operand with itself by default, so a
+        # string in ``startswith`` would reach the datetime bind processor,
+        # which rejects it. Only a datetime operand needs the UTC conversion.
+        if isinstance(value, _datetime):
+            return self
+        return self.impl_instance.coerce_compared_value(op, value)
+
     def process_bind_param(self, value: typing.Any, dialect: typing.Any) -> typing.Any:
         if isinstance(value, _datetime):
             return ensure_utc_aware(value).astimezone(UTC).replace(tzinfo=None)

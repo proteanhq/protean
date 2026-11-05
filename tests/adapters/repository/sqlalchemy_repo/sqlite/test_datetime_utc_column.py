@@ -130,3 +130,15 @@ def test_the_column_ddl_is_unchanged(test_domain, repo):
 
     assert isinstance(table.c["at"].type, UTCDateTime)
     assert "\tat DATETIME" in ddl
+
+
+@pytest.mark.parametrize(
+    "lookup, value",
+    [
+        ("startswith", "2026-10-20"),
+        ("endswith", "00.000000"),
+        ("contains", "10-20 12:00"),
+    ],
+)
+def test_a_string_lookup_compares_the_stored_text(slot_repo, lookup, value):
+    assert _names(slot_repo, **{f"at__{lookup}": value}) == ["noon"]
