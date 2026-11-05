@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import difflib
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 
 import typer
 from rich import print
@@ -291,13 +291,6 @@ def _apply(path: str, *, only_installed_optional: bool = False) -> None:
     baseline-only project to a new version does not opt it into ``.mcp.json`` and
     every editor file. ``install`` leaves the flag off and writes every target.
     """
-    from protean.dx import (  # noqa: PLC0415
-        ManagedFileConflict,
-        ManagedFileError,
-        apply_managed_file,
-        diff_managed_file,
-    )
-
     root = _project_root(path)
     had_conflict = False
     had_error = False
@@ -310,38 +303,60 @@ def _apply(path: str, *, only_installed_optional: bool = False) -> None:
         recorded = scoped
 
     for managed_file in _render_managed_files():
-        if only_installed_optional:
-            # Decide scope from the same reader ``check`` uses, so ``refresh``
-            # writes exactly the set ``check`` verifies. ``diff_managed_file``
-            # runs the path checks and reports ``CREATE`` only for a target that
-            # is genuinely absent; a refused target is reported here instead of
-            # being skipped as uninstalled.
-            try:
-                pending = diff_managed_file(root, managed_file)
-            except ManagedFileError as exc:
-                had_error = True
-                print(_error_line(managed_file.target, exc))
-                continue
-            if not _in_scope(managed_file.target, pending.status, recorded):
-                continue
-        try:
-            result = apply_managed_file(root, managed_file)
-        except ManagedFileConflict as exc:
-            had_conflict = True
-            print(
-                f"[red]conflict[/red] {escape(exc.target)}: "
-                f"{escape(_conflict_hint(managed_file))}"
-            )
-        except ManagedFileError as exc:
-            had_error = True
-            print(_error_line(managed_file.target, exc))
-        else:
-            print(_applied_line(result, managed_file))
+        outcome = _apply_one(root, managed_file, only_installed_optional, recorded)
+        had_error = had_error or outcome == "error"
+        had_conflict = had_conflict or outcome == "conflict"
 
     if had_error:
         raise typer.Exit(code=EXIT_USAGE)
     if had_conflict:
         raise typer.Exit(code=EXIT_FAILURE)
+
+
+def _apply_one(
+    root: Path,
+    managed_file: ManagedFile,
+    only_installed_optional: bool,
+    recorded: frozenset[str],
+) -> Literal["applied", "skipped", "conflict", "error"]:
+    """Apply one managed file, print its outcome line, and return the outcome.
+
+    ``"skipped"`` means the target is out of the installed scope and nothing
+    was printed.
+    """
+    from protean.dx import (  # noqa: PLC0415
+        ManagedFileConflict,
+        ManagedFileError,
+        apply_managed_file,
+        diff_managed_file,
+    )
+
+    if only_installed_optional:
+        # Decide scope from the same reader ``check`` uses, so ``refresh``
+        # writes exactly the set ``check`` verifies. ``diff_managed_file``
+        # runs the path checks and reports ``CREATE`` only for a target that
+        # is genuinely absent; a refused target is reported here instead of
+        # being skipped as uninstalled.
+        try:
+            pending = diff_managed_file(root, managed_file)
+        except ManagedFileError as exc:
+            print(_error_line(managed_file.target, exc))
+            return "error"
+        if not _in_scope(managed_file.target, pending.status, recorded):
+            return "skipped"
+    try:
+        result = apply_managed_file(root, managed_file)
+    except ManagedFileConflict as exc:
+        print(
+            f"[red]conflict[/red] {escape(exc.target)}: "
+            f"{escape(_conflict_hint(managed_file))}"
+        )
+        return "conflict"
+    except ManagedFileError as exc:
+        print(_error_line(managed_file.target, exc))
+        return "error"
+    print(_applied_line(result, managed_file))
+    return "applied"
 
 
 def _scan(
@@ -406,14 +421,21 @@ def _scan(
             drifted = True
         if result.status is ApplyStatus.CONFLICT:
             had_conflict = True
-        print(_pending_line(result, managed_file))
-        if show_diff:
-            body = _unified_diff(root, result)
-            if body:
-                # Print the diff plain: it is content, not a status line, and a
-                # stray bracket in it must not be read as rich markup.
-                typer.echo(body)
+        _print_pending(root, result, managed_file, show_diff)
     return had_error, drifted, had_conflict
+
+
+def _print_pending(
+    root: Path, result: ApplyResult, managed_file: ManagedFile, show_diff: bool
+) -> None:
+    """Print a target's pending line, and its unified diff when *show_diff* is set."""
+    print(_pending_line(result, managed_file))
+    if show_diff:
+        body = _unified_diff(root, result)
+        if body:
+            # Print the diff plain: it is content, not a status line, and a
+            # stray bracket in it must not be read as rich markup.
+            typer.echo(body)
 
 
 def _unified_diff(root: Path, result: ApplyResult) -> str:

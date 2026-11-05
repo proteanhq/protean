@@ -110,20 +110,6 @@
     ]
   },
   {
-    "path": "src/protean/cli/dx.py",
-    "file_name": "dx.py",
-    "functions": [
-      {
-        "name": "_apply",
-        "complexity": 18
-      },
-      {
-        "name": "_scan",
-        "complexity": 18
-      }
-    ]
-  },
-  {
     "path": "src/protean/cli/hooks.py",
     "file_name": "hooks.py",
     "functions": [
