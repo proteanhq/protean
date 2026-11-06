@@ -1,8 +1,8 @@
 # Concepts
 
-Why Protean works the way it does: the foundational ideas, the architectural
-patterns it supports, the design decisions behind them, and the internal
-machinery underneath.
+The concept pages explain why Protean works the way it does: the foundational
+ideas, the architectural patterns Protean supports, the design decisions behind
+those patterns, and how Protean's internals work.
 
 For factual lookup of specific options, see
 [Reference](../reference/index.md).
@@ -14,7 +14,8 @@ For step-by-step instructions, see [Guides](../guides/index.md).
 
     ---
 
-    The convictions that guide every design decision in Protean.
+    The convictions Protean's maintainers apply to every design decision in
+    Protean.
 
     [:material-arrow-right-box: Philosophy](philosophy/index.md)
 

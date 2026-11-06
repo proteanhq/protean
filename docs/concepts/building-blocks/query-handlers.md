@@ -8,13 +8,14 @@ state from projections. This separation is fundamental to CQRS: writes flow
 through `domain.process(command)`, reads flow through
 `domain.dispatch(query)`.
 
-**Why not query projections directly?** You can, and for simple lookups, `domain.view_for(Projection).get(id)` is
-perfectly fine. But as read patterns grow in complexity (filtered searches with
-pagination, access control checks, response shaping), that logic needs a home.
-Scattering it across API controllers mixes infrastructure with domain concerns.
-Query handlers give structured reads the same organized treatment that command
-handlers give writes: named intents with validated inputs, routed through the
-domain to a dedicated handler.
+**Why not query projections directly?** You can, and for simple lookups,
+`domain.view_for(Projection).get(id)` works well. But as read patterns grow in
+complexity (filtered searches with pagination, access control checks, response
+shaping), you need one place to put that logic. If you spread that logic across
+API controllers, you mix infrastructure code with domain logic. Query handlers
+give structured reads the same organized treatment that command handlers give
+writes: named intents with validated inputs, routed through the domain to a
+dedicated handler.
 
 ## Facts
 
@@ -26,9 +27,9 @@ read side.
 
 ### A query handler contains multiple handler methods. { data-toc-label="Handlers" }
 
-Each method in a query handler is decorated with `@read` and handles a
-specific query type. A handler can have methods for different queries,
-all targeting the same projection.
+Each method in a query handler is decorated with `@read`. Each such method
+handles a specific query type. A handler can have methods for different
+queries, all targeting the same projection.
 
 ### Handler methods use `@read`, not `@handle`. { data-toc-label="@read Decorator" }
 
@@ -38,12 +39,11 @@ The `@read` decorator is intentionally distinct from `@handle`. While
 
 ### Query handlers always return values. { data-toc-label="Return Values" }
 
-Unlike event handlers (which return nothing) and command handlers (which
-optionally return values), query handlers **always** return data. The return
-value from the handler method passes through `domain.dispatch()` to the
-caller.
+Event handlers return nothing, and command handlers optionally return values.
+Query handlers **always** return data. The return value from the handler method
+passes through `domain.dispatch()` to the caller.
 
-### No UnitOfWork wrapping. { data-toc-label="No UoW" }
+### Query handlers do not wrap reads in a UnitOfWork. { data-toc-label="No UoW" }
 
 Query handlers do not create transactions. Reads are stateless and should
 never cause side effects. The absence of UoW is enforced by the `@read`
@@ -55,23 +55,23 @@ Unlike command and event handlers, query handlers have no async mode, no
 stream subscriptions, and no event store involvement. They execute
 synchronously and return immediately.
 
-### One handler per query. { data-toc-label="Single Handler" }
+### Each query has exactly one handler. { data-toc-label="Single Handler" }
 
-Each query can only be handled by one handler method. This mirrors the
-command handler constraint and ensures unambiguous routing.
+Each query can only be handled by one handler method. Command handlers follow
+the same constraint, so the domain always knows which handler receives a query.
 
-## Best Practices
+## How should you write query handlers?
 
 ### Keep handlers thin. { data-toc-label="Thin Handlers" }
 
 Query handlers should delegate to ReadView for data access. They should
-transform and filter, not compute or aggregate. Complex read logic belongs
-in the projection design, not the handler.
+transform and filter, not compute or aggregate. Put complex read logic in the
+projection design, and keep the handler free of it.
 
 ### Use ReadView, not repositories. { data-toc-label="Use ReadView" }
 
-Access projection data through `domain.view_for(Projection)` which
-returns a read-only facade. This enforces CQRS separation and prevents
+Access projection data through `domain.view_for(Projection)` which returns a
+read-only facade. The read-only facade enforces CQRS separation and prevents
 accidental mutations.
 
 ### Validate through query fields. { data-toc-label="Query Validation" }
@@ -82,7 +82,7 @@ before reaching the handler.
 
 ---
 
-## Next steps
+## Read more about query handlers
 
 For practical details on defining and using query handlers in Protean, see
 the guide:

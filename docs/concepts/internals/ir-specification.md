@@ -2,7 +2,7 @@
 
 The Protean IR captures the **topology** of a domain model (what elements
 exist, what shape they have, and how they connect) in a portable JSON format.
-It is the machine-readable representation of everything a `Domain` knows after
+It records, in machine-readable form, the full metadata of a `Domain` after
 `domain.init()` completes.
 
 The IR answers three kinds of questions:
@@ -14,41 +14,41 @@ The IR answers three kinds of questions:
 - **Infrastructure**: What repositories persist which aggregates? What database
   models map them?
 
-The IR never captures **logic**, what happens inside method bodies, how
+The IR never captures **logic**: what happens inside method bodies, how
 invariants are evaluated, or what transformations handlers perform.
 
 ---
 
-## Philosophy & Principles
+## What principles shape the IR?
 
-**Topology, not logic.**
-The IR captures *what* and *how connected*, never *what happens inside*. When
-the IR says an aggregate has a post-invariant named `order_must_have_items`, it
-records the fact that this guard exists and when it runs, not what it checks.
+**The IR records topology and leaves out logic.** The IR contains *what* exists
+and *how* it is connected, never *what happens inside*. For an aggregate with a
+post-invariant named `order_must_have_items`, the IR records that the guard
+exists and when it runs. It leaves out what the guard checks.
 
-**Declare, don't detect.**
-When the IR needs information not naturally introspectable (like whether an
-event is published), the solution is explicit developer declaration via `Meta`
-options, never static analysis of Python source.
+**Declare, don't detect.** Some information the IR needs cannot be found by
+introspection, such as whether an event is published. The developer declares
+that information explicitly through `Meta` options, and the IR never uses
+static analysis of Python source.
 
-**Aggregate-centric, flow-aware.**
-The primary organization mirrors DDD's aggregate cluster concept. Cross-cutting
-concerns (domain services, process managers, subscribers) get explicit treatment
-in a separate section.
+**Group by aggregate, and show the flows.** The IR groups elements into
+aggregate clusters, following DDD's aggregate cluster concept. The IR places
+cross-cutting concerns (domain services, process managers, subscribers) in a
+separate section.
 
-**Deterministic and diffable.**
-The same domain model always produces byte-identical IR JSON. This is
-non-negotiable for git diffing, compatibility checking, and staleness detection.
+**Produce the same bytes every time, so you can diff them.** The same domain
+model always produces byte-identical IR JSON. This is non-negotiable for git
+diffing, compatibility checking, and staleness detection.
 
-**One document, one bounded context.**
-A single IR document represents one `Domain` instance = one bounded context.
-Multiple aggregates within one bounded context is normal DDD, `Order` and `Payment`
-aggregates in the same domain are clusters within one BC.
+**One document, one bounded context.** A single IR document represents one
+`Domain` instance = one bounded context. Multiple aggregates within one bounded
+context are normal in DDD. For example, `Order` and `Payment` aggregates in the
+same domain are two clusters within one bounded context (BC).
 
-**Lossless within scope.**
-Every piece of structural and behavioral metadata available on the composite
-root after `domain.init()` is capturable in the IR. Downstream tools never need
-to go back to Python source for information they need.
+**Lossless within scope.** The IR can capture every piece of structural and
+behavioral metadata that the composite root holds after `domain.init()`.
+Downstream tools never need to go back to Python source for information they
+need.
 
 **Uniform over special-cased.**
 Every element carries an `element_type` discriminator. Handler wiring always
@@ -61,20 +61,21 @@ MUST ignore keys they don't recognize.
 
 ---
 
-## Compatibility Contract
+## What does the IR promise about compatibility?
 
-### Versioning
+### How is the IR versioned?
 
 The `ir_version` field uses semantic versioning (`MAJOR.MINOR.PATCH`):
 
 - **Patch** (0.1.0 → 0.1.1): Bug fixes in IR generation. No schema changes.
 - **Minor** (0.1.0 → 0.2.0): Additive changes only. New optional keys, new
   sections, new element types, new field `type` values. **Consumers of 0.1.0
-  can read 0.2.0 by ignoring unknown keys and handling unknown `type` values.**
+  can read 0.2.0 by ignoring unknown keys and treating unknown `type` values as
+  opaque.**
 - **Major** (0.x → 1.0): Breaking changes. Keys may be removed, renamed, or
   change meaning.
 
-### Consumer Rules
+### What must a consumer do?
 
 1. **MUST ignore unknown keys** at every level.
 2. **MUST NOT rely on key ordering** for semantics.
@@ -83,7 +84,7 @@ The `ir_version` field uses semantic versioning (`MAJOR.MINOR.PATCH`):
 5. **SHOULD treat an unknown field `type`** as an opaque value, not as an
    error. For example, v0.3.0 added `Decimal`, which a v0.2.0 schema rejects.
 
-### Producer Rules
+### What must a producer do?
 
 1. **MUST NOT remove or rename** existing keys in minor versions.
 2. **MAY add new keys**, top-level sections, element type values, or field
@@ -91,14 +92,15 @@ The `ir_version` field uses semantic versioning (`MAJOR.MINOR.PATCH`):
 3. **MUST include `ir_version`** in every document.
 4. **MUST bump the schema version on any structural change**: Any change to the
    JSON Schema (a new key, section, or element type) bumps the IR schema minor
-   version. The `ir_version` a document carries is the version it was built
-   against.
+   version. Each document carries in `ir_version` the schema version it was
+   built against.
 5. **MUST keep the published schema byte-identical to the runtime schema**: The
-   runtime schema at `src/protean/ir/schema/vX/schema.json` is authoritative;
-   `IRBuilder` emits against it and examples validate against it. The published
-   copy at `docs/assets/ir/vX/schema.json` MUST be a byte-for-byte copy. A test
-   (`tests/ir/test_schema_publication.py`) enforces this in CI, so re-publish the
-   docs copy in the same change that edits the runtime schema.
+   runtime schema at `src/protean/ir/schema/vX/schema.json` is authoritative.
+   `IRBuilder` emits against it, and the examples validate against it. The
+   published copy at `docs/assets/ir/vX/schema.json` MUST be a byte-for-byte
+   copy. A test (`tests/ir/test_schema_publication.py`) enforces this
+   byte-for-byte match in CI. Re-publish the docs copy in the same change that
+   edits the runtime schema.
 
 !!! note "IR schema 1.0"
 
@@ -106,18 +108,18 @@ The `ir_version` field uses semantic versioning (`MAJOR.MINOR.PATCH`):
     **1.0 is cut alongside framework 1.0**, in a separate release-time change,
     once the structure is frozen.
 
-### Version discipline in tooling
+### How does the tooling check the version?
 
 `protean ir check` compares the stored baseline's `ir_version` against the
-current schema version before comparing checksums. A baseline built against a
-different schema version is reported as a **version mismatch** (exit code 3),
-distinct from stale content (exit code 1), because checksums are not comparable
-across schema versions. Regenerate the baseline against the current schema to
-clear it.
+current schema version before comparing checksums. `protean ir check` reports a
+baseline built against a different schema version as a **version mismatch**
+(exit code 3). A version mismatch is distinct from stale content (exit code 1),
+because checksums are not comparable across schema versions. Regenerate the
+baseline against the current schema to clear it.
 
 ---
 
-## Top-Level Structure
+## What does the top level of the document hold?
 
 ```json
 {
@@ -147,7 +149,7 @@ clear it.
 | `diagnostics` | Builder warnings and errors | Informational, IR is valid regardless |
 | `enrichers` | Registered aggregate, command and event enrichers | `Domain.register_*_enricher()` |
 
-### Top-Level Metadata
+### Which metadata keys does the top level carry?
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -159,7 +161,7 @@ clear it.
 | `enrichers` | object | no | Omitted when the domain registers no enrichers |
 | `diagnostics` | list | yes | May be empty `[]` |
 
-### Checksum Algorithm
+### How is the checksum computed?
 
 1. Build the complete IR dict
 2. Remove the `generated_at` and `checksum` keys
@@ -171,7 +173,7 @@ clear it.
 
 ---
 
-## Domain Metadata
+## What does the `domain` section record?
 
 The `domain` section captures bounded context identity and global configuration.
 
@@ -204,12 +206,12 @@ are excluded. The IR captures structural identity, not deployment topology.
 
 ---
 
-## Aggregate Clusters
+## How does the `clusters` section group elements?
 
-The `clusters` section is the heart of the IR. Each key is an aggregate's FQN,
-and the value contains the complete cluster.
+The `clusters` section is the main section of the IR. Each key is an
+aggregate's FQN, and the value contains the complete cluster.
 
-### Cluster Structure
+### What does a cluster contain?
 
 ```json
 {
@@ -234,7 +236,7 @@ An element belongs to a cluster when its `meta_.aggregate_cluster` points to
 the cluster's root aggregate. Empty sub-sections are included with `{}` to
 make the structure predictable.
 
-### Common Element Shape
+### Which attributes does every element carry?
 
 Every element carries a consistent set of base attributes:
 
@@ -321,8 +323,8 @@ Events additionally carry `is_fact_event` and `published` flags:
 - `published`: `true` if part of the BC's published language (defaults to
   `false`, omitted per sparse representation)
 
-When an aggregate has `fact_events: true`, the framework auto-generates a
-fact event class that appears in the cluster's `events` section with both
+When an aggregate has `fact_events: true`, the framework auto-generates a fact
+event class. This class appears in the cluster's `events` section with both
 `is_fact_event: true` and `auto_generated: true`.
 
 ### Command Handler
@@ -330,10 +332,10 @@ fact event class that appears in the cluster's `events` section with both
 Command handlers include a `handlers` map (`__type__` → list of method names),
 `stream_category`, and a `subscription` block.
 
-`sequential_by` appears when the handler was registered with that option. It
-is a non-empty string: the name of the message field used as the partition
-key. The key is absent when the option is unset. What the key does at runtime
-depends on the handler kind and the broker; see
+`sequential_by` appears when the handler was registered with that option. It is
+a non-empty string: the name of the message field used as the partition key.
+The key is absent when the option is unset. The runtime effect of the key
+varies with the handler kind and the broker; see
 [`sequential_by`](../../reference/server/sequential-by.md).
 
 ### Event Handler
@@ -345,7 +347,7 @@ key means the handler processes all events on its stream.
 Event handlers carry an optional `sequential_by` too, with the same meaning
 and type as on command handlers.
 
-### Other Cluster Elements
+### What do the other cluster elements carry?
 
 `application_services`, `repositories`, and `database_models` carry base
 attributes plus `part_of`. Database models additionally carry `database` and
@@ -368,9 +370,9 @@ reading method bodies:
 
 - **`raises`** (aggregates and entities) lists the FQNs of events a method
   raises. It is derived by co-location: every registered event constructed in a
-  method that also calls `raise_`. It can over-report (a method that builds two
-  events and raises one records both) and under-report (an event built in a
-  helper and raised through it is missed).
+  method that also calls `raise_`. It can over-report: a method that builds two
+  events and raises one records both. It can also under-report: an event built
+  in a helper and raised through it is missed.
 - **`invokes`** (command handlers, event handlers, projectors, process
   managers) lists the element methods a handler method calls, each an
   `{element, method}` pair. It is derived by matching a call's method name
@@ -389,17 +391,18 @@ of an edge appears.
 
 ---
 
-## Field Representation
+## How are fields represented?
 
 Fields use a uniform schema with `kind` as the discriminator. Three design
 rules govern field representation:
 
-1. **Flat structure**: All attributes are top-level keys. No nesting.
-2. **Sparse representation**: Only non-default, meaningful attributes are
+1. **Keep fields flat**: All attributes are top-level keys. No nesting.
+2. **Omit default attributes**: Only non-default, meaningful attributes are
    present. A field without `max_length` does not include `"max_length": null`.
-3. **Extensible**: Future field attributes can be added in minor versions.
+3. **Allow new attributes**: Future field attributes can be added in minor
+   versions.
 
-### Field Kinds
+### Which field kinds exist?
 
 | `kind` | Source | Description |
 |--------|--------|-------------|
@@ -417,7 +420,7 @@ rules govern field representation:
 | `"status"` | `Status` | State field with a closed set of values |
 | `"custom"` | `Custom(SomeType, ...)` | Field over a custom Python type |
 
-### Field Attributes
+### Which attributes can a field carry?
 
 All possible keys (no single field has all of them):
 
@@ -444,7 +447,7 @@ All possible keys (no single field has all of them):
 | `via` | FK field name on the child entity |
 | `linked_attribute` | Identity field on the reference target |
 
-### Default Value Serialization
+### How are default values serialized?
 
 | Scenario | IR Representation |
 |----------|-------------------|
@@ -453,7 +456,7 @@ All possible keys (no single field has all of them):
 | No default specified | Key omitted |
 | Callable (`datetime.now`) | `"default": "<callable>"` |
 
-### Type Names
+### Which type names do data fields use?
 
 Data fields use Protean type names: `String`, `Text`, `Integer`, `Float`,
 `Decimal`, `Boolean`, `Date`, `DateTime`, `Identifier`, `Auto`, `List`, `Dict`.
@@ -463,9 +466,9 @@ Association fields omit `type`, the `target` FQN provides type information.
 
 ---
 
-## Handler Wiring
+## How are handlers wired?
 
-### Uniform Handler Format
+### What format do all handlers share?
 
 All handler method values are **lists**, even when cardinality is 1:1. The
 domain constraint (e.g., commands must have exactly one handler) is enforced by
@@ -531,20 +534,20 @@ Process managers extend the handler format with lifecycle metadata:
 | `end` | Whether this handler completes the process |
 | `correlate` | String (same-name mapping) or dict (`{"pm_field": "event_field"}`) |
 
-### Command→Event Causality
+### Why does the IR not record which command causes which event?
 
 The IR does not capture per-command event causality. Events are raised within
-aggregate methods, and handler logic is conditional. A static declaration
-cannot capture this. Consumers can reconstruct the flow graph by combining
-command→handler, handler→aggregate, aggregate→events, and event→handler
-mappings.
+aggregate methods. Handler logic is conditional. A static declaration cannot
+capture which events a given command causes. Consumers can reconstruct the flow
+graph by combining command→handler, handler→aggregate, aggregate→events, and
+event→handler mappings.
 
 ---
 
-## Projections & Read Side
+## How does the IR record projections and the read side?
 
-Projections live outside `clusters` because they may combine data from multiple
-aggregate streams.
+The IR places projections outside `clusters` because they may combine data from
+multiple aggregate streams.
 
 ```json
 {
@@ -575,14 +578,14 @@ local read-side operations, not cross-context messages. Format:
 
 ---
 
-## Cross-Cutting Flows
+## How does the `flows` section record cross-cutting elements?
 
 The `flows` section captures elements spanning aggregate boundaries.
 
 ### Domain Services
 
-Domain services have `part_of` as a sorted list of 2+ aggregate FQNs and carry
-`invariants`.
+Domain services have `part_of` as a sorted list of 2+ aggregate FQNs. They also
+carry `invariants`.
 
 ### Process Managers
 
@@ -607,7 +610,7 @@ Subscribers consume messages from external brokers. They carry `broker` and
 
 ---
 
-## Contracts (Published Language)
+## How does the `contracts` section record the published language?
 
 The `contracts` section summarizes the bounded context's published events:
 
@@ -634,12 +637,12 @@ The `contracts` section summarizes the bounded context's published events:
 ## Enrichers
 
 The `enrichers` section lists the enrichers registered on the domain, by kind.
-An enricher is a function the framework calls on every message or save: an
+An enricher is a function the framework calls on every message or save. An
 aggregate enricher sets fields on an aggregate just before it is persisted, and
-a command or event enricher adds keys to a message's metadata. Each entry is the
-enricher's qualified name (`module.qualname`). A `functools.partial` is
-recorded as `functools.partial(module.qualname)` of the function it wraps, and
-any other callable object without its own `__qualname__` is named by its class.
+a command or event enricher adds keys to a message's metadata. Each entry is
+the enricher's qualified name (`module.qualname`). A `functools.partial` is
+recorded as `functools.partial(module.qualname)` of the function it wraps. Any
+other callable object without its own `__qualname__` is named by its class.
 
 ```json
 {
@@ -650,22 +653,22 @@ any other callable object without its own `__qualname__` is named by its class.
 }
 ```
 
-- Each list keeps registration order, because enrichers run in that order and
-  a later one can overwrite what an earlier one set
-- A kind with no enrichers is left out, and the section is omitted when the
-  domain registers none (added in v0.3.0)
+- Each list keeps registration order, because enrichers run in that order. A
+  later enricher can overwrite the values an earlier one set
+- A kind with no enrichers is left out. The section is omitted when the domain
+  registers none (added in v0.3.0)
 - `protean ir diff` reports a kind whose list changed, including a change of
   order, with the old and new lists. Two lambdas in one module, or two
   instances of one class, get the same name, so a swap between them is not
   reported
 - Domain traversal loads the root directory's files first, then each
   subdirectory in name order, with the files in each directory sorted by name.
-  So enrichers registered by traversed modules land in the same order on every
-  machine
+  As a result, traversed modules register their enrichers in the same order on
+  every machine
 
 ---
 
-## Elements Index
+## What does the elements index list?
 
 A flat lookup table mapping element types to sorted FQN lists:
 
@@ -687,7 +690,7 @@ A flat lookup table mapping element types to sorted FQN lists:
 
 ---
 
-## Identifiers
+## How does the IR identify elements?
 
 ### Fully Qualified Name (FQN)
 
@@ -696,48 +699,51 @@ FQNs are deterministic, human-readable, and match the registry lookup key.
 
 ### Message Type String (`__type__`)
 
-Commands and events carry `{domain.camel_case_name}.{class_name}.{version}`
-for message routing. FQN is structural identity; `__type__` is behavioral
-identity. They serve different purposes and evolve independently.
+Commands and events carry `{domain.camel_case_name}.{class_name}.{version}` for
+message routing. The FQN identifies an element by its module and class name
+(structural identity). The `__type__` string identifies a message by domain,
+class name and version (behavioral identity). They serve different purposes and
+evolve independently.
 
 All cross-references (e.g., `part_of`, `target`) use FQNs. Handler maps use
 `__type__` strings as keys. Apply handlers use FQNs.
 
 ---
 
-## Determinism Guarantees
+## What does the IR guarantee about determinism?
 
-### Key Ordering
+### How are keys ordered?
 
 All dictionary keys are sorted alphabetically at every level: top-level
 sections, elements within sections, fields, handler maps, options, and field
 attributes.
 
-### List Ordering
+### How are lists ordered?
 
-All lists are sorted: FQNs alphabetically, `choices` alphabetically, handler
-method names alphabetically, contracts by `__type__`. The one exception is the
-`enrichers` lists, which keep registration order because the order changes
-what a save or a message ends up with.
+All lists except the `enrichers` lists are sorted: FQNs alphabetically,
+`choices` alphabetically, handler method names alphabetically, contracts by
+`__type__`. The `enrichers` lists keep registration order. The order of
+enrichers changes the final fields of a save and the final metadata of a
+message.
 
-### Value Normalization
+### How are values normalized?
 
 - Strings preserve declared case
-- Numbers use standard JSON formatting; floats and integers are distinct
-  (`0.0` vs `0`)
+- Numbers use standard JSON formatting, which keeps floats and integers
+  distinct (`0.0` vs `0`)
 - Optional attributes with null/default values are omitted (sparse)
 - Empty dicts `{}` are included for empty cluster sub-sections
 - Empty lists `[]` are included in the elements index
 - `invariants` blocks always include both `pre` and `post` keys
 
-### Excluded from Determinism
+### Which keys are excluded from determinism?
 
 - `generated_at`: Always differs
 - `checksum`: Derived from content (excluded from its own computation)
 
 ---
 
-## Extension Points
+## How can the IR be extended?
 
 **New top-level sections** can be added in minor versions. Existing consumers
 ignore them.
@@ -747,18 +753,19 @@ appropriate section.
 
 **New attributes** on existing elements are added as optional keys.
 
-**New field kinds** (e.g., `"json"`, `"encrypted"`) can be introduced.
-Consumers that don't recognize a kind treat the field as opaque metadata.
+**New field kinds** (e.g., `"json"`, `"encrypted"`) can be introduced. When a
+consumer does not recognize a kind, it treats the field as opaque metadata.
 
-**State machines** (future): Fields with `choices` implicitly define state
-vocabulary. A future version may add explicit transition declarations.
+**Declare state machine transitions** (future): Fields with `choices`
+implicitly define state vocabulary. A future version may add explicit
+transition declarations.
 
-**Evolution tracking** (future): Event version transitions and upcaster chain
-metadata.
+**Track schema evolution** (future): A future version may record event version
+transitions and upcaster chain metadata.
 
 ---
 
-## Diagnostics
+## What do diagnostics report?
 
 ```json
 {
@@ -781,12 +788,12 @@ metadata.
 | `message` | string | Human-readable description |
 
 Diagnostics are included in checksum computation (same domain = same
-diagnostics). They do not affect IR validity. An IR with error-level
-diagnostics is still a valid document.
+diagnostics). Diagnostics do not change whether an IR is valid. An IR with
+error-level diagnostics is still a valid document.
 
 ---
 
-## Design Decisions
+## Which design decisions shape the IR?
 
 ### What the IR Does Not Capture
 
@@ -798,46 +805,46 @@ diagnostics is still a valid document.
 - Aggregate business methods (not in framework metadata)
 - Custom Meta options (framework uses a predefined set only)
 
-### Key Trade-offs
+### What does the IR trade off?
 
-**FQN refactoring fragility.**
-FQNs change when code is moved. Commands and events have the refactor-proof
-`__type__` string for behavioral identity. A future version may introduce
-`canonical_id` for structural elements.
+**FQNs break when you refactor.** FQNs change when code is moved. Commands and
+events have the refactor-proof `__type__` string for behavioral identity. A
+future version may introduce `canonical_id` for structural elements.
 
-**Subscriber thinness.**
-Subscribers capture only `broker` and `stream`. Visualization tools cannot
-draw data flow edges through subscribers because internal dispatching is logic.
-A future version may add `dispatches` declarations.
+**Subscribers carry little detail.** Subscribers capture only `broker` and
+`stream`. Visualization tools cannot draw data flow edges through subscribers
+because internal dispatching is logic. A future version may add `dispatches`
+declarations.
 
-**Enum class reference lost.**
-When `choices` come from a Python Enum, the IR captures only the values.
-Protean's field resolution discards the class reference.
+**The IR loses the Enum class reference.** When `choices` come from a Python
+Enum, the IR captures only the values. Protean's field resolution discards the
+class reference.
 
-**Callable defaults.**
-Callables are not JSON-serializable. The sentinel `"<callable>"` indicates a
-default exists without revealing what it produces.
+**Callable defaults cannot be serialized.** Callables are not
+JSON-serializable. The sentinel `"<callable>"` shows that a default exists. It
+does not reveal what the default produces.
 
-**Float serialization.**
-Python's `json.dumps()` is the reference serializer. `0.0` serializes as
-`0.0` (not `0`), preserving type distinction across Python 3.11+.
+**Floats keep their type when serialized.** Python's `json.dumps()` is the
+reference serializer. `0.0` serializes as `0.0` (not `0`), preserving type
+distinction across Python 3.11+.
 
-### Value Objects Across Aggregates
+### Where does a value object shared across aggregates appear?
 
 A VO declared `part_of=Order` appears in the Order cluster, even if Payment
 also references it. The Payment field references the VO by FQN. Cross-cluster
 references are valid. A VO without `part_of` appears in the cluster of the
 aggregate or entity that holds it in a field, including a list or dict field.
 When no aggregate or entity holds it, the VO appears in the cluster of a
-command or event that holds it in a single-value field. A list or dict field on
-a command or event does not place it. A VO that none of these hold appears only
-in the elements index.
+command or event with a single-value field of that VO. A list or dict field on
+a command or event does not place it. If no aggregate, entity, command or event
+places the VO, it appears only in the elements index.
 
-### Diagnostics in Checksum
+### Why are diagnostics part of the checksum?
 
-Diagnostics are deterministic (same domain = same diagnostics) and included in
-the checksum. Upgrading Protean may introduce new diagnostic rules, changing the
-checksum. The expected workflow: upgrade → regenerate IR → review diff → commit.
+Diagnostics are deterministic (same domain = same diagnostics). They are
+included in the checksum. Upgrading Protean may introduce new diagnostic rules,
+changing the checksum. The expected workflow: upgrade → regenerate IR → review
+diff → commit.
 
 ---
 
@@ -850,7 +857,7 @@ The complete JSON Schema (Draft 2020-12) for IR v0.4.0 is available at:
 - **Canonical URL**: `https://docs.proteanhq.com/assets/ir/v0.4.0/schema.json`,
   also available as `protean.ir.SCHEMA_URL`
 
-### Reference Examples
+### Which reference examples ship with the package?
 
 Two reference IR documents are included in the package at
 `protean.ir.EXAMPLES_DIR`:

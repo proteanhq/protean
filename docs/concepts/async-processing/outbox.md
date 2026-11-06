@@ -1,9 +1,9 @@
 # Outbox Pattern
 
-The outbox pattern ensures reliable message delivery by storing messages in the
-same database transaction as your business data, then publishing them to the
-message broker in a separate process. This guarantees that messages are never
-lost, even if the broker is temporarily unavailable.
+With the outbox pattern, Protean stores each message in the same database
+transaction as your business data. A separate process then publishes the stored
+messages to the message broker. A message stays in the outbox while the broker
+is temporarily unavailable. Protean never loses the message.
 
 ## Why Use the Outbox Pattern?
 
@@ -52,69 +52,69 @@ sequenceDiagram
 
 Three things happen, in order:
 
-**1. Event storage.** When an aggregate is saved through a repository,
-any events it raised are written to the outbox table *within the same
-transaction* as the aggregate state. If the transaction rolls back,
-both disappear together; if it commits, both are durable.
+**1. Event storage.** When an aggregate is saved through a repository, any
+events it raised are written to the outbox table *within the same transaction*
+as the aggregate state. If the transaction rolls back, the aggregate state and
+the events disappear together. If the transaction commits, both are durable.
 
-**2. Outbox processing.** The `OutboxProcessor` runs as part of the
-Engine, polling the outbox table, publishing each row to the configured
-broker, and marking the row as `PUBLISHED` on success. Failures are
-retried with exponential backoff. Each poll pushes its status, lock-window,
-and retry-window predicates into the database so a healthy outbox issues a
-single `SELECT` per tick. When `outbox.max_tick_interval` is set, an idle
-processor backs off its poll interval (doubling after each empty poll, up to
-the cap) and snaps back to the base `tick_interval` as soon as a batch is
-found.
+**2. Outbox processing.** The `OutboxProcessor` runs as part of the Engine and
+polls the outbox table. It publishes each row to the configured broker and
+marks the row as `PUBLISHED` on success. Failures are retried with exponential
+backoff. Each poll pushes its status, lock-window, and retry-window predicates
+into the database so a healthy outbox issues a single `SELECT` per tick. When
+`outbox.max_tick_interval` is set, an idle processor doubles its poll interval
+after each empty poll, up to that cap. When a poll finds a batch, the processor
+returns to the base `tick_interval` at once.
 
 **3. Message consumption.** StreamSubscription consumers read from the
 broker stream, just as they would for any other message. They have no
 awareness of the outbox, it's an implementation detail of the publisher side.
 
-The guarantee that holds this together: step 1 is transactional with
-the aggregate save. Steps 2 and 3 are eventually consistent but never
-lossy, a row that's written in the outbox is published exactly once (with
-at-least-once semantics from the consumer's perspective).
+The three steps are reliable because step 1 is transactional with the aggregate
+save. Steps 2 and 3 are eventually consistent but never lossy. The processor
+publishes each row written in the outbox exactly once, with at-least-once
+semantics from the consumer's perspective.
 
-One outbox processor runs per managed database provider that an
-aggregate is stored in. A provider configured with `managed = false` gets
-none. A domain with one database has one processor; a domain with
-aggregates in a `default` database and an `analytics` database has two,
-each publishing its own outbox to the configured broker. A provider that
-no aggregate uses, such as the built-in `memory` provider in a domain
-that stores everything in `default`, gets no processor, because nothing
-writes to its outbox.
+One outbox processor runs per managed database provider that an aggregate is
+stored in. A provider configured with `managed = false` gets none. A domain
+with one database has one processor. A domain with aggregates in a `default`
+database and an `analytics` database has two processors, and each one publishes
+its own outbox to the configured broker. When no aggregate uses a provider,
+nothing writes to the provider's outbox, and the provider gets no processor.
+The built-in `memory` provider in a domain that stores everything in `default`
+is one example.
 
 See the [Outbox Guide](../../guides/server/outbox.md) for enabling the
 outbox, creating the table, configuring retries and cleanup, and
 investigating abandoned messages.
 
-### The event store is the durable anchor
+### Protean writes to the event store first
 
-Step 1 hides one more ordering detail. A unit of work makes two durable writes
-to two independent datastores (the event store and the relational database) and
-no transaction spans both. Protean appends events to the
-**event store first**, and only then commits the relational transaction that
-carries aggregate state and the outbox rows. The event store, the source of
-truth for event-sourced replay, is the durable anchor.
+Step 1 has one more ordering detail. A unit of work makes two durable writes to
+two independent datastores (the event store and the relational database) and no
+transaction spans both. Protean appends events to the **event store first**,
+and only then commits the relational transaction that carries aggregate state
+and the outbox rows. The event store, the source of truth for event-sourced
+replay, holds the durable record that recovery starts from.
 
-This ordering trades an unrecoverable failure for a recoverable one. If the
-process dies between the two writes, the events are durable in the store while
-their outbox rows never committed. The events exist but would never publish.
-For an event-sourced aggregate that gap is closed by **reconciliation**, which
-re-derives the missing outbox rows from the event store, and runs both
-automatically on server startup and on demand via `protean outbox reconcile`.
-Reconciliation skips a state-based aggregate's events. Its relational row is its
-state, and on a transactional provider that row rolled back together with the
-outbox rows, so publishing the event would report a change that was never
-saved. On a provider without transactions, such as Elasticsearch, the row can
-be saved while its outbox row is lost, and that event stays unpublished. The full rationale (and why this was
-chosen over two-phase commit) is in
-[ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md); the
+This ordering trades an unrecoverable failure for a recoverable one. Suppose
+the process dies between the two writes. The events are then durable in the
+store, but their outbox rows never committed. The events exist but would never
+publish. For an event-sourced aggregate, **reconciliation** re-derives the
+missing outbox rows from the event store. Reconciliation runs automatically on
+server startup and on demand via `protean outbox reconcile`. Reconciliation
+skips a state-based aggregate's events. A state-based aggregate's relational
+row is its state. On a transactional provider, that row rolled back together
+with the outbox rows. Publishing the event would then report a change that was
+never saved. On a provider without transactions, such as Elasticsearch, the row
+can be saved while its outbox row is lost, and that event stays unpublished.
+The full rationale, including why Protean chose this ordering over two-phase
+commit, is in the decision record on appending to the event store first
+([ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md)). The
 operational walkthrough is in [Recover from a
 crash](../../guides/server/outbox.md#recover-from-a-crash-reconciliation).
 
-## External Dispatch for Published Events
+## How published events reach external brokers
 
 Events marked with `published=True` can be delivered to external brokers, other bounded
 contexts, partner systems, or analytics pipelines. When `external_brokers` is configured, the
@@ -146,14 +146,14 @@ sequenceDiagram
 ```
 
 Each row is processed independently. If the external broker is down, the
-internal row publishes normally while the external row retries on its own
+internal row still publishes normally. The external row retries on its own
 schedule.
 
-### External Envelope
+### What the external envelope keeps and removes
 
 External messages use a stripped envelope that removes internal-only fields
 (`expected_version`, `asynchronous`, `priority`, event store positions,
-`checksum`) while preserving fields external consumers need: headers for
+`checksum`). The envelope keeps the fields external consumers need: headers for
 deduplication, domain context for routing, and user-provided extensions.
 
 For setup, see
@@ -163,7 +163,7 @@ For architectural trade-offs, see
 
 ---
 
-## Outbox Message Lifecycle
+## How an outbox message moves through its states
 
 Messages in the outbox go through several states:
 
@@ -185,10 +185,10 @@ stateDiagram-v2
 ```
 
 Cleanup removes an abandoned row only when it has no partition key. An
-abandoned row with a partition key stays in the outbox until someone retries
-or discards it with `protean outbox retry` or `protean outbox discard`.
+abandoned row with a partition key stays in the outbox until an operator
+retries or discards it with `protean outbox retry` or `protean outbox discard`.
 
-### Message States
+### What each message state means
 
 | State | Description |
 |-------|-------------|
@@ -199,7 +199,7 @@ or discards it with `protean outbox retry` or `protean outbox discard`.
 | `ABANDONED` | Max retries exceeded, given up |
 | `DISCARDED` | Skipped by an operator, never published, kept for audit |
 
-## Retry Mechanism
+## How Protean retries failed messages
 
 Failed messages are retried with exponential backoff:
 
@@ -223,28 +223,29 @@ abandoned row with a partition key; see [Message Cleanup](#message-cleanup).
 For tuning retry attempts, backoff, and jitter, see the
 [Outbox Guide](../../guides/server/outbox.md#configure-retries).
 
-## Message Cleanup
+## How Protean cleans up old messages { #message-cleanup }
 
-`PUBLISHED`, `ABANDONED` and `DISCARDED` rows are purged on a schedule so
-the outbox table doesn't grow unbounded. Published rows are kept long
-enough to serve as an audit trail; abandoned and discarded rows are kept
-long enough to investigate. An abandoned row with a partition key is
-never purged: it holds its key's later rows, so it stays until someone
-retries or discards it. The retention windows are separately configurable, see [Outbox
-Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
+`PUBLISHED`, `ABANDONED` and `DISCARDED` rows are purged on a schedule so the
+outbox table doesn't grow unbounded. Published rows are kept long enough to
+serve as an audit trail. Abandoned and discarded rows are kept long enough to
+investigate. An abandoned row with a partition key is never purged: it holds
+its key's later rows, so it stays until an operator retries or discards it. You
+can configure the retention windows for published rows and for abandoned and
+discarded rows separately. See [Outbox Guide: Configure
+cleanup](../../guides/server/outbox.md#configure-cleanup).
 
-## Multi-Worker Support
+## How several workers share one outbox { #multi-worker-support }
 
 When running with `--workers N` (see [Multi-Worker Mode](../../reference/server/supervisor.md)), each
 worker runs its own `OutboxProcessor`. Messages are claimed atomically at the
 database level to prevent duplicate publishing.
 
-### Database-Level Locking
+### How workers claim messages at the database level
 
 The processor uses an atomic `UPDATE...WHERE` to claim messages. Under READ
 COMMITTED isolation (PostgreSQL, MSSQL), concurrent updates on the same row
-block until the first transaction commits, then re-evaluate the WHERE clause,
-so only one worker succeeds:
+block until the first transaction commits. Each blocked update then
+re-evaluates the WHERE clause, and only one worker succeeds:
 
 ```python
 --8<-- "concepts/async-processing/outbox/001.py:claim"
@@ -253,7 +254,7 @@ so only one worker succeeds:
 This prevents the TOCTOU (Time-Of-Check-Time-Of-Use) race condition where two
 workers could both read a message as `PENDING` and both attempt to publish it.
 
-### Lock Fields
+### Which fields record the lock
 
 Each outbox message carries lock metadata:
 
@@ -263,7 +264,7 @@ Each outbox message carries lock metadata:
 | `locked_until` | When the lock expires (default 5 minutes) |
 | `status` | Current processing state (`PROCESSING` while locked) |
 
-### Lock Lifecycle
+### How a worker takes and uses a lock
 
 1. The worker calls `claim_batch()`, which selects and claims eligible
    messages in one step. A message is eligible under the rules in the `claim`
@@ -271,19 +272,19 @@ Each outbox message carries lock metadata:
    under an expired lock, and it has retries left. Through `_claim()`, each
    claim sets the status to `PROCESSING` and records the worker ID and lock
    expiry.
-2. `claim_batch()` returns only the messages this worker won. A message that
-   another worker claimed first is not in the batch.
+2. `claim_batch()` returns only the messages that this worker claimed. A
+   message that another worker claimed first is not in the batch.
 3. The claim commits on its own, before any publishing starts.
 4. For each claimed message, the worker publishes to the broker outside any
    transaction. It then records the result in a short `UnitOfWork`: `PUBLISHED`
    on success, or `FAILED` for retry when publishing failed.
 
-### Stale Lock Recovery
+### How Protean recovers a message under a stale lock
 
-If a worker crashes while holding a lock, the lock expires after the configured
-duration (default 5 minutes). The message remains in `PROCESSING` status with
-an expired `locked_until` timestamp. Another worker detects the expired lock
-and the message becomes eligible for reprocessing.
+Suppose a worker crashes while it holds a lock. The lock then expires after the
+configured duration (default 5 minutes). The message remains in `PROCESSING`
+status with an expired `locked_until` timestamp. Another worker detects the
+expired lock and the message becomes eligible for reprocessing.
 
 ## Operational Signals
 
@@ -301,7 +302,7 @@ Runtime visibility is available via Observatory's `/api/outbox`
 endpoint and via direct queries on the outbox repository. See
 [Outbox Guide: Investigate abandoned messages](../../guides/server/outbox.md#investigate-abandoned-messages).
 
-## Related
+## Read the related guides and references
 
 - [Using the Outbox](../../guides/server/outbox.md): Enable the outbox, create the table, configure retries and cleanup, investigate abandoned messages.
 - [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md): Routing events to partner systems.

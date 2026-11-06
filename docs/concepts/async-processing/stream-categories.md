@@ -1,19 +1,25 @@
-# Stream Categories
+# How stream categories group messages
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
-Stream categories are a fundamental concept in Protean that organize and route messages (events and commands) throughout your application. They provide the foundation for message subscriptions, event sourcing, and cross-aggregate coordination.
+Stream categories are a fundamental concept in Protean that organize and route
+messages (events and commands) throughout your application. Message
+subscriptions, event sourcing, and cross-aggregate coordination all depend on
+stream categories.
 
 ## What is a Stream Category?
 
 A stream category is a logical name that groups related messages together. When an aggregate raises events or processes commands, these messages are organized by their stream category, enabling handlers to subscribe to specific message streams.
 
-Think of stream categories as "channels" or "topics" through which aggregates communicate with the rest of your system. All events raised by an aggregate and all commands targeting it are organized under its stream category.
+A stream category is similar to a topic in a message broker: the rest of your
+system reads an aggregate's messages by its stream category name. Protean
+stores every event that an aggregate raises under the aggregate's stream
+category. It does the same for every command sent to that aggregate.
 
 ## How Stream Categories Work
 
-### Message Organization
+### How Protean names a stream
 
 Messages in Protean are organized in streams with a hierarchical naming structure:
 
@@ -27,14 +33,14 @@ For example:
 - `ecommerce::user-456`: All messages for User with ID 456
 - `inventory::product-789`: All messages for Product with ID 789
 
-This structure ensures that:
+Protean names streams this way so that:
 
 1. All messages for a specific aggregate instance are grouped together
 2. Messages can be easily traced to their source aggregate
 3. Event sourcing can reconstruct aggregate state from its message stream
 4. Messages maintain ordering guarantees within a stream
 
-### Domain-Scoped Categories
+### How Protean scopes a category to its domain
 
 Internally, Protean prefixes stream categories with the domain name to create fully qualified stream categories. This ensures uniqueness across different domains in multi-domain applications:
 
@@ -42,11 +48,13 @@ Internally, Protean prefixes stream categories with the domain name to create fu
 --8<-- "concepts/async-processing/stream-categories/001.py:order"
 ```
 
-## Defining Stream Categories
+## How do you define a stream category?
 
 ### Aggregates
 
-Stream categories are primarily defined at the aggregate level. By default, the stream category is automatically derived as the snake_case version of the aggregate's class name:
+Stream categories are primarily defined at the aggregate level. By default,
+Protean derives the stream category from the aggregate's class name, in
+snake_case:
 
 ```python
 --8<-- "concepts/async-processing/stream-categories/001.py:default_names"
@@ -86,13 +94,13 @@ stored in `ecommerce::order:command-<id>`:
 --8<-- "concepts/async-processing/stream-categories/001.py:command"
 ```
 
-## Stream Categories in Handlers
+## How handlers use stream categories
 
 Handlers (event handlers, command handlers, and projectors) use stream categories to determine which message streams they subscribe to.
 Event handlers and projectors read the aggregate's stream category. Command
 handlers read its command stream, `<stream_category>:command`, as shown above.
 
-### Default Behavior
+### What does a handler subscribe to by default?
 
 An event handler subscribes to its aggregate's stream category by default:
 
@@ -100,7 +108,7 @@ An event handler subscribes to its aggregate's stream category by default:
 --8<-- "concepts/async-processing/stream-categories/003.py:default_handler"
 ```
 
-### Explicit Stream Categories
+### Set a handler's stream category explicitly
 
 Handlers can explicitly specify which stream category to subscribe to:
 
@@ -108,24 +116,25 @@ Handlers can explicitly specify which stream category to subscribe to:
 --8<-- "concepts/async-processing/stream-categories/003.py:explicit_handler"
 ```
 
-This allows multiple aggregates to publish to shared stream categories for specific use cases.
-A handler like this one reads every event on the shared stream with `@handle("$any")`,
-for a report or an audit log, and leaves every aggregate as it is.
+This allows multiple aggregates to publish to shared stream categories for
+specific use cases. A handler like this one reads every event on the shared
+stream with `@handle("$any")`, for example to build a report or an audit log.
+The handler leaves every aggregate as it is.
 
 ### Changing Another Aggregate
 
-When an event on one aggregate's stream must change another aggregate, the
-handler stays with the aggregate that owns the event. It issues a command, and
-the other aggregate's command handler does the write. Take an `Order` that
-raises `OrderShipped`, and an `Inventory` that changes through a `ReduceStock`
-command:
+Sometimes an event on one aggregate's stream must change another aggregate. In
+that case, the handler stays with the aggregate that owns the event. The
+handler issues a command. The other aggregate's command handler then does the
+write. Take this example: `Order` raises `OrderShipped`, and `Inventory`
+changes through a `ReduceStock` command:
 
 ```python
 --8<-- "concepts/async-processing/stream-categories/004.py:model"
 ```
 
-The event handler on `Order` issues the command, and Inventory's command handler
-applies it:
+The event handler on `Order` issues the command. Inventory's command handler
+then applies the command:
 
 ```python
 --8<-- "concepts/async-processing/stream-categories/004.py:hand_off"
@@ -138,12 +147,12 @@ In this example:
 - `ReduceStock` is part of `Inventory`, so it is routed to Inventory's command
   handler. `Inventory` changes only through that handler.
 
-Do not make an event handler part of one aggregate and have it handle another
-aggregate's events so it can change its own aggregate from there. `protean
-check` reports `EVENT_HANDLER_FOREIGN_EVENT` when a handler handles an event
-that a single other aggregate in the same domain defines. The
-[event handlers guide](../../guides/consume-state/event-handlers.md#defining-an-event-handler)
-has a full, runnable version of this hand-off.
+Keep each event handler with the aggregate whose events it handles. Do not put
+the handler on the aggregate it changes. `protean check` reports
+`EVENT_HANDLER_FOREIGN_EVENT` for a handler whose event is defined by a single
+other aggregate in the same domain. The [event handlers
+guide](../../guides/consume-state/event-handlers.md#defining-an-event-handler)
+has a full, runnable version of the hand-off from `Order` to `Inventory`.
 
 Learn more:
 
@@ -151,19 +160,19 @@ Learn more:
 - [Command Handlers](../../guides/change-state/command-handlers.md#stream-category)
 - [Projections](../../guides/consume-state/projections.md)
 
-## Stream Categories in Subscriptions
+## How the engine subscribes by stream category
 
 The Protean [Server/Engine](./engine.md) uses stream categories to create subscriptions that poll for new messages and deliver them to handlers.
 
-### Subscription Creation
+### How does the engine create subscriptions?
 
 When the engine starts, it:
 
 1. Identifies all handlers (event handlers, command handlers, projectors)
 2. Infers or reads their stream category
 3. Creates a subscription for each event handler and projector on its stream
-   category, and one subscription per command stream category, which hands
-   each command to the handler registered for it
+   category, and one subscription per command stream category. Each command
+   subscription hands each command to the handler registered for it
 4. Begins polling for messages
 
 ```python
@@ -178,7 +187,7 @@ subscription = engine.subscription_factory.create_subscription(
 )
 ```
 
-### Multiple Handlers, Same Stream
+### Several handlers can share one stream category
 
 Multiple handlers can subscribe to the same stream category. Each handler gets its own subscription with independent position tracking:
 
@@ -190,7 +199,7 @@ Both handlers receive all events from the `order` stream category, but process t
 
 Learn more in [Subscriptions](./subscriptions.md#stream-categories).
 
-## Stream Categories and Event Sourcing
+## How event sourcing uses stream categories
 
 For event-sourced aggregates (marked with `event_sourced=True`), stream categories become even more critical:
 
@@ -205,11 +214,14 @@ In event-sourced aggregates:
 3. **No traditional database** is needed to store aggregate state
 4. **Complete audit trail** is maintained in the event stream
 
-The stream for an event-sourced aggregate instance (e.g., `ecommerce::account-123`) contains the complete history of that aggregate's state changes.
+Each event-sourced aggregate instance has its own stream, such as
+`ecommerce::account-123`. That stream holds the complete history of the
+aggregate's state changes.
 
-## Fact Events and Stream Categories
+## Which stream category do fact events use?
 
-When aggregates are configured with `fact_events=True`, Protean generates special fact events that use a modified stream category:
+When you configure an aggregate with `fact_events=True`, Protean generates fact
+events. These fact events use a modified stream category:
 
 ```python
 --8<-- "concepts/async-processing/stream-categories/006.py:fact_events"
@@ -217,9 +229,9 @@ When aggregates are configured with `fact_events=True`, Protean generates specia
 
 Fact event streams use the pattern `<stream_category>-fact-<aggregate_id>`, allowing separate subscription management for fact events versus delta events.
 
-Learn more in [Raising Events](../../guides/domain-behavior/raising-events.md#fact-events).
+Learn more in [Raising Events](../../guides/domain-behavior/raising-events.md#how-protean-generates-fact-events).
 
-## Best Practices
+## How do you choose good stream categories?
 
 ### 1. Use Descriptive Names
 
@@ -248,7 +260,8 @@ Related aggregates can share prefixes to indicate their relationship:
 
 ### 4. Override When Necessary
 
-Use explicit stream categories when the default doesn't align with your domain language:
+When the default doesn't align with your domain language, use an explicit
+stream category:
 
 ```python
 --8<-- "concepts/async-processing/stream-categories/008.py:override"
@@ -263,7 +276,8 @@ Each aggregate then changes only through its own command handler.
 
 ### 6. Avoid Generic Names
 
-Don't use overly generic stream categories that make it unclear what messages they contain:
+Don't use generic stream categories. A generic name hides what messages the
+stream contains:
 
 ```python
 # fragment
@@ -278,9 +292,9 @@ Don't use overly generic stream categories that make it unclear what messages th
 @domain.aggregate(stream_category="order")
 ```
 
-## Common Patterns
+## Use these common patterns
 
-### Pattern 1: Single Aggregate, Single Handler
+### Pattern 1: One aggregate feeds one handler
 
 The simplest pattern - one aggregate, one handler:
 
@@ -288,7 +302,7 @@ The simplest pattern - one aggregate, one handler:
 --8<-- "concepts/async-processing/stream-categories/009.py:single_handler"
 ```
 
-### Pattern 2: Single Aggregate, Multiple Handlers
+### Pattern 2: One aggregate feeds several handlers
 
 Multiple handlers processing events from the same aggregate:
 
@@ -298,7 +312,7 @@ Multiple handlers processing events from the same aggregate:
 
 Each handler subscribes to the `order` stream category independently.
 
-### Pattern 3: Cross-Aggregate Event Propagation
+### Pattern 3: One aggregate reacts to another aggregate's events
 
 One aggregate reacting to another's events. The event handler stays with
 `Order` and issues a command that `Inventory` handles:
@@ -307,7 +321,7 @@ One aggregate reacting to another's events. The event handler stays with
 --8<-- "concepts/async-processing/stream-categories/011.py:cross_aggregate"
 ```
 
-### Pattern 4: Multi-Aggregate Projections
+### Pattern 4: A projection reads several aggregate streams
 
 Projections built from multiple aggregate streams:
 

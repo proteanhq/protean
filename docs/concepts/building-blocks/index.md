@@ -1,9 +1,9 @@
-# Building Blocks
+# What are Protean's building blocks?
 
 Building blocks are the tactical patterns of Domain-Driven Design: the concrete
 elements you use to model, enforce, and evolve business logic in code. Protean
-provides a decorator-driven element for each pattern, so you can focus on
-domain semantics rather than infrastructure plumbing.
+provides a decorator-driven element for each pattern, so you write the domain
+logic and Protean supplies the infrastructure code.
 
 The elements are organized into four layers, each with a distinct
 responsibility.
@@ -74,11 +74,11 @@ graph TB
     style PERSIST fill:#f3e5f5,stroke:#8e24aa
 ```
 
-## Domain Model
+## Model the business in the domain model
 
-The domain model is the heart of the system. It captures the essential
-complexity of the business in code: the concepts, rules, and relationships that
-give the software its reason to exist.
+The domain model holds the business logic of the system. The domain model
+states the essential complexity of the business in code: the concepts, rules,
+and relationships that the software exists to serve.
 
 | Element | Purpose |
 |---------|---------|
@@ -87,11 +87,11 @@ give the software its reason to exist.
 | [Value Object](./value-objects.md) | Immutable, identity-less object defined entirely by its attributes |
 | [Domain Service](./domain-services.md) | Stateless operation that spans multiple aggregates |
 
-## Application Layer
+## Turn requests into domain operations in the application layer
 
-The application layer sits between the external world and the domain model.
-It translates intentions into domain operations without containing business
-logic itself.
+The application layer receives requests from the external world and passes them
+to the domain model. It translates intentions into domain operations without
+containing business logic itself.
 
 | Element | Purpose |
 |---------|---------|
@@ -99,12 +99,12 @@ logic itself.
 | [Command](./commands.md) | Immutable DTO expressing an intent to change state |
 | [Command Handler](./command-handlers.md) | Receives a command, loads the aggregate, invokes domain logic, and persists |
 
-## Reactive Layer
+## React to past changes in the reactive layer
 
-The reactive layer responds to things that have already happened. It
-propagates state changes, maintains read models, and bridges to external
-systems, all without coupling back to the code that produced the original
-change.
+The reactive layer responds to events, which record changes that have already
+happened. Reactive elements propagate state changes, maintain read models, and
+connect to external systems. They do this without depending on the code that
+produced the original change.
 
 | Element | Purpose |
 |---------|---------|
@@ -117,10 +117,10 @@ change.
 | [Query Handler](./query-handlers.md) | Processes named read intents and returns results from projections |
 | [Subscriber](./subscribers.md) | Consumes messages from an external message broker |
 
-## Persistence
+## Store aggregates with persistence elements
 
-Persistence elements decouple the domain model from storage technology,
-so aggregates remain ignorant of how and where they are stored.
+Persistence elements separate the domain model from storage technology, so
+aggregates do not depend on how and where they are stored.
 
 | Element | Purpose |
 |---------|---------|

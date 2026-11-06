@@ -3,7 +3,10 @@
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
-One of the most critical decisions in Domain-Driven Design is choosing the right domain element type for your concepts. This guide provides practical checklists, examples, and decision flows to help you determine whether a domain concept should be modeled as an **Aggregate**, an **Entity**, or a **Value Object**.
+You make one of the most important decisions in Domain-Driven Design when you
+choose the domain element type for each of your concepts. Use the checklists,
+examples, and decision flows below when you decide whether to model a domain
+concept as an **Aggregate**, an **Entity**, or a **Value Object**.
 
 ## Understanding the Core Differences
 
@@ -21,7 +24,8 @@ One of the most critical decisions in Domain-Driven Design is choosing the right
 - **Mutability**: Mutable - can change state over time
 - **Persistence**: Persisted through their parent aggregate
 - **Access**: Only accessible through their containing aggregate
-- **Lifecycle**: Managed by their containing aggregate
+- **Lifecycle**: Created, changed, and removed through their containing
+  aggregate
 
 ### Value Objects
 - **Purpose**: Represent descriptive aspects without identity
@@ -29,19 +33,21 @@ One of the most critical decisions in Domain-Driven Design is choosing the right
 - **Mutability**: Immutable - cannot be changed once created
 - **Persistence**: Persisted as part of their containing entity/aggregate
 - **Access**: Embedded within entities or aggregates
-- **Lifecycle**: Managed by their containing entity/aggregate
+- **Lifecycle**: Created and replaced through their containing entity/aggregate
 
-## Decision Checklists
+## Check which element type fits a concept
 
 ### Choose an Aggregate when:
 
 - **It's a core business concept**: The concept is central to your domain and represents a significant business entity
 - **It needs direct access**: External systems or application services need to interact with it directly
 - **It manages a consistency boundary**: Business rules require that certain data changes happen together atomically
-- **It controls other entities**: The concept needs to manage the lifecycle of related entities
+- **It controls other entities**: The concept creates, changes, and removes
+  related entities
 - **It's a transaction root**: Operations on this concept and its related data should be transactional
 - **It has complex business behavior**: The concept encapsulates significant business logic and rules
-- **It generates domain events**: Changes to this concept trigger events that other parts of the system care about
+- **It generates domain events**: Changes to this concept trigger events that
+  other parts of the system react to
 
 ### Choose an Entity when:
 
@@ -62,9 +68,9 @@ One of the most critical decisions in Domain-Driven Design is choosing the right
 - **It represents a atomic concept**: The concept is meaningful only when all its attributes are considered together
 - **It simplifies the domain model**: Using this concept as a value object reduces complexity
 
-## Practical Examples
+## See the element types in worked examples
 
-### E-commerce Domain Examples
+### Model an e-commerce domain
 
 #### Order (Aggregate)
 ```python
@@ -103,7 +109,7 @@ One of the most critical decisions in Domain-Driven Design is choosing the right
 - ✅ Frequently shared across entities
 - ✅ Atomic concept (amount + currency together)
 
-### Blog Domain Examples
+### Model a blog domain
 
 #### Post (Aggregate)
 ```python
@@ -120,11 +126,11 @@ One of the most critical decisions in Domain-Driven Design is choosing the right
 --8<-- "concepts/building-blocks/choosing-element-types/002.py:email"
 ```
 
-## Common Code Smells and Anti-Patterns
+## Spot common code smells and anti-patterns
 
-### 🚩 Aggregate Red Flags
+### 🚩 Spot mistakes in aggregates
 
-**Too Many Aggregates**
+**Making too many aggregates**
 ```python
 --8<-- "concepts/building-blocks/choosing-element-types/003.py:too_many_aggregates"
 ```
@@ -147,14 +153,14 @@ class Order:
 --8<-- "concepts/building-blocks/choosing-element-types/005.py:missing_aggregate"
 ```
 
-### 🚩 Entity Red Flags
+### 🚩 Spot mistakes in entities
 
 **Entity as Value Object**
 ```python
 --8<-- "concepts/building-blocks/choosing-element-types/001.py:entity_as_value_object"
 ```
 
-**Direct Entity Access**
+**Accessing an entity directly**
 ```python
 # fragment
 # ❌ Bad: Accessing entity directly instead of through aggregate
@@ -162,15 +168,15 @@ item = repository.get_order_item(item_id)  # Wrong!
 # Should be: order.get_item(item_id)
 ```
 
-### 🚩 Value Object Red Flags
+### 🚩 Spot mistakes in value objects
 
-**Mutable Value Object**
+**Making a value object mutable**
 ```python
 # fragment
 --8<-- "concepts/building-blocks/choosing-element-types/006.py:mutable_value_object"
 ```
 
-**Value Object with Identity**
+**Giving a value object an identity**
 ```python
 # fragment
 --8<-- "concepts/building-blocks/choosing-element-types/007.py:value_object_with_identity"
@@ -181,11 +187,11 @@ item = repository.get_order_item(item_id)  # Wrong!
 --8<-- "concepts/building-blocks/choosing-element-types/004.py:primitive_obsession"
 ```
 
-## Team Decision Flow
+## Decide on element types as a team
 
 Use this lightweight process for team discussions about domain element choices:
 
-### Quick Reference
+### Decide quickly with the flowchart
 
 For rapid decisions, use this simplified flowchart:
 
@@ -208,9 +214,9 @@ flowchart TD
     class C valueObject
 ```
 
-### Step-by-Step Process
+### Decide step by step
 
-#### Step 1: Identity Check
+#### Step 1: Check for identity
 
 Does this concept have a unique identity that matters to the business?
 
@@ -218,7 +224,7 @@ Does this concept have a unique identity that matters to the business?
 
 *If yes → Continue to Step 2*
 
-#### Step 2: Aggregate Boundary Check
+#### Step 2: Check the aggregate boundary
 
 Does this concept need to be accessed directly from outside the domain?
 
@@ -226,7 +232,7 @@ Does this concept need to be accessed directly from outside the domain?
 
 *If no → Consider Entity (go to Step 5)*
 
-#### Step 3: Aggregate Validation
+#### Step 3: Confirm the aggregate
 
 - Is this a core business concept?
 - Does it need to control a consistency boundary?
@@ -235,7 +241,7 @@ Does this concept need to be accessed directly from outside the domain?
 
 *If 3+ yes → Aggregate. Otherwise, reconsider Entity.*
 
-#### Step 4: Value Object Validation
+#### Step 4: Confirm the value object
 
 - Can this be immutable?
 - Is identity truly irrelevant?
@@ -244,7 +250,7 @@ Does this concept need to be accessed directly from outside the domain?
 
 *If 3+ yes → Value Object. Otherwise, reconsider Entity.*
 
-#### Step 5: Entity Validation
+#### Step 5: Confirm the entity
 
 - Does it belong to a clear aggregate?
 - Does it need to change over time?
@@ -255,7 +261,7 @@ Does this concept need to be accessed directly from outside the domain?
 
 ## When in Doubt
 
-### Default Guidelines
+### Follow these defaults
 
 1. **Start with Value Object**: If you're unsure, try modeling as a value object first. It's easier to promote to entity/aggregate later than to demote.
 
@@ -269,10 +275,13 @@ Does this concept need to be accessed directly from outside the domain?
 
 - **Person**: Usually Entity (has identity that matters)
 - **Address**: Usually Value Object (descriptive, no identity)
-- **Money/Price**: Always Value Object (amount + currency)
+- **Money/Price**: Almost always Value Object (amount + currency)
 - **Email/Phone**: Usually Value Object (format validation)
 - **Order/Invoice**: Usually Aggregate (transaction boundary)
 - **Line Items**: Usually Entity (part of order/invoice)
 
 !!!note
-    Remember: These decisions aren't permanent. As your understanding of the domain evolves, you can refactor elements to better reflect the business reality. The key is to make informed decisions based on the business requirements and domain understanding rather than technical convenience.
+    Remember: These decisions aren't permanent. As your understanding of the
+    domain evolves, you can refactor elements to better reflect the business
+    reality. Base each decision on the business requirements and on what you
+    know about the domain. Do not base it on what is convenient to code.

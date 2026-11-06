@@ -1,29 +1,29 @@
 # Event Handlers
 
-Event handlers react to [domain events](./events.md) by orchestrating side
-effects, syncing state across [aggregates](./aggregates.md), sending
-notifications, triggering downstream processes, or any other work that should
-happen *after* a state change has occurred.
+Event handlers react to [domain events](./events.md) with work that runs
+*after* a state change. That work includes orchestrating side effects, syncing
+state across [aggregates](./aggregates.md), sending notifications, and
+triggering downstream processes.
 
 Event handlers follow a fire-and-forget pattern. They consume events
-asynchronously, they do not return values, and the code that raised the
-original event has no knowledge of which handlers will respond. This
-decoupling is what makes event-driven architectures flexible and evolvable.
+asynchronously and do not return values. The code that raised the original
+event does not know which handlers will respond. This decoupling is what makes
+event-driven architectures flexible and evolvable.
 
 ## Facts
 
 ### Event handlers are always associated with an aggregate. { data-toc-label="Linked to Aggregate" }
 
-Every event handler declares the aggregate it belongs to. This association
-determines the stream of events the handler subscribes to by default and
-anchors the handler within a specific aggregate's boundary.
+Every event handler declares the aggregate it belongs to. Protean uses this
+aggregate to pick the stream of events the handler subscribes to by default.
+The handler is also part of that aggregate's boundary.
 
 ### Event handlers process events asynchronously. { data-toc-label="Asynchronous" }
 
 Event handlers are designed for asynchronous processing. The aggregate that
 raised the event does not wait for the handler to finish. It commits its own
-transaction and moves on. The handler picks up the event later, typically
-through the server engine's subscription mechanism.
+transaction, and the code that raised the event continues. The handler receives
+the event later, usually through the server engine's subscription mechanism.
 
 ### Event handlers do not return values. { data-toc-label="No Return Values" }
 
@@ -33,15 +33,15 @@ either succeed silently or raise errors for the infrastructure to manage.
 
 ### Each handler method processes one event type. { data-toc-label="Single Event Type" }
 
-A handler class can contain multiple methods, but each method is bound to
-exactly one event type through a decorator. This keeps each piece of reaction
-logic focused and independently testable.
+A handler class can contain multiple methods. A decorator binds each method to
+exactly one event type. This keeps each piece of reaction logic focused and
+independently testable.
 
 ### Event handlers can listen across aggregate boundaries. { data-toc-label="Cross-Aggregate" }
 
 While an event handler is associated with one aggregate, it can subscribe to
 events from *other* aggregates by specifying a source stream or stream
-category. This is the primary mechanism for eventual consistency, one aggregate
+category. This is the primary mechanism for eventual consistency. One aggregate
 reacts to changes in another without direct coupling.
 
 ### Event handlers run within a Unit of Work. { data-toc-label="Transactions" }
@@ -53,16 +53,17 @@ is rolled back.
 
 ### Event handlers enable eventual consistency. { data-toc-label="Eventual Consistency" }
 
-When a business process spans multiple aggregates, event handlers are the
-mechanism that propagates changes from one aggregate to another. Instead of
-a single transaction that locks multiple aggregates, each aggregate commits
-independently and event handlers bridge the gap asynchronously.
+When a business process spans multiple aggregates, event handlers propagate
+changes from one aggregate to another. No single transaction locks multiple
+aggregates. Each aggregate commits independently, and event handlers apply the
+changes to the other aggregates asynchronously.
 
 ### Event handlers coordinate side effects. { data-toc-label="Side Effects" }
 
-Beyond cross-aggregate state synchronization, event handlers are where work that
-should follow a domain event goes: sending emails, updating caches, calling
-external APIs, writing audit logs, or publishing messages to downstream systems.
+Beyond cross-aggregate state synchronization, event handlers run the work that
+follows a domain event. That work includes sending emails, updating caches,
+calling external APIs, writing audit logs, and publishing messages to
+downstream systems.
 
 A single handler method either persists or talks to an external system, never
 both. The method runs inside a Unit of Work, so an external call after a
@@ -71,7 +72,7 @@ the two: a persisting method raises an event, and a calling method handles it.
 See [Calling External Systems from
 Handlers](../../patterns/calling-external-systems-from-handlers.md).
 
-## Event Handlers vs. Related Elements
+## How do event handlers differ from related elements?
 
 | Aspect | Event Handler | Projector | Subscriber | Query Handler |
 |--------|--------------|-----------|------------|---------------|
@@ -82,7 +83,7 @@ Handlers](../../patterns/calling-external-systems-from-handlers.md).
 | **Returns** | Nothing | Nothing | Nothing | Always returns data |
 | **UoW** | Yes (per handler method) | Yes (per handler method) | No | No |
 
-## Best Practices
+## How should you design event handlers?
 
 ### Keep handlers idempotent. { data-toc-label="Idempotency" }
 
@@ -90,7 +91,7 @@ Events may be delivered more than once, during retries, resubscriptions, or
 infrastructure recovery. A well-designed handler produces the same outcome
 whether it processes an event once or multiple times.
 
-### Handle errors gracefully. { data-toc-label="Error Handling" }
+### Define what happens when a handler fails. { data-toc-label="Error Handling" }
 
 Event handlers can define error-handling logic for when processing fails.
 Unhandled exceptions should not silently disappear; they should be logged,
@@ -98,14 +99,13 @@ retried, or routed to a dead-letter mechanism so operators can investigate.
 
 ### Avoid mixing aggregate responsibilities. { data-toc-label="Single Responsibility" }
 
-A single handler method should concern itself with one aggregate's state. If
-you find a handler method loading and modifying two different aggregates,
-split the work into separate handlers or let the second aggregate react to
-its own event.
+A single handler method should change only one aggregate's state. If you find a
+handler method loading and modifying two different aggregates, split the work
+into separate handlers or let the second aggregate react to its own event.
 
 ---
 
-## Next steps
+## Learn more about event handlers
 
 For practical details on defining and using event handlers in Protean, see the guide:
 

@@ -1,24 +1,24 @@
-# Priority Lanes
+# Keep production events ahead of bulk work with priority lanes
 
 ## The Problem
 
 In a CQRS system with asynchronous event processing, all events share the same
 pipeline: the outbox publishes them to a single Redis Stream, and the Engine's
-`StreamSubscription` processes them in order. This works well under normal
-conditions, but it creates a serious problem when batch operations enter the
-picture.
+`StreamSubscription` processes them in order. This single pipeline works well
+under normal load. It causes a serious problem once batch operations start
+producing events.
 
 Consider this scenario: your e-commerce platform has been running for months.
 You need to backfill a new `loyalty_tier` field onto 500,000 existing customer
 records. The migration script loads each customer, sets the tier, and saves,
 producing 500,000 `CustomerUpdated` events.
 
-Those events flood the same stream that handles real-time customer
-registrations, order placements, and payment confirmations. The Engine processes
-them in FIFO order, so your production events are now stuck behind half a
-million migration events. A customer who just placed an order waits minutes
-(or longer) for their confirmation email because the projector is busy
-replaying backfill events.
+Those events go to the same stream that carries real-time customer
+registrations, order placements, and payment confirmations. The Engine
+processes them in FIFO order, so your production events are now stuck behind
+half a million migration events. A customer who just placed an order waits
+minutes (or longer) for their confirmation email. The projector is busy
+replaying backfill events first.
 
 ```
 Without priority lanes:
@@ -31,11 +31,12 @@ Without priority lanes:
 ```
 
 You could pause the migration, wait for production to catch up, and resume in
-small batches, but this is manual, error-prone, and slow. You could run the
-migration at 3 AM, but that only works if your traffic has a quiet window.
+small batches. That approach is manual, error-prone, and slow. You could run
+the migration at 3 AM, but that only works if your traffic has a quiet window.
 
-Priority lanes solve this by routing production and migration events to
-separate streams and always draining production first.
+Priority lanes stop migration events from delaying production events. They
+route production and migration events to separate streams and always drain
+production first.
 
 ---
 
@@ -54,9 +55,9 @@ The split happens at two points in the pipeline:
    the primary stream.
 
 2. **StreamSubscription** (consume side): When reading messages, the
-   subscription first does a non-blocking read on the primary stream. Only if
-   the primary stream is empty does it make one short blocking read that waits
-   on both the primary and the backfill stream.
+   subscription first does a non-blocking read on the primary stream. Only when
+   the primary stream is empty does the subscription make one short blocking
+   read on both the primary and the backfill stream.
 
 ```
                         Outbox                     Redis Streams           Engine
@@ -73,22 +74,22 @@ Migration   ──► Outbox(priority=-50) ──► "customer:backfill"  ──
 
 This design has several important properties:
 
-- **Zero configuration on handlers**: Event handlers and projectors do not need
+- **Handlers need no configuration**: Event handlers and projectors do not need
   to know about priority lanes. They process events the same way regardless of
   which lane the event arrived on.
 
-- **No message loss**: Both lanes use the same consumer group and acknowledgment
-  mechanism. Failed messages are retried and eventually moved to a dead letter
-  queue, just like standard processing.
+- **No message is lost**: Both lanes use the same consumer group and
+  acknowledgment mechanism. Failed messages are retried and eventually moved to
+  a dead letter queue, just like standard processing.
 
 - **An idle Engine picks up production events at once**: On the Redis broker,
   the blocking read waits on both streams at once. If a production event
-  arrives while the Engine is idle, the read returns with it. When one read
-  returns entries on both streams, the primary entries are processed first.
+  arrives at an idle Engine, the read returns with it. When one read returns
+  entries on both streams, the primary entries are processed first.
 
 ---
 
-## Priority Levels
+## What priority levels does Protean provide?
 
 Protean provides a `Priority` enum with five levels. The numeric values are
 `IntEnum` members, so they can be compared and used as integers.
@@ -102,17 +103,17 @@ Protean provides a `Priority` enum with five levels. The numeric values are
 | `CRITICAL` | 100 | System-critical operations such as security events or compliance-related actions. Highest outbox fetch priority. |
 
 The **threshold** (configurable, default `0`) determines which messages go to
-the backfill lane. Messages with `priority < threshold` are routed to backfill;
-messages with `priority >= threshold` stay on the primary lane.
+the backfill lane. Messages with `priority < threshold` are routed to backfill.
+Messages with `priority >= threshold` stay on the primary lane.
 
 With the default threshold of `0`:
 
 - `BULK` (-100) and `LOW` (-50) go to the backfill lane.
 - `NORMAL` (0), `HIGH` (50), and `CRITICAL` (100) stay on the primary lane.
 
-Within each lane, messages are processed in FIFO order. Within the outbox,
-messages are fetched in descending priority order, so `CRITICAL` messages are
-published before `HIGH` messages, which are published before `NORMAL` messages.
+Within each lane, messages are processed in FIFO order. The outbox fetches
+messages in descending priority order. It publishes `CRITICAL` messages before
+`HIGH` messages, and `HIGH` messages before `NORMAL` messages.
 
 ---
 
@@ -120,7 +121,7 @@ published before `HIGH` messages, which are published before `NORMAL` messages.
 
 There are two ways to set the priority for events produced by a command.
 
-### Context Manager
+### Set the priority for a block with a context manager
 
 Use `processing_priority()` to set the priority for all commands processed
 within a block. This is the recommended approach for migration scripts and
@@ -131,16 +132,17 @@ batch jobs:
 --8<-- "concepts/async-processing/priority-lanes/001.py:context_manager"
 ```
 
-Contexts can be nested. The innermost context wins:
+Contexts can be nested. When contexts are nested, the innermost context sets
+the priority:
 
 ```python
 --8<-- "concepts/async-processing/priority-lanes/001.py:nested"
 ```
 
-Priority is always restored when the context exits, even if an exception is
-raised.
+Protean always restores the priority when the context exits. It restores the
+priority even if an exception is raised.
 
-### Explicit Parameter
+### Pass the priority to `domain.process()`
 
 Pass `priority` directly to `domain.process()` for one-off overrides:
 
@@ -155,7 +157,7 @@ The explicit parameter takes precedence over any active context manager:
 --8<-- "concepts/async-processing/priority-lanes/001.py:override"
 ```
 
-### Priority Resolution Order
+### How does Protean resolve the priority?
 
 When `domain.process()` is called, the priority is resolved as:
 
@@ -168,21 +170,21 @@ When `domain.process()` is called, the priority is resolved as:
 The resolved priority is stored in two places:
 
 1. **Command metadata** (`DomainMeta.priority`): Embedded in the command when
-   it is written to the event store. This ensures the priority survives across
-   process boundaries, when the Engine picks up a command asynchronously, it
-   reads the priority from the metadata and reconstructs the `processing_priority()` context before
-   running the handler.
+   it is written to the event store. The command carries the priority across
+   process boundaries. When the Engine picks up a command asynchronously, it
+   reads the priority from the metadata. It then reconstructs the
+   `processing_priority()` context before running the handler.
 
 2. **Outbox records** (`Outbox.priority`): Written by `UoW.commit()` when
    events are persisted to the outbox table. The OutboxProcessor reads this
    value to decide which Redis Stream (primary or backfill) to publish to.
 
-This means priority lanes work correctly regardless of whether commands are
-processed synchronously or asynchronously.
+With the priority stored in both places, priority lanes work correctly whether
+commands are processed synchronously or asynchronously.
 
 ---
 
-## Configuration
+## Configure priority lanes
 
 Enable priority lanes in your `domain.toml`:
 
@@ -193,7 +195,7 @@ threshold = 0           # Priority values below this go to backfill (default: 0)
 backfill_suffix = "backfill"  # Suffix for the backfill stream name (default: "backfill")
 ```
 
-### Configuration Options
+### Which options can you set?
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -201,7 +203,7 @@ backfill_suffix = "backfill"  # Suffix for the backfill stream name (default: "b
 | `threshold` | int | `0` | Priority values strictly below this threshold are routed to the backfill lane. Values at or above the threshold stay on the primary lane. |
 | `backfill_suffix` | string | `"backfill"` | Suffix appended to the stream category to form the backfill stream name. For example, with `stream_category="customer"` and `backfill_suffix="backfill"`, the backfill stream is `customer:backfill`. |
 
-### Environment-Specific Configuration
+### Enable priority lanes only in production
 
 You can enable priority lanes only in production while keeping them disabled in
 development:
@@ -217,7 +219,7 @@ enabled = true
 threshold = 0
 ```
 
-### Custom Threshold
+### Set a custom threshold
 
 If you want `LOW` (-50) events to go to backfill but want a finer-grained
 split, adjust the threshold:
@@ -229,7 +231,7 @@ threshold = -25  # Only BULK (-100) and LOW (-50) go to backfill
                  # A custom priority of -10 would stay on primary
 ```
 
-### Custom Suffix
+### Set a custom suffix
 
 You can customize the backfill stream name suffix:
 
@@ -241,11 +243,11 @@ backfill_suffix = "migration"  # Streams become "customer:migration" etc.
 
 ---
 
-## Ordering Guarantees
+## What ordering does Protean guarantee?
 
 Priority lanes provide the following ordering guarantees:
 
-### Intra-lane FIFO
+### Each lane keeps FIFO order
 
 Within each lane (primary or backfill), messages are processed in strict FIFO
 order. If events A and B are both on the primary lane and A was published first,
@@ -253,34 +255,33 @@ A will be processed before B. The same holds for the backfill lane.
 
 ### Cross-lane ordering is not guaranteed
 
-If event A is on the primary lane and event B is on the backfill lane, their
-relative processing order depends on when each lane is drained. The primary
-lane is always drained first, so in practice primary events are processed
-before backfill events. However, if a backfill batch is already in progress
-when a new primary event arrives, the primary event will be picked up after the
-current backfill batch completes.
+Suppose event A is on the primary lane and event B is on the backfill lane.
+Their relative processing order depends on when each lane is drained. The
+primary lane is always drained first, so in practice primary events are
+processed before backfill events. A backfill batch may already be in progress
+when a new primary event arrives. In that case, the Engine reads the primary
+event after the current backfill batch completes.
 
-### Outbox priority ordering
+### The outbox publishes messages by priority
 
 Within the outbox table itself, messages are fetched in descending priority
 order. This means `CRITICAL` (100) messages are published to the broker before
 `HIGH` (50) messages, which are published before `NORMAL` (0) messages. Within
-one priority, messages are fetched in the order their rows were written, so one
-aggregate's events come in commit order. Within one commit, each aggregate's
-events come in the order that aggregate raised them, one aggregate after
-another. This ordering applies within a single outbox polling cycle.
+one priority, the outbox fetches messages in the order their rows were written.
+One aggregate's events therefore come in commit order. Within one commit, each
+aggregate's events come in the order that aggregate raised them, one aggregate
+after another. This ordering applies within a single outbox polling cycle.
 
 A retried row, a second worker, or host clocks that disagree can still publish
-events out of that order. For example, if a worker crashes while holding rows 1
-to 5, another worker can claim them only after their lock expires, so rows 6 to
-10 are published first. See
-[Outbox ordering](../../reference/guarantees.md#outbox-ordering)
-for the full list.
+events out of that order. For example, a worker may crash while holding rows 1
+to 5. Another worker can claim those rows only after their lock expires, and
+meanwhile rows 6 to 10 are published first. See [Outbox
+ordering](../../reference/guarantees.md#outbox-ordering) for the full list.
 
 A category partitioned with
 [`sequential_by`](../../reference/server/sequential-by.md#how-the-outbox-keeps-a-key-in-order)
-is the exception. The outbox holds a key's later rows until its earlier rows
-in the same lane publish, so retries and extra workers do not reorder a key
+is the exception. The outbox holds a key's later rows until its earlier rows in
+the same lane publish. Retries and extra workers therefore do not reorder a key
 within a lane. A key's primary and backfill rows are held separately, and
 neither lane waits for the other.
 
@@ -294,7 +295,7 @@ read.
 
 ---
 
-## When to Use
+## When should you use priority lanes?
 
 Priority lanes are designed for scenarios where bulk or background work could
 starve production traffic:
@@ -312,7 +313,7 @@ starve production traffic:
   and does not go through the broker, so priority lanes do not apply to it.
 
 - **Backfill jobs**: Enriching existing records with data from an external
-  API. These jobs can run for hours without affecting production throughput.
+  API. These jobs can run for hours without lowering production throughput.
 
 - **Scheduled batch processing**: End-of-day reconciliation, report generation,
   or periodic cleanup tasks that produce a burst of events.
@@ -323,25 +324,25 @@ starve production traffic:
 
 Priority lanes are not appropriate in every situation:
 
-- **Events requiring strict global ordering**: If your domain requires that
-  event A is always processed before event B regardless of their priority,
-  do not use priority lanes. The two-lane system intentionally allows primary
-  events to "jump ahead" of backfill events.
+- **Events requiring strict global ordering**: Your domain may require that
+  event A is always processed before event B regardless of their priority. In
+  that case, do not use priority lanes. Priority lanes intentionally process
+  primary events before backfill events that arrived first.
 
-- **Event-sourced aggregate reconstruction**: Priority lanes only affect the
+- **Event-sourced aggregate reconstruction**: Priority lanes apply only to the
   outbox-to-broker pipeline (stream subscriptions). Event-sourced aggregates
-  that reconstruct state from the event store are not affected by priority
-  lanes, since they read directly from the event store, not from Redis Streams.
+  reconstruct state by reading directly from the event store. They do not read
+  from Redis Streams, so priority lanes do not apply to them.
 
 - **Low-volume systems**: If your system processes a small number of events and
   migrations complete in seconds, priority lanes add unnecessary complexity.
   The feature is designed for systems where batch operations produce enough
   events to create visible latency in production processing.
 
-- **Single-stream idempotency assumptions**: If your event handlers rely on
+- **Single-stream idempotency assumptions**: Your event handlers may rely on
   processing all events for a stream category in a single FIFO order (for
   example, to detect duplicates by position or to use Redis stream message IDs
-  for ordering), splitting into two streams will break that assumption. Message
+  for ordering). Splitting into two streams will break that assumption. Message
   IDs are no longer globally ordered across the primary and backfill streams.
 
 ---

@@ -12,12 +12,12 @@ forcing inappropriate patterns onto aggregates creates its own cognitive
 burden. So choosing the right pattern for each aggregate is one of the
 most important decisions you'll make for your domain model.
 
-This guide provides a systematic approach to making these architectural
-decisions, balancing technical requirements with practical constraints.
+For each aggregate, weigh its technical requirements against your team's
+practical constraints with the criteria below.
 
-## Decision Framework
+## How do you pick a pattern?
 
-### Pattern Selection Criteria
+### Score each aggregate against the criteria
 
 Use this rubric to evaluate each aggregate in your domain:
 
@@ -30,50 +30,53 @@ Use this rubric to evaluate each aggregate in your domain:
 | **Team Expertise** | Standard development skills | Event modeling expertise available |
 | **Operational Complexity** | Standard database operations | Event store + projection management |
 
-### Decision Matrix
+### Count the criteria an aggregate meets
 
-Choose **Event Sourcing** when an aggregate meets **2 or more** of these criteria:
+When an aggregate meets **2 or more** of these criteria, choose **Event
+Sourcing**:
 
-1. **Strong auditability required**: Regulatory compliance, financial transactions,
-   or business processes requiring complete traceability
-2. **Temporal analysis needed**: Historical reporting, state reconstruction,
-   or "what-if" scenario modeling
-3. **Complex state transitions**: Multi-step workflows with intricate business
-   rules and invariants
-4. **Event-driven integration**: Other bounded contexts consume domain events
-   as their primary data source
-5. **Team readiness**: Development team understands event modeling and
-   operations team can support event stores
+1. **The aggregate needs a complete audit trail**: Regulatory compliance,
+   financial transactions, or business processes requiring complete
+   traceability
+2. **You need to analyze past states**: Historical reporting, state
+   reconstruction, or "what-if" scenario modeling
+3. **The aggregate has complex state transitions**: Multi-step workflows with
+   intricate business rules and invariants
+4. **Other contexts integrate through its events**: Other bounded contexts
+   consume domain events as their primary data source
+5. **Your teams are ready for it**: Development team understands event modeling
+   and operations team can support event stores
 
-Choose **CQRS** when:
+In these cases, choose **CQRS**:
 
 - Fewer than 2 Event Sourcing criteria are met
 - Aggregate has simple state management needs
 - Team or operational constraints favor traditional approaches
-- Performance requirements favor direct state access
+- The aggregate needs direct state access to meet its performance requirements
 
-### Migration Strategies
+### How do you move an aggregate to the other pattern?
 
-**From CQRS to Event Sourcing**:
+**To move from CQRS to Event Sourcing**:
 
 1. Pause writes temporarily
 2. Export current state as synthetic "Imported" event
 3. Resume with normal event capturing
 4. Update projections to handle synthetic events
 
-**From Event Sourcing to CQRS**:
+**To move from Event Sourcing to CQRS**:
 
 1. Create snapshot from current projection
 2. Switch to state-based storage
 3. Continue event publication via outbox
 4. Archive event stream
 
-## Common Pitfalls
+## What mistakes should you avoid?
 
-### Anti-Patterns to Avoid
+### Avoid these anti-patterns
 
 **Never mix patterns within a single aggregate**: Choose one pattern per
 aggregate and apply it consistently throughout that aggregate's lifecycle.
 
-**Avoid architectural drift**: Regular architecture reviews ensure pattern
-choices remain aligned with evolving business needs.
+**Review pattern choices as the business changes**: Hold regular architecture
+reviews, and check that each aggregate's pattern still fits the current
+business needs.

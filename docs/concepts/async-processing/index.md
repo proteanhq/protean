@@ -1,11 +1,11 @@
-# Async Message Processing
+# Process messages asynchronously
 
 The Protean Server is an asynchronous message processing engine that handles
 events, commands, and external messages in your domain. It provides reliable,
 scalable message consumption with support for multiple subscription types,
 configuration profiles, and the transactional outbox pattern.
 
-## Overview
+## What does the Protean server do?
 
 When you run `protean server`, Protean starts the **Engine**, an async runtime
 that:
@@ -42,17 +42,20 @@ graph TB
     BS --> SUB
 ```
 
-## Configuration to Use the Server
+## Configure your domain to use the server
 
-Protean supports three processing flags that control how work is dispatched and handled:
+Three processing flags control how Protean dispatches and processes work:
 
 - `event_processing`: Controls how domain events are processed.
 - `command_processing`: Controls how commands are processed.
 - `message_processing`: Controls how standalone messages from brokers (such as Redis Streams or Pub/Sub) are handled.
 
-Set any of these to `"async"` in your domain configuration to process the respective tasks asynchronously using the server. When set to `"async"`, the Protean server will run the corresponding background workers to handle these tasks outside of the main request flow.
+Set any of these to `"async"` in your domain configuration to process the
+respective tasks asynchronously using the server. When you set a flag to
+`"async"`, the Protean server runs the corresponding background workers. These
+workers process the tasks outside of the main request flow.
 
-### Example Configuration
+### See an example configuration
 
 ```toml
 # domain.toml
@@ -70,7 +73,7 @@ URI = "redis://localhost:6379/0"
 
 With this configuration, events, commands, and broker messages are all processed asynchronously by the server, enabling scalable, out-of-band handling of all message types.
 
-## Quick Start
+## Start the server
 
 ```bash
 # Start the server with your domain
@@ -83,9 +86,9 @@ protean --log-level DEBUG server --domain=your_domain
 protean server --domain=your_domain --test-mode
 ```
 
-## Key Concepts
+## Learn the key concepts
 
-### Subscriptions
+### How do subscriptions connect handlers to messages?
 
 Subscriptions use the Observer pattern to connect your handlers (observers) to message sources (subjects or publishers). This allows your handlers to automatically receive and react to new messages as they arrive. Protean supports two
 subscription types:
@@ -97,7 +100,7 @@ subscription types:
 
 Learn more in [Subscription Types](../../reference/server/subscription-types.md).
 
-### Configuration Profiles
+### Pick a configuration profile
 
 Profiles provide pre-configured settings optimized for common use cases:
 
@@ -111,9 +114,9 @@ Profiles provide pre-configured settings optimized for common use cases:
 
 Learn more in [Configuration](../../reference/server/configuration.md).
 
-### Outbox Pattern
+### How does the outbox pattern deliver messages reliably?
 
-The outbox pattern ensures reliable message delivery by:
+With the outbox pattern, Protean delivers messages reliably by:
 
 1. Storing messages and business data in the database as part of a single transaction
 2. Publishing messages to the broker in a separate process
@@ -121,18 +124,18 @@ The outbox pattern ensures reliable message delivery by:
 
 Learn more in [Outbox Pattern](outbox.md).
 
-### External Event Dispatch
+### Dispatch events to external brokers
 
-Events marked `published=True` can be delivered to external brokers for
+Protean can deliver events marked `published=True` to external brokers for
 cross-bounded-context communication. The outbox creates additional rows for
 each external broker, processed independently with stripped metadata envelopes.
 
 Learn more in [External Event Dispatch](../../guides/server/external-event-dispatch.md).
 
-## Pages in this section
+## Read the other pages in this section
 
-- [Engine Architecture](engine.md): How the engine manages subscriptions and
-  lifecycle
+- [Engine Architecture](engine.md): How the engine creates subscriptions and
+  starts, runs and shuts down its components
 - [Subscriptions](subscriptions.md): How handlers connect to message sources
 - [Subscription Types](../../reference/server/subscription-types.md): StreamSubscription vs
   EventStoreSubscription

@@ -1,49 +1,51 @@
 # Subscribers
 
-Subscribers consume messages from external message brokers. They are the
-entry point for data and signals that originate outside the bounded context,
-events published by other services, webhook payloads relayed through a message
-queue, or any external message that needs to trigger domain logic.
+Subscribers consume messages from external message brokers. Subscribers are the
+entry point for data and signals from outside the bounded context. These
+include events published by other services, webhook payloads relayed through a
+message queue, and any external message that needs to trigger domain logic.
 
-Where [event handlers](./event-handlers.md) react to events raised
-*within* the domain, subscribers react to messages arriving *from outside*.
-This distinction keeps internal event processing and external integration
-cleanly separated.
+Where [event handlers](./event-handlers.md) react to events raised *within* the
+domain, subscribers react to messages arriving *from outside*. Protean gives
+each kind of message its own element, so internal event processing and external
+integration stay separate.
 
 ## Facts
 
 ### Subscribers listen to external broker streams. { data-toc-label="External Messages" }
 
 A subscriber is bound to a specific stream on a specific message broker. It
-receives raw messages from that stream and is responsible for interpreting
-them and translating them into domain operations.
+receives raw messages from that stream. It interprets each message and
+translates it into domain operations.
 
 ### Subscribers are associated with a broker and a stream. { data-toc-label="Broker and Stream" }
 
-Every subscriber declares which broker it connects to and which stream it
-listens on. This explicit configuration makes the external dependency visible
-and keeps the wiring declarative.
+Every subscriber declares the broker it connects to. It also declares the
+stream it listens on. With this explicit configuration, you can see the
+external dependency in the subscriber definition, and you keep the wiring
+declarative.
 
 ### Subscribers implement a call interface. { data-toc-label="Call Interface" }
 
 Each subscriber defines a single processing method that receives the incoming
-message payload. This keeps the contract simple, one subscriber, one stream,
-one processing entry point.
+message payload. With a single processing method, the contract stays simple:
+one subscriber, one stream, one processing entry point.
 
 ### Subscribers act as an anti-corruption layer. { data-toc-label="Anti-corruption" }
 
 External systems use their own schemas, naming conventions, and data formats.
-The subscriber is the place to translate those external representations into
-the domain's own language before triggering [commands](./commands.md) or
-domain operations. This prevents external models from leaking into the core
-domain.
+The subscriber translates those external representations into the domain's own
+language before it triggers [commands](./commands.md) or domain operations.
+Because the subscriber does this translation, code in the core domain does not
+depend on external models.
 
 ### Subscribers can trigger domain operations. { data-toc-label="Trigger Domain Logic" }
 
 After parsing and translating an external message, a subscriber typically
-initiates a domain operation, submitting a command, invoking an [application
-service](./application-services.md), or directly interacting with an
-[aggregate](./aggregates.md) through its [repository](./repositories.md).
+starts a domain operation: it submits a command, invokes an [application
+service](./application-services.md), or loads and changes an
+[aggregate](./aggregates.md) directly through its
+[repository](./repositories.md).
 
 ### Subscribers support error handling. { data-toc-label="Error Handling" }
 
@@ -60,7 +62,7 @@ integration boundaries and should not be confused.
 
 ---
 
-## Next steps
+## What to read next
 
 For practical details on defining and using subscribers in Protean, see the guide:
 

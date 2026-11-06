@@ -1,9 +1,9 @@
 # Projections
 
-A projection is a read-optimized, denormalized view of domain data. It
-exists on the query side of a CQRS architecture, purpose-built to serve
-specific read use-cases efficiently, without the constraints or complexity of
-the domain model that produced the data.
+A projection is a read-optimized, denormalized view of domain data. A
+projection belongs to the query side of a CQRS architecture. It is
+purpose-built to serve specific read use-cases efficiently, without the
+constraints or complexity of the domain model that produced the data.
 
 Projections are populated by [projectors](./projectors.md) in response to
 [domain events](./events.md). They are never written to directly by domain
@@ -22,9 +22,9 @@ post-processing.
 ### Projections support simple field types and value objects. { data-toc-label="Supported Fields" }
 
 Projections hold simple, scalar field types (strings, integers, floats,
-identifiers, timestamps) and may also embed [value objects](./value-objects.md)
-for grouping related attributes (e.g. an address or monetary amount). Value
-objects are persisted as flattened shadow fields (e.g.
+identifiers, timestamps). They may also embed [value
+objects](./value-objects.md) to group related attributes, such as an address or
+a monetary amount. Value objects are persisted as flattened shadow fields (e.g.
 `billing_address_street`, `billing_address_city`), making them queryable by
 individual attribute.
 
@@ -34,10 +34,10 @@ the read side.
 
 ### Projections can be stored in a database or cache. { data-toc-label="Storage Options" }
 
-A projection can be persisted to a database provider for durable storage, or
-to a cache (such as Redis) for high-speed access. The choice depends on the
-read pattern, caching suits high-throughput, low-latency lookups, while
-database storage suits complex queries and long-term retention.
+A projection can be persisted to a database provider for durable storage, or to
+a cache (such as Redis) for high-speed access. The choice depends on the read
+pattern. Caching suits high-throughput, low-latency lookups, while database
+storage suits complex queries and long-term retention.
 
 ### Every projection has at least one identifier. { data-toc-label="Identity" }
 
@@ -47,9 +47,9 @@ deletion.
 
 ### Projections are populated by projectors. { data-toc-label="Populated by Projectors" }
 
-Projections do not decide how they are built, that responsibility belongs to
-[projectors](./projectors.md). Projectors listen to domain events and write or
-update projection records accordingly. The projection itself is a passive data
+A projection does not build itself. The [projectors](./projectors.md) for that
+projection build it. Projectors listen to domain events and write or update
+projection records accordingly. The projection itself is a passive data
 structure.
 
 ### Projections enable read/write separation. { data-toc-label="CQRS Read Side" }
@@ -86,7 +86,7 @@ suit the specific query use-case the projection serves.
 
 ---
 
-## Next steps
+## Read more about projections
 
 For practical details on defining and using projections in Protean, see the guide:
 

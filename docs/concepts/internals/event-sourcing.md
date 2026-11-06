@@ -1,18 +1,18 @@
-# Event Sourcing Internals
+# How event sourcing works inside Protean
 
 An event-sourced aggregate keeps no stored state of its own. It records what
-happened, and derives its state by replaying those events. Three mechanisms
-make that work: `raise_()` triggers the `@apply` handlers, reconstruction
-replays a stream to rebuild an instance, and version tracking keeps the
-aggregate and its stream in step.
+happened as events. It derives its state by replaying those events. Protean
+uses three mechanisms for this: `raise_()` triggers the `@apply` handlers,
+reconstruction replays a stream to rebuild an instance, and version tracking
+keeps the aggregate's version matched to its stream.
 
-## The Single Source of Truth
+## Change aggregate state only in `@apply` handlers
 
-The central design principle: **`@apply` handlers are the only place where
-event-sourced aggregate state is mutated.** Both the live path (processing
-commands) and the replay path (loading from event store) converge on the
-same `@apply` handlers, eliminating an entire class of bugs where live
-behavior diverges from replay behavior.
+The central design principle is this: **`@apply` handlers are the only place
+where event-sourced aggregate state is mutated.** The live path (processing
+commands) and the replay path (loading from event store) both call the same
+`@apply` handlers. As a result, an entire class of bugs, where live behavior
+diverges from replay behavior, cannot occur.
 
 ```
 Live path:    business_method() → raise_() → @apply handler → state mutated
@@ -28,8 +28,8 @@ steps in order:
 2. **Increment** `_version` (for non-fact events)
 3. **Build metadata**: Identity, stream name, sequence ID, headers, checksum
 4. **Append** the enriched event to `_events`
-5. **Invoke `@apply` handler**: Wrapped in `atomic_change()` so invariants
-   are checked before and after the handler runs
+5. **Invoke `@apply` handler**: Wrapped in `atomic_change()`, which checks
+   invariants before and after the handler call
 
 Step 5 is the key difference from non-ES aggregates, where `raise_()` only
 collects events without calling handlers.
@@ -64,8 +64,8 @@ def _rewind_events(self, mark):
     del self._events[events_count:]
 ```
 
-Fact events are excluded because they are auto-generated snapshots that don't
-carry domain semantics. They don't have `@apply` handlers.
+Fact events are excluded because they are auto-generated snapshots with no
+domain semantics. They don't have `@apply` handlers.
 
 ## `_apply_handler()` vs `_apply()`
 
@@ -107,14 +107,13 @@ def _apply(self, event):
 `_replaying` is the replay-only signal that lets an assignment to a
 [`reserved`](../../reference/domain-elements/element-decorators.md) (removed)
 field name drop instead of raising. `BaseAggregate.__getattr__` reads the same
-flag: while it is set, a call to the `add_<name>` or `remove_<name>` helper of a
-reserved association does nothing, so the child entities that call would have
-added are not rebuilt. `get_one_from_<name>` and
-`filter_<name>` still raise. The live `raise_()` path calls `_apply_handler()`
-directly and never sets the flag, so a live write or helper call on a removed
-field still raises.
+flag. While the flag is set, a call to the `add_<name>` or `remove_<name>`
+helper of a reserved association does nothing, and Protean does not rebuild the
+child entities from that call. `get_one_from_<name>` and `filter_<name>` still
+raise. The live `raise_()` path calls `_apply_handler()` directly and never
+sets the flag, so a live write or helper call on a removed field still raises.
 
-## Aggregate Construction
+## How Protean constructs an aggregate
 
 ### `_create_for_reconstitution()`
 
@@ -125,14 +124,15 @@ Pydantic validation**. Uses `__new__` to skip `__init__` entirely:
 2. Initializes Pydantic internals (`__dict__`, `__pydantic_extra__`, etc.)
 3. Sets private attributes with defaults (`_version=-1`, `_events=[]`, etc.)
 4. **Suppresses invariant checks** (`_disable_invariant_checks=True`).
-   Intermediate states during replay may violate invariants that will be
-   satisfied once all events are applied
+   During replay, intermediate states may violate invariants. Those invariants
+   are satisfied once all events are applied
 5. Initializes all model fields to `None`
 6. Initializes ValueObject and Reference shadow fields to `None`
 7. Sets up HasMany pseudo-methods (`add_*`, `remove_*`, etc.)
 8. Discovers invariants from the MRO
 
-This follows the same pattern as `BaseEntity.__deepcopy__`.
+`_create_for_reconstitution()` follows the same pattern as
+`BaseEntity.__deepcopy__`.
 
 ### `_create_new(**identity_kwargs)`
 
@@ -177,9 +177,9 @@ def from_events(cls, events):
 The first event's `@apply` handler must set **all** fields including identity.
 There is no special treatment of the first event.
 
-## Version Tracking
+## How Protean tracks the version
 
-Version management is split between the live path and replay path to
+Protean splits version management between the live path and the replay path to
 avoid double-incrementing:
 
 | Path | Who increments `_version` | When |
@@ -187,10 +187,10 @@ avoid double-incrementing:
 | Live (`raise_()`) | `raise_()` itself | Before calling `_apply_handler()` |
 | Replay (`_apply()`) | `_apply()` | After calling `_apply_handler()` |
 
-This ensures each event increments the version exactly once regardless of
-which path processes it.
+With this split, Protean increments the version exactly once for each event, on
+either path.
 
-## Invariant Checking
+## When does Protean check invariants?
 
 During live operations, `raise_()` wraps the `@apply` call in
 `atomic_change()`. This context manager:
@@ -204,7 +204,7 @@ During replay, invariant checks are disabled entirely
 violate invariants that are only satisfied after all events are applied.
 Checks are re-enabled when `from_events()` completes.
 
-## Association Handling for ES Aggregates
+## How ES aggregates read associated entities
 
 Event-sourced aggregates don't have traditional database tables for child
 entities. When a `HasMany` field's cache misses during a `__get__` call
@@ -220,34 +220,34 @@ if getattr(getattr(root, "meta_", None), "is_event_sourced", False):
     self.set_cached_value(instance, reference_obj)
 ```
 
-State for associated entities in ES aggregates is managed entirely through
-events and `@apply` handlers using the `add_*` pseudo-methods.
+In ES aggregates, `@apply` handlers set all state for associated entities in
+response to events, through the `add_*` pseudo-methods.
 
-## Event Upcasting
+## How Protean upcasts older events
 
-When the event store contains events from older schema versions, the upcasting
-system transparently transforms them to the current schema before they reach
-`@apply` handlers. This happens during `Message.to_domain_object()`, which is
-called by `load_aggregate()` for every event in the stream.
+The event store may contain events from older schema versions. The upcasting
+system transparently transforms those events to the current schema before they
+reach `@apply` handlers. This happens during `Message.to_domain_object()`,
+which is called by `load_aggregate()` for every event in the stream.
 
 See [Event Upcasting Internals](./event-upcasting.md) for the full
 architecture, chain building algorithm, and integration details.
 
-## Snapshots
+## How Protean uses snapshots
 
-### Automatic Snapshots
+### When does Protean write a snapshot automatically?
 
-During `load_aggregate()`, Protean checks whether the number of events since
-the last snapshot (or total events if no snapshot exists) exceeds the
-`snapshot_threshold` configuration (default: 10). If so, a new snapshot is
+During `load_aggregate()`, Protean counts the events since the last snapshot,
+or all events if no snapshot exists. It then checks whether that count exceeds
+the `snapshot_threshold` configuration (default: 10). If so, a new snapshot is
 written to the snapshot stream (`{category}:snapshot-{identifier}`).
 
 Snapshots contain the aggregate's full state via `to_dict()` and are stored
-with type `"SNAPSHOT"`. When loading an aggregate, the event store first
-checks for a snapshot, initializes the aggregate from it, then replays only
-events that occurred after the snapshot.
+with type `"SNAPSHOT"`. To load an aggregate, the event store first checks for
+a snapshot and initializes the aggregate from it. The event store then replays
+only the events that occurred after the snapshot.
 
-### Manual Snapshots
+### Create a snapshot manually
 
 Manual snapshot creation bypasses the threshold and always produces a fresh
 snapshot by replaying the entire event stream:
@@ -275,7 +275,7 @@ protean snapshot create --domain=my_domain
 
 See [CLI Snapshot Commands](../../reference/cli/data/snapshot.md) for full documentation.
 
-## Temporal queries
+## Load an aggregate as it was at a past point
 
 Because all state changes are stored as events, event-sourced aggregates can
 be reconstituted at any historical point. The repository's `get()` method
@@ -297,7 +297,7 @@ historical accuracy.
 See [Temporal Queries](../../guides/change-state/temporal-queries.md) for the
 practical guide with examples.
 
-## Causation chain traversal
+## Trace the causation chain
 
 Every message in the event store carries a `correlation_id` (shared across the
 full causal chain) and a `causation_id` (the `headers.id` of the immediate
@@ -315,7 +315,7 @@ Walks **up** from a target message to the root command by following
 `causation_id` links. Returns a `list[Message]` ordered root-first,
 target-last.
 
-**Algorithm:** Build a `{headers.id: raw_msg}` index from the correlation
+**How it works:** Build a `{headers.id: raw_msg}` index from the correlation
 group. Starting from the target, follow `causation_id` pointers until reaching
 a message with `causation_id=None` (the root). A `visited` set guards against
 cycles. The chain is reversed at the end so the root is first.
@@ -326,7 +326,7 @@ Walks **down** from a message to find everything it caused. Returns effects in
 chronological order (by `global_position`). The target message is **not**
 included.
 
-**Algorithm:** Build a reverse index `{causation_id: [children]}`. BFS from
+**How it works:** Build a reverse index `{causation_id: [children]}`. BFS from
 the target message's `headers.id`, collecting children at each level. When
 `recursive=False`, only direct children (one level) are returned.
 
@@ -336,11 +336,11 @@ Builds a `CausationNode` tree for an entire correlation group. Returns the
 root node with `.children` recursively populated, or `None` if no messages
 exist.
 
-**Algorithm:** Build `{causation_id: [children]}` from the raw messages.
+**How it works:** Build `{causation_id: [children]}` from the raw messages.
 Identify root(s) as messages with `causation_id=None`. Recursively construct
-`CausationNode` objects using `_build_node()`, with a `visited` set to
-prevent infinite recursion when message IDs overlap between parent and child
-(can happen with the MessageDB adapter in sync mode).
+`CausationNode` objects using `_build_node()`. A `visited` set prevents
+infinite recursion when message IDs overlap between parent and child (this can
+happen with the MessageDB adapter in sync mode).
 
 `CausationNode` is a dataclass with: `message_id`, `message_type`, `kind`
 (`"EVENT"` or `"COMMAND"`), `stream`, `time`, `global_position`, and
@@ -351,21 +351,21 @@ practical guide with code examples, and
 [`protean events trace`](../../reference/cli/data/events.md#protean-events-trace)
 for the CLI command.
 
-## Projection rebuilding
+## Rebuild a projection
 
 Projections are read-optimized views maintained by projectors in response to
-domain events. When a projector has a bug, or a new projection is added to an
-existing system, the projection data must be rebuilt from scratch by replaying
-all historical events through the projector handlers.
+domain events. When a projector has a bug, or when you add a new projection to
+an existing system, you must rebuild the projection data from scratch. The
+rebuild replays all historical events through the projector handlers.
 
-### Rebuild process
+### What does a rebuild do?
 
 The rebuild performs three steps:
 
 1. **Discover projectors**: `domain.projectors_for(projection_cls)` finds all
    projectors that target the given projection.
 2. **Truncate projection data**: All existing data is cleared. Database-backed
-   projections use `_dao._delete_all()`; cache-backed projections use
+   projections use `_dao._delete_all()`. Cache-backed projections use
    `remove_by_key_pattern()` with the projection's key prefix.
 3. **Replay events**: For each projector, events are read from all stream
    categories and merged by `global_position` to maintain cross-aggregate
@@ -379,21 +379,24 @@ When a projector listens to multiple stream categories (e.g., both `user` and
 `transaction`), events must be processed in the order they were originally
 stored, not grouped by category. The rebuild reads all events from each
 category, then sorts the combined list by `global_position` before dispatching.
-This ensures that a `Registered` event from the `user` category is processed
-before a subsequent `Transacted` event from the `transaction` category.
+Because of this sort, the rebuild processes a `Registered` event from the
+`user` category before a subsequent `Transacted` event from the `transaction`
+category.
 
-### Error handling during replay
+### How does replay respond to errors?
 
-- **Unhandled event types**: Events whose type has no `@on` handler in the
-  projector are silently skipped (the `_handlers` defaultdict returns an empty
-  set).
-- **Unresolvable event types**: Events that cannot be converted to a domain
-  object (deprecated types without upcaster chains) raise `ConfigurationError`,
-  which is caught, logged as a warning, and counted as `events_skipped`.
-- **Handler exceptions**: Other exceptions during handler execution are caught,
-  logged, and skipped, the rebuild continues with the remaining events.
+- **When an event type has no handler**: Events whose type has no `@on` handler
+  in the projector are silently skipped (the `_handlers` defaultdict returns an
+  empty set).
+- **When an event type cannot be resolved**: Events that cannot be converted to
+  a domain object (deprecated types without upcaster chains) raise
+  `ConfigurationError`. The rebuild catches the error, logs it as a warning,
+  and counts the event as `events_skipped`.
+- **When a handler raises**: The rebuild catches, logs and skips other
+  exceptions during handler execution. It then continues with the remaining
+  events.
 
-### Programmatic API
+### Call the rebuild from code
 
 ??? example "The domain this example uses"
 

@@ -1,4 +1,4 @@
-# Foundations
+# Learn the foundations of Domain-Driven Design
 
 The foundational concepts that underpin Domain-Driven Design and Protean's
 approach to modeling software.

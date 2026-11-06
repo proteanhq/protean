@@ -1,10 +1,9 @@
 # CQRS
 
-CQRS separates the responsibilities of reading and writing data, allowing for
-optimized and scalable operations by using different models for command (write)
-and query (read) actions.
+With CQRS, you use different models for command (write) and query (read)
+actions, so you can optimize and scale reading and writing data separately.
 
-## Elements
+## What elements does CQRS use?
 
 | Element | Layer | Purpose  |
 | ------- | ----- | -------  |
@@ -19,13 +18,15 @@ and query (read) actions.
 | Event Store | Infrastructure | A specialized storage system that captures and persists all domain events, allowing the reconstruction of aggregate states and enabling event sourcing patterns. |
 
 
-## Workflow
+## How does a request flow through CQRS?
 
 ![CQRS](../../images/cqrs-workflow.jpg)
 
 1. **Request**: A client request is made to the system, which is received by the API layer.
 2. **Command**: The API converts the request data into a Command, which is passed to the Command Handler for processing.
-3. **Command Handler**: The Command Handler receives the Command and is responsible for executing the associated business logic. It interacts with the Repository to obtain the necessary Aggregate.
+3. **Command Handler**: The Command Handler receives the Command. The Command
+   Handler then executes the associated business logic. It loads the necessary
+   Aggregate from the Repository.
 4. **Repository**: The Repository retrieves the Aggregate by hydrating it from the Persistence Store (Write Store) based on the current state.
 5. **Aggregate**: The Command Handler invokes the relevant behavior on the Aggregate, passing the data from the Command to perform a business operation.
 6. **Output**: The Aggregate processes the data and, if successful, generates an event as a result of a state change or a business operation.

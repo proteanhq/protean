@@ -1,4 +1,4 @@
-# Architecture Patterns
+# Which architecture patterns does Protean support?
 
 The three architectural approaches Protean supports, each building on the
 previous one.

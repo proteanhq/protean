@@ -2,25 +2,26 @@
 
 ## Why Events?
 
-When an `Order` is placed, several things need to happen: inventory must be
-reserved, the customer must be notified, analytics must be updated, and billing
-must be triggered. If the order aggregate calls all these services directly, it
-becomes tightly coupled to every downstream concern, and any failure in
-notification or analytics can block the order itself.
+When an `Order` is placed, the system must reserve inventory, notify the
+customer, update analytics, and trigger billing. If the order aggregate calls
+all these services directly, it becomes tightly coupled to every downstream
+concern. Any failure in notification or analytics can then block the order
+itself.
 
 Domain events decouple the *thing that happened* from the *reactions to it*.
 The `Order` aggregate records the fact that an `OrderPlaced` event occurred.
 Other parts of the system (event handlers, projectors, subscribers)
-independently react to that fact. The aggregate doesn't know or care who is
-listening. This makes the system easier to extend (add a new reaction without
-touching the aggregate), more resilient (a failed handler doesn't block the
-command), and auditable (events form a complete history of what happened and
-when).
+independently react to that fact. The aggregate holds no reference to the
+handlers, projectors or subscribers that consume its events. Recording events
+this way makes the system easier to extend, since you add a new reaction
+without touching the aggregate. It also makes the system more resilient (a
+failed handler doesn't block the command) and auditable (events form a complete
+history of what happened and when).
 
-Domain events are immutable facts that indicate a state change in the
-business domain. They capture meaningful changes and convey the state
-transitions of aggregates, ensuring that all parts of the system remain
-consistent and informed.
+Domain events are immutable facts that indicate a state change in the business
+domain. Each event records a meaningful change in an aggregate's state. The
+parts of the system that consume these events use them to stay consistent with
+the aggregate.
 
 ## Facts
 
@@ -66,44 +67,46 @@ use case.
 Systems and components communicate through events, reducing direct dependencies
 and fostering a more modular architecture.
 
-Events, thus, can be used as a mechanism to implement eventual consistency,
-within and across bounded contexts. This promotes loose coupling by decoupling
-the producer (e.g., an aggregate that raises an event) from the consumers
-(e.g., various components that handle the event).
+You can use events to implement eventual consistency, within and across bounded
+contexts. Events decouple the producer (for example, an aggregate raising an
+event) from the consumers (for example, various components handling the event),
+so the coupling stays loose.
 
-Such a design eliminates the need for two-phase commits (global
-transactions) across bounded contexts, optimizing performance at the level
-of each transaction.
+When bounded contexts communicate through events, you need no two-phase commits
+(global transactions) across them. Each transaction then performs better on its
+own.
 
-## Structure
+## What does an event carry?
 
 ### Events have **metadata**. { data-toc-label="Metadata" }
-Metadata such as timestamps, unique event identifiers, and version numbers are
-included to ensure precise tracking and processing.
+Protean adds metadata such as timestamps, unique event identifiers, and version
+numbers to each event, so consumers can track and process events precisely.
 
 ### Events are **versioned**. { data-toc-label="Versioning" }
-Each event is assigned a version number, ensuring that consumers can handle
-them in the correct order and manage compatibility between event producers and
-consumers.
+Protean assigns each event a version number. Consumers use the version number
+to process events in the correct order and to keep event producers and
+consumers compatible.
 
 ### Events are **timestamped**. { data-toc-label="Timestamp" }
-Each event carries a timestamp indicating when the event occurred, which is
-crucial for tracking and ordering events chronologically.
+Each event carries a timestamp of the moment the event occurred. Consumers need
+the timestamp to track events and order them chronologically.
 
 ### Events are identifiable uniquely.  { data-toc-label="Identifiers" }
-Each event carries a structured unique identifier that indicates the origin of
-the event and the unique identity of the aggregate that generated the event.
+Each event carries a structured unique identifier. The identifier shows the
+origin of the event and the unique identity of the aggregate that generated the
+event.
 
 ### Events are written into streams.  { data-toc-label="Event Streams" }
 Events are written to and read from streams. Review the section on
-[Streams](../foundations/streams.md) for a deep-dive.
+[Streams](../foundations/streams.md) for a detailed explanation of how streams
+work.
 
-## Event Types
+## What types of events are there?
 
 Events are categorized into two different types based on their purpose and the
 kind of information they carry.
 
-### Delta Events
+### Delta events record what changed
 
 Delta events capture incremental changes that have occurred in the state of
 an aggregate. They provide detailed information about the specific
@@ -114,17 +117,17 @@ modifications to collections within an aggregate. By focusing on incremental
 changes, Delta Events enable efficient updates and reduce the overhead
 associated with processing entire aggregates.
 
-Delta events are a good choice when composing internal state via Event Sourcing
-or notifying external consumers for choice events, like `LowInventoryAlert`.
-They are also appropriate for composing a custom projection of the state based on
+Delta events suit two uses: composing internal state via Event Sourcing, and
+notifying external consumers of selected events, like `LowInventoryAlert`. They
+are also appropriate for composing a custom projection of the state based on
 events (for example in Command Query Resource Separation).
 
-#### Multiple Event Types
+#### An aggregate emits several delta event types
 
 Aggregates usually emit events of multiple delta event types. Each event
 is individually associated with the aggregate.
 
-### Fact Events
+### Fact events carry the full state
 
 A fact event encloses the entire state of the aggregate at that specific point
 in time. It contains all of the attributes and values necessary to completely
@@ -140,7 +143,7 @@ data schemas evolve and change over time. Instead, they rely on the owning
 service to compute and produce a fully detailed fact event.
 
 
-## Persistence
+## How are events stored and consumed?
 
 ### Events are stored in an Event Store. { data-toc-label="Event Store" }
 Events are often persisted in an Event Store, which acts as an append-only
@@ -152,25 +155,26 @@ the sequence of events from the Event Store, ensuring a complete and accurate
 history.
 
 ### Events are part of the transaction boundary. { data-toc-label="Transactions" }
-Events are typically included in the transaction boundary, ensuring that they
-are only published if the transaction is successful.
+Events are typically included in the transaction boundary. Events are then
+published only if the transaction is successful.
 
 ### Events trigger side effects. { data-toc-label="Side Effects" }
 Events often lead to side effects, such as updating read models, triggering
-workflows, or invoking external systems. These side effects are managed by
+workflows, or invoking external systems. You implement these side effects in
 [event handlers](./event-handlers.md) and [projectors](./projectors.md).
 
 ### Events can be used to build local state in a different bounded context. { data-toc-label="Read-only Models" }
-Other bounded contexts should be listen to interested events and construct
-read-only structures within themselves to take decisions later. A receiver
-should not query the current state from the sender because the sender's state
-could have already mutated.
+Other bounded contexts should listen to the events they are interested in and
+construct read-only structures within themselves. They use those structures to
+make decisions later. A receiver should not query the current state from the
+sender because the sender's state could have already mutated.
 
 ---
 
-## Next steps
+## What to read next
 
-For practical details on defining and working with events in Protean, see the guides:
+For practical details on defining, raising and consuming events in Protean, see
+the guides:
 
 - [Events](../../guides/domain-definition/events.md): Defining events, event structure, metadata, versioning, and fact events.
 - [Raising Events](../../guides/domain-behavior/raising-events.md): Raising events from aggregates and entities, dispatching, and event sourcing patterns.
@@ -180,4 +184,6 @@ For design guidance:
 
 - [Design Events for Consumers](../../patterns/design-events-for-consumers.md): Structuring events so consumers can process them reliably.
 - [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md): Using fact events for cross-context communication.
-- [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md): Managing event schema changes over time.
+- [Event Versioning and
+  Evolution](../../patterns/event-versioning-and-evolution.md): Versioning and
+  evolving event schemas over time.

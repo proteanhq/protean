@@ -1,27 +1,28 @@
-# The Always-Valid Domain
+# How Protean keeps domain objects always valid
 
 What if your domain objects could never be invalid?
 
-Most frameworks treat validation as something you do _to_ an object, call `validate()`,
-check `is_valid()`, hope someone remembered to run it before saving. Between those
-explicit checks, the object can exist in any state: missing fields, broken
-business rules, impossible combinations. The longer it stays invalid, the
-further the corruption spreads.
+Most frameworks treat validation as something you do _to_ an object. You call
+`validate()` or check `is_valid()`, and you hope each developer on the team ran
+it before saving. Between those explicit checks, the object can exist in any
+state: missing fields, broken business rules, impossible combinations. The
+longer the object stays invalid, the more code reads and saves its invalid
+data.
 
-Protean takes a different approach. **Domain objects are always valid, or they
-don't exist.** Every field assignment, every method call, every state
-transition is automatically checked against constraints and business rules. If
-a change would violate any rule, it's rejected immediately. The object stays in
-its previous valid state, and a `ValidationError` tells you exactly what went
-wrong.
+Protean checks validity on every change to a domain object. **Domain objects
+are always valid, or they don't exist.** Protean automatically checks every
+field assignment, every method call and every state transition against
+constraints and business rules. If a change would violate any rule, it's
+rejected immediately. The object stays in its previous valid state. A
+`ValidationError` tells you exactly what went wrong.
 
-This isn't opt-in. It's the default. You don't write validation middleware,
-call `clean()` methods, or wire up check pipelines. You declare rules, and
-Protean enforces them continuously.
+Protean's validation isn't opt-in. It's the default. You don't write validation
+middleware, call `clean()` methods, or wire up check pipelines. You declare
+rules, and Protean enforces them continuously.
 
 ---
 
-## Four layers of protection
+## Protean validates in four layers
 
 Protean organizes validation into four distinct layers, each catching a
 different category of error at a different point in the processing pipeline.
@@ -36,15 +37,15 @@ Layer 3: Aggregate Invariants     →  Business rules, cross-field consistency
 Layer 4: Handler/Service Guards   →  Contextual rules, authorization
 ```
 
-Each layer trusts the layers below it and adds what they don't cover. Together,
-they form a defense-in-depth strategy where invalid state is caught at the
-earliest possible moment.
+Each layer relies on the checks of the earlier layers and adds the checks they
+don't cover. Together, they form a defense-in-depth strategy where invalid
+state is caught at the earliest possible moment.
 
 Let's build up an Order domain step by step to see each layer in action.
 
 ---
 
-## Layer 1: Field constraints
+## Layer 1: Declare constraints on fields
 
 The simplest layer. Declare types, ranges, required-ness, and allowed values
 directly on the field. Protean enforces them on construction and on every
@@ -60,8 +61,8 @@ These constraints catch the most basic errors immediately:
 --8<-- "concepts/philosophy/always-valid/001.py:field_checks"
 ```
 
-Field constraints are **declarative**, visible right in the field definition,
-enforced automatically, never forgotten.
+Field constraints are **declarative**: you see them in the field definition.
+Protean enforces them automatically, so you never forget to run them.
 
 **What belongs here:** Type checks, required-ness, string length limits,
 numeric ranges, enumerated choices.
@@ -71,34 +72,35 @@ cross-field validation.
 
 ---
 
-## Layer 2: Value object invariants
+## Layer 2: Give value objects their own invariants
 
-Some concepts deserve their own validation. An email address isn't just a
-string. It has structure. A monetary amount isn't just a float. It has a
-currency and rules about sign. When a concept has internal rules, wrap it in a
-**value object** with invariants.
+Some concepts need their own validation. An email address isn't just a string.
+It has structure. A monetary amount isn't just a float. It has a currency and
+rules about sign. When a concept has internal rules, wrap it in a **value
+object** with invariants.
 
 ```python
 --8<-- "concepts/philosophy/always-valid/002.py:money"
 ```
 
-Now use it in the Order:
+Now use the `Money` value object in the Order:
 
 ```python hl_lines="8"
 --8<-- "concepts/philosophy/always-valid/002.py:order"
 ```
 
-The `Money` value object validates itself at construction. If someone tries to
-create `Money(amount=-5, currency="XYZ")`, the invariants fire immediately, before the value ever reaches the
-aggregate.
+The `Money` value object validates itself at construction. Suppose your code
+creates `Money(amount=-5, currency="XYZ")`. The invariants run immediately,
+before the value reaches the aggregate.
 
 ```python
 --8<-- "concepts/philosophy/always-valid/002.py:money_checks"
 ```
 
 Value object invariants are **context-free**. An `Email` is either valid or
-not, regardless of which aggregate uses it. This eliminates duplication. The
-format rule lives in one place and is reused everywhere.
+not, regardless of which aggregate uses it. This eliminates duplication. You
+define the format rule once in the value object, and every aggregate that uses
+the value object applies it.
 
 **What belongs here:** Format patterns (email, phone, SKU), internal
 consistency (end date after start date), concept-level rules (non-negative
@@ -109,12 +111,12 @@ money).
 
 ---
 
-## Layer 3: Aggregate invariants
+## Layer 3: Enforce business rules with aggregate invariants
 
 Business rules that span multiple fields or entities within the aggregate.
-These are the rules that define what makes an Order _valid_ as a business
-concept, not just that its fields have the right types, but that it's
-internally consistent.
+These rules define what makes an Order _valid_ as a business concept. They
+check that the Order is internally consistent, beyond its fields having the
+right types.
 
 ```python
 --8<-- "concepts/philosophy/always-valid/003.py:setup"
@@ -148,10 +150,10 @@ context-dependent rules.
 
 ---
 
-## Layer 4: Handler and service guards
+## Layer 4: Guard requests in handlers and services
 
-Some rules depend on context: who is making the request, what time it is,
-what state other aggregates are in. These rules live in command handlers,
+Some rules depend on context: who is making the request, what time it is, what
+state other aggregates are in. You write these rules in command handlers,
 application services, or domain services, outside the aggregate.
 
 ```python
@@ -167,9 +169,10 @@ path, not just the handler.
 
 ---
 
-## How it works
+## How does Protean enforce validity?
 
-The always-valid guarantee isn't magic, it's automatic interception.
+Protean enforces the always-valid guarantee by intercepting every field
+assignment.
 
 When you write `order.status = "confirmed"`, Protean's `__setattr__`
 implementation does more than set a field:
@@ -186,8 +189,8 @@ previous valid state.
 
 This enforcement is **recursive**. When invariants run on the aggregate root,
 Protean also walks all associated entities (via `HasOne` and `HasMany`) and
-runs their invariants too. A child entity deep within the cluster cannot
-silently violate its own rules.
+runs their invariants too. A child entity at any depth in the aggregate cannot
+break its own rules without Protean raising an error.
 
 ```
 order.status = "confirmed"
@@ -206,14 +209,16 @@ order.status = "confirmed"
 
 ## What this means for your code
 
-The always-valid guarantee changes how you write and think about domain code:
+Because Protean enforces the always-valid guarantee, you write and think about
+domain code differently:
 
 - **No `validate()` calls**: You never need to remember to validate before
   saving. The aggregate cannot accept invalid state.
 
 - **Named methods are safe**: A method like `order.place()` can modify multiple
-  fields. Invariants catch any inconsistency on each assignment, or you use
-  `atomic_change` for coordinated mutations.
+  fields. Invariants check for inconsistency on each assignment. For
+  coordinated mutations, you use `atomic_change`, which checks the final state
+  on exit.
 
 - **Handlers can't corrupt state**: Even if a command handler sets fields
   directly rather than using named methods, invariants still fire.
@@ -225,11 +230,11 @@ The always-valid guarantee changes how you write and think about domain code:
 - **Invalid data is caught at the boundary**: Field constraints on commands
   catch bad data before handlers even run. Value object invariants catch format
   errors at construction. Aggregate invariants catch business rule violations
-  immediately. Each layer pushes validation as early as possible.
+  immediately. Each layer runs its validation at the earliest point it can.
 
 ---
 
-## Further reading
+## Read more about validation
 
 - [Validation Layering](../../patterns/validation-layering.md): Detailed
   pattern guide with anti-patterns and decision table for which layer to use.

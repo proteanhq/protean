@@ -4,16 +4,18 @@
 
 In most systems, domain objects don't exist in isolation. An `Order` has
 `LineItems`, a `Customer` has `Addresses`, a `Project` has `Tasks`. Without
-clear boundaries, any piece of code can reach in and modify any related object,
-leading to inconsistent state, broken invariants, and tangled dependencies.
-When two concurrent requests modify the same cluster of objects, there's no
-natural place to detect the conflict.
+clear boundaries, any piece of code can modify any related object directly. The
+result is inconsistent state, broken invariants, and dependencies between parts
+of the code that should stay separate. When two concurrent requests modify the
+same cluster of objects, no single object is responsible for detecting the
+conflict.
 
-Aggregates solve this by drawing an explicit boundary around a cluster of
-related objects. All changes within that boundary go through a single root
-entity (the **aggregate root**) which enforces business rules, guards
-consistency, and acts as the unit of persistence and concurrency control.
-Outside code never reaches past the root to modify internal objects directly.
+An aggregate prevents inconsistent state and undetected conflicts by drawing an
+explicit boundary around a cluster of related objects. All changes within that
+boundary go through a single root entity (the **aggregate root**). The
+aggregate root enforces business rules, keeps the cluster consistent, and is
+the unit of persistence and concurrency control. Code outside the aggregate
+modifies internal objects only through methods on the root.
 
 An aggregate is a cluster of domain objects that can be treated as a single
 unit for data changes. Each aggregate has a root entity, known as the
@@ -36,14 +38,14 @@ first persisted, and increases by one on each subsequent save.
 ### Aggregates have concurrency control. { data-toc-label="Concurrency Control" }
 Aggregates are persisted with optimistic concurrency. If the expected version
 of the aggregate does not match the version in the database, the framework
-raises `ExpectedVersionError`. In async handlers (`@handle`), this error is
-automatically retried with exponential backoff, each retry creates a fresh Unit
-of Work that re-reads the aggregate at the latest version. See [Version
-conflict
-auto-retry](../../guides/server/error-handling.md#version-conflict-auto-retry)
-for configuration details and [Optimistic Concurrency as a Design
-Tool](../../patterns/optimistic-concurrency-as-design-tool.md) for handling
-different conflict categories.
+raises `ExpectedVersionError`. In async handlers (`@handle`), the framework
+retries this error automatically with exponential backoff. Each retry creates a
+fresh Unit of Work that re-reads the aggregate at the latest version. See
+[Version conflict
+auto-retry](../../guides/server/error-handling.md#retry-version-conflicts-automatically)
+to configure the retries, and [Optimistic Concurrency as a Design
+Tool](../../patterns/optimistic-concurrency-as-design-tool.md) to resolve each
+of the different conflict categories.
 
 ### Aggregates enclose business invariants. { data-toc-label="Invariants" }
 
@@ -51,7 +53,7 @@ Aggregates contain invariants that should always be satisfied. Protean enforces
 an **always-valid guarantee**: invariants are checked automatically before and
 after every field change, not just at persistence time. This means an aggregate
 cluster can never exist in an invalid state once constraints and invariants have
-been defined. See [Invariants](../foundations/invariants.md#the-always-valid-guarantee)
+been defined. See [Invariants](../foundations/invariants.md#how-does-protean-keep-an-aggregate-always-valid)
 for the full explanation.
 
 Invariants can be specified at the level of an aggregate's fields, the entire
@@ -60,19 +62,19 @@ aggregate cluster, individual [entities](./entities.md), or
 
 ### Aggregates declare their own indexes. { data-toc-label="Indexes" }
 
-An aggregate knows how it will be queried, so it declares the indexes those
-query paths need with the `indexes=` option, uniqueness on identifiers, composite
-ordering for hot paths, partial indexes for active subsets. Keeping the
-declaration on the aggregate (rather than in a hand-maintained migration) means
-the query shape and its index live in one place. See [Declaring
-Indexes](../../guides/domain-definition/indexes.md) and the [Index Aggregates
-for Query Paths](../../patterns/index-aggregates-for-query-paths.md) pattern.
+You declare the indexes for an aggregate's queries on the aggregate itself,
+with the `indexes=` option. Typical indexes are uniqueness on identifiers,
+composite ordering for hot paths, and partial indexes for active subsets. When
+you declare the indexes on the aggregate, you need no hand-maintained migration
+for them. You define each query shape and its index together, in the aggregate
+definition. See [Declaring Indexes](../../guides/domain-definition/indexes.md)
+and the [Index Aggregates for Query
+Paths](../../patterns/index-aggregates-for-query-paths.md) pattern.
 
-## Object Graphs
+## What can an aggregate contain?
 
-Aggregates compose a graph of enclosed elements. The objects themselves can nest
-other objects and so on infinitely, though it is recommended to not go beyond
-2 levels.
+Aggregates compose a graph of enclosed elements. The enclosed objects can nest
+other objects to any depth. Protean recommends at most 2 levels of nesting.
 
 ### Aggregates can hold two types of objects - Entities and Value Objects. { data-toc-label="Types of Objects" }
 [Entities](./entities.md) are objects with an identity.
@@ -80,20 +82,20 @@ other objects and so on infinitely, though it is recommended to not go beyond
 their identity.
 
 ### Entities are accessible only via aggregates. { data-toc-label="Entity Access" }
-Entities within aggregates are loaded and accessible only through the aggregate.
-All changes to entities should be driven through the aggregates.
+Entities within aggregates are loaded and accessible only through the
+aggregate. Make every change to an entity through its aggregate.
 
-## Persistence
+## How are aggregates persisted?
 
-Data persistence and retrieval are always at the level of an aggregate.
-They internally load and manage the objects within their cluster.
+Protean always saves and loads data one aggregate at a time. They internally
+load and manage the objects within their cluster.
 
 ### Aggregates persist data with the help of Repositories. { data-toc-label="Repositories" }
 
 Aggregates are persisted and retrieved with the help of
 [repositories](./repositories.md). Repositories are collection-oriented - they
 mimic how a collection data type, like list, dictionary, and set, would work.
-Repositories can be augmented with custom methods to perform business queries.
+You can add custom methods to a repository for business queries.
 
 ### Aggregates are transaction boundaries.  { data-toc-label="Transactions" }
 
@@ -114,7 +116,7 @@ remove the cap entirely.
 
 ---
 
-## Next steps
+## Learn more about aggregates
 
 For practical details on defining and using aggregates in Protean, see the guide:
 

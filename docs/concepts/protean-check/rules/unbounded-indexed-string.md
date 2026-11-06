@@ -21,7 +21,7 @@ A normal `String()` defaults to `max_length=255` and is therefore bounded. It
 is never flagged. Non-string fields (`Integer`, `Date`, and so on) are never
 flagged.
 
-## Scope and limits
+## What does the rule read, and what does it skip?
 
 The rule reads each aggregate root's own scalar fields and the indexes declared
 on it. It deliberately does **not** cover:
@@ -49,11 +49,12 @@ Protean supports:
 | MySQL | Requires an **explicit prefix length** (`INDEX (col(191))`); without one the DDL fails, and a prefix silently indexes only a leading slice of the value. InnoDB caps an index key at 3072 bytes, which is 768 `utf8mb4` characters, so the MySQL provider raises `IncorrectUsageError` naming the field rather than emitting DDL that fails or silently truncates. |
 | PostgreSQL | Accepts it, but with **storage and performance overhead**, large values bloat the index and can exceed the B-tree row-size limit at runtime. |
 
-Epic #941 set `max_length` on the Outbox string fields for exactly this reason:
-indexes cannot be created on unbounded strings on most engines. This rule
-detects the same mismatch mechanically, at build time, for every aggregate.
+Protean set `max_length` on the Outbox string fields (epic #941) for exactly
+this reason: most engines cannot create an index on an unbounded string. This
+rule detects the same mismatch mechanically, at build time, for every
+aggregate.
 
-## Example
+## How does a flagged aggregate compare with a compliant one?
 
 Flagged. An unbounded `Text` field is indexed:
 
@@ -61,8 +62,8 @@ Flagged. An unbounded `Text` field is indexed:
 --8<-- "concepts/protean-check/rules/unbounded-indexed-string/001.py:flagged"
 ```
 
-Compliant. A bounded `String` field is indexed, and the unbounded field is left
-out of every index:
+Compliant. A bounded `String` field is indexed. The unbounded field is left out
+of every index:
 
 ```python
 --8<-- "concepts/protean-check/rules/unbounded-indexed-string/002.py:compliant"
@@ -72,9 +73,9 @@ out of every index:
 
 - Give the field a bounded length (`String(max_length=N)`) sized to its domain,
   or
-- remove it from the index if it does not need to be indexed.
+- if the field does not need to be indexed, remove the field from the index.
 
-## Suppressing
+## Suppress the rule for one aggregate
 
 Suppress the rule for a single aggregate with `suppress_checks`:
 

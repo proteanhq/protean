@@ -1,21 +1,21 @@
-# Internals
+# How Protean works internally
 
 The design reasoning and internal architecture behind Protean's core systems.
-Read these if you are contributing, or if you want to know **why** Protean
-works the way it does rather than only how to use it.
+When you contribute to Protean, read these pages. Read them also to learn
+**why** Protean works the way it does, beyond how to use it.
 
-These pages go deeper than the guides. Where guides show you what to write,
-internals explain the machinery that makes it work and the decisions that
-shaped it.
+These pages give more detail than the guides. The guides show you what code to
+write. These pages explain how Protean runs that code and why its design took
+that form.
 
-## Topics
+## What does each page explain?
 
 - [Field system](./field-system.md): How Protean's field functions translate
-  domain vocabulary into Pydantic's type system, and why three definition
-  styles are supported.
-- [Shadow fields](./shadow-fields.md): How ValueObject and Reference fields
-  are flattened into database columns via shadow fields, and why they live
-  outside Pydantic's model fields.
+  domain vocabulary into Pydantic's type system. The page also explains why
+  Protean supports three definition styles.
+- [Shadow fields](./shadow-fields.md): How Protean flattens ValueObject and
+  Reference fields into database columns via shadow fields. The page also
+  explains why shadow fields are not part of Pydantic's model fields.
 - [Query system](./query-system.md): How the Repository → DAO → QuerySet →
   Provider chain works, Q object expression trees, lookup resolution, lazy
   evaluation, and entity state tracking.
@@ -27,6 +27,6 @@ shaped it.
   transparently transformed to the current schema during deserialization,
   chain building algorithm, validation, and integration with
   `Message.to_domain_object()`.
-- [Intermediate Representation (IR)](./ir-specification.md): The portable
-  JSON format that captures domain model topology, elements, their shape, and
-  how they connect.
+- [Intermediate Representation (IR)](./ir-specification.md): The portable JSON
+  format for a domain model. It records the model's topology, its elements,
+  their shape, and the links between them.

@@ -1,32 +1,48 @@
 # Invariants
 
 An invariant is a business rule or condition that must always hold true within
-a domain concept. Invariants protect the consistency and validity of the domain
-model. They are the reason [aggregates](../building-blocks/aggregates.md)
-exist. The aggregate boundary is drawn around the data that must be consistent
-to satisfy a set of invariants.
+a domain concept. You write invariants so that the domain model stays
+consistent and valid. They are the reason
+[aggregates](../building-blocks/aggregates.md) exist. You draw the aggregate
+boundary around the data that must be consistent to satisfy a set of
+invariants.
 
-If a system allows an order total to disagree with the sum of its line items, or permits a bank account balance to go negative when the account type forbids it, the domain model has failed at its most fundamental job. Invariants prevent these invalid states from ever occurring.
+A system might let an order total disagree with the sum of its line items, or
+let a bank account balance go negative while the account type forbids it. In
+either case, the domain model has failed at its most fundamental job. Protean
+checks invariants to stop these invalid states from ever occurring inside an
+aggregate.
 
-## Types of Invariants
+## At what levels do invariants apply?
 
 Invariants operate at different levels of granularity:
 
 - **Field-level constraints**: Basic type and format rules: an email must be a valid format, a quantity must be positive, a status must be one of an enumerated set of values. These are the simplest invariants and are enforced at the field level.
 
-- **Value object invariants**: Rules within a single value object that ensure the concept it represents is always valid. A `Money` value object might enforce that the amount is non-negative and the currency code is a recognized ISO standard.
+- **Value object invariants apply within a single value object**: their rules
+  keep the value object's concept valid at all times. A `Money` value object
+  might enforce that the amount is non-negative and the currency code is a
+  recognized ISO standard.
 
-- **Aggregate-level invariants**: Rules spanning multiple objects within the aggregate cluster. The sum of line item totals must equal the order total. A reservation cannot overlap with another reservation for the same resource. These are the invariants that define why certain objects are grouped into the same aggregate.
+- **Aggregate-level invariants span the aggregate cluster**: each rule covers
+  multiple objects within the aggregate cluster. The sum of line item totals
+  must equal the order total. A reservation cannot overlap with another
+  reservation for the same resource. You group certain objects into the same
+  aggregate because of these invariants.
 
-- **Cross-aggregate invariants**: Rules spanning multiple aggregates. An order can only be placed if the customer's credit limit allows it, but the customer and the order are separate aggregates. These invariants cannot be enforced within a single transaction and are handled through eventual consistency via [domain events](../building-blocks/events.md).
+- **Cross-aggregate invariants span multiple aggregates**: each rule covers
+  data in more than one aggregate. An order can only be placed if the
+  customer's credit limit allows it, but the customer and the order are
+  separate aggregates. A single transaction cannot enforce these invariants, so
+  you enforce them through eventual consistency via [domain
+  events](../building-blocks/events.md).
 
-## The Always-Valid Guarantee
+## How does Protean keep an aggregate always valid?
 
 Protean enforces a strict design principle: **an aggregate cluster can never
-exist in an invalid state.** Once you define field constraints, value object
-rules, or aggregate invariants, Protean ensures they hold at all times, not
-just when you explicitly ask for validation, but after every single field
-change.
+exist in an invalid state.** Protean checks the field constraints, value object
+rules, and aggregate invariants you define after every single field change.
+They hold at all times, and you do not need to ask for validation explicitly.
 
 This works because Protean intercepts every attribute assignment on aggregates
 and entities. When you write `order.total_amount = 50.0`, the framework
@@ -75,12 +91,12 @@ don't need to remember to call a `validate()` method. You don't need to check
 validity before persisting. The aggregate refuses to accept invalid
 changes.
 
-This has several consequences for application design:
+The always-valid guarantee has several consequences for application design:
 
 - **Named methods on aggregates are safe by default**: A method like
-  `order.place()` can set multiple fields, and invariants will catch any
-  inconsistency on each assignment (or use `atomic_change` for batched
-  mutations).
+  `order.place()` can set multiple fields, and Protean checks invariants on
+  each assignment to catch any inconsistency (or use `atomic_change` for
+  batched mutations).
 - **Handlers can't corrupt domain state**: Even if a command handler sets
   fields directly rather than using named methods, invariants will still fire.
 - **Testing is simpler**: You can test invariants by directly setting fields
@@ -91,11 +107,16 @@ This has several consequences for application design:
 
 The most important design principle for aggregates is this: **group together the data that must be consistent to enforce an invariant.**
 
-If two pieces of data never need to be consistent within the same transaction, they likely belong in different aggregates. If they do need to be consistent, they must be in the same aggregate so that invariants can be checked atomically.
+If two pieces of data never need to be consistent within the same transaction,
+they likely belong in different aggregates. If they do need to be consistent,
+they must be in the same aggregate. Only then can Protean check their
+invariants atomically.
 
-This is why aggregates should be small. The fewer invariants an aggregate enforces, the smaller its consistency boundary, and the less contention it creates in a concurrent system.
+This is why aggregates should be small. An aggregate that enforces fewer
+invariants has a smaller consistency boundary. A smaller consistency boundary
+creates less contention in a concurrent system.
 
-## Invariants and Domain Events
+## Enforce cross-aggregate invariants with domain events
 
 When invariants span aggregate boundaries, they cannot be enforced
 synchronously. Instead, one aggregate raises an event, and another aggregate
@@ -103,11 +124,17 @@ reacts by enforcing its own invariants based on the event data. This leads to
 eventual consistency, a deliberate trade-off between strict transactional
 consistency and system scalability.
 
-For example, when an `Order` is placed, it raises an `OrderPlaced` event. An event handler for the `Inventory` aggregate reacts by checking whether sufficient stock exists and reserving it. If stock is insufficient, the inventory aggregate raises its own event, which may trigger a compensation action on the order.
+For example, when an `Order` is placed, it raises an `OrderPlaced` event. An
+event handler for the `Inventory` aggregate reacts by checking whether
+sufficient stock exists and reserving it. If stock is insufficient, the
+inventory aggregate raises its own event. That event may trigger a compensation
+action on the order.
 
-## Further Reading
+## Read more about invariants
 
-- [The Always-Valid Domain](../philosophy/always-valid.md): The complete story of four-layer validation and what the always-valid guarantee means for your code
+- [The Always-Valid Domain](../philosophy/always-valid.md): How the four
+  validation layers work and what the always-valid guarantee means for your
+  code
 - [Aggregates](../building-blocks/aggregates.md): Invariant enforcement within aggregate boundaries
 - [Invariants Guide](../../guides/domain-behavior/invariants.md): Implementing invariants in Protean
 - [Validation Layering](../../patterns/validation-layering.md): Where different types of validation belong

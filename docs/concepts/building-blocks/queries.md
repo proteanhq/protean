@@ -5,17 +5,18 @@ the read side of CQRS. Where a command expresses intent to *change* state, a
 query expresses intent to *read* it.
 
 Queries are the input to query handlers. A query carries the parameters a read
-needs (an identifier, a filter, a page number); the handler answers it from a
-projection and returns the result. Queries flow through `domain.dispatch(query)`,
-mirroring how commands flow through `domain.process(command)`.
+needs (an identifier, a filter, a page number). The handler answers the query
+from a projection and returns the result. Queries flow through
+`domain.dispatch(query)`, mirroring how commands flow through
+`domain.process(command)`.
 
 ## Facts
 
 ### Queries target a projection. { data-toc-label="Target a Projection" }
 
-A query is associated with a projection (a read model) via `part_of`, not with an
-aggregate. This places it firmly on the read side: queries describe reads against
-the denormalized views that projectors maintain.
+A query is associated with a projection (a read model) via `part_of`, not with
+an aggregate. A query therefore belongs to the read side. Queries describe
+reads against the denormalized views that projectors maintain.
 
 ### Queries are immutable. { data-toc-label="Immutable" }
 
@@ -24,9 +25,9 @@ raises `IncorrectUsageError`. To issue a different read, build a new query.
 
 ### Queries are validated at construction. { data-toc-label="Validated" }
 
-Field constraints (`required`, `min_value`, `max_value`, `choices`, and so on) are
-enforced when the query is created, before it reaches a handler. An invalid query
-raises `ValidationError` immediately.
+Protean enforces field constraints (`required`, `min_value`, `max_value`,
+`choices`, and so on) when you create the query. It checks them before the
+query reaches a handler. An invalid query raises `ValidationError` immediately.
 
 ### Queries carry only basic data. { data-toc-label="Basic Fields" }
 
@@ -36,7 +37,7 @@ to aggregates.
 
 ### Queries are named for what they return. { data-toc-label="Naming" }
 
-Commands are imperative (`PlaceOrder`); queries are named for their result
+Commands are imperative (`PlaceOrder`). Queries are named for their result
 (`GetOrderById`, `SearchOrders`, `ListActiveCustomers`).
 
 ### Queries are lightweight. { data-toc-label="Lightweight" }
@@ -47,28 +48,28 @@ immediately.
 
 ### A query can declare its result type. { data-toc-label="Result Type" }
 
-A query may state the type its handler returns by subscripting the base:
-`class GetOrderById(BaseQuery[OrderSummary])`. `domain.dispatch(query)` then
-resolves to that type at the call site instead of `Any`, checked by both mypy
-and pyright. Declaring the result type is optional and changes nothing at
+A query may state the type its handler returns by subscripting the base: `class
+GetOrderById(BaseQuery[OrderSummary])`. `domain.dispatch(query)` then resolves
+to that type at the call site instead of `Any`. Both mypy and pyright check
+this type. Declaring the result type is optional and changes nothing at
 runtime.
 
-## Best Practices
+## How should you design queries?
 
 ### Keep queries to read parameters. { data-toc-label="Read Parameters Only" }
 
-A query is a parameter object, not a place for behavior. It should not reach
-into repositories or compute results. That is the query handler's job.
+A query is a parameter object and holds no behavior. A query should not read
+from repositories or compute results. That is the query handler's job.
 
 ### Model one query per read shape. { data-toc-label="One per Read" }
 
 Prefer distinct queries (`GetOrderById`, `SearchOrders`) over a single
-parameter-heavy query with many optional fields. Named reads are clearer and
-validate more precisely.
+parameter-heavy query with many optional fields. Named reads are clearer. They
+also validate more precisely.
 
 ---
 
-## Next steps
+## What should you read next?
 
 For practical details on defining queries and answering them, see the guide:
 

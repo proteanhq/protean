@@ -1,10 +1,10 @@
 # Commands
 
-In most applications, the code that *requests* a change (an API controller, a
-background job, a saga) is not the code that *performs* the change (the domain
-model). A command bridges that gap: it captures the caller's intent as an
-explicit, immutable data object that can be validated, serialized, routed,
-retried, and audited. All before any business logic runs.
+In most applications, one piece of code *requests* a change (an API controller,
+a background job, a saga). A different piece of code *performs* the change (the
+domain model). A command carries the caller's intent from one to the other as
+an explicit, immutable data object. You can validate, serialize, route, retry,
+and audit that object. All before any business logic runs.
 
 Commands and [events](./events.md) are complementary halves of a message-driven
 architecture. They differ in tense and semantics:
@@ -20,7 +20,7 @@ architecture. They differ in tense and semantics:
 ## Facts
 
 ### Commands express intentions. { data-toc-label="Intentions" }
-Commands are not queries; they do not request data but rather express an
+Commands are not queries and do not request data. A command expresses an
 intention to perform an action that changes the state of the system.
 
 ### Commands are essentially Data Transfer Objects (DTO). { data-toc-label="Data Transfer Objects" }
@@ -42,12 +42,13 @@ concepts in Ubiquitous Language.
 ## Structure
 
 ### Commands have **metadata**. { data-toc-label="Metadata" }
-Headers and metadata such as timestamps, unique identifiers, and version
-numbers are included in commands for precise tracking of origin and intent.
+Protean includes headers and metadata in each command, such as timestamps,
+unique identifiers, and version numbers, so you can track its origin and intent
+precisely.
 
 ### Commands are **versioned**. { data-toc-label="Versioning" }
-Each command is assigned a version number (defaulting to `1`), ensuring that
-commands can evolve over time. Set `__version__` on the class to override:
+Protean assigns each command a version number (defaulting to `1`), so commands
+can evolve over time. Set `__version__` on the class to override:
 
 ```python hl_lines="8"
 --8<-- "concepts/building-blocks/commands/001.py:versioned"
@@ -58,31 +59,30 @@ there is seldom a need to support multiple versions of commands at the same
 time.
 
 ### Commands are **timestamped**. { data-toc-label="Timestamp" }
-Each command carries a timestamp indicating when the command was initiated,
-which is crucial for processing incoming commands chronologically.
+Each command carries a timestamp of when it was initiated. You need this
+timestamp to process incoming commands in chronological order.
 
 ### Commands are written into streams.  { data-toc-label="Command Streams" }
 Commands are written to and read from streams. Review the section on
-[Streams](../foundations/streams.md) for a deep-dive.
+[Streams](../foundations/streams.md) for a detailed explanation.
 
 ### Command objects are always valid. { data-toc-label="Validation" }
-Like other elements in Protean, commands are validated as soon as they are
-initialized to ensure they contain all required information and that the data
-is in the correct format.
+Like other elements in Protean, a command is validated as soon as you
+initialize it. Protean checks that the command contains all required
+information and that its data is in the correct format.
 
-## Persistence
+## How commands lead to persisted state
 
 ### Commands do not persist data directly. { data-toc-label="Persistence" }
-Commands themselves do not persist data; they trigger domain operations that
-result in changes to the state of aggregates, which are then persisted by
-repositories.
+Commands themselves do not persist data but trigger domain operations that
+change the state of aggregates. Repositories then persist those aggregates.
 
 ### Commands can result in events. { data-toc-label="Events" }
 Once a command has been successfully handled, it may result in domain events
-being published. These events can then be used to notify other parts of the
-system about the changes.
+being published. Event handlers in other parts of the system can then consume
+these events to learn about the changes.
 
-## Best Practices
+## How to design good commands
 
 ### Keep commands simple. { data-toc-label="Simplicity" }
 Commands should be simple and focused on a single responsibility. This makes
@@ -103,7 +103,7 @@ place to protect this data.
 
 ---
 
-## Next steps
+## What to read next
 
 For practical details on defining and processing commands in Protean, see the guide:
 
