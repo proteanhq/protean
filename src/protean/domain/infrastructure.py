@@ -154,19 +154,7 @@ class InfrastructureManager:
         Delegates to each managed provider's ``_create_database_artifacts()``
         which is idempotent — existing tables are left untouched.
         Providers with ``managed = false`` are skipped.
-
-        Forces the outbox and idempotency-marker DAOs first so their table
-        definitions are registered in SQLAlchemy metadata before ``create_all()``
-        runs.
         """
-        # Force DAO creation for outbox repos so their tables are included
-        for outbox_repo in self.outbox_repos.values():
-            outbox_repo._dao  # noqa: B018
-
-        # Same for the consume-side idempotency marker tables.
-        for pm_repo in self.processed_message_repos.values():
-            pm_repo._dao  # noqa: B018
-
         for provider in self._domain.providers.values():
             if not provider.managed:
                 continue
@@ -186,9 +174,6 @@ class InfrastructureManager:
                 "'server.default_subscription_type = \"stream\"' "
                 "in your domain configuration."
             )
-        # Force DAO creation for outbox repos, then create pending tables
-        for outbox_repo in self.outbox_repos.values():
-            outbox_repo._dao  # noqa: B018
         for provider in self._domain.providers.values():
             if not provider.managed:
                 continue

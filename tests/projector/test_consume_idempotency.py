@@ -90,7 +90,7 @@ def _create_tables(test_domain):
 
     The ``db`` fixture creates artifacts at setup, before these tests register
     their elements, so the read-model and marker tables must be (re)created here.
-    Goes through the real ``setup_database`` path (which forces the marker DAO).
+    Goes through the real ``setup_database`` path, which includes the marker table.
     """
     test_domain.setup_database()
 

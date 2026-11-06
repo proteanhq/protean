@@ -329,6 +329,41 @@ cannot support them:
 ⚠️ = falls back to a full index with a logged warning. The memory provider
 validates declarations but does not enforce them.
 
+## Read the tables a SQL provider owns
+
+Every SQL provider (PostgreSQL, SQLite, MSSQL, MySQL) has a `metadata`
+property. It returns the SQLAlchemy `MetaData` object that holds the table of
+every aggregate, entity and projection the provider owns. Tools such as a
+schema migration tool read it to compare the tables your domain declares with
+the tables in the database.
+
+```python
+--8<-- "adapters/database/index/002.py:full"
+```
+
+The property holds:
+
+- a table for each aggregate, entity and projection stored by this provider;
+- the `outbox` table, when the domain uses the outbox;
+- the `processed_message` table, when a projector or subscriber is declared
+  with `idempotent=True`.
+
+It holds no table for an event-sourced aggregate or its entities, a projection
+stored in a cache, or an element assigned to another provider. A provider with
+`managed = false` has no `outbox` or `processed_message` table in it, because
+Protean does not create those tables on an unmanaged database.
+
+Each table takes the schema set by the provider's `schema` key. Without the
+key, tables take `public` on PostgreSQL, `dbo` on MSSQL, and no schema on SQLite
+and MySQL.
+
+Reading the property builds the table definitions without connecting to the
+database. It returns the same list after `domain.drop_database()`. Read it
+after `domain.init()`.
+
+The returned object is the one the provider's models use. Do not add tables to
+it or remove tables from it.
+
 ## Related pages
 
 - Configure a specific provider: [Memory](./memory.md),
