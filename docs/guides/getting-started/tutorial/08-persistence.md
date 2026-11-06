@@ -1,8 +1,7 @@
 # Chapter 8: Connecting a Real Database
 
-In this chapter we will switch Bookshelf from in-memory storage to
-PostgreSQL, with only a configuration change. Our domain code stays exactly the
-same.
+We switch Bookshelf from in-memory storage to PostgreSQL, with only a
+configuration change. Our domain code stays exactly the same.
 
 ## Creating the Configuration File
 

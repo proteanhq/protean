@@ -1,9 +1,9 @@
 # Chapter 5: Testing the Ledger
 
 We have been running code manually in scripts and the Protean shell. It is time
-for proper automated tests. In this chapter we will discover Protean's testing
-DSL. A fluent API that reads like English: "given an Account after these
-events, process this command."
+for proper automated tests. Now we discover Protean's testing DSL, a fluent API
+that reads like English: "given an Account after these events, process this
+command."
 
 ## The Testing DSL
 

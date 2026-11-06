@@ -2,9 +2,9 @@
 
 The product team needs a customer-facing dashboard showing account summaries,
 current balance, transaction count, last activity. Reading this from the event
-store by replaying events every time is not practical. In this chapter we will
-build a **projection** (a denormalized, read-optimized view) and a
-**projector** that keeps it up to date automatically as events occur.
+store by replaying events every time is not practical. Now we build a
+**projection** (a denormalized, read-optimized view) and a **projector** that
+keeps it up to date automatically as events occur.
 
 ## The Write Model vs. Read Model
 

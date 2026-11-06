@@ -11,8 +11,8 @@ the domain.
 --8<-- "guides/compose-a-domain/002.py:full"
 ```
 
-A full list of domain decorators along with examples are available in the
-[decorators](../../reference/domain-elements/element-decorators.md) section.
+The [decorators](../../reference/domain-elements/element-decorators.md) section
+lists every domain decorator, with examples.
 
 ## Passing additional options
 

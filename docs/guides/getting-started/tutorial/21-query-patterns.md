@@ -2,8 +2,8 @@
 
 The storefront needs rich browsing capabilities: filter books by author,
 sort by price, paginate results, and show inventory availability
-alongside book information. In this chapter we will explore the full
-range of `domain.view_for()` and build a cross-aggregate projection.
+alongside book information. Now we explore the full range of
+`domain.view_for()` and build a cross-aggregate projection.
 
 ## ReadOnlyQuerySet in detail
 

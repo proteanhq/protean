@@ -1,8 +1,8 @@
 # Tutorial: Building Bookshelf
 
-In this tutorial we will build **Bookshelf**, a complete online bookstore
-with Protean. By the end, we will have a production-ready application with
-aggregates, value objects, commands, events, projections, a FastAPI web
+We build **Bookshelf**, a complete online bookstore, with Protean. By the end,
+we will have a production-ready application with aggregates, value objects,
+commands, events, projections, a FastAPI web
 layer, async background processing, external integrations, operational
 tooling, and tests.
 

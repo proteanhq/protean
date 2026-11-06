@@ -51,7 +51,8 @@ specifications for vendor extensions.
   Registry, AWS Glue), and OpenAPI 3.1 (which uses JSON Schema Draft 2020-12
   natively).
 - **Tooling compatibility**: Editors, linters, and documentation generators
-  that understand JSON Schema work out of the box.
+  that understand JSON Schema work with the schemas without extra
+  configuration.
 - **No custom parsing**: Consumers that only need validation can ignore the
   `x-protean-*` fields entirely; consumers that need metadata can read them
   without understanding a custom envelope format.

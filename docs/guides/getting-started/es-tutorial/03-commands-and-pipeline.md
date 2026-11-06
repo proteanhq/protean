@@ -1,10 +1,10 @@
 # Chapter 3: Commands and the Processing Pipeline
 
 Calling `account.deposit()` directly works for in-process code, but
-external APIs need a clear contract. In this chapter we will introduce
-**commands**, typed data objects that represent the intent to do something, and
-**command handlers** that receive those commands, load the aggregate from the
-event store, call the appropriate domain method, and persist the result.
+external APIs need a clear contract. Now we introduce **commands**, typed data
+objects that represent the intent to do something, and **command handlers**
+that receive those commands, load the aggregate from the event store, call the
+appropriate domain method, and persist the result.
 
 ## Defining Commands
 

@@ -6,7 +6,7 @@ Commands for managing databases, event stores, and data inspection.
 - [`protean events`](./events.md): Inspect event store contents
 - [`protean eventstore`](./eventstore.md): Check event-store integrity
 - [`protean eventstore dlq`](./eventstore-dlq.md): Inspect exhausted event-store positions
-- [`protean snapshot`](./snapshot.md): Manage aggregate snapshots
-- [`protean projection`](./projection.md): Rebuild and manage projections
+- [`protean snapshot`](./snapshot.md): Create aggregate snapshots
+- [`protean projection`](./projection.md): Rebuild projections and check their status
 - [`protean outbox`](./outbox.md): Reconcile the outbox with the event store, and release partition keys that an abandoned row halts
 - [`protean idempotency`](./idempotency.md): Prune consume-side idempotency markers

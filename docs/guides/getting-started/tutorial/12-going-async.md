@@ -2,10 +2,9 @@
 
 Processing everything synchronously was fine for development. But a
 customer placing an order should not wait while the system updates the
-catalog projection, stocks inventory, and sends notifications. In this
-chapter we will configure Redis as the message broker, enable the outbox
-pattern for reliable delivery, and start the Protean server for
-asynchronous event and command processing.
+catalog projection, stocks inventory, and sends notifications. Now we configure
+Redis as the message broker, enable the outbox pattern for reliable delivery,
+and start the Protean server for asynchronous event and command processing.
 
 ## The Outbox Pattern
 

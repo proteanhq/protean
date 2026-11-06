@@ -1,9 +1,9 @@
 # Chapter 2: Deposits and Withdrawals
 
-An account that can only be opened is not much use. In this chapter
-we will add deposits and withdrawals, multiple event types flowing through a
-single aggregate. Along the way, we will see a core principle of Event
-Sourcing: **all state changes flow exclusively through events**.
+An account that can only be opened is not much use. Now we add deposits and
+withdrawals, multiple event types flowing through a single aggregate. Along the
+way, we will see a core principle of Event Sourcing: **all state changes flow
+exclusively through events**.
 
 ## New Events
 

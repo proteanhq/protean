@@ -110,7 +110,8 @@ The engine emits structured trace events for every message processed:
 - `outbox.failed`: Outbox processor failed to publish
 
 These events flow to the Observatory via Redis Pub/Sub in real-time.
-When nobody is listening, the emitter short-circuits with zero overhead.
+When no client is subscribed, the emitter skips publishing and adds zero
+overhead.
 
 ## What We Built
 
@@ -120,7 +121,7 @@ When nobody is listening, the emitter short-circuits with zero overhead.
 - Understanding of **trace events** emitted by the engine.
 
 With monitoring in place, we can detect problems early. In the next chapter, a
-bank acquisition triggers a massive migration, and we learn how to handle it
+bank acquisition triggers a large migration. We learn how to run that migration
 without disrupting production.
 
 ## Full Source

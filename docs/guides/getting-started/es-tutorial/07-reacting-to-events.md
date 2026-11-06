@@ -3,9 +3,8 @@
 The compliance team mandates that every deposit over $10,000 triggers a
 suspicious-activity alert. The marketing team wants a welcome email when
 a new account opens. These are **side effects** that do not belong in
-the aggregate or the projector. In this chapter we will create **event
-handlers**, decoupled listeners that react to events and trigger external
-actions.
+the aggregate or the projector. Now we create **event handlers**, decoupled
+listeners that react to events and trigger external actions.
 
 ## Event Handlers vs. Projectors
 

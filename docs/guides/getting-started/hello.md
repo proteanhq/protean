@@ -52,7 +52,7 @@ exactly the same.
 Ready for more? The [Quickstart](./quickstart.md) builds a complete domain
 with commands, events, and handlers in 5 minutes.
 
-Or dive into the [Tutorial](./tutorial/index.md) for a guided,
-chapter-by-chapter journey from aggregates to production.
+Or work through the [Tutorial](./tutorial/index.md), a guided set of chapters
+from aggregates to production.
 
 <!-- test -->
