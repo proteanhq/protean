@@ -82,7 +82,7 @@ with domain.domain_context():
     domain.repository_for(Order).add(order)
 
     stream = f"{Order.meta_.stream_category}-fact-{order.id}"
-    fact = domain.event_store.store.read(stream)[-1].to_domain_object()
+    fact = domain.event_store.store.read_last_message(stream).to_domain_object()
     print(type(fact).__name__)  # OrderFactEvent
     print(fact.id == order.id, fact.customer_id, fact.status)  # True CUST-123 draft
 ```

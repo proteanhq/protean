@@ -258,7 +258,7 @@ if __name__ == "__main__":
 
         # Verify fact events were generated in the event store
         fact_stream = f"{Account.meta_.stream_category}-fact-{account_id}"
-        fact_messages = domain.event_store.store.read(fact_stream)
+        fact_messages = list(domain.event_store.store.read_all(fact_stream))
         print(f"\nFact events in stream: {len(fact_messages)}")
         for msg in fact_messages:
             event = msg.to_domain_object()

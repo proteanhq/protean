@@ -385,7 +385,7 @@ class AggregateResult:
 
         # Read new events (those beyond previously seen events)
         stream = f"{self._aggregate_cls.meta_.stream_category}-{aggregate_id_str}"
-        all_messages = store.read(stream)
+        all_messages = list(store.read_all(stream))
         new_events = [m.to_domain_object() for m in all_messages[self._event_count :]]
         self._new_events = EventLog(new_events)
         self._all_events.extend(new_events)
@@ -935,7 +935,7 @@ class ProcessManagerResult:
             return
 
         stream_name = f"{self._pm_cls.meta_.stream_category}-{correlation_value}"
-        messages = _event_store_of(current_domain).read(stream_name)
+        messages = list(_event_store_of(current_domain).read_all(stream_name))
 
         if messages:
             self._pm_instance = self._pm_cls._from_transitions(

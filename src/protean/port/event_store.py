@@ -254,6 +254,21 @@ class BaseEventStore(metaclass=ABCMeta):
             IncorrectUsageError: If ``page_size`` is not a positive integer, or
                 a stored row is missing its position.
         """
+        for raw_message in self._read_all_raw(stream, page_size=page_size):
+            yield Message.deserialize(raw_message)
+
+    def _read_all_raw(
+        self, stream: str = "$all", *, page_size: int = 1000
+    ) -> Iterator[dict[str, Any]]:
+        """Yield every raw row in ``stream`` except snapshot rows, paging like ``read_all``.
+
+        A caller that filters on a raw field such as ``type`` uses this to
+        deserialize only the rows it keeps.
+
+        Raises:
+            IncorrectUsageError: If ``page_size`` is not a positive integer, or
+                a stored row is missing its position.
+        """
         # Check the type before the value: a float or ``None`` slipping through
         # would flow into the adapter's row limit and either page oddly or raise
         # a bare ``TypeError`` far from the cause. ``bool`` is an ``int``, and
@@ -274,7 +289,7 @@ class BaseEventStore(metaclass=ABCMeta):
             for raw_message in raw_page:
                 if self._is_snapshot_row(raw_message):
                     continue
-                yield Message.deserialize(raw_message)
+                yield raw_message
 
             # A short raw page is the last page: the store had no more rows to
             # fill it. Terminate on the *raw* count, not the yielded count, so a
@@ -453,7 +468,12 @@ class BaseEventStore(metaclass=ABCMeta):
         )
 
     def _read_stream_fully(
-        self, stream: str, start_position: int = 0, max_rows: int | None = None
+        self,
+        stream: str,
+        start_position: int = 0,
+        max_rows: int | None = None,
+        *,
+        page_size: int = 1000,
     ) -> deque[dict[str, Any]]:
         """Read the rows of ``stream``, paging past the per-read page size.
 
@@ -463,12 +483,12 @@ class BaseEventStore(metaclass=ABCMeta):
         rebuilds an incomplete aggregate. ``start_position`` begins the read past
         a snapshot's version to pick up only later events; ``max_rows`` bounds the
         read to a prefix, which a temporal query uses to stop at the requested
-        version; ``None`` reads to the end. A continuation shorter than one page
-        still costs a single read. Reads are inclusive, so each page resumes one
+        version; ``None`` reads to the end. ``page_size`` is the number of rows
+        per ``_read``. A continuation shorter than one page still costs a single
+        read. Reads are inclusive, so each page resumes one
         position past the last row seen.
         """
         rows: deque[dict[str, Any]] = deque()
-        page_size = 1000  # the default page size of ``_read``
         position = start_position
         while max_rows is None or len(rows) < max_rows:
             batch = (
@@ -1388,15 +1408,15 @@ class BaseEventStore(metaclass=ABCMeta):
         self, event_cls: type[BaseEvent], stream_category: str | None = None
     ) -> BaseEvent | BaseCommand | None:
         stream_category = stream_category or "$all"
-        events = [
-            event
-            for event in self._read(stream_category)
-            if event["type"] == event_cls.__type__
-        ]
+        # Keep only the latest match so memory stays bounded by one read page.
+        last_event = None
+        for event in self._read_all_raw(stream_category):
+            if event["type"] == event_cls.__type__:
+                last_event = event
 
         return (
-            Message.deserialize(events[-1]).to_domain_object()
-            if len(events) > 0
+            Message.deserialize(last_event).to_domain_object()
+            if last_event is not None
             else None
         )
 
@@ -1417,6 +1437,6 @@ class BaseEventStore(metaclass=ABCMeta):
         stream_category = stream_category or "$all"
         return [
             Message.deserialize(event).to_domain_object()
-            for event in self._read(stream_category)
+            for event in self._read_all_raw(stream_category)
             if event["type"] == event_cls.__type__
         ]

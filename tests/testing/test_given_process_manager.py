@@ -376,6 +376,20 @@ class TestEdgeCases:
         assert result.transition_count == 2
 
     @pytest.mark.eventstore
+    def test_transitions_counted_past_one_read_page(
+        self, small_read_page, order_id, order_placed
+    ):
+        """A PM stream longer than one read page is counted and loaded in full."""
+        payments = [
+            PaymentConfirmed(payment_id=f"PAY-{i}", order_id=order_id, amount=100.0)
+            for i in range(2 * small_read_page)
+        ]
+        result = given(OrderFulfillmentPM, order_placed, *payments)
+
+        assert result.transition_count == 2 * small_read_page + 1
+        assert result.payment_id == f"PAY-{2 * small_read_page - 1}"
+
+    @pytest.mark.eventstore
     def test_infer_correlation_value_with_no_events(self):
         """_infer_correlation_value returns None when events list is empty."""
         result = ProcessManagerResult(OrderFulfillmentPM)

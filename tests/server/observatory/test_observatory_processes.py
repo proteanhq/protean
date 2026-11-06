@@ -581,6 +581,25 @@ class TestGetPMInstances:
         assert inst["state"]["status"] == "shipped"
         assert inst["event_count"] == 2
 
+    def test_reads_the_whole_stream_past_one_read_page(
+        self, fulfillment, test_domain, small_read_page
+    ):
+        """An instance whose stream is longer than one read page shows its
+        last state and counts every transition."""
+        order_id = _start_order(fulfillment)
+        with test_domain.domain_context():
+            pm = fulfillment.pm._load_or_create(order_id, is_start=False)
+            for _ in range(2 * small_read_page):
+                fulfillment.pm._persist_transition(pm, "on_placed")
+        _ship_order(fulfillment, order_id)
+
+        result = get_pm_instances(test_domain, fulfillment.pm)
+        assert len(result) == 1
+        inst = result[0]
+        assert inst["state"]["status"] == "shipped"
+        assert inst["is_complete"] is True
+        assert inst["event_count"] == 2 * small_read_page + 2
+
     def test_empty_stream(self, fulfillment, test_domain):
         """A stream from another category whose name ends with the process
         manager's category is listed as an identifier, but the process
@@ -989,14 +1008,14 @@ class TestGetPMInstancesStreamReadFails:
         first, second = sorted([_start_order(fulfillment), _start_order(fulfillment)])
         store = test_domain.event_store.store
         category = fulfillment.pm.meta_.stream_category
-        real_read = store.read
+        real_read_all = store.read_all
 
         def read_failing_first(stream_name, *args, **kwargs):
             if stream_name == f"{category}-{first}":
                 raise Exception("stream corrupted")
-            return real_read(stream_name, *args, **kwargs)
+            return real_read_all(stream_name, *args, **kwargs)
 
-        with patch.object(store, "read", side_effect=read_failing_first):
+        with patch.object(store, "read_all", side_effect=read_failing_first):
             result = get_pm_instances(test_domain, fulfillment.pm)
 
         assert len(result) == 1

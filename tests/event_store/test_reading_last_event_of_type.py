@@ -139,3 +139,23 @@ class TestEventStoreEventsOfType:
 
         event = test_domain.event_store.store._last_event_of_type(Renamed, "group")
         assert event is None
+
+
+@pytest.mark.eventstore
+def test_events_of_type_read_past_one_read_page(
+    test_domain, registered_user, small_read_page
+):
+    store = test_domain.event_store.store
+    for i in range(2 * small_read_page + 5):
+        registered_user.rename(name=f"Name {i}")
+        store.append(registered_user._events[-1])
+
+    last = store._last_event_of_type(Renamed)
+    assert last is not None
+    assert last.name == f"Name {2 * small_read_page + 4}"
+
+    renamed = store._events_of_type(Renamed)
+    assert [event.name for event in renamed] == [
+        f"Name {i}" for i in range(2 * small_read_page + 5)
+    ]
+    assert len(store._events_of_type(Registered, "test::user")) == 1
