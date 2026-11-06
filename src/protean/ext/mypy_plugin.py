@@ -58,11 +58,13 @@ from mypy.nodes import (
     Block,
     CallExpr,
     EllipsisExpr,
+    Expression,
     FuncDef,
     MemberExpr,
     NameExpr,
     PassStmt,
     RefExpr,
+    Statement,
     StrExpr,
     SymbolTableNode,
     TempNode,
@@ -764,107 +766,13 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
 
     info: TypeInfo = ctx.cls.info
 
-    # Don't override an explicitly declared __init__. The class body is not
-    # analyzed yet when this hook runs, so check its statements too.
-    if any(
-        isinstance(stmt, FuncDef) and stmt.name == "__init__"
-        for stmt in ctx.cls.defs.body
-    ):
+    if _declares_own_init(ctx, info):
         return
-    if "__init__" in info.names:
-        existing = info.names["__init__"]
-        # Only skip if it's defined in this class, not inherited
-        if existing.node and getattr(existing.node, "info", None) is info:
-            return
 
     # Collect field parameters from class body assignments
-    fields: list[tuple[str, Type]] = []
-
-    for stmt in ctx.cls.defs.body:
-        # Look for assignments like: name = String(required=True)
-        if not isinstance(stmt, AssignmentStmt):
-            continue
-        if len(stmt.lvalues) != 1:
-            continue
-        lvalue = stmt.lvalues[0]
-        if not isinstance(lvalue, NameExpr):
-            continue
-
-        field_name = lvalue.name
-        if field_name.startswith("_"):
-            continue
-
-        rvalue = stmt.rvalue
-        if not isinstance(rvalue, CallExpr):
-            continue
-
-        # Resolve the callee to a known field factory
-        callee = rvalue.callee
-        callee_fullname: str | None = None
-        if (isinstance(callee, RefExpr) and callee.fullname) or isinstance(
-            callee, MemberExpr
-        ):
-            callee_fullname = callee.fullname
-
-        # At MRO time, fullname may not be resolved yet.
-        # Fall back to matching by short name (e.g. "String", "Integer").
-        if callee_fullname is None and isinstance(callee, NameExpr):
-            callee_fullname = _SHORT_NAME_TO_CANONICAL.get(callee.name)
-
-        if _DEBUG:
-            print(
-                f"[protean-mypy-debug]   {field_name}: callee={type(callee).__name__}, "
-                f"fullname={callee_fullname}",
-                file=sys.stderr,
-            )
-
-        if callee_fullname is None:
-            continue
-
-        # Check simple field factories
-        field_type = _resolve_field_type_for_init(ctx, callee_fullname, rvalue)
-        if field_type is not None:
-            fields.append((field_name, field_type))
-
-    # Annotation-only fields (``name: String(required=True)``). mypy rejected
-    # the call in the annotation at parse time and kept no Python type, so the
-    # keyword is typed ``Any``.
-    for stmt in ctx.cls.defs.body:
-        if not _is_rejected_field_annotation(stmt):
-            continue
-        assert isinstance(stmt, AssignmentStmt)
-        lvalue = stmt.lvalues[0]
-        assert isinstance(lvalue, NameExpr)
-        field_name = lvalue.name
-        if field_name.startswith("_") or any(f[0] == field_name for f in fields):
-            continue
-        fields.append((field_name, AnyType(TypeOfAny.special_form)))
-
-        if _DEBUG:
-            print(
-                f"[protean-mypy-debug]   {field_name}: annotation-only",
-                file=sys.stderr,
-            )
-
-    # Plain annotations (``note: str`` or ``note: str = "x"``) are pydantic
-    # fields at runtime. Their types are not analyzed yet when this hook runs,
-    # so they are typed Any. ``unanalyzed_type`` is the annotation as written:
-    # semantic analysis can fill ``type`` in for an unannotated literal.
-    for stmt in ctx.cls.defs.body:
-        if (
-            not isinstance(stmt, AssignmentStmt)
-            or len(stmt.lvalues) != 1
-            or not isinstance(stmt.lvalues[0], NameExpr)
-            or stmt.unanalyzed_type is None
-            or isinstance(stmt.unanalyzed_type, RawExpressionType)
-        ):
-            continue
-        field_name = stmt.lvalues[0].name
-        if field_name.startswith("_") or any(f[0] == field_name for f in fields):
-            continue
-        if _is_class_var(ctx, stmt.unanalyzed_type):
-            continue
-        fields.append((field_name, AnyType(TypeOfAny.special_form)))
+    fields = _factory_fields(ctx)
+    _add_annotation_only_fields(ctx, fields)
+    _add_plain_annotation_fields(ctx, fields)
 
     # Fields declared on decorated parent elements, unless redeclared here.
     inherited: list[tuple[str, Type]] = []
@@ -892,6 +800,152 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
                 str_type = ctx.api.named_type("builtins.str", [])
                 fields.insert(0, ("id", str_type))
 
+    _install_synthesized_init(ctx, info, fields)
+
+
+def _declares_own_init(ctx: ClassDefContext, info: TypeInfo) -> bool:
+    """Return whether the class itself, not a parent, defines ``__init__``."""
+    # The class body is not analyzed yet when this hook runs, so an ``__init__``
+    # written in it shows up only as a statement, not in ``info.names``.
+    if any(
+        isinstance(stmt, FuncDef) and stmt.name == "__init__"
+        for stmt in ctx.cls.defs.body
+    ):
+        return True
+    if "__init__" in info.names:
+        existing = info.names["__init__"]
+        # An ``__init__`` inherited from a parent is recorded on the parent's info.
+        if existing.node and getattr(existing.node, "info", None) is info:
+            return True
+    return False
+
+
+def _factory_fields(ctx: ClassDefContext) -> list[tuple[str, Type]]:
+    """Return ``(name, type)`` for each ``name = FieldFactory(...)`` in the class body."""
+    fields: list[tuple[str, Type]] = []
+    for stmt in ctx.cls.defs.body:
+        field = _factory_field(ctx, stmt)
+        if field is not None:
+            fields.append(field)
+    return fields
+
+
+def _factory_field(ctx: ClassDefContext, stmt: Statement) -> tuple[str, Type] | None:
+    """Return ``(name, type)`` when *stmt* assigns a known field factory, else ``None``."""
+    # Look for assignments like: name = String(required=True)
+    if not isinstance(stmt, AssignmentStmt):
+        return None
+    if len(stmt.lvalues) != 1:
+        return None
+    lvalue = stmt.lvalues[0]
+    if not isinstance(lvalue, NameExpr):
+        return None
+
+    field_name = lvalue.name
+    if field_name.startswith("_"):
+        return None
+
+    rvalue = stmt.rvalue
+    if not isinstance(rvalue, CallExpr):
+        return None
+
+    callee = rvalue.callee
+    callee_fullname = _field_factory_fullname(callee)
+
+    if _DEBUG:
+        print(
+            f"[protean-mypy-debug]   {field_name}: callee={type(callee).__name__}, "
+            f"fullname={callee_fullname}",
+            file=sys.stderr,
+        )
+
+    if callee_fullname is None:
+        return None
+
+    # Check simple field factories
+    field_type = _resolve_field_type_for_init(ctx, callee_fullname, rvalue)
+    if field_type is None:
+        return None
+    return field_name, field_type
+
+
+def _field_factory_fullname(callee: Expression) -> str | None:
+    """Return the canonical fullname of a field factory call's callee, if known."""
+    # Resolve the callee to a known field factory
+    callee_fullname: str | None = None
+    if (isinstance(callee, RefExpr) and callee.fullname) or isinstance(
+        callee, MemberExpr
+    ):
+        callee_fullname = callee.fullname
+
+    # At MRO time, fullname may not be resolved yet.
+    # Fall back to matching by short name (e.g. "String", "Integer").
+    if callee_fullname is None and isinstance(callee, NameExpr):
+        callee_fullname = _SHORT_NAME_TO_CANONICAL.get(callee.name)
+    return callee_fullname
+
+
+def _add_annotation_only_fields(
+    ctx: ClassDefContext, fields: list[tuple[str, Type]]
+) -> None:
+    """Append annotation-only fields to *fields*, typed ``Any``.
+
+    Skips a name that starts with ``_`` or is already in *fields*.
+    """
+    # Annotation-only fields (``name: String(required=True)``). mypy rejected
+    # the call in the annotation at parse time and kept no Python type, so the
+    # keyword is typed ``Any``.
+    for stmt in ctx.cls.defs.body:
+        if not _is_rejected_field_annotation(stmt):
+            continue
+        assert isinstance(stmt, AssignmentStmt)
+        lvalue = stmt.lvalues[0]
+        assert isinstance(lvalue, NameExpr)
+        field_name = lvalue.name
+        if field_name.startswith("_") or any(f[0] == field_name for f in fields):
+            continue
+        fields.append((field_name, AnyType(TypeOfAny.special_form)))
+
+        if _DEBUG:
+            print(
+                f"[protean-mypy-debug]   {field_name}: annotation-only",
+                file=sys.stderr,
+            )
+
+
+def _add_plain_annotation_fields(
+    ctx: ClassDefContext, fields: list[tuple[str, Type]]
+) -> None:
+    """Append plain-annotation fields to *fields*, typed ``Any``.
+
+    Skips a name that starts with ``_`` or is already in *fields*, and a
+    ``ClassVar`` annotation.
+    """
+    # Plain annotations (``note: str`` or ``note: str = "x"``) are pydantic
+    # fields at runtime. Their types are not analyzed yet when this hook runs,
+    # so they are typed Any. ``unanalyzed_type`` is the annotation as written:
+    # semantic analysis can fill ``type`` in for an unannotated literal.
+    for stmt in ctx.cls.defs.body:
+        if (
+            not isinstance(stmt, AssignmentStmt)
+            or len(stmt.lvalues) != 1
+            or not isinstance(stmt.lvalues[0], NameExpr)
+            or stmt.unanalyzed_type is None
+            or isinstance(stmt.unanalyzed_type, RawExpressionType)
+        ):
+            continue
+        field_name = stmt.lvalues[0].name
+        if field_name.startswith("_") or any(f[0] == field_name for f in fields):
+            continue
+        if _is_class_var(ctx, stmt.unanalyzed_type):
+            continue
+        fields.append((field_name, AnyType(TypeOfAny.special_form)))
+
+
+def _install_synthesized_init(
+    ctx: ClassDefContext, info: TypeInfo, fields: list[tuple[str, Type]]
+) -> None:
+    """Add an ``__init__`` taking every field as an optional keyword to *info*."""
     # Build the __init__ method, even with no fields, so that an unknown
     # keyword is an error and a subclass can find the parent's fields.
     self_type = ctx.api.named_type(info.fullname, [])
@@ -1028,41 +1082,7 @@ def _resolve_field_type_for_init(
             type_fqn = FIELD_TYPE_MAP.get(canonical)
 
     if type_fqn is not None:
-        # Special-case container fields for proper type parameters
-        any_type = AnyType(TypeOfAny.special_form)
-        if type_fqn == "builtins.list":
-            try:
-                return ctx.api.named_type("builtins.list", [any_type])
-            except (KeyError, AssertionError):
-                return None
-        if type_fqn == "builtins.dict":
-            try:
-                str_type = ctx.api.named_type("builtins.str", [])
-                return ctx.api.named_type("builtins.dict", [str_type, any_type])
-            except (KeyError, AssertionError):
-                return None
-
-        try:
-            base_type = ctx.api.named_type(type_fqn, [])
-        except (KeyError, AssertionError):
-            return None
-
-        # Check if the field is required/identifier/has default
-        is_required = _get_call_kwarg_bool(rvalue, "required", default=False)
-        is_identifier = _get_call_kwarg_bool(rvalue, "identifier", default=False)
-        has_default = _has_call_default(rvalue)
-        has_implicit_default = callee_fullname in _FIELDS_WITH_IMPLICIT_DEFAULT or (
-            _REEXPORT_MAP.get(callee_fullname, "") in _FIELDS_WITH_IMPLICIT_DEFAULT
-        )
-
-        if (
-            not is_required
-            and not has_default
-            and not is_identifier
-            and not has_implicit_default
-        ):
-            return UnionType([base_type, NoneType()])
-        return base_type
+        return _simple_field_init_type(ctx, callee_fullname, rvalue, type_fqn)
 
     # Check association and custom fields. Both take their target class as the
     # first argument, and that reference may not be resolved at MRO time, so the
@@ -1075,6 +1095,59 @@ def _resolve_field_type_for_init(
         return AnyType(TypeOfAny.special_form)
 
     return None
+
+
+def _simple_field_init_type(
+    ctx: ClassDefContext, callee_fullname: str, rvalue: CallExpr, type_fqn: str
+) -> Type | None:
+    """Return the __init__ parameter type for a simple field typed *type_fqn*.
+
+    List and dict fields get ``list[Any]`` and ``dict[str, Any]``. Any other field
+    gets ``X | None`` when ``_field_may_be_none`` says so, and ``X`` otherwise.
+    Returns ``None`` when mypy cannot build the type.
+    """
+    # Special-case container fields for proper type parameters
+    any_type = AnyType(TypeOfAny.special_form)
+    if type_fqn == "builtins.list":
+        try:
+            return ctx.api.named_type("builtins.list", [any_type])
+        except (KeyError, AssertionError):
+            return None
+    if type_fqn == "builtins.dict":
+        try:
+            str_type = ctx.api.named_type("builtins.str", [])
+            return ctx.api.named_type("builtins.dict", [str_type, any_type])
+        except (KeyError, AssertionError):
+            return None
+
+    try:
+        base_type = ctx.api.named_type(type_fqn, [])
+    except (KeyError, AssertionError):
+        return None
+
+    if _field_may_be_none(callee_fullname, rvalue):
+        return UnionType([base_type, NoneType()])
+    return base_type
+
+
+def _field_may_be_none(callee_fullname: str, rvalue: CallExpr) -> bool:
+    """Return whether the field is optional and has neither an explicit nor an implicit default.
+
+    A field is optional when it is neither required nor an identifier.
+    """
+    # Check if the field is required/identifier/has default
+    is_required = _get_call_kwarg_bool(rvalue, "required", default=False)
+    is_identifier = _get_call_kwarg_bool(rvalue, "identifier", default=False)
+    has_default = _has_call_default(rvalue)
+    has_implicit_default = callee_fullname in _FIELDS_WITH_IMPLICIT_DEFAULT or (
+        _REEXPORT_MAP.get(callee_fullname, "") in _FIELDS_WITH_IMPLICIT_DEFAULT
+    )
+    return (
+        not is_required
+        and not has_default
+        and not is_identifier
+        and not has_implicit_default
+    )
 
 
 def _get_call_kwarg_bool(call: CallExpr, name: str, *, default: bool) -> bool:
@@ -1124,95 +1197,19 @@ def _synthesize_has_many_methods(ctx: ClassDefContext) -> None:
 
     # Collect field names that are HasMany
     has_many_fields: list[str] = []
-
     for stmt in ctx.cls.defs.body:
-        if not isinstance(stmt, AssignmentStmt):
-            continue
-        if len(stmt.lvalues) != 1:
-            continue
-        lvalue = stmt.lvalues[0]
-        if not isinstance(lvalue, NameExpr):
-            continue
-
-        field_name = lvalue.name
-
-        # Try assignment-style first: items = HasMany(OrderItem)
-        rvalue = stmt.rvalue
-        if isinstance(rvalue, CallExpr):
-            callee = rvalue.callee
-            callee_fullname: str | None = None
-            if (isinstance(callee, RefExpr) and callee.fullname) or isinstance(
-                callee, MemberExpr
-            ):
-                callee_fullname = callee.fullname
-            if callee_fullname is None and isinstance(callee, NameExpr):
-                callee_fullname = _SHORT_NAME_TO_CANONICAL.get(callee.name)
-
-            if callee_fullname is not None:
-                resolved = _resolve_association_fullname(callee_fullname)
-                if (
-                    resolved is not None
-                    and _ASSOCIATION_FIELD_NAMES.get(resolved) == "has_many"
-                ):
-                    has_many_fields.append(field_name)
-                    continue
-
-        # Try annotation-style: items: HasMany(OrderItem)
-        annotation_fqn = _extract_field_factory_from_annotation(stmt)
-        if annotation_fqn is not None:
-            resolved = _resolve_association_fullname(annotation_fqn)
-            if (
-                resolved is not None
-                and _ASSOCIATION_FIELD_NAMES.get(resolved) == "has_many"
-            ):
-                has_many_fields.append(field_name)
+        field_name = _has_many_field_name(stmt)
+        if field_name is not None:
+            has_many_fields.append(field_name)
 
     # Synthesize methods for each HasMany field
     for field_name in has_many_fields:
         for prefix in ("add_", "remove_"):
-            method_name = f"{prefix}{field_name}"
-            if method_name in info.names:
-                continue
-
-            self_type = ctx.api.named_type(info.fullname, [])
-            args = [
-                Argument(Var("self", self_type), self_type, None, ARG_POS),
-                Argument(Var("items", any_type), any_type, None, ARG_POS),
-            ]
-            sig = CallableType(
-                arg_types=[self_type, any_type],
-                arg_kinds=[ARG_POS, ARG_POS],
-                arg_names=["self", "items"],
-                ret_type=none_type,
-                fallback=ctx.api.named_type("builtins.function", []),
+            _add_synthesized_method(
+                ctx, f"{prefix}{field_name}", [("items", any_type)], none_type
             )
-            func = FuncDef(method_name, args, Block([PassStmt()]))
-            func.info = info
-            func.type = sig
-            func._fullname = f"{info.fullname}.{method_name}"
-            info.names[method_name] = SymbolTableNode(MDEF, func)
-
         for prefix in ("get_one_from_", "filter_"):
-            method_name = f"{prefix}{field_name}"
-            if method_name in info.names:
-                continue
-
-            self_type = ctx.api.named_type(info.fullname, [])
-            args = [
-                Argument(Var("self", self_type), self_type, None, ARG_POS),
-            ]
-            sig = CallableType(
-                arg_types=[self_type],
-                arg_kinds=[ARG_POS],
-                arg_names=["self"],
-                ret_type=any_type,
-                fallback=ctx.api.named_type("builtins.function", []),
-            )
-            func = FuncDef(method_name, args, Block([PassStmt()]))
-            func.info = info
-            func.type = sig
-            func._fullname = f"{info.fullname}.{method_name}"
-            info.names[method_name] = SymbolTableNode(MDEF, func)
+            _add_synthesized_method(ctx, f"{prefix}{field_name}", [], any_type)
 
     if _DEBUG and has_many_fields:
         has_many_methods = [
@@ -1225,6 +1222,67 @@ def _synthesize_has_many_methods(ctx: ClassDefContext) -> None:
             f"{info.fullname}: {has_many_methods}",
             file=sys.stderr,
         )
+
+
+def _has_many_field_name(stmt: Statement) -> str | None:
+    """Return the field name when *stmt* declares a ``HasMany`` field, else ``None``."""
+    if not isinstance(stmt, AssignmentStmt):
+        return None
+    if len(stmt.lvalues) != 1:
+        return None
+    lvalue = stmt.lvalues[0]
+    if not isinstance(lvalue, NameExpr):
+        return None
+
+    # Try assignment-style first: items = HasMany(OrderItem)
+    rvalue = stmt.rvalue
+    if isinstance(rvalue, CallExpr):
+        callee_fullname = _field_factory_fullname(rvalue.callee)
+        if callee_fullname is not None and _is_has_many(callee_fullname):
+            return lvalue.name
+
+    # Try annotation-style: items: HasMany(OrderItem)
+    annotation_fqn = _extract_field_factory_from_annotation(stmt)
+    if annotation_fqn is not None and _is_has_many(annotation_fqn):
+        return lvalue.name
+    return None
+
+
+def _is_has_many(fullname: str) -> bool:
+    """Return whether *fullname* names the ``HasMany`` association factory."""
+    resolved = _resolve_association_fullname(fullname)
+    return resolved is not None and _ASSOCIATION_FIELD_NAMES.get(resolved) == "has_many"
+
+
+def _add_synthesized_method(
+    ctx: ClassDefContext,
+    method_name: str,
+    params: list[tuple[str, Type]],
+    ret_type: Type,
+) -> None:
+    """Add ``method_name(self, <params>) -> ret_type`` unless the class already has it.
+
+    Each of *params* is a positional ``(name, type)`` pair after ``self``.
+    """
+    info: TypeInfo = ctx.cls.info
+    if method_name in info.names:
+        return
+
+    self_type = ctx.api.named_type(info.fullname, [])
+    args = [Argument(Var("self", self_type), self_type, None, ARG_POS)]
+    args += [Argument(Var(name, typ), typ, None, ARG_POS) for name, typ in params]
+    sig = CallableType(
+        arg_types=[self_type, *(typ for _, typ in params)],
+        arg_kinds=[ARG_POS] * (len(params) + 1),
+        arg_names=["self", *(name for name, _ in params)],
+        ret_type=ret_type,
+        fallback=ctx.api.named_type("builtins.function", []),
+    )
+    func = FuncDef(method_name, args, Block([PassStmt()]))
+    func.info = info
+    func.type = sig
+    func._fullname = f"{info.fullname}.{method_name}"
+    info.names[method_name] = SymbolTableNode(MDEF, func)
 
 
 # ---------------------------------------------------------------------------
@@ -1406,13 +1464,17 @@ def _get_kwarg_bool(ctx: FunctionContext, name: str, *, default: bool) -> bool:
     for i, formal_names in enumerate(ctx.arg_names):
         for j, arg_name in enumerate(formal_names):
             if arg_name == name:
-                expr = ctx.args[i][j]
-                if isinstance(expr, NameExpr):
-                    if expr.name == "True":
-                        return True
-                    if expr.name == "False":
-                        return False
-                return default
+                return _bool_literal(ctx.args[i][j], default=default)
+    return default
+
+
+def _bool_literal(expr: Expression, *, default: bool) -> bool:
+    """Return the value of a ``True``/``False`` literal, or *default* for anything else."""
+    if isinstance(expr, NameExpr):
+        if expr.name == "True":
+            return True
+        if expr.name == "False":
+            return False
     return default
 
 

@@ -654,7 +654,31 @@ def _validate(
     # can be unhashable, so its type is settled first. Whether the name itself works
     # is ``_validate_domain_var``'s call, once the modules are known.
     _check_string(domain_var, "This project's domain variable")
+    _validate_slug(fragment, slug, domain_var)
 
+    elements = _slice_elements(fragment)
+    for role, element, label in _field_checks(fragment, elements):
+        _validate_element_fields(role, element, label)
+
+    if (fragment.projection is None) != (fragment.projector is None):
+        raise SliceGeneratorError(
+            "A slice's read side is a projection and a projector together, or "
+            "neither. Provide both or omit both; when both are omitted the generator "
+            "derives the default read side from the event."
+        )
+
+    modules = _generated_modules(fragment, slug)
+    _validate_domain_var(domain_var, modules)
+    _validate_names(fragment, elements, domain_var, modules, slug)
+
+    _validate_aggregate_id(fragment, slug, id_name)
+    _validate_event_id(fragment, id_name)
+    _validate_write_side(fragment, id_name)
+    _validate_read_side(fragment, id_name)
+
+
+def _validate_slug(fragment: SliceFragment, slug: str, domain_var: str) -> None:
+    """Reject a slug that is not a name or that collides with a handler binding."""
     # A caller that normalized upstream supplies the slug, so say which one is bad.
     slug_label = (
         "The slug supplied for the aggregate"
@@ -679,6 +703,9 @@ def _validate(
             "another aggregate name."
         )
 
+
+def _slice_elements(fragment: SliceFragment) -> list[tuple[str, SliceElement]]:
+    """Return the fragment's ``(role, element)`` pairs, the projection when given."""
     elements: list[tuple[str, SliceElement]] = [
         ("aggregate", fragment.aggregate),
         ("command", fragment.command),
@@ -686,7 +713,13 @@ def _validate(
     ]
     if fragment.projection is not None:
         elements.append(("projection", fragment.projection))
+    return elements
 
+
+def _field_checks(
+    fragment: SliceFragment, elements: list[tuple[str, SliceElement]]
+) -> list[tuple[str, SliceElement, str]]:
+    """Return the ``(role, element, label)`` triples whose fields are checked."""
     # (role, element, what the message calls it). The derived projection mirrors the
     # event's fields, so when the fragment omits its read side those names have to
     # clear the projection's reserved set as well as the event's: ``defaults`` is free
@@ -696,111 +729,122 @@ def _validate(
         checks.append(
             ("projection", fragment.event, "projection the generator derives from it")
         )
+    return checks
 
-    for role, element, label in checks:
-        reserved = _reserved_field_names(role)
-        for field_name, ir_field in element.fields.items():
-            _check_python_name(field_name, f"Field name on {element.name!r}:")
-            if field_name.startswith("_"):
-                raise SliceGeneratorError(
-                    f"Field {field_name!r} on {element.name!r} starts with an "
-                    "underscore. The framework and pydantic keep that namespace for "
-                    "their own attributes, so a field cannot use it."
-                )
-            if field_name in reserved:
-                raise SliceGeneratorError(
-                    f"Field {field_name!r} on {element.name!r} is a reserved name: "
-                    f"the {label} already uses it, so the field would shadow it and "
-                    "the slice would not work. Rename the field."
-                )
-            # The two flags drive the guards below and the declaration form
-            # ``_declare`` writes, and ``IRField`` is a plain dataclass, so a fragment
-            # can carry a non-boolean that reads truthy. Checking them first keeps
-            # ``required="false"`` from rendering a required field, and a truthy
-            # non-boolean ``identifier`` from becoming the projection's key.
-            for flag_name, flag in (
-                ("required", ir_field.required),
-                ("identifier", ir_field.identifier),
-            ):
-                if not isinstance(flag, bool):
-                    raise SliceGeneratorError(
-                        f"Field {field_name!r} on {element.name!r} sets {flag_name} "
-                        f"to {flag!r}. ADR-0041 takes a true or false flag, and the "
-                        "generator reads it to decide the field's declaration form, "
-                        f"so a {type(flag).__name__} would render a field the "
-                        "fragment does not describe."
-                    )
-            if ir_field.identifier and role != "projection":
-                raise SliceGeneratorError(
-                    f"Field {field_name!r} on {element.name!r} is marked as an "
-                    "identity key, which only a projection has (ADR-0041). On any "
-                    "other element the flag has no meaning, and when the generator "
-                    "derives the read side it would carry across and give the "
-                    "projection a second key. Drop the flag."
-                )
-            if ir_field.identifier and ir_field.required:
-                raise SliceGeneratorError(
-                    f"Field {field_name!r} on {element.name!r} is the projection's "
-                    "identity key and is also marked required. The key takes the "
-                    "framework identity default, so ADR-0041 leaves it without the "
-                    "flag and the generator renders it without one. Drop the flag."
-                )
-            if not ir_field.identifier and not ir_field.required:
-                raise SliceGeneratorError(
-                    f"Field {field_name!r} on {element.name!r} is not marked "
-                    "required. Every authored field is required (ADR-0041), and the "
-                    "generator renders it that way, so an optional field would come "
-                    "out required without a word. Mark it required."
-                )
-            # ``IRField`` is a plain dataclass, so a fragment can carry a type that
-            # is not even a string. Checking that first keeps the lookup from
-            # raising ``TypeError`` on an unhashable one instead of the generator's
-            # own error.
-            if (
-                not isinstance(ir_field.type, str)
-                or ir_field.type not in _BASE_ANNOTATION
-            ):
-                supported = ", ".join(sorted(_BASE_ANNOTATION))
-                raise SliceGeneratorError(
-                    f"Field {field_name!r} on {element.name!r} has unsupported type "
-                    f"{ir_field.type!r}. Supported types: {supported}."
-                )
-            expected_kind = _KIND_FOR_TYPE[ir_field.type]
-            if ir_field.kind != expected_kind:
-                raise SliceGeneratorError(
-                    f"Field {field_name!r} on {element.name!r} pairs kind "
-                    f"{ir_field.kind!r} with type {ir_field.type!r}. ADR-0041 pairs "
-                    f"{ir_field.type!r} with kind {expected_kind!r}, and the "
-                    "generator reads both, so the pair would render a field the "
-                    "fragment does not describe."
-                )
-            if ir_field.max_length is not None and ir_field.type not in _BOUNDED_TYPES:
-                raise SliceGeneratorError(
-                    f"Field {field_name!r} on {element.name!r} sets max_length on a "
-                    f"{ir_field.type!r}, which takes no length bound. The renderers "
-                    "would drop it. Remove it, or declare the field as a String or "
-                    "Text."
-                )
-            if ir_field.max_length is not None and not _is_positive_int(
-                ir_field.max_length
-            ):
-                raise SliceGeneratorError(
-                    f"Field {field_name!r} on {element.name!r} sets max_length to "
-                    f"{ir_field.max_length!r}. ADR-0041 takes a positive integer, "
-                    "which is what the renderers write into the generated field."
-                )
 
-    if (fragment.projection is None) != (fragment.projector is None):
+def _validate_element_fields(role: str, element: SliceElement, label: str) -> None:
+    """Reject the first field on *element* that the *role* cannot render."""
+    reserved = _reserved_field_names(role)
+    for field_name, ir_field in element.fields.items():
+        _validate_field_name(field_name, element, label, reserved)
+        _validate_field_flags(field_name, ir_field, element, role)
+        _validate_field_type(field_name, ir_field, element)
+
+
+def _validate_field_name(
+    field_name: str, element: SliceElement, label: str, reserved: frozenset[str]
+) -> None:
+    """Reject a field name that is not a name, is private, or is reserved."""
+    _check_python_name(field_name, f"Field name on {element.name!r}:")
+    if field_name.startswith("_"):
         raise SliceGeneratorError(
-            "A slice's read side is a projection and a projector together, or "
-            "neither. Provide both or omit both; when both are omitted the generator "
-            "derives the default read side from the event."
+            f"Field {field_name!r} on {element.name!r} starts with an "
+            "underscore. The framework and pydantic keep that namespace for "
+            "their own attributes, so a field cannot use it."
+        )
+    if field_name in reserved:
+        raise SliceGeneratorError(
+            f"Field {field_name!r} on {element.name!r} is a reserved name: "
+            f"the {label} already uses it, so the field would shadow it and "
+            "the slice would not work. Rename the field."
         )
 
-    modules = _generated_modules(fragment, slug)
-    _validate_domain_var(domain_var, modules)
-    _validate_names(fragment, elements, domain_var, modules, slug)
 
+def _validate_field_flags(
+    field_name: str, ir_field: IRField, element: SliceElement, role: str
+) -> None:
+    """Reject ``required`` and ``identifier`` flags the generator cannot render."""
+    # The two flags drive the guards below and the declaration form
+    # ``_declare`` writes, and ``IRField`` is a plain dataclass, so a fragment
+    # can carry a non-boolean that reads truthy. Checking them first keeps
+    # ``required="false"`` from rendering a required field, and a truthy
+    # non-boolean ``identifier`` from becoming the projection's key.
+    for flag_name, flag in (
+        ("required", ir_field.required),
+        ("identifier", ir_field.identifier),
+    ):
+        if not isinstance(flag, bool):
+            raise SliceGeneratorError(
+                f"Field {field_name!r} on {element.name!r} sets {flag_name} "
+                f"to {flag!r}. ADR-0041 takes a true or false flag, and the "
+                "generator reads it to decide the field's declaration form, "
+                f"so a {type(flag).__name__} would render a field the "
+                "fragment does not describe."
+            )
+    if ir_field.identifier and role != "projection":
+        raise SliceGeneratorError(
+            f"Field {field_name!r} on {element.name!r} is marked as an "
+            "identity key, which only a projection has (ADR-0041). On any "
+            "other element the flag has no meaning, and when the generator "
+            "derives the read side it would carry across and give the "
+            "projection a second key. Drop the flag."
+        )
+    if ir_field.identifier and ir_field.required:
+        raise SliceGeneratorError(
+            f"Field {field_name!r} on {element.name!r} is the projection's "
+            "identity key and is also marked required. The key takes the "
+            "framework identity default, so ADR-0041 leaves it without the "
+            "flag and the generator renders it without one. Drop the flag."
+        )
+    if not ir_field.identifier and not ir_field.required:
+        raise SliceGeneratorError(
+            f"Field {field_name!r} on {element.name!r} is not marked "
+            "required. Every authored field is required (ADR-0041), and the "
+            "generator renders it that way, so an optional field would come "
+            "out required without a word. Mark it required."
+        )
+
+
+def _validate_field_type(
+    field_name: str, ir_field: IRField, element: SliceElement
+) -> None:
+    """Reject a field type, kind or ``max_length`` outside ADR-0041."""
+    # ``IRField`` is a plain dataclass, so a fragment can carry a type that
+    # is not even a string. Checking that first keeps the lookup from
+    # raising ``TypeError`` on an unhashable one instead of the generator's
+    # own error.
+    if not isinstance(ir_field.type, str) or ir_field.type not in _BASE_ANNOTATION:
+        supported = ", ".join(sorted(_BASE_ANNOTATION))
+        raise SliceGeneratorError(
+            f"Field {field_name!r} on {element.name!r} has unsupported type "
+            f"{ir_field.type!r}. Supported types: {supported}."
+        )
+    expected_kind = _KIND_FOR_TYPE[ir_field.type]
+    if ir_field.kind != expected_kind:
+        raise SliceGeneratorError(
+            f"Field {field_name!r} on {element.name!r} pairs kind "
+            f"{ir_field.kind!r} with type {ir_field.type!r}. ADR-0041 pairs "
+            f"{ir_field.type!r} with kind {expected_kind!r}, and the "
+            "generator reads both, so the pair would render a field the "
+            "fragment does not describe."
+        )
+    if ir_field.max_length is not None and ir_field.type not in _BOUNDED_TYPES:
+        raise SliceGeneratorError(
+            f"Field {field_name!r} on {element.name!r} sets max_length on a "
+            f"{ir_field.type!r}, which takes no length bound. The renderers "
+            "would drop it. Remove it, or declare the field as a String or "
+            "Text."
+        )
+    if ir_field.max_length is not None and not _is_positive_int(ir_field.max_length):
+        raise SliceGeneratorError(
+            f"Field {field_name!r} on {element.name!r} sets max_length to "
+            f"{ir_field.max_length!r}. ADR-0041 takes a positive integer, "
+            "which is what the renderers write into the generated field."
+        )
+
+
+def _validate_aggregate_id(fragment: SliceFragment, slug: str, id_name: str) -> None:
+    """Reject aggregate fields that clash with the identity the factory passes on."""
     if id_name in fragment.aggregate.fields:
         raise SliceGeneratorError(
             f"The aggregate {fragment.aggregate.name!r} declares {id_name!r}, which "
@@ -831,6 +875,10 @@ def _validate(
                 "would be dropped without a word. Drop the bound."
             )
 
+
+def _validate_event_id(fragment: SliceFragment, id_name: str) -> None:
+    """Reject an event whose id field cannot carry the aggregate's identity."""
+    aggregate_id = fragment.aggregate.fields.get("id")
     event_id_field = fragment.event.fields.get(id_name)
     if event_id_field is None:
         raise SliceGeneratorError(
@@ -862,6 +910,9 @@ def _validate(
             "identity stand."
         )
 
+
+def _validate_write_side(fragment: SliceFragment, id_name: str) -> None:
+    """Reject a command, aggregate and event whose fields do not line up."""
     # The write side has to line up field for field, because the generated code
     # dereferences one element through another: the handler calls ``create()`` with
     # every aggregate field read off the command, and the create factory raises the
@@ -918,6 +969,9 @@ def _validate(
         "the event with it, so the event takes whatever the aggregate holds.",
     )
 
+
+def _validate_read_side(fragment: SliceFragment, id_name: str) -> None:
+    """Reject an authored projection and projector that do not fit the slice."""
     if fragment.projector is not None and fragment.projection is not None:
         _validate_projection_key(fragment.projection, id_name)
         _validate_projection_fields(fragment.projection, fragment.event, id_name)
@@ -1149,18 +1203,7 @@ def _validate_names(
     if fragment.projector is not None:
         _check_public_name(fragment.projector.name, "The projector name")
 
-    defined = [(role, element.name) for role, element in elements]
-    defined.append(("aggregate base", f"{fragment.aggregate.name}Base"))
-    defined.append(("command handler", f"{fragment.aggregate.name}CommandHandler"))
-    if fragment.projector is not None:
-        defined.append(("projector", fragment.projector.name))
-    if fragment.projection is None and fragment.projector is None:
-        defined.append(
-            ("derived projection", _derived_projection_name(fragment.aggregate.name))
-        )
-        defined.append(
-            ("derived projector", _derived_projector_name(fragment.aggregate.name))
-        )
+    defined = _defined_class_names(fragment, elements)
 
     # Every one of the slice's classes is defined or imported in a module that also
     # imports the domain, so a class named for the domain variable always collides.
@@ -1173,6 +1216,40 @@ def _validate_names(
                 "other. Rename it."
             )
 
+    _validate_import_collisions(modules)
+    _validate_local_collisions(fragment, slug)
+
+    seen: dict[str, str] = {}
+    for role, class_name in defined:
+        if class_name in seen:
+            raise SliceGeneratorError(
+                f"The slice defines {class_name!r} twice, as its {seen[class_name]} "
+                f"and as its {role}. Each of the slice's classes needs its own name."
+            )
+        seen[class_name] = role
+
+
+def _defined_class_names(
+    fragment: SliceFragment, elements: list[tuple[str, SliceElement]]
+) -> list[tuple[str, str]]:
+    """Return ``(role, class name)`` for every class the slice defines or derives."""
+    defined = [(role, element.name) for role, element in elements]
+    defined.append(("aggregate base", f"{fragment.aggregate.name}Base"))
+    defined.append(("command handler", f"{fragment.aggregate.name}CommandHandler"))
+    if fragment.projector is not None:
+        defined.append(("projector", fragment.projector.name))
+    if fragment.projection is None and fragment.projector is None:
+        defined.append(
+            ("derived projection", _derived_projection_name(fragment.aggregate.name))
+        )
+        defined.append(
+            ("derived projector", _derived_projector_name(fragment.aggregate.name))
+        )
+    return defined
+
+
+def _validate_import_collisions(modules: tuple[_GeneratedModule, ...]) -> None:
+    """Reject a slice class named like an import in the module that carries it."""
     # A name is only taken over where both bindings land in the same module, so the
     # check runs per module: a command named ``BaseAggregate`` is fine, because the
     # module that imports the core ``BaseAggregate`` does not import the command.
@@ -1188,6 +1265,12 @@ def _validate_names(
                     "with the wrong object. Rename it."
                 )
 
+
+def _validate_local_collisions(fragment: SliceFragment, slug: str) -> None:
+    """Reject an aggregate, projection or event named like a local.
+
+    The local is one that the generated method reading the class binds.
+    """
     if fragment.aggregate.name in _HANDLER_LOCALS:
         raise SliceGeneratorError(
             f"The slice's aggregate is named {fragment.aggregate.name!r}, which the "
@@ -1220,15 +1303,6 @@ def _validate_names(
             "reads the event class by that name to raise it, so it would get the "
             "local instead. Rename the event."
         )
-
-    seen: dict[str, str] = {}
-    for role, class_name in defined:
-        if class_name in seen:
-            raise SliceGeneratorError(
-                f"The slice defines {class_name!r} twice, as its {seen[class_name]} "
-                f"and as its {role}. Each of the slice's classes needs its own name."
-            )
-        seen[class_name] = role
 
 
 def _validate_shared_shapes(

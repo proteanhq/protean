@@ -196,29 +196,34 @@ def pytest_collection_modifyitems(
     capability_markers = list(MARKER_TO_CAPABILITY.keys())
 
     for item in items:
-        # Auto-inject db fixture for capability-marked tests
-        needs_db = bool(item.get_closest_marker("database"))
-        if not needs_db:
-            for marker_name in capability_markers:
-                if item.get_closest_marker(marker_name):
-                    needs_db = True
-                    break
-
         # ``fixturenames`` is present on collected function items at runtime but
         # is not declared on the ``Item`` base in pytest's type stubs.
         fixturenames: list[str] = getattr(item, "fixturenames")
-        if needs_db and "db" not in fixturenames:
+        if _needs_db(item, capability_markers) and "db" not in fixturenames:
             fixturenames.append("db")
 
-        # Annotate each item with its required capability
-        for marker_name, required_caps in MARKER_TO_CAPABILITY.items():
-            if item.get_closest_marker(marker_name) is not None:
-                # ``_database_required_capability`` is a dynamic attribute read
-                # back in ``_skip_if_provider_lacks_capability`` via ``getattr``.
-                setattr(
-                    item, "_database_required_capability", (marker_name, required_caps)
-                )
-                break
+        _annotate_required_capability(item)
+
+
+def _needs_db(item: pytest.Item, capability_markers: list[str]) -> bool:
+    """Return whether the item is marked ``database`` or with a capability marker."""
+    if item.get_closest_marker("database"):
+        return True
+    return any(item.get_closest_marker(name) for name in capability_markers)
+
+
+def _annotate_required_capability(item: pytest.Item) -> None:
+    """Record the item's capability marker and the capabilities it needs.
+
+    When the item carries several, the one listed first in
+    ``MARKER_TO_CAPABILITY`` is recorded.
+    """
+    for marker_name, required_caps in MARKER_TO_CAPABILITY.items():
+        if item.get_closest_marker(marker_name) is not None:
+            # ``_database_required_capability`` is a dynamic attribute read
+            # back in ``_skip_if_provider_lacks_capability`` via ``getattr``.
+            setattr(item, "_database_required_capability", (marker_name, required_caps))
+            break
 
 
 # ===================================================================

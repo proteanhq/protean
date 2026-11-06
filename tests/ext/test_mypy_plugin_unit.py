@@ -862,3 +862,127 @@ class TestParentInit:
         from mypy.nodes import ARG_POS
 
         assert self._keywords(self._init([ARG_POS], ["self"], typed=False)) == []
+
+
+class TestInitSynthesisGuards:
+    """Class-body statements that ``__init__`` and HasMany synthesis pass over."""
+
+    _SOURCE = """
+class Order:
+    left = right = String()
+    first, second = String(), String()
+"""
+
+    _HAS_MANY_SOURCE = """
+class Order:
+    left = right = HasMany(Item)
+    first, second = HasMany(Item)
+"""
+
+    def _statements(self, source: str = _SOURCE) -> dict[str, object]:
+        return _class_body_statements(source)
+
+    def test_chained_assignment_is_not_a_factory_field(self):
+        from protean.ext.mypy_plugin import _factory_field
+
+        assert _factory_field(MagicMock(), self._statements()["left"]) is None
+
+    def test_tuple_assignment_is_not_a_factory_field(self):
+        from protean.ext.mypy_plugin import _factory_field
+
+        assert _factory_field(MagicMock(), self._statements()["tuple"]) is None
+
+    def test_chained_assignment_is_not_a_has_many_field(self):
+        from protean.ext.mypy_plugin import _has_many_field_name
+
+        assert (
+            _has_many_field_name(self._statements(self._HAS_MANY_SOURCE)["left"])
+            is None
+        )
+
+    def test_tuple_assignment_is_not_a_has_many_field(self):
+        from protean.ext.mypy_plugin import _has_many_field_name
+
+        assert (
+            _has_many_field_name(self._statements(self._HAS_MANY_SOURCE)["tuple"])
+            is None
+        )
+
+    def test_factory_whose_type_is_unavailable_is_not_a_field(self):
+        from protean.ext.mypy_plugin import _factory_field
+
+        statements = _class_body_statements("class Order:\n    name = String()\n")
+        ctx = MagicMock()
+        ctx.api.named_type.side_effect = AssertionError
+        assert _factory_field(ctx, statements["name"]) is None
+
+    def test_debug_mode_reports_each_examined_call(self, monkeypatch, capsys):
+        from protean.ext import mypy_plugin
+
+        statements = _class_body_statements("class Order:\n    note = unknown()\n")
+        monkeypatch.setattr(mypy_plugin, "_DEBUG", True)
+
+        assert mypy_plugin._factory_field(MagicMock(), statements["note"]) is None
+        assert (
+            "[protean-mypy-debug]   note: callee=NameExpr, fullname=None"
+            in capsys.readouterr().err
+        )
+
+
+class TestDeclaresOwnInit:
+    """Whether the class, rather than a parent, already defines ``__init__``."""
+
+    def _info_with_init(self, owner_is_class: bool):
+        from mypy.nodes import (
+            MDEF,
+            Block,
+            ClassDef,
+            FuncDef,
+            SymbolTableNode,
+            TypeInfo,
+        )
+
+        info = TypeInfo(SymbolTable(), ClassDef("Order", Block([])), "app")
+        parent = TypeInfo(SymbolTable(), ClassDef("Base", Block([])), "app")
+        init = FuncDef("__init__", [], Block([]))
+        init.info = info if owner_is_class else parent
+        info.names["__init__"] = SymbolTableNode(MDEF, init)
+        return info
+
+    def _ctx(self) -> MagicMock:
+        ctx = MagicMock()
+        ctx.cls.defs.body = []
+        return ctx
+
+    def test_init_recorded_on_the_class_counts(self):
+        from protean.ext.mypy_plugin import _declares_own_init
+
+        assert _declares_own_init(self._ctx(), self._info_with_init(True)) is True
+
+    def test_init_inherited_from_a_parent_does_not_count(self):
+        from protean.ext.mypy_plugin import _declares_own_init
+
+        assert _declares_own_init(self._ctx(), self._info_with_init(False)) is False
+
+
+class TestSimpleFieldInitTypeUnavailable:
+    """The __init__ parameter type is dropped when mypy cannot build it."""
+
+    def _resolve(self, type_fqn: str, error: type[Exception]):
+        from mypy.nodes import CallExpr, NameExpr
+
+        from protean.ext.mypy_plugin import _simple_field_init_type
+
+        ctx = MagicMock()
+        ctx.api.named_type.side_effect = error
+        call = CallExpr(NameExpr("String"), [], [], [])
+        return _simple_field_init_type(ctx, "protean.fields.String", call, type_fqn)
+
+    def test_list_type_unavailable(self):
+        assert self._resolve("builtins.list", AssertionError) is None
+
+    def test_dict_type_unavailable(self):
+        assert self._resolve("builtins.dict", AssertionError) is None
+
+    def test_plain_type_unavailable(self):
+        assert self._resolve("builtins.str", AssertionError) is None

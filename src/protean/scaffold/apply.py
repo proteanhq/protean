@@ -115,59 +115,7 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
     #    within-root, well-typed, duplicate-free plan is the precondition for the
     #    atomic write below; anything else is refused here so nothing lands on
     #    disk. Editing files and patching config are separate later work.
-    creates: list[CreateFileOperation] = []
-    seen_targets: set[str] = set()
-    for op in plan.operations:
-        if not isinstance(op, CreateFileOperation):
-            raise ApplyError(
-                f"apply supports create operations only, but the plan contains a "
-                f"{op.kind!r} operation. Editing files and patching config are "
-                "not applied yet."
-            )
-        # A hand-built or JSON-loaded op can carry a non-string path/content that
-        # would blow up as a raw TypeError mid-apply (outside the rollback). Reject
-        # it here with a clear message instead.
-        if not isinstance(op.path, str):
-            raise ApplyError(
-                f"apply needs a string path, got {type(op.path).__name__}."
-            )
-        if not isinstance(op.content, str):
-            raise ApplyError(
-                f"apply needs string content for {op.path!r}, got "
-                f"{type(op.content).__name__}."
-            )
-        # Operation paths are relative to the project root, so an absolute path
-        # is refused here. ``root / "/abs"`` discards the root, so the containment
-        # check below cannot catch an absolute path that happens to point inside
-        # the project; only this check enforces the relative-path contract.
-        # ``drive`` also covers the Windows drive-relative form (``C:file.py``),
-        # which is not absolute but is not root-relative either.
-        candidate = Path(op.path)
-        if candidate.is_absolute() or candidate.drive:
-            raise ApplyError(
-                f"apply refuses an absolute path: {op.path!r}. Operation paths "
-                "must be relative to the project root."
-            )
-        # Keep every write inside the project root. A path that climbs out with
-        # ``..`` would otherwise write anywhere on the filesystem.
-        target = (root / op.path).resolve()
-        if not target.is_relative_to(root_resolved):
-            raise ApplyError(
-                f"apply refuses a path outside the project root: {op.path!r}. "
-                "Operation paths must stay under the project."
-            )
-        # Two ops writing the same path would both clear pre-flight (neither is on
-        # disk yet) and the second would silently truncate the first. Refuse it.
-        # Key on the resolved target, so spellings of one file (``a.py``,
-        # ``./a.py``, ``dir/../a.py``) count as the duplicate they are; casefold
-        # the key where the filesystem folds case, so ``Thing.py`` and ``thing.py``
-        # do too there while staying distinct on a case-sensitive filesystem.
-        resolved = str(target)
-        key = resolved.casefold() if fold_case else resolved
-        if key in seen_targets:
-            raise ApplyError(f"apply refuses a plan that writes {op.path!r} twice.")
-        seen_targets.add(key)
-        creates.append(op)
+    creates = _validated_creates(plan, root, root_resolved, fold_case)
 
     # 2. Pre-flight: refuse if any target already exists, before writing anything.
     #    Checking every op before any write is what keeps a later conflict from
@@ -182,6 +130,90 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
 
     # 3. Write, tracking every file and directory this call creates so a failure
     #    can be rolled back to exactly the pre-apply tree.
+    _write_creates(root, creates)
+
+    return tuple(op.path for op in creates)
+
+
+def _validated_creates(
+    plan: ChangePlan, root: Path, root_resolved: Path, fold_case: bool
+) -> list[CreateFileOperation]:
+    """Return the plan's create operations after checking every one.
+
+    Raises :class:`ApplyError` on the first operation that is not a create, is
+    badly typed, has an absolute path, points outside the project root, or
+    repeats an earlier target.
+    """
+    creates: list[CreateFileOperation] = []
+    seen_targets: set[str] = set()
+    for op in plan.operations:
+        if not isinstance(op, CreateFileOperation):
+            raise ApplyError(
+                f"apply supports create operations only, but the plan contains a "
+                f"{op.kind!r} operation. Editing files and patching config are "
+                "not applied yet."
+            )
+        target = _checked_target(op, root, root_resolved)
+        # Two ops writing the same path would both clear pre-flight (neither is on
+        # disk yet) and the second would silently truncate the first. Refuse it.
+        # Key on the resolved target, so spellings of one file (``a.py``,
+        # ``./a.py``, ``dir/../a.py``) count as the duplicate they are; casefold
+        # the key where the filesystem folds case, so ``Thing.py`` and ``thing.py``
+        # do too there while staying distinct on a case-sensitive filesystem.
+        resolved = str(target)
+        key = resolved.casefold() if fold_case else resolved
+        if key in seen_targets:
+            raise ApplyError(f"apply refuses a plan that writes {op.path!r} twice.")
+        seen_targets.add(key)
+        creates.append(op)
+    return creates
+
+
+def _checked_target(op: CreateFileOperation, root: Path, root_resolved: Path) -> Path:
+    """Return the resolved target of a create operation that passes every check.
+
+    Raises :class:`ApplyError` when *op* carries a non-string path or content,
+    has an absolute path, or resolves outside the project root.
+    """
+    # A hand-built or JSON-loaded op can carry a non-string path/content that
+    # would blow up as a raw TypeError mid-apply (outside the rollback). Reject
+    # it here with a clear message instead.
+    if not isinstance(op.path, str):
+        raise ApplyError(f"apply needs a string path, got {type(op.path).__name__}.")
+    if not isinstance(op.content, str):
+        raise ApplyError(
+            f"apply needs string content for {op.path!r}, got "
+            f"{type(op.content).__name__}."
+        )
+    # Operation paths are relative to the project root, so an absolute path
+    # is refused here. ``root / "/abs"`` discards the root, so the containment
+    # check below cannot catch an absolute path that happens to point inside
+    # the project; only this check enforces the relative-path contract.
+    # ``drive`` also covers the Windows drive-relative form (``C:file.py``),
+    # which is not absolute but is not root-relative either.
+    candidate = Path(op.path)
+    if candidate.is_absolute() or candidate.drive:
+        raise ApplyError(
+            f"apply refuses an absolute path: {op.path!r}. Operation paths "
+            "must be relative to the project root."
+        )
+    # Keep every write inside the project root. A path that climbs out with
+    # ``..`` would otherwise write anywhere on the filesystem.
+    target = (root / op.path).resolve()
+    if not target.is_relative_to(root_resolved):
+        raise ApplyError(
+            f"apply refuses a path outside the project root: {op.path!r}. "
+            "Operation paths must stay under the project."
+        )
+    return target
+
+
+def _write_creates(root: Path, creates: list[CreateFileOperation]) -> None:
+    """Write every create under *root*, rolling back all of them if one fails.
+
+    Raises :class:`ApplyError` naming the cause, and naming any path rollback
+    could not remove.
+    """
     written: list[Path] = []
     created_dirs: list[Path] = []
     try:
@@ -209,8 +241,6 @@ def apply_plan(project_path: str, plan: ChangePlan) -> tuple[str, ...]:
         raise ApplyError(
             f"apply failed and was rolled back; the project is unchanged. Cause: {exc}"
         ) from exc
-
-    return tuple(op.path for op in creates)
 
 
 def _ensure_parents(directory: Path, created_dirs: list[Path]) -> None:

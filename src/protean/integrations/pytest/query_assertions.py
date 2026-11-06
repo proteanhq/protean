@@ -69,24 +69,32 @@ def _limit_values(statement: str, parameters: Any) -> Iterator[int]:
     cannot be resolved to an ``int`` is skipped rather than guessed.
     """
     for match in LIMIT_PATTERN.finditer(statement):
-        token = match.group(1)
-        if token.isdigit():
-            yield int(token)
-            continue
+        value = _resolve_limit_token(statement, match, parameters)
+        if value is not None:
+            yield value
 
-        named = _NAMED_PARAM_PATTERN.fullmatch(token)
-        if named is not None and isinstance(parameters, dict):
-            value = parameters.get(named.group(1) or named.group(2))
-            if isinstance(value, int):
-                yield value
-            continue
 
-        if isinstance(parameters, (list, tuple)):
-            # Positional: the value sits at the index equal to the number of
-            # placeholders that precede this LIMIT token.
-            index = len(_PLACEHOLDER_PATTERN.findall(statement[: match.start()]))
-            if index < len(parameters) and isinstance(parameters[index], int):
-                yield parameters[index]
+def _resolve_limit_token(
+    statement: str, match: re.Match[str], parameters: Any
+) -> int | None:
+    """Return the ``int`` one LIMIT match stands for, or ``None`` if unresolved."""
+    token = match.group(1)
+    if token.isdigit():
+        return int(token)
+
+    named = _NAMED_PARAM_PATTERN.fullmatch(token)
+    if named is not None and isinstance(parameters, dict):
+        value = parameters.get(named.group(1) or named.group(2))
+        return value if isinstance(value, int) else None
+
+    if isinstance(parameters, (list, tuple)):
+        # Positional: the value sits at the index equal to the number of
+        # placeholders that precede this LIMIT token.
+        index = len(_PLACEHOLDER_PATTERN.findall(statement[: match.start()]))
+        if index < len(parameters):
+            value = parameters[index]
+            return value if isinstance(value, int) else None
+    return None
 
 
 def _resolve_engine(engine: "Engine | None") -> "Engine | None":

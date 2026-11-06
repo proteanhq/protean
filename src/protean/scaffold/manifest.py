@@ -259,26 +259,38 @@ def _derive_domain_name(domain_file: Path) -> str | None:
         return None
 
     for statement in tree.body:
-        if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+        name = _domain_call_name(statement)
+        if name is not None:
+            return name
+    return None
+
+
+def _domain_call_name(statement: ast.stmt) -> str | None:
+    """Return the string-literal ``name`` of a ``x = Domain(...)`` assignment.
+
+    Returns ``None`` when *statement* is not an assignment of a ``Domain(...)``
+    call or when the call carries no string-literal ``name``.
+    """
+    if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+        return None
+    node = statement.value
+    if not isinstance(node, ast.Call) or _called_name(node.func) != "Domain":
+        return None
+    for keyword in node.keywords:
+        if keyword.arg != "name":
             continue
-        node = statement.value
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if isinstance(func, ast.Name):
-            called = func.id
-        elif isinstance(func, ast.Attribute):
-            called = func.attr
-        else:
-            continue
-        if called != "Domain":
-            continue
-        for keyword in node.keywords:
-            if keyword.arg != "name":
-                continue
-            value = keyword.value
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                return value.value
+        value = keyword.value
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            return value.value
+    return None
+
+
+def _called_name(func: ast.expr) -> str | None:
+    """Return the bare name a call targets: ``Domain`` for ``Domain`` and ``x.Domain``."""
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
     return None
 
 

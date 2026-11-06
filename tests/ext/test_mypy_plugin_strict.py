@@ -31,6 +31,7 @@ _STRICT_FIXTURES = [
     "strict_upcaster.py",
     "strict_handle_any.py",
     "strict_queryset_self.py",
+    "strict_multi_target_assignment.py",
     "strict_sample.py",
 ]
 

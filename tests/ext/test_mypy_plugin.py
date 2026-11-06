@@ -428,6 +428,7 @@ class TestMypyDebugPrints:
     Exercises the _DEBUG gated print statements in:
     - _customize_class_mro_callback
     - _inject_base_class
+    - _factory_field
     """
 
     def test_debug_output_on_stderr(self) -> None:
@@ -443,5 +444,9 @@ class TestMypyDebugPrints:
             env=env,
             check=False,
         )
-        # Debug output goes to stderr
+        # Debug output goes to stderr, one line per field factory call examined
         assert "[protean-mypy-debug]" in result.stderr
+        assert (
+            "[protean-mypy-debug]   name: callee=NameExpr, "
+            "fullname=protean.fields.simple.String"
+        ) in result.stderr

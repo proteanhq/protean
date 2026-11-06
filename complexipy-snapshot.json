@@ -334,28 +334,6 @@
     ]
   },
   {
-    "path": "src/protean/ext/mypy_plugin.py",
-    "file_name": "mypy_plugin.py",
-    "functions": [
-      {
-        "name": "_get_kwarg_bool",
-        "complexity": 20
-      },
-      {
-        "name": "_resolve_field_type_for_init",
-        "complexity": 22
-      },
-      {
-        "name": "_synthesize_has_many_methods",
-        "complexity": 48
-      },
-      {
-        "name": "_synthesize_init",
-        "complexity": 62
-      }
-    ]
-  },
-  {
     "path": "src/protean/fields/association.py",
     "file_name": "association.py",
     "functions": [
@@ -418,36 +396,6 @@
       {
         "name": "FieldSpec::resolve_field_kwargs",
         "complexity": 47
-      }
-    ]
-  },
-  {
-    "path": "src/protean/integrations/fastapi/middleware.py",
-    "file_name": "middleware.py",
-    "functions": [
-      {
-        "name": "DomainContextMiddleware::_emit_http_wide_event",
-        "complexity": 18
-      }
-    ]
-  },
-  {
-    "path": "src/protean/integrations/pytest/adapter_conformance.py",
-    "file_name": "adapter_conformance.py",
-    "functions": [
-      {
-        "name": "pytest_collection_modifyitems",
-        "complexity": 18
-      }
-    ]
-  },
-  {
-    "path": "src/protean/integrations/pytest/query_assertions.py",
-    "file_name": "query_assertions.py",
-    "functions": [
-      {
-        "name": "_limit_values",
-        "complexity": 16
       }
     ]
   },
@@ -768,72 +716,6 @@
       {
         "name": "BaseEventStore::build_causation_tree",
         "complexity": 27
-      }
-    ]
-  },
-  {
-    "path": "src/protean/scaffold/apply.py",
-    "file_name": "apply.py",
-    "functions": [
-      {
-        "name": "apply_plan",
-        "complexity": 28
-      }
-    ]
-  },
-  {
-    "path": "src/protean/scaffold/create_project.py",
-    "file_name": "create_project.py",
-    "functions": [
-      {
-        "name": "create_project",
-        "complexity": 19
-      }
-    ]
-  },
-  {
-    "path": "src/protean/scaffold/manifest.py",
-    "file_name": "manifest.py",
-    "functions": [
-      {
-        "name": "_derive_domain_name",
-        "complexity": 22
-      }
-    ]
-  },
-  {
-    "path": "src/protean/scaffold/model_parser.py",
-    "file_name": "model_parser.py",
-    "functions": [
-      {
-        "name": "_check_participant",
-        "complexity": 16
-      },
-      {
-        "name": "_validate_read_side",
-        "complexity": 18
-      },
-      {
-        "name": "emit_model",
-        "complexity": 21
-      },
-      {
-        "name": "_parse_constraints",
-        "complexity": 32
-      }
-    ]
-  },
-  {
-    "path": "src/protean/scaffold/slice_generator.py",
-    "file_name": "slice_generator.py",
-    "functions": [
-      {
-        "name": "_validate_names",
-        "complexity": 22
-      },
-      {
-        "name": "_validate",
-        "complexity": 74
       }
     ]
   },

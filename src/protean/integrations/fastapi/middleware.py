@@ -364,6 +364,39 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
         return response, response.status_code, None
 
     @staticmethod
+    def _client_ip(request: Request) -> str:
+        """Return the client address to record on the HTTP wide event."""
+        # Prefer X-Forwarded-For (first hop) to capture the original
+        # client when a reverse proxy is in front, falling back to the
+        # direct peer recorded by Starlette.
+        forwarded = request.headers.get(_FORWARDED_FOR_HEADER)
+        if forwarded:
+            return forwarded.split(",", 1)[0].strip()
+        if request.client is not None:
+            return request.client.host or ""
+        return ""
+
+    @staticmethod
+    def _log_http_wide_event(
+        extra: dict[str, Any], status_code: int, error_info: Exception | None
+    ) -> None:
+        """Log the wide event at a level chosen by the error and status code."""
+        if error_info is not None:
+            extra["error_type"] = type(error_info).__name__
+            extra["error_message"] = str(error_info)[:256]
+            http_access_logger.error(
+                "access.http_failed",
+                extra=extra,
+                exc_info=(type(error_info), error_info, error_info.__traceback__),
+            )
+        elif status_code >= 500:
+            http_access_logger.error("access.http_failed", extra=extra)
+        elif status_code >= 400:
+            http_access_logger.warning("access.http_completed", extra=extra)
+        else:
+            http_access_logger.info("access.http_completed", extra=extra)
+
+    @staticmethod
     def _emit_http_wide_event(
         *,
         request: Request,
@@ -389,16 +422,7 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
             route_name = getattr(route, "name", "") or ""
             route_pattern = getattr(route, "path", "") or ""
 
-            # Prefer X-Forwarded-For (first hop) to capture the original
-            # client when a reverse proxy is in front, falling back to the
-            # direct peer recorded by Starlette.
-            client_ip = ""
-            forwarded = request.headers.get(_FORWARDED_FOR_HEADER)
-            if forwarded:
-                client_ip = forwarded.split(",", 1)[0].strip()
-            elif request.client is not None:
-                client_ip = request.client.host or ""
-
+            client_ip = DomainContextMiddleware._client_ip(request)
             user_agent = (request.headers.get(_USER_AGENT_HEADER) or "")[
                 :_USER_AGENT_MAX_CHARS
             ]
@@ -434,20 +458,7 @@ class DomainContextMiddleware(BaseHTTPMiddleware):
             if config["log_response_headers"] and response is not None:
                 extra["http_response_headers"] = dict(response.headers)
 
-            if error_info is not None:
-                extra["error_type"] = type(error_info).__name__
-                extra["error_message"] = str(error_info)[:256]
-                http_access_logger.error(
-                    "access.http_failed",
-                    extra=extra,
-                    exc_info=(type(error_info), error_info, error_info.__traceback__),
-                )
-            elif status_code >= 500:
-                http_access_logger.error("access.http_failed", extra=extra)
-            elif status_code >= 400:
-                http_access_logger.warning("access.http_completed", extra=extra)
-            else:
-                http_access_logger.info("access.http_completed", extra=extra)
+            DomainContextMiddleware._log_http_wide_event(extra, status_code, error_info)
         except Exception:  # a failed access log must not break the response
             logger = logging.getLogger(__name__)
             logger.debug("http_wide_event_emission_failed", exc_info=True)
