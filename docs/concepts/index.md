@@ -1,8 +1,8 @@
 # Concepts
 
 Why Protean works the way it does: the foundational ideas, the architectural
-patterns it supports, the design decisions behind them, and the internal
-machinery underneath.
+patterns it supports, the design decisions behind them, and Protean's
+internals.
 
 For factual lookup of specific options, see
 [Reference](../reference/index.md).

@@ -10,4 +10,4 @@ For guides on defining domain elements, see
 - [**Decorators**](./element-decorators.md): All element decorators and their options.
 - [**Object Model**](./object-model.md): Meta attributes available on every domain element.
 - [**Identity**](./identity.md): Identity strategies, types, and custom identity functions.
-- [**Indexes**](./indexes.md): `Index` declarations on aggregates and entities, options, dialect support, and the `Index.from_sql` escape hatch.
+- [**Indexes**](./indexes.md): `Index` declarations on aggregates and entities, options, dialect support, and `Index.from_sql` for dialect-specific DDL that the portable `Index` API cannot model.
