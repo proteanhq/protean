@@ -4,6 +4,7 @@ import os
 import secrets
 import socket
 import time
+from collections.abc import Iterable
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -386,6 +387,7 @@ class EventStoreSubscription(BaseSubscription):
     All recovery parameters can be set in ``domain.toml`` under
     ``[server.event_store_subscription]``:
 
+<<<<<<< HEAD
     - ``max_retries`` (default 3) — retry attempts before marking exhausted.
     - ``retry_delay_seconds`` (default 1) — delay between recovery retries.
     - ``enable_recovery`` (default True) — set to False to disable tracking
@@ -395,6 +397,32 @@ class EventStoreSubscription(BaseSubscription):
     - ``gap_timeout_seconds`` (default 5) — for a ``$all`` (cross-category)
       subscription, how long to hold at a missing lower ``global_position``
       before abandoning it as a rolled-back gap (see ``_gap_safe_batch``).
+=======
+    - ``max_retries`` (default 3): retry attempts before a position is marked
+      exhausted.
+    - ``retry_delay_seconds`` (default 1): delay between recovery retries.
+    - ``enable_recovery`` (default True): set to False to turn off tracking and
+      recovery. A failed message is then dropped.
+    - ``recovery_interval_seconds`` (default 30): minimum time between recovery
+      passes.
+    - ``gap_timeout_seconds`` (default 5): for a ``$all`` subscription, how long to
+      wait at a missing lower ``global_position`` before abandoning it as a
+      rolled-back gap (see ADR-0025).
+    - ``max_tick_interval`` (default 1): the longest wait between reads while the
+      subscription finds no new messages. With ``tick_interval`` 0 the wait
+      starts at 10 ms after the first empty read; otherwise it doubles from
+      ``tick_interval``. Each further empty read doubles it again, up to this
+      cap. A read that returns messages sets the wait back to
+      ``tick_interval``. On a category subscription, a read whose messages
+      are all dropped by the ``origin_stream`` filter counts as empty. On a
+      ``$all`` subscription, a read held back at a gap counts as empty, and a
+      read that moves the cursor counts as a read that returns messages. The
+      cursor moves past snapshot rows, an abandoned gap, and messages the
+      ``origin_stream`` filter drops. ``0`` keeps the wait at ``tick_interval``. A value
+      above 0 and below ``tick_interval`` is ignored with a warning. A value
+      that is not a finite number of 0 or more is ignored with a warning, and
+      the default applies.
+>>>>>>> 304c5c43 (Count snapshot rows as present in the $all gap check (#2161))
 
     Per-handler overrides can be passed via the constructor or
     ``from_config()`` factory.
@@ -737,19 +765,36 @@ class EventStoreSubscription(BaseSubscription):
         messages forward (one at a time, so an interrupted batch leaves the cursor
         at the last one actually processed), advance ``current_position`` to the
         gap-safe watermark set by ``_gap_safe_batch``. This steps over abandoned
-        holes, which carry no message for ``process_batch`` to advance through.
+        holes and snapshot positions, which carry no message for ``process_batch``
+        to advance through.
         Running it *after* ``process_batch`` is what keeps it crash-safe — an
         exception there skips this and leaves the cursor at real progress. It is a
         no-op for single-category subscriptions (``_gap_watermark`` stays -1).
+
+        Returns ``True`` when the tick processed messages or moved the cursor.
         """
         messages = await self.get_next_batch_of_messages()
         if messages:
             await self.process_batch(messages)
+<<<<<<< HEAD
+=======
 
-        if self._gap_watermark > self.current_position:
+        advanced = self._gap_watermark > self.current_position
+        if advanced:
             await self.update_read_position(self._gap_watermark)
 
-        return bool(messages)
+        # Only progress made here resets the idle wait. A read of nothing but
+        # snapshot rows has no messages yet moves the cursor, and more rows may
+        # follow, so it counts as activity. A failed position waiting for
+        # recovery keeps ``poll()`` busy, but reading nothing new is idle.
+        backoff = self._synced_backoff()
+        if messages or advanced:
+            backoff.on_activity()
+        else:
+            backoff.on_idle()
+>>>>>>> 304c5c43 (Count snapshot rows as present in the $all gap check (#2161))
+
+        return bool(messages) or advanced
 
     async def get_next_batch_of_messages(self) -> list[Message]:
         """
@@ -761,20 +806,38 @@ class EventStoreSubscription(BaseSubscription):
         Returns:
             List[Message]: The next batch of messages to process.
         """
-        messages = await asyncio.to_thread(
-            self.store.read,
-            self.stream_category,
-            position=self.current_position + 1,
-            no_of_messages=self.messages_per_tick,
-        )
-
         if self.stream_category == "$all":
-            messages = self._gap_safe_batch(messages)
+            # ``$all`` spans snapshot streams. The read drops snapshot rows, but
+            # each one holds a ``global_position``, so the gap walk must count
+            # those positions as present or it would wait at every snapshot.
+            messages, snapshot_positions = await asyncio.to_thread(
+                self.store._read_with_snapshot_positions,
+                self.stream_category,
+                position=self.current_position + 1,
+                no_of_messages=self.messages_per_tick,
+            )
+            messages = self._gap_safe_batch(
+                messages, snapshot_positions=snapshot_positions
+            )
+        else:
+            messages = await asyncio.to_thread(
+                self.store.read,
+                self.stream_category,
+                position=self.current_position + 1,
+                no_of_messages=self.messages_per_tick,
+            )
 
         return self.filter_on_origin(messages)
 
+<<<<<<< HEAD
     def _gap_safe_batch(self, messages: list[Message]) -> list[Message]:
         """Hold a ``$all`` (cross-category) batch at the first ``global_position`` gap.
+=======
+    def _gap_safe_batch(
+        self, messages: list[Message], snapshot_positions: Iterable[int] = ()
+    ) -> list[Message]:
+        """Return the part of a ``$all`` batch that is safe to process now.
+>>>>>>> 304c5c43 (Count snapshot rows as present in the $all gap check (#2161))
 
         ``global_position`` is a store-wide sequence. Within a single category the
         store assigns it in commit order, so a single-category subscription never
@@ -783,6 +846,7 @@ class EventStoreSubscription(BaseSubscription):
         highest position seen would silently skip the late-committing lower one
         (the checkpoint gap this guards against).
 
+<<<<<<< HEAD
         The core of the fix is a low-watermark: process only the contiguous run
         from ``current_position + 1``, stopping at the first missing
         position and waiting for it to commit. A rolled-back append permanently
@@ -794,6 +858,13 @@ class EventStoreSubscription(BaseSubscription):
         the cursor to it *after* processing, so an interrupted batch is not skipped)
         and returns the prefix of ``messages`` safe to process now (those at or
         below it); an empty list means "hold this tick".
+=======
+        ``snapshot_positions`` are the ``global_position`` values of snapshot rows
+        the read skipped. They count as present, so the walk steps over them.
+
+        Sets ``self._gap_watermark`` to the highest settled position, abandoned holes
+        and snapshot positions included. ``tick`` advances the cursor to it after processing the batch.
+>>>>>>> 304c5c43 (Count snapshot rows as present in the $all gap check (#2161))
         """
         positioned = [
             (m.metadata.event_store.global_position, m)
@@ -813,7 +884,8 @@ class EventStoreSubscription(BaseSubscription):
                 f"{len(messages) - len(positioned)} $all record(s) with no "
                 f"global_position"
             )
-        if not positioned:
+        snapshots = set(snapshot_positions)
+        if not positioned and not snapshots:
             # Empty batch, or (defensively) only records missing a position: no
             # frontier to gate, so clear the gap timers and let the downstream
             # corruption guard handle any position-less records.
@@ -823,7 +895,7 @@ class EventStoreSubscription(BaseSubscription):
 
         now = time.monotonic()
         entry_cursor = self.current_position
-        present = {position for position, _ in positioned}
+        present = {position for position, _ in positioned} | snapshots
         highest = max(present)
         abandoned: list[int] = []  # holes stepped over this batch (Checkpoint trace)
         # ``global_position`` is 1-based, so a fresh subscription (current == -1)

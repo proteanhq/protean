@@ -271,6 +271,24 @@ that were generated in response to specific commands:
 | `tick_interval` | 0 | Seconds between polling cycles |
 | `position_update_interval` | 10 | Messages between position writes |
 | `origin_stream` | None | Filter by origin stream |
+<<<<<<< HEAD
+=======
+| `max_tick_interval` | 1 | Longest wait, in seconds, between reads while no new messages arrive. Domain-wide only, under `[server.event_store_subscription]`. `0` keeps the wait at `tick_interval` |
+
+An idle EventStoreSubscription waits longer between reads, so it does not query
+the event store in a tight loop. With `tick_interval` 0, it waits 10 ms after
+the first empty read. With a longer `tick_interval`, the wait doubles from
+`tick_interval`. Each further empty read doubles it again, up to
+`max_tick_interval`. A read that returns messages sets the wait back
+to `tick_interval`. On a category subscription, a read whose messages are all
+dropped by the `origin_stream` filter counts as empty. On a `$all`
+subscription, a read held at a gap counts as empty, and a read that moves the
+cursor counts as a read that returns messages. The cursor moves past snapshot
+rows, an abandoned gap, and messages the `origin_stream` filter drops. The
+backoff adds at most
+`max_tick_interval` seconds, or `tick_interval` seconds when that is longer,
+before the subscription reads a new message.
+>>>>>>> 304c5c43 (Count snapshot rows as present in the $all gap check (#2161))
 
 ### When to Use {#eventstore-when-to-use}
 
