@@ -661,9 +661,8 @@ async def test_tick_steps_over_a_real_snapshot_without_waiting(
 async def test_tick_past_only_snapshot_rows_counts_as_activity(
     all_subscription, test_domain
 ):
-    """A read that holds nothing but snapshot rows moves the cursor. The tick
-    reports work and resets the idle wait, so the subscription reads the rows
-    after them at once instead of backing off."""
+    """A read that holds nothing but snapshot rows moves the cursor, and the
+    tick reports work."""
     sub = all_subscription
     sub.messages_per_tick = 2
     store = test_domain.event_store.store
@@ -675,15 +674,11 @@ async def test_tick_past_only_snapshot_rows_counts_as_activity(
     store.create_snapshot(Thing, "t2")
 
     await sub.tick()  # the two events
-    backoff = sub._synced_backoff()
-    backoff.on_idle()
-    assert backoff.current > 0
 
     had_work = await sub.tick()  # only the two snapshot rows
 
     assert had_work is True
     assert sub.current_position == 4
-    assert backoff.current == sub.tick_interval
 
 
 @pytest.mark.asyncio
@@ -699,7 +694,6 @@ async def test_tick_held_at_a_gap_counts_as_idle(all_subscription, monkeypatch):
 
     assert had_work is False
     assert sub.current_position == 0
-    assert sub._synced_backoff().current > 0
 
 
 @pytest.mark.asyncio
@@ -707,7 +701,7 @@ async def test_tick_past_messages_the_origin_filter_drops_counts_as_activity(
     all_subscription, test_domain
 ):
     """On ``$all``, the cursor moves past messages the ``origin_stream`` filter
-    drops, so the tick reports work and resets the idle wait."""
+    drops, so the tick reports work."""
     sub = all_subscription
     sub.origin_stream = "no-such-stream"
     store = test_domain.event_store.store
@@ -715,12 +709,8 @@ async def test_tick_past_messages_the_origin_filter_drops_counts_as_activity(
         thing = Thing(id=identifier, name="thing")
         thing.raise_(Pinged(id=identifier))
         store.append(thing._events[-1])
-    backoff = sub._synced_backoff()
-    backoff.on_idle()
-    assert backoff.current > 0
 
     had_work = await sub.tick()
 
     assert had_work is True
     assert sub.current_position == 2
-    assert backoff.current == sub.tick_interval

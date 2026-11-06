@@ -284,35 +284,16 @@ advances the cursor past a hole only *after* the batch is processed
 within `gap_timeout_seconds` (default 5) is assumed rolled back and abandoned,
 **logged, not silent**. The guarantee is therefore: **no committed `$all` event is
 silently skipped; a genuinely slow commit (> `gap_timeout_seconds`) is logged and
-dropped.** Single-category subscriptions are gap-free by construction and run none
-of this machinery.
+dropped.** A snapshot row also takes a `global_position`. The subscription counts
+that position as present, so it never holds at a snapshot. Single-category
+subscriptions are gap-free by construction and run none of this machinery.
 
-<<<<<<< HEAD
 **Single writer.** Event-store subscriptions have no cluster-wide ownership;
 Protean refuses to start more than one worker when an event-store subscription is
 registered, **unless the operator sets `acknowledge_event_store_risk`** (an
 explicit opt-out). The guard is best-effort: if the domain cannot be classified at
 startup it defers to the workers rather than refusing. Horizontal scaling of a
 handler is done with a stream subscription (Redis consumer groups), below.
-=======
-No committed `$all` event is skipped without a log entry. Across categories a
-lower `global_position` can commit after a higher one, so a `$all`
-subscription processes only the contiguous run from its cursor and holds at
-the first gap ([ADR-0025](../adr/0025-all-subscription-gap-safety.md)). A gap
-that stays open for `gap_timeout_seconds` is treated as a rollback: the
-subscription logs it and moves on. A commit slower than that timeout is
-therefore logged and dropped. A snapshot row also takes a `global_position`.
-The subscription counts that position as present, so it never holds at a
-snapshot. Single-category subscriptions have no gaps and skip this check.
-
-### Single writer
-
-Event-store subscriptions have no cluster-wide owner, so Protean refuses to
-start a second worker while one is registered. The operator can override this
-with `acknowledge_event_store_risk`. If the domain cannot be classified at
-startup, the check lets the workers start. To scale a handler across workers,
-use a stream subscription with Redis consumer groups.
->>>>>>> 304c5c43 (Count snapshot rows as present in the $all gap check (#2161))
 
 ---
 
