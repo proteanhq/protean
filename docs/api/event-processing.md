@@ -1,7 +1,8 @@
 # Event Processing
 
 Subscribers consume external broker messages, process managers coordinate
-multi-step workflows, and upcasters handle event schema evolution.
+multi-step workflows, and upcasters convert stored event data from an older
+schema version to a newer one.
 
 **Guides:**
 [Subscribers](../guides/consume-state/subscribers.md) ·

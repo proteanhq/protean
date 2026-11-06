@@ -1,7 +1,8 @@
 # Domain
 
 The central registry object. Create one per bounded context to register all
-domain elements, manage configuration, and coordinate infrastructure adapters.
+domain elements, load configuration, and initialize and shut down
+infrastructure adapters.
 
 See [Compose a Domain](../guides/compose-a-domain/index.md) for a practical guide.
 

@@ -1,7 +1,8 @@
 # Domain Constructor
 
 The `Domain` class is the central composition root of a Protean application.
-It manages element registration, configuration, and adapter lifecycle.
+It registers domain elements, loads configuration, and initializes and shuts
+down adapters.
 
 ```python
 --8<-- "reference/domain-elements/domain-constructor/001.py:constructor"

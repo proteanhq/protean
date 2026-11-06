@@ -44,7 +44,7 @@ usage examples, definition styles, and field arguments table.
 
     ---
 
-    The internal field declaration carrier that all field factories produce.
+    The internal field declaration object that every field factory returns.
 
     [:material-arrow-right-box: FieldSpec](spec.md)
 

@@ -2,7 +2,8 @@
 
 Base class for repositories, the persistence abstraction for aggregates.
 Repositories provide a collection-oriented interface (`add`, `get`, `all`) to
-load and persist aggregates, hiding database details behind a clean domain API.
+load and persist aggregates. The interface hides database details from the
+domain code.
 
 See [Repositories guide](../guides/change-state/repositories.md) for practical
 usage and [Repositories concept](../concepts/building-blocks/repositories.md)
