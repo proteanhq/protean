@@ -27,7 +27,7 @@ times in the same process, most commonly in tests, where each test case may
 create its own `Domain(name="Test")` with different configuration. The OTEL global registration
 model creates three problems in this context:
 
-1. **Single-assignment semantics**: OTEL globals are write-once. The first call
+1. **Single-assignment semantics**: OTEL globals are write-once: the first call
    to `set_tracer_provider()` sets the provider, and OTEL silently ignores
    later calls (or logs a warning). A second domain in the same process cannot
    override the provider with its own configuration.
@@ -42,13 +42,12 @@ model creates three problems in this context:
    provider cannot express this.
 
 Protean also already had an existing observability system (the **Observatory**)
-which provides zero-config, real-time tracing for developers running `protean
-server` locally. Observatory uses Redis Streams and SSE, producing flat
-`MessageTrace` events. OTEL needed to coexist with Observatory without
-replacing it. Observatory serves developers, and OTEL serves ops teams. The two
-systems share instrumentation callsites but have independent emission paths,
-connected only at the `/metrics` endpoint where OTEL's `PrometheusMetricReader`
-takes over when available.
+which provides zero-config, real-time tracing for developers running `protean server`
+locally. Observatory uses Redis Streams and SSE, producing flat `MessageTrace` events.
+OTEL needed to coexist with Observatory without replacing it: Observatory
+serves developers; OTEL serves ops teams. The two systems share instrumentation
+callsites but have independent emission paths, connected only at the `/metrics`
+endpoint where OTEL's `PrometheusMetricReader` takes over when available.
 
 ## Decision
 
@@ -81,15 +80,15 @@ The `Domain` class exposes two lazy properties:
 - `domain.tracer`: Returns a configured OTEL `Tracer` or a `_NoOpTracer`
 - `domain.meter`: Returns a configured OTEL `Meter` or a `_NoOpMeter`
 
-Both properties use deferred imports. Protean loads the `opentelemetry` package
-only when code accesses telemetry.
+Both use deferred imports so the `opentelemetry` package is never loaded
+unless telemetry is actually accessed.
 
 Telemetry is **disabled by default** (`telemetry.enabled: False` in domain
-config). All OTEL packages are optional extras (`pip install
-protean[telemetry]`). When telemetry is disabled or the packages are absent,
-all public functions return lightweight no-op objects. These objects implement
-the minimal OTEL interface, so instrumentation code never needs conditional
-guards.
+config). All OTEL packages are optional extras
+(`pip install protean[telemetry]`). When telemetry is disabled or the packages
+are absent, all public functions return lightweight no-op objects. These
+objects implement the minimal OTEL interface, so instrumentation code never
+needs conditional guards.
 
 ## Consequences
 
@@ -110,8 +109,8 @@ guards.
 **Negative:**
 
 - Diverges from OTEL's documented best practice. Contributors familiar with
-  OTEL will at first call `trace.get_tracer()` (the global) and need to learn
-  the domain-scoped pattern.
+  OTEL will first call `trace.get_tracer()` (the global) and need to learn the
+  domain-scoped pattern.
 - Every instrumented callsite must have access to the `Domain` instance
   (typically via `current_domain` context or direct reference) to obtain
   a tracer or meter.
@@ -127,9 +126,10 @@ single-assignment, broken-shutdown, and no-per-domain-config problems
 described in Context. These are fundamental to OTEL's design and
 unlikely to change upstream.
 
-**Per-thread providers.** Would solve test isolation for single-threaded test
-runners but not for async or multi-domain production scenarios. Per-thread
-providers also add complexity and do not solve the configuration problem.
+**Per-thread providers.** Would solve test isolation for single-threaded
+test runners but not for async or multi-domain production scenarios.
+Per-thread providers also add complexity and do not solve the configuration
+problem.
 
 **Monkey-patching OTEL globals per test.** Fragile, requires careful
 teardown ordering, and breaks if any library caches a reference to the

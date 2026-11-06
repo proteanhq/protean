@@ -3,13 +3,13 @@
 ## Why Entities?
 
 Not every concept in a domain stands on its own. An `OrderItem` only makes
-sense within an `Order`. In the same way, a `Reservation` belongs to a
-`Booking`. These objects have their own identity, because you need to
-distinguish one line item from another. Their parent creates, changes and
-deletes them, so they don't control their own lifecycle. Suppose you modeled
-every identified object as an independent aggregate. You could then no longer
-enforce a rule across the parent and its children, such as "an order's total
-must equal the sum of its line items".
+sense within an `Order`; a `Reservation` belongs to a `Booking`. These objects
+have their own identity, because you need to distinguish one line item from
+another. But they don't control their own lifecycle, because their parent
+creates, changes and deletes them. If you modeled every identified object as an
+independent aggregate, you'd lose the ability to enforce rules
+that span the parent and its children (e.g. "an order's total must equal the
+sum of its line items").
 
 Entities are the answer: objects with unique, stable identity that live
 *inside* an aggregate. The aggregate root controls their creation, mutation,
@@ -19,9 +19,9 @@ Entities are similar to [Aggregates](./aggregates.md) in nature and
 purpose. In fact, an Aggregate is nothing but an entity chosen to represent
 the entire cluster.
 
-Entities are mutable. They encapsulate both state and behavior. They have
-distinct identity. This identity remains consistent throughout the life of the
-entity, regardless of changes to its attributes.
+Entities are mutable and encapsulate both state and behavior. They have
+distinct identity. This identity remains consistent throughout
+the life of the entity, regardless of changes to its attributes.
 
 ## Facts
 
@@ -55,9 +55,8 @@ seat can be considered a ValueObject, as one seat can be exchanged with another.
 
 ### Aggregates handle entity persistence.  { data-toc-label="Persistence" }
 Entities are persisted and retrieved through their aggregates. You should not
-query or update entities directly. A direct query or update skips the aggregate
-and can leave the entity in an invalid state, with domain invariants
-unsatisfied.
+query or update entities directly, because that skips the aggregate. The entity
+can then end up in an invalid state, with domain invariants unsatisfied.
 
 ### Entities are related through associations. { data-toc-label="Associations" }
 Associations define how entities are connected. The aggregate typically

@@ -42,9 +42,8 @@ Out[4]: [<AccountWithdrawn: AccountWithdrawn object (
 ```
 
 Events accumulate in `_events` until the aggregate is persisted. If an
-aggregate is never persisted, its events remain in memory and are never
-dispatched. This happens, for example, when you construct an aggregate in a
-test and don't save it.
+aggregate is never persisted (e.g. you construct it in a test and don't save
+it), the events remain in memory and are never dispatched.
 
 ## Raising Events from Entities
 
@@ -84,11 +83,10 @@ consumers process them in the order they were raised.
 
 ## Dispatching Events {#stream-category}
 
-Events are dispatched automatically when the aggregate is persisted through a
-repository. You do not need to publish events manually. When you call
-`domain.repository_for(Aggregate).add(aggregate)` within a Unit of Work,
-Protean persists the aggregate's accumulated events to the event store and
-forwards them to registered brokers.
+Events are dispatched automatically when the aggregate is persisted through
+a repository. You do not need to publish events manually. When you call `domain.repository_for(Aggregate).add(aggregate)`
+within a Unit of Work, Protean persists the aggregate's accumulated events to
+the event store and forwards them to registered brokers.
 
 Events are published to streams based on the aggregate's [stream category](../../concepts/async-processing/stream-categories.md). Each event is stored in a stream named `<domain>::<stream_category>-<aggregate_id>`, ensuring that all events for a specific aggregate instance are grouped together and can be processed in order.
 
@@ -112,9 +110,8 @@ persistence, the event list is cleared.
 
 ### What Happens Next
 
-From there, the [async processing
-engine](../../concepts/async-processing/engine.md) reads events through
-subscriptions and delivers them to:
+From there, the [async processing engine](../../concepts/async-processing/engine.md)
+reads events through subscriptions and delivers them to:
 
 - **[Event handlers](../consume-state/event-handlers.md)**: React to events
   and orchestrate side effects (e.g. syncing another aggregate, sending a
@@ -152,8 +149,9 @@ Key points for ES aggregates:
   recorded. `raise_()` leaves the pending events and the version as they were.
   It then re-raises the error. When an invariant check fails, the field changes
   the handler made are undone too. When the handler raises its own error, its
-  field changes stay. If the handler breaks a post-invariant and then raises,
-  the invariant's `ValidationError` replaces the handler's error.
+  field changes stay.
+  If the handler breaks a post-invariant and then raises, the
+  invariant's `ValidationError` replaces the handler's error.
 - Factory methods use `_create_new()` to create a blank aggregate
   with identity. The creation event's `@apply` handler populates
   all remaining state.
@@ -173,8 +171,7 @@ Protean snapshots the full aggregate state into a fact event.
 
 The event name has the format `<AggregateName>FactEvent`. The stream name is
 `<stream_category>-fact-<aggregate_id>`, where `stream_category` is the
-aggregate's [stream
-category](../../concepts/async-processing/stream-categories.md).
+aggregate's [stream category](../../concepts/async-processing/stream-categories.md).
 
 ```python hl_lines="9 48 49"
 --8<-- "guides/domain-definition/events/003.py:full"
