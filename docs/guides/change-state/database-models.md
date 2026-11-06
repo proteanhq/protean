@@ -1,4 +1,4 @@
-# Custom Database Models
+# Define custom database models
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span>
 
@@ -28,7 +28,8 @@ model is sufficient.
 
 ## Defining a custom model
 
-Subclass `BaseDatabaseModel` and register it with `part_of`:
+Subclass `BaseDatabaseModel` to define the model. Then register it with
+`part_of`:
 
 ```python
 --8<-- "guides/change-state/database-models/001.py:import"
@@ -43,10 +44,10 @@ Map aggregate fields to adapter-specific types:
 --8<-- "guides/change-state/database-models/002.py:field_types"
 ```
 
-### Partial field mapping
+### Map only some of the fields
 
-A model can map fewer fields than the aggregate. Unmapped fields are
-handled by auto-generation:
+A model can map fewer fields than the aggregate. Protean auto-generates the
+mapping for each field the model leaves out:
 
 ```python
 --8<-- "guides/change-state/database-models/003.py:partial"
@@ -54,7 +55,7 @@ handled by auto-generation:
 
 ---
 
-## Registration options
+## Choose the registration options
 
 | Option | Type | Description |
 |--------|------|-------------|
@@ -68,7 +69,7 @@ handled by auto-generation:
 
 ---
 
-## Multi-database deployment
+## Use a different model for each database type
 
 Register multiple models for the same aggregate, each targeting a
 different database type:
@@ -79,12 +80,12 @@ different database type:
 
 An aggregate is stored in one provider, set with its `provider` option. Its
 repository uses the model whose `database` matches that provider's database
-type, so `Customer` above uses `CustomerSearchModel` on Elasticsearch and
-`CustomerWriteModel` on PostgreSQL. The aggregate is not written to both.
+type. For example, `Customer` above uses `CustomerSearchModel` on Elasticsearch
+and `CustomerWriteModel` on PostgreSQL. The aggregate is not written to both.
 
 ---
 
-## Validation rules
+## Which fields can a model declare?
 
 - Model fields **must be a subset** of the aggregate's fields. Defining
   a field that doesn't exist on the aggregate raises `IncorrectUsageError`.

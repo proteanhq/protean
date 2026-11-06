@@ -1,13 +1,13 @@
-# Chapter 17: Handling Failures with Dead Letter Queues
+# Chapter 17: Recovering failed messages from dead letter queues
 
 A production bug in the `ComplianceAlertHandler` causes it to crash with a
 `TypeError` on deposits where `source_type` is `None`, a pre-upcasting edge
 case. The handler exhausts its retry attempts and messages pile up in the
 **dead-letter queue**.
 
-When a handler keeps failing, the message ends up in a dead letter queue.
-This chapter walks the workflow around that: finding those messages,
-working out what went wrong, and getting them processed.
+When a handler keeps failing, Protean moves the message to a dead letter queue.
+You find those messages, read the cause of each failure, and replay the
+messages so the fixed handler processes them.
 
 ## How DLQ Works
 
@@ -62,11 +62,11 @@ Payload:
 
 The inspection shows everything needed to diagnose the issue:
 
-- The **failure reason** (`TypeError`) tells you what went wrong.
+- From the **failure reason** (`TypeError`), you can see what went wrong.
 - The **payload** shows the exact message that caused the failure.
-- The **type** (`Fidelis.DepositMade.v1`) reveals it was a v1 event. The
-  `source_type` field is missing because the upcaster has not run yet at the
-  handler level.
+- From the **type** (`Fidelis.DepositMade.v1`), you can see that the message is
+  a v1 event. The `source_type` field is missing because the upcaster has not
+  run yet at the handler level.
 
 ## Fixing and Replaying
 
@@ -84,8 +84,8 @@ Replay all DLQ messages for subscription 'fidelis::account'? [y/N]: y
 Replayed 3 message(s) to stream 'fidelis::account'.
 ```
 
-Replaying puts the message back on the original stream. The handler
-(now fixed) processes it normally.
+When you replay a message, Protean writes it back to the original stream. The
+handler (now fixed) processes it normally.
 
 ## Purging Unrecoverable Messages
 
@@ -108,7 +108,7 @@ $ protean dlq list --domain=fidelis
 No DLQ messages found.
 ```
 
-## The Fix-and-Replay Cycle
+## Follow the fix-and-replay cycle
 
 This pattern will become your standard operating procedure:
 
@@ -118,7 +118,7 @@ This pattern will become your standard operating procedure:
 4. **Replay**: `protean dlq replay-all` reprocesses the messages
 5. **Verify**: `protean dlq list` confirms the DLQ is empty
 
-## DLQ Configuration
+## Configure the DLQ
 
 The DLQ is configured in `domain.toml`:
 
@@ -144,7 +144,7 @@ exhausting retries. This is almost never what you want in production.
 Next, we set up proactive monitoring to catch problems before they
 fill the DLQ.
 
-## Full Source
+## Read the full source
 
 ??? example "ch17.py, 162 lines"
 
@@ -152,6 +152,6 @@ fill the DLQ.
     --8<-- "guides/getting-started/es-tutorial/ch17.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 18: Monitoring Subscription Health →](18-monitoring-health.md)

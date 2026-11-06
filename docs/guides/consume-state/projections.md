@@ -3,10 +3,10 @@
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Why not just query the aggregate directly? You can, but aggregates are designed
-for consistency, not for read performance. Loading a full aggregate graph just
-to display a dashboard row is wasteful. Projections solve this by maintaining a
-separate, flattened view that is shaped for the query, not for the write model.
-They're the "read side" of CQRS.
+for consistency, not for read performance. If you load a full aggregate graph
+to display one dashboard row, you load far more data than the row needs.
+Projections solve this by maintaining a separate, flattened view that is shaped
+for the query, not for the write model. They're the "read side" of CQRS.
 
 Projections are populated in response to domain events by
 [projectors](./projectors.md).
@@ -19,7 +19,7 @@ Projections are defined with the `Domain.projection` decorator.
 --8<-- "guides/consume-state/projections/001.py:projection"
 ```
 
-### Configuration Options
+### Set storage, querying and schema with decorator options
 
 Projections accept several decorator options that control storage, querying,
 and schema behavior:
@@ -44,7 +44,7 @@ and schema behavior:
     --8<-- "guides/consume-state/projections/001.py:limit"
     ```
 
-### Storage Options
+### Store a projection in a database or a cache
 
 Projections can be stored in either a database or a cache, but not both
 simultaneously:
@@ -67,7 +67,7 @@ precedence. See
 [element decorators](../../reference/domain-elements/element-decorators.md)
 for the full list of configuration options.
 
-### Supported Field Types
+### Which field types can a projection use?
 
 Projections support basic field types (`String`, `Integer`, `Float`,
 `Identifier`, `DateTime`, `Boolean`, etc.) and `ValueObject` fields.
@@ -111,11 +111,12 @@ The `ReadView` returned by `domain.view_for()` exposes these methods:
     matching specific criteria, use the query builder:
     `view.query.filter(status="active").all().total`.
 
-The `query` property returns a `ReadOnlyQuerySet` that supports all read
-operations, `filter()`, `exclude()`, `order_by()`, `limit()`, `offset()`, and `all()`, but blocks mutations (`update`, `delete`)
-to enforce CQRS read/write separation.
+The `query` property returns a `ReadOnlyQuerySet`. The `ReadOnlyQuerySet`
+supports all read operations: `filter()`, `exclude()`, `order_by()`, `limit()`,
+`offset()`, and `all()`. It blocks mutations (`update`, `delete`) to enforce
+CQRS read/write separation.
 
-### Pagination
+### Page through query results
 
 The `ResultSet` returned by `.all()` includes pagination properties:
 
@@ -138,14 +139,14 @@ For write operations (used inside projectors), continue using
     use [repositories](../change-state/retrieve-aggregates.md) with custom
     query methods.
 
-### Cache-backed projections
+### Which read methods work on a cache-backed projection?
 
 When a projection is stored in a cache (Redis, in-memory), `view.get()`,
 `view.count()`, and `view.exists()` work as expected. However, `view.query`
 and `view.find_by()` raise `NotSupportedError` because cache backends are
 key-value stores and do not support field-based filtering.
 
-### Three levels of read access
+### Pick one of three levels of read access
 
 Protean provides three levels of read access to projections:
 
@@ -155,18 +156,18 @@ Protean provides three levels of read access to projections:
 | **Facade** | `domain.view_for(Projection)` | Read-only projection access without handler ceremony |
 | **Raw** | `domain.connection_for(Projection)` | Technology-specific queries (SQL, Elasticsearch DSL, Redis) |
 
-`domain.view_for(Projection)` returns a `ReadView` (the default, read-only by
-design) and `domain.connection_for(Projection)` returns the raw DB or cache
-connection as an escape hatch.
+`domain.view_for(Projection)` returns a `ReadView`, the default and read-only
+by design. `domain.connection_for(Projection)` returns the raw DB or cache
+connection, for queries the `ReadView` cannot run.
 
 To *write* to a projection (inside a projector), use
 `domain.repository_for(Projection)`. That is the write path, not a read level.
 
-### Raw connection access
+### Run technology-specific queries on the raw connection
 
-When you need to run technology-specific queries that cannot be expressed
-through `QuerySet` (such as SQL aggregations, Elasticsearch DSL, or Redis
-`SCAN` commands) use `domain.connection_for()`:
+To run technology-specific queries that `QuerySet` cannot express, such as SQL
+aggregations, Elasticsearch DSL, or Redis `SCAN` commands, use
+`domain.connection_for()`:
 
 ```python
 --8<-- "guides/consume-state/projections/001.py:connection"

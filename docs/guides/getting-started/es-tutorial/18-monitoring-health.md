@@ -96,7 +96,7 @@ compatible monitoring tool. Set alerts on:
 - `protean_subscription_consumer_lag > 100`: Handler falling behind
 - `protean_subscription_dlq_depth > 0`: Failed messages accumulating
 
-## Trace Events
+## Follow the trace events the engine emits
 
 The engine emits structured trace events for every message processed:
 
@@ -109,8 +109,8 @@ The engine emits structured trace events for every message processed:
 - `outbox.published`: Outbox processor published a message to broker
 - `outbox.failed`: Outbox processor failed to publish
 
-These events flow to the Observatory via Redis Pub/Sub in real-time.
-When nobody is listening, the emitter short-circuits with zero overhead.
+These events flow to the Observatory via Redis Pub/Sub in real-time. When no
+client is subscribed, the emitter skips publishing and adds zero overhead.
 
 ## What We Built
 
@@ -120,10 +120,10 @@ When nobody is listening, the emitter short-circuits with zero overhead.
 - Understanding of **trace events** emitted by the engine.
 
 With monitoring in place, we can detect problems early. In the next chapter, a
-bank acquisition triggers a massive migration, and we learn how to handle it
+bank acquisition triggers a large migration. We learn how to run that migration
 without disrupting production.
 
-## Full Source
+## Read the full source
 
 ??? example "ch18.py, 215 lines"
 
@@ -131,6 +131,6 @@ without disrupting production.
     --8<-- "guides/getting-started/es-tutorial/ch18.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 19: The Great Migration, Run on Priority Lanes →](19-priority-lanes.md)

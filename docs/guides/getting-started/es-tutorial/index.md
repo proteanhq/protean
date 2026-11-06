@@ -1,10 +1,9 @@
 # Tutorial: Building Fidelis
 
-In this tutorial we will build **Fidelis**, a digital banking ledger
-platform with Protean's Event Sourcing capabilities. By the end, we will
-have a system with immutable audit trails, temporal
-queries, schema evolution, cross-domain integrations, and full operational
-tooling.
+You build **Fidelis**, a digital banking ledger platform, with Protean's Event
+Sourcing capabilities. By the end, we will have a system with immutable audit
+trails, temporal queries, schema evolution, cross-domain integrations, and full
+operational tooling.
 
 ## Why Event Sourcing for Banking?
 
@@ -16,10 +15,10 @@ replaying the history.
 
 This gives us:
 
-- **Complete audit trails**: Every state change is recorded forever
-- **Temporal queries**: "what was the balance on March 15th?"
-- **Schema evolution**: New regulations add fields without rewriting history
-- **Debugging superpowers**: Trace every action back to its cause
+- **Keep a complete audit trail**: Every state change is recorded forever
+- **Query past state**: "what was the balance on March 15th?"
+- **Evolve the schema**: New regulations add fields without rewriting history
+- **Debug from the event history**: Trace every action back to its cause
 
 ## What We Will Build
 
@@ -30,7 +29,7 @@ This gives us:
 - An **external payment gateway** integration
 - **Production tooling**: Monitoring, dead letter queues, migrations
 
-## The five parts
+## How is the tutorial organized?
 
 The tutorial is divided into five parts. Each chapter builds on the
 previous one, growing the Fidelis platform step by step.
@@ -44,17 +43,17 @@ previous one, growing the Fidelis platform step by step.
 | **V. Mastery** | 20–22 | Projection rebuilding, event store exploration, and the full architecture |
 
 !!! tip "Cumulative Codebase"
-    Each chapter builds on the previous one. The code you write in Chapter 1
-    grows throughout the tutorial into a complete platform. Follow along
-    in order for the best experience.
+    Each chapter builds on the previous one. You extend the code from Chapter 1
+    in each later chapter until it becomes a complete platform. Follow along in
+    order for the best experience.
 
 !!! info "Which pathway does this tutorial follow?"
-    This tutorial follows the **Event Sourcing** path, aggregates derive their
-    state from events rather than storing snapshots in a database. If you are
-    looking for the standard CQRS approach, see the [Bookshelf
+    This tutorial follows the **Event Sourcing** path. In this path, aggregates
+    derive their state from events and do not store snapshots in a database. If
+    you are looking for the standard CQRS approach, see the [Bookshelf
     tutorial](../tutorial/index.md).
 
-## Prerequisites
+## What do you need before you start?
 
 - **Python 3.11+**
 - **Protean installed**: See [Installation](../installation.md)

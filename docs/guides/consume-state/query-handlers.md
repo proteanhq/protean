@@ -2,10 +2,10 @@
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span>
 
-Queries carry read intent, and query handlers process them. They receive a
-query, access the right projection through a ReadView, and return the result.
-Query handlers are the read-side mirror of command handlers, completing the
-CQRS pipeline.
+Queries carry read intent. Query handlers process them. They receive a query,
+access the right projection through a ReadView, and return the result. Query
+handlers do on the read side what command handlers do on the write side. They
+are the last step of the CQRS pipeline.
 
 For background on how query handlers complete the CQRS read pipeline, see
 [Query Handlers concept](../../concepts/building-blocks/query-handlers.md).
@@ -25,7 +25,7 @@ construction raises `IncorrectUsageError`. Fields support the same validation co
 other domain elements (`required`, `max_length`, `min_value`, `max_value`, `choices`). Invalid inputs raise `ValidationError` at
 construction time, before the query reaches the handler.
 
-### Query Naming Conventions
+### How to name queries
 
 Name queries with the intent they represent, typically starting with `Get`,
 `Find`, `List`, or `Search`:
@@ -37,7 +37,7 @@ Name queries with the intent they represent, typically starting with `Get`,
 | `List<Entity>` | `ListActiveProducts` | Listing with optional filters |
 | `Search<Entity>` | `SearchOrders` | Full-text or complex multi-field search |
 
-### Decorator Options
+### Which options does the decorator accept?
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -91,11 +91,12 @@ that type at the call site:
 --8<-- "guides/consume-state/query-handlers/002.py:typed"
 ```
 
-The result type must match what the handler returns; the query declares it once,
-next to its fields. This is plain typing, so it works under both mypy and pyright
-with no plugin. Declaring the result type is optional: a query that does not
-subscript `BaseQuery` keeps dispatching to `Any`, and runtime behavior is
-identical either way. See [ADR-0043](../../adr/0043-typed-query-dispatch.md).
+The result type must match what the handler returns. The query declares the
+result type once, next to its fields. This is plain typing, so it works under
+both mypy and pyright with no plugin. Declaring the result type is optional. A
+query that does not subscript `BaseQuery` keeps dispatching to `Any`. Runtime
+behavior is identical either way. See the decision record on typed query
+dispatch, [ADR-0043](../../adr/0043-typed-query-dispatch.md).
 
 ### Comparison with `domain.process()`
 
@@ -107,7 +108,7 @@ identical either way. See [ADR-0043](../../adr/0043-typed-query-dispatch.md).
 | Async | Supported | No (synchronous only) |
 | Idempotency | Supported | Not needed |
 
-## Workflow
+## How a query moves through the domain
 
 ```mermaid
 sequenceDiagram
@@ -130,7 +131,7 @@ sequenceDiagram
 4. **Results returned**: The handler returns results, which pass through
    `domain.dispatch()` back to the caller.
 
-## Three Levels of Read Access
+## Choose one of three levels of read access
 
 Protean provides three levels of read access to projections:
 
@@ -142,15 +143,15 @@ Protean provides three levels of read access to projections:
 
 Query handlers operate at Level 1, the most structured approach. Use
 `domain.view_for(Projection)` (Level 2) for read-only lookups that don't need a
-handler. It returns a `ReadView`, and `view.query` gives you a chainable
-`ReadOnlyQuerySet` (a `QuerySet` subclass whose `update()`/`delete()` raise
-`NotSupportedError`). Use `domain.connection_for(Projection)` (Level 3) when
-you need the raw database or cache client for technology-specific queries.
+handler. It returns a `ReadView`. On that view, `view.query` gives you a
+chainable `ReadOnlyQuerySet` (a `QuerySet` subclass whose `update()`/`delete()`
+raise `NotSupportedError`). When you need the raw database or cache client for
+technology-specific queries, use `domain.connection_for(Projection)` (Level 3).
 
 To *write* to a projection (inside a projector), use
 `domain.repository_for(Projection)`. That is the write path, not a read level.
 
-## Error Handling
+## Which errors do dispatch and query handlers raise?
 
 `domain.dispatch()` raises `IncorrectUsageError` when:
 
@@ -189,7 +190,9 @@ UnitOfWork. Use `@read` for every query-handler method.
 ---
 
 !!! seealso "See also"
-    **Concept overview:** [Query Handlers](../../concepts/building-blocks/query-handlers.md): How query handlers process read intents in CQRS.
+    **Read the concept overview:** [Query
+    Handlers](../../concepts/building-blocks/query-handlers.md): How query
+    handlers process read intents in CQRS.
 
     **Related guides:**
 

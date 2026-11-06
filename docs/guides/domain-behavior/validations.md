@@ -1,4 +1,4 @@
-# Basic Validations
+# Validate field values
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -19,12 +19,13 @@ a different category of invalid state:
 | **3, Aggregate invariants** | Business rules, cross-field consistency | [`@invariant` on aggregates](invariants.md) |
 | **4, Handler/service guards** | Authorization, cross-aggregate checks | [Command handlers](../change-state/command-handlers.md), [domain services](domain-services.md) |
 
-Each layer trusts the layers below it and adds what they don't cover. This
-guide focuses on Layer 1, field constraints, built-in validators, and custom
-validators. For the complete picture, see the [Validation
+Each layer relies on the checks of the lower-numbered layers. It adds only the
+rules that those layers do not check. This guide focuses on Layer 1, field
+constraints, built-in validators, and custom validators. To see how the four
+layers divide the rules between them, read the [Validation
 Layering](../../patterns/validation-layering.md) pattern.
 
-## Field Restrictions
+## Restrict values with field types and options
 
 Field restrictions begin with the type of field chosen to represent an
 attribute.
@@ -48,8 +49,8 @@ ValidationError: {
 }
 ```
 
-These validations kick in even on attribute change, not just during
-initialization, thus keeping the aggregate valid at all times.
+Protean also runs the field type and choice checks when you change an attribute
+after initialization. The aggregate stays valid at all times.
 
 ```shell
 In [1]: account = Account(account_number=1234, account_type="SAVINGS", balance=500.0)
@@ -59,9 +60,9 @@ In [2]: account.account_type = "CHECKING"
 ValidationError: {'account_type': ["Input should be 'SAVINGS' or 'CURRENT'"]}
 ```
 
-Every Protean field also has options that help constrain the field value.
-For example, we can specify that the field is mandatory with the `required`
-option and stores a unique value with the `unique` option.
+Every Protean field also has options that help constrain the field value. For
+example, the `required` option makes the field mandatory. The `unique` option
+makes the field store a unique value.
 
 The four options to constrain values are:
 
@@ -95,7 +96,7 @@ ValidationError: {'account_number': ['is required']}
 A full list of field types and their options is available in the
 [Fields](../../reference/fields/index.md) section.
 
-## In-built Validations
+## Use the built-in validations
 
 Many field classes in Protean come pre-equipped with basic validations, like
 length and value.
@@ -118,15 +119,17 @@ ERROR: Error during initialization:
 ValidationError: {'name': ['String should have at least 3 characters'], 'age': ['Input should be less than or equal to 120']}
 ```
 
-These parameters create built-in validator instances from
-`protean.fields.validators`, `MinLengthValidator`, `MaxLengthValidator`, `MinValueValidator`, `MaxValueValidator`, and `RegexValidator`. You rarely need to use them directly, but
-they are available if you need to compose validators programmatically.
+Protean turns these parameters into built-in validator instances from
+`protean.fields.validators`: `MinLengthValidator`, `MaxLengthValidator`,
+`MinValueValidator`, `MaxValueValidator`, and `RegexValidator`. You rarely need
+to use them directly, but they are available if you need to compose validators
+programmatically.
 
 A full list of in-built validators is available in the
 [Fields](../../reference/fields/index.md) section under each field.
 
 
-## Custom Validators
+## Write custom validators
 
 You can also add validations at the field level by defining custom validators.
 A validator is any callable class that accepts a value and raises `ValueError`
@@ -150,8 +153,8 @@ ValidationError: {'email': ['Invalid Email Address - jane.doe@.gmail.com']}
 ```
 
 You can attach multiple validators to a single field with the `validators`
-list. Protean runs all of them in order, and the first failure stops
-evaluation and raises the error.
+list. Protean runs all of them in order. The first failure stops evaluation and
+raises the error.
 
 For more details on the `validators` field option and the `error_messages`
 option for customizing error text, see the
@@ -160,12 +163,13 @@ option for customizing error text, see the
 !!!note
     For domain-concept validation (e.g. "an email must have a valid format"),
     consider using a [value object](../domain-definition/value-objects.md) with
-    an invariant (Layer 2) instead of a field-level validator. Value objects are
-    reusable across aggregates and make the concept explicit in your domain
-    model. See [Validation Layering](../../patterns/validation-layering.md) for
-    guidance on choosing the right layer.
+    an invariant (Layer 2) instead of a field-level validator. You can reuse a
+    value object across aggregates. A value object also makes the concept
+    explicit in your domain model. See [Validation
+    Layering](../../patterns/validation-layering.md) for guidance on choosing
+    the right layer.
 
-## How It Works
+## How does Protean validate fields?
 
 Every aggregate, entity, and value object validates field assignments
 automatically:
@@ -184,7 +188,9 @@ level, not just at persistence time.
 ---
 
 !!! seealso "See also"
-    **Background:** [The Always-Valid Domain](../../concepts/philosophy/always-valid.md): The complete story of how Protean's four validation layers work together to guarantee your domain objects are never invalid.
+    **Background:** [The Always-Valid
+    Domain](../../concepts/philosophy/always-valid.md): How Protean's four
+    validation layers together keep your domain objects valid at every step.
 
     **Concept overview:** [Invariants](../../concepts/foundations/invariants.md): The foundational concept of keeping domain objects always valid.
 

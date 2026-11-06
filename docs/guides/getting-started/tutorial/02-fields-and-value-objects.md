@@ -1,8 +1,8 @@
-# Chapter 2: Rich Fields and Value Objects
+# Chapter 2: Add rich fields and value objects
 
-In this chapter we will enrich our `Book` aggregate with more field types
-and replace the plain `Float` price with a `Money` value object that
-captures both amount and currency.
+You will add more field types to the `Book` aggregate. You will then replace
+the plain `Float` price with a `Money` value object that holds both amount and
+currency.
 
 ## Enriching the Book Aggregate
 
@@ -39,18 +39,18 @@ For the complete list of field types and options, see the
 
 ### Constraining with Choices
 
-The `genre` field uses a Python `Enum` to restrict valid values.
-Attempting to create a book with an invalid genre raises a `ValidationError`:
+The `genre` field uses a Python `Enum` to restrict valid values. If you create
+a book with an invalid genre, Protean raises a `ValidationError`:
 
 ```pycon
 >>> Book(title="Test", author="Test", genre="ROMANCE")
 ValidationError: {'genre': ["Value 'ROMANCE' is not a valid choice. ..."]}
 ```
 
-Notice that Protean catches invalid values at the domain boundary, invalid
-aggregates never enter your domain.
+Protean checks field values when you create the aggregate. It raises an error
+on an invalid value, so your domain never holds an invalid aggregate.
 
-## From Float to Money
+## Replace the Float price with a Money value object
 
 A `Float` stores only a number, but a price also has a currency. Let's
 create a `Money` value object to capture both. A value object is an
@@ -78,10 +78,11 @@ Notice that `price` is now declared with `ValueObject(Money)` instead of
 --8<-- "guides/getting-started/tutorial/ch02.py:money_price"
 ```
 
-The currency defaults to `"USD"` because we set `default="USD"` on the
-field. The price now carries both pieces of information together.
+The currency defaults to `"USD"` because we set `default="USD"` on the field.
+The `price` field now holds both the amount and the currency in one `Money`
+value object.
 
-## Value Equality
+## Compare value objects by their values
 
 Two value objects with the same attributes are considered equal. Identity does
 not matter, only the values:
@@ -129,10 +130,10 @@ Retrieved: The Great Gatsby, $12.99 USD
 All checks passed!
 ```
 
-Notice that the `Money` value object persisted and retrieved correctly, the
-repository handles it transparently.
+The repository saved the `Money` value object and loaded it back unchanged. You
+write no extra persistence code for a value object.
 
-## What We Built
+## Review what you built
 
 - **Rich field types**: `Text`, `Date`, `Integer`, `Boolean`, `List`, and
   `choices` for constraining values.
@@ -141,10 +142,12 @@ repository handles it transparently.
 - **`Address` value object**: Ready for use in orders.
 - **`ValueObject` field**: Embeds a value object inside an aggregate.
 
-Our Book aggregate now has rich fields and a proper price model. In the
-next chapter, we will build the `Order` aggregate with child entities.
+Our Book aggregate now has fields for description, publication date, page
+count, print status, tags and genre. Its price now holds both an amount and a
+currency. In the next chapter, we will build the `Order` aggregate with child
+entities.
 
-## Full Source
+## See the full source
 
 ??? example "ch02.py, 157 lines"
 
@@ -152,6 +155,6 @@ next chapter, we will build the `Order` aggregate with child entities.
     --8<-- "guides/getting-started/tutorial/ch02.py:full"
     ```
 
-## Next
+## Go to the next chapter
 
 [Chapter 3: Entities and Associations →](03-entities-and-associations.md)

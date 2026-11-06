@@ -4,18 +4,18 @@
 
 DDD emphasizes on representing domain concepts as closely as possible in code.
 To accomplish this, DDD outlines a set of tactical patterns that we could use
-to model the domain. When you want to model domain concepts that have a unique
-identity and that change continuously over a long period of time, you
-represent them as [Aggregates](#aggregates) and [Entities](./entities.md).
+to model the domain. Some domain concepts have a unique identity and change
+continuously over a long period of time. You represent such concepts as
+[Aggregates](#aggregates) and [Entities](./entities.md).
 
 Aggregates are fundamental, coarse-grained building blocks of a domain model.
 They are conceptual wholes - they enclose all behaviors and data of a distinct
 domain concept. Aggregates are often composed of one or more Aggregate
 Elements, that work together to codify the concept.
 
-Traditional DDD refers to such entities as **Aggregate Roots** because they
-compose and manage a cluster of objects. In Protean, the term ***Aggregate***
-and ***Aggregate Root*** are synonymous.
+Traditional DDD calls an aggregate an **Aggregate Root** because the aggregate
+composes a cluster of objects and controls every change to them. In Protean,
+the term ***Aggregate*** and ***Aggregate Root*** are synonymous.
 
 Aggregates are defined with the `Domain.aggregate` decorator:
 
@@ -23,14 +23,14 @@ Aggregates are defined with the `Domain.aggregate` decorator:
 --8<-- "guides/domain-definition/001.py:full"
 ```
 
-In the example above, `Post` is defined to as an Aggregate with two fields,
-`name` and `created_on`, and registered with the `publishing` domain.
+In the example above, `Post` is an Aggregate with two fields, `name` and
+`created_on`. The decorator registers `Post` with the `publishing` domain.
 
 Read more about
 [`Domain.aggregate`](../../reference/domain-elements/element-decorators.md#domainaggregate)
 in [element decorators](../../reference/domain-elements/element-decorators.md).
 
-## Fields
+## Declare fields on an aggregate
 
 Aggregates enclose a number of fields and associate behaviors with them to
 represent a domain concept.
@@ -44,15 +44,15 @@ Here, `Post` aggregate has two fields:
 - `name`, a `String` field
 - `created_on`, a `Date` field
 
-You can finely configure each field with various options (like `max_length` in
-`String`'s case), add validations (like `required` to indicate that a field is
-mandatory), and also fine-tune how it is persisted (like a database column
-name in `referenced_as`).
+You can configure each field with options, such as `max_length` on a `String`
+field. You can add validations, such as `required` to mark a field as
+mandatory. You can also set how Protean persists the field, such as a database
+column name in `referenced_as`.
 
-The full list of available fields in Protean and their options is available in
-[Data Fields](../../reference/fields/index.md) section.
+The [Data Fields](../../reference/fields/index.md) section lists every field
+Protean offers, with its options.
 
-## Initialization
+## Initialize an aggregate
 
 An aggregate can be initialized by passing field values as key-value pairs:
 
@@ -60,7 +60,7 @@ An aggregate can be initialized by passing field values as key-value pairs:
 --8<-- "guides/domain-definition/002.py:full"
 ```
 
-This would output something like:
+The `print` call in the example outputs something like:
 
 ```json
 {
@@ -76,10 +76,10 @@ deeply in the [identity](../../reference/domain-elements/identity.md) section.
 ---
 
 !!! note "Advanced"
-    The following section covers event-sourced aggregate initialization,
-    relevant when using the [Event Sourcing](../pathways/event-sourcing.md) pathway.
+    When you use the [Event Sourcing](../pathways/event-sourcing.md) pathway,
+    read this section to initialize event-sourced aggregates.
 
-### Event-Sourced Aggregates
+### Initialize an event-sourced aggregate
 
 For **event-sourced aggregates**, the standard constructor is typically not
 used in business methods. Instead, factory methods use `_create_new()` to
@@ -90,12 +90,13 @@ creation event whose `@apply` handler populates the remaining state:
 --8<-- "guides/domain-definition/aggregates/001.py:aggregate"
 ```
 
-This ensures the creation event's `@apply` handler is the single source of
-truth for setting initial state. The same handler runs during both live
-creation and event replay. See the [Event Sourcing
-pathway](../pathways/event-sourcing.md) for a complete walkthrough.
+Because factory methods leave initial state to the creation event, the creation
+event's `@apply` handler is the single source of truth for setting initial
+state. The same handler runs during both live creation and event replay. See
+the [Event Sourcing pathway](../pathways/event-sourcing.md) for a complete
+walkthrough.
 
-## Inheritance
+## Share fields through a base aggregate
 
 Often, you may want to have common attributes across aggregates in your domain.
 `created_at` and `updated_at` are great examples. You can declare these common
@@ -128,7 +129,7 @@ class:
 ---
 
 
-## Configuration
+## Configure an aggregate
 
 An aggregate's behavior can be customized by passing options to its decorator.
 Here are the most commonly used options, see [element
@@ -166,22 +167,22 @@ defines the logical grouping for all messages related to an aggregate:
 --8<-- "guides/domain-definition/aggregates/002.py:aggregate"
 ```
 
-By default, it is the snake_case version of the class name.
+By default, the stream category is the snake_case version of the class name.
 
 ### `fact_events`
 
-When set to `True`, Protean automatically generates a fact event
-(containing the aggregate's full state) every time the aggregate is
-persisted. Fact events are written to a separate stream
-(`<stream_category>-fact-<aggregate_id>`) and are useful for cross-context
-integration where consumers need the complete state rather than individual
+When `fact_events` is `True`, Protean automatically generates a fact event
+every time it persists the aggregate. A fact event contains the aggregate's
+full state. Protean writes fact events to a separate stream
+(`<stream_category>-fact-<aggregate_id>`). Fact events suit cross-context
+integration where consumers need the complete state instead of individual
 deltas.
 
 ```python
 --8<-- "guides/domain-definition/aggregates/003.py:aggregate"
 ```
 
-See [Fact Events](../domain-behavior/raising-events.md#fact-events) and
+See [Fact Events](../domain-behavior/raising-events.md#how-protean-generates-fact-events) and
 the [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md)
 pattern for details.
 
@@ -205,12 +206,12 @@ filter-plus-sort, a correlation lookup):
 --8<-- "guides/domain-definition/aggregates/005.py:aggregate"
 ```
 
-The portable options (composite, `desc`, `unique`) are honored by every SQL
-adapter; partial (`where=`) and covering (`include=`) indexes are honored where
-the dialect supports them. See the [Declaring Indexes](indexes.md) guide for the
-full workflow and
-[Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md)
-for choosing what to index.
+Every SQL adapter honors the portable options (composite, `desc`, `unique`). An
+adapter honors partial (`where=`) and covering (`include=`) indexes where the
+dialect supports them. See the [Declaring Indexes](indexes.md) guide for the
+full workflow. See [Index Aggregates for Query
+Paths](../../patterns/index-aggregates-for-query-paths.md) for choosing what to
+index.
 
 ### `aggregate_cluster`
 
@@ -232,8 +233,8 @@ other options, see
 
 ## The `defaults()` Hook
 
-Override the `defaults()` method when an attribute's default depends on
-other attribute values:
+When an attribute's default depends on other attribute values, override the
+`defaults()` method:
 
 ```python
 --8<-- "guides/domain-definition/aggregates/006.py:aggregate"
@@ -243,16 +244,20 @@ other attribute values:
 set but before invariants are checked. Aggregates, entities, and value
 objects all support this hook.
 
-## Associations
+## Associate entities with an aggregate
 
-Protean provides multiple options for Aggregates to weave object graphs with enclosed Entities. Associations define relationships between the aggregate and its child entities, establishing clear parent-child hierarchies within aggregate boundaries.
+Protean provides multiple options for linking an Aggregate to the Entities it
+encloses. Associations define relationships between the aggregate and its child
+entities, establishing clear parent-child hierarchies within aggregate
+boundaries.
 
 For comprehensive documentation on relationships, see [Expressing Relationships](./relationships.md).
 
 ### `HasOne`
 
-A HasOne field establishes a has-one relation with the entity. In the example
-below, `Post` has exactly one `Statistic` record associated with it.
+A HasOne field on an aggregate establishes a has-one relation with a child
+entity. In the example below, `Post` has exactly one `Statistic` record
+associated with it.
 
 ```python hl_lines="18 22-26"
 --8<-- "guides/domain-definition/008.py:full"
@@ -299,7 +304,7 @@ Out[7]:
  '_version': 0}
 ```
 
-### Bidirectional Relationships
+### Navigate associations in both directions
 
 Associations automatically create bidirectional relationships. Child entities get `Reference` fields that point back to their parent aggregate, enabling navigation in both directions:
 
@@ -319,9 +324,10 @@ In [12]: comment.post_id
 Out[12]: 'e288ee30-e1d5-4fb3-94d8-d8083a6dc9db'
 ```
 
-The `Reference` field (`comment.post`) provides access to the full parent object, while the shadow field (`comment.post_id`) contains the foreign key value.
+The `Reference` field (`comment.post`) provides access to the full parent
+object. The shadow field (`comment.post_id`) contains the foreign key value.
 
-## Common Errors
+## Which errors can an aggregate raise?
 
 | Exception | When it occurs |
 |---|---|

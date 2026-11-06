@@ -1,10 +1,10 @@
-# Domain Model Tests
+# Test your domain model
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Domain model tests are **unit tests** that validate your aggregates, entities,
-value objects, invariants, and domain services. They are the foundation of your
-test suite, fast, isolated, and focused on business rules.
+value objects, invariants, and domain services. Most of your test suite should
+be domain model tests. They are fast, isolated, and focused on business rules.
 
 These tests require no infrastructure and run entirely in-memory, making them
 the fastest tests in your suite. Every business rule you encode in your domain
@@ -18,13 +18,13 @@ model should have a corresponding test.
     logic **you** wrote: custom methods, state transitions, invariants, and
     domain rules.
 
-## Test Setup
+## Set up the test fixtures
 
-Domain model tests use Protean's `DomainFixture` to initialize the domain
-with in-memory adapters (the default) and manage per-test cleanup. Set
-processing to `"sync"` so that events and commands are handled immediately
-within tests. In your project these fixtures go in `tests/conftest.py`, and they import
-`domain` from your application's package (`bookstore` here):
+Domain model tests use Protean's `DomainFixture` to initialize the domain with
+in-memory adapters (the default) and manage per-test cleanup. Set processing to
+`"sync"` so that events and commands are handled immediately within tests. In
+your project these fixtures go in `tests/conftest.py`. They import `domain`
+from your application's package (`bookstore` here):
 
 ```python
 # fragment
@@ -41,20 +41,20 @@ The tests on this page exercise this domain:
     ```
 
 `DomainFixture.setup()` calls `domain.init()` to discover and wire all
-decorated domain elements, and creates database schema if needed.
-`domain_context()` activates the domain for each test and resets all
-data (providers, brokers, event store) on exit.
+decorated domain elements. It also creates the database schema if needed.
+`domain_context()` activates the domain for each test and resets all data
+(providers, brokers, event store) on exit.
 
 !!!note
     You do not need Docker, databases, or message brokers for domain model
     tests. Protean's in-memory adapters are used by default.
 
-## Testing Aggregates
+## Test aggregates
 
 Aggregates are the core of your domain model. Test that your custom methods
 correctly transition state and raise events.
 
-### State Transitions
+### Test state transitions
 
 Test that aggregate methods correctly mutate state. These are methods **you**
 wrote, your business logic:
@@ -64,7 +64,7 @@ wrote, your business logic:
 --8<-- "guides/testing/domain-model-tests/001.py:state_transition"
 ```
 
-### Event Raising
+### Test that methods raise events
 
 Verify that your aggregate methods raise the expected domain events:
 
@@ -73,10 +73,10 @@ Verify that your aggregate methods raise the expected domain events:
 --8<-- "guides/testing/domain-model-tests/001.py:event_raising"
 ```
 
-## Testing Entities
+## Test entities
 
-Entities live within aggregates and have their own identity. Test the business
-logic in entity methods, especially when they affect the parent aggregate's
+Each entity is part of an aggregate and has its own identity. Test the business
+logic in entity methods, especially when they change the parent aggregate's
 state:
 
 ```python
@@ -84,7 +84,7 @@ state:
 --8<-- "guides/testing/domain-model-tests/001.py:entity"
 ```
 
-## Testing Value Objects
+## Test value objects
 
 Protean guarantees that value objects are immutable and compared by value. You
 do not need to test these properties. Instead, test any **custom logic** you
@@ -95,11 +95,11 @@ define on your value objects:
 --8<-- "guides/testing/domain-model-tests/001.py:value_object"
 ```
 
-## Testing Invariants
+## Test invariants
 
 Invariants are **your** business rules. They represent domain constraints that
 you define. Protean guarantees that invariants are *enforced* (triggered on
-initialization and mutation), but you should test that **your invariant logic
+initialization and mutation). You should still test that **your invariant logic
 is correct** and catches the violations you intend.
 
 ### Testing That Invalid State Is Rejected
@@ -122,7 +122,7 @@ pass your invariant:
 ### Pre-Invariants
 
 Pre-invariants validate state *before* a mutation occurs. They are useful for
-guard conditions, test that your guard logic correctly rejects invalid
+guard conditions. Test that your guard logic correctly rejects invalid
 operations:
 
 ```python
@@ -130,7 +130,7 @@ operations:
 --8<-- "guides/testing/domain-model-tests/001.py:pre_invariant"
 ```
 
-## Testing Domain Services
+## Test domain services
 
 Domain services hold business rules that span multiple aggregates. Test them
 by passing in the aggregates and checking the outcome.
@@ -144,7 +144,7 @@ The service confirms the order and leaves the inventory as it was. The
 example does not reserve stock. If your domain reserves it in a later step,
 test that step on its own.
 
-### Domain Service Invariants
+### Test domain service invariants
 
 Domain services can also have pre-invariants. Test that they reject invalid
 input:
@@ -154,7 +154,7 @@ input:
 --8<-- "guides/testing/domain-model-tests/001.py:domain_service_invariant"
 ```
 
-## Organizing Domain Model Tests
+## Organize domain model tests
 
 A recommended directory structure:
 

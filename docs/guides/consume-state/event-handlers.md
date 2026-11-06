@@ -2,12 +2,12 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-When an aggregate changes state, other parts of the system often need to
-react, updating a different aggregate, sending a notification, or triggering a
-downstream process. Putting that logic inside the originating aggregate would
-violate its boundary. Event handlers solve this: they listen for domain events
-and execute side effects in their own transaction, keeping aggregates
-decoupled.
+When an aggregate changes state, other parts of the system often need to react,
+updating a different aggregate, sending a notification, or triggering a
+downstream process. If you put that logic inside the originating aggregate, you
+violate the aggregate's boundary. Event handlers solve this: they listen for
+domain events and execute side effects in their own transaction, keeping
+aggregates decoupled.
 
 Event handlers consume events raised in an aggregate and help sync the state of
 the aggregate with other aggregates and other systems. An event handler stays
@@ -27,12 +27,12 @@ a distinct purpose:
 | **Subscriber** | Raw `dict` payloads | External message broker | `stream` (broker stream) | `__call__(payload)` | Anti-corruption layer for external systems |
 | **Query Handler** | Queries | Synchronous dispatch | `part_of` (projection) | `@read(QueryClass)` | Structured read-side access |
 
-Use **event handlers** when you need to react to internal domain events with
-side effects (syncing aggregates, sending notifications, triggering processes).
-Use **projectors** when the reaction is specifically maintaining a read model.
-Use **subscribers** when messages come from outside your bounded context. Use
-**query handlers** when you need structured, validated read access to
-projections.
+When you need to react to internal domain events with side effects (syncing
+aggregates, sending notifications, triggering processes), use **event
+handlers**. When the reaction is specifically maintaining a read model, use
+**projectors**. When messages come from outside your bounded context, use
+**subscribers**. When you need structured, validated read access to
+projections, use **query handlers**.
 
 ## Defining an Event Handler
 
@@ -48,22 +48,22 @@ a simplified example of an Event Handler that syncs stock levels in
 
 2. Event handler is registered with `part_of=Order`, the aggregate that owns
 `OrderShipped`. It does not write to `Inventory` itself. It issues a
-`ReduceStock` command, which is `part_of=Inventory`, and Inventory's command
-handler does the write. `Inventory` changes only through its own command
-handler. This example sets `command_processing` to `"sync"`, so the command
-runs inside the event handler's unit of work and commits with it. With async
-command processing, the command runs later in its own transaction.
+`ReduceStock` command, which is `part_of=Inventory`. The `Inventory` command
+handler then writes the change. `Inventory` changes only through its own
+command handler. This example sets `command_processing` to `"sync"`, so the
+command runs inside the event handler's unit of work and commits with it. With
+async command processing, the command runs later in its own transaction.
 
 3. The command carries the order id taken from the event. Events are delivered
-at least once, so the same `OrderShipped` can arrive twice. `Inventory`
-records the order ids it has applied, and the command handler returns without
-changes when it has already seen this one.
+at least once, so the same `OrderShipped` can arrive twice. `Inventory` records
+the order ids it has applied. The command handler returns without changes when
+it has already seen this order id.
 
 4. The command handler calls the `reduce_stock()` domain method, so
 `Inventory` changes its own state.
 
-When one event starts several steps that depend on each other, use a
-[process manager](process-managers.md) to coordinate them.
+When one event starts several dependent steps, use a [process
+manager](process-managers.md) to coordinate them.
 
 Simulating the example, we can see that the stock levels were decreased in
 response to the `OrderShipped` event.
@@ -157,28 +157,30 @@ Several methods can also handle the *same* event. They are independent
 reactions to one fact: each gets its own Unit of Work, and one that fails does
 not stop the others from running. Their order is unspecified, so nothing may
 depend on one running before another. When two steps must happen in order, put
-them in one method, or have the first raise an event that the second handles.
+them in one method. You can also have the first step raise an event and handle
+that event in the second step.
 
-If more than one method fails while handling the same event, the failures are
-raised together as an `ExceptionGroup`. A single failure propagates as itself.
+When more than one method fails on the same event, the failures are raised
+together as an `ExceptionGroup`. A single failure propagates as itself.
 
 The same holds across handler *classes*. Two handler classes subscribing to one
-event are independent reactions too: under asynchronous processing each has its
-own subscription, and under synchronous (`event_processing="sync"`) processing one
-failing no longer stops the other.
+event are independent reactions too. Under asynchronous processing, each class
+has its own subscription. Under synchronous (`event_processing="sync"`)
+processing, one class failing no longer stops the other.
 
-A separate handler class also gets its own subscription and its own checkpoint,
-which is what makes it fully independent when it touches a different aggregate.
-When two classes both mutate the *same* aggregate, that independence turns into
-contention: they run concurrently and collide on the aggregate's version, driving
+A separate handler class also gets its own subscription and its own checkpoint.
+The subscription and checkpoint make the class fully independent when it
+touches a different aggregate. When two classes both mutate the *same*
+aggregate, that independence causes contention. The two classes run
+concurrently and conflict on the aggregate's version, which causes
 version-conflict retries. Keep those reactions as sibling methods on one class,
 where they run in sequence and each sees the previous commit. When the
 reactions depend on each other's writes, put them in one method instead. When
-those writes land on another aggregate, that method is a command handler method
+those writes change another aggregate, that method is a command handler method
 on that aggregate. [Calling External Systems from
 Handlers](../../patterns/calling-external-systems-from-handlers.md) shows that
-recipe for a multi-facet sync, and how to split a method that both persists and
-calls out.
+recipe for a multi-facet sync. It also shows how to split a method that both
+persists data and calls an external system.
 
 !!! note "One event class per method"
     Each `@handle` method accepts exactly one event class. To handle multiple
@@ -199,13 +201,18 @@ A `$any` handler stays scoped to its aggregate's stream: it receives all events
 for that aggregate, and only those. It fires under both synchronous
 (`event_processing="sync"`) and asynchronous processing.
 
-## Return Values from Event Handlers
+## Why do event handlers return no value?
 
-Event handlers in Protean follow the standard CQRS pattern where event handlers do not return values to the caller. This deliberate design choice ensures:
+Event handlers in Protean follow the standard CQRS pattern where event handlers
+do not return values to the caller. Protean follows this pattern on purpose,
+for these reasons:
 
-1. **Decoupling**: The publisher of events remains completely decoupled from the consumers.
-2. **Asynchronous Processing**: Events can be processed in the background without blocking.
-3. **Multiple Consumers**: Multiple event handlers can process the same event independently.
+1. **The publisher stays decoupled**: The publisher of events remains
+   completely decoupled from the consumers.
+2. **Processing can run asynchronously**: Events can be processed in the
+   background without blocking.
+3. **Several consumers can react**: Multiple event handlers can process the
+   same event independently.
 
 If an event handler needs to communicate information as part of its processing, it should:
 
@@ -213,13 +220,13 @@ If an event handler needs to communicate information as part of its processing, 
 - Update relevant aggregates that can be queried later
 - Log information for monitoring purposes
 
-## Idempotency and at-least-once delivery
+## Make event handlers idempotent for at-least-once delivery
 
-Event delivery is at-least-once: a handler can receive the same event more than
-once (after a crash-and-republish, or a redelivery when a handler committed but
-was not yet acknowledged). **Write event handlers to be idempotent** so a
-duplicate delivery is harmless: guard on state, upsert rather than accumulate,
-and treat "already applied" as a no-op. See
+Event delivery is at-least-once, so a handler can receive the same event more
+than once. This happens after a crash-and-republish, or after a redelivery when
+a handler committed but was not yet acknowledged. **Write event handlers to be
+idempotent** so a duplicate delivery is harmless. To do that, guard on state,
+upsert instead of accumulating, and treat "already applied" as a no-op. See
 [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md).
 
 Unlike projectors, event handlers have no built-in `idempotent=True` option: a
@@ -230,22 +237,23 @@ because a projector has one known projection provider.
 
 ## Configuration Options
 
-### Handler Options
+### Set handler options
 
 - **`part_of`**: The aggregate to which the event handler is connected.
 - **`stream_category`**: The event handler listens to events on this [stream
 category](../../concepts/async-processing/stream-categories.md). The stream category defaults to the category of the aggregate associated with the handler.
 
-    Keep the default when the handler reacts to its own aggregate's events.
-    To change another aggregate, do not point `stream_category` at the other
+    When the handler reacts to its own aggregate's events, keep the default. To
+    change another aggregate, do not point `stream_category` at the other
     aggregate's stream: `check` reports that handler as
     `EVENT_HANDLER_FOREIGN_EVENT`. Put the handler in the aggregate that owns
     the event and issue a command, as in the example above. Learn more in the
-    [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
+    [Stream Categories](../../concepts/async-processing/stream-categories.md)
+    guide.
 
 - **`source_stream`**: When specified, the event handler only consumes events
-whose `origin_stream` matches this value. This filters events based on what
-originally triggered them, useful when the same event type can be raised from
+whose `origin_stream` matches this value. This option filters events by what
+originally triggered them. Use it when the same event type can be raised from
 different contexts and you only want to react to a specific trigger.
 
     ```python
@@ -258,13 +266,14 @@ subscription-level retry. See [Transient-failure retries](#transient-failure-ret
 
 !!! note "Set `part_of`"
     An event handler needs `part_of` or `stream_category`, or registration
-    fails. Set `part_of` to the aggregate that raises the events the handler
-    reacts to. This association determines the default stream category.
+    fails. Set `part_of` to the aggregate that raises the handler's events.
+    This association determines the default stream category.
 
 ### Subscription Options
 
-Event handlers can be configured with subscription options that control how
-messages are consumed when running the [Protean server](../../concepts/async-processing/index.md):
+You can set subscription options on an event handler. These options control how
+the [Protean server](../../concepts/async-processing/index.md) consumes
+messages:
 
 - **`subscription_type`**: Type of subscription to use:
     - `"stream"`: Uses Redis Streams with consumer groups (recommended for
@@ -287,13 +296,13 @@ messages are consumed when running the [Protean server](../../concepts/async-pro
     - `enable_dlq`: Enable dead letter queue (stream only)
     - `position_update_interval`: Position update frequency (event_store only)
 
-#### Example with Subscription Configuration
+#### Configure a subscription on an event handler
 
 ```python
 --8<-- "guides/consume-state/event-handlers/002.py:subscription-config"
 ```
 
-### Retry and Dead Letter Queue (DLQ)
+### Retry failed messages and send them to the Dead Letter Queue (DLQ)
 
 When using Redis Streams (`subscription_type="stream"`), Protean supports
 automatic retries and dead-letter queuing for failed messages:
@@ -304,23 +313,23 @@ automatic retries and dead-letter queuing for failed messages:
   re-delivers the message from the pending entries list (PEL).
 
 - **`enable_dlq`** (default: `True`): Messages that exhaust their retry
-  budget are moved to a separate dead-letter stream (`<stream>:dlq`). You
-  can inspect and reprocess DLQ messages manually or with a scheduled job.
-  Set it to `False` to drop them instead.
+  budget are moved to a separate dead-letter stream (`<stream>:dlq`). You can
+  inspect and reprocess DLQ messages manually or with a scheduled job. Set
+  `enable_dlq` to `False` to drop those messages instead.
 
 ```python
 --8<-- "guides/consume-state/event-handlers/002.py:dlq"
 ```
 
 !!! note "Event store subscriptions"
-    The settings above apply to `subscription_type="stream"` (Redis
-    Streams). An event store subscription keeps no dead-letter stream. It
-    records each failed position and retries it on a later recovery pass, up
-    to `max_retries` (default 3), set under
-    `[server.event_store_subscription]`. A position that still fails is marked
-    exhausted and skipped. The exhausted positions are the event store's
-    dead-letter queue, which you manage with
-    [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md).
+    The settings above apply to `subscription_type="stream"` (Redis Streams).
+    An event store subscription keeps no dead-letter stream. It records each
+    failed position and retries it on a later recovery pass, up to
+    `max_retries` (default 3), set under `[server.event_store_subscription]`. A
+    position that still fails is marked exhausted and skipped. The exhausted
+    positions are the event store's dead-letter queue. You list, inspect,
+    replay and purge them with [`protean eventstore
+    dlq`](../../reference/cli/data/eventstore-dlq.md).
 
 See [Server → Configuration](../../reference/server/configuration.md) for detailed
 configuration options and the priority hierarchy.
@@ -338,11 +347,11 @@ ever re-delivered or routed to the DLQ:
 
 Each attempt runs in a fresh Unit of Work. Only genuinely transient exceptions
 are retried; by default `ConnectionError`, `TimeoutError`, and `SendError`,
-overridable with `retry_exceptions`. The behaviour is identical to
-[command handlers](../change-state/command-handlers.md#retrying-transient-failures);
-it is opt-in and disabled unless `retries` is set or `server.transient_retry`
-is enabled. This is distinct from the version-conflict (OCC) retry that handles
-`ExpectedVersionError`. See
+overridable with `retry_exceptions`. The behaviour is identical to [command
+handlers](../change-state/command-handlers.md#retrying-transient-failures). The
+retry is opt-in and disabled unless `retries` is set or
+`server.transient_retry` is enabled. This is distinct from the version-conflict
+(OCC) retry that handles `ExpectedVersionError`. See
 [`server.transient_retry`](../../reference/configuration/index.md) for
 domain-wide defaults.
 
@@ -358,7 +367,7 @@ You can add a `handle_error` class method to your event handler to implement cus
 --8<-- "guides/consume-state/event-handlers/003.py:handle-error"
 ```
 
-### How It Works
+### What happens when an event handler raises an exception?
 
 1. When an exception occurs during event processing, the Protean Engine catches it.
 2. The engine logs detailed error information including stack traces.
@@ -367,9 +376,12 @@ You can add a `handle_error` class method to your event handler to implement cus
    - The event message being processed when the exception occurred
 4. After `handle_error` completes, processing continues with subsequent events.
 
-### Error Handler Failures
+### What happens when `handle_error` itself fails?
 
-If an exception occurs within the `handle_error` method itself, the Protean Engine will catch and log that exception as well, ensuring that the event processing pipeline continues to function. This provides an additional layer of resilience:
+If an exception occurs within the `handle_error` method itself, the Protean
+Engine catches and logs that exception as well. The event processing pipeline
+keeps running. So a failure inside `handle_error` does not stop event
+processing either:
 
 ```python
 # fragment
@@ -396,7 +408,11 @@ def handle_error(cls, exc: Exception, message):
 
     **Patterns:**
 
-    - [Calling External Systems from Handlers](../../patterns/calling-external-systems-from-handlers.md): Splitting a method that persists from one that calls out, and the multi-facet fan-out recipe.
+    - [Calling External Systems from
+      Handlers](../../patterns/calling-external-systems-from-handlers.md):
+      Splitting a method that persists from one that calls an external system,
+      and the recipe for syncing several facets of one aggregate from one
+      external snapshot.
     - [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md): Ensuring handlers produce correct results even with duplicate delivery.
     - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping handlers thin by delegating to domain logic.
     - [Testing Event-Driven Flows](../../patterns/testing-event-driven-flows.md): Strategies for testing event handlers with pytest.

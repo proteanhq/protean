@@ -22,7 +22,7 @@ BookReportHandler             bookshelf::book-fact      0      0        3
 Key metrics:
 
 - **Lag**: Messages waiting to be processed. High lag means the handler
-  is falling behind.
+  processes messages more slowly than they arrive.
 - **Pending**: Messages currently being processed (acknowledged but not
   yet completed).
 - **DLQ**: Messages that failed all retries.
@@ -95,9 +95,9 @@ groups:
 - A **Prometheus metrics endpoint** for production alerting.
 - Understanding of key metrics: lag, pending, DLQ depth.
 
-In the next chapter, we will tackle a bulk import scenario that requires
-priority lanes to avoid starving production traffic.
+In the next chapter, you run a bulk import on priority lanes, so the import
+does not delay production traffic.
 
-## Next
+## Continue to the next chapter
 
 [Chapter 19: The Great Catalog Import, Run on Priority Lanes →](19-priority-lanes.md)

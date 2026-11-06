@@ -1,13 +1,13 @@
-# Production Deployment
+# Deploy the server to production
 
-Deploying the Protean server in production comes down to four things:
-process management, containerization, how you scale, and health checks.
+To deploy the Protean server in production, you set up four things: process
+management, containerization, how you scale, and health checks.
 
 For basic server usage, see [Run the Server](./index.md). For the full
 production checklist, pool sizing, DLQ maintenance, subscription profiles, OTEL
 metrics, and graceful shutdown, see [Harden the Server](./hardening.md).
 
-## Process Management
+## Run the server under a process manager
 
 Use a process manager like systemd, supervisord, or Docker. Send
 `SIGTERM` to trigger graceful shutdown and give the process at least
@@ -34,13 +34,14 @@ TimeoutStopSec=30
 WantedBy=multi-user.target
 ```
 
-`TimeoutStopSec=30` gives the engine up to 30 seconds to stop
-subscriptions, drain in-flight handlers (for `server.drain_timeout`, 10
-seconds by default), and close providers, brokers, caches, and the event
-store before systemd escalates to `SIGKILL`. If you raise
-`server.drain_timeout` above 25, raise `TimeoutStopSec` above the drain
-window plus 5 seconds too. Messages a stopped worker read and did not handle
-stay pending in Redis. The next start claims the ones last delivered at least
+`TimeoutStopSec=30` gives the engine up to 30 seconds to shut down before
+systemd escalates to `SIGKILL`. In that time the engine stops subscriptions,
+drains in-flight handlers (for `server.drain_timeout`, 10 seconds by default),
+and closes providers, brokers, caches, and the event store. If you raise
+`server.drain_timeout` above 25, raise `TimeoutStopSec` above the drain window
+plus 5 seconds too. When a worker stops, the messages it read and did not
+handle stay pending in Redis. When the server starts again, it claims the
+pending messages last delivered at least
 [`server.reclaim_idle_seconds`](../../reference/server/hardening.md#serverreclaim_idle_seconds)
 (120 seconds by default) earlier and leaves the rest for a later start. A
 partitioned subscription (`sequential_by`) does not wait for this threshold:
@@ -76,9 +77,9 @@ docker run --stop-timeout 30 my-app:latest
 ## Kubernetes
 
 The engine embeds a health server on port `8080` by default. Wire
-`livenessProbe` and `readinessProbe` to `/livez` and `/readyz`, and
-set `terminationGracePeriodSeconds` long enough for the shutdown
-sequence to complete:
+`livenessProbe` and `readinessProbe` to `/livez` and `/readyz`. Then set
+`terminationGracePeriodSeconds` long enough for the shutdown sequence to
+complete:
 
 ```yaml
 apiVersion: apps/v1
@@ -135,13 +136,13 @@ Hardening reference](../../reference/server/hardening.md#health-checks).
 !!! warning "`replicas: 3` is only safe for stream/broker-backed domains"
 
     The `replicas: 3` above runs three independent server processes against the
-    same event store. That is safe for stream subscriptions and cluster-aware
-    brokers, but a domain with any **event-store** subscription would
-    double-process every event across the replicas, and the per-process
-    `--workers` guard cannot catch it. Set `replicas: 1` for such domains. See
-    [Scaling Considerations](#scaling-considerations) below.
+    same event store. Three replicas are safe for stream subscriptions and
+    cluster-aware brokers. In a domain with any **event-store** subscription,
+    the replicas would double-process every event. The per-process `--workers`
+    guard cannot catch this double processing. Set `replicas: 1` for such
+    domains. See [Scaling Considerations](#scaling-considerations) below.
 
-### FastAPI apps
+### Add health checks to FastAPI apps
 
 API pods serving HTTP traffic should mount the equivalent router on
 their FastAPI app:
@@ -154,7 +155,7 @@ their FastAPI app:
 Point the probes at the same ports your API already exposes, no separate health
 server is needed.
 
-## Scaling Considerations
+## Choose how to scale the server { #scaling-considerations }
 
 **StreamSubscription** supports horizontal scaling:
 
@@ -168,30 +169,33 @@ server is needed.
   every worker reading a stream processes the same events.
 - Because of this, `protean server --workers N` refuses to start with more than
   one worker when any handler resolves to an event-store subscription. The
-  error names the offending handlers and offers three ways forward: run a
-  single worker, switch those handlers to stream subscriptions
-  (`subscription_type = "stream"`), or pass `--allow-event-store-multiworker` to
-  override (you accept that events will be double-processed).
-- Use it for a single worker, or for projections where idempotency is
-  guaranteed; consider StreamSubscription for scalable workloads.
+  error names the handlers that resolve to event-store subscriptions. It offers
+  three options: run a single worker, switch those handlers to stream
+  subscriptions (`subscription_type = "stream"`), or pass
+  `--allow-event-store-multiworker` to override the check (you accept that
+  events will be double-processed).
+- Use EventStoreSubscription for a single worker, or for projections where
+  idempotency is guaranteed. For scalable workloads, consider
+  StreamSubscription.
 
 !!! warning "The single-writer guard is per-process, not cluster-wide"
 
     The `--workers` guard only sees the workers inside one `protean server`
     process. It **cannot** detect a second `protean server` running elsewhere.
-    Running two processes, two containers, or two Kubernetes replicas against
-    the same event store, each with the default `--workers 1`, sails past the
-    guard and double-processes every event-store subscription just as surely as
-    `--workers 2` would.
+    If you run two processes, two containers, or two Kubernetes replicas
+    against the same event store, each with the default `--workers 1`, the
+    guard does not stop them. The processes then double-process every
+    event-store subscription, the same as `--workers 2` would.
 
-    Until cluster-wide ownership lands (a database-backed lease, planned for a
-    future release), a domain with any event-store subscription must run as
-    **exactly one process for the whole cluster**: `replicas: 1`, a single
-    worker, no horizontal scaling. To scale horizontally, move those handlers to
-    stream subscriptions (`subscription_type = "stream"`), which coordinate
-    across processes via Redis consumer groups. The Kubernetes example above
-    (`replicas: 3`) is safe only for stream/broker-backed domains; set
-    `replicas: 1` for any domain that keeps event-store subscriptions.
+    Protean plans cluster-wide ownership (a database-backed lease) for a future
+    release. Until that release, a domain with any event-store subscription
+    must run as **exactly one process for the whole cluster**: `replicas: 1`, a
+    single worker, no horizontal scaling. To scale horizontally, move the
+    handlers that use event-store subscriptions to stream subscriptions
+    (`subscription_type = "stream"`), which coordinate across processes via
+    Redis consumer groups. The Kubernetes example above (`replicas: 3`) is safe
+    only for stream/broker-backed domains; set `replicas: 1` for any domain
+    that keeps event-store subscriptions.
 
 For connection pool sizing across workers, DLQ retention, and OTEL
 metric emission, follow the full production checklist in

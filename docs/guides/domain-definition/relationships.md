@@ -4,10 +4,12 @@
 
 !!!note "Relationships live inside aggregate boundaries"
     In DDD, associations (`HasOne`, `HasMany`, `Reference`) only connect
-    objects *within the same aggregate cluster*. Aggregates never hold
-    direct object references to other aggregates. They reference each other by
-    identity. This rule keeps transaction boundaries clean and prevents hidden
-    coupling between independently consistent clusters.
+    objects *within the same aggregate cluster*. Aggregates never hold direct
+    object references to other aggregates. They reference each other by
+    identity. When aggregates reference each other by identity, each
+    transaction stays inside one aggregate. One independently consistent
+    cluster also cannot depend on another cluster's objects without the code
+    showing it.
 
     See [Cross-Aggregate References](#cross-aggregate-references) for the
     identity-based pattern.
@@ -18,7 +20,7 @@ through association fields (`HasOne`, `HasMany`) and their corresponding
 reference fields (`Reference`), which work together to establish
 bidirectional linkages.
 
-## Relationship Types
+## Choose a relationship type
 
 ### One-to-One (HasOne)
 
@@ -36,7 +38,7 @@ A `HasMany` relationship represents a one-to-many association where an aggregate
 --8<-- "guides/domain-definition/relationships/002.py:aggregate"
 ```
 
-### Value Object Embedding
+### Embed a value object
 
 Value objects are embedded using the `ValueObject` field type, not
 `HasOne`/`HasMany`. Unlike entity associations, value objects are stored inline
@@ -53,7 +55,7 @@ and initialization.
 
 Every association automatically creates a corresponding `Reference` field in the child entity that points back to the parent aggregate. This establishes the inverse relationship and provides access to the parent from the child.
 
-### Automatic Reference Creation
+### How Protean adds reference fields for you
 
 Protean automatically adds a `Reference` field to entities based on the aggregate they belong to:
 
@@ -64,7 +66,7 @@ Protean automatically adds a `Reference` field to entities based on the aggregat
 # post_id = String()      # Shadow field for the foreign key
 ```
 
-### Explicit Reference Fields
+### Define reference fields explicitly
 
 You can explicitly define reference fields for more control:
 
@@ -103,11 +105,11 @@ The `referenced_as` parameter in Reference fields allows you to specify a custom
 --8<-- "guides/domain-definition/relationships/005.py:entity"
 ```
 
-When using both `via` and `referenced_as`, they must agree: the `via`
-value on the `HasOne`/`HasMany` side should match the `referenced_as`
-value on the `Reference` side so both ends resolve to the same field.
+When you use both `via` and `referenced_as`, give them the same value. The
+`via` value on the `HasOne`/`HasMany` side must match the `referenced_as` value
+on the `Reference` side, so both ends resolve to the same field.
 
-## Auto-Generated Helper Methods
+## Use the generated helper methods
 
 For `HasMany` associations, Protean automatically generates helper methods
 on the parent object. Given a field named `comments`, the following methods
@@ -128,9 +130,10 @@ The method names are derived from the field name: `add_<field>`,
 ```
 
 !!!note
-    `HasOne` fields do not generate helper methods, assign directly (e.g. `blog.settings = BlogSettings(...)`).
+    `HasOne` fields do not generate helper methods. Assign the entity to the
+    field directly (e.g. `blog.settings = BlogSettings(...)`).
 
-## Bidirectional Navigation
+## Navigate a relationship in both directions
 
 Relationships in Protean are bidirectional, allowing navigation in both directions:
 
@@ -138,7 +141,7 @@ Relationships in Protean are bidirectional, allowing navigation in both directio
 --8<-- "guides/domain-definition/relationships/002.py:navigation"
 ```
 
-## Dictionary Assignment
+## Assign a plain dictionary
 
 You can assign a plain dictionary where an entity or value object is
 expected. Protean will automatically convert it:
@@ -149,7 +152,7 @@ expected. Protean will automatically convert it:
 
 This also works during aggregate initialization for nested structures.
 
-## Association Constraints
+## Enforce required associations with invariants
 
 All association fields (`HasOne`, `HasMany`, `Reference`) are implicitly
 optional, Protean sets `required=False` on them internally. There is currently no way to
@@ -160,7 +163,7 @@ through aggregate invariants instead:
 --8<-- "guides/domain-definition/relationships/007.py:aggregate"
 ```
 
-## Cross-Aggregate References
+## Reference another aggregate by identity { #cross-aggregate-references }
 
 Aggregates are independent consistency boundaries. They should **never** hold
 direct object references (`HasOne`, `HasMany`, `Reference`) to other
@@ -184,7 +187,7 @@ This keeps each aggregate independently loadable, persistable, and
 deployable. For keeping aggregates in sync after state changes, use
 [domain events](../domain-behavior/raising-events.md).
 
-## Cascade Behavior
+## Persist and delete entities with their aggregate
 
 When an aggregate is persisted, all enclosed entities (connected via
 `HasOne`/`HasMany`) are persisted together as part of the same transaction.
@@ -194,7 +197,7 @@ cannot exist independently.
 Removing an entity from a `HasMany` collection (via `remove_<field>`) marks
 it for deletion during the next persistence operation.
 
-## Loading Behavior
+## How a repository loads an aggregate
 
 Entity associations within an aggregate are loaded **eagerly**. When you
 retrieve an aggregate from a repository, all its enclosed entities are loaded
@@ -205,17 +208,16 @@ This is by design: an aggregate is a consistency boundary, and partial
 loading would make it impossible to enforce invariants that span the root
 and its children.
 
-## Event Sourcing Considerations
+## How associations behave in event-sourced aggregates
 
 For **event-sourced aggregates** (`event_sourced=True`), associations
 behave differently because state is reconstructed from events rather than
 loaded from a database:
 
-- Entity collections (`HasMany`, `HasOne`) start empty after event replay
-  begins and are populated only by `@apply` handlers that process the
-  relevant events.
-- There are no database-level foreign keys or joins, the aggregate's entire
-   state (including its entities) is rebuilt from its event stream.
+- Entity collections (`HasMany`, `HasOne`) start empty when event replay
+  begins. Only the `@apply` handlers for the relevant events populate them.
+- There are no database-level foreign keys or joins. Protean rebuilds the
+  aggregate's entire state (including its entities) from its event stream.
 - Cross-aggregate references by identity work the same way as in standard
   aggregates.
 

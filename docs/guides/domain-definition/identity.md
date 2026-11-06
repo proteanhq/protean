@@ -1,16 +1,15 @@
-# Identity
+# Give aggregates and entities an identity
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Every aggregate and entity in Protean has a unique identity that is
-generated at construction time, before the object is ever persisted.
-Every aggregate and entity needs an identity, and Protean gives it one
-without being asked. Here is how to accept that default, name the identifier
-field, choose a different type, plug in your own generator, and use natural
-keys that come from your users.
+Every aggregate and entity in Protean has a unique identity. Protean generates
+it at construction time, before the object is ever persisted. Every aggregate
+and entity needs an identity. Protean gives it one without being asked. You can
+accept that default, name the identifier field, choose a different type, supply
+your own generator, or use natural keys that come from your users.
 
-For the design rationale. Why identity is generated on construction and why
-composite keys aren't supported, see
+For the design rationale. To learn why Protean generates identity on
+construction and does not support composite keys, see
 [Identity](../../concepts/foundations/identity.md) and the [Creating Identities
 Early](../../patterns/creating-identities-early.md) pattern.
 
@@ -55,11 +54,10 @@ Out[2]: {'user_id': '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7', 'name': 'John Doe', 
 The default `id` field is dropped once you declare your own identifier.
 
 !!! note "Only one identifier per aggregate"
-    Protean does not support composite keys. Declaring more than one
-    field with `identifier=True` raises `NotSupportedError`. If a
-    concept needs two or more attributes to be unique together, model
-    them as a [value object](./value-objects.md) and give the aggregate
-    a surrogate identity.
+    Protean does not support composite keys. Declaring more than one field with
+    `identifier=True` raises `NotSupportedError`. If a concept needs two or
+    more attributes to be unique together, model them as a [value
+    object](./value-objects.md). Then give the aggregate a surrogate identity.
 
 ---
 
@@ -82,12 +80,12 @@ Supported types are `string`, `uuid`, and `integer`:
 | `uuid` | `"9cf4ddc4-..."` (a string; stored in a native UUID column) | Your database has a native UUID column (e.g. PostgreSQL) |
 | `integer` | `154702789254628181...` | Your persistence layer requires integer ids (on SQL, see below) |
 
-An `integer` identity under the default `uuid` strategy is a 128-bit
-number. The memory provider holds it, and Elasticsearch stores it as a
-string. On a SQL provider no integer column holds it, so `Domain.init()` raises
-`ConfigurationError`. There, pair `integer` with
-`identity_strategy = "function"` or with `Auto(increment=True)`. See the
-note under [`identity_type`](../../reference/configuration/index.md#identity_type).
+An `integer` identity under the default `uuid` strategy is a 128-bit number.
+The memory provider holds it. Elasticsearch stores it as a string. On a SQL
+provider no integer column holds it, so `Domain.init()` raises
+`ConfigurationError`. There, pair `integer` with `identity_strategy =
+"function"` or with `Auto(increment=True)`. See the note under
+[`identity_type`](../../reference/configuration/index.md#identity_type).
 
 You can also override the type for a single aggregate without changing
 the domain default:
@@ -104,13 +102,13 @@ in Configuration for the complete listing.
 
 ## Use a custom identity function
 
-When UUIDs don't fit. You need epoch-millisecond IDs, snowflake IDs, a prefixed
-business key, or anything else, switch the strategy to `function` and supply a
-callable.
+When UUIDs don't fit. If you need epoch-millisecond IDs, snowflake IDs, a
+prefixed business key, or anything else, switch the strategy to `function`.
+Then supply a callable.
 
-### At the domain level
+### Set a function for the whole domain
 
-Set the strategy in config and pass `identity_function=` when constructing
+Set the strategy in config. Then pass `identity_function=` when you construct
 the domain. Every aggregate in the domain will use this function:
 
 ```python
@@ -128,10 +126,10 @@ Protean does not check the function's return value against `identity_type`.
 Make the function return the type you configured: a function that returns a
 string while `identity_type="integer"` gives the aggregate a string `id`.
 
-### Per aggregate
+### Set a function for one aggregate
 
-To override the default for one aggregate (for example, to mint a prefixed key)
-set the strategy and function directly on the field:
+To override the default for one aggregate (for example, to create a prefixed
+key), set the strategy and function directly on the field:
 
 ```python
 --8<-- "guides/domain-definition/identity/005.py:aggregate"
@@ -143,8 +141,8 @@ Out[1]: {'invoice_number': 'INV-A3F2B9C81D4E', 'customer_name': 'Acme Corp', '_v
 ```
 
 Field-level settings take precedence over domain configuration, so this
-`Invoice` generates prefixed IDs while every other aggregate in the
-domain keeps the default UUID strategy.
+`Invoice` generates prefixed IDs. Every other aggregate in the domain keeps the
+default UUID strategy.
 
 ---
 
@@ -177,7 +175,8 @@ identity generator, a UUID by default.
 !!! tip "Natural keys are rarely stable"
     If the "natural" identifier of a concept can change (an email address being
     the classic example) then it is not an identity. Treat it as a regular
-    attribute and keep a surrogate `Auto` identifier. See [Identity Should Be
+    attribute. Keep a surrogate `Auto` identifier as the identity. See
+    [Identity Should Be
     Immutable](../../concepts/foundations/identity.md#identity-should-be-immutable).
 
 ---
@@ -199,17 +198,17 @@ This only works when:
 - The database schema declares the column as `SERIAL`, `AUTOINCREMENT`,
   or equivalent. Protean does not create the sequence for you.
 
-Because the id isn't available until the aggregate is saved, this mode
-trades away the "identity at creation" guarantee. Once you persist the
-aggregate with `repository.add()`, the generated id is reflected back
-onto the same instance, so you can reference or re-fetch it afterwards.
-This holds whether the add runs on its own or inside a `UnitOfWork`.
-Prefer `uuid` or a custom function unless you have a strong reason to
-defer identity generation to the database.
+In this mode the id is not available until you save the aggregate. So this mode
+gives up the "identity at creation" guarantee. When you persist the aggregate
+with `repository.add()`, the repository writes the generated id back onto the
+same instance. You can then reference or re-fetch the aggregate by that id.
+This holds whether the add runs on its own or inside a `UnitOfWork`. Prefer
+`uuid` or a custom function unless you have a strong reason to defer identity
+generation to the database.
 
 ---
 
-## Common errors
+## Which errors does Protean raise?
 
 | Exception | When it occurs |
 |---|---|
@@ -223,13 +222,17 @@ defer identity generation to the database.
 ---
 
 !!! seealso "See also"
-    **Concept overview:** [Identity](../../concepts/foundations/identity.md): Why identity is fundamental to DDD and what makes an identity stable.
+    **Read the concept:** [Identity](../../concepts/foundations/identity.md):
+    Why identity is fundamental to DDD and what makes an identity stable.
 
-    **Pattern:** [Creating Identities Early](../../patterns/creating-identities-early.md): Why Protean generates identities at construction time.
+    **Read the pattern:** [Creating Identities
+    Early](../../patterns/creating-identities-early.md): Why Protean generates
+    identities at construction time.
 
     **Reference:**
 
-    - [Identity Reference](../../reference/domain-elements/identity.md): Full configuration surface, strategies, and types.
+    - [Identity Reference](../../reference/domain-elements/identity.md): All
+      configuration options, strategies, and types.
     - [`Auto` field](../../reference/fields/simple-fields.md#auto): Options for auto-generated identifiers.
     - [`Identifier` field](../../reference/fields/simple-fields.md#identifier): Options for user-supplied identifiers.
     - [`identity_function` parameter](../../reference/domain-elements/domain-constructor.md#identity_function): Passing a generator to the Domain constructor.

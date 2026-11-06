@@ -1,8 +1,9 @@
 # Error Handling
 
-Message processing fails for all sorts of reasons, and Protean handles those
-failures the same way across every subscription type. Here is the retry
-logic, the dead letter queue, and how to recover.
+A handler can fail to process a message for many reasons. Protean retries and
+records those failures under one model for every subscription type. Protean
+retries a failed message, then keeps it in a dead letter queue, where you can
+inspect and replay it.
 
 For monitoring failed messages in production, see
 [Monitoring](./monitoring.md). For the DLQ CLI commands, see
@@ -10,7 +11,7 @@ For monitoring failed messages in production, see
 
 ---
 
-## Processing guarantees
+## What delivery does Protean guarantee?
 
 Protean provides **at-least-once** delivery for all subscription types.
 When a handler fails to process a message, the framework retries it a
@@ -22,17 +23,17 @@ either retried or preserved for manual inspection.
 
 ---
 
-## Subscription error flows
+## How each subscription type retries a failed message
 
-Each subscription type handles failures differently based on its
-underlying transport, but all share the same configuration model.
+Each subscription type retries failures in its own way, based on its underlying
+transport. All subscription types share the same configuration model.
 
 ### StreamSubscription
 
 Used with Redis Streams for event and command handlers when
 `default_subscription_type = "stream"`.
 
-**Flow**: Handler fails &rarr; NACK + retry &rarr; DLQ after exhaustion
+**What happens on failure**: Handler fails &rarr; NACK + retry &rarr; DLQ after exhaustion
 
 1. Handler raises an exception.
 2. Retry count incremented. If retries remain, the message is NACKed
@@ -59,7 +60,8 @@ enable_dlq = true
 Used with event stores (Memory, MessageDB) for event and command handlers
 when `default_subscription_type = "event_store"` (the default).
 
-**Flow**: Handler fails &rarr; position recorded &rarr; recovery pass retries
+**What happens on failure**: Handler fails &rarr; position recorded &rarr;
+recovery pass retries
 
 1. Handler raises an exception. The read position advances normally so the
    subscription is not blocked (avoids the poison-pill problem).
@@ -73,11 +75,11 @@ when `default_subscription_type = "event_store"` (the default).
 This approach uses the event store's inherent durability. Events are immutable
 and always available for replay.
 
-An exhausted event-store position is its own dead-letter queue. The
-`protean eventstore dlq` commands act on it: `list` enumerates exhausted
-positions, `inspect` re-reads the failing event, `replay` re-drives one through
-its handler, and `purge` clears one with a terminal marker. See
-[`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md).
+An exhausted event-store position is its own dead-letter queue. The `protean
+eventstore dlq` commands act on it: `list` shows exhausted positions, `inspect`
+re-reads the failing event, `replay` runs one through its handler again, and
+`purge` clears one with a terminal marker. See [`protean eventstore
+dlq`](../../reference/cli/data/eventstore-dlq.md).
 
 ```toml
 [server.event_store_subscription]
@@ -91,7 +93,7 @@ recovery_interval_seconds = 30
 
 Used for subscribers that consume messages from external broker streams.
 
-**Flow**: Handler fails &rarr; NACK + retry &rarr; DLQ after exhaustion
+**What happens on failure**: Handler fails &rarr; NACK + retry &rarr; DLQ after exhaustion
 
 1. Subscriber raises an exception.
 2. Retry count incremented. If retries remain, the message is NACKed
@@ -108,13 +110,13 @@ enable_dlq = true
 
 ### OutboxProcessor
 
-Handles **outgoing** messages (domain &rarr; broker). Uses exponential backoff
-with jitter. Failed messages stay in the outbox table with a retry status, no
-DLQ is needed because the outbox table itself is durable.
+Publishes **outgoing** messages (domain &rarr; broker). Uses exponential
+backoff with jitter. Failed messages stay in the outbox table with a retry
+status, no DLQ is needed because the outbox table itself is durable.
 
 ---
 
-## Dead letter queue lifecycle
+## How a message moves through the dead letter queue
 
 ### How messages enter the DLQ
 
@@ -174,9 +176,9 @@ enable_dlq = false
 
 ---
 
-## Configuration reference
+## Which settings control error handling?
 
-All error-handling configuration lives under `[server]` in `domain.toml`:
+You set the error-handling options under `[server]` in `domain.toml`:
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -196,44 +198,43 @@ creating subscriptions programmatically.
 
 ---
 
-## Version conflict auto-retry
+## Retry version conflicts automatically
 
 `ExpectedVersionError` is the most common transient failure in event-sourced
 and version-tracked systems. It occurs when two handlers concurrently modify
 the same aggregate. The second writer's version check fails because the first
 writer already advanced the version.
 
-Protean handles this **automatically at the `@handle` wrapper level**.
+Protean retries this conflict **automatically at the `@handle` wrapper level**.
 When a handler raises `ExpectedVersionError`, the framework:
 
 1. Catches the exception before it reaches the subscription retry pipeline.
 2. Waits with exponential backoff (50 ms &rarr; 100 ms &rarr; 200 ms …).
 3. Re-executes the handler in a **new `UnitOfWork`**, so the aggregate
-   is re-read at the latest version. A handler that runs inside an outer
-   `UnitOfWork` does not retry. Its conflict propagates to the outermost
-   `@handle` handler, which retries the whole chain when version retry is
-   on. A process manager, a `@use_case` or a caller-opened `UnitOfWork`
-   has no retry, so the conflict reaches its caller.
+   is re-read at the latest version. Inside an outer `UnitOfWork`, a handler
+   does not retry. Its conflict propagates to the outermost `@handle` handler.
+   When version retry is on, that handler retries the whole chain. A process
+   manager, a `@use_case` or a caller-opened `UnitOfWork` has no retry, so the
+   conflict reaches its caller.
 4. After exhausting fast retries (default 3), propagates the error to the
    subscription for normal retry/DLQ handling.
 
-This is transparent: the subscription does not see transient version
-conflicts in a handler it runs directly. A command handler that a process
-manager calls synchronously gets no fast retry, so its conflict reaches the
-subscription.
-Only persistent conflicts (extremely rare) surface as failures.
+This is transparent: the subscription does not see transient version conflicts
+in a handler it runs directly. When a process manager calls a command handler
+synchronously, the command handler gets no fast retry. Its conflict reaches the
+subscription. Outside that case, only persistent conflicts (extremely rare)
+reach the subscription as failures.
 
 Under `event_processing = "sync"`, event handlers run inside the command's
 commit, after the command's writes are saved. When version retry is enabled,
 each event handler and projector still retries its own conflicts. A process
 manager has no such retry. When the retries run out, the caller of
-`domain.process()` gets a `TransactionError` whose `__cause__` is the
+`domain.process()` gets a `TransactionError`. Its `__cause__` is the
 `ExpectedVersionError`. Under `command_processing = "sync"` the command is not
-run again, since its writes are already saved. Under
-`command_processing = "async"` the failed command is redelivered by its
-subscription and runs again. A conflict on the command's own writes still
-raises `ExpectedVersionError`, and the command handler retries it when version
-retry is enabled.
+run again, since its writes are already saved. Under `command_processing =
+"async"` the failed command is redelivered by its subscription and runs again.
+A conflict on the command's own writes still raises `ExpectedVersionError`.
+When version retry is enabled, the command handler retries that conflict.
 
 ### Why this works
 
@@ -242,7 +243,7 @@ from the event store (or database), which now reflects the concurrent
 write. The handler's business logic executes against the current state,
 and the write succeeds.
 
-### Configuration
+### Configure version retry
 
 Version retry is **enabled by default** with sensible defaults. Configure
 it under `[server.version_retry]` in `domain.toml`:
@@ -283,15 +284,14 @@ acceptable (e.g., updating user preferences). But not all version
 conflicts are equal. Some mean a real business problem (e.g., two customers
 booking the same seat), and others require merge logic.
 
-A handler cannot tell these apart by catching `ExpectedVersionError`
-itself. Depending on the adapter and the aggregate, the conflict surfaces
-inside `repo.add` or when the handler's unit of work commits, after the
-handler method returns. A `try`/`except` inside the method either never
-sees the conflict or catches it and stops the retry. Put the decision in
-the aggregate instead. Each
-retry reloads the aggregate, and its preconditions run again: a seat that
-is now taken raises a domain exception, and a cart that has changed is
-merged or rejected.
+A handler cannot tell these apart by catching `ExpectedVersionError` itself.
+The conflict is raised either inside `repo.add` or after the handler method
+returns, at the commit of the handler's unit of work. Which of the two happens
+depends on the adapter and the aggregate. A `try`/`except` inside the method
+either never sees the conflict or catches it and stops the retry. Put the
+decision in the aggregate instead. Each retry reloads the aggregate, and its
+preconditions run again: a seat that is now taken raises a domain exception,
+and a cart that has changed is merged or rejected.
 
 For a full treatment of the three conflict categories (last writer wins,
 business rejection, conditional merge), see
@@ -299,7 +299,7 @@ business rejection, conditional merge), see
 
 ---
 
-## Custom error handling
+## Write your own error handling
 
 Every handler and subscriber class can override `handle_error()` to
 implement custom error logic:
@@ -313,17 +313,18 @@ The `handle_error()` callback receives the exception and the original message.
 If `handle_error()` itself raises, the exception is caught and logged, the
 engine continues processing.
 
-When a handler class has several `@handle` methods for one event and more than
-one of them fails, `exc` is an `ExceptionGroup` holding every failure, so
-matching on exception type has to look at the members. A handler method that
-raises its own group arrives the same way, which is why the helper above treats
-a group as a shape to unwrap instead of a signal about how many methods failed.
-[Classify async processing errors](../../patterns/classify-async-processing-errors.md)
-works this through in full.
+If more than one of a handler class's `@handle` methods for one event fails,
+`exc` is an `ExceptionGroup` holding every failure. To match on exception type,
+you have to look at the members of the group. When a handler method raises its
+own group, that group arrives in `exc` the same way. For that reason, the
+`_each` helper in the example above unwraps every group and does not read it as
+a count of failed methods. [Classify async processing
+errors](../../patterns/classify-async-processing-errors.md) works this through
+in full.
 
 ---
 
-## Trace events
+## Which trace events does the server emit?
 
 The server emits trace events for observability:
 
@@ -334,12 +335,12 @@ The server emits trace events for observability:
 | `message.dlq` | Message moved to DLQ | `stream`, `dlq_stream`, `retry_count` |
 | `handler.failed` | Handler raised an exception | `handler`, `error` |
 
-These events are visible in the [Observatory](./monitoring.md) dashboard
-and can be used for alerting.
+These trace events appear in the [Observatory](./monitoring.md) dashboard. You
+can also use them for alerting.
 
 ---
 
-## Operational runbooks
+## Recover from failures in production
 
 ### Inspect a failure
 
@@ -364,7 +365,7 @@ root cause.
 protean dlq replay MSG_ID --domain=my_domain --subscription=orders
 ```
 
-### Bulk replay
+### Replay many messages at once
 
 After a transient issue (network outage, dependency downtime) is
 resolved:
@@ -383,7 +384,7 @@ protean dlq purge --domain=my_domain --subscription=orders
 
 ---
 
-## Next steps
+## What to read next
 
 - [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md): Classify version conflicts by business meaning
 - [Monitoring](./monitoring.md): Observatory dashboard and metrics

@@ -1,11 +1,11 @@
 # Chapter 14: Connecting to the Outside World with Subscribers
 
-Bookshelf has partnered with a book distributor (**BookSupply**) that sends
-webhook notifications when new books become available or when stock is
+Bookshelf has partnered with a book distributor (**BookSupply**). BookSupply
+sends webhook notifications when new books become available or when stock is
 replenished. These messages arrive on a Redis stream from an external system.
 We need to consume them and translate them into our domain language.
 
-## Subscribers vs. Event Handlers
+## How do subscribers differ from event handlers?
 
 | | Event Handlers | Subscribers |
 |---|---------------|-------------|
@@ -43,7 +43,7 @@ We need a new command and handler for restocking:
 --8<-- "guides/getting-started/tutorial/ch14.py:restock_handler"
 ```
 
-## How It Works
+## Follow a message from BookSupply to the command handler
 
 ```
 External System           Protean
@@ -65,8 +65,8 @@ External System           Protean
      │                  └────────────┘
 ```
 
-The subscriber acts as an **anti-corruption layer** (ACL). It prevents external
-data formats from leaking into the domain. If BookSupply changes their payload
+The subscriber acts as an **anti-corruption layer** (ACL). It stops external
+data formats from reaching the domain. If BookSupply changes their payload
 format, only the subscriber needs to change.
 
 ## Testing the Subscriber
@@ -76,7 +76,7 @@ format, only the subscriber needs to change.
 --8<-- "guides/getting-started/tutorial/ch14.py:tests"
 ```
 
-## What We Built
+## Review what you built in this chapter
 
 - A **`BookSupplyWebhookSubscriber`** that consumes messages from an
   external system.
@@ -87,7 +87,7 @@ format, only the subscriber needs to change.
 In the next chapter, we will enable fact events so the marketing team
 can get complete state snapshots for their analytics dashboard.
 
-## Full Source
+## Read the full source for this chapter
 
 ??? example "ch14.py, 129 lines"
 
@@ -95,6 +95,6 @@ can get complete state snapshots for their analytics dashboard.
     --8<-- "guides/getting-started/tutorial/ch14.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 15: Fact Events and the Reporting Pipeline →](15-fact-events.md)

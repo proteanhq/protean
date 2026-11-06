@@ -5,17 +5,17 @@
 Some business processes span multiple aggregates and take multiple steps to
 complete, an order fulfillment flow that moves through payment, inventory
 reservation, and shipping, for example. Event handlers work for simple one-step
-reactions, but when you need to track where you are in a multi-step workflow
-and decide what to do next, you need a process manager.
+reactions. When you need to track the current step of a multi-step workflow and
+decide the next one, you need a process manager.
 
 Process managers coordinate multi-step business processes that span multiple
 aggregates. They react to domain events from different streams, maintain their
-own state, and issue commands to drive other aggregates forward.
+own state, and issue commands to other aggregates to start each next step.
 
 ## The Event Chain: How Steps Connect
 
-Before looking at the API, it's important to understand *how* a process manager
-chains steps together. The mechanism is a **command-event loop**:
+A process manager chains steps together through commands and events. The
+mechanism is a **command-event loop**:
 
 1. An event arrives at the PM from an aggregate's stream.
 2. The PM handler processes the event and issues a command to another aggregate.
@@ -50,7 +50,7 @@ shipping):
 ```
 
 Each arrow crosses an aggregate boundary through the event store. The PM never
-calls aggregate methods directly. It issues commands, and the aggregates'
+calls aggregate methods directly. The PM issues commands. The aggregates'
 command handlers decide how to execute them.
 
 ## Why `stream_categories` Must Match the Aggregates You Command
@@ -61,10 +61,10 @@ aggregates' command handlers raise events on their own streams
 `PaymentConfirmed` and `ShipmentDelivered`, it must subscribe to those
 streams.
 
-**Rule of thumb:** if a PM handler issues a command to aggregate X, the PM
-must include aggregate X's stream in its `stream_categories` (or `aggregates`
-list). Otherwise, the PM will never see the response event and the workflow
-will stall.
+**Subscribe to every aggregate you command:** if a PM handler issues a command
+to aggregate X, the PM must include aggregate X's stream in its
+`stream_categories` (or `aggregates` list). Otherwise, the PM will never see
+the response event and the workflow will stall.
 
 ```python
 # fragment
@@ -100,7 +100,8 @@ lifecycle management and event correlation.
 
 ## Issuing Commands
 
-Process managers drive other aggregates forward by issuing commands:
+Process managers issue commands to other aggregates to start the next step of
+the workflow:
 
 ```python
 --8<-- "guides/consume-state/process-managers/003.py:full"
@@ -111,19 +112,20 @@ Process managers drive other aggregates forward by issuing commands:
    either `PaymentConfirmed` or `PaymentFailed`. And the PM will see that
    response event because it subscribes to the `ecommerce::payment` stream.
 
-2. On payment failure, the handler issues `CancelOrder` to compensate,
-   and `end=True` marks the PM as complete.
+2. On payment failure, the handler issues `CancelOrder` to compensate.
+   `end=True` marks the PM as complete.
 
 If the handler fails after issuing a command, the PM's own state change rolls
-back. Whether the command is written at all depends on the event store. The
-memory store writes the command through the handler's Unit of Work, so the
-failure discards it. Message-DB writes straight through on its own connection,
-so there the command survives while the PM's transition does not. Do not rely
-on either behavior. Keep issued commands idempotent so re-issuing one is safe.
+back. The event store in use determines whether the command is written at all.
+The memory store writes the command through the handler's Unit of Work, so the
+failure discards it. Message-DB writes the command straight through on its own
+connection. With Message-DB, the command survives and the PM's transition rolls
+back. Do not rely on how either event store treats the command. Keep issued
+commands idempotent so re-issuing one is safe.
 
-## Process Manager Workflow
+## How a process manager handles each event
 
-This is what happens each time an event is delivered to a PM:
+Each time the event store delivers an event to a PM, the PM runs these steps:
 
 ```mermaid
 sequenceDiagram
@@ -142,23 +144,25 @@ sequenceDiagram
 ```
 
 1. **Event arrives**: The event store delivers an event from a subscribed stream.
-2. **Load instance**: The framework extracts the correlation value from the event
-   and loads the PM instance by replaying its transition events from the PM's own
-   stream.
+2. **Load instance**: The framework extracts the correlation value from the
+   event. It then loads the PM instance by replaying its transition events from
+   the PM's own stream.
 3. **Run handler**: The matched handler method executes with the PM's current
    state available.
 4. **Issue commands**: The handler can issue commands to drive other aggregates.
 5. **Persist transition**: After the handler completes, the framework captures
-   the PM's field state as a transition event and appends it to the PM's stream.
+   the PM's field state as a transition event. The framework appends the
+   transition event to the PM's stream.
 
-## Correlation
+## Match each event to a PM instance with correlation
 
 Correlation determines which PM instance handles each event. Every handler must
 declare a `correlate` parameter.
 
-### String Correlation
+### Correlate by naming the event field
 
-The simplest form names the event field that holds the correlation value:
+In the simplest form, you pass the name of the event field that holds the
+correlation value:
 
 ```python
 # fragment
@@ -167,9 +171,10 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     self.order_id = event.order_id
 ```
 
-Here, `event.order_id` is extracted and used to find or create the PM instance.
+Here, the framework extracts `event.order_id` and uses it to find or create the
+PM instance.
 
-### Dictionary Correlation
+### Map a PM field to a differently named event field
 
 When the event carries the value under a different name than the PM field,
 use a dictionary:
@@ -186,7 +191,7 @@ framework reads only the dictionary's value. The key, `order_id`, records which
 PM field the value belongs to. Events are matched by value, so two handlers can
 name different event fields as long as those fields hold the same value.
 
-## Lifecycle Management
+## Start and complete a process
 
 ### Starting a Process
 
@@ -220,8 +225,8 @@ def on_shipment_delivered(self, event: ShipmentDelivered) -> None:
 
 `end=True` completes the PM after every normal return from the handler,
 including an early `return` from a guard. When a handler should complete the PM
-on some paths only, call `mark_as_complete()` on those paths and leave out
-`end=True`.
+on some paths only, call `mark_as_complete()` on those paths. Leave out
+`end=True` on that handler.
 
 `protean check` reports a process manager with no `end=True` handler as
 `PROCESS_MANAGER_UNCLOSED`. It reads only the `end=True` flag, so a process
@@ -233,14 +238,14 @@ at least one terminating handler `end=True`.
 Once a PM is marked complete, any subsequent events for that correlation value
 are silently skipped. No new transition is persisted and no handler runs.
 
-## Configuration Options
+## Configure a process manager
 
-### Stream Sources
+### Choose the streams a PM subscribes to
 
 - **`stream_categories`**: List of stream categories the PM subscribes to.
-  Include every aggregate stream that the PM needs to see events from, both the
-  stream that triggers the workflow and the streams of aggregates the PM issues
-  commands to.
+  Include the stream that triggers the workflow. Also include the stream of
+  each aggregate the PM issues commands to, so the PM sees the events those
+  aggregates raise.
 
     ```python
     # fragment
@@ -261,7 +266,7 @@ are silently skipped. No new transition is persisted and no handler runs.
         ...
     ```
 
-### Subscription Options
+### Set subscription options
 
 Process managers support the same subscription configuration as
 [event handlers](./event-handlers.md#subscription-options):
@@ -277,7 +282,7 @@ See [Server → Configuration](../../reference/server/configuration.md) for deta
 ## Handling Events from Other Domains
 
 Process managers often coordinate workflows that span multiple bounded
-contexts, for example, an order fulfillment PM that reacts to events from
+contexts. For example, an order fulfillment PM can react to events from the
 Billing and Inventory domains in addition to its own Order domain.
 
 When multiple domains are **co-located in the same repository** and share
@@ -288,8 +293,8 @@ access to external events:
 --8<-- "guides/consume-state/process-managers/004.py:external_events"
 ```
 
-Then reference these events in the PM's handlers and include the external
-streams in `stream_categories`:
+Then reference these events in the PM's handlers. Include the external streams
+in `stream_categories`:
 
 ```python
 --8<-- "guides/consume-state/process-managers/004.py:process_manager"
@@ -297,18 +302,19 @@ streams in `stream_categories`:
 
 `on_inventory_reserved` completes the process only when the order is waiting
 for inventory, so it calls `mark_as_complete()` inside its guard. With
-`end=True` instead, an `InventoryReserved` that arrived before the payment
-would complete the process on the early return. `on_inventory_unavailable`
-ends the process whatever its state, so `end=True` fits it.
+`end=True` instead, the handler would also complete the process on the early
+return. The handler takes the early return when an `InventoryReserved` arrives
+before the payment. `on_inventory_unavailable` ends the process whatever its
+state, so `end=True` fits it.
 
 When domains are **distributed as independent services**, use subscribers
 instead. The subscriber acts as an anti-corruption layer, translating raw
-broker payloads into internal commands or events that your PM can react to.
-See [Multi-Domain Applications, Cross-domain
-communication](../../guides/multi-domain-applications.md#cross-domain-communication)
-for guidance on choosing between the two approaches.
+broker payloads into internal commands or events that your PM can react to. See
+[Multi-Domain Applications, Cross-domain
+communication](../../guides/multi-domain-applications.md#communicate-across-domains)
+for guidance on choosing between `register_external_event()` and subscribers.
 
-## Error Handling
+## Handle errors in a process manager
 
 Process managers can define a `handle_error` class method for custom error
 handling, following the same pattern as
@@ -325,7 +331,7 @@ class OrderFulfillmentPM:
         logger.error(f"PM failed to process {message.type}: {exc}")
 ```
 
-## Transition Events
+## How Protean records PM state as transition events
 
 After each handler runs, Protean auto-generates a transition event that
 captures:
@@ -334,9 +340,9 @@ captures:
 - **`handler_name`**: The name of the handler method that ran
 - **`is_complete`**: Whether the PM is marked complete
 
-These transition events are stored in the PM's own stream
-(`<pm_stream_category>-<correlation_value>`) and are used to reconstitute the
-PM's state when loading.
+Protean stores these transition events in the PM's own stream
+(`<pm_stream_category>-<correlation_value>`). When Protean loads the PM, it
+replays them to reconstitute the PM's state.
 
 ---
 
@@ -347,4 +353,7 @@ PM's state when loading.
 
     - [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md): Building resilient process managers with idempotency, compensation, and timeout handling.
 
-    **Related guide:** [Message Tracing](../domain-behavior/message-tracing.md): Correlation and causation IDs that thread through process manager workflows, plus the programmatic causation chain API.
+    **Related guide:** [Message
+    Tracing](../domain-behavior/message-tracing.md): Correlation and causation
+    IDs that every message in a process manager workflow carries, plus the
+    programmatic causation chain API.

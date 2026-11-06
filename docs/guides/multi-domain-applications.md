@@ -1,8 +1,10 @@
-# Multi-Domain Applications
+# Build an application from multiple domains
 
-A large system usually has more than one bounded context, and in Protean each
-one is a separate `Domain` instance. Here is how to structure an application
-that way. For the conceptual foundation, see [Bounded Contexts](../concepts/foundations/bounded-contexts.md).
+A large system usually has more than one bounded context. In Protean, each
+bounded context is a separate `Domain` instance. You give each bounded context
+its own package, configuration and server, and connect the contexts through
+events. For the conceptual foundation, see [Bounded
+Contexts](../concepts/foundations/bounded-contexts.md).
 
 ---
 
@@ -23,7 +25,7 @@ maintains it, a single domain is simpler and sufficient.
 
 ---
 
-## Project structure
+## Give each domain its own package
 
 Organize each bounded context as a separate Python package with its own
 domain instance, configuration, and elements:
@@ -59,7 +61,7 @@ Each domain's `__init__.py` creates its own `Domain` instance:
 
 ---
 
-## Independent configuration
+## Configure each domain on its own
 
 Each domain can have its own `domain.toml` with separate database, broker,
 and event store settings:
@@ -121,12 +123,12 @@ a domain context.
 
 ---
 
-## Cross-domain communication
+## Communicate across domains
 
-Domains communicate through events, never by importing each other's
-aggregates or calling each other's services directly. Protean supports
-two integration paths, and the right choice depends on the **strategic
-relationship** between the bounded contexts.
+Domains communicate through events, never by importing each other's aggregates
+or calling each other's services directly. Protean supports two integration
+paths. The right choice depends on the **strategic relationship** between the
+bounded contexts.
 
 ### Choosing the right integration path
 
@@ -143,7 +145,7 @@ relationship** between the bounded contexts.
     can use both paths, `register_external_event` for tightly coordinated domains in the same repo,
     and subscribers for external systems you don't control.
 
-### Co-located domains: Registered external events
+### Connect co-located domains with registered external events
 
 When multiple domains live in the same repository and share the same event
 store, use `register_external_event()` to give your domain typed access to
@@ -171,12 +173,12 @@ process in any state, so it uses `end=True`.
   and can be coordinated in a single pull request.
 - Typed events give you IDE support, static analysis, and deserialization
   validation, no parsing raw dicts.
-- The PM subscribes to external streams directly, keeping the coordination
-  logic concise and traceable.
+- The process manager subscribes to external streams directly, keeping the
+  coordination logic concise and traceable.
 
 **Important:** The external event class is defined *in your domain*, not
-imported from the other domain's package. You own the class; the type
-string (`"Billing.PaymentReceived.v1"`) is the shared contract.
+imported from the other domain's package. You own the class. The type string
+(`"Billing.PaymentReceived.v1"`) is the shared contract.
 
 For syncing state across co-located contexts (without a process manager),
 you can also use event handlers with `stream_category`:
@@ -185,14 +187,14 @@ you can also use event handlers with `stream_category`:
 --8<-- "guides/multi-domain-applications/001.py:event-handler"
 ```
 
-### Distributed domains: Subscribers as anti-corruption layers
+### Connect distributed domains with subscribers as anti-corruption layers
 
-When domains run as independent services with separate brokers (or when you
-consume events from external systems you don't control) use subscribers.
-Subscribers receive raw `dict` payloads and translate them into your domain's
-language, acting as an anti-corruption layer. Here the subscriber turns a
-customer payload into a `CreateRecipient` command, and a command handler
-stores the recipient:
+When domains run as independent services with separate brokers, use
+subscribers. Use them also to consume events from external systems you don't
+control. Subscribers receive raw `dict` payloads and translate them into your
+domain's language, acting as an anti-corruption layer. Here the subscriber
+turns a customer payload into a `CreateRecipient` command. A command handler
+then stores the recipient:
 
 ```python
 --8<-- "guides/multi-domain-applications/001.py:subscriber"
@@ -200,14 +202,15 @@ stores the recipient:
 
 **Why this works for distributed domains:**
 
-- **Schema isolation**: Your domain doesn't depend on the external
-  domain's event classes. If the upstream renames a field, only the
-  subscriber changes.
-- **Translation at the boundary**: External field names, types, and
-  concepts are mapped to your domain's language before entering the
-  domain.
-- **Independent evolution**: The upstream can deploy schema changes
-  without coordinating with you. The subscriber absorbs the difference.
+- **Your schema stays isolated**: Your domain doesn't depend on the external
+  domain's event classes. If the upstream renames a field, only the subscriber
+  changes.
+- **The subscriber translates at the boundary**: The subscriber maps external
+  field names, types, and concepts to your domain's language before they enter
+  the domain.
+- **Each side evolves independently**: The upstream can deploy schema changes
+  without coordinating with you. Only the subscriber changes to map the new
+  upstream schema to your domain's language.
 
 Key principles:
 
@@ -221,7 +224,7 @@ Key principles:
 See [Consuming Events from Other Domains](../patterns/consuming-events-from-other-domains.md)
 for the full pattern.
 
-### Fact events for state transfer
+### Transfer state with fact events
 
 When an external consumer needs complete aggregate state (not granular
 deltas), enable fact events on the source aggregate:
@@ -238,7 +241,7 @@ See [Fact Events as Integration Contracts](../patterns/fact-events-as-integratio
 
 ---
 
-## Correlation across contexts
+## Correlate an entity across contexts
 
 The same real-world entity (e.g. a customer) often appears in multiple
 bounded contexts with different names and shapes. Link them using a shared
@@ -286,7 +289,7 @@ protean observatory \
 
 ## Testing multi-domain applications
 
-### Separate fixtures per domain
+### Give each domain its own fixtures
 
 Create independent test fixtures for each domain:
 
@@ -296,11 +299,11 @@ Create independent test fixtures for each domain:
 
 ### Testing cross-domain flows
 
-In tests the domains run in sync mode, and a domain in sync mode runs only its
-own handlers. An event raised in the identity domain never reaches a
+In tests the domains run in sync mode. A domain in sync mode runs only its own
+handlers. In sync mode, an event raised in the identity domain never reaches a
 fulfillment handler, so a test cannot follow a flow across the boundary. Test
 each side of the boundary instead. On the receiving side, hand the event the
-other domain publishes to your handler, and check the effect in your domain:
+other domain publishes to your handler. Then check the effect in your domain:
 
 ```python
 --8<-- "guides/multi-domain-applications/001.py:cross-domain-test"
@@ -317,11 +320,11 @@ shared event store, as in production.
 
 ---
 
-## Design guidelines
+## How should you design multiple domains?
 
-1. **Start with one domain**: Split only when you observe genuine language
-   divergence or team boundaries. Premature splitting adds complexity
-   without benefit.
+1. **Start with one domain**: When you observe genuine language divergence or
+   team boundaries, split the domain. Until then, keep one. Premature splitting
+   adds complexity without benefit.
 
 2. **Each domain owns its data**: Domains should not share databases. If two
    domains need the same data, one is the authority and the other holds a

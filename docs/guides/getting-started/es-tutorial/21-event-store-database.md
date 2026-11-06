@@ -1,10 +1,9 @@
-# Chapter 21: The Event Store as a Database
+# Chapter 21: Query the event store as a database
 
-We have been working with events through aggregates, projections, and
-handlers for the entire tutorial. But we have never looked at the event
-store directly. In this chapter we will explore it as a database, reading raw
-events, viewing statistics, searching by type, and understanding the stream
-naming conventions.
+We have been working with events through aggregates, projections, and handlers
+for the entire tutorial. But we have never looked at the event store directly.
+You can work with the event store as a database: you read raw events, view
+statistics, search events by type, and learn how Protean names streams.
 
 ## Reading Events from a Stream
 
@@ -44,7 +43,7 @@ $ protean events read "fidelis::account" --limit=10 --domain=fidelis
 This returns events from all account instances, ordered by
 `global_position`.
 
-## Stream Naming Conventions
+## How Protean names streams
 
 | Stream | Pattern | Example |
 |--------|---------|---------|
@@ -57,7 +56,7 @@ This returns events from all account instances, ordered by
 The stream category is derived from the aggregate's class name
 (lowercased, underscored).
 
-## Domain-Wide Statistics
+## View statistics for the whole domain
 
 ```shell
 $ protean events stats --domain=fidelis
@@ -104,10 +103,11 @@ Two position numbers appear in event listings:
 Global position is critical for projection rebuilding (events must be
 replayed in global order) and for subscription position tracking.
 
-## Memory vs. MessageDB
+## Choose between the memory event store and MessageDB
 
-Throughout this tutorial we used the **memory event store**, great for
-development and testing, but not persistent across restarts.
+Throughout this tutorial we used the **memory event store**, which suits
+development and testing. The memory event store does not keep events across
+restarts.
 
 For production, use **MessageDB**. A PostgreSQL-based event store:
 
@@ -137,10 +137,10 @@ The domain code does not change, only the configuration.
 - **Memory** vs. **MessageDB** event store adapters.
 
 The event store is not just an implementation detail. It is a database of facts
-about your business. Learning to query it directly is a useful debugging and
-analysis tool.
+about your business. When you query the event store directly, you can debug
+problems and analyze your data.
 
-## Full Source
+## Read the full source
 
 ??? example "ch21.py, 160 lines"
 
@@ -148,6 +148,6 @@ analysis tool.
     --8<-- "guides/getting-started/es-tutorial/ch21.py:full"
     ```
 
-## Next
+## What comes next?
 
 [Chapter 22: The Full Picture →](22-the-full-picture.md)

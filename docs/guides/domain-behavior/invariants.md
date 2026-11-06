@@ -4,19 +4,20 @@
 
 [Field-level validations](validations.md) catch type errors, missing values,
 and range violations, but they cannot express rules that span multiple fields
-or depend on the aggregate's overall state. For example, "an order's total must
-equal the sum of its items" or "a shipment can only be dispatched if the order
-is confirmed" are business rules that no single field constraint can enforce.
+or depend on the aggregate's overall state. For example, no single field
+constraint can enforce business rules such as "an order's total must equal the
+sum of its items" or "a shipment can only be dispatched if the order is
+confirmed".
 
-Invariants fill this gap. They are business rules or constraints that must
-**always** be true within a domain concept. Protean treats invariants as
-explicit and visible in the model, with the `@invariant`
-decorator. You can define invariants on Aggregates, Entities, Value Objects,
-and [Domain Services](domain-services.md).
+Invariants express these rules. They are business rules or constraints that
+must **always** be true within a domain concept. Protean treats invariants as
+explicit and visible in the model, with the `@invariant` decorator. You can
+define invariants on Aggregates, Entities, Value Objects, and [Domain
+Services](domain-services.md).
 
-For background on why invariants are fundamental to DDD and how they keep
-your domain always valid, see
-[Invariants concept](../../concepts/foundations/invariants.md).
+See [Invariants concept](../../concepts/foundations/invariants.md) for why
+invariants are fundamental to DDD. That page also explains how invariants keep
+your domain always valid.
 
 ## `@invariant` decorator
 
@@ -45,7 +46,7 @@ collected with other invariant violations.
 
 ## `pre` and `post` Invariants
 
-The `@invariant` decorator has two flavors, **`pre`** and **`post`**.
+The `@invariant` decorator has two qualifiers, **`pre`** and **`post`**.
 
 **`post` invariants** are triggered after elements are constructed or updated.
 They ensure that the aggregate is in a valid state after the change.
@@ -53,7 +54,7 @@ They ensure that the aggregate is in a valid state after the change.
 **`pre` invariants** are triggered before elements are updated. They are used
 to check whether a proposed change is allowed given the current state.
 
-### Pre-invariant example
+### Guard a withdrawal with a pre-invariant
 
 Pre-invariants are useful when you want to guard against invalid transitions.
 For example, checking that an account has sufficient balance before a
@@ -68,10 +69,11 @@ When `withdraw()` is called, the flow is:
 1. **Pre-invariants** fire, `account_must_be_active_to_transact` checks the current state. If the account is
    frozen, `ValidationError` is raised and the assignment `self.balance -= amount` never happens.
 2. The attribute assignment `self.balance -= amount` executes.
-3. **Post-invariants** fire, `balance_must_not_be_negative` checks the resulting state. If the balance
-   went negative, `ValidationError` is raised and the assignment is rolled back: `balance` keeps
-   its previous value and the account's changed flag goes back to what it was before the
-   assignment.
+3. **Post-invariants** fire, `balance_must_not_be_negative` checks the
+   resulting state. If the balance went negative, Protean raises
+   `ValidationError` and rolls back the assignment. `balance` keeps its
+   previous value, and the account's changed flag returns to its value from
+   before the assignment.
 
 The rollback undoes only the assignment that failed. If a method changes two
 fields and the second change breaks a post-invariant, the first change stays.
@@ -84,26 +86,25 @@ the same way, including the removal of the child's own children. The
 assignment is also undone when an invariant fails with an error other than
 `ValidationError`, such as a `TypeError` from comparing `None`.
 
-A change made to a `List` or `Dict` field in place, such as
-`self.tags.append("x")` or `self.tags += ["x"]`, alters the existing value
-before Protean sees an assignment, so a failed check cannot undo it. To make
-the change undoable, assign a new value: `self.tags = [*self.tags, "x"]`.
-Inside an `atomic_change` block, in-place changes are undone as well, because
-the block keeps a copy of every field from block entry.
+You can change a `List` or `Dict` field in place, such as with
+`self.tags.append("x")` or `self.tags += ["x"]`. That change alters the
+existing value before Protean sees any assignment. A failed check therefore
+cannot undo it. To make the change undoable, assign a new value: `self.tags =
+[*self.tags, "x"]`. Inside an `atomic_change` block, in-place changes are
+undone as well, because the block keeps a copy of every field from block entry.
 
 An `atomic_change` block is rolled back as a whole: when the check at its end
 fails, the aggregate and its child entities go back to their state from block
 entry, including association changes (see below). Events raised inside the
 block are discarded too. An exception raised by the code inside the block does
-not roll it back. On an event-sourced aggregate,
-`raise_()` runs the `@apply` handler inside `atomic_change`, so when a check
-fails after the handler, `raise_()` undoes the handler's field changes and
-also discards the event.
+not roll it back. On an event-sourced aggregate, `raise_()` runs the `@apply`
+handler inside `atomic_change`. When a check fails after the handler runs,
+`raise_()` undoes the handler's field changes and also discards the event.
 
 !!!note
     `pre` invariants are not applicable when aggregates and entities are being
-    initialized. Their validations only kick in when an element is being
-    changed or updated from an existing state.
+    initialized. Protean runs their validations only when an element is changed
+    or updated from an existing state.
 
 !!!note
     `pre` invariant checks are not applicable to `ValueObject` elements because
@@ -112,11 +113,10 @@ also discards the event.
 ## When Invariants Run
 
 Invariant validations are triggered throughout the lifecycle of domain objects.
-The aggregate is the root of the triggering mechanism. Validations are
-conducted recursively, starting with the aggregate and trickling down into
-enclosed entities.
+The aggregate is the root of the triggering mechanism. Protean runs validations
+recursively: first on the aggregate, then on each enclosed entity.
 
-### Post-Initialization
+### Check invariants after initialization
 
 Immediately after an object (aggregate or entity) is initialized, all
 **post-invariant** checks are triggered to ensure the aggregate starts in a
@@ -140,11 +140,11 @@ ERROR: Error during initialization: {'_entity': ['Total should be sum of item pr
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
 
-### Attribute Changes
+### Check invariants on every attribute change
 
-Every attribute change in an aggregate or its enclosed entities triggers
-invariant validation throughout the aggregate cluster. This ensures that any
-modification maintains the consistency of the domain model.
+On every attribute change in an aggregate or its enclosed entities, Protean
+validates invariants throughout the aggregate cluster. Protean runs these
+checks so that any modification keeps the domain model consistent.
 
 ```shell hl_lines="15 17"
 In [1]: from datetime import date
@@ -166,19 +166,19 @@ In [3]: order.total_amount = 140.0
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
 
-This happens because `__setattr__` intercepts every field assignment and runs
-the full pre-check → validate → post-check cycle. See
+Validation runs on every assignment because `__setattr__` intercepts every
+field assignment and runs the full pre-check → validate → post-check cycle. See
 [Aggregate Mutation](aggregate-mutation.md#how-it-works) for the complete
 mechanism.
 
-### Entity-to-Root Delegation
+### Check root invariants when a child entity changes
 
 When a child entity's attribute is changed, invariants fire on the **root
 aggregate**, not just the entity itself. This ensures that cross-entity
 business rules (defined on the aggregate) are always enforced, even when the
 mutation happens deep in the aggregate cluster.
 
-### Adding and Removing Entities
+### Check invariants when you add or remove entities
 
 `add_*` and `remove_*` methods on `HasMany` associations also trigger
 invariants. Both pre-invariants and post-invariants fire, just as they do
@@ -190,18 +190,18 @@ In [4]: order.add_items(OrderItem(product_id="3", quantity=2, price=10.0, subtot
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
 
-Adding an item changes the sum of item subtotals, which no longer matches
+Adding an item changes the sum of item subtotals. The new sum no longer matches
 `total_amount`, so the post-invariant fires immediately.
 
-When adding or removing entities requires coordinated changes (like updating
+When you add or remove entities as part of a coordinated change (like updating
 a total), use `atomic_change` to batch the mutations.
 
 
-## Atomic Changes
+## Batch changes with `atomic_change`
 
-There may be times when multiple attributes need to be changed together, and
-validations should not trigger until the entire operation is complete.
-The `atomic_change` context manager can be used to achieve this.
+Sometimes you need to change multiple attributes together. In that case,
+validations should not trigger until the entire operation is complete. The
+`atomic_change` context manager can be used to achieve this.
 
 Within the `atomic_change` context manager, the cycle works as follows:
 
@@ -216,8 +216,8 @@ Within the `atomic_change` context manager, the cycle works as follows:
 --8<-- "guides/domain-behavior/001.py:atomic_change"
 ```
 
-Called on the order from the earlier examples, `add_third_item()` changes the
-total and adds the item, and the check at the end of the block passes:
+`add_third_item()` changes the total and adds a third item to an order with two
+items. The check at the end of the block then passes:
 
 ```shell hl_lines="16"
 In [1]: from datetime import date
@@ -239,9 +239,9 @@ In [4]: order.total_amount, len(order.items)
 Out[4]: (120.0, 3)
 ```
 
-Making the same two updates one after another, outside `atomic_change`, fails
-at the first one. On a fresh order with the same two items, setting the total
-alone breaks the post-invariant:
+If you make the same two updates one after another, outside `atomic_change`,
+the first update fails. On a fresh order with the same two items, setting the
+total alone breaks the post-invariant:
 
 ```shell hl_lines="14"
 In [5]: order = Order(
@@ -268,13 +268,13 @@ Events](raising-events.md#es-raise-apply) for details.
     `atomic_change` can only be applied when updating or changing an already
     initialized element.
 
-## Invariant Inheritance
+## Inherit invariants from a parent class
 
 Invariants defined on a parent class are inherited by subclasses through
 standard Python MRO resolution. A subclass inherits all `@invariant.pre` and
-`@invariant.post` methods from its parents, and can add its own.
+`@invariant.post` methods from its parents. It can also add its own.
 
-## Error Structure
+## How invariant errors are structured
 
 When invariants raise `ValidationError`, the framework aggregates all
 violations into a single `ValidationError` with a dictionary structure:
@@ -290,14 +290,14 @@ The `_entity` key is a convention for errors that apply to the entity as a
 whole rather than a specific field. Multiple invariant violations are collected
 and reported together.
 
-### Coded diagnostics
+### Read the code on a failed invariant
 
 The raised `ValidationError` also carries a stable **code** you can act on
 without reading the messages. On an aggregate, entity, or domain service, a
 failed `@invariant.post` carries `INVARIANT_POST_FAILED` and a failed
-`@invariant.pre` carries `INVARIANT_PRE_FAILED`; a failed value object invariant
-carries `VALUE_OBJECT_INVARIANT_FAILED`. The exception's `rationale` and `fix`
-resolve from that code.
+`@invariant.pre` carries `INVARIANT_PRE_FAILED`. A failed value object
+invariant carries `VALUE_OBJECT_INVARIANT_FAILED`. The exception's `rationale`
+and `fix` resolve from that code.
 
 ```python
 --8<-- "guides/domain-behavior/001.py:codes"
@@ -305,9 +305,9 @@ resolve from that code.
 
 When several invariants fail together, `exc.codes` lists each distinct code
 once. Two failed `@invariant.post` checks give `["INVARIANT_POST_FAILED"]`, so
-`exc.code` is still `"INVARIANT_POST_FAILED"`. When the failures carry different
-codes, `exc.code` is `None` because no single one names the failure. The errors
-dict lists every message either way.
+`exc.code` is still `"INVARIANT_POST_FAILED"`. When the failures carry
+different codes, `exc.code` is `None`. In that case no single code names the
+failure. The errors dict lists every message either way.
 
 Pass `code` to stamp a specific code on an invariant:
 
@@ -319,16 +319,19 @@ def total_matches_items(self):
         raise ValidationError({"_entity": ["Total should be sum of item prices"]})
 ```
 
-The failure then carries `"ORDER_TOTAL_MISMATCH"` in `code` and `codes`. A code
-you define yourself is carried as given; `rationale` and `fix` resolve only for
-codes in Protean's registry. See the
-[init-time and runtime diagnostics reference](../../reference/init-diagnostics.md#invariants)
-for the built-in codes.
+The failure then carries `"ORDER_TOTAL_MISMATCH"` in `code` and `codes`.
+Protean carries a code you define yourself as given. `rationale` and `fix`
+resolve only for codes in Protean's registry. See the [init-time and runtime
+diagnostics reference](../../reference/init-diagnostics.md#invariants) for the
+built-in codes.
 
 ---
 
 !!! seealso "See also"
-    **Background:** [The Always-Valid Domain](../../concepts/philosophy/always-valid.md): The complete story of how Protean's four validation layers work together to guarantee your domain objects are never invalid.
+    **Background:** [The Always-Valid
+    Domain](../../concepts/philosophy/always-valid.md): How Protean's four
+    validation layers work together to keep your domain objects valid at all
+    times.
 
     **Concept overview:** [Invariants](../../concepts/foundations/invariants.md): Why invariants are fundamental to DDD and how they keep your domain always valid.
 

@@ -1,8 +1,8 @@
-# FastAPI Integration
+# Integrate Protean with FastAPI
 
 Protean provides integration utilities for
-[FastAPI](https://fastapi.tiangolo.com/) applications. These live in the
-`protean.integrations.fastapi` package and cover two concerns:
+[FastAPI](https://fastapi.tiangolo.com/) applications. These utilities are in
+the `protean.integrations.fastapi` package and cover two concerns:
 
 1. **Domain context middleware**: Automatically push the correct Protean
    domain context per HTTP request.
@@ -14,11 +14,11 @@ Protean provides integration utilities for
 ## Domain context middleware
 
 Every Protean operation needs an active domain context. In a FastAPI
-application, each HTTP request should run inside the context of the domain
-it belongs to. `DomainContextMiddleware` handles this automatically by
+application, each HTTP request should run inside the context of the domain it
+belongs to. `DomainContextMiddleware` pushes that domain context for you by
 matching the request URL path to a `Domain` instance.
 
-### Basic setup
+### Map URL prefixes to domains
 
 ```python
 --8<-- "guides/fastapi/index/001.py:basic"
@@ -31,7 +31,7 @@ With this configuration:
 - Requests that don't match any prefix (e.g. `/health`) pass through without
   a domain context, suitable for health checks, docs, and static assets.
 
-### Longest-prefix matching
+### Match the longest prefix
 
 When multiple prefixes overlap, the longest match wins:
 
@@ -43,7 +43,7 @@ A request to `/api/v2/items` matches `/api/v2` (the longer prefix) and uses
 `v2_domain`. A request to `/api/v1/items` matches `/api` and uses
 `core_domain`.
 
-### Custom resolver
+### Pick the domain with a custom resolver
 
 For more advanced routing logic (e.g. tenant-based, header-based, or
 database-driven resolution), provide a `resolver` callable instead of a
@@ -57,7 +57,7 @@ static map:
 When a resolver is provided, `route_domain_map` is ignored. Returning `None`
 from the resolver means the request proceeds without a domain context.
 
-### Single-domain applications
+### Serve a single domain
 
 For applications with only one domain, you can map the root prefix:
 
@@ -79,33 +79,34 @@ This means no manual header extraction is needed in your endpoints:
 --8<-- "guides/fastapi/index/006.py:endpoint"
 ```
 
-For the full story on how correlation IDs propagate through commands, events,
-logging, and OTEL spans, see
-[Correlation and Causation IDs](../observability/correlation-and-causation.md).
+To learn how correlation IDs propagate through commands, events, logging, and
+OTEL spans, see [Correlation and Causation
+IDs](../observability/correlation-and-causation.md).
 
-### HTTP wide event logging
+### Log one wide event per HTTP request
 
-`DomainContextMiddleware` also emits one **wide event per HTTP request**
-on the `protean.access.http` logger, request envelope, commands dispatched during the request,
-`request_id`, and `correlation_id` shared with any domain-layer wide events. See the dedicated [HTTP
-wide events guide](./http-wide-events.md) for configuration, enrichment, and
-tail sampling.
+`DomainContextMiddleware` also emits one **wide event per HTTP request** on the
+`protean.access.http` logger. The event carries the request envelope, the
+commands dispatched during the request, the `request_id`, and the
+`correlation_id` shared with any domain-layer wide events. See the dedicated
+[HTTP wide events guide](./http-wide-events.md) for configuration, enrichment,
+and tail sampling.
 
 ---
 
-## Exception handlers
+## Map domain exceptions to HTTP responses
 
 `register_exception_handlers` maps Protean domain exceptions to appropriate
 HTTP status codes so that your endpoint code can raise domain exceptions
 directly without manual try/except blocks.
 
-### Setup
+### Register the exception handlers
 
 ```python
 --8<-- "guides/fastapi/index/005.py:setup"
 ```
 
-### Exception mapping
+### Which HTTP status does each exception return?
 
 | Protean exception     | HTTP status | Response body                   |
 |-----------------------|:-----------:|---------------------------------|
@@ -117,10 +118,10 @@ directly without manual try/except blocks.
 | `InvalidOperationError` | 422      | `{"error": "<message>"}`        |
 
 When the request runs inside `DomainContextMiddleware`, the body also carries
-the request's `correlation_id`, the same value the `X-Correlation-ID` response
-header holds.
+the request's `correlation_id`. The `X-Correlation-ID` response header holds
+the same value.
 
-### Example
+### Raise domain exceptions from an endpoint
 
 ```python
 --8<-- "guides/fastapi/index/005.py:example-imports"
@@ -129,7 +130,7 @@ header holds.
 
 ---
 
-## Putting it all together
+## Combine the middleware and the exception handlers
 
 A typical FastAPI application using both utilities:
 
@@ -142,10 +143,10 @@ A typical FastAPI application using both utilities:
 
 The endpoints on this page are plain `def` functions. `domain.process()` is a
 blocking call, and FastAPI runs a `def` endpoint in its thread pool, so the
-call does not hold up the event loop. The domain context that the middleware
+call does not block the event loop. The domain context that the middleware
 pushes reaches the endpoint in that thread.
 
-## Startup and shutdown lifecycle
+## Initialize and close domains in the app lifespan
 
 FastAPI's [lifespan events](https://fastapi.tiangolo.com/advanced/events/)
 let you run setup and teardown logic that wraps the entire application
@@ -170,7 +171,7 @@ releases the provider, broker, cache and event store connections.
 | Domain context push/pop | Middleware | Each request needs its own context for thread-local state |
 | Exception mapping | App setup | Registered once at import time |
 
-### Multi-domain startup
+### Start several domains in the lifespan
 
 When your application serves multiple bounded contexts, initialize each
 domain in the lifespan. On shutdown, the lifespan closes only the domains
@@ -180,7 +181,7 @@ whose `init()` finished, in reverse order:
 --8<-- "guides/fastapi/index/008.py:multi-domain"
 ```
 
-### Simple single-domain apps
+### Initialize a single domain at module level
 
 For simple applications where startup overhead isn't a concern, calling
 `domain.init()` at module level remains a valid approach:
@@ -189,17 +190,17 @@ For simple applications where startup overhead isn't a concern, calling
 --8<-- "guides/fastapi/index/009.py:module-level"
 ```
 
-This works well for small applications. Use the lifespan approach when you
-need database setup, graceful shutdown, or multiple domains.
+This works well for small applications. When you need database setup, graceful
+shutdown, or multiple domains, use the lifespan approach.
 
 ---
 
-## Other web frameworks
+## Use Protean with other web frameworks
 
-Protean's FastAPI integration provides middleware and exception handlers
-as conveniences, but the core mechanism (`domain.domain_context()`) works with any Python web
-framework. For Flask, Django, or other WSGI/ASGI frameworks, manually push the
-domain context in your request middleware:
+Protean's FastAPI integration provides middleware and exception handlers as
+conveniences. The core mechanism (`domain.domain_context()`) works with any
+Python web framework. For Flask, Django, or other WSGI/ASGI frameworks,
+manually push the domain context in your request middleware:
 
 ```python
 --8<-- "guides/fastapi/index/010.py:flask-imports"
@@ -211,7 +212,7 @@ on domain context management.
 
 ---
 
-## Next steps
+## Read next
 
 - [Endpoint Tests](./testing-endpoints.md): Test your FastAPI endpoints
   with full domain context

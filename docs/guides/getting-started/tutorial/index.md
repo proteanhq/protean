@@ -22,7 +22,7 @@ tooling, and tests.
 - **Production operations**: Monitoring, tracing, dead-letter queues,
   and bulk imports
 
-## The five parts
+## How is the tutorial split into five parts?
 
 The tutorial is divided into five parts. Each chapter builds on the
 previous one, growing the Bookshelf application step by step.
@@ -36,19 +36,19 @@ previous one, growing the Bookshelf application step by step.
 | **V. System Mastery** | 20–22 | Process managers, advanced queries, and the complete architecture |
 
 !!! tip "Cumulative Codebase"
-    Each chapter builds on the previous one. The code you write in Chapter 1
-    grows throughout the tutorial into a complete application. Follow along
-    in order for the best experience.
+    Each chapter adds to the code you wrote in the previous chapter. You extend
+    the code from Chapter 1 in every later chapter until it is a complete
+    application. Follow along in order for the best experience.
 
 !!! info "Which pathway does this tutorial follow?"
     This tutorial covers **DDD foundations** (Chapters 1–4) that apply
-    regardless of your chosen architecture, then introduces **CQRS patterns**
-    (Chapters 5–7) with Commands, Command Handlers, and Projections. If
-    you're using the pure **DDD** approach with Application Services instead,
-    the domain modeling chapters (1–4) still apply directly, see the [DDD
-    Pathway](../../pathways/ddd.md) for that reading order.
+    regardless of your chosen architecture. It then introduces **CQRS
+    patterns** (Chapters 5–7) with Commands, Command Handlers, and Projections.
+    The domain modeling chapters (1–4) still apply directly if you use the pure
+    **DDD** approach with Application Services instead. For that reading order,
+    see the [DDD Pathway](../../pathways/ddd.md).
 
-## Prerequisites
+## What do you need before you start?
 
 - **Python 3.11+**
 - **Protean installed**: See [Installation](../installation.md)

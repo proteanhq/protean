@@ -1,22 +1,22 @@
-# Domain-Driven Design with Protean
+# Build with Domain-Driven Design in Protean
 
 !!! info "The Foundation"
-    This is the simplest way to use Protean and the foundation for the other
-    two approaches. Start here if you're new to Protean or building a
-    straightforward application.
+    Pure DDD is the simplest way to use Protean and the foundation for the
+    other two approaches. If you're new to Protean or building a
+    straightforward application, start here.
 
-## Overview
+## How does the DDD approach work?
 
-In the pure DDD approach, you model your domain with aggregates, entities,
-and value objects, then use **application services** to orchestrate use cases.
-Repositories handle persistence, and domain events propagate side effects
-to event handlers.
+In the pure DDD approach, you model your domain with aggregates, entities, and
+value objects, then use **application services** to orchestrate use cases.
+Repositories persist aggregates. Domain events carry side effects to event
+handlers.
 
-This approach follows the patterns from Eric Evans' *Domain-Driven Design*
-(the "Blue Book"). There are no commands or command handlers, application
-services receive requests directly and coordinate the domain logic.
+This approach follows the patterns from Eric Evans' *Domain-Driven Design* (the
+"Blue Book"). There are no commands or command handlers. Application services
+receive requests directly and coordinate the domain logic.
 
-## Request Flow
+## How does a request flow through the domain?
 
 ```mermaid
 sequenceDiagram
@@ -44,10 +44,10 @@ sequenceDiagram
 4. The aggregate mutates its state and **raises domain events**
 5. The Application Service **persists** the aggregate back through the
    repository
-6. Domain events are dispatched to **Event Handlers** for side effects
+6. Protean dispatches the domain events to **Event Handlers** for side effects
 7. The result is returned **synchronously** to the caller
 
-## Elements You'll Use
+## Which elements will you use?
 
 | Element | Purpose |
 |---------|---------|
@@ -62,7 +62,7 @@ sequenceDiagram
 | [Subscribers](../consume-state/subscribers.md) | Consume messages from external message brokers |
 | [Domain Services](../domain-behavior/domain-services.md) | Coordinate logic spanning multiple aggregates |
 
-## Guided Reading Order
+## Read the guides in this order
 
 Work through these guides in order to build a complete understanding of the
 DDD approach:
@@ -80,8 +80,8 @@ DDD approach:
 
 ### Add business rules and behavior
 
-With your domain model defined, you need to protect it with business rules
-and give it the ability to communicate what happened:
+With your domain model defined, protect it with business rules. Then let it
+communicate what happened:
 
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
@@ -111,7 +111,7 @@ To handle side effects and coordinate across aggregates:
 | 15 | [Domain Services](../domain-behavior/domain-services.md) | Coordinate cross-aggregate logic |
 | 16 | [Testing](../testing/index.md) | Test your domain model and application layer |
 
-## Relevant Patterns
+## Which patterns support the DDD approach?
 
 These patterns complement the DDD approach:
 

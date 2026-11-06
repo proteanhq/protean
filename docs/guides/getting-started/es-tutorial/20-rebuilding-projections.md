@@ -1,11 +1,10 @@
-# Chapter 20: Rebuilding the World
+# Chapter 20: Rebuild a projection from its events
 
 The finance team changes their regulatory reporting requirements. The
-`AccountSummary` projection needs new fields and different aggregation
-logic. Rather than writing a complex data migration, we
-**rebuild the projection from scratch**: truncate the existing data,
-replay all events through the updated projector, and the new projection
-materializes automatically.
+`AccountSummary` projection needs new fields and different aggregation logic.
+Instead of writing a complex data migration, we **rebuild the projection from
+scratch**. We truncate the existing data and replay all events through the
+updated projector, which fills the new projection automatically.
 
 ## How Projection Rebuilding Works
 
@@ -16,7 +15,7 @@ materializes automatically.
 4. **Dispatch** each event through the projector handlers
 5. **Report** the result: events processed, events skipped, errors
 
-## Rebuilding Programmatically
+## Rebuild a projection from code
 
 ```python
 # fragment
@@ -30,7 +29,7 @@ The `RebuildResult` contains:
 - `events_skipped`: Events whose type could not be resolved
 - `errors`: Any exceptions during processing
 
-## Rebuilding via CLI
+## Rebuild a projection from the CLI
 
 ```shell
 # Rebuild a specific projection
@@ -57,12 +56,11 @@ upcaster chain runs inside `to_domain_object()`, so the projector
 always receives the current event version. Your projectors only need
 to handle the latest schema.
 
-## Skipped Events
+## Why are some events skipped?
 
-Events whose type cannot be resolved (deprecated events with no
-upcaster chain) are skipped with a warning, not crashed on. This
-ensures a single deprecated event type does not block the entire
-rebuild.
+The rebuild skips an event whose type it cannot resolve (a deprecated event
+with no upcaster chain) and logs a warning instead of failing. As a result, a
+single deprecated event type does not block the entire rebuild.
 
 ## When to Rebuild
 
@@ -79,7 +77,7 @@ rebuild.
     conflicts with concurrent event processing. After the rebuild,
     restart the server. It will resume from the current stream position.
 
-## Idempotent Rebuilds
+## Why is a rebuild safe to run twice?
 
 Rebuilds are idempotent. The process truncates the projection table
 first, then replays from scratch. Running it twice produces the same
@@ -98,7 +96,7 @@ This is a fundamental advantage of Event Sourcing: the event store is
 the source of truth, and all read models can be rebuilt from it at any
 time.
 
-## Full Source
+## Read the full source
 
 ??? example "ch20.py, 285 lines"
 
@@ -106,6 +104,6 @@ time.
     --8<-- "guides/getting-started/es-tutorial/ch20.py:full"
     ```
 
-## Next
+## What comes next?
 
 [Chapter 21: The Event Store as a Database →](21-event-store-database.md)

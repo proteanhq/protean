@@ -1,9 +1,10 @@
-# Logging
+# Set up and use logging
 
 Protean ships with structured logging that configures itself. Call
-`domain.init()` and every log line (from framework internals, your handler
-code, and the SQLAlchemy adapter) flows through the same `structlog` pipeline
-as JSON in production and colored console output in development.
+`domain.init()` to turn logging on. Every log line from framework internals,
+your handler code, and the SQLAlchemy adapter then goes through the same
+`structlog` pipeline, as JSON in production and as colored console output in
+development.
 
 The tasks operators and application developers do most often are below. For
 the full schema of every framework event and every config key, see
@@ -13,17 +14,18 @@ behind the wide event pattern, see
 
 ---
 
-## Quick start
+## Start logging with one call
 
 ```python
 --8<-- "guides/server/logging/quick-start/001.py:quick-start"
 ```
 
-That is the whole setup. `Domain.init()` auto-detects `PROTEAN_ENV`, picks a
-sensible level and format, and installs correlation injection so every log
-record is queryable by `correlation_id`. When `telemetry.enabled = true`,
-Protean additionally injects OpenTelemetry `trace_id`, `span_id`, and
-`trace_flags` so logs line up with traces in your APM tool.
+The code above is the whole logging setup. `Domain.init()` auto-detects
+`PROTEAN_ENV` and picks a sensible level and format. It also installs
+correlation injection, so every log record is queryable by `correlation_id`.
+When `telemetry.enabled = true`, Protean additionally injects OpenTelemetry
+`trace_id`, `span_id`, and `trace_flags` into each log record. Your APM tool
+then matches each log record to its trace.
 
 The default level and format depend on the environment. Protean reads
 `PROTEAN_ENV`, then `ENV`, then `ENVIRONMENT`:
@@ -52,15 +54,15 @@ To log from application code:
 --8<-- "guides/server/logging/001.py:get-logger"
 ```
 
-Keyword arguments become structured fields in JSON output and colored
-key-value pairs in console output. Prefer keyword arguments over
-f-strings so values remain queryable downstream, see [why structured
+Keyword arguments become structured fields in JSON output and colored key-value
+pairs in console output. Prefer keyword arguments over f-strings so values
+remain queryable downstream. See [why structured
 logs?](../../concepts/observability/logging.md#why-structured-logs) for the
 rationale.
 
 !!! warning "Known issue: keyword arguments nest inside `event` in JSON output"
     With the JSON format, a `get_logger()` call is rendered to JSON twice. The
-    keyword arguments end up inside the outer `"event"` string, not as
+    keyword arguments appear inside the outer `"event"` string instead of as
     top-level fields. Console output is rendered twice as well, so each line
     shows the timestamp, level and logger name twice. The keyword arguments
     still appear there as key-value pairs.
@@ -93,8 +95,8 @@ JSON:
 }
 ```
 
-A failing handler lifts the level to `error`, flips `status` to `"failed"`,
-and preserves the traceback:
+When a handler fails, Protean sets the level to `error` and `status` to
+`"failed"`. The wide event also keeps the traceback:
 
 ```json
 {
@@ -113,16 +115,16 @@ and preserves the traceback:
 }
 ```
 
-Running under `PROTEAN_ENV=development` swaps the JSON renderer for a
-colored `ConsoleRenderer`, with the same fields inline as
-`key=value` pairs. See the [Logging reference](../../reference/logging.md#proteanaccess)
-for the full field list.
+Under `PROTEAN_ENV=development`, Protean uses a colored `ConsoleRenderer` in
+place of the JSON renderer. The console output shows the same fields inline as
+`key=value` pairs. See the [Logging
+reference](../../reference/logging.md#proteanaccess) for the full field list.
 
 ---
 
 ## Configure via `domain.toml`
 
-The `[logging]` section is the declarative control surface. A typical
+You configure logging declaratively in the `[logging]` section. A typical
 production configuration:
 
 ```toml
@@ -155,38 +157,38 @@ protean --log-config ./logging.json server      # full dictConfig JSON
 ```
 
 `--log-level` and `--log-format` override only the level and the format. The
-rest of `[logging]` still applies, so redaction, `per_logger` levels, and the
+rest of `[logging]` still applies. Redaction, `per_logger` levels, and the
 correlation filter stay in place while you raise the verbosity.
 
-`--log-config` applies the supplied JSON via `logging.config.dictConfig()`,
-and `server` and `observatory` then skip the domain's `[logging]` section. The
-correlation filter is still installed on the root logger and on each handler
-your `dictConfig` puts on it. Add the redaction filter to your `dictConfig`
-yourself if you need it. If your application adds a handler to the root logger
-after logging is configured, add the filters to that handler yourself. The
-same goes for handlers your `dictConfig` puts on named loggers, and for child
-loggers that set `propagate = False`: their records never reach the root
-logger's handlers. A later call to `protean.utils.logging.configure_logging()`
-without `dict_config` replaces the root handlers and leaves the new ones
-without the correlation filter; call `Domain.configure_logging()` again to
-attach it. If your
-`dictConfig` leaves the root logger without handlers, `Domain.init()` applies `[logging]`
-anyway.
+`--log-config` applies the supplied JSON via `logging.config.dictConfig()`.
+With this flag, `server` and `observatory` skip the domain's `[logging]`
+section. Protean still installs the correlation filter on the root logger and
+on each handler your `dictConfig` puts on it. If you need the redaction filter,
+add it to your `dictConfig` yourself. Your application may add a handler to the
+root logger after Protean configures logging. In that case, add the filters to
+that handler yourself. Also add the filters yourself to handlers your
+`dictConfig` puts on named loggers, and to child loggers with `propagate =
+False`. Records from these loggers never reach the root logger's handlers. A
+later call to `protean.utils.logging.configure_logging()` without `dict_config`
+replaces the root handlers and leaves the new ones without the correlation
+filter; call `Domain.configure_logging()` again to attach it. If your
+`dictConfig` leaves the root logger without handlers, `Domain.init()` applies
+`[logging]` anyway.
 
 The `--debug` flag on `protean server` and `protean observatory` was removed in
-v0.17.0. Use `protean --log-level DEBUG server` instead. The flag works the same
-way for multi-worker (`--workers N`) and `--reload` runs: `--log-level`,
-`--log-format` and `--log-config` reach every worker process, and each worker
-applies them the way the parent does.
+v0.17.0. Use `protean --log-level DEBUG server` instead. In multi-worker
+(`--workers N`) and `--reload` runs, `--log-level`, `--log-format` and
+`--log-config` reach every worker process. Each worker applies these flags the
+way the parent does.
 
 ---
 
 ## Override programmatically
 
-When `domain.toml` is not the right shape (tests, one-off scripts, embedded
-domains) call `Domain.configure_logging()` directly. Explicit keyword arguments
-override `domain.toml` but still read `PROTEAN_LOG_LEVEL` as an override for
-`level` unless `level=` is passed:
+When `domain.toml` does not fit your case (tests, one-off scripts, embedded
+domains), call `Domain.configure_logging()` directly. Explicit keyword
+arguments override `domain.toml`. `Domain.configure_logging()` still reads
+`PROTEAN_LOG_LEVEL` as an override for `level` unless you pass `level=`:
 
 ```python
 --8<-- "guides/server/logging/002.py:configure"
@@ -200,10 +202,10 @@ to do in tests to reset state.
 
 ## Enrich wide events with business context
 
-Protean emits one wide event per handled command, event, query, or
-projector on the `protean.access` logger. The framework fills in domain
-context automatically; application code adds business-specific fields
-with `bind_event_context()`:
+Protean emits one wide event per handled command, event, query, or projector on
+the `protean.access` logger. The framework fills in domain context
+automatically. Your application code adds business-specific fields with
+`bind_event_context()`:
 
 ```python
 --8<-- "guides/server/logging/003.py:model"
@@ -213,7 +215,7 @@ with `bind_event_context()`:
 The framework and application fields merge into the single wide event
 emitted when the handler returns. See the [reference](../../reference/logging.md#bind_event_context-unbind_event_context)
 for field-reservation rules and the
-[concept page](../../concepts/observability/logging.md#query-oriented-field-design)
+[concept page](../../concepts/observability/logging.md#choose-fields-for-the-queries-operators-run)
 for guidance on choosing queryable dimensions.
 
 ---
@@ -279,9 +281,10 @@ for per-key details and the
 for why tail sampling beats head sampling.
 
 !!! warning "Keep the safety defaults on"
-    Setting `always_keep_errors = false` or `always_keep_slow = false`
-    combined with a low `default_rate` will silently drop the events you
-    most want to see. The safety defaults exist for a reason.
+    Setting `always_keep_errors = false` or `always_keep_slow = false` combined
+    with a low `default_rate` will silently drop the events you most want to
+    see. The safety defaults stop sampling from dropping errors and slow
+    requests.
 
 ---
 
@@ -306,18 +309,19 @@ of framework-emitted event types.
 
 ## Disable auto-configuration
 
-When Protean is embedded inside an application that already configured its
-own logging (Django, a custom server, an OS-level journald shim), set
-`PROTEAN_NO_AUTO_LOGGING=1` before calling `domain.init()`:
+Some applications that embed Protean already configure their own logging
+(Django, a custom server, an OS-level journald shim). In such an application,
+set `PROTEAN_NO_AUTO_LOGGING=1` before calling `domain.init()`:
 
 ```bash
 export PROTEAN_NO_AUTO_LOGGING=1
 ```
 
-Single-worker `protean server` and `protean observatory` honor it too: they
-leave any logging your domain module sets up on import in place. The worker
-processes of a multi-worker or `--reload` run do not read it. They apply
-`[logging]`, or the `--log-config` file when you pass one.
+Single-worker `protean server` and `protean observatory` honor
+`PROTEAN_NO_AUTO_LOGGING` too: they keep any logging that your domain module
+configures on import. The worker processes of a multi-worker or `--reload` run
+do not read `PROTEAN_NO_AUTO_LOGGING`. They apply `[logging]`, or the
+`--log-config` file when you pass one.
 
 You can then wire whichever parts of Protean's integration you want
 manually:
@@ -326,17 +330,18 @@ manually:
 --8<-- "guides/server/logging/005.py:filter"
 ```
 
-Attach the filter to each handler on the root logger. A filter on a logger
-runs only for records logged on that logger, so a filter on the root logger
-misses records from child loggers such as `logging.getLogger("myapp.orders")`.
+Attach the correlation filter to each handler on the root logger. A filter on a
+logger runs only for records logged on that logger. A filter on the root logger
+therefore misses records from child loggers such as
+`logging.getLogger("myapp.orders")`.
 
 `Domain.init()` also detects a pre-configured root logger (handlers already
-attached) and skips its auto-configuration in that case, so in many
-embedded setups no env var is needed.
+attached) and skips its auto-configuration in that case. In many embedded
+setups, you then need no env var.
 
 ---
 
-## Minimize noise in tests
+## Reduce log output in tests
 
 In `conftest.py`:
 
@@ -368,4 +373,4 @@ structlog writes to stdlib handlers.
 - **[Production Deployment](./production-deployment.md)**: Container
   deployment, supervisor configuration, multi-worker mode (see also the
   [multi-worker logging](../../reference/logging.md#multi-worker-logging)
-  reference for the `QueueHandler` / `QueueListener` hygiene pattern).
+  reference for the `QueueHandler` / `QueueListener` setup pattern).

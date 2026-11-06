@@ -9,74 +9,74 @@ allowed to change, and what the rest of the system hears about it afterwards.
 For the conceptual foundation, see
 [Building Blocks](../../concepts/building-blocks/index.md).
 
-## Guides in this section
+## Pick a guide for the rule you need to add
 
-### Validations
+### Validate field data
 
-Validations check that data meets basic requirements before it is processed.
-You can constrain a field's type, mark it required, or make it unique. For
-common patterns there are built-in validators, and for domain-specific rules
-you can write your own.
+Validations check data against basic requirements before Protean processes it.
+You can constrain a field's type, mark it required, or make it unique. Protean
+has built-in validators for common patterns. For domain-specific rules, you can
+write your own.
 
 [Learn more about validations →](validations.md)
 
-### Invariants
+### Enforce invariants
 
-An invariant is a business rule that must hold true at all times, and it is
-what keeps your domain objects consistent. Invariants come from business rules
-and policies rather than from the code, and Protean checks them automatically
-during initialization and on every state change.
+An invariant is a business rule that must hold true at all times. Invariants
+keep your domain objects consistent. Invariants come from business rules and
+policies instead of from the code. Protean checks them automatically during
+initialization and on every state change.
 
 [Learn more about invariants →](invariants.md)
 
-### Status Transitions
+### Control status transitions
 
-Most aggregates are state machines. The `Status` field lets you declare which
-state-to-state moves are allowed, right in the field declaration, and Protean
-raises `ValidationError` on any move you did not allow. A state with no
-outgoing transitions is terminal, and `can_transition_to()` lets you check a
-move without raising.
+Most aggregates are state machines. The `Status` field lets you declare the
+allowed state-to-state moves right in the field declaration. Protean raises
+`ValidationError` on any move you did not allow. A state with no outgoing
+transitions is terminal. You can call `can_transition_to()` to check a move
+without raising.
 
 [Learn more about status transitions →](status-transitions.md)
 
-### Aggregate Mutation
+### Change aggregate state
 
-Aggregates hold the state and behaviour of your domain, and mutating that
-state is how you implement a business operation. Write each operation as a
-named method that says what it does, and Protean validates the result against
-the aggregate's invariants.
+Aggregates hold the state and behaviour of your domain. You implement a
+business operation by mutating that state. Write each operation as a named
+method that says what it does. Protean validates the result against the
+aggregate's invariants.
 
 [Learn more about aggregate mutation →](aggregate-mutation.md)
 
 ### Raising Events
 
 Domain events record state changes worth telling the rest of the system about.
-An aggregate raises a delta event when it mutates, any entity in the cluster
-can raise one too, and Protean dispatches them for you or lets you publish
-them by hand.
+An aggregate raises a delta event when it mutates, and any entity in the
+cluster can raise one too. Protean dispatches these events for you, or you can
+publish them by hand.
 
 [Learn more about raising events →](raising-events.md)
 
-### Message Tracing & Enrichment
+### Trace and enrich messages
 
 Protean tracks causal chains across commands and events, propagating
-correlation and causation IDs through each command-to-event chain. You can
-walk up to the root command, down to all its effects, or build the full
-causation tree in code. Enrichment hooks let you attach your own metadata,
-such as user context, tenant ID, or audit data, to every message, and it is
-persisted in a `metadata.extensions` dict in the event store.
+correlation and causation IDs through each command-to-event chain. You can walk
+up to the root command, down to all its effects, or build the full causation
+tree in code. Enrichment hooks let you attach your own metadata, such as user
+context, tenant ID, or audit data, to every message. The event store persists
+this metadata in a `metadata.extensions` dict.
 
 [Learn more about message tracing →](message-tracing.md) &nbsp;|&nbsp; [Learn more about message enrichment →](message-enrichment.md)
 
-### Domain Services
+### Put cross-aggregate logic in domain services
 
 Some business logic does not belong to any single aggregate. A domain service
-holds that logic: stateless operations across several aggregates, workflows
-that span them, and rules that involve more than one object.
+contains that logic: stateless operations and workflows across several
+aggregates, and rules about more than one object.
 
 [Learn more about domain services →](domain-services.md)
 
-### Error Handling
+### Raise and handle domain exceptions
 
 Raise, propagate, and handle domain exceptions, from aggregate invariants
 through command handlers to HTTP responses.

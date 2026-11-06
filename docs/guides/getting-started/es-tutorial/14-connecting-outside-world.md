@@ -1,12 +1,12 @@
 # Chapter 14: Connecting to the Outside World
 
-Fidelis integrates with "PayFlow," an external payment gateway that sends
-webhook notifications when payments are processed. These external messages are
-raw JSON payloads, not typed domain events.
+Fidelis integrates with "PayFlow," an external payment gateway. PayFlow sends a
+webhook notification each time it processes a payment. These external messages
+are raw JSON payloads, not typed domain events.
 
-In this chapter we will build a **subscriber** that acts as an
-anti-corruption layer, and add **enrichers** to attach cross-cutting
-metadata to every message flowing through the system.
+A **subscriber** acts as an anti-corruption layer between PayFlow and the
+domain. **Enrichers** attach cross-cutting metadata to every message that
+passes through the system.
 
 ## Subscribers: The Anti-Corruption Layer
 
@@ -18,7 +18,7 @@ them into domain operations:
 --8<-- "guides/getting-started/es-tutorial/ch14.py:subscriber"
 ```
 
-Key differences from event handlers:
+Subscribers differ from event handlers in four ways:
 
 | | Event Handlers | Subscribers |
 |---|---------------|------------|
@@ -31,7 +31,7 @@ The subscriber is the **translation layer**: it converts external
 concepts (PayFlow webhook schema) into domain concepts (Fidelis
 commands). The domain never sees the raw webhook format.
 
-## Error Handling
+## Handle errors in a subscriber
 
 Subscribers can override `handle_error` for custom error handling:
 
@@ -40,11 +40,11 @@ Subscribers can override `handle_error` for custom error handling:
 --8<-- "guides/getting-started/es-tutorial/ch14.py:handle_error"
 ```
 
-This is called when `__call__` raises an exception, giving you a chance
-to log, alert, or transform the error before it propagates to the
-subscription's retry/DLQ mechanism.
+Protean calls `handle_error` when `__call__` raises an exception. In
+`handle_error` you can log, alert, or transform the error before it propagates
+to the subscription's retry/DLQ mechanism.
 
-## Message Enrichment
+## Add metadata to messages with enrichers
 
 Event and command enrichers add metadata that does not belong in the
 event payload itself, infrastructure concerns like tenant IDs, request IDs, and
@@ -66,7 +66,7 @@ Key concepts:
   of metadata extensions.
 - **Command enrichers** receive `(command,)` and return a `dict`.
 - Enrichment data appears in **`metadata.extensions`**, not in the event
-  fields. This keeps domain events clean.
+  fields. The event fields then hold only business data.
 - Multiple enrichers execute in **FIFO order**, with results merged.
 - Enrichers run automatically, no code changes needed in aggregates or
   handlers.
@@ -109,11 +109,11 @@ on the `DepositMade` event.
 
 That completes Part III. We have evolved the system with schema changes
 (upcasting), performance optimization (snapshots), historical queries
-(temporal), and external integration (subscribers and enrichers). In Part IV,
-we tackle production operations, the daily reality of running an event-sourced
-system.
+(temporal), and external integration (subscribers and enrichers). Part IV
+covers production operations, the work you do to run an event-sourced system in
+production.
 
-## Full Source
+## Read the full source
 
 ??? example "ch14.py, 340 lines"
 

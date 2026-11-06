@@ -1,15 +1,15 @@
-# Chapter 5: Commands and Handlers
+# Chapter 5: Add commands and handlers
 
-In this chapter we will add an `AddBook` command and a handler that
-processes it, so books are added through a formal command interface
-instead of direct aggregate creation.
+You add an `AddBook` command and a handler that processes it. From now on, your
+code adds books through a formal command interface instead of creating the
+aggregate directly.
 
 !!! note "DDD Alternative: Application Services"
     From here the tutorial takes the **CQRS** approach to handling state
-    changes. In the pure **DDD** approach, you'd use
-    [Application Services](../../change-state/application-services.md) instead
-    of Commands and Command Handlers, the Application Service receives requests
-    directly and coordinates the domain logic. See the [DDD
+    changes. In the pure **DDD** approach, you'd use [Application
+    Services](../../change-state/application-services.md) instead of Commands
+    and Command Handlers. The Application Service receives requests directly
+    and coordinates the domain logic. See the [DDD
     Pathway](../../pathways/ddd.md) for that reading order.
 
 ## Defining a Command
@@ -67,8 +67,9 @@ All checks passed!
 ```
 
 Notice that we never touched the repository directly. The command handler did
-that for us. This separation means the same command can later be processed
-asynchronously by a background server (Chapter 12).
+that for us. Because the command handler owns the repository calls, a
+background server can later process the same command asynchronously (Chapter
+12).
 
 ## What We Built
 
@@ -77,10 +78,10 @@ asynchronously by a background server (Chapter 12).
   the aggregate.
 - **`domain.process()`**: Dispatches commands to their handlers.
 
-In the next chapter, we will add domain events and event handlers so the
-system can react automatically when things happen.
+In the next chapter, you add domain events and event handlers. With them, the
+system reacts automatically when an aggregate changes state.
 
-## Full Source
+## See the full source
 
 ??? example "ch05.py, 104 lines"
 
@@ -88,6 +89,6 @@ system can react automatically when things happen.
     --8<-- "guides/getting-started/tutorial/ch05.py:full"
     ```
 
-## Next
+## Read the next chapter
 
 [Chapter 6: Events and Reactions →](06-events-and-reactions.md)

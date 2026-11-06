@@ -1,27 +1,29 @@
-# Message Tracing
+# Trace each message back to its cause
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 In event-driven systems, a single user action can trigger a chain of commands
 and events that cascade across multiple aggregates and handlers. **Message
-tracing** lets you follow the full causal chain (from the initial request
-through every command and event it spawns) using two identifiers that Protean
-attaches to every message automatically:
+tracing** lets you follow the full causal chain, from the initial request
+through every command and event that follows from it. Protean attaches two
+identifiers to every message automatically:
 
 - **`correlation_id`**: A constant identifier shared by *every* message in the
-  chain. It answers: "Which business operation does this message belong to?"
-- **`causation_id`**: The `headers.id` of the *immediate parent* message. It
-  answers: "What directly caused this message?"
+  chain. You read it to learn which business operation the message belongs to.
+- **`causation_id`**: The `headers.id` of the *immediate parent* message. You
+  read it to learn which message directly caused this one.
 
-Together, they let you reconstruct the full tree of messages for any request,
-which is invaluable for debugging, auditing, and understanding system behavior.
+With the `correlation_id` and the `causation_id`, you can rebuild the full tree
+of messages for any request to debug it, audit it, or see how the system
+behaved.
 
 ## How It Works
 
 When you submit a command via `domain.process()`, Protean generates a
-`correlation_id` (a UUID4 hex string, 32 characters) and sets `causation_id`
-to `None` (since this is the root of the chain). As the command triggers events
-and those events trigger further commands, both IDs are propagated automatically:
+`correlation_id`, a UUID4 hex string of 32 characters. Protean sets
+`causation_id` to `None`, because this command is the root of the chain. As the
+command triggers events and those events trigger further commands, Protean
+propagates both IDs automatically:
 
 ```
 PlaceOrder (correlation=a1b2c3d4, causation=None)         <-- root
@@ -30,8 +32,8 @@ PlaceOrder (correlation=a1b2c3d4, causation=None)         <-- root
               +-- InventoryReserved (correlation=a1b2c3d4, causation=cmd-789)
 ```
 
-Every message shares the same `correlation_id`, while each `causation_id`
-points to the message that directly caused it.
+Every message shares the same `correlation_id`. Each message's `causation_id`
+holds the ID of the message that directly caused it.
 
 ## Supplying an External Correlation ID
 
@@ -50,7 +52,8 @@ dashes).
 
 ## Where Trace IDs Are Stored
 
-Both IDs live in `DomainMeta`, the domain-specific section of message metadata:
+Protean stores the `correlation_id` and the `causation_id` in `DomainMeta`, the
+domain-specific section of message metadata:
 
 ```json
 {
@@ -79,7 +82,7 @@ Both IDs live in `DomainMeta`, the domain-specific section of message metadata:
 --8<-- "guides/domain-behavior/message-tracing/001.py:access"
 ```
 
-## Propagation Rules
+## How do the trace IDs pass from message to message?
 
 The trace context flows through all message construction paths:
 
@@ -90,16 +93,16 @@ The trace context flows through all message construction paths:
 | Command handler raises event | Inherited from command | Command's `headers.id` |
 | Event handler processes new command | Inherited from event | Event's `headers.id` |
 
-The propagation happens through Protean's global context (`g.message_in_context`),
-which the engine sets before invoking each handler. The `correlation_id` carries
-through in both synchronous and asynchronous processing modes. The
+Protean passes the IDs on through its global context (`g.message_in_context`),
+which the engine sets before invoking each handler. The `correlation_id`
+carries through in both synchronous and asynchronous processing modes. The
 `causation_id` of a command sent from an event handler differs between them.
 With asynchronous processing it is the event's `headers.id`, as the table
 shows. With synchronous processing the event handler runs inside the original
 command's handler, so the new command records that original command as its
 cause.
 
-## Relationship to W3C TraceParent
+## How do the trace IDs relate to W3C TraceParent?
 
 Protean maintains two distinct tracing layers:
 
@@ -108,8 +111,8 @@ Protean maintains two distinct tracing layers:
 | **Domain tracing** | `DomainMeta.correlation_id` + `causation_id` | Protean-internal causation chain | Flexible strings |
 | **Distributed tracing** | `MessageHeaders.traceparent` | External tool integration (Jaeger, Zipkin) | W3C hex format |
 
-`correlation_id` bridges both layers. It identifies the same business operation
-whether you're looking at Protean's domain metadata or a W3C trace.
+`correlation_id` appears in both layers. It identifies the same business
+operation whether you're looking at Protean's domain metadata or a W3C trace.
 `causation_id`, however, is domain-layer only because Protean's message IDs
 (like `"myapp::order-abc123-0.1"`) are intentionally human-readable and cannot
 fit in W3C's 16-hex-char `parent_id` format.
@@ -212,26 +215,27 @@ CMD App.PlaceOrder.v1 (myapp::order:command-abc123-0) @ 2026-02-22 10:30:00
 Causation tree: 4 message(s) for correlation ID 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
 ```
 
-Use `--flat` for a chronological table view when you need exact positions and
-timestamps.
+When you need exact positions and timestamps, use `--flat` for a chronological
+table view.
 
 See [`protean events`](../../reference/cli/data/events.md) for the complete CLI
 reference.
 
-## Outbox Integration
+## Query trace IDs in the outbox
 
 When events are committed to the outbox (for reliable message delivery), the
-`correlation_id` and `causation_id` are denormalized into the outbox record
-for efficient querying. Each database provider has its own outbox repository,
+`correlation_id` and `causation_id` are denormalized into the outbox record for
+efficient querying. Each database provider has its own outbox repository,
 looked up by the provider's name. Protean has no public method for this lookup
-yet, so the example calls the internal `_get_outbox_repo()`, which may change
-between releases:
+yet, so the example calls the internal `_get_outbox_repo()`. This internal
+method may change between releases:
 
 ```python
 --8<-- "guides/domain-behavior/message-tracing/002.py:outbox"
 ```
 
-This is useful for operational dashboards and debugging delivery issues.
+Querying the outbox by `correlation_id` and `causation_id` helps you build
+operational dashboards and debug delivery issues.
 
 ---
 
@@ -244,7 +248,7 @@ This is useful for operational dashboards and debugging delivery issues.
 
     **Reference:** [`protean events trace`](../../reference/cli/data/events.md): CLI command for following causal chains.
 
-    **Internals:** [Causation Chain Traversal](../../concepts/internals/event-sourcing.md#causation-chain-traversal): Algorithm details for the traversal methods.
+    **Internals:** [Causation Chain Traversal](../../concepts/internals/event-sourcing.md#trace-the-causation-chain): Algorithm details for the traversal methods.
 
     **API:** [BaseEventStore](../../api/ports/event-store.md): Auto-generated API reference for `trace_causation`, `trace_effects`, `build_causation_tree`, and `CausationNode`.
 

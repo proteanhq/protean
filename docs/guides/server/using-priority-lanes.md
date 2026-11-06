@@ -1,7 +1,7 @@
 # Using Priority Lanes
 
-Here is how to enable priority lanes and route particular workloads through
-the backfill lane, so they do not interfere with production event
+Enable priority lanes to route particular workloads through the backfill lane.
+The backfill lane keeps those workloads from interfering with production event
 processing.
 
 For the conceptual overview (how priority lanes work, ordering guarantees, and
@@ -29,8 +29,8 @@ backfill_suffix = "backfill"
 
 The command handlers run in the calling process (`command_processing =
 "sync"`). With `default_subscription_type = "stream"`, the engine reads
-commands from a broker stream that asynchronous commands never reach, so an
-asynchronous command is stored and never handled.
+commands from a broker stream. Asynchronous commands never reach that stream,
+so an asynchronous command is stored and never handled.
 
 If you use environment overlays, you can enable lanes only in production:
 
@@ -45,7 +45,7 @@ enabled = true
 threshold = 0
 ```
 
-After changing the configuration, restart the Engine so it picks up the new
+After changing the configuration, restart the Engine so it loads the new
 settings. You should see log output confirming the backfill consumer group was
 created:
 
@@ -58,9 +58,9 @@ DEBUG: Initialized priority lanes for CustomerProjector:
 
 ## Route Commands to the Backfill Lane
 
-There are two ways to tag commands with a lower priority. Both cause events
-produced by those commands to be routed to the backfill stream instead of the
-primary stream.
+There are two ways to tag commands with a lower priority. With both ways,
+Protean routes the events that those commands produce to the backfill stream
+instead of the primary stream.
 
 ### Context Manager
 
@@ -112,11 +112,11 @@ yet. `pending` is the number it has read but not acknowledged. When both are
 been handled. `XLEN` does not tell you this: it counts every entry still
 stored in the stream, read or not.
 
-Zero lag does not mean the batch succeeded. Outbox records may still be
-waiting to be published (see below), and a message whose handler failed is
-acknowledged once it moves to the dead-letter stream
-(`crm::customer:backfill:dlq`). Treat the batch as done only when the outbox
-has no unpublished records and the dead-letter stream holds no batch events.
+Zero lag does not mean the batch succeeded. Outbox records may still be waiting
+to be published (see below). When a handler fails, its message moves to the
+dead-letter stream (`crm::customer:backfill:dlq`) and is acknowledged. Only
+when the outbox has no unpublished records and the dead-letter stream holds no
+batch events, treat the batch as done.
 
 ### Check Outbox Records
 
@@ -134,7 +134,7 @@ Batch events should have a negative priority value (e.g., `-50` for
 
 ---
 
-## Troubleshooting
+## Fix common problems
 
 ### Events are going to the primary stream instead of backfill
 

@@ -1,13 +1,12 @@
 # Chapter 12: Going Async with the Server
 
-Processing everything synchronously was fine for development. But a
-customer placing an order should not wait while the system updates the
-catalog projection, stocks inventory, and sends notifications. In this
-chapter we will configure Redis as the message broker, enable the outbox
-pattern for reliable delivery, and start the Protean server for
-asynchronous event and command processing.
+Processing everything synchronously was fine for development. But a customer
+placing an order should not wait while the system updates the catalog
+projection, stocks inventory, and sends notifications. You configure Redis as
+the message broker, enable the outbox pattern for reliable delivery, and start
+the Protean server, which processes events and commands asynchronously.
 
-## The Outbox Pattern
+## How does the outbox pattern deliver events?
 
 When an aggregate raises events, they need to reach event handlers and
 projectors reliably. Protean uses the **outbox pattern**:
@@ -22,7 +21,7 @@ projectors reliably. Protean uses the **outbox pattern**:
 This guarantees **at-least-once delivery**. Events are never lost, even if
 Redis is temporarily unavailable.
 
-## Configuration
+## Configure the broker and async processing
 
 Update `domain.toml` to add a broker and switch to async processing:
 
@@ -100,7 +99,7 @@ Each handler gets its own **consumer group** in Redis. This means:
 - A slow handler does not block other handlers.
 - Failed messages are retried automatically before moving to the DLQ.
 
-## How It All Fits Together
+## How does a command travel from the API to the handlers?
 
 ```
               ┌──────────┐
@@ -143,7 +142,7 @@ handler.
 
 ## Verifying Async Processing
 
-Start the server in one terminal and the API in another:
+Start the server in one terminal. Then start the API in a second terminal:
 
 ```shell
 # Terminal 1 — start the server
@@ -178,9 +177,9 @@ and the projector updates the projection, all asynchronously.
 - An understanding of how events flow from the aggregate through the
   outbox to Redis Streams to handlers.
 
-The system is now truly asynchronous. In the next chapter, we will add
-a domain service to validate inventory before confirming orders.
+The system is now truly asynchronous. Chapter 13 adds a domain service that
+validates inventory before the system confirms an order.
 
-## Next
+## Continue to the next chapter
 
 [Chapter 13: Checking Before You Ship with Domain Services →](13-domain-services.md)

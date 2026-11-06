@@ -1,11 +1,11 @@
-# Chapter 2: Deposits and Withdrawals
+# Chapter 2: Add deposits and withdrawals
 
-An account that can only be opened is not much use. In this chapter
-we will add deposits and withdrawals, multiple event types flowing through a
-single aggregate. Along the way, we will see a core principle of Event
-Sourcing: **all state changes flow exclusively through events**.
+An account that can only be opened is not much use. You now add deposits and
+withdrawals as two new event types on the same aggregate. These events show a
+core principle of Event Sourcing: **the aggregate changes its state only by
+applying events**.
 
-## New Events
+## Define the deposit and withdrawal events
 
 A deposit and a withdrawal are two distinct facts:
 
@@ -18,7 +18,7 @@ Each event captures the data needed to describe what happened. The `reference`
 field is optional. It records why the transaction occurred (a paycheck, a
 refund, a grocery purchase).
 
-## Domain Methods and Apply Handlers
+## Add domain methods and `@apply` handlers
 
 Now we add domain methods to the `Account` aggregate and the
 corresponding `@apply` handlers:
@@ -41,7 +41,7 @@ only the `@apply` handlers run. The validation in `deposit()` and `withdraw()`
 does not re-execute. Those events already happened and were validated at the
 time. Replay trusts the event history.
 
-## Multiple Events, One Aggregate
+## Raise several events on one aggregate
 
 Let's exercise the full lifecycle:
 
@@ -63,7 +63,7 @@ The balance is `$1,550.00`: the opening deposit of $1,000 plus $500 and $200 in
 deposits, minus the $150 withdrawal. But this number was never stored. It was
 computed by replaying four events through their `@apply` handlers.
 
-## Version Tracking
+## Track the aggregate's version
 
 Each event increments the aggregate's `_version`. After four events
 (opened, two deposits, one withdrawal), the version is `3` (0-indexed).
@@ -71,7 +71,7 @@ The version serves as an optimistic concurrency check, if two processes try to
 modify the same account simultaneously, the second one will detect a version
 conflict.
 
-## Validation at the Domain Boundary
+## Validate input at the domain boundary
 
 Try withdrawing more than the balance:
 
@@ -91,12 +91,12 @@ is raised. No event means no state change. The aggregate remains
 consistent.
 
 !!! note
-    This validation lives in the domain method, not in the `@apply`
-    handler. In the next chapters we will move business rules into
-    **invariants**, which validate state
-    after every `@apply` handler runs.
+    The domain method runs this validation. The `@apply` handler runs no
+    validation. In later chapters you move business rules into **invariants**.
+    Protean checks the invariants against the aggregate's state after every
+    `@apply` handler runs.
 
-## What We Built
+## Review what you built
 
 - **DepositMade** and **WithdrawalMade** events describing financial
   transactions.
@@ -105,11 +105,11 @@ consistent.
 - An aggregate that derives its balance from **multiple events**.
 - **Version tracking** that increments with each event.
 
-The aggregate is starting to feel like a real ledger. Next, we will add
-commands and the processing pipeline so external systems can interact
-with our domain through typed contracts.
+The aggregate now keeps a record of every deposit and withdrawal, as a ledger
+does. Next, we will add commands and the processing pipeline so external
+systems can interact with our domain through typed contracts.
 
-## Full Source
+## Read the full source
 
 ??? example "ch02.py, 140 lines"
 
@@ -117,6 +117,6 @@ with our domain through typed contracts.
     --8<-- "guides/getting-started/es-tutorial/ch02.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 3: Commands and the Processing Pipeline →](03-commands-and-pipeline.md)

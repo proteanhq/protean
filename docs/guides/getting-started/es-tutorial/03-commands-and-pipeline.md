@@ -1,10 +1,10 @@
-# Chapter 3: Commands and the Processing Pipeline
+# Chapter 3: Send commands through the processing pipeline
 
-Calling `account.deposit()` directly works for in-process code, but
-external APIs need a clear contract. In this chapter we will introduce
-**commands**, typed data objects that represent the intent to do something, and
-**command handlers** that receive those commands, load the aggregate from the
-event store, call the appropriate domain method, and persist the result.
+Calling `account.deposit()` directly works for in-process code, but external
+APIs need a clear contract. **Commands** are typed data objects that represent
+the intent to do something. **Command handlers** receive those commands, load
+the aggregate from the event store, call the matching domain method, and
+persist the result.
 
 ## Defining Commands
 
@@ -15,7 +15,7 @@ Commands are imperative: they describe what we want to happen.
 --8<-- "guides/getting-started/es-tutorial/ch03.py:commands"
 ```
 
-Notice the naming convention:
+Commands and events follow different naming conventions:
 
 - **Commands** use imperative verbs: `OpenAccount`, `MakeDeposit`,
   `MakeWithdrawal`.
@@ -45,18 +45,18 @@ The command handler follows a consistent pattern:
 2. **Call** the domain method with data from the command
 3. **Save** the aggregate back to the repository
 
-The handler is a thin coordinator. It does not contain business logic. Business
-logic lives in the aggregate (the `deposit()` and `withdraw()` methods we wrote
-in Chapter 2).
+The handler only runs these three steps. It does not contain business logic.
+The aggregate's methods contain the business logic (the `deposit()` and
+`withdraw()` methods we wrote in Chapter 2).
 
 !!! tip "current_domain"
     `current_domain` is a thread-local reference to the active domain.
     Inside handlers, it gives you access to repositories and other
     domain services without passing the domain around explicitly.
 
-## Processing Commands
+## Send commands to the domain
 
-The `domain.process()` method ties everything together:
+The `domain.process()` method routes each command to its command handler:
 
 ```python
 # fragment
@@ -74,7 +74,7 @@ Balance: $1350.00
 All checks passed!
 ```
 
-## How It Works
+## What happens when you call `domain.process()`?
 
 When you call `domain.process(OpenAccount(...))`, Protean:
 
@@ -82,7 +82,7 @@ When you call `domain.process(OpenAccount(...))`, Protean:
    `part_of` aggregate (`Account`)
 2. Calls the matching `@handle(OpenAccount)` method
 3. The handler creates the aggregate, raises events, and persists it
-4. Events are written to the event store
+4. Writes the events to the event store
 5. The command handler's return value is returned to the caller
 
 For now we configure synchronous processing:
@@ -92,13 +92,13 @@ For now we configure synchronous processing:
 --8<-- "guides/getting-started/es-tutorial/ch03.py:sync_config"
 ```
 
-In Chapter 8, we will switch to asynchronous processing where commands
-flow through a message broker.
+In Chapter 8, you will switch to asynchronous processing, where Protean sends
+commands through a message broker.
 
 ## Stream Categories
 
-Behind the scenes, events are organized into **streams**. Each
-aggregate instance has its own stream:
+Protean organizes events into **streams**. Each aggregate instance has its own
+stream:
 
 - `fidelis::account-{id}`: Events for a specific account
 - `fidelis::account`: The category stream containing all account events
@@ -111,7 +111,7 @@ Stream categories are derived from the aggregate's class name. You
 rarely need to think about them, but they become important when
 configuring subscriptions in Chapter 8.
 
-## What We Built
+## Review what you built
 
 - **Commands** (`OpenAccount`, `MakeDeposit`, `MakeWithdrawal`) that
   express intent with typed fields.
@@ -119,11 +119,12 @@ configuring subscriptions in Chapter 8.
 - The **`domain.process()`** pipeline that routes commands to handlers.
 - Synchronous processing for development.
 
-The domain now has a clean external contract: submit a command, and
-the system handles the rest. Next, we will add business rules that
-protect the aggregate from invalid state transitions.
+The domain now has a clean external contract: you submit a command, and Protean
+loads the aggregate, calls the domain method and saves the result. Next, we
+will add business rules that protect the aggregate from invalid state
+transitions.
 
-## Full Source
+## Read the full source
 
 ??? example "ch03.py, 194 lines"
 
@@ -131,6 +132,6 @@ protect the aggregate from invalid state transitions.
     --8<-- "guides/getting-started/es-tutorial/ch03.py:full"
     ```
 
-## Next
+## Go to the next chapter
 
 [Chapter 4: Business Rules That Never Break →](04-business-rules.md)

@@ -2,22 +2,21 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Every meaningful state change in a Protean application (persisting an
-aggregate, raising domain events, writing to the outbox) must happen
-atomically. Either all of it commits, or none of it does. The Unit of Work
-(UoW) is the mechanism that makes this guarantee.
+In a Protean application, every meaningful state change must happen atomically:
+persisting an aggregate, raising domain events, writing to the outbox. Either
+all of it commits, or none of it does. The Unit of Work (UoW) is the mechanism
+that makes this guarantee.
 
-In most application code you never interact with the UoW directly. The
-`@handle` decorator on command/event handler methods and the `@use_case`
-decorator on application service methods automatically wrap each invocation
-in a UoW. Understanding how it works is still important, because it determines
-when your changes are committed, what happens on failure, and how events reach
-the outside world.
+In most application code you never interact with the UoW directly. Two
+decorators automatically wrap each invocation in a UoW: `@handle` on
+command/event handler methods and `@use_case` on application service methods.
+You still need to know how the UoW works. The UoW decides when your changes are
+committed, what happens on failure, and how events reach the outside world.
 
 ## Who creates the UoW?
 
-You almost never need to create a UoW yourself. Protean's decorators handle it
-for you:
+You almost never need to create a UoW yourself. Protean's decorators create the
+UoW for you:
 
 | Decorator | Creates UoW? | Details |
 |-----------|-------------|---------|
@@ -38,24 +37,26 @@ provider the real `BEGIN`, appears at the **first repository access**. An
 invocation that reaches no repository therefore runs no transaction and holds no
 pooled connection.
 
-That is what lets a handler talk to an external system without paying for it: put
-the call in a method that persists nothing, and it costs only wall-clock time.
-A method that calls out *after* touching a repository holds row locks and a
-connection for the length of the call, and `protean check` reports it as
+A handler can therefore call an external system without holding a transaction
+or a pooled connection. Put the call in a method that persists nothing, and the
+call costs only wall-clock time. When a method calls out *after* touching a
+repository, it holds row locks and a connection for the length of the call.
+`protean check` reports such a method as
 [HANDLER_PERSISTS_AND_CALLS_OUT](../../reference/fitness-functions.md#handler-persists-and-calls-out).
-The check does not read `@use_case` methods, and it recognises only some calls
-as I/O, so a clean report is not proof (see [what the source checks
-cover](../../reference/cli/upgrade-check.md#what-the-source-checks-cover)).
-For how to split such a method, and the recipe for a multi-facet sync, see
-[Calling External Systems from
+The check does not read `@use_case` methods and recognises only some calls as
+I/O. A clean report is therefore not proof that no method calls out after
+persisting (see [what the source checks
+cover](../../reference/cli/upgrade-check.md#what-the-source-checks-cover)). For
+how to split such a method, and the recipe for a multi-facet sync, see [Calling
+External Systems from
 Handlers](../../patterns/calling-external-systems-from-handlers.md).
 
 The guarantee is about the invocation rather than the method body. A handler
 carrying `idempotent=True` reads its processed-message marker before the body
-runs, and when that marker store is DB-backed the read is a repository access,
-so the invocation opens a session before the body.
+runs. With a DB-backed marker store, that read is a repository access, so the
+invocation opens a session before the body.
 
-### Manual UoW
+### Create a UoW yourself
 
 For scripts, data migrations, shell sessions, and tests, you can create a UoW
 explicitly. The code must run with the domain active, for example inside
@@ -72,9 +73,9 @@ You can also use the imperative API:
 ```
 
 !!!note
-    The context manager form (`with UnitOfWork()`) is preferred. It handles
-    commit and rollback automatically and cannot accidentally leave a UoW
-    dangling.
+    The context manager form (`with UnitOfWork()`) is preferred. It commits on
+    a normal exit and rolls back on an exception, so it never leaves a UoW open
+    by mistake.
 
 ## `current_uow`
 
@@ -86,72 +87,76 @@ variable:
 ```
 
 This is a thread-local proxy backed by a context stack. The outermost `start()`
-(or `__enter__`) pushes its UoW onto the stack, and its `commit()` or `rollback()`
-pops it off. A nested UoW (one started while another is active) does not push: it
-joins the outermost UoW, so `current_uow` keeps pointing at that one (see
-[Nested Units of Work](#nested-units-of-work)).
+(or `__enter__`) pushes its UoW onto the stack, and its `commit()` or
+`rollback()` pops it off. A nested UoW (one started while another is active)
+does not push onto the stack. It joins the outermost UoW, so `current_uow`
+keeps pointing at that one (see [Nested Units of Work](#nested-units-of-work)).
 
-## Nested Units of Work
+## What happens when you nest Units of Work { #nested-units-of-work }
 
-A UnitOfWork started while another is already active on the same context is a
-participant in the outer one, not a new transaction. Protean does not use
-savepoints, so it joins the outermost UoW: it does not push onto the context
-stack, so every write, read, and event routes to the outermost UoW, and only that
-UoW commits or rolls back. A nested rollback rolls back the whole transaction.
+When you start a UnitOfWork while another is already active on the same
+context, the new UnitOfWork takes part in the outer one and opens no
+transaction of its own. Protean does not use savepoints, so the nested UoW
+joins the outermost UoW and does not push onto the context stack. Every write,
+read, and event routes to the outermost UoW, and only that UoW commits or rolls
+back. A nested rollback rolls back the whole transaction.
 
 ```python
 --8<-- "guides/change-state/unit-of-work/001.py:nested"
 ```
 
-The most common way this happens is composition: an application service
-(`@use_case`) called from within a command handler's UoW joins that handler's
-transaction instead of committing independently. That is intended, so the whole
-use case stays atomic.
+Nesting happens most often through composition: a command handler calls an
+application service (`@use_case`) inside its UoW. The application service then
+joins the handler's transaction and does not commit independently. That is
+intended, so the whole use case stays atomic.
 
-### Why joining, not independent inner transactions
+### Why does a nested UoW join the outer one?
 
-This means **independent inner transactions are not supported**: a nested UoW
-cannot commit or roll back on its own, and there is no savepoint to partially roll
-back to. That is a deliberate design decision, and it is worth understanding why.
+Protean **does not support independent inner transactions**: a nested UoW
+cannot commit or roll back on its own. There is also no savepoint to partially
+roll back to. Protean leaves out independent inner transactions on purpose, for
+the three reasons below.
 
-Independent inner transactions are a real database tool. A savepoint lets an inner
-scope roll back on its own; a separate (suspend-and-new) transaction lets an inner
-scope commit even if the outer later rolls back. Protean's Unit of Work supports
-neither, for three reasons:
+Independent inner transactions are a real database tool. A savepoint lets an
+inner scope roll back on its own. A separate (suspend-and-new) transaction lets
+an inner scope commit even if the outer later rolls back. Protean's Unit of
+Work supports neither, for three reasons:
 
 - **It is an infrastructure concern, not a domain one**: A savepoint or a
-  sub-transaction is a persistence-layer mechanism. The domain-layer Unit of Work
-  exists to keep one aggregate consistent for one use case, and the aggregate is
-  the consistency boundary. Sub-transactions do not belong at that layer.
-- **Uniformity across adapters**: Not every adapter can offer them: the Memory
-  adapter has no savepoints and Elasticsearch has no transactions at all. Exposing
-  savepoints would make a Unit of Work behave differently per adapter and break the
-  "write once, run on any adapter" promise.
-- **Simplicity, and it keeps your design honest**: There are no savepoint stacks or
-  partial-rollback rules to reason about: a Unit of Work is one transaction,
-  all-or-nothing. And when you find yourself reaching for an inner transaction, it
-  is usually a signal to re-examine the aggregate boundary rather than paper over
-  it, which keeps the model sustainable as it grows.
+  sub-transaction is a persistence-layer mechanism. The domain-layer Unit of
+  Work exists to keep one aggregate consistent for one use case. The aggregate
+  is the consistency boundary. Sub-transactions do not belong at that layer.
+- **Uniformity across adapters**: Not every adapter can offer savepoints or
+  sub-transactions: the Memory adapter has no savepoints and Elasticsearch has
+  no transactions at all. Exposing savepoints would make a Unit of Work behave
+  differently per adapter and break the "write once, run on any adapter"
+  promise.
+- **Simplicity, and it keeps your design honest**: You never reason about
+  savepoint stacks or partial-rollback rules, because a Unit of Work is one
+  transaction, all-or-nothing. And when you find yourself reaching for an inner
+  transaction, it is usually a signal to re-examine the aggregate boundary
+  rather than paper over it, which keeps the model sustainable as it grows.
 
 Note that Protean does not *forbid* nesting. Raising an error would break
-legitimate composition, like an application service called from a command handler.
-It *joins*, so the correct single-transaction behavior is automatic and an
-independent inner commit is not expressible. When you genuinely need the
-effect of an inner transaction, model it explicitly:
+legitimate composition, like an application service called from a command
+handler. A nested Unit of Work *joins* the outer one, so you get the correct
+single-transaction behavior automatically. You cannot express an independent
+inner commit. When you genuinely need the effect of an inner transaction, model
+it explicitly:
 
 - for cross-aggregate coordination, raise a domain event and let a separate
   handler (in its own UoW) react;
 - for a durable side-effect that must survive a rollback (an audit record, say),
   use the outbox or a write outside the UnitOfWork.
 
-One edge to know: a nested Unit of Work that fails dooms the whole transaction,
-even when your code catches the error. A common case is a handler that calls
-`domain.process(..., asynchronous=False)`, catches the exception the inner
-handler raised, and carries on. When the outer block then ends normally, its
-commit rolls everything back and raises that same exception, so the caller sees
-the real cause. An explicit `nested_uow.rollback()` with no exception does the
-same and raises `TransactionError`. To avoid this, let the exception propagate,
-or do the work that can fail outside the outer Unit of Work.
+If a nested Unit of Work fails, the whole transaction rolls back at commit,
+even with the error caught in your code. A common case: a handler calls
+`domain.process(..., asynchronous=False)`, catches the exception from the inner
+handler, and continues. The outer block then ends normally, and its commit
+rolls everything back. The commit raises that same exception, so the caller
+sees the real cause. An explicit `nested_uow.rollback()` with no exception does
+the same and raises `TransactionError`. To avoid this, let the exception
+propagate, or do the work that can fail outside the outer Unit of Work.
 
 See [ADR-0027](../../adr/0027-unit-of-work-is-a-real-transaction.md) for the
 rationale.
@@ -209,11 +214,11 @@ sequenceDiagram
    handler's exception as its `__cause__`. See
    [the 0.18 migration note](../../reference/migration/v0-18.md#a-synchronous-event-handlers-version-conflict-no-longer-reruns-the-command).
 
-7. **Clear events**: Events are cleared from the aggregates whose events
-   were gathered in step 1, so they are not re-processed. An aggregate that
-   was only read keeps its events on the instance.
+7. **Clear events**: The UoW clears the events gathered in step 1 from their
+   aggregates, so those events are not re-processed. An aggregate that was only
+   read keeps its events on the instance.
 
-## Rollback semantics
+## What happens on rollback
 
 When an exception is raised inside a UoW block:
 
@@ -224,48 +229,49 @@ When an exception is raised inside a UoW block:
 - **If commit itself fails**: The UoW rolls back all sessions and raises a
   `TransactionError` wrapping the original exception.
 
-- **Rollback scope**: Rollback reverses the database session changes. Events
-  that were gathered but not yet committed are discarded. The identity map
-  and message queue are cleared.
+- **What rollback undoes**: Rollback reverses the database session changes.
+  The UoW discards the events it gathered but has not yet committed. The
+  identity map and message queue are cleared.
 
 ```python
 --8<-- "guides/change-state/unit-of-work/002.py:rollback"
 ```
 
-## The identity map
+## What the identity map does
 
 The UoW maintains an **identity map**: one instance of each aggregate that it
 has loaded or saved during the current transaction. The identity map serves
 three purposes:
 
-1. **One instance per aggregate**: Inside a UoW, a `get()` or a query that
-   finds an aggregate already in the map returns that same instance, with any
-   changes made to it since. Two copies of one aggregate would each count from
-   the stored version, so saving the second would fail with
-   `ExpectedVersionError`. This is how the identity map in SQLAlchemy's
-   session and in Hibernate behaves. A second `get()` does not throw away
-   unsaved changes. To abandon a change, raise an exception so the UoW rolls
-   back. To read the stored state, read the aggregate in a new UoW.
+1. **One instance per aggregate**: Inside a UoW, when a `get()` or a query
+   finds an aggregate already in the map, the call returns that same instance,
+   with any changes made to it since. Two copies of one aggregate would each
+   count from the stored version, so saving the second would fail with
+   `ExpectedVersionError`. The identity map in SQLAlchemy's session and in
+   Hibernate also returns the one instance it already holds. A second `get()`
+   does not throw away unsaved changes. To abandon a change, raise an exception
+   so the UoW rolls back. To read the stored state, read the aggregate in a new
+   UoW.
 
-2. **Event collection**: At commit time, the UoW walks the identity map to
-   gather the events raised by the aggregates that `add()` saved. An
+2. **Collect events at commit**: At commit time, the UoW walks the identity map
+   to gather the events raised by the aggregates that `add()` saved. An
    aggregate's events are saved only when it is passed to `add()`. Its field
-   changes are saved only through `add()`, so an event saved without it
-   would record a change that never reached the database. For an
-   event-sourced aggregate, `add()` is also where its fact event is raised.
-   Events raised on an aggregate that was only read are not saved at commit,
-   and the UoW logs nothing about them. Removing an aggregate with
+   changes are saved only through `add()`. An event saved without `add()` would
+   record a change that never reached the database. For an event-sourced
+   aggregate, `add()` also raises the aggregate's fact event. At commit, the
+   UoW does not save events raised on an aggregate that was only read. The UoW
+   also logs nothing about those events. Removing an aggregate with
    `_dao.delete()` does not save its events either.
 
-   Call `add()` after the last change. `add()` writes the aggregate as it is
-   at that moment. If a method changes the aggregate after `add()`, call
-   `add()` again, or the change is not written while the event raised with
-   it is still saved at commit. An `add()` on an aggregate with no change
-   since it was read and no pending events writes nothing, so an event
-   raised after it is not saved.
+   Call `add()` after the last change. `add()` writes the aggregate as it is at
+   that moment. If a method changes the aggregate after `add()`, call `add()`
+   again. Otherwise the UoW does not write the change, but still saves the
+   event raised with it at commit. An `add()` writes nothing for an aggregate
+   with no pending events and no change since the read. The UoW then does not
+   save an event raised after that `add()`.
 
-3. **Per-provider tracking**: Aggregates are grouped by their database
-   provider, so the UoW can commit each provider's session independently.
+3. **Track aggregates per provider**: The UoW groups aggregates by their
+   database provider, so it can commit each provider's session independently.
 
 ## One transaction, one aggregate
 
@@ -302,30 +308,31 @@ sequenceDiagram
   Event Handler->>Repository: Persist aggregate B
 ```
 
-This pattern ensures that each aggregate is always persisted in its own
-transaction, preventing partial-update anomalies.
+With this pattern, each aggregate is always persisted in its own transaction. A
+failed transaction therefore cannot leave a partial update across two
+aggregates.
 
-## Multi-provider sessions
+## How the UoW commits across multiple providers
 
 When your domain uses multiple database providers (e.g., PostgreSQL for
-transactional data, Elasticsearch for search), the UoW manages a separate
-session for each provider. At commit time, each provider's session is committed
-independently. This means that a failure in one provider's commit does not
-roll back another provider's already-committed changes.
+transactional data, Elasticsearch for search), the UoW opens a separate session
+for each provider. At commit time, each provider's session is committed
+independently. This means that a failure in one provider's commit does not roll
+back another provider's already-committed changes.
 
-## Database transaction capabilities
+## How much transaction support each provider gives
 
 The UoW relies on the underlying database provider's transaction support.
 
 - **Full transactions** (e.g., PostgreSQL, SQLite): Changes are atomic, commit
   succeeds entirely or rolls back entirely.
-- **Simulated transactions** (e.g., Memory adapter in tests): The UoW manages
-  the identity map and event collection, but rollback does not undo persisted
+- **Simulated transactions** (e.g., Memory adapter in tests): The UoW keeps the
+  identity map and collects events. Rollback, however, does not undo persisted
   changes. A debug-level log message notes this limitation.
 - **No transaction support**: The UoW logs a warning and proceeds. Changes are
   persisted but not guaranteed to be atomic.
 
-## Optimistic concurrency
+## What happens on a version conflict
 
 When the event store detects a version conflict during commit (another
 transaction modified the same aggregate stream), the UoW raises an
@@ -338,25 +345,24 @@ with exponential backoff. Each retry runs in a new `UnitOfWork`, so the
 handler re-reads the aggregate at the latest version. Most version conflicts
 in a handler resolve this way without any manual intervention.
 
-A handler that runs inside an outer `UnitOfWork` does not retry. This happens
-when another handler or an application service processes a command
-synchronously, or when your code opens a `UnitOfWork` around
-`domain.process()`. The handler's `UnitOfWork` joins the outer one, so the
-failed attempt has already doomed the outer transaction. The conflict
-propagates instead. When the outermost caller is a `@handle` handler with
-version retry on, that handler re-runs the whole chain in a fresh
+A handler that runs inside an outer `UnitOfWork` does not retry. A handler runs
+inside an outer `UnitOfWork` in two cases: another handler or an application
+service processes a command synchronously, or your code opens a `UnitOfWork`
+around `domain.process()`. The handler's `UnitOfWork` joins the outer one, so
+the failed attempt has already marked the outer transaction for rollback. The
+conflict propagates instead. When the outermost caller is a `@handle` handler
+with version retry on, that handler re-runs the whole chain in a fresh
 `UnitOfWork`. An application service, a process manager or your own
 `UnitOfWork` has no retry, so its caller receives the `ExpectedVersionError`.
-For details, see
-[Version conflict
-auto-retry](../server/error-handling.md#version-conflict-auto-retry).
+For details, see [Version conflict
+auto-retry](../server/error-handling.md#retry-version-conflicts-automatically).
 
 For application services or direct `UnitOfWork` usage, you must handle
 `ExpectedVersionError` yourself. See
 [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md)
 for the three conflict categories and how to respond to each.
 
-## Errors during commit
+## What happens when a commit fails
 
 If the database commit fails for reasons other than version conflicts on the
 commit's own writes, the UoW raises a `TransactionError` with diagnostic
@@ -379,5 +385,5 @@ arrives as a `TransactionError`, with the `ExpectedVersionError` as its
 
     **Error handling:**
 
-    - [Error Handling](../server/error-handling.md#version-conflict-auto-retry): Automatic version conflict retry in async handlers.
+    - [Error Handling](../server/error-handling.md#retry-version-conflicts-automatically): Automatic version conflict retry in async handlers.
     - [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md): Classify version conflicts by business meaning.

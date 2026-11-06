@@ -1,13 +1,14 @@
-# Guides
+# Find the guide for your task
 
 Goal-oriented guides for building applications with Protean. Each guide
 covers a specific task with practical code examples.
 
-If you haven't already, start with
-[Hello, Protean!](./getting-started/hello.md) for a quick first taste, then
-work through the [Tutorial](./getting-started/tutorial/index.md) to build a
-complete application from scratch. These guides go deeper into each topic and
-serve as a reference you'll return to as your application grows.
+If you haven't already, start with [Hello,
+Protean!](./getting-started/hello.md) for a short first example. Then work
+through the [Tutorial](./getting-started/tutorial/index.md) to build a complete
+application from scratch. These guides cover each topic in more detail than the
+tutorial. You can come back to them as a reference while your application
+grows.
 
 ## Choose Your Path
 

@@ -1,9 +1,9 @@
-# Giving an Agent Domain Context
+# Give an agent domain context
 
 A coding agent working on your project needs to know your domain: the aggregate
 clusters, the commands and events, the handlers, the projections. There are two
-ways to give it that knowledge. This guide explains both and tells you which to
-reach for first.
+ways to give it that knowledge. This guide explains both and tells you which
+one to use first.
 
 ## Use the MCP server first
 
@@ -13,16 +13,16 @@ way. It exposes Protean's operations as tools an agent calls: `validate`,
 the installed domain, so the agent always reasons about the code that is
 actually there, at the version of Protean the project actually runs.
 
-Because the answers come from the domain itself, there is no copy to
-regenerate and commit, and no refresh step in your build. One thing to know:
-the server imports your domain modules on the first call and Python holds them
-in memory for the life of that process, so a server that is already running
-keeps answering from the version it imported. Restart it after you change the
-source, and the next `introspect` reflects the change.
+Because the answers come from the domain itself, there is no copy to regenerate
+and commit, and no refresh step in your build. The server imports your domain
+modules on the first call, and Python holds them in memory for the life of that
+process. A running server therefore keeps answering from the version it first
+imported. After you change the source, restart the server, and the next
+`introspect` reflects the change.
 
-Register the server in a `.mcp.json` file and point your agent at it. The
-[`protean mcp` reference](../reference/cli/runtime/mcp.md) covers installation,
-transports, and registration.
+Register the server in a `.mcp.json` file. Then configure your agent to use the
+server. The [`protean mcp` reference](../reference/cli/runtime/mcp.md) covers
+installation, transports, and registration.
 
 ## When a committed snapshot makes sense
 
@@ -33,10 +33,10 @@ clusters with their commands, events, and handlers, and the projections. You
 commit that file, and the agent reads it like any other file in the repository.
 
 Know the trade-off before you choose this path. A committed file is a copy. It
-was true when you generated it, and it goes stale the moment the domain moves
-ahead of it. The MCP server does not have this problem, because it never holds a
-copy. So use the snapshot only when the agent cannot use MCP, and put a drift
-check in place so a stale file does not pass unnoticed.
+matches the domain when you generate it. It stops matching as soon as you
+change the domain. The MCP server does not have this problem, because it never
+holds a copy. So use the snapshot only when the agent cannot use MCP, and put a
+drift check in place so a stale file does not pass unnoticed.
 
 ## Keeping the snapshot fresh
 
@@ -56,19 +56,20 @@ domain_snapshot = { path = "llms.txt", domain = "src/my_app/domain.py" }
 
 `domain` takes the same value `--domain` takes. A project made by `protean new`
 keeps the domain in `src/<package>/domain.py` and leaves the package's
-`__init__.py` empty, so name the file: `domain = "my_app"` there points at a
-package with no domain in it and the command stops with a load error.
+`__init__.py` empty. In such a project, name the file, because `domain =
+"my_app"` points at a package with no domain in it and the command stops with a
+load error.
 
-Then regenerate with `protean docs generate --type=llms` and check with
-`protean docs generate --type=llms --check`.
+Then regenerate the snapshot with `protean docs generate --type=llms`. Check it
+with `protean docs generate --type=llms --check`.
 
-The path is read relative to the file that declares it, so both commands name
-the same snapshot from every directory that finds the config. The command looks
-in the directory you run it from and its two parents, so keep the key in a
-config file at the project root and run from the root or at most two levels
-below it.
+Each command reads the path relative to the config file that declares it. Both
+commands therefore name the same snapshot from every directory where the
+command finds the config. The command looks for the config in the directory you
+run it from and in its two parents. Keep the key in a config file at the
+project root, and run the command from the root or at most two levels below it.
 
-### A pre-commit recipe
+### Check the snapshot in a pre-commit hook
 
 To fail a commit when the snapshot is stale, wire the check as a local
 [pre-commit](https://pre-commit.com) hook. This is a recipe you choose to add;
@@ -86,7 +87,7 @@ repos:
         pass_filenames: false
 ```
 
-### A CI recipe
+### Check the snapshot in a CI step
 
 To fail a build when the snapshot is stale, run the same check as a CI step. It
 exits non-zero on drift, so the job fails on its own.

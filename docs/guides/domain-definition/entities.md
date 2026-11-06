@@ -7,19 +7,19 @@ They are usually composed of two kinds of elements - those with unique
 identities (**Entities**) and those without (**Value Objects**).
 
 Entities represent unique objects in the domain model just like Aggregates, but
-they don't manage other objects. Just like Aggregates, Entities are identified
-by unique identities that remain the same throughout its life - they are not
-defined by their attributes or values. For example, a passenger in the airline
-domain is an Entity. The passenger's identity remains the same across multiple
-seat bookings, even if her profile information (name, address, etc.) changes
-over time.
+they don't own the lifecycle of other objects. Just like Aggregates, Entities
+are identified by unique identities that remain the same throughout their life.
+Their attributes or values do not define them. For example, a passenger in the
+airline domain is an Entity. The passenger's identity remains the same across
+multiple seat bookings, even if her profile information (name, address, etc.)
+changes over time.
 
 !!!note
     In Protean, Aggregates are actually entities that have taken on the
     additional responsibility of managing the lifecycle of one or more
     related entities.
 
-## Definition
+## Define an entity
 
 An Entity is defined with the `Domain.entity` decorator:
 
@@ -27,8 +27,8 @@ An Entity is defined with the `Domain.entity` decorator:
 --8<-- "guides/domain-definition/007.py:full"
 ```
 
-An Entity has to be associated with an Aggregate. If `part_of` is not
-specified while defining the entity, you will see an `IncorrectUsageError`:
+An Entity has to be associated with an Aggregate. If you define the entity
+without `part_of`, you will see an `IncorrectUsageError`:
 
 ```pycon
 >>> @publishing.entity
@@ -46,7 +46,7 @@ throw `IncorrectUsageError`.
 However, entities *can* enclose other entities using `HasOne` and `HasMany`
 relationships, as described in the [Associations](#associations) section below.
 
-## Configuration
+## Configure an entity
 
 Similar to an aggregate, an entity's behavior can be customized by passing
 options to its decorator. Protean does not read an inner `class Meta:` on an
@@ -93,7 +93,7 @@ aggregates:
 
 See [Declaring Indexes](indexes.md) for the full workflow.
 
-## Custom Database Models
+## Use a custom database model
 
 Protean builds the entity's database model from its fields. To control the
 mapping yourself, register your own model with
@@ -114,10 +114,11 @@ the concrete subclasses:
 The base class is not registered with the domain and gets no table of its own.
 It must subclass `BaseEntity`: a plain mixin class contributes no fields.
 
-## Entity Lifecycle
+## Which lifecycle states does an entity go through?
 
-Protean tracks the lifecycle state of every entity instance internally. The
-state determines what happens when the aggregate is persisted:
+Protean tracks the lifecycle state of every entity instance internally. When
+you persist the aggregate, Protean uses each entity's state to choose the
+database action:
 
 | State | Property | Meaning |
 |---|---|---|
@@ -126,9 +127,9 @@ state determines what happens when the aggregate is persisted:
 | **Changed** | `_state.is_changed` | Modified since last persistence. Updated when the aggregate is next persisted with `repository.add()`. |
 | **Destroyed** | `_state.is_destroyed` | Marked for deletion. Deleted when the aggregate is next persisted with `repository.add()`. |
 
-State transitions happen automatically. You don't need to manage them directly.
-Creating an entity marks it as *new*; modifying an attribute marks it as
-*changed*; removing it from a collection marks it as *destroyed*; persisting
+State transitions happen automatically. You don't need to set the state
+yourself. Creating an entity marks it as *new*; modifying an attribute marks it
+as *changed*; removing it from a collection marks it as *destroyed*; persisting
 the aggregate marks surviving entities as *persisted*.
 
 ## Raising Events from Entities
@@ -144,19 +145,19 @@ not on the entity itself. The root is the owner of the event stream.
 The event must be associated with the aggregate (`part_of=Order`), not
 with the entity. Access the owning aggregate via `self._owner`.
 
-## Invariants
+## Enforce invariants on an entity
 
-Entities support the same invariant mechanism as aggregates, use `@invariant.post` to enforce
-rules that must always hold:
+Entities support the same invariant mechanism as aggregates. Use
+`@invariant.post` to enforce rules that must always hold:
 
 ```python
 --8<-- "guides/domain-definition/entities/004.py:invariant"
 ```
 
-Entity invariants are checked whenever entity state changes. They work
-alongside aggregate-level invariants. Both must pass for the aggregate cluster
-to be in a valid state. See the [Invariants](../domain-behavior/invariants.md)
-guide for details.
+Entity invariants are checked whenever entity state changes. Entity invariants
+apply in addition to aggregate-level invariants. Both must pass for the
+aggregate cluster to be in a valid state. See the
+[Invariants](../domain-behavior/invariants.md) guide for details.
 
 ## The `defaults()` Hook
 
@@ -167,11 +168,11 @@ other field values:
 --8<-- "guides/domain-definition/entities/005.py:defaults"
 ```
 
-`defaults()` runs during initialization, after all field values have been
-set but before invariants are checked. Aggregates, entities, and value
-objects all support this hook.
+`defaults()` runs during initialization, between setting all field values and
+checking invariants. Aggregates, entities, and value objects all support this
+hook.
 
-## Persistence
+## Persist entities through their aggregate
 
 Entities are always persisted as part of their parent aggregate's
 transaction. In relational databases (SQLAlchemy provider), each entity
@@ -203,9 +204,9 @@ The conversion itself needs no handler. With `OrderItem` as defined above:
 ```
 
 `from_value_object()` calls `vo.to_dict()` and constructs an entity instance.
-Identity fields with `None` values are stripped so that auto-generated defaults
-kick in. This means each converted entity gets a fresh identity rather than
-failing validation.
+Protean strips identity fields with `None` values, so the auto-generated
+defaults apply. This means each converted entity gets a fresh identity rather
+than failing validation.
 
 ## Associations
 
@@ -213,7 +214,8 @@ Entities can enclose other entities within them using `HasOne` and `HasMany` rel
 
 ### Automatic Reference Fields
 
-When an entity is associated with an aggregate, Protean automatically creates a `Reference` field that points back to the parent:
+For an entity associated with an aggregate, Protean automatically creates a
+`Reference` field pointing back to the parent:
 
 ```python
 --8<-- "guides/domain-definition/entities/008.py:automatic_reference"
@@ -222,7 +224,8 @@ When an entity is associated with an aggregate, Protean automatically creates a 
 ### Explicit Reference Fields
 
 You can also define the reference field yourself, for example to rename its
-shadow field. Tell the aggregate's `HasMany` about the new name with `via`:
+shadow field, the attribute that holds the parent's identity. Tell the
+aggregate's `HasMany` about the new name with `via`:
 
 ```python
 --8<-- "guides/domain-definition/entities/009.py:explicit_reference"
@@ -232,7 +235,7 @@ A `Reference` field may point only to the entity's parent: the aggregate root,
 or the parent entity when the entity is nested. To link to a different
 aggregate, store its identity in an `Identifier` field.
 
-### Navigation Between Entities
+### Navigate from an entity to its parent
 
 Reference fields enable navigation from child entities back to their parent aggregate:
 
@@ -242,7 +245,7 @@ Reference fields enable navigation from child entities back to their parent aggr
 
 For comprehensive relationship documentation, see [Expressing Relationships](./relationships.md) and [Association Fields](../../reference/fields/association-fields.md).
 
-## Common Errors
+## Which errors does Protean raise for entities?
 
 | Exception | When it occurs |
 |---|---|

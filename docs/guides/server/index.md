@@ -1,13 +1,13 @@
 # Run the Server
 
 Protean's async processing server is the background process that runs event
-handlers, command handlers, and projectors. Here is how to start it,
-configure it, and operate it.
+handlers, command handlers, and projectors. You can start the server from the
+CLI or from your own Python code.
 
 For the conceptual architecture behind the server, see
 [Async Processing](../../concepts/async-processing/index.md).
 
-## CLI Command
+## Use the `protean server` command
 
 Start the server using the `protean server` command:
 
@@ -15,7 +15,7 @@ Start the server using the `protean server` command:
 protean server [OPTIONS]
 ```
 
-### Options
+### Choose the command options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -25,7 +25,7 @@ protean server [OPTIONS]
 | `--reload` | Auto-reload on Python source changes (development only) | `False` |
 | `--help` | Show help message | |
 
-## Database Setup
+## Set up the database first
 
 Before starting the server, ensure your database tables are created:
 
@@ -47,7 +47,7 @@ protean db truncate --domain=my_domain --yes  # Skip confirmation
 
 See [Database Commands](../../reference/cli/data/database.md) for the full reference.
 
-## Basic Usage
+## Run the server in common setups
 
 ### Starting the Server
 
@@ -65,7 +65,7 @@ protean server --domain=my_package.my_domain
 protean server --domain=my_domain:custom_domain
 ```
 
-### Multiple Workers
+### Run multiple workers
 
 Run multiple Engine processes from a single command using `--workers`:
 
@@ -92,21 +92,22 @@ shared memory is needed between workers.
 For the full multi-worker guide including architecture, coordination details,
 and deployment patterns, see [Multi-Worker Mode](../../reference/server/supervisor.md).
 
-### Domain Discovery
+### How does the server find your domain?
 
 The server discovers your domain in this order:
 
-1. **Environment variable**: `PROTEAN_DOMAIN` if set
+1. The `PROTEAN_DOMAIN` environment variable, if set
 2. **--domain parameter**: Path or module specified
-3. **Current directory**: Looks for `domain.py` or `subdomain.py`
+3. The current directory, where the server looks for `domain.py` or
+   `subdomain.py`
 
-Within a module, it looks for:
+Within a module, the server looks for:
 
 1. Variable named `domain` or `subdomain`
 2. Any variable that is a `Domain` instance
 3. Raises error if multiple instances found
 
-### Debug Mode
+### Turn on debug logging
 
 Enable verbose logging for troubleshooting with the global `--log-level DEBUG`
 flag:
@@ -122,7 +123,7 @@ Debug logging includes:
 - Position updates
 - Configuration resolution
 
-### Hot Reload in Development
+### Reload on code changes during development
 
 Pass `--reload` to watch the working directory and restart the Engine
 on every Python source change:
@@ -133,17 +134,18 @@ protean server --domain=my_domain --reload
 ```
 
 An outer process watches the working directory with
-[`watchfiles`](https://watchfiles.helpmanual.io/), using `watchfiles.PythonFilter` (which skips `.pyc`, `__pycache__`, `.venv`,
-and `node_modules`), plus an extra exclusion for the `.protean/` cache directory, and replaces the
-inner Engine worker when sources change. `--reload` requires the `dev` extra (`pip install "protean[dev]"`) and
-is incompatible with `--workers > 1`.
+[`watchfiles`](https://watchfiles.helpmanual.io/) and replaces the inner Engine
+worker when sources change. It uses `watchfiles.PythonFilter` to skip `.pyc`,
+`__pycache__`, `.venv`, and `node_modules`, and it also excludes the
+`.protean/` cache directory. `--reload` requires the `dev` extra (`pip install
+"protean[dev]"`). You cannot combine `--reload` with `--workers > 1`.
 
 !!! warning "Never enable `--reload` in production"
-    Hot reload spawns a second Python process and restarts
-    unconditionally on file changes. It is a development ergonomics
-    feature, not a deployment strategy.
+    Hot reload spawns a second Python process. It restarts the Engine on every
+    file change, with no condition. It is a development ergonomics feature, not
+    a deployment strategy.
 
-### Test Mode
+### Run in test mode
 
 Test mode processes available messages and exits, useful for integration tests:
 
@@ -154,17 +156,19 @@ protean server --domain=my_domain --test-mode
 In test mode, the server:
 
 1. Starts all subscriptions and processors
-2. Processes messages, including the ones handlers raise along the way
-3. Shuts down as soon as no subscription finds more work, or after about a
-   second if some subscription keeps finding work. A partitioned stream
-   subscription cannot report that it is idle, so with one present the server
-   always waits the full second. The server does not wait for a broker
-   to redeliver a nacked message.
+2. Processes messages, including the messages that handlers raise while
+   processing
+3. Shuts down as soon as no subscription finds more work. If a subscription
+   keeps finding work, or a partitioned stream subscription is present, the
+   server shuts down after about a second. A partitioned stream subscription
+   cannot report that it is idle, so with one present the server always waits
+   the full second. The server does not wait for a broker to redeliver a nacked
+   message.
 
 For examples of using test mode in your test suite, see
 [Integration Tests](../testing/integration-tests.md).
 
-## Programmatic Usage
+## Start the engine from Python code
 
 You can also start the engine programmatically. Here `domain` is your
 `Domain` object:
@@ -173,13 +177,13 @@ You can also start the engine programmatically. Here `domain` is your
 --8<-- "guides/server/index/001.py:engine"
 ```
 
-### With Custom Options
+### Pass custom options
 
 ```python
 --8<-- "guides/server/index/001.py:options"
 ```
 
-## Signal Handling
+## How does the server respond to shutdown signals?
 
 The server handles shutdown signals gracefully:
 
@@ -197,7 +201,7 @@ During graceful shutdown:
 4. Clean up resources
 5. Exit with appropriate code
 
-## Exit Codes
+## What do the exit codes mean?
 
 | Code | Meaning |
 |------|---------|

@@ -1,18 +1,18 @@
-# Migrating Between Architectures
+# Migrate between architectures
 
 Protean is designed so you can start simple and evolve your architecture
 incrementally. This guide shows the concrete code transformations for each
 migration step: **DDD to CQRS** and **CQRS to Event Sourcing**.
 
-Each migration is additive. You layer new capabilities on top of what already
-works, without rewriting from scratch.
+Each migration is additive. You add new capabilities to the code that already
+works, without rewriting that code.
 
 ---
 
-## DDD to CQRS
+## Move from DDD to CQRS
 
-The core shift: replace direct application service calls with explicit
-commands routed through `domain.process()`, and add read-optimized
+The main change is to replace direct application service calls with explicit
+commands routed through `domain.process()`. You also add read-optimized
 projections.
 
 ### Step 1: Extract commands from application service methods
@@ -94,7 +94,7 @@ Replace direct aggregate queries with purpose-built projections.
 --8<-- "guides/pathways/migrating-between-architectures/002.py:projection"
 ```
 
-### Migration checklist
+### Check off each step of the CQRS migration
 
 - [ ] Identify application service methods that change state
 - [ ] Create a command for each state-changing method
@@ -107,7 +107,7 @@ Replace direct aggregate queries with purpose-built projections.
 
 ---
 
-## CQRS to Event Sourcing
+## Move from CQRS to Event Sourcing
 
 The core shift: instead of persisting aggregate state directly, persist the
 events that produce that state. The aggregate reconstructs itself by
@@ -134,8 +134,8 @@ from events. These are the **only** place where state changes happen.
 ```
 
 The pattern is: **command method raises an event, `@apply` method mutates
-state**. This separation ensures that replaying events from the store
-produces the same aggregate state.
+state**. Because only the `@apply` method changes state, replaying events from
+the store produces the same aggregate state.
 
 `place()` is a class method. `_create_new()` gives the new order only its
 identity, so the constructor's required-field check does not run before the
@@ -144,9 +144,9 @@ replay starts from a blank aggregate.
 
 ### Step 3: Update command handlers
 
-Command handlers for event-sourced aggregates use the same pattern, the
-repository automatically loads from the event store and saves by appending
-events.
+Command handlers for event-sourced aggregates use the same pattern as the CQRS
+command handlers in Step 1. The repository automatically loads the aggregate
+from the event store and saves it by appending events.
 
 ```python
 --8<-- "guides/pathways/migrating-between-architectures/005.py:command"
@@ -177,7 +177,7 @@ See the
 [Architecture Decision](../../concepts/architecture/architecture-decision.md)
 guide for criteria on which aggregates benefit from event sourcing.
 
-### Migration checklist
+### Check off each step of the event sourcing migration
 
 - [ ] Identify aggregates that need audit trails or temporal queries
 - [ ] Add `event_sourced=True` to those aggregates
@@ -190,7 +190,7 @@ guide for criteria on which aggregates benefit from event sourcing.
 
 ---
 
-## General advice
+## Follow these practices in any migration
 
 **Migrate one aggregate at a time.** Don't try to move your entire domain in
 one step. Pick the aggregate that benefits most from the next architecture
@@ -200,8 +200,8 @@ level and migrate it. The rest can follow later, or stay where they are.
 to verify independently. Run your tests after each step, not just at the
 end.
 
-**The tutorials show the full picture.** If you want to see each architecture
-in a complete application context:
+**The tutorials build complete applications.** If you want to see each
+architecture in a complete application context:
 
 - [CQRS Tutorial](../getting-started/tutorial/index.md): 22 chapters
   building a bookshelf app from DDD through CQRS

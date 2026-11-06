@@ -5,14 +5,14 @@ rewrites them), but the code that reads them keeps changing. A field gets
 renamed, a new attribute is added, an old event is retired. Months later your service still has to decode events written by last
 year's code, and a downstream consumer still expects last year's shape.
 
-Protean gives you a complete toolkit for evolving an event safely from `v1` to
-`vN` without breaking the events already on disk or the consumers already
-running. This guide walks the whole lifecycle with **one running example** (an
-`OrderPlaced` event that grows up over two rounds of change) and shows the
-tooling at each step. Everything here is real output from the domain shown; you
-can follow along without writing a line of code.
+Protean gives you the tools to change an event from `v1` to `vN` without
+breaking the events already on disk or the consumers already running. The
+sections below follow **one running example**, an `OrderPlaced` event that
+changes in two rounds, and show the Protean tool for each change. Every output
+on this page comes from running the domain shown. You can follow along without
+writing any code.
 
-## The example: an `OrderPlaced` that grows up
+## Follow one `OrderPlaced` event through three versions
 
 ```mermaid
 flowchart LR
@@ -29,9 +29,9 @@ Here is where we start, `OrderPlaced` at its original, implicit **version 1**:
 --8<-- "guides/evolving-events/001.py:v1"
 ```
 
-Over the rest of this guide we evolve it to version 3. Here is where we are
-headed, the version-3 event; the sections below explain each change and add the
-upcasters that make it work:
+Over the rest of this guide we evolve it to version 3. This is the version-3
+event that the guide ends with. The sections below explain each change and add
+the upcasters that version 3 needs:
 
 ```python
 --8<-- "guides/evolving-events/002.py:v3"
@@ -39,30 +39,30 @@ upcasters that make it work:
 
 ## Add a field with a default (a backward-compatible change)
 
-The safest change is adding a field that carries a **default**. Old events that
-were written without it still decode, the default fills the gap. We add a
-`currency`:
+The safest change is adding a field that carries a **default**. Protean still
+decodes old events written without the field and supplies the default as its
+value. We add a `currency`:
 
 ```python
 # fragment
 currency = String(default="USD")
 ```
 
-A field with a default is **optional** in Protean (the default supplies the
-value when it is absent), and adding it is **fully compatible** under a schema
-registry's rules: a new-schema reader supplies the default for old data, and an
-old-schema reader ignores the added field. Protean records the default in the
-generated JSON Schema; in Avro, the field becomes a nullable, null-first union
-(Avro's mechanism for "may be absent").
+In Protean, a field with a default is **optional**: Protean uses the default
+when the field is absent. Under a schema registry's rules, adding such a field
+is **fully compatible**: a new-schema reader supplies the default for old data,
+and an old-schema reader ignores the added field. Protean records the default
+in the generated JSON Schema. In the Avro schema, the field becomes a nullable,
+null-first union (Avro's mechanism for "may be absent").
 
 !!! note "Schema compatibility vs. Protean's runtime"
     "An old reader ignores the added field" is a property of the *emitted
-    schema*, what a Kafka/registry consumer sees, and what the compatibility
-    verdict below measures. Protean's own runtime deserialization is **strict**
-    by default (`extra="forbid"`): decoding a stored payload that carries a field the
-    current class does not know raises unless you opt into [lenient
-    mode](#read-legacy-payloads-leniently). A field you *added* is part of the
-    current schema, so it decodes fine.
+    schema*. The emitted schema is what a Kafka/registry consumer sees and what
+    the compatibility verdict below measures. Protean's own runtime
+    deserialization is **strict** by default (`extra="forbid"`), and it raises
+    an error on a stored payload with a field unknown to the current class. To
+    skip such fields, opt into [lenient mode](#read-legacy-payloads-leniently).
+    A field you *added* is part of the current schema, so it decodes fine.
 
 !!! tip "Rule of thumb"
     Adding an **optional** field, or a **field with a default**, never breaks
@@ -71,10 +71,9 @@ generated JSON Schema; in Avro, the field becomes a nullable, null-first union
 
 ## Rename a field with `renamed_from`
 
-Renames are where naïve evolution goes wrong: a plain rename looks like
-"remove the old field, add a new one", which breaks both directions. Declare the
-rename instead, with `renamed_from`, and Protean treats it as a
-operation:
+A plain rename breaks compatibility in both directions, because it looks like
+"remove the old field, add a new one". Declare the rename instead, with
+`renamed_from`, and Protean treats it as a operation:
 
 ```python
 # fragment
@@ -85,9 +84,10 @@ customer = String(required=True, renamed_from=["customer_name"])
 
 - **At read time**, Protean resolves a stored `customer_name` into `customer`,
   so old payloads deserialize into the new field.
-- **In the emitted Avro schema**, the field carries an `aliases` entry, so an
-  external consumer (Kafka, a schema registry) reading with the new schema also
-  resolves the old name on the wire, not just inside Protean.
+- **In the emitted Avro schema**, the field carries an `aliases` entry. With
+  that entry, an external consumer (Kafka, a schema registry) that reads with
+  the new schema also resolves the old name on the wire, outside Protean as
+  well as inside it.
 
 The compatibility checker reads `renamed_from` and reports a **rename**, not a
 remove-plus-add (more on that [below](#check-compatibility-protean-ir-diff)).
@@ -95,14 +95,15 @@ remove-plus-add (more on that [below](#check-compatibility-protean-ir-diff)).
 ## Bump the version and write upcasters
 
 A rename is handled by `renamed_from` alone, shown above, with no version bump.
-Structural changes that weak schema cannot express (a newly required field, a
-type change, a field split) need the version bumped so stored events can be
-transformed on read. Set `__version__` and register an **upcaster** for each hop.
-An upcaster can only supply a value it computes from the old payload; a newly
-required field with no such value needs a new event type. An upcaster transforms the *stored payload* on read, in memory, from one
-version to the next, leaving the stored event unchanged; Protean chains them, so
-a `v1` payload is walked all the way up to the current `v3` before your handler
-sees it.
+Weak schema cannot express some structural changes (a newly required field, a
+type change, a field split). For those changes, bump the version so that an
+upcaster transforms stored events on read. Set `__version__`. Then register an
+**upcaster** for each hop from one version to the next. An upcaster can only
+supply a value it computes from the old payload; a newly required field with no
+such value needs a new event type. An upcaster transforms the *stored payload*
+on read, in memory, from one version to the next, and leaves the stored event
+unchanged. Protean chains upcasters: it converts a `v1` payload step by step to
+the current `v3` before your handler receives it.
 
 The running example bumps `OrderPlaced` to show this chaining. Its rename and
 defaulted fields would load under weak schema without a bump, so the version bump
@@ -112,43 +113,48 @@ here illustrates the mechanism; those two changes do not require it.
 --8<-- "guides/evolving-events/002.py:upcasters"
 ```
 
-Protean validates the chain at `domain.init()`: a *broken* chain, upcasters that exist but
-leave no path to the current version (a gap, a cycle, a duplicate edge), raises
-`ConfigurationError` immediately. If you bump `__version__` and forget the upcasters entirely, `domain.init()` still
-succeeds, but `protean check` reports an `UPCASTER_GAP` warning at build time so you catch
-it before a stored `v1` payload fails to read in production. See the [Event
-Upcasting guide](consume-state/event-upcasting.md) for the full mechanism.
+Protean validates the upcaster chain at `domain.init()`. A *broken* chain
+(upcasters that exist but leave no path to the current version, such as a gap,
+a cycle or a duplicate edge) raises `ConfigurationError` immediately. If you
+bump `__version__` and write no upcasters, `domain.init()` still succeeds. At
+build time, `protean check` reports an `UPCASTER_GAP` warning, and you can fix
+the gap before a stored `v1` payload fails to read in production. See the
+[Event Upcasting guide](consume-state/event-upcasting.md) for the full
+mechanism.
 
 !!! note
     Upcasters run on replayed events, not on snapshots. A snapshot holds
-    aggregate state, so changing an event's schema leaves the snapshot usable as
-    long as the aggregate's own fields still construct from it. When they no
-    longer do, Protean discards the snapshot on load and rebuilds the aggregate
-    by replaying its event stream. See [Snapshots and schema
-    changes](change-state/snapshots.md#snapshots-and-schema-changes).
+    aggregate state, so a change to an event's schema leaves the snapshot
+    usable. The snapshot stays usable only while the aggregate's own fields
+    still construct from it. When they no longer do, Protean discards the
+    snapshot on load and rebuilds the aggregate by replaying its event stream.
+    See [Snapshots and schema
+    changes](change-state/snapshots.md#what-happens-to-a-snapshot-when-the-schema-changes).
 
 ## Deprecate and supersede an old event
 
-Sometimes an event is replaced wholesale rather than versioned. Mark it
-`deprecated` and point `superseded_by` at its replacement:
+Sometimes an event is replaced wholesale rather than versioned. Set two options
+on the old event, `deprecated` and a `superseded_by` that points at its
+replacement:
 
 ```python
 --8<-- "guides/evolving-events/002.py:deprecated"
 ```
 
-Raising a deprecated event emits a `DeprecationWarning` at runtime that names the
-replacement, so callers still producing the old event find out. The deprecation
-metadata also flows into the IR, the event catalog, and the compatibility
-checker's deprecation-aware removal rules.
+When code raises a deprecated event, Protean emits a `DeprecationWarning` at
+runtime with the name of the replacement. Callers that still produce the old
+event see the warning. Protean also writes the deprecation metadata into the IR
+and the event catalog, and the compatibility checker reads it for its
+deprecation-aware removal rules.
 
 ## Read legacy payloads leniently
 
-By default Protean is **strict**: a stored payload with a field that no longer
-exists on the current event class raises a `DeserializationError`. That is the
-right default, a silent field drop hides typos. When you are deliberately
-reading old payloads that carry fields you have since removed, opt into lenient
-deserialization, which ignores unknown fields (and records what it dropped in
-event metadata for observability).
+By default Protean is **strict**: it raises a `DeserializationError` on a
+stored payload with a field missing from the current event class. That is the
+right default, a silent field drop hides typos. To deliberately read old
+payloads with fields you have since removed, opt into lenient deserialization.
+Lenient deserialization ignores unknown fields and records the dropped fields
+in event metadata for observability.
 
 Turn it on for the whole domain via the `lenient_deserialization` config key in
 `domain.toml`:
@@ -163,10 +169,10 @@ lenient_deserialization = true
 --8<-- "guides/evolving-events/003.py:lenient"
 ```
 
-Reach for lenience only for the read path of genuinely legacy data, for
-*structural* evolution, an upcaster is the precise tool.
+Use lenience only on the read path for genuinely legacy data. For *structural*
+evolution, an upcaster is the precise tool.
 
-## See the whole picture: `protean events catalog`
+## List every event with `protean events catalog`
 
 Once a domain has events at different versions, some deprecated, some with
 upcaster chains, it helps to see them all at once. `protean events catalog`
@@ -200,8 +206,8 @@ To publish contracts to an external registry, generate schemas from the IR.
 $ protean schema generate --domain ordering --format all
 ```
 
-The Avro schema shows the evolution machinery on the wire, note the `aliases` on the
-renamed `customer` field, which is what makes the rename backward-readable by an
+The Avro schema shows how the evolution appears on the wire. The `aliases`
+entry on the renamed `customer` field makes the rename backward-readable by an
 external Avro consumer:
 
 ```json title="OrderPlaced.v3.avsc"
@@ -261,10 +267,10 @@ full output tree and format details.
 
 ## Check compatibility: `protean ir diff`
 
-Finally, gate the change in CI. `protean ir diff` compares two IR snapshots
-(your committed baseline against the current domain) and reports an
-**Avro-style compatibility verdict** (`BACKWARD`, `FORWARD`, `FULL`, or `NONE`)
-matching the rules a schema registry enforces on the emitted Avro:
+Finally, gate the change in CI. `protean ir diff` compares two IR snapshots:
+your committed baseline and the current domain. It reports an **Avro-style
+compatibility verdict** (`BACKWARD`, `FORWARD`, `FULL`, or `NONE`) by the rules
+a schema registry enforces on the emitted Avro:
 
 ```console
 $ protean ir diff --left baseline.json --right current.json
@@ -274,20 +280,22 @@ Avro compatibility: BACKWARD
   breaks FORWARD: Type string changed for 'ordering.OrderPlaced': 'Ordering.OrderPlaced.v1' → 'Ordering.OrderPlaced.v3'
 ```
 
-`BACKWARD` is exactly right for this evolution: a consumer on the **new** schema
-can read **old** events, the Avro `aliases` entry resolves the renamed field on the
-wire, and the added fields are optional or defaulted. A consumer still on the
-**old** schema cannot yet read **new** events (it does not know the `customer` name),
-which is why `FORWARD` breaks. The verdict measures the emitted **Avro** schema, the
-same contract a registry enforces; Protean's **upcasters** do the equivalent
-job on its own event-store replay path, a separate layer. The line-by-line
-breakdown names which change breaks which direction, and under `--format json` the report
-carries a per-event breakdown under `avro_verdicts`. See the [Compatibility Checking
+`BACKWARD` is exactly right for this evolution: a consumer on the **new**
+schema can read **old** events, the Avro `aliases` entry resolves the renamed
+field on the wire, and the added fields are optional or defaulted. A consumer
+still on the **old** schema cannot yet read **new** events (it does not know
+the `customer` name), which is why `FORWARD` breaks. The verdict measures the
+emitted **Avro** schema, the same contract a registry enforces. Protean's
+**upcasters** do the equivalent job on Protean's own event-store replay path,
+which is a separate layer. The line-by-line breakdown names which change breaks
+which direction. Under `--format json`, the report carries a per-event
+breakdown under `avro_verdicts`. See the [Compatibility Checking
 guide](compatibility-checking.md) to wire this into pre-commit hooks and CI.
 
-## Putting it together
+## Pick the approach for each kind of change
 
-The ladder at a glance:
+The diagram below shows which of three approaches fits a change (weak schema,
+versioning with an upcaster, or an operator migration):
 
 --8<-- "diagrams/schema-evolution-ladder.md"
 
@@ -300,10 +308,10 @@ The ladder at a glance:
 | Retire an event | `deprecated=` + `superseded_by=` | deprecation-aware removal |
 | Read old payloads with dropped fields | `lenient_deserialization` (opt-in) | read-path escape hatch |
 
-The throughline: **declare** your evolution (`renamed_from`, `__version__`,
-`deprecated`, upcasters) rather than letting the diff infer it, then let
-`events catalog`, `schema generate`, and `ir diff` show you (and your registry,
-and your CI) exactly what changed and whether it is safe.
+**Declare** your evolution (`renamed_from`, `__version__`, `deprecated`,
+upcasters) so the diff does not have to infer it. Then let `events catalog`,
+`schema generate`, and `ir diff` show you (and your registry, and your CI)
+exactly what changed and whether it is safe.
 
 !!! seealso "See also"
     - [Event Upcasting](consume-state/event-upcasting.md): The upcaster mechanism in depth.

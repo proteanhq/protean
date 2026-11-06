@@ -2,10 +2,11 @@
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Commands carry intent, but someone needs to act on them. Command handlers are
-the "doers". They receive a command, load the right aggregate, call the
-appropriate domain method, and persist the result. They keep your aggregates
-free of infrastructure concerns and your API layer free of domain logic.
+A command carries intent. A command handler acts on that command. Command
+handlers carry out the work a command asks for. They receive a command, load
+the right aggregate, call the appropriate domain method, and persist the
+result. They keep your aggregates free of infrastructure concerns and your API
+layer free of domain logic.
 
 For background on how command handlers fit the CQRS architecture, see
 [Command Handlers concept](../../concepts/building-blocks/command-handlers.md).
@@ -18,7 +19,7 @@ Command Handlers are defined with the `Domain.command_handler` decorator:
 --8<-- "guides/change-state/007.py:full"
 ```
 
-### Decorator options
+### Set options on the decorator
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -57,13 +58,20 @@ looks up the `@handle`-decorated method that matches the command's type and
 invokes it. You never need to wire this routing manually. It is all derived
 from the `part_of` associations on the command and command handler.
 
-### Stream Category {#stream-category}
+### How a command handler gets its stream category {#stream-category}
 
-Command handlers automatically subscribe to commands in their associated aggregate's [stream category](../../concepts/async-processing/stream-categories.md). When a command is processed, it is routed to the appropriate handler based on the command's target aggregate and its stream category.
+Command handlers automatically subscribe to commands in their associated
+aggregate's [stream
+category](../../concepts/async-processing/stream-categories.md). When Protean
+processes a command, Protean routes it to the appropriate handler based on the
+command's target aggregate and its stream category.
 
 For example, if an `Order` aggregate has a stream category of `order`, its command handler will listen for commands on the `order:command` stream category. Commands are stored in streams following the pattern `<domain>::<stream_category>-<aggregate_id>`.
 
-Unlike event handlers, command handlers **cannot** override their stream category. The stream category is always derived from the `part_of` aggregate. This ensures that commands are always routed to the single handler responsible for the target aggregate.
+Unlike event handlers, command handlers **cannot** override their stream
+category. The stream category is always derived from the `part_of` aggregate.
+As a result, Protean always routes commands to the single handler responsible
+for the target aggregate.
 
 Learn more about stream categories and message routing in the [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
@@ -85,8 +93,9 @@ Learn more about stream categories and message routing in the [Stream Categories
     1. **Application Submits Command**: The application calls `domain.process(command)`,
     which enriches the command with metadata and writes it to the event store.
 
-    1. **Command is Stored**: The command is persisted to the event store before any
-    processing occurs, ensuring an audit trail exists even if the handler fails.
+    1. **Command is Stored**: Protean persists the command to the event store
+       before any processing occurs. An audit trail of the command exists even
+       if the handler fails.
 
     1. **Domain Dispatches to Handler**: The domain identifies the correct command
     handler based on the command's `part_of` aggregate and dispatches it.
@@ -101,11 +110,11 @@ Learn more about stream categories and message routing in the [Stream Categories
     1. **Command Handler Persists Aggregate**: The handler persists the modified
     aggregate back to the repository, committing changes within the Unit of Work.
 
-## Return Values from Command Handlers
+## Get a return value from a command handler
 
 Command handlers can optionally return values to the caller when processed synchronously. This behavior is determined by how the command is processed by the domain.
 
-### Synchronous Processing
+### Get the return value with synchronous processing
 
 When commands are processed synchronously, the command handler's return value is passed back to the caller. This is useful for:
 
@@ -145,10 +154,11 @@ command_processing = "sync"  # or "async"
 # ...
 ```
 
-When set to `"sync"`, every command is handled at once, except one submitted
-with `asynchronous=True` while a Unit of Work is active. That command runs after
-the Unit of Work commits, in its own Unit of Work. When set to `"async"`,
-commands are queued for the server unless submitted with `asynchronous=False`.
+When `command_processing` is set to `"sync"`, Protean handles every command at
+once. The exception is a command submitted with `asynchronous=True` while a
+Unit of Work is active. That command runs after the Unit of Work commits, in
+its own Unit of Work. When set to `"async"`, commands are queued for the server
+unless submitted with `asynchronous=False`.
 
 ## Idempotency in Handlers
 
@@ -165,7 +175,7 @@ This is useful for:
 - **Pass-through to external APIs**: Many services (Stripe, payment processors)
   accept idempotency keys natively. Passing the same key ensures end-to-end
   retry safety.
-- **Handler-level deduplication**: For additive operations (incrementing
+- **Deduplicate in the handler**: For additive operations (incrementing
   counters, adding items), the handler can check the key against a set of
   previously processed keys stored on the aggregate.
 
@@ -175,21 +185,20 @@ event-sourced aggregate strategies, see the
 
 ## Unit of Work
 
-Each command handler method runs within a `UnitOfWork` context, if the method completes
-successfully, all changes are committed; if an exception is raised, everything
-is rolled back.
+Each command handler method runs within a `UnitOfWork` context. If the method
+completes successfully, Protean commits all changes. If the method raises an
+exception, Protean rolls everything back.
 
 For details on how the Unit of Work pattern works, see the
 [Unit of Work](unit-of-work.md) guide.
 
 !!!note
-    A `UnitOfWork` context applies to objects in the aggregate cluster,
-    and not multiple aggregates. A Command Handler method can load multiple
-    aggregates to perform the business process, but should never persist more
-    than one at a time. Other aggregates should be synced eventually through
-    domain events.
+    A `UnitOfWork` context applies to objects in the aggregate cluster, and not
+    multiple aggregates. A Command Handler method can load multiple aggregates
+    to perform the business process, but should never persist more than one at
+    a time. Sync the other aggregates eventually through domain events.
 
-## Error Handling
+## Handle errors in command handlers
 
 Error handling differs between synchronous and asynchronous command processing:
 
@@ -212,7 +221,7 @@ You can define a `handle_error` class method in your command handler to handle e
 --8<-- "guides/change-state/command-handlers/003.py:handler"
 ```
 
-### How It Works
+### How `handle_error` works
 
 1. When an exception occurs in a command handler method, the Protean Engine catches it.
 2. The engine logs detailed error information including stack traces.
@@ -223,7 +232,9 @@ You can define a `handle_error` class method in your command handler to handle e
 
 ### Handling Errors in the Error Handler
 
-If an exception occurs within the `handle_error` method itself, the Protean Engine will catch that exception too, log it, and continue processing. This ensures that even failures in error handling don't crash the system.
+If an exception occurs within the `handle_error` method itself, the Protean
+Engine will catch that exception too, log it, and continue processing. As a
+result, the Protean Engine keeps running even when error handling fails.
 
 ```python
 # fragment
@@ -238,9 +249,9 @@ def handle_error(cls, exc: Exception, message):
         # The engine will continue processing regardless
 ```
 
-### Best Practices
+### How should you write an error handler?
 
-1. Keep error handlers simple, and avoid logic that might itself fail.
+1. Keep error handlers simple, with no logic that might itself fail.
 2. Use error handlers for logging, notification, and simple recovery.
 3. Don't throw exceptions from error handlers unless absolutely necessary.
 4. Consider enabling [transient-failure retries](#retrying-transient-failures)
@@ -257,22 +268,23 @@ per handler with `retries`:
 ```
 
 Each attempt opens its own Unit of Work, so a failed attempt is rolled back
-cleanly before the next one. A handler that runs inside an outer Unit of Work,
+cleanly before the next one. Some handlers run inside an outer Unit of Work,
 such as another handler or a use case that calls `domain.process()`
-synchronously, does not retry, and its own `retries` and `retry_exceptions`
-are not used there. Its exception propagates to the outermost handler, which
-re-runs the whole chain in a fresh Unit of Work when its own policy covers the
-exception. Otherwise the exception reaches the caller. Only genuinely transient exceptions are retried;
-by default `ConnectionError`, `TimeoutError`, and `SendError`. Narrow or widen
-the set with `retry_exceptions`:
+synchronously. Such a handler does not retry and ignores its own `retries` and
+`retry_exceptions`. Its exception propagates to the outermost handler. When the
+outermost handler's own policy covers the exception, the outermost handler
+re-runs the whole chain in a fresh Unit of Work. Otherwise the exception
+reaches the caller. Protean retries only the exceptions that count as
+transient, which by default are `ConnectionError`, `TimeoutError`, and
+`SendError`. Narrow or widen the set with `retry_exceptions`:
 
 ```python
 --8<-- "guides/change-state/command-handlers/005.py:handler"
 ```
 
-This is distinct from the version-conflict (OCC) retry that handles
-`ExpectedVersionError`; the two compose with independent attempt budgets.
-Transient retry is opt-in and disabled unless `retries` is set or
+Transient retry is separate from the version-conflict (OCC) retry for
+`ExpectedVersionError`. The two retries run together, each with its own attempt
+budget. Transient retry is opt-in and disabled unless `retries` is set or
 `server.transient_retry` is enabled. The same options work on
 `@domain.event_handler`. See
 [`server.transient_retry`](../../reference/configuration/index.md) for the
@@ -312,5 +324,8 @@ Key points:
     **Patterns:**
 
     - [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md): When to use which, with decision tree and comparison table.
-    - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping handlers thin by pushing logic into the domain model.
-    - [Command Idempotency](../../patterns/command-idempotency.md): Handling duplicate commands safely.
+    - [Thin Handlers, Rich
+      Domain](../../patterns/thin-handlers-rich-domain.md): Putting business
+      logic in the domain model, with little code in the handlers.
+    - [Command Idempotency](../../patterns/command-idempotency.md): Processing
+      a duplicate command without applying its change twice.

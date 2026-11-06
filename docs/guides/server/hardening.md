@@ -1,17 +1,17 @@
 # Harden the server for production
 
-Taking a Protean domain to production means a handful of operational steps:
-raising connection pools, exposing Kubernetes health probes, enabling DLQ
-maintenance, picking subscription profiles, emitting OpenTelemetry metrics,
-and shutting down gracefully. For the
-full catalogue of options, defaults, metric names, and profile values,
-see the [Server Hardening reference](../../reference/server/hardening.md).
+To take a Protean domain to production, you complete a few operational steps:
+raise connection pools, expose Kubernetes health probes, enable DLQ
+maintenance, pick subscription profiles, emit OpenTelemetry metrics, and shut
+down gracefully. For the full catalogue of options, defaults, metric names, and
+profile values, see the [Server Hardening
+reference](../../reference/server/hardening.md).
 
 ## Raise connection pool limits
 
-Out-of-the-box SQLAlchemy defaults (`pool_size = 5`, `max_overflow =
-10`) are sized for a single worker against a small database. Bump them
-before you go live:
+The SQLAlchemy default pool settings (`pool_size = 5`, `max_overflow = 10`) are
+sized for a single worker against a small database. Raise them before you go
+live:
 
 ```toml
 [databases.default]
@@ -37,10 +37,10 @@ URI = "${REDIS_URL}"
 max_connections = 50
 ```
 
-Run `protean check` before deploying to catch misconfigurations. A SQLAlchemy
-database configured below the production pool size is reported separately:
-`Domain.init()` logs a `LOW_POOL_SIZE` warning at startup, and `protean check`
-does not report it.
+Run `protean check` before deploying to catch misconfigurations.
+`Domain.init()` reports a SQLAlchemy database configured below the production
+pool size by logging a `LOW_POOL_SIZE` warning at startup. `protean check` does
+not report it.
 
 ### Size the pool against your database's ceiling
 
@@ -54,18 +54,18 @@ the configuration above (`pool_size = 10`, `max_overflow = 20`):
 
 If the same database also serves an API tier with its own pool, add those
 connections too. Compare the total against your database's `max_connections`
-setting and leave headroom for admin sessions, migrations, and read replicas.
-On PostgreSQL the default `max_connections` is `100`. Under-sizing the database
-is the more common failure than under-sizing Protean's pool.
+setting. Leave headroom for admin sessions, migrations, and read replicas. On
+PostgreSQL the default `max_connections` is `100`. Under-sizing the database is
+the more common failure than under-sizing Protean's pool.
 
 ## Expose health probes to Kubernetes
 
 ### Async engine (`protean server`)
 
-The engine embeds a lightweight HTTP server on port `8080` by default. It
-binds loopback (`127.0.0.1`), so to reach the probes from a Kubernetes
-liveness/readiness check (which connects over the pod network, not
-loopback) set `host = "0.0.0.0"`:
+The engine embeds a lightweight HTTP server on port `8080` by default. The
+server binds loopback (`127.0.0.1`), but a Kubernetes liveness/readiness check
+connects over the pod network. To reach the probes from that check, set `host =
+"0.0.0.0"`:
 
 ```toml
 [server.health]
@@ -95,13 +95,13 @@ containers:
     periodSeconds: 5
 ```
 
-`/livez` proves the event loop is responsive; `/readyz` inspects every
-provider, broker, cache, and the event store, and returns `503` when
-any component is unhealthy or the engine is shutting down.
+`/livez` proves the event loop is responsive. `/readyz` inspects every
+provider, broker, cache, and the event store, and returns `503` when any
+component is unhealthy or the engine is shutting down.
 
-### FastAPI apps
+### Expose health probes from a FastAPI app
 
-Mount the equivalent router on your API process:
+Mount Protean's health-probe router on your API process:
 
 ```python
 --8<-- "guides/server/hardening/001.py:imports"
@@ -111,7 +111,7 @@ Mount the equivalent router on your API process:
 The router exposes the same `/healthz`, `/livez`, and `/readyz` paths
 with the same readiness semantics as the engine server.
 
-## Keep the DLQ under control
+## Trim and monitor the DLQ
 
 By default, messages that exhaust their retries pile up in
 `{stream}:dlq` forever. Enable the maintenance task to trim old entries
@@ -137,12 +137,11 @@ A minimal Slack webhook alert:
 ```
 
 The callback fires once per maintenance cycle while the threshold is breached.
-Any exception it raises is caught and logged. A broken alert handler will not
-stall the engine.
+The engine catches and logs any exception the callback raises. A broken alert
+handler will not stall the engine.
 
-Override retention or alerting per handler when a subscription needs
-different SLAs, for example, an auditing handler that must keep 30 days of
-failures:
+When a subscription needs different SLAs, override retention or alerting per
+handler. For example, an auditing handler must keep 30 days of failures:
 
 ```python
 --8<-- "guides/server/hardening/003.py:imports"
@@ -151,15 +150,15 @@ failures:
 ```
 
 !!! warning "Known issue: per-handler DLQ overrides have no effect yet"
-    The subscription config Protean builds for a handler does not carry
-    `dlq_retention_hours` or `dlq_alert_threshold`, so the engine applies the
-    `[server.dlq]` values to every handler. The dead-letter queue also needs a
-    stream subscription. A handler with no profile, like `AuditHandler`
-    above, uses `server.default_subscription_type`. That is `"event_store"`
-    unless you change it. An event store subscription has no `{stream}:dlq`
-    stream: it records exhausted positions in its `failed-*` stream, and
-    [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md)
-    lists and clears them.
+    Protean builds a subscription config for each handler, and that config does
+    not carry `dlq_retention_hours` or `dlq_alert_threshold`. As a result, the
+    engine applies the `[server.dlq]` values to every handler. The dead-letter
+    queue also needs a stream subscription. A handler with no profile, like
+    `AuditHandler` above, uses `server.default_subscription_type`. That is
+    `"event_store"` unless you change it. An event store subscription has no
+    `{stream}:dlq` stream and records exhausted positions in its `failed-*`
+    stream instead. [`protean eventstore
+    dlq`](../../reference/cli/data/eventstore-dlq.md) lists and clears them.
 
 For discovery, inspection, and replay of individual DLQ messages, see
 [Dead Letter Queues](./dead-letter-queues.md).
@@ -204,30 +203,31 @@ counters (`protean.dlq.trimmed`, `protean.dlq.alerts`), and engine
 gauges (`protean.engine.up`, `protean.engine.uptime_seconds`, …)
 directly through the OTLP exporter.
 
-Connection-pool and backpressure gauges
+Protean lazily registers the connection-pool and backpressure gauges
 (`protean.db.pool_*`, `protean.broker.pool_active_connections`,
-`protean.subscription.consumer_lag`) are lazily registered on the
-Observatory's `/metrics` endpoint. Scrape it with Prometheus
-alongside your OTLP exporter, see [Monitoring](./monitoring.md).
+`protean.subscription.consumer_lag`) on the Observatory's `/metrics` endpoint.
+Scrape it with Prometheus alongside your OTLP exporter, see
+[Monitoring](./monitoring.md).
 
 Every metric is a no-op when `opentelemetry-api` is not installed.
 
 ## Shut down gracefully
 
-`protean server` handles `SIGINT`, `SIGTERM`, and `SIGHUP` by stopping
-the health server, signalling every subscription and outbox processor
-to stop, waiting for in-flight handlers to finish (up to
+On `SIGINT`, `SIGTERM`, or `SIGHUP`, `protean server` stops the health server
+and signals every subscription and outbox processor to stop. It then waits for
+in-flight handlers to finish (up to
 [`server.drain_timeout`](../../reference/server/hardening.md#serverdrain_timeout),
-10 seconds by default),
-then closing the event store, brokers, caches, and providers in
-reverse initialisation order. A batch that started before the signal keeps
-handling its messages during the drain window, except in a partitioned
-subscription (`sequential_by`), which cancels its partition workers when the
-signal arrives. If the window ends first, the
-rest of the batch stays pending in Redis, and a later start claims it after
+10 seconds by default) and closes the event store, brokers, caches, and
+providers in reverse initialisation order. During the drain window, a
+subscription keeps handling the messages of any batch it started before the
+signal. A partitioned subscription (`sequential_by`) is the exception: it
+cancels its partition workers when the signal arrives. If the window ends
+first, the rest of the batch stays pending in Redis, and a later start claims
+it after
 [`server.reclaim_idle_seconds`](../../reference/server/hardening.md#serverreclaim_idle_seconds),
-120 seconds by default. Send `SIGTERM` and give the pod a
-`terminationGracePeriodSeconds` of at least `15`, long enough for the drain and close steps to complete:
+120 seconds by default. Stop the server with `SIGTERM`. Give the pod a
+`terminationGracePeriodSeconds` of at least `15`, long enough for the drain and
+close steps to complete:
 
 ```yaml
 spec:
@@ -247,8 +247,8 @@ When you create and tear down domains from test or tooling code, call
 --8<-- "guides/server/hardening/004.py:close"
 ```
 
-Custom adapters inherit a no-op `close()`; override it when your
-adapter holds sockets, file handles, or background threads.
+Custom adapters inherit a no-op `close()`. When your adapter holds sockets,
+file handles, or background threads, override `close()`.
 
 ## See also
 

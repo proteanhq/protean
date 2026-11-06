@@ -2,13 +2,13 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Because the domain model is separated from infrastructure, you can test all of
-it with fast in-memory adapters, and bring in the real technologies only where
-a test needs them.
+Protean separates the domain model from infrastructure, so you can test all of
+the domain model with fast in-memory adapters. You bring in the real
+technologies only where a test needs them.
 
 ## How to think about testing
 
-Protean encourages a layered testing strategy that mirrors how you build your
+Protean encourages a layered testing strategy that follows the layers of your
 application:
 
 1. **Test domain logic, not framework mechanics**: You don't need to verify
@@ -23,9 +23,9 @@ application:
    handlers, and application services are worth covering completely.
    Configuration files, setup scripts, and adapter glue code are not.
 
-## Testing Layers
+## Which layers of tests should you write?
 
-Protean applications lend themselves to three complementary layers of tests:
+You can test a Protean application in three complementary layers:
 
 | Layer | What You Test | How You Test |
 |-------|--------------|--------------|
@@ -33,9 +33,9 @@ Protean applications lend themselves to three complementary layers of tests:
 | **Application** | Commands, command handlers, event handlers, application services | BDD-style tests, Given a state, When a command is processed, Then verify outcomes |
 | **Integration** | Full flows across aggregates, projections, and infrastructure | End-to-end tests, process commands, verify events, check projections and persistence |
 
-Each layer builds on the one below. Domain model tests are fast and isolated.
-Application tests exercise the orchestration layer. Integration tests verify
-that everything works together.
+Each layer tests more of the application than the layer before it. Domain model
+tests are fast and isolated. Application tests exercise the orchestration
+layer. Integration tests verify that everything works together.
 
 ```mermaid
 graph TD
@@ -47,7 +47,7 @@ graph TD
     style C fill:#fff3e0,color:#e65100
 ```
 
-## Coverage Goals
+## How much of your code should tests cover?
 
 The goal is **100% test coverage** on all business logic:
 
@@ -60,17 +60,17 @@ The goal is **100% test coverage** on all business logic:
 
 ## Pytest Plugin and `DomainFixture`
 
-Protean ships with a **pytest plugin** that is automatically activated when
-Protean is installed. It sets `PROTEAN_ENV` before test collection (so
-`domain.toml` environment overlays are applied) and registers standard
-test-category markers.
+Protean includes a **pytest plugin**. Installing Protean activates the plugin
+automatically. The plugin sets `PROTEAN_ENV` before test collection, so Protean
+applies the `domain.toml` environment overlays. The plugin also registers
+standard test-category markers.
 
-Protean also provides `DomainFixture`, a test lifecycle manager that handles domain
-initialization, database schema setup/teardown, and per-test data cleanup
-across all adapters. See [Fixtures and Patterns](./fixtures-and-patterns.md)
-for full details and recipes.
+Protean also provides `DomainFixture`, a test lifecycle manager that
+initializes the domain, sets up and tears down the database schema, and cleans
+up per-test data across all adapters. See [Fixtures and
+Patterns](./fixtures-and-patterns.md) for full details and recipes.
 
-## Dual-Mode Testing
+## Run the same tests in two modes
 
 Protean's memory adapters are complete implementations (not stubs) that behave
 identically to real adapters for domain logic. This enables
@@ -93,7 +93,7 @@ See the [Dual-Mode Testing](../../patterns/dual-mode-testing.md)
 guide for the full setup, CI configuration, and guidance on when modes
 may diverge.
 
-## Guides in this section
+## Find the guide for each kind of test
 
 - **[Domain Model Tests](./domain-model-tests.md)**: Unit testing aggregates,
   entities, value objects, invariants, and domain services.

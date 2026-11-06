@@ -1,4 +1,4 @@
-# Correlation and causation IDs
+# Trace a business operation with correlation and causation IDs
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -8,7 +8,7 @@ history of any business operation. This guide covers how the IDs are generated,
 how they propagate, how to supply them from external callers, and how every
 observability layer (logging, OTEL, Observatory) uses them.
 
-## The out-of-the-box guarantee
+## Protean adds both IDs to every message automatically
 
 Protean generates and propagates correlation and causation IDs automatically.
 No opt-in configuration, no manual wiring. The moment you call
@@ -16,18 +16,20 @@ No opt-in configuration, no manual wiring. The moment you call
 both IDs:
 
 - **`correlation_id`**: A constant identifier shared by *every* message in
-  the chain. It answers: "Which business operation does this message belong to?"
+  the chain. You read it to answer: "Which business operation does this message
+  belong to?"
 - **`causation_id`**: The `headers.id` of the *immediate parent* message.
-  It answers: "What directly caused this message?"
+  You read it to answer: "What directly caused this message?"
 
-Take a small order domain. Handling `PlaceOrder` raises `OrderPlaced`, and an
-event handler reacts to `OrderPlaced` by dispatching `ConfirmOrder`:
+Take a small order domain. The command handler for `PlaceOrder` raises
+`OrderPlaced`. An event handler reacts to `OrderPlaced` by dispatching
+`ConfirmOrder`:
 
 ```python
 --8<-- "guides/observability/correlation-and-causation/001.py:model"
 ```
 
-Placing an order takes one call:
+You place an order with one call:
 
 ```python
 --8<-- "guides/observability/correlation-and-causation/001.py:process"
@@ -55,10 +57,10 @@ Pass the `correlation_id` parameter directly:
 
 ### Automatically via HTTP headers
 
-When using the `DomainContextMiddleware` with FastAPI, the middleware
-extracts `X-Correlation-ID` (falling back to `X-Request-ID`) from the
-incoming request and stores it in the global context. `current_domain.process()`
-picks it up automatically:
+When using the `DomainContextMiddleware` with FastAPI, the middleware extracts
+`X-Correlation-ID` (falling back to `X-Request-ID`) from the incoming request
+and stores it in the global context. `current_domain.process()` reads the ID
+from the global context automatically:
 
 ```python
 --8<-- "guides/observability/correlation-and-causation/002.py:imports"
@@ -88,7 +90,7 @@ This works for all Protean exception types (`ValidationError`,
 matches the `X-Correlation-ID` response header. Routes outside a domain
 context do not include the field.
 
-### Priority of correlation ID sources
+### Which correlation ID source wins?
 
 When multiple sources provide a correlation ID, Protean resolves them in
 this order:
@@ -101,7 +103,7 @@ this order:
 
 ---
 
-## Full propagation flow
+## Follow the IDs through a full command-event chain
 
 The following diagram shows how `correlation_id` and `causation_id` flow
 through a typical command-event chain, starting from an HTTP request:
@@ -145,15 +147,15 @@ sequenceDiagram
     deactivate CP
 ```
 
-Every message in the chain shares the same `correlation_id` (`ext-123`),
-while each `causation_id` points to the immediate parent message.
+Every message in the chain shares the same `correlation_id` (`ext-123`). Each
+`causation_id` points to the immediate parent message.
 
 ---
 
-## Causation chain semantics
+## How the two IDs form a causation tree
 
 The two IDs together form a **causation tree**. The `correlation_id` is the
-tree's label; the `causation_id` links define the edges:
+tree's label. The `causation_id` links define the edges:
 
 ```
 PlaceOrder [corr=ext-123, cause=None]                <-- root command
@@ -164,7 +166,7 @@ PlaceOrder [corr=ext-123, cause=None]                <-- root command
               +-- NotificationSent [corr=ext-123, cause=NotifyCustomer.id]
 ```
 
-### Propagation rules
+### How each entry point sets the IDs
 
 | Entry point | `correlation_id` | `causation_id` |
 |-------------|-------------------|-----------------|
@@ -173,7 +175,7 @@ PlaceOrder [corr=ext-123, cause=None]                <-- root command
 | Command handler raises event | Inherited from command | Command's `headers.id` |
 | Event handler dispatches new command | Inherited from event | Event's `headers.id` |
 
-### Where the IDs live
+### Where Protean stores the IDs
 
 Both IDs are stored in `DomainMeta`, the domain-specific section of message
 metadata:
@@ -190,9 +192,9 @@ The event store provides three methods for causation chain traversal:
 --8<-- "guides/observability/correlation-and-causation/001.py:traverse"
 ```
 
-For the common case of "give me the whole chain in causal order",
-`domain.correlation_trace()` wraps `build_causation_tree()` and flattens it
-into a depth-first, pre-order list (each parent appears before its effects):
+To get the whole chain in causal order, call `domain.correlation_trace()`. It
+wraps `build_causation_tree()` and flattens the tree into a depth-first,
+pre-order list (each parent appears before its effects):
 
 ```python
 --8<-- "guides/observability/correlation-and-causation/001.py:correlation-trace"
@@ -208,11 +210,11 @@ classes themselves (their `__type__` is used):
 --8<-- "guides/observability/correlation-and-causation/001.py:assert-chain"
 ```
 
-It raises `AssertionError` with the expected and actual sequences when the
-length or any type does not match, making end-to-end causation flows easy to
-pin down in a single assertion.
+`assert_chain()` raises `AssertionError` with the expected and actual sequences
+when the length or any type does not match. You can check an end-to-end
+causation flow in a single assertion.
 
-### CLI inspection
+### Inspect a chain from the CLI
 
 Follow a causal chain from the terminal:
 
@@ -226,25 +228,25 @@ protean events trace "ext-123" --flat --domain=myapp
 
 ---
 
-## Service boundary handling
+## Keep the correlation chain across service boundaries
 
 When one Protean service consumes events from another via subscribers, the
-correlation chain must be preserved across the boundary. Protean handles
-this automatically.
+correlation chain must be preserved across the boundary. Protean preserves the
+correlation chain across the boundary automatically.
 
-### Automatic bridging in subscribers
+### Subscribers carry the correlation ID into the consuming service
 
 When the server processes an incoming broker message, it extracts the
-`correlation_id` from the message's `metadata.domain.correlation_id` and
-sets it on the processing context. If the external message has no
-correlation ID, a fresh UUID is generated so the chain within the consuming
-service is still fully traced.
+`correlation_id` from the message's `metadata.domain.correlation_id` and sets
+it on the processing context. If the external message has no correlation ID,
+the server generates a fresh UUID. The chain within the consuming service is
+then still fully traced.
 
 ```python
 --8<-- "guides/observability/correlation-and-causation/003.py:payments"
 ```
 
-### Nested command preservation
+### Keep the outer message context across nested commands
 
 When a subscriber dispatches multiple commands within a single handler,
 Protean preserves the outer message context across each `domain.process()`
@@ -257,7 +259,7 @@ chain:
 
 ---
 
-## Relationship to OpenTelemetry
+## How correlation IDs relate to OpenTelemetry
 
 Protean maintains two distinct tracing layers that complement each other:
 
@@ -266,15 +268,15 @@ Protean maintains two distinct tracing layers that complement each other:
 | **Domain tracing** | `DomainMeta.correlation_id` + `causation_id` | Business operation tracking | Flexible strings |
 | **Distributed tracing** | `MessageHeaders.traceparent` | Infrastructure span tracking (Jaeger, Datadog) | W3C 32-hex / 16-hex |
 
-The `correlation_id` bridges both layers. It identifies the same business
+Both layers carry the `correlation_id`. It identifies the same business
 operation whether you're looking at domain metadata or a Jaeger trace.
 
-When OTel is enabled, Protean sets `protean.correlation_id` on all major
-spans, and `protean.causation_id` wherever a single parent message is
-well-defined. This lets you filter and group spans by business operation in
-your APM dashboard.
+When OTel is enabled, Protean sets `protean.correlation_id` on all major spans.
+Protean also sets `protean.causation_id` on each span where a single parent
+message is well-defined. This lets you filter and group spans by business
+operation in your APM dashboard.
 
-### OTEL span attribute reference
+### Which spans carry the ID attributes?
 
 The following spans carry correlation and causation ID attributes:
 
@@ -290,7 +292,7 @@ The following spans carry correlation and causation ID attributes:
 share the same ID.
 
 For the complete span catalog, see the
-[OpenTelemetry integration guide](../server/opentelemetry.md#span-catalog).
+[OpenTelemetry integration guide](../server/opentelemetry.md#which-spans-does-protean-emit).
 
 ---
 
@@ -300,7 +302,7 @@ The Protean Observatory includes `correlation_id` and `causation_id` in
 every `MessageTrace` event. This enables real-time grouping and filtering
 of trace events by business operation.
 
-### Timeline view
+### Open a chain in the Timeline view
 
 The Observatory Timeline page supports deep-linking by correlation ID:
 
@@ -314,9 +316,9 @@ of all messages in the chain.
 ### Trace events that carry correlation context
 
 Most trace event types include `correlation_id` and `causation_id` when
-available. Handler and outbox events always carry these fields; acknowledgment
-and dead-letter events may have `null` values when correlation context is
-not available at the point of emission.
+available. Handler and outbox events always carry these fields. Acknowledgment
+and dead-letter events may have `null` values when correlation context is not
+available at the point of emission.
 
 | Trace event | Description |
 |-------------|-------------|
@@ -337,19 +339,20 @@ For details on the Observatory, see the
 ## Structured logging setup
 
 `Domain.init()` auto-configures logging and installs the correlation
-integrations: `ProteanCorrelationFilter` on the root logger and on each of its handlers, and `protean_correlation_processor` on the structlog pipeline.
-Every log record emitted during message processing includes `correlation_id` and `causation_id` fields;
-no manual wiring required.
+integrations: `ProteanCorrelationFilter` on the root logger and on each of its
+handlers, and `protean_correlation_processor` on the structlog pipeline. Every
+log record emitted during message processing includes `correlation_id` and
+`causation_id` fields. You do not need to wire anything by hand.
 
 For the full setup, config keys, and the wide event schema, see the
 [Logging guide](../server/logging.md) and the
 [Logging reference](../../reference/logging.md).
 
-### Manual wiring when auto-configuration is disabled
+### Wire the integrations by hand when auto-configuration is off
 
-When `PROTEAN_NO_AUTO_LOGGING=1` is set, or when the framework is embedded
-in an application that manages its own logging, wire the integrations
-explicitly:
+Two setups turn auto-configuration off: setting `PROTEAN_NO_AUTO_LOGGING=1`,
+and embedding the framework in an application with its own logging. In both
+setups, wire the integrations explicitly:
 
 ```python
 --8<-- "guides/server/logging/005.py:filter"
@@ -367,15 +370,16 @@ misses records from child loggers such as `logging.getLogger("myapp.orders")`.
 
 Both integrations check for an active domain context and a
 `g.message_in_context` before reading IDs. When no context is available (e.g.,
-during startup or in a background thread), both fields default to `""` so
-formatters never raise `KeyError`. When no message is in scope, both
-integrations fall back to `g.correlation_id` / `g.causation_id`. The documented
-extension point for HTTP middleware, CLI commands, and background jobs that
-need logs tagged before any domain message exists.
+during startup or in a background thread), both fields default to `""`.
+Formatters therefore never raise `KeyError`. When no message is in scope, both
+integrations fall back to `g.correlation_id` / `g.causation_id`.
+`g.correlation_id` and `g.causation_id` are the documented extension point for
+HTTP middleware, CLI commands, and background jobs. Set them to tag logs before
+any domain message exists.
 
 ---
 
-## Summary
+## Review the key facts about both IDs
 
 | Aspect | Detail |
 |--------|--------|

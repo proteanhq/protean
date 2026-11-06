@@ -4,11 +4,10 @@
 
 Some business operations naturally span two or more aggregates. For example,
 placing an order requires confirming the order *and* reserving inventory. The
-two aggregates must be validated together. If you put this logic in the
-`Order` aggregate, it needs to know about `Inventory`; if you put it in the
-command handler, business rules leak into the application layer. Domain
-services solve this: they encapsulate **cross-aggregate business logic** in the
-domain layer, where it belongs.
+two aggregates must be validated together. If you put this logic in the `Order`
+aggregate, it needs to know about `Inventory`. If you put it in the command
+handler, the application layer holds business rules. Domain services solve
+this: they keep **cross-aggregate business logic** in the domain layer.
 
 For background on when and why to use domain services, see
 [Domain Services concept](../../concepts/building-blocks/domain-services.md).
@@ -27,17 +26,16 @@ For background on when and why to use domain services, see
 A Domain Service is defined with the `Domain.domain_service` decorator, and
 associated with at least two aggregates with the `part_of` option. The
 `part_of` option is **required** and must be a list of **two or more**
-aggregates, a domain service that operates on a single aggregate should be
-logic on the aggregate itself.
+aggregates. Put logic that operates on a single aggregate on the aggregate
+itself.
 
 The service methods in a Domain Service can be structured in three flavors:
 
-### 1. Class with class methods
+### 1. Write the service with class methods
 
-If you don't have any invariants to be managed by the Domain Service, each
-method in the Domain Service can be a class method, that receives all
-the input necessary for performing the business function. The method checks
-the stock itself and returns the order.
+If the Domain Service has no invariants, each of its methods can be a class
+method. Each class method receives all the input the business function needs.
+The method checks the stock itself and returns the order.
 
 ```python hl_lines="2-3"
 # fragment
@@ -62,9 +60,9 @@ OrderPlacementService.place_order(order, inventories)
     raises `TypeError`, because the instance is passed as one argument too
     many.
 
-### 2. Class with instance methods
+### 2. Write the service with instance methods
 
-In this flavor, the Domain Service is instantiated with the aggregates and each
+In this flavor, you instantiate the Domain Service with the aggregates. Each
 method performs a distinct business function.
 
 ```python hl_lines="2-3 10"
@@ -72,8 +70,8 @@ method performs a distinct business function.
 --8<-- "guides/domain-behavior/007.py:service"
 ```
 
-You would then instantiate the Domain Service, passing the relevant aggregates
-and invoke the methods on the instance.
+First, instantiate the Domain Service with the relevant aggregates. Then invoke
+the methods on the instance.
 
 ```python
 # fragment
@@ -81,7 +79,7 @@ service = OrderPlacementService(order, inventories)
 service.place_order()
 ```
 
-### 3. Callable class
+### 3. Write the service as a callable class
 
 If you have a single business function, you can model it as a callable
 class:
@@ -105,7 +103,7 @@ service()
 | Multiple operations | Yes | Yes | No (single `__call__`) |
 | Simplest for single operation | — | — | Yes |
 
-The decision between instance methods and a callable class boils down to:
+To choose between instance methods and a callable class, answer two questions:
 
 1. **How many business functions does the Domain Service have?** If only one,
    a callable class is the simpler shape.
@@ -142,11 +140,10 @@ For detailed guidance, see the
 [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md)
 pattern.
 
-## Typical Workflow
+## How does a domain service run inside a command flow?
 
-Let us consider an example `OrderPlacementService` that checks inventory
-stock and confirms an order. The typical workflow of a Domain Service is
-below:
+In the example below, an `OrderPlacementService` checks inventory stock and
+confirms an order. The typical workflow of a Domain Service is below:
 
 ```mermaid
 sequenceDiagram
@@ -162,15 +159,15 @@ sequenceDiagram
 ```
 
 The handler loads the necessary aggregates through repositories, invokes the
-domain service to perform the cross-aggregate operation, and then persists
-only the primary aggregate. `OrderConfirmed` carries the ordered items. An
-event handler in the order's cluster reacts to it and issues a command to
-each inventory, and the inventory's command handler reserves the stock in
-its own transaction.
-[Chapter 13 of the tutorial](../getting-started/tutorial/13-domain-services.md)
-builds the whole flow, including the event handler and the inventory command.
+domain service to perform the cross-aggregate operation, and then persists only
+the primary aggregate. `OrderConfirmed` carries the ordered items. An event
+handler in the order's cluster reacts to `OrderConfirmed` and issues a command
+to each inventory. The inventory's command handler reserves the stock in its
+own transaction. In [Chapter 13 of the
+tutorial](../getting-started/tutorial/13-domain-services.md), you build the
+whole flow, including the event handler and the inventory command.
 
-### Handler Integration Example
+### Call a domain service from a command handler
 
 ```python
 # fragment
@@ -181,21 +178,20 @@ builds the whole flow, including the event handler and the inventory command.
 
 Just like Aggregates and Entities, Domain Services can also have invariants.
 These invariants validate the state of the aggregates passed to the service
-method. Unlike in Aggregates, invariants in Domain Services typically deal
-with validations that **span across multiple aggregates**.
+method. Unlike in Aggregates, invariants in Domain Services typically check
+rules that **span across multiple aggregates**.
 
-`pre` invariants check the state of the aggregates before the service
-changes the primary aggregate, while `post` invariants check the state after
-the change. When a pre-invariant fails, a `ValidationError` is raised and the
-change never happens.
+`pre` invariants check the state of the aggregates before the service changes
+the primary aggregate. `post` invariants check the state after the change. When
+a pre-invariant fails, a `ValidationError` is raised and the change never
+happens.
 
 !!!note
-   It is a good practice to step back and review the business logic placed in
-   the Domain Service now and then. If an invariant does not use multiple
-   aggregates, it is likely that it belongs within an aggregate and not in the
-   service.
+   Review the business logic in the Domain Service at regular intervals. An
+   invariant that does not use multiple aggregates likely belongs within an
+   aggregate and not in the service.
 
-## A Full-Blown Example
+## Place an order with a domain service
 
 ```python hl_lines="105-150"
 --8<-- "guides/domain-behavior/006.py:full"
@@ -204,16 +200,16 @@ change never happens.
 When an order is placed, `Order` status has to be `CONFIRMED` _and_ the stock
 record of each product in `Inventory` has to be reduced.
 
-The service checks the stock and the payment method before anything changes,
-and then confirms the order. It does not touch `Inventory`. `OrderConfirmed`
-lists each ordered product and quantity, and the inventory reduces its stock
-when it handles the command issued for that event. The post invariants check
-that the order is confirmed and that the event lists every ordered item, since
-an item missing from the event would never be reserved.
+The service checks the stock and the payment method before anything changes.
+Then it confirms the order. It does not touch `Inventory`. `OrderConfirmed`
+lists each ordered product and quantity. The inventory reduces its stock when
+it handles the command issued for that event. The post invariants check two
+things: the order is confirmed, and the event lists every ordered item. An item
+missing from the event would never be reserved.
 
 A Domain Service fits here because the stock rule needs both aggregates. The
-`Order` aggregate cannot see `Inventory`, and a command handler should not
-hold business rules.
+`Order` aggregate cannot see `Inventory`. A command handler should not hold
+business rules.
 
 The stock check reads the inventory as it was loaded. Two orders placed at the
 same time can both pass it. The inventory's command handler should check the

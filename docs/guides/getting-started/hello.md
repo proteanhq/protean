@@ -2,12 +2,12 @@
 
 Define an aggregate, save it, load it, in under 20 lines of Python.
 
-## Prerequisites
+## What do you need first?
 
 - Python 3.11+
 - Protean installed ([Installation](./installation.md))
 
-## The Code
+## Write and run the code
 
 Create a file called `hello.py`:
 
@@ -52,7 +52,7 @@ exactly the same.
 Ready for more? The [Quickstart](./quickstart.md) builds a complete domain
 with commands, events, and handlers in 5 minutes.
 
-Or dive into the [Tutorial](./tutorial/index.md) for a guided,
-chapter-by-chapter journey from aggregates to production.
+Or work through the [Tutorial](./tutorial/index.md), a guided set of chapters
+that covers everything from aggregates to production.
 
 <!-- test -->

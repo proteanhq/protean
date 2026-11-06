@@ -1,26 +1,26 @@
-# Architecture fitness functions
+# Check your architecture with fitness functions
 
 Architecture fitness functions are automated, objective, repeatable checks that
 enforce your architectural decisions on every commit. Protean runs them with
-`protean check`: it builds your domain's [Intermediate Representation
-(IR)](compose-a-domain/inspecting-the-ir.md) (the complete structural snapshot
-of the domain) and reports every place the model drifts from sound
+`protean check`. The command builds your domain's [Intermediate Representation
+(IR)](compose-a-domain/inspecting-the-ir.md), the complete structural snapshot
+of the domain. It then reports every place where the model departs from sound
 Domain-Driven Design.
 
-Here is how to run the checks, tune severity, suppress findings while you
-adopt them gradually, wire them into CI, and write your own rules. For
-the full list of rules see the [Fitness Function Catalog](../reference/fitness-functions.md);
-for the CLI flags and output schema see the
-[`protean check` reference](../reference/cli/check.md).
+Here is how to run the checks, tune severity, suppress findings while you adopt
+them gradually, wire them into CI, and write your own rules. For the full list
+of rules, see the [Fitness Function
+Catalog](../reference/fitness-functions.md). For the CLI flags and output
+schema, see the [`protean check` reference](../reference/cli/check.md).
 
 ---
 
 ## What are architecture fitness functions?
 
 DDD makes structural promises: aggregates are consistency boundaries that
-reference each other by identity, events are past-tense facts, every command has
-a handler, bounded contexts don't import each other's infrastructure. These are
-easy to state and easy to erode as a codebase grows.
+reference each other by identity, events are past-tense facts, every command
+has a handler, bounded contexts don't import each other's infrastructure. These
+promises are easy to state, and they are easy to break as a codebase grows.
 
 Because Protean holds the whole domain as an IR, many of these promises are
 *decidable*. They can be checked mechanically at build time, with no runtime
@@ -56,7 +56,7 @@ actually decided.
 
 ---
 
-## Built-in rules
+## Which rules are built in?
 
 `protean check` ships the following rules, grouped by category. Each links to
 its full entry (rationale, fix, and configuration) in the
@@ -139,19 +139,19 @@ entities, value objects, events, commands, handlers, projections, and so on.
 
 ### Config-level: `[lint].suppressions`
 
-For gradual remediation across the whole domain, the `[lint].suppressions`
-allow-list *grandfathers* the first `N` findings of a code. You adopt a rule
-without failing CI on pre-existing violations, while any *new* violation beyond
-`N` still surfaces:
+To fix findings across the whole domain over time, use the
+`[lint].suppressions` allow-list: it ignores the first `N` findings of a code.
+You adopt a rule without failing CI on pre-existing violations, while any *new*
+violation beyond `N` still surfaces:
 
 ```toml
 [lint.suppressions]
 UNHANDLED_EVENT = 3          # grandfather the first 3 findings; a 4th fails CI
 ```
 
-Findings are sorted into a deterministic `(code, element, field, message)` order
-before the first `N` are dropped, so the same domain always suppresses the same
-findings.
+Protean sorts findings into a deterministic `(code, element, field, message)`
+order and then drops the first `N`. The same domain therefore always suppresses
+the same findings.
 
 ### Which layer to use
 
@@ -165,19 +165,20 @@ Per-element `suppress_checks` takes precedence over the config allow-list.
 !!! note "There is no global disable"
 
     Protean has no `disabled_rules` config key and no `--save-baseline` flag.
-    The two layers above are the supported way to silence findings; the
-    allow-list is the gradual-adoption path a baseline would otherwise serve.
-    Two `info` rules are threshold-tunable
-    (`[lint].aggregate_size_limit`, `[lint].handler_breadth_limit`) and
-    `INFRA_IMPORT_IN_DOMAIN` is opt-in
-    (`[lint].check_infra_imports`). `COMMAND_NOT_IMPERATIVE` accepts your
-    project's own verbs when you list them in `[lint].command_verbs`.
+    To suppress findings, use the two layers described on this page:
+    `suppress_checks` on an element and the `[lint].suppressions` allow-list.
+    The allow-list lets you adopt a rule gradually, which is the job a saved
+    baseline would otherwise do. You can tune the threshold of two `info` rules
+    (`[lint].aggregate_size_limit`, `[lint].handler_breadth_limit`).
+    `INFRA_IMPORT_IN_DOMAIN` is opt-in (`[lint].check_infra_imports`).
+    `COMMAND_NOT_IMPERATIVE` accepts your project's own verbs when you list
+    them in `[lint].command_verbs`.
 
 ---
 
 ## Strictness and CI gating
 
-Severity has two independent knobs, do not confuse them:
+Two independent settings control severity, and each does a different job:
 
 - **`--level`** (CLI, default `info`) filters what is *displayed*. It never
   changes the exit code and never filters the machine formats.
@@ -196,18 +197,18 @@ level = "warn"        # errors + warnings gate CI (default)
 | `info` | there is an error, warning, or info finding. |
 
 Exit codes: `1` on any validator error (always) and on any finding at or above
-the floor, `2` on a malformed `[lint]` table, `0` otherwise. Set
-`level = "error"` while you burn down warnings, then tighten to `warn` once the
-domain is clean.
+the floor, `2` on a malformed `[lint]` table, `0` otherwise. While you fix the
+existing warnings, set `level = "error"`. When no warnings remain, set the
+level to `warn`.
 
 ---
 
-## CI integration
+## Run the checks in CI
 
-`protean check` speaks two machine formats. Both emit the **unfiltered** set of
-findings regardless of `--level`.
+`protean check` can write its findings in two machine-readable formats. Both
+emit the **unfiltered** set of findings regardless of `--level`.
 
-### SARIF → GitHub Code Scanning
+### Send SARIF results to GitHub Code Scanning
 
 `--format=sarif` emits [SARIF 2.1.0](https://sarifweb.azurewebsites.net/), which
 GitHub Code Scanning renders as inline PR annotations and a security dashboard:
@@ -232,7 +233,7 @@ jobs:
 Each SARIF result carries the rule's rationale and fix, and a `helpUri` back to
 this documentation.
 
-### GitHub Actions annotations
+### Show findings as GitHub Actions annotations
 
 For a simpler pipeline without Code Scanning, `--format=github-annotations`
 emits `::error`/`::warning`/`::notice` workflow commands that appear inline on
@@ -260,25 +261,26 @@ rules = ["my_app.lint.check_naming"]
 
 The `ir` argument is the full IR document, see the [IR
 specification](../concepts/internals/ir-specification.md) for its structure. A
-custom finding requires `code`, `element`, `level` (`warning` or `info`), and `message`; `category` defaults to
-`custom`, and `rule`/`suggestion` are optional. A rule that raises, returns a non-list, or
-returns a finding missing a required key is logged and skipped. It never
-crashes `protean check`. Custom findings pass through the same suppression and gating
-machinery as built-in rules.
+custom finding requires `code`, `element`, `level` (`warning` or `info`), and
+`message`. The `category` key defaults to `custom`, and `rule`/`suggestion` are
+optional. When a rule raises, returns a non-list, or returns a finding missing
+a required key, `protean check` logs the failure and skips the rule. It never
+crashes `protean check`. Protean applies the same suppression and CI gating to
+custom findings as to findings from built-in rules.
 
 ---
 
-## Pre-commit integration
+## Run the checks before each commit
 
-Run `protean check` locally on every commit alongside the
-[IR compatibility hooks](compatibility-checking.md#step-3-add-pre-commit-hooks).
-The pre-commit hook wiring is documented in the
-[compatibility-checking guide](compatibility-checking.md); point the hook at
-`protean check` to fail commits that introduce new violations.
+Run `protean check` locally on every commit alongside the [IR compatibility
+hooks](compatibility-checking.md#step-3-add-pre-commit-hooks). The
+[compatibility-checking guide](compatibility-checking.md) shows how to set up
+the pre-commit hook. Point the hook at `protean check` to fail commits that
+introduce new violations.
 
 ---
 
-## Related
+## See also
 
 - [Fitness Function Catalog](../reference/fitness-functions.md): Every rule in detail.
 - [`protean check` reference](../reference/cli/check.md): Flags, formats, exit codes, JSON schema.

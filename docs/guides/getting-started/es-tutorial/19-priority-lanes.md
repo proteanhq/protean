@@ -1,15 +1,14 @@
 # Chapter 19: The Great Migration, Run on Priority Lanes
 
-Fidelis acquires another bank and must migrate 2 million historical
-accounts. Running all 2 million `OpenAccount` commands through the
-normal pipeline would starve real-time production traffic, deposits and
-withdrawals from existing customers would queue behind millions of migration
-events.
+Fidelis acquires another bank and must migrate 2 million historical accounts.
+If you send all 2 million `OpenAccount` commands through the normal pipeline,
+they delay real-time production traffic. Deposits and withdrawals from existing
+customers would wait behind millions of migration events.
 
-**Priority lanes** solve this by separating production traffic from bulk
-operations.
+With **priority lanes**, Protean sends production traffic and bulk operations
+to separate streams, so the migration does not delay deposits and withdrawals.
 
-## The Problem
+## Why does the migration slow down production?
 
 Without priority lanes, the migration floods the event stream:
 
@@ -63,16 +62,16 @@ All commands within the `processing_priority(Priority.BULK)` context
 are routed to the backfill stream. Production traffic continues flowing
 through the primary stream at full speed.
 
-## Nested Priorities
+## Nest priority contexts
 
-Contexts nest. The innermost wins:
+Contexts nest. The priority of the innermost context applies:
 
 ```python
 # fragment
 --8<-- "guides/getting-started/es-tutorial/ch19.py:nested_priorities"
 ```
 
-## Per-Command Priority
+## Set the priority of one command
 
 You can also set priority on individual commands:
 
@@ -108,8 +107,8 @@ The `StreamSubscription` polling cycle:
 4. Process the primary messages from that read, then the backfill
    messages, and go to step 1
 
-Production traffic always takes precedence. The backfill stream is only
-touched when production is idle.
+Production traffic always takes precedence. The `StreamSubscription` reads from
+the backfill stream only when the primary stream has no messages.
 
 ## What We Built
 
@@ -120,11 +119,11 @@ touched when production is idle.
 - **Nested priority contexts** for mixed workloads.
 - Production traffic isolation during large migrations.
 
-That completes Part IV. The platform now has fact
-events, message tracing, DLQ management, monitoring, and priority lanes.
-In Part V, we achieve mastery over the complete system.
+That completes Part IV. The platform now has fact events, message tracing, DLQ
+management, monitoring, and priority lanes. In Part V, you learn to operate the
+complete system, starting with rebuilding projections in Chapter 20.
 
-## Full Source
+## Read the full source
 
 ??? example "ch19.py, 278 lines"
 
@@ -132,6 +131,6 @@ In Part V, we achieve mastery over the complete system.
     --8<-- "guides/getting-started/es-tutorial/ch19.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 20: Rebuilding the World →](20-rebuilding-projections.md)

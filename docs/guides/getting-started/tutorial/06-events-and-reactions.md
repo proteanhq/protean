@@ -1,21 +1,21 @@
-# Chapter 6: Events and Reactions
+# Chapter 6: Raise events and react to them
 
-In this chapter we will define domain events, raise them from aggregates,
-and build event handlers that react automatically, creating Inventory records
-whenever a book is added to the catalog. We will wire everything through the
-command pipeline introduced in Chapter 5.
+You define domain events, raise them from aggregates, and build event handlers.
+The event handlers create Inventory records automatically whenever a book is
+added to the catalog. Every operation runs through the command pipeline
+introduced in Chapter 5.
 
 !!! note "Events in DDD and CQRS"
-    Domain events and event handlers are used in **both** the DDD and CQRS
-    approaches, they're a core DDD concept. The difference is in how events get
+    Domain events and event handlers are a core DDD concept. You use them in
+    **both** the DDD and CQRS approaches. The difference is in how events get
     triggered: in CQRS, commands flow through handlers that invoke aggregate
     methods; in pure DDD, Application Services do the same job directly.
 
 ## Defining Events
 
-When a book is added to the catalog, we want to record that fact as a
-**domain event**. Events are named in past tense, they describe something that
-already happened:
+When a book is added to the catalog, we want to record that fact as a **domain
+event**. Events describe something that already happened. Name them in past
+tense:
 
 ```python
 # fragment
@@ -32,8 +32,9 @@ Events are raised inside aggregate methods using `self.raise_()`:
 ```
 
 When `add_to_catalog()` is called, the `BookAdded` event is collected on the
-aggregate. It will be dispatched when the aggregate is persisted. This ensures
-events are never lost due to transaction failures.
+aggregate. Protean dispatches the event when the aggregate is persisted.
+Protean dispatches in this order, so a transaction failure never loses an
+event.
 
 Let's also raise events from the Order aggregate:
 
@@ -51,8 +52,8 @@ And define the Order events:
 
 ## The Inventory Aggregate
 
-Before we build the event handler, we need something for it to manage.
-Let's create an `Inventory` aggregate:
+Before we build the event handler, we need an aggregate for it to create. Let's
+create an `Inventory` aggregate:
 
 ```python
 # fragment
@@ -61,8 +62,8 @@ Let's create an `Inventory` aggregate:
 
 ## Reacting with Event Handlers
 
-An **event handler** listens for specific events and performs side
-effects. Let's create one that stocks inventory when a book is added:
+An **event handler** listens for specific events and performs side effects.
+Let's create one that stocks inventory for each book added to the catalog:
 
 ```python
 # fragment
@@ -82,7 +83,7 @@ We can also handle Order events to send notifications:
 
 A single event handler class can handle multiple event types.
 
-## Commands for the Full Flow
+## Define commands for the full flow
 
 Just like Chapter 5, we define commands and handlers for every state
 change. Here are the commands for placing, confirming, and shipping
@@ -102,13 +103,14 @@ And the command handlers that orchestrate the flow:
 
 The `BookCommandHandler` calls `book.add_to_catalog()` which raises the
 `BookAdded` event. The `OrderCommandHandler` loads the order from the
-repository, calls the domain method, and persists the result. The events are
-dispatched automatically on save.
+repository, calls the domain method, and persists the result. Protean
+dispatches the events automatically when the repository saves the aggregate.
 
-## End-to-End Flow
+## Run the flow end to end
 
-Let's see the complete flow, adding a book triggers inventory creation, and
-order lifecycle events trigger notifications. Everything flows through `domain.process()`:
+In the complete flow, adding a book triggers inventory creation. Order
+lifecycle events trigger notifications. You call `domain.process()` for every
+operation:
 
 ```python
 # fragment
@@ -135,8 +137,7 @@ All checks passed!
 Notice that we never called the event handlers ourselves. They ran
 automatically when events were raised and the aggregate was persisted. The Book
 aggregate knows nothing about Inventory; the event handler provides the
-decoupling. And every operation flows through explicit commands, just like
-Chapter 5.
+decoupling. As in Chapter 5, every operation runs as an explicit command.
 
 ## What We Built
 
@@ -145,14 +146,15 @@ Chapter 5.
 - **`self.raise_()`**: Raises events from aggregate methods.
 - **`BookEventHandler`**: Reacts to `BookAdded` by creating inventory.
 - **`OrderEventHandler`**: Reacts to order lifecycle events.
-- **`PlaceOrder`**, **`ConfirmOrder`**, **`ShipOrder`** commands, every operation flows through `domain.process()`.
-- A fully decoupled flow where adding a book automatically stocks
-  inventory.
+- **`PlaceOrder`**, **`ConfirmOrder`**, **`ShipOrder`** commands. You call
+  `domain.process()` for every operation.
+- A fully decoupled flow: when you add a book, the event handler stocks
+  inventory automatically.
 
-In the next chapter, we will build a read-optimized projection for browsing the
-book catalog. The read side of CQRS.
+The next chapter builds a read-optimized projection for browsing the book
+catalog. The read side of CQRS.
 
-## Full Source
+## See the full source
 
 ??? example "ch06.py, 301 lines"
 

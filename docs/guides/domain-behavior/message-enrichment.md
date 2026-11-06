@@ -1,26 +1,27 @@
-# Message Enrichment
+# Enrich every message with metadata
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 In event-driven systems, every event and command often needs cross-cutting
-metadata that has nothing to do with the event's business payload, who
-performed the action, which tenant it belongs to, the originating IP address,
-or custom audit context. Without a central mechanism, developers must sprinkle
-this logic into every `raise_()` call, which is repetitive and easy to forget.
+metadata that has nothing to do with the event's business payload. Examples are
+who performed the action, which tenant it belongs to, the originating IP
+address, or custom audit context. Without a central mechanism, developers must
+add this logic to every `raise_()` call, which is repetitive and easy to
+forget.
 
 **Message enrichment hooks** solve this by letting you register callables on
 the domain that automatically add custom metadata to every event and command.
-The enriched data is stored in `metadata.extensions`. A user-space dict that is
-persisted alongside all other metadata in the event store and survives
+The enriched data is stored in `metadata.extensions`. This user-space dict is
+persisted alongside all other metadata in the event store. It survives
 serialization round-trips.
 
-## Event Enrichers
+## Enrich events
 
 An **event enricher** is a callable that receives the event being raised and
-the aggregate instance, and returns a `dict[str, Any]` of key-value pairs
-to merge into `metadata.extensions`.
+the aggregate instance. It returns a `dict[str, Any]` of key-value pairs, and
+Protean merges them into `metadata.extensions`.
 
-### Registration
+### Register an event enricher
 
 Register enrichers with `domain.register_event_enricher()` or the
 `@domain.event_enricher` decorator. In these examples, helpers such as
@@ -35,7 +36,7 @@ put on Protean's `g`:
 --8<-- "guides/domain-behavior/message-enrichment/001.py:decorator"
 ```
 
-### How It Works
+### When do event enrichers run?
 
 Enrichers run inside `aggregate.raise_()`, **after** the event's full metadata
 (headers, envelope, domain meta) is constructed but **before** the event is
@@ -46,7 +47,7 @@ appended to `aggregate._events`. This means:
 - The event's core metadata (correlation ID, stream, sequence) is already set
 - Extensions are included when the event is stored in the event store
 
-### Enricher Signature
+### What does an event enricher receive and return?
 
 ```python
 # fragment
@@ -60,17 +61,17 @@ def enricher(event: BaseEvent, aggregate: BaseAggregate) -> dict[str, Any]:
 | `aggregate` | The aggregate instance raising the event |
 | **Returns** | A `dict[str, Any]` merged into `metadata.extensions` |
 
-### Multiple Enrichers
+### Register more than one enricher
 
 You can register any number of enrichers. They execute in registration order
-(FIFO), and their results are merged. If two enrichers set the same key, the
+(FIFO). Protean merges their results. If two enrichers set the same key, the
 later one wins:
 
 ```python
 --8<-- "guides/domain-behavior/message-enrichment/002.py:fifo"
 ```
 
-## Command Enrichers
+## Enrich commands
 
 A **command enricher** works the same way but for commands processed via
 `domain.process()`. Since commands haven't reached a handler yet, enrichers
@@ -80,7 +81,7 @@ receive only the command (no aggregate):
 --8<-- "guides/domain-behavior/message-enrichment/001.py:command"
 ```
 
-### Enricher Signature
+### What does a command enricher receive and return?
 
 ```python
 # fragment
@@ -88,14 +89,14 @@ def enricher(command: BaseCommand) -> dict[str, Any]:
     """Return key-value pairs to merge into metadata.extensions."""
 ```
 
-## Aggregate Pre-Persist Enrichers
+## Stamp fields on the aggregate before it is saved
 
 Event and command enrichers write to `metadata.extensions`. When you instead
 need to stamp fields **on the aggregate itself** (audit columns like
-`updated_by`, or lifecycle timestamps) register an **aggregate enricher**. It
-runs in the persistence path just before an aggregate is saved (on both create
-and update), and unlike the enrichers above it **mutates the aggregate in
-place** rather than returning a dict:
+`updated_by`, or lifecycle timestamps) register an **aggregate enricher**. An
+aggregate enricher runs in the persistence path just before an aggregate is
+saved (on both create and update). Unlike event and command enrichers, it
+**mutates the aggregate in place** and does not return a dict:
 
 ```python
 --8<-- "guides/domain-behavior/message-enrichment/003.py:stamp_audit"
@@ -107,31 +108,32 @@ Put the acting user on the context so the enricher can read it:
 --8<-- "guides/domain-behavior/message-enrichment/003.py:save_as"
 ```
 
-Aggregate enrichers run in registration order and fire only for aggregates (not
-child entities). If one raises, the save is aborted.
+Aggregate enrichers run in registration order. They fire only for aggregates
+(not child entities). If one raises, the save is aborted.
 
 The aggregate's `@invariant.pre` checks do not run on an enricher's writes,
 because stamping an audit field is not a business change. So a closed aggregate
 whose pre-invariant rejects changes can still be saved. The `@invariant.post`
-checks run once after each enricher, and the status-transition rules still
-apply to a status field it changes. When one of them fails, the enricher's
-writes are undone and the save is aborted with a `ValidationError` whose
-`location` names the enricher, for example
-`aggregate enricher myapp.audit.stamp_audit on Account`. `auto_now` and `auto_now_add`
-stamping works the same way, and its `location` names the stamped fields.
-An enricher that raises has its writes undone too, and its own exception
-reaches the caller.
+checks run once after each enricher. The status-transition rules still apply to
+a status field that an enricher changes. When one of these checks fails,
+Protean undoes the enricher's writes and aborts the save with a
+`ValidationError`. The error's `location` names the enricher, for example
+`aggregate enricher myapp.audit.stamp_audit on Account`. `auto_now` and
+`auto_now_add` stamping works the same way. Its `location` names the stamped
+fields. An enricher that raises has its writes undone too, and its own
+exception reaches the caller.
 
 Aggregate enrichers never fire for the records Protean saves for itself, such
-as outbox rows. The example skips an aggregate without `updated_by`, so the same
-enricher works in a domain where some aggregates have no audit fields.
+as outbox rows. The example skips an aggregate without `updated_by`. So you can
+use the same enricher in a domain where some aggregates have no audit fields.
 
-Keep them to cross-cutting lifecycle/audit metadata; they are not a hook for
-business logic or for raising events. For the complete recipe (an abstract audit
-base with `auto_now`/`auto_now_add` timestamps plus `created_by`/`updated_by`),
-see [Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md).
+Keep aggregate enrichers to cross-cutting lifecycle/audit metadata. Do not use
+them for business logic or for raising events. For the complete recipe (an
+abstract audit base with `auto_now`/`auto_now_add` timestamps plus
+`created_by`/`updated_by`), see [Track Audit and Lifecycle
+Fields](../../patterns/track-audit-fields.md).
 
-## Accessing Extensions
+## Read extensions from the metadata
 
 After raising an event, extensions are available on the metadata:
 
@@ -146,7 +148,7 @@ through the event store:
 --8<-- "guides/domain-behavior/message-enrichment/001.py:round_trip"
 ```
 
-## Edge Cases
+## What happens in edge cases?
 
 | Scenario | Behavior |
 |----------|----------|
@@ -162,7 +164,7 @@ Event enrichers also run on [fact events](../domain-definition/events.md#fact-ev
 Since fact events pass through `raise_()` like any other event, they
 are enriched automatically.
 
-## Best Practices
+## How should you use enrichers?
 
 1. **Keep enrichers fast**: They run synchronously inside `raise_()` for
    every event. Avoid I/O calls; prefer reading from thread-local context

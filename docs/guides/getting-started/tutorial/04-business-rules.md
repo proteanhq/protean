@@ -1,7 +1,7 @@
-# Chapter 4: Business Rules and Invariants
+# Chapter 4: Enforce business rules with invariants
 
-In this chapter we will add invariants to our Order aggregate so that
-orders cannot be empty, and shipped orders cannot be modified.
+You add two invariants to the Order aggregate. One rejects an empty order, and
+the other rejects any change to a shipped order.
 
 ## Post-Invariants: Validating State
 
@@ -25,7 +25,7 @@ ValidationError: {'_entity': ['An order must contain at least one item']}
 Notice that the invariant runs automatically. We don't call it ourselves.
 Protean guarantees that the aggregate is always in a valid state.
 
-## Pre-Invariants: Guarding Transitions
+## Pre-invariants: Reject invalid transitions
 
 A **pre-invariant** is checked *before* state changes are applied. We
 use it to prevent invalid operations:
@@ -35,7 +35,8 @@ use it to prevent invalid operations:
 --8<-- "guides/getting-started/tutorial/ch04.py:pre_invariant"
 ```
 
-This prevents any modifications once an order has been shipped:
+The pre-invariant rejects any change to an order once the order has been
+shipped:
 
 ```pycon
 >>> order.ship()
@@ -43,7 +44,7 @@ This prevents any modifications once an order has been shipped:
 ValidationError: {'_entity': ['Cannot modify an order that has been shipped']}
 ```
 
-## Aggregate Methods
+## Change state through aggregate methods
 
 Rather than mutating aggregate fields directly, we encapsulate behavior
 in methods:
@@ -54,10 +55,10 @@ in methods:
 ```
 
 Methods become the **public API** of the aggregate. External code calls
-`order.confirm()` rather than `order.status = "CONFIRMED"`. This keeps
-business logic inside the aggregate where invariants can enforce it.
+`order.confirm()` rather than `order.status = "CONFIRMED"`. The business logic
+then stays inside the aggregate, where the invariants can enforce it.
 
-## Putting It Together
+## Run all the rules together
 
 ```python
 # fragment
@@ -87,8 +88,8 @@ Caught: {'_entity': ['Cannot modify an order that has been shipped']}
 All checks passed!
 ```
 
-Notice how every rule is enforced automatically, the aggregate never enters an
-invalid state.
+Protean enforces every rule without a call from your code. The aggregate never
+enters an invalid state.
 
 ## What We Built
 
@@ -104,18 +105,18 @@ and business rules.
 
 !!! success "DDD Milestone"
     You have built a complete **DDD domain model**, aggregates, entities, value
-    objects, and invariants. These concepts are the foundation for every
-    Protean application, regardless of architecture.
+    objects, and invariants. Every Protean application uses these concepts,
+    whatever its architecture.
 
-    If you are following the **pure DDD** approach, your next step is
-    [Application Services](../../change-state/application-services.md) to
-    wire use cases. See the [DDD Pathway](../../pathways/ddd.md) for the
-    full reading order.
+    If you are following the **pure DDD** approach, read [Application
+    Services](../../change-state/application-services.md) next. That guide
+    shows you how to wire use cases. See the [DDD
+    Pathway](../../pathways/ddd.md) for the full reading order.
 
     The remaining chapters add **CQRS patterns** (Commands, Projections, and
-    separated read/write models) on top of this foundation.
+    separated read/write models) to this DDD domain model.
 
-## Full Source
+## See the full source
 
 ??? example "ch04.py, 151 lines"
 
@@ -123,6 +124,6 @@ and business rules.
     --8<-- "guides/getting-started/tutorial/ch04.py:full"
     ```
 
-## Next
+## Go to the next chapter
 
 [Chapter 5: Commands and Handlers →](05-commands.md)

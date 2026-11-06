@@ -18,7 +18,7 @@ definitions, but they swap in real adapters (PostgreSQL, Redis, etc.) via
 configuration overrides. Use pytest markers to
 keep them separate from your fast in-memory suite.
 
-## Configuring for Real Infrastructure
+## Configure the domain for real infrastructure
 
 The key difference from application tests is the domain configuration. Override
 your database, broker, or event store settings in a dedicated `conftest.py`
@@ -72,16 +72,17 @@ def domain_initialized():
     after each test. The same application code and domain elements are
     used, only the infrastructure changes.
 
-## Using Server Test Mode
+## Run the server in test mode
 
 For integration tests that exercise async message flows (event handlers,
 projectors, process managers), use the server's **test mode**. It processes
 all available messages and cascading events, then exits.
 
-The examples in this section test the domain below. Placing an order raises
-`OrderPlaced`. An event handler reserves stock and raises `InventoryReserved`,
-and a second handler marks the order shipped. The fixtures set both processing
-modes to `"async"`, so these handlers run only when the engine runs:
+The examples in this section test the domain below. When you place an order,
+the order aggregate raises `OrderPlaced`. An event handler reserves stock and
+raises `InventoryReserved`. A second handler then marks the order shipped. The
+fixtures set both processing modes to `"async"`. As a result, the two event
+handlers run only when the engine runs:
 
 ??? example "The domain and fixtures under test"
 
@@ -107,8 +108,9 @@ modes to `"async"`, so these handlers run only when the engine runs:
 --8<-- "guides/testing/integration-tests/001.py:engine_test_mode"
 ```
 
-Test mode handles cascading events automatically. If processing one event
-raises another, the engine continues until all chains are complete:
+Test mode processes cascading events automatically. When a handler raises
+another event, the engine processes that event as well. The engine keeps
+running until all chains are complete:
 
 ```python
 # fragment
@@ -121,21 +123,21 @@ You can also invoke test mode from the CLI:
 protean server --domain=my_domain --test-mode
 ```
 
-See [Run the Server](../server/index.md#test-mode) for CLI details.
+See [Run the Server](../server/index.md#run-in-test-mode) for CLI details.
 
 ## Driving flows with `process_and_wait`
 
 The `Engine(domain, test_mode=True).run()` calls above are the low-level
-primitive. For most tests `protean.testing` provides higher-level helpers that
-make the **same test body work in both synchronous and asynchronous processing
-modes**, and hand you the events and errors without reaching into outbox rows or
-event-store streams.
+primitive. For most tests, `protean.testing` provides higher-level helpers.
+With these helpers, the **same test body works in both synchronous and
+asynchronous processing modes**. The helpers also hand you the events and
+errors, so you do not read outbox rows or event-store streams yourself.
 
-`process_and_wait(command, domain)` processes a command through its full runtime
-path (`handler → aggregate → UoW commit → outbox → engine → subscription →
-projector`) and waits for the effects to settle. In sync mode the chain runs
-inline; in async mode it drains a bounded test-mode engine before returning. It
-returns a `ProcessResult`:
+`process_and_wait(command, domain)` processes a command through its full
+runtime path (`handler → aggregate → UoW commit → outbox → engine →
+subscription → projector`) and waits for the effects to settle. In sync mode,
+the chain runs inline. In async mode, `process_and_wait` drains a bounded
+test-mode engine before it returns. It returns a `ProcessResult`:
 
 ```python
 # fragment
@@ -146,7 +148,11 @@ A `ProcessResult` exposes exactly what an integration test asserts on:
 
 - `result`: The handler's return value (sync) or the enqueued command's store position (async).
 - `events`: An `EventLog` of every event raised in the command's correlation chain.
-- `error` / `succeeded` / `failed`: the synchronous or submission-time error (an unregistered command, an expired deadline, a duplicate key, an enrichment `ValidationError`). Asynchronous *handler* failures happen after the command is enqueued, are absorbed by the engine (retries or DLQ), and are not surfaced here.
+- `error` / `succeeded` / `failed`: the synchronous or submission-time error
+  (an unregistered command, an expired deadline, a duplicate key, an enrichment
+  `ValidationError`). Asynchronous *handler* failures happen after the command
+  is enqueued. The engine absorbs these failures (retries or DLQ).
+  `ProcessResult` does not surface them.
 
 ### Asserting on events with `EventLog`
 
@@ -159,9 +165,10 @@ A `ProcessResult` exposes exactly what an integration test asserts on:
 
 ### Waiting for a condition with `drain`
 
-When you drive the flow yourself, or need to wait for a later cascade to settle,
-`drain` runs the test-mode engine until a predicate is satisfied. It replaces
-the copy-pasted `for _ in range(N): Engine(...).run()` loop:
+`drain` runs the test-mode engine until a predicate is satisfied. Use it in two
+cases: you drive the flow yourself, or you need to wait for a later cascade to
+settle. It replaces the copy-pasted `for _ in range(N): Engine(...).run()`
+loop:
 
 ```python
 # fragment
@@ -169,30 +176,30 @@ the copy-pasted `for _ in range(N): Engine(...).run()` loop:
 ```
 
 `drain` is bounded by `max_cycles` (default 5) so a never-satisfied `until`
-cannot hang the test. If the budget is exhausted before the condition settles,
-`drain` returns and emits a `UserWarning`, so an unmet expectation is never
-silently swallowed. An engine pass stops once nothing is left to process and
-takes at most about a second, so raise `max_cycles` only for flows that
+cannot hang the test. `drain` can reach `max_cycles` before the condition
+settles. In that case `drain` returns and emits a `UserWarning`, so you always
+see an unmet expectation. An engine pass stops once nothing is left to process
+and takes at most about a second, so raise `max_cycles` only for flows that
 genuinely need more passes.
 
-## Full-Flow Feature Files
+## Write feature files for full flows
 
 Integration tests exercise complete flows from command to projection,
 verifying that every layer works together through real infrastructure.
 
-### Command Through to Projection
+### Follow a command through to a projection
 
 ```gherkin
 --8<-- "guides/testing/integration-tests/integration/features/order_flow.feature:feature"
 ```
 
-### Persistence Round-Trip
+### Check that an aggregate survives a persistence round-trip
 
 ```gherkin
 --8<-- "guides/testing/integration-tests/integration/features/persistence.feature"
 ```
 
-## Step Definitions for Integration Tests
+## Write step definitions for integration tests
 
 Step definitions are written the same way as in application tests. They import
 your domain and use `domain.process()` and `domain.repository_for()`:
@@ -209,7 +216,7 @@ The persistence feature's steps go in `tests/integration/test_persistence.py`:
 --8<-- "guides/testing/integration-tests/integration/test_persistence.py:steps"
 ```
 
-## Separating Integration Tests
+## Keep integration tests separate from fast tests
 
 Use Gherkin tags and pytest markers to separate integration tests from fast
 in-memory tests:
@@ -251,12 +258,12 @@ tests/
     └── test_persistence.py
 ```
 
-## Testing with Different Adapters
+## Test with different adapters
 
 !!!tip "Prefer `--protean-env` for adapter switching"
     Instead of writing per-directory `conftest.py` overrides, consider using
     Protean's built-in **dual-mode testing** support. Define a `[memory]`
-    overlay in `domain.toml` and switch modes from the command line:
+    overlay in `domain.toml`. Then switch modes from the command line:
 
     ```shell
     pytest --protean-env memory   # In-memory — fast, no Docker
@@ -268,9 +275,9 @@ tests/
     complete setup.
 
 For projects that need finer-grained control or want to switch individual
-adapters independently, use environment variables to switch configuration.
-This fixture goes in `tests/integration/conftest.py`, and `domain` is your
-application's domain (`from myapp import domain`):
+adapters independently, use environment variables to switch configuration. Put
+the fixture below in `tests/integration/conftest.py`. In that fixture, `domain`
+is your application's domain (`from myapp import domain`):
 
 ```python
 # fragment
@@ -294,16 +301,16 @@ The integration feature files and step definitions then run unchanged against
 whichever adapter `TEST_DB` names. The domain logic is identical, only the
 infrastructure changes.
 
-## Per-Test Data Cleanup
+## Clean up data after each test
 
 `DomainFixture.domain_context()` automatically resets data in all providers,
 brokers, and the event store after each test. If you use the recommended
 `_ctx` fixture pattern above, **no additional cleanup fixture is needed**.
 
-## Coverage Reporting
+## Report test coverage
 
-Run your full test suite with coverage to verify you're hitting the 100%
-target on business logic:
+Run your full test suite with coverage to check that you reach the 100% target
+on business logic:
 
 ```shell
 # Run all tests with coverage

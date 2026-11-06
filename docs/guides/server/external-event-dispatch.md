@@ -1,14 +1,14 @@
 # Dispatching Published Events to External Brokers
 
-Here is how to deliver `published=True` domain events to external message
-brokers, so other bounded contexts and partner systems can consume them.
+Protean can deliver `published=True` domain events to external message brokers,
+so other bounded contexts and partner systems can consume them.
 
 For the architectural rationale and trade-off analysis, see
 [Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md).
 
 ---
 
-## Prerequisites
+## What you need before you start
 
 - A running Protean domain with the outbox enabled
   (`default_subscription_type = "stream"`)
@@ -80,8 +80,8 @@ If you haven't already, create the outbox table:
 protean db setup --domain my_domain
 ```
 
-The outbox table includes a `target_broker` column that routes each row to
-the correct processor.
+The outbox table includes a `target_broker` column, and Protean uses it to send
+each row to the correct processor.
 
 ---
 
@@ -112,7 +112,7 @@ DEBUG: Published to myapp::order: <message_id>     # External
 ```
 
 Both rows advance through the outbox lifecycle independently. If the external
-broker is temporarily down, the internal row publishes successfully while the
+broker is temporarily down, the internal row still publishes successfully. The
 external row retries on its own schedule.
 
 ---
@@ -161,7 +161,7 @@ the deduplication key.
 
 ---
 
-## Multiple external brokers
+## Send events to multiple external brokers
 
 When you configure multiple external brokers, each published event creates
 one outbox row per external broker. Each row is processed and retried
@@ -181,7 +181,7 @@ Published event: OrderShipped
 
 ---
 
-## Monitoring
+## Monitor external dispatch
 
 External outbox processors emit distinct trace events:
 
@@ -197,7 +197,7 @@ external dispatch health independently from internal processing.
 
 ---
 
-## Validation warning
+## When does Protean warn about missing external brokers?
 
 If your domain has events with `published=True` but no `external_brokers`
 configured, Protean logs a warning during domain initialization:
@@ -213,7 +213,7 @@ external brokers.
 
 ---
 
-## Next steps
+## Where to go next
 
 - [Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md):
   Pattern: architecture, trade-offs, and anti-patterns

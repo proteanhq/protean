@@ -1,11 +1,11 @@
 # Chapter 5: Testing the Ledger
 
 We have been running code manually in scripts and the Protean shell. It is time
-for proper automated tests. In this chapter we will discover Protean's testing
-DSL. A fluent API that reads like English: "given an Account after these
-events, process this command."
+for proper automated tests. Protean provides a testing DSL for these tests. A
+fluent API that reads like English: "given an Account after these events,
+process this command."
 
-## The Testing DSL
+## Write a test with the testing DSL
 
 Protean provides a `given()` function that starts a test sentence:
 
@@ -56,7 +56,7 @@ Key assertions:
 - **`result.holder_name`**: The result proxies attribute access to the
   aggregate, so you can check final state directly.
 
-## Testing with History
+## Test a command against prior events
 
 When an account already exists, seed the event store with prior events:
 
@@ -70,7 +70,7 @@ replaying this event, then process the command." The command handler
 loads the aggregate (which now has a $1,000 balance from the
 `AccountOpened` event), calls `deposit()`, and persists.
 
-## Testing Rejections
+## Test a rejected command
 
 When a command violates a business rule, use `.rejected`:
 
@@ -86,7 +86,7 @@ When a command violates a business rule, use `.rejected`:
 - **`len(result.events) == 0`**: No events were recorded because the
   command was rejected.
 
-## Multi-Command Chaining
+## Chain several commands in one test
 
 Test an entire lifecycle by chaining `.process()` calls:
 
@@ -95,11 +95,11 @@ Test an entire lifecycle by chaining `.process()` calls:
 --8<-- "guides/getting-started/es-tutorial/ch05.py:test_lifecycle"
 ```
 
-Each `.process()` builds on the state left by the previous one.
-`.events` always reflects the **last** command, while `.all_events`
-accumulates events across **all** chained commands.
+Each `.process()` builds on the state left by the previous one. `.events`
+always reflects the **last** command. `.all_events` accumulates events across
+**all** chained commands.
 
-## Testing Invariant Violations
+## Test an invariant violation
 
 Verify that the "cannot close with balance" invariant works:
 
@@ -108,7 +108,7 @@ Verify that the "cannot close with balance" invariant works:
 --8<-- "guides/getting-started/es-tutorial/ch05.py:test_close_rejection"
 ```
 
-## Running the Tests
+## Run the tests
 
 ```shell
 $ pytest test_fidelis.py -v
@@ -123,10 +123,10 @@ test_fidelis.py::test_cannot_close_with_balance PASSED
 
 ## Why Integration Tests?
 
-Notice that `given().process()` runs the **full pipeline**: it calls
-`domain.process()`, which routes to the command handler, which loads the
-aggregate from the event store, calls the domain method, persists the
-result, and returns. There are no mocks.
+`given().process()` runs the **full pipeline** by calling `domain.process()`.
+`domain.process()` routes to the command handler, and the handler loads the
+aggregate from the event store, calls the domain method, persists the result,
+and returns. There are no mocks.
 
 This is deliberate. Event-sourced systems derive their state from events.
 Mocking the event store would defeat the purpose. The testing DSL makes
@@ -144,12 +144,11 @@ that you rarely need unit tests with mocks.
 - **`.all_events`** for cross-command event accumulation.
 - **`.rejection_messages`** for flat error string access.
 
-That completes Part I. We have a banking ledger with business rules
-and comprehensive tests. In Part II, we will grow the platform with
-projections, event handlers, async processing, and cross-aggregate
-coordination.
+That completes Part I. We have a banking ledger with business rules and
+comprehensive tests. Part II adds projections, event handlers, async
+processing, and cross-aggregate coordination to the platform.
 
-## Full Source
+## Read the full source
 
 ??? example "ch05.py, 295 lines"
 
@@ -157,6 +156,6 @@ coordination.
     --8<-- "guides/getting-started/es-tutorial/ch05.py:full"
     ```
 
-## Next
+## Go to the next chapter
 
 [Chapter 6: The Account Dashboard →](06-account-dashboard.md)

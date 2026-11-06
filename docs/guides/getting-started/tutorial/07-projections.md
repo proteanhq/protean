@@ -1,4 +1,4 @@
-# Chapter 7: Projections and Projectors
+# Chapter 7: Build a projection and its projector
 
 In this chapter we will create a `BookCatalog` projection. A read-optimized
 view that stays in sync with our Book aggregate through events.
@@ -11,8 +11,8 @@ view that stays in sync with our Book aggregate through events.
 
 ## Why Projections?
 
-Our aggregates enforce business rules, but for listing books in a catalog we
-want flat, fast data, no nested value objects, no business logic. Projections
+Our aggregates enforce business rules. For listing books in a catalog, we want
+flat, fast data with no nested value objects and no business logic. Projections
 give us that.
 
 ## Defining a Projection
@@ -47,10 +47,10 @@ When a `BookAdded` event fires, `on_book_added` creates a catalog entry.
 When `BookPriceUpdated` fires, `on_price_updated` updates the existing
 entry.
 
-## Querying the Projection
+## Query the projection
 
 Projections are queried using `domain.view_for()`, which returns a `ReadView`.
-The CQRS read-side API:
+The code below uses this CQRS read-side API:
 
 ```python
 # fragment
@@ -82,8 +82,8 @@ Updated: The Great Gatsby — $15.99
 All checks passed!
 ```
 
-Notice that we never updated the projection directly, the projector reacted to
-events and kept it in sync automatically. The catalog always reflects the
+We never updated the projection directly. The projector reacted to events and
+kept the projection in sync automatically. The catalog always reflects the
 latest state of the Book aggregate.
 
 ## What We Built
@@ -93,13 +93,12 @@ latest state of the Book aggregate.
   projection.
 - **`domain.view_for()`**: The read-only view API for projections
   (with `get()`, `query`, `find_by()`, `count()`, `exists()`).
-- Automatic sync: adding or updating a book immediately updates the
-  catalog.
+- Adding or updating a book updates the catalog immediately and automatically.
 
 In the next chapter, we will switch from in-memory storage to a real
 PostgreSQL database.
 
-## Full Source
+## Read the full source
 
 ??? example "ch07.py, 164 lines"
 
@@ -107,6 +106,6 @@ PostgreSQL database.
     --8<-- "guides/getting-started/tutorial/ch07.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 8: Connecting a Real Database →](08-persistence.md)

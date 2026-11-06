@@ -1,8 +1,9 @@
 # Chapter 11: Upcasting Events When Requirements Change
 
-Six months after launch, new anti-money-laundering regulations require
-that every deposit record its **source type**, whether the funds came from
-cash, wire transfer, ACH, or check. The `DepositMade` event needs a new `source_type` field.
+Six months after launch, new anti-money-laundering regulations require every
+deposit to record its **source type**. The source type says whether the funds
+came from cash, wire transfer, ACH, or check. The `DepositMade` event needs a
+new `source_type` field.
 
 But the event store contains hundreds of thousands of historical
 `DepositMade` events that lack this field. Rewriting history is not an
@@ -10,11 +11,11 @@ option, that defeats the purpose of Event Sourcing.
 
 The answer is **upcasting**: transparently transforming old event payloads into
 the current schema during deserialization. The old events are never rewritten.
-They are upgraded on the fly whenever they are read.
+Protean upgrades the old events each time it reads them.
 
 ## Versioning the Event
 
-First, bump the event to v2 and add the new field:
+First, bump the event to v2. Then add the new field:
 
 ```python
 # fragment
@@ -50,12 +51,12 @@ When the event store reads a message with type
 4. Instantiates the current `DepositMade` (v2) class with the
    transformed data
 
-The historical event in the store is untouched. The transformation
-happens at read time, lazily.
+The historical event in the store is untouched. Protean transforms the payload
+lazily, at read time.
 
-## Chaining Upcasters
+## Chain upcasters across versions
 
-Later, regulations add a `currency` field. Bump to v3:
+Later, the regulators require a `currency` field. Bump to v3:
 
 ```python
 # fragment
@@ -66,7 +67,7 @@ Later, regulations add a `currency` field. Bump to v3:
 Protean automatically chains: **v1 → v2 → v3**. A historical v1 event
 passes through both upcasters before reaching the handler.
 
-## Startup Validation
+## Validate upcaster chains at startup
 
 During `domain.init()`, Protean validates upcaster chains:
 
@@ -80,12 +81,13 @@ During `domain.init()`, Protean validates upcaster chains:
 
 If any validation fails, `domain.init()` raises an error immediately.
 
-## Performance
+## What does upcasting cost at read time?
 
 - **Current events (v2 reading v2)**: Zero overhead. Direct type lookup,
   no upcasting.
-- **Old events (v1 reading v2)**: O(N) where N is the number of version
-  hops. For v1 → v3 with two upcasters, N = 2. This is negligible.
+- **Old events (v1 reading v2)**: O(N), where N is the number of upcasters an
+  event passes through to reach the current version. For v1 → v3 with two
+  upcasters, N = 2. Two upcaster calls per event add a negligible cost.
 - **Never rewrite events**: The event store is append-only in normal operation,
   and upcasting respects that by transforming old payloads in memory. A deliberate
   operator migration is the separate exception; see [Migration
@@ -100,10 +102,10 @@ If any validation fails, `domain.init()` raises an error immediately.
 - **Lazy migration**: Events are never rewritten, only transformed at
   read time.
 
-This is the event-sourcing answer to database migrations. No downtime,
-no data rewriting, no migration scripts.
+In event sourcing, upcasting takes the place of database migrations. No
+downtime, no data rewriting, no migration scripts.
 
-## Full Source
+## Read the full source
 
 ??? example "ch11.py, 288 lines"
 
@@ -111,6 +113,6 @@ no data rewriting, no migration scripts.
     --8<-- "guides/getting-started/es-tutorial/ch11.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 12: Snapshots for High-Volume Accounts →](12-snapshots.md)

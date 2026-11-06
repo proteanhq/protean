@@ -1,18 +1,18 @@
 # Chapter 1: The Faithful Ledger
 
-In this chapter we will create the foundation of our digital banking
-platform, **Fidelis**. By the end, we will have an event-sourced
-`Account` aggregate that records every state change as an immutable event
-and reconstructs its balance by replaying those events.
+In this chapter you build the first part of **Fidelis**, a digital banking
+platform. You end with an event-sourced `Account` aggregate that records every
+state change as an immutable event. The aggregate reconstructs its balance by
+replaying those events.
 
 A bank cannot store the current balance and overwrite it on every transaction.
-Every deposit, every withdrawal is a **fact** that happened, and facts cannot
-be undone. Event Sourcing captures this reality: instead of storing state, we
-store the events that produced it.
+Every deposit and every withdrawal is a **fact** that happened. A fact cannot
+be undone. With Event Sourcing, you store the events that produced the state
+instead of storing the state itself.
 
-## Setting Up
+## Set up the project
 
-Create a new directory for the project and install Protean:
+Create a new directory for the project. Then install Protean in it:
 
 ```shell
 mkdir fidelis
@@ -63,31 +63,32 @@ There is a lot happening here. Let's break it down:
   `_create_new()` to create a blank aggregate with only an
   auto-generated identity, then calls `raise_()` to emit the creation
   event.
-- **`raise_()`** does two things for event-sourced aggregates: it
-  records the event, and it immediately calls the matching `@apply`
-  handler to mutate the aggregate's state.
+- For event-sourced aggregates, **`raise_()`** records the event. It then
+  immediately calls the matching `@apply` handler to mutate the aggregate's
+  state.
 - **`@apply`** marks `on_account_opened` as the handler for
-  `AccountOpened` events. This method is the **single source of truth**
-  for how this event type changes the aggregate. It runs both during
-  live operations (when `raise_()` is called) and during replay (when
-  the aggregate is loaded from the event store).
+  `AccountOpened` events. This method is the **single source of truth** for how
+  this event type changes the aggregate. The handler runs during live
+  operations, when `raise_()` is called. It also runs during replay, when the
+  aggregate is loaded from the event store.
 
 !!! important "The Golden Rule"
-    In an event-sourced aggregate, **never set fields directly** outside
-    of `@apply` handlers. All state changes flow through `raise_()` →
-    `@apply`. This guarantees that replaying events produces identical
-    state.
+    In an event-sourced aggregate, **never set fields directly** outside of
+    `@apply` handlers. Every state change starts with a call to `raise_()`,
+    which then calls the `@apply` handler. This guarantees that replaying
+    events produces identical state.
 
-## Creating an Account
+## Create an account
 
-Let's create an account and persist it:
+The code below creates an account, persists it, and loads it back from the
+repository:
 
 ```python
 # fragment
 --8<-- "guides/getting-started/es-tutorial/ch01.py:usage"
 ```
 
-Two important things happen:
+The repository does not write or read database rows here:
 
 1. **`repo.add(account)`** does not write a row to a database. It writes
    the `AccountOpened` event to the **event store**. An append-only log of
@@ -116,7 +117,7 @@ The balance was not stored anywhere. It was derived from the single
 `AccountOpened` event. The `_version` starts at `0`, corresponding to the first
 event.
 
-## Exploring in the Shell
+## Explore the domain in the shell
 
 Protean includes an interactive shell that pre-loads your domain:
 
@@ -144,14 +145,14 @@ inspect the event store interactively:
 - An **AccountOpened** event describing the fact of account creation.
 - An event-sourced **Account** aggregate with an `@apply` handler.
 - A factory method that uses `_create_new()` and `raise_()`.
-- **Persisted** the account by writing events and **retrieved** it by
-  replaying them.
+- **Persisted** the account by writing events. **Retrieved** the account by
+  replaying those events.
 
 All of this ran in-memory with no infrastructure. In the next chapter,
 we will add deposits and withdrawals, multiple events flowing through a single
 aggregate.
 
-## Full Source
+## Read the full source
 
 ??? example "ch01.py, 81 lines"
 
@@ -159,6 +160,6 @@ aggregate.
     --8<-- "guides/getting-started/es-tutorial/ch01.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 2: Deposits and Withdrawals →](02-deposits-and-withdrawals.md)

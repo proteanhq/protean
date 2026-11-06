@@ -6,17 +6,24 @@ Protean provides two paths for changing state: directly through Application Serv
 
 ## Process Requests
 
-The request processing pipeline handles incoming intentions to change state, whether from API endpoints, CLI commands, or background jobs.
+The request processing pipeline receives requests to change state from API
+endpoints, CLI commands, or background jobs.
 
 ### Application Services <span class="pathway-tag pathway-tag-ddd">DDD</span>
 
-Application services coordinate use cases by orchestrating aggregates and domain services. They bridge the gap between the external world and the domain model. Use these when following the **DDD** pathway.
+Application services coordinate use cases by orchestrating aggregates and
+domain services. They receive requests from outside the domain and call the
+domain model to carry them out. When you follow the **DDD** pathway, use
+application services.
 
 [Learn more about application services →](./application-services.md)
 
 ### Commands <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Commands are immutable data transfer objects expressing an intent to change state. They carry the data needed for a specific operation without containing any logic. Use these when following the **CQRS** or **Event Sourcing** pathway.
+Commands are immutable data transfer objects expressing an intent to change
+state. They carry the data needed for a specific operation without containing
+any logic. When you follow the **CQRS** or **Event Sourcing** pathway, use
+commands.
 
 [Learn more about commands →](./commands.md)
 
@@ -28,7 +35,8 @@ Command handlers receive commands, load the relevant aggregate, invoke domain me
 
 ## Persist Data
 
-Once state has been changed through domain methods, it needs to be persisted. Protean provides a collection-oriented persistence abstraction.
+After domain methods change the state of an aggregate, you persist the
+aggregate. Protean provides a collection-oriented persistence abstraction.
 
 ### Repositories
 
@@ -38,7 +46,8 @@ Repositories are the persistence abstraction for aggregates. They provide a coll
 
 ### Persist Aggregates
 
-Save aggregates through a repository's `add` method, with automatic transaction management via the Unit of Work pattern.
+Save aggregates through a repository's `add` method. Protean wraps the save in
+a transaction automatically, through the Unit of Work pattern.
 
 [Learn more about persisting aggregates →](./persist-aggregates.md)
 
@@ -48,7 +57,7 @@ Load and query aggregates using QuerySets, filters, Q objects, and lookup expres
 
 [Learn more about retrieving aggregates →](./retrieve-aggregates.md)
 
-### Temporal Queries <span class="pathway-tag pathway-tag-es">ES</span>
+### Query aggregates at a past version <span class="pathway-tag pathway-tag-es">ES</span>
 
 Reconstitute event-sourced aggregates at a specific version or point in time, enabling time-travel over the full event history.
 
@@ -60,19 +69,19 @@ The Unit of Work pattern provides automatic transaction management, ensuring tha
 
 [Learn more about the Unit of Work →](./unit-of-work.md)
 
-### Custom Database Models <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span>
+### Customize database models <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span>
 
 Override the auto-generated storage schema with adapter-specific field types, custom table names, or multi-database deployments.
 
 [Learn more about custom database models →](./database-models.md)
 
-### Event Store Setup <span class="pathway-tag pathway-tag-es">ES</span>
+### Set up the event store <span class="pathway-tag pathway-tag-es">ES</span>
 
 Choose, configure, and operate an event store for event-sourced aggregates. Read events, inspect streams, and understand stream naming.
 
 [Learn more about event store setup →](./event-store-setup.md)
 
-### Snapshots <span class="pathway-tag pathway-tag-es">ES</span>
+### Load aggregates faster with snapshots <span class="pathway-tag pathway-tag-es">ES</span>
 
 Optimize event-sourced aggregate loading with periodic state checkpoints. Configure thresholds and manage snapshots via CLI or API.
 

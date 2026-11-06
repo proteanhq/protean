@@ -1,4 +1,4 @@
-# Schema Generation
+# Generate schemas from your domain
 
 Protean can generate standard [JSON Schema (Draft 2020-12)](https://json-schema.org/draft/2020-12)
 documents for all data-carrying domain elements: aggregates, entities, value
@@ -21,15 +21,16 @@ Generated schemas are useful for:
 Use the `protean schema generate` command to produce JSON Schema files for
 every data-carrying element in your domain.
 
-### From a live domain
+### Generate from a live domain
 
 ```bash
 protean schema generate --domain=my_app.domain
 ```
 
-This loads the domain, builds the IR, and writes schemas to `.protean/schemas/`.
+`protean schema generate` loads the domain, builds the IR, and writes schemas
+to `.protean/schemas/`.
 
-### From an IR file
+### Generate from an IR file
 
 ```bash
 protean schema generate --ir=domain-ir.json
@@ -38,13 +39,13 @@ protean schema generate --ir=domain-ir.json
 If you already have a serialized IR (from `protean ir show`), you can generate
 schemas directly from it.
 
-### Custom output directory
+### Write schemas to a custom output directory
 
 ```bash
 protean schema generate --domain=my_app.domain --output=build
 ```
 
-### Other output formats
+### Emit other output formats
 
 By default `protean schema generate` emits JSON Schema. Pass `--format` to emit
 other contract formats, `json`, `avro`, `protobuf`, or `all` (which writes JSON Schema, Avro,
@@ -55,11 +56,11 @@ protean schema generate --domain=my_app.domain --format all
 ```
 
 The Avro schema carries an `aliases` entry for any field declared with
-[`renamed_from`](../../reference/fields/arguments.md#renamed_from), so an external
-Avro consumer resolves the old field name on the wire. See the
-[`protean schema` CLI reference](../../reference/cli/schema.md) for every flag, and
-[Evolving Events Over Time](../evolving-events.md) for how these formats fit the
-wider event-evolution workflow.
+[`renamed_from`](../../reference/fields/arguments.md#renamed_from), so an
+external Avro consumer resolves the old field name on the wire. See the
+[`protean schema` CLI reference](../../reference/cli/schema.md) for every flag.
+[Evolving Events Over Time](../evolving-events.md) shows how these formats fit
+the wider event-evolution workflow.
 
 ---
 
@@ -83,7 +84,7 @@ FQNs and asks you to disambiguate.
 
 ---
 
-## Output structure
+## Where do the generated schemas go?
 
 Schemas are organized by aggregate cluster:
 
@@ -111,7 +112,7 @@ commands.  Other element types default to `v1`.
 
 ---
 
-## Schema structure
+## What does a generated schema contain?
 
 Each generated schema is a standard JSON Schema object with Protean-specific
 metadata in `x-protean-*` extension fields:
@@ -135,7 +136,7 @@ metadata in `x-protean-*` extension fields:
 }
 ```
 
-### Extension fields
+### What do the extension fields mean?
 
 | Field | Description |
 |-------|-------------|
@@ -150,10 +151,11 @@ metadata in `x-protean-*` extension fields:
 | `x-protean-identity-field` | Identity field name (aggregates only) |
 | `x-protean-is-event-sourced` | `true` if the aggregate uses event sourcing |
 
-### Nested structures
+### How are nested structures written?
 
-Value objects and entities referenced by an aggregate, and value objects
-referenced by a command or event, are resolved as `$defs` with `$ref` pointers:
+Protean writes each value object or entity that an aggregate references as a
+`$defs` entry with a `$ref` pointer. Protean does the same for each value
+object that a command or event references:
 
 ```json
 {
@@ -173,9 +175,9 @@ referenced by a command or event, are resolved as `$defs` with `$ref` pointers:
 }
 ```
 
-A `Dict` field whose values are a value object, such as
-`Dict(value_type=ValueObject(Address))`, refers to the value object's `$defs`
-entry from `additionalProperties`:
+A `Dict` field can hold a value object as its values, such as
+`Dict(value_type=ValueObject(Address))`. The schema for that `Dict` field
+refers to the value object's `$defs` entry from `additionalProperties`:
 
 ```json
 {
@@ -188,11 +190,11 @@ entry from `additionalProperties`:
 
 A value object that a `Dict` field and a `ValueObject` field both use gets one
 `$defs` entry. Avro writes the field as a `map` whose `values` is the `Address`
-record, and Protobuf as a `map` whose value type is the `Address` message. An
-untyped `Dict()` stays a map of untyped values: `{"type": "object"}`,
-`{"type": "map", "values": "string"}` and `map<string, string>`.
+record. Protobuf writes the field as a `map` whose value type is the `Address`
+message. An untyped `Dict()` stays a map of untyped values: `{"type":
+"object"}`, `{"type": "map", "values": "string"}` and `map<string, string>`.
 
-### Optional fields
+### How are optional fields written?
 
 Optional fields use the `anyOf` pattern with `null`:
 
@@ -229,17 +231,17 @@ field becomes a string with a pattern that accepts decimal numbers. The field's
 string, for example `"0"`.
 
 A `List(content_type=Decimal(precision=5, scale=2))` records only the item type
-`Decimal`. The item's precision and scale are not in the IR, so no generated
-contract carries them, and Protean does not check them on list items either.
-A fact event copies only each field's type and default from its aggregate, so a
-`Decimal` field on a fact event records no precision or scale.
+`Decimal`. The IR does not record the item's precision and scale, so no
+generated contract carries them. Protean does not check them on list items
+either. A fact event copies only each field's type and default from its
+aggregate, so a `Decimal` field on a fact event records no precision or scale.
 
 ---
 
 ## Validating payloads
 
-Generated schemas work with any JSON Schema validator. Take this ordering
-domain:
+You can check a payload against the generated schemas with any JSON Schema
+validator. Take this ordering domain:
 
 ```python
 --8<-- "guides/compose-a-domain/schema-generation/001.py:domain"
@@ -261,9 +263,12 @@ Python's `jsonschema` library:
 
 ---
 
-## Design decisions
+## Why does Protean generate schemas this way?
 
-- **IR-first generation**: Schemas are built from IR field metadata, not
-  Pydantic's `model_json_schema()`.  See [ADR-0005](../../adr/0005-ir-first-schema-generation.md).
+- **Build schemas from the IR**: Protean builds schemas from IR field metadata
+  and does not use Pydantic's `model_json_schema()`.  See the decision record
+  on IR-first schema generation
+  ([ADR-0005](../../adr/0005-ir-first-schema-generation.md)).
 - **Standard JSON Schema with `x-` extensions**: Not a custom envelope.
-  See [ADR-0006](../../adr/0006-standard-json-schema-with-x-extensions.md).
+  See the decision record on standard JSON Schema with `x-` extensions
+  ([ADR-0006](../../adr/0006-standard-json-schema-with-x-extensions.md)).

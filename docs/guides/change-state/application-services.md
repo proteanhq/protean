@@ -2,11 +2,11 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span>
 
-Application services act as a bridge between the external API layer and the
-domain model, orchestrating business logic and use cases without exposing the
-underlying domain complexity. They encapsulate and coordinate operations,
-making them reusable and easier to manage, ensuring that all interactions with
-the domain are consistent and controlled.
+Application services connect the external API layer to the domain model. They
+orchestrate business logic and use cases without exposing the underlying domain
+complexity. They encapsulate and coordinate operations, making them reusable
+and easier to manage, ensuring that all interactions with the domain are
+consistent and controlled.
 
 For background on how application services orchestrate use cases, see
 [Application Services concept](../../concepts/building-blocks/application-services.md).
@@ -30,22 +30,22 @@ entry point. It automatically wraps the method body in a `UnitOfWork` context,
 providing transaction management.
 
 3. The `@use_case` decorator on `activate_user` follows the same pattern. Each
-use case method represents a distinct business operation, receives plain Python
-arguments, and can return values directly to the caller.
+   use case method represents a distinct business operation. It receives plain
+   Python arguments and can return values directly to the caller.
 
 Unlike command handlers (which are dispatched via `domain.process()`),
 application services are instantiated and called directly. A use case runs
 inside a Unit of Work, so call it after the domain is initialized (the example
-above ends with `auth.init(traverse=False)`) and inside a domain context, such
-as `with auth.domain_context():`. Without one, the call raises
+above ends with `auth.init(traverse=False)`). Call it inside a domain context
+too, such as `with auth.domain_context():`. Without one, the call raises
 `ConfigurationError`:
 
 ```python
 --8<-- "guides/change-state/008.py:call"
 ```
 
-This makes them ideal for synchronous request-response workflows where the
-caller needs an immediate result.
+Because you call application services directly, they suit synchronous
+request-response workflows where the caller needs an immediate result.
 
 ## The `@use_case` Decorator
 
@@ -58,17 +58,17 @@ mechanism for marking methods as use case entry points:
 
 It does the following:
 
-1. **Unit of Work wrapping**: Every method decorated with `@use_case` is
-automatically enclosed in a `UnitOfWork` context. If the method completes
-successfully, the UoW commits all pending changes. If an exception is raised,
-the UoW rolls back all changes.
+1. **Wraps the method in a Unit of Work**: Every method decorated with
+`@use_case` is automatically enclosed in a `UnitOfWork` context. If the method
+completes successfully, the UoW commits all pending changes. If an exception is
+raised, the UoW rolls back all changes.
 
-2. **Execution logging**: The decorator logs the invocation of each use case
-at the INFO level, providing traceability for debugging and auditing.
+2. **Logs each call**: The decorator logs the invocation of each use case at
+   the INFO level, so you can trace calls when debugging and auditing.
 
-3. **Domain context check**: The decorator raises `ConfigurationError` when no
-domain context is active, because the Unit of Work needs a domain to open
-against.
+3. **Checks for a domain context**: The decorator raises `ConfigurationError`
+   when no domain context is active. The Unit of Work needs a domain to open
+   against.
 
 ```python
 --8<-- "guides/change-state/application-services/001.py:service"
@@ -130,13 +130,13 @@ against.
     passed directly back to the calling API layer, enabling immediate feedback
     (e.g., a newly created entity ID).
 
-## Return Values
+## What does a use case return?
 
 Application Services execute synchronously and always return values directly
 to the caller. This is one of their key advantages for request-response
 workflows.
 
-Common return value patterns:
+Use case methods commonly return values in these forms:
 
 ```python
 --8<-- "guides/change-state/application-services/002.py:service"
@@ -158,13 +158,13 @@ For details on how the Unit of Work pattern works, see the
 [Unit of Work](unit-of-work.md) guide.
 
 !!!note
-    A `UnitOfWork` context applies to objects in the aggregate cluster,
-    and not multiple aggregates. An Application Service method can load
-    multiple aggregates to perform the business process, but should never
-    persist more than one at a time. Other aggregates should be synced
-    eventually through domain events.
+    A `UnitOfWork` context applies to objects in the aggregate cluster, and not
+    multiple aggregates. An Application Service method can load multiple
+    aggregates to perform the business process, but should never persist more
+    than one at a time. Event handlers should sync the other aggregates
+    eventually, in response to domain events.
 
-## Error Handling
+## How do application services report errors?
 
 Application Services handle errors differently from Command and Event
 Handlers. Because they execute synchronously with the caller always present,
@@ -184,12 +184,12 @@ data consistency.
 
 - Keep use case methods focused on orchestration so that domain-level errors
 are raised by the aggregate, not the service.
-- Let domain validation errors bubble up to the API layer for appropriate
-HTTP status mapping.
+- Let domain validation errors propagate to the API layer, which maps them to
+  the appropriate HTTP status.
 - Use the API layer for cross-cutting concerns like logging failed operations,
 not the application service itself.
 
-## Testing Application Services
+## Test application services
 
 Application services are tested by calling use case methods directly and
 asserting on the return values and persisted state:

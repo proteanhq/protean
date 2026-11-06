@@ -2,26 +2,28 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Reusable pytest fixtures and `conftest.py` recipes for Protean projects. A
-well-organized fixture hierarchy keeps tests focused and fast, and keeps
-boilerplate out of them.
+Reusable pytest fixtures and `conftest.py` recipes for Protean projects. When
+you organize fixtures in a clear hierarchy, your tests stay focused and fast.
+Shared fixtures hold the setup code, so each test holds only what it checks.
 
 ## Protean's Pytest Plugin
 
-Protean ships with a pytest plugin that is **automatically activated** when
-Protean is installed, no configuration required. The plugin provides:
+Protean ships with a pytest plugin. The plugin is **automatically activated**
+when you install Protean, and it needs no configuration. The plugin provides:
 
 - **`--protean-env` CLI option**: Sets `PROTEAN_ENV` before test collection
-  (default: `test`), so `domain.toml` environment overlays are applied when
-  Domain instances are constructed at import time.
+  (default: `test`). Domain instances constructed at import time then apply the
+  matching `domain.toml` environment overlays.
 - **Standard markers**: Registers `domain`, `application`, `integration`,
-  `slow`, and `bdd` markers so `--strict-markers` doesn't complain.
+  `slow`, and `bdd` markers so `--strict-markers` accepts them without an
+  error.
 
 ### `DomainFixture`
 
-Protean also provides `DomainFixture`, a test lifecycle manager that handles
-domain initialization, database schema management, per-test context activation,
-and data cleanup across **all** adapters (providers, brokers, and event store).
+Protean also provides `DomainFixture`, a test lifecycle manager. It initializes
+the domain, creates and drops the database schema, activates the domain context
+for each test, and cleans up data across **all** adapters (providers, brokers,
+and event store).
 
 Import it from `protean.integrations.pytest`:
 
@@ -41,8 +43,8 @@ Import it from `protean.integrations.pytest`:
 #### `setup()` warns about a broker that does not answer
 
 `setup()` pings every configured broker once. For each broker that does not
-answer, it emits a `UserWarning` that names the broker and its URI, with any
-password shown as `***`:
+answer, `setup()` emits a `UserWarning` with the broker's name and URI. The
+warning shows any password as `***`:
 
 ```text
 UserWarning: Broker 'default' at redis://127.0.0.1:6379/15 did not answer a
@@ -53,11 +55,12 @@ When the broker has no URI, or its URI cannot be shown without risking part of
 the password, the warning
 names the broker's provider instead, as in `Broker 'default' (redis provider)`.
 
-`setup()` still returns, so tests that never touch the broker keep running.
-The warning appears once, in pytest's warnings summary. Without it, a suite
-whose tests never publish passes with no visible sign of a down broker. The
-per-test reset in `domain_context()` logs its failure to clear the broker and
-carries on, and pytest shows that log line only for failing tests.
+`setup()` still returns after the warning. Tests that never touch the broker
+keep running. The warning appears once, in pytest's warnings summary. Without
+it, a suite whose tests never publish passes with no visible sign of a down
+broker. When the per-test reset in `domain_context()` cannot clear the broker,
+it logs the failure and continues. pytest shows that log line only for failing
+tests.
 
 A wrong password or a denied command also makes the ping fail, so check the
 broker's credentials as well as its host and port.
@@ -74,8 +77,8 @@ filterwarnings = ["error::UserWarning"]
 ## The Root `conftest.py`
 
 Every Protean test suite starts with a root `conftest.py` that initializes your
-application's domain. This is the single most important file in your test
-infrastructure.
+application's domain. Every test in your suite runs against the domain that
+this file initializes.
 
 ### Minimal conftest.py
 
@@ -97,12 +100,12 @@ The examples in this section use the `User` aggregate from that domain:
     --8<-- "guides/testing/myapp/models.py:user"
     ```
 
-The session-scoped `app_fixture` initializes the domain **once** for the
-entire test run. The per-test `_ctx` fixture activates the domain context
-and automatically resets all data (providers, brokers, event store) after
-each test. Since your domain elements are decorated in your application
-code, `domain.init()` (called inside `setup()`) discovers and wires them
-automatically.
+The session-scoped `app_fixture` initializes the domain **once** for the entire
+test run. The per-test `_ctx` fixture activates the domain context for each
+test. After each test, `_ctx` automatically resets all data (providers,
+brokers, event store). Since your domain elements are decorated in your
+application code, `domain.init()` (called inside `setup()`) discovers and wires
+them automatically.
 
 !!!tip "Use `domain.toml` for test configuration"
     Instead of setting `event_processing` and `command_processing` in code,
@@ -114,8 +117,8 @@ automatically.
     command_processing = "sync"
     ```
 
-    The pytest plugin sets `PROTEAN_ENV=test` by default, so these overrides
-    are applied automatically when the domain is constructed.
+    The pytest plugin sets `PROTEAN_ENV=test` by default. The domain then
+    applies these overrides automatically when you construct it.
 
 ### Integration-Ready conftest.py
 
@@ -127,10 +130,10 @@ For projects that test against both in-memory and real infrastructure,
 --8<-- "guides/testing/fixtures-and-patterns/integration_ready/conftest.py:conftest"
 ```
 
-`DomainFixture` handles everything: `setup()` calls `domain.init()` and
-creates database tables for all configured providers. `teardown()` drops
-them. `domain_context()` resets data in providers, brokers, and the event
-store after each test.
+`DomainFixture` runs every lifecycle step for you: `setup()` calls
+`domain.init()` and creates database tables for all configured providers.
+`teardown()` drops them. `domain_context()` resets data in providers, brokers,
+and the event store after each test.
 
 Switch adapters from the command line:
 
@@ -145,17 +148,18 @@ TEST_DB=postgresql DATABASE_URL=postgresql://localhost/myapp_test pytest tests/
 TEST_DB=sqlite pytest tests/
 ```
 
-A test that reads the provider back confirms the switch took effect, so a typo
-in `TEST_DB` fails the run instead of quietly falling back to memory:
+Add a test that reads the provider back to confirm the switch took effect. With
+that test, a typo in `TEST_DB` fails the run instead of quietly falling back to
+memory:
 
 ```python
 # fragment
 --8<-- "guides/testing/fixtures-and-patterns/integration_ready/test_provider.py:provider_check"
 ```
 
-## Common Fixture Patterns
+## Reuse common fixture patterns
 
-### Per-Test Data Cleanup
+### Clean up data after each test
 
 `DomainFixture.domain_context()` automatically resets data in all providers,
 brokers, and the event store after each test. If you use the recommended
@@ -168,15 +172,15 @@ If you are not using `DomainFixture` and need manual cleanup:
 --8<-- "guides/testing/fixtures-and-patterns/manual_cleanup/conftest.py:manual_cleanup"
 ```
 
-Two tests that each expect an empty store show the cleanup works. Whichever
-runs second fails if data leaks between tests:
+To check the cleanup, write two tests that each expect an empty store. If data
+leaks between tests, the second of the two tests fails:
 
 ```python
 # fragment
 --8<-- "guides/testing/fixtures-and-patterns/manual_cleanup/test_cleanup.py:tests"
 ```
 
-### Repository Helper
+### Get repositories from a fixture
 
 Provide quick access to repositories for assertions:
 
@@ -192,10 +196,10 @@ Use them in tests:
 --8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:repository_usage"
 ```
 
-### Shared BDD Steps
+### Share BDD steps across feature files
 
-Steps that appear across multiple feature files belong in `conftest.py`.
-pytest-bdd discovers step definitions defined there automatically.
+Put steps that appear across multiple feature files in `conftest.py`.
+pytest-bdd discovers the step definitions in that file automatically.
 
 ```python
 # fragment
@@ -205,7 +209,8 @@ pytest-bdd discovers step definitions defined there automatically.
 The domain is already initialized by the root `conftest.py` via
 `DomainFixture`. BDD-level conftest files only need to define shared steps.
 
-Domain-specific shared steps go in that directory's `conftest.py`:
+Put domain-specific shared steps in the `conftest.py` of their own directory,
+such as `tests/bdd/ordering/conftest.py`:
 
 ```python
 # fragment
@@ -222,7 +227,7 @@ tests/bdd/ordering/conftest.py    -> steps available in ordering/ tests
 tests/bdd/registration/conftest.py -> steps available in registration/ tests
 ```
 
-### Custom Domain Configuration
+### Override the domain configuration for one test directory
 
 Override specific configuration for a subset of tests using a separate
 `DomainFixture` in that directory's `conftest.py`:
@@ -263,11 +268,11 @@ def _ctx(app_fixture):
 ```
 
 This overrides the root-level domain fixture for all tests under
-`tests/integration/`, while the rest of the test suite continues to
-use in-memory adapters. `DomainFixture` handles schema creation,
-teardown, and per-test data cleanup automatically.
+`tests/integration/`. The rest of the test suite continues to use in-memory
+adapters. `DomainFixture` automatically creates the schema, drops it at
+teardown, and cleans up data after each test.
 
-### Per-Test Global State Reset
+### Reset global state between tests
 
 If your domain uses module-level counters or caches, reset them between tests:
 
@@ -276,9 +281,9 @@ If your domain uses module-level counters or caches, reset them between tests:
 --8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:global_state"
 ```
 
-## Test Organization Patterns
+## Organize your test files
 
-### Flat Layout
+### Use a flat layout for smaller projects
 
 For smaller projects, a flat layout works well:
 
@@ -291,7 +296,7 @@ tests/
 └── test_fulfillment.py      # Domain service tests
 ```
 
-### Layered Layout
+### Organize larger projects by testing layer
 
 For larger projects, organize by testing layer:
 
@@ -323,7 +328,7 @@ tests/
     └── test_persistence.py
 ```
 
-### BDD Directory Conventions
+### Choose where BDD feature files and steps go
 
 Feature files can be organized by domain concept or by test module. The key is
 consistency:
@@ -335,11 +340,11 @@ consistency:
 | Shared steps in parent `conftest.py` | Steps reused across multiple test modules |
 | Steps in test module | Steps used only by that module's scenarios |
 
-## Dual-Mode Testing
+## Switch between in-memory and real infrastructure
 
-Protean's recommended approach for switching between in-memory and real
-infrastructure is `--protean-env`, which swaps all adapters at the
-configuration level with **zero changes** to test code or fixtures:
+To switch between in-memory and real infrastructure, Protean recommends
+`--protean-env`. The option swaps all adapters at the configuration level with
+**zero changes** to test code or fixtures:
 
 ```shell
 # Memory mode — fast, no Docker needed
@@ -377,9 +382,9 @@ for most projects.
 See the [Dual-Mode Testing](../../patterns/dual-mode-testing.md) pattern for
 the complete setup, CI configuration, and multi-domain guidance.
 
-## Running Tests Selectively
+## Run a subset of your tests
 
-### By Directory
+### Select tests by directory
 
 ```shell
 # Unit tests only (fast)
@@ -392,7 +397,7 @@ pytest tests/bdd/
 pytest tests/integration/
 ```
 
-### By Gherkin Tag
+### Select scenarios by Gherkin tag
 
 ```shell
 # Run only scenarios tagged @ordering
@@ -402,7 +407,7 @@ pytest tests/bdd/ -m ordering
 pytest tests/bdd/ -m "smoke and not slow"
 ```
 
-### By Keyword
+### Select tests by keyword or path
 
 ```shell
 # Run tests matching a pattern
@@ -415,7 +420,7 @@ pytest tests/unit/test_book.py
 pytest tests/unit/test_book.py::test_publish_changes_status
 ```
 
-### Useful pytest Flags
+### Use common pytest flags
 
 | Flag | Purpose |
 |------|---------|
@@ -426,10 +431,10 @@ pytest tests/unit/test_book.py::test_publish_changes_status
 | `--lf` | Re-run only last-failed tests |
 | `--pdb` | Drop into debugger on failure |
 
-## Coverage Reporting
+## Measure test coverage
 
-Run your test suite with coverage to verify you're hitting the 100% target
-on business logic:
+Run your test suite with coverage to verify that your business logic meets the
+100% coverage target:
 
 ```shell
 # Run all tests with coverage
@@ -447,37 +452,40 @@ source = ["myapp"]
 omit = ["myapp/__init__.py", "myapp/config.py"]
 ```
 
-## Freezing Time
+## Freeze time in tests
 
 Anything with a deadline, a lock expiry, or a retry backoff is awkward to test
 against the real clock. The usual workaround is to sleep just under the
-threshold and assert the thing has not happened yet, which is a race: the margin
-you left is the margin a busy CI machine will eat.
+threshold and assert the thing has not happened yet. That workaround is a race:
+on a busy CI machine, the code can take longer than the margin you left.
 
-Every domain holds a clock on `domain.clock`. Replace it and the code that reads
-it sees whatever time you say. Restore it afterwards, or the frozen time leaks
-into every test that runs next:
+Every domain holds a clock on `domain.clock`. Replace the clock, and any code
+reading `domain.clock` sees the time you set. Restore the original clock
+afterwards, or the frozen time leaks into every test that runs next:
 
 ```python
 # fragment
 --8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:frozen_clock"
 ```
 
-A deadline test then states its intent directly, with nothing to race:
+With the clock replaced, you can write a deadline test that sets the time
+directly, with no sleep to race against:
 
 ```python
 # fragment
 --8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:deadline"
 ```
 
-The default is `SystemClock`, which returns `datetime.now(UTC)`, so a domain you
-have not touched behaves exactly as before. `Clock` is a `Protocol`, so a stub
-does not subclass anything: a `now()` returning a timezone-aware UTC `datetime`
-is the whole contract. Both live in `protean.utils`.
+The default is `SystemClock`, which returns `datetime.now(UTC)`. A domain whose
+clock you have not replaced behaves exactly as before. `Clock` is a `Protocol`,
+so a stub does not subclass anything: a `now()` returning a timezone-aware UTC
+`datetime` is the whole contract. `SystemClock` and `Clock` are both defined in
+`protean.utils`.
 
-Prefer this to patching `datetime` at module scope. Patching reaches into
-whichever module you named and misses the others, and it breaks as soon as the
-code moves; the clock is a seam the framework maintains.
+Prefer replacing `domain.clock` to patching `datetime` at module scope. A patch
+changes `datetime` only in the module you name and misses every other module.
+The patch also breaks as soon as the code moves. Protean maintains the clock as
+a supported point where tests can replace the time.
 
 ## Anti-Patterns to Avoid
 

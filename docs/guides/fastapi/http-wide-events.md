@@ -1,13 +1,13 @@
-# HTTP wide events
+# Log one wide event per HTTP request
 
 !!! abstract "What is a wide event?"
-    A **wide event** is one rich, structured log line per unit of work
-    (a handled message, an HTTP request) carrying every field an operator
-    might want to query on, rather than a stream of thin events you later have
-    to join by correlation ID. The pattern comes from Jamie Brandon's [*Logging
-    Sucks, So Use Wide Events*](https://loggingsucks.com) and Stripe's
-    [canonical log lines](https://brandur.org/canonical-log-lines). See the
-    [logging concept
+    A **wide event** is one rich, structured log line per unit of work (a
+    handled message, an HTTP request) that carries every field an operator
+    might want to query on. It replaces a stream of thin events that you later
+    have to join by correlation ID. The pattern comes from Jamie Brandon's
+    [*Logging Sucks, So Use Wide Events*](https://loggingsucks.com) and
+    Stripe's [canonical log lines](https://brandur.org/canonical-log-lines).
+    See the [logging concept
     page](../../concepts/observability/logging.md#the-wide-event-pattern) for
     the full rationale.
 
@@ -18,11 +18,10 @@ request, a `request_id`, and a `correlation_id` that links the HTTP layer
 to the domain-layer [`protean.access`](../server/logging.md) events
 produced by the handler mixin.
 
-Here is how to wire it up, configure it, and enrich what it records. For the
-full
-field schema see the [logging reference](../../reference/logging.md#proteanaccesshttp);
-for the design rationale behind the two-layer split see the
-[logging concepts page](../../concepts/observability/logging.md#two-layers-of-wide-events).
+For the full field schema, see the [logging
+reference](../../reference/logging.md#proteanaccesshttp). For the design
+rationale behind the two-layer split, see the [logging concepts
+page](../../concepts/observability/logging.md#protean-emits-wide-events-at-two-layers).
 
 ---
 
@@ -53,19 +52,19 @@ produces a wide event like this (production JSON renderer):
 ```
 
 !!! warning "Known issue: the correlation ID is empty with Protean's own logging setup"
-    The middleware writes the wide event after the request's domain context
-    has closed. The correlation filter that `domain.init()` installs on the
-    log handlers then finds no correlation ID and sets `correlation_id` to
-    `""`. The `request_id` field is not affected. A logging setup without
-    Protean's correlation filter keeps the ID shown above.
+    The middleware writes the wide event after the request's domain context has
+    closed. `domain.init()` installs a correlation filter on the log handlers.
+    That filter then finds no correlation ID and sets `correlation_id` to `""`.
+    The `request_id` field keeps its value. A logging setup without Protean's
+    correlation filter keeps the ID shown above.
 
-Level ladders match severity, INFO for 2xx/3xx, WARNING for 4xx, ERROR for 5xx
-or unhandled exceptions. A 5xx event carries `error_type` and `error_message` plus the inlined
-traceback under `exception`.
+The middleware sets the log level by severity: INFO for 2xx/3xx, WARNING for
+4xx, ERROR for 5xx or unhandled exceptions. A 5xx event carries `error_type`
+and `error_message` plus the inlined traceback under `exception`.
 
-An unhandled exception is still logged when no wide event records it. That
-happens when `enabled = false`, when the path is in `exclude_paths`, or when
-writing the wide event fails. The middleware then logs
+An unhandled exception is still logged when no wide event records it. No wide
+event records the exception in three cases: `enabled = false`, the path is in
+`exclude_paths`, or writing the wide event fails. The middleware then logs
 `Unhandled error in <METHOD> <path>` at ERROR level, with the traceback, on the
 `protean.integrations.fastapi.middleware` logger.
 
@@ -73,8 +72,8 @@ writing the wide event fails. The middleware then logs
 
 ## Enable it
 
-`DomainContextMiddleware` emits HTTP wide events by default. They appear once
-logging is configured, which `domain.init()` does on its own:
+`DomainContextMiddleware` emits HTTP wide events by default. The events appear
+once logging is configured, and `domain.init()` configures logging on its own:
 
 ```python
 --8<-- "guides/fastapi/http-wide-events/001.py:enable-imports"
@@ -116,17 +115,16 @@ domain config for that middleware instance:
 --8<-- "guides/fastapi/http-wide-events/002.py:override"
 ```
 
-Passing `None` (the default) defers to `[logging.http]`. Passing an
-explicit `True`/`False` or list wins over the config.
+Passing `None` (the default) defers to `[logging.http]`. An explicit
+`True`/`False` or list that you pass overrides the config.
 
 ---
 
 ## Enrich with business context
 
-Use the same `bind_event_context()` API as domain handlers. Bindings
-made inside a FastAPI endpoint flow onto both the HTTP wide event *and*
-any domain wide events emitted by commands dispatched during the
-request:
+Use the same `bind_event_context()` API as domain handlers. Bindings made
+inside a FastAPI endpoint are added to both the HTTP wide event *and* any
+domain wide events emitted by commands dispatched during the request:
 
 ```python
 --8<-- "guides/fastapi/http-wide-events/003.py:imports"
@@ -151,9 +149,9 @@ for why.
 
 ## Correlate HTTP and domain events
 
-Every HTTP response echoes `X-Request-ID` back to the caller, even on synthesised 500s.
-Copy that value into your log aggregator to pull the full thread for a single
-request:
+Every HTTP response returns `X-Request-ID` to the caller, even a 500 response
+that the middleware generates. Query your log aggregator by that value to get
+every log line for a single request:
 
 ```logql
 {logger=~"protean.access.*"}
@@ -168,19 +166,19 @@ generates a hex UUID.
 
 For multi-service setups, pass through `X-Correlation-ID` as well: the
 middleware extracts it first, falling back to `X-Request-ID`. See [Correlation
-and Causation IDs](../observability/correlation-and-causation.md) for the full
-propagation story.
+and Causation IDs](../observability/correlation-and-causation.md) for how the
+IDs propagate across services.
 
 ---
 
 ## Combine with tail sampling
 
-HTTP requests can have much higher volume than domain operations
-(scanners, health checks, bots). The `protean.access.http` logger is
-nested under `protean.access`, so any
-[tail sampling config](../server/logging.md#control-wide-event-volume-with-tail-sampling)
-you enable on `protean.access` automatically applies to HTTP wide
-events too.
+HTTP requests can have much higher volume than domain operations (scanners,
+health checks, bots). The `protean.access.http` logger is nested under
+`protean.access`. Any [tail sampling
+config](../server/logging.md#control-wide-event-volume-with-tail-sampling) you
+enable on `protean.access` therefore applies automatically to HTTP wide events
+too.
 
 A common production shape:
 
@@ -193,9 +191,9 @@ always_keep_slow = true      # any handler over the threshold
 critical_streams = ["*.Payment*", "*.Auth*"]
 ```
 
-Combined with `[logging.http].exclude_paths` for liveness probes, this
-typically brings HTTP wide event volume down by 95 %+ without losing
-any error or performance signal.
+Combined with `[logging.http].exclude_paths` for liveness probes, this config
+typically cuts HTTP wide event volume by 95 %+ and still keeps every error and
+every slow request.
 
 ---
 
@@ -205,7 +203,7 @@ any error or performance signal.
   logger, `bind_event_context()` on domain handlers.
 - **[Logging reference](../../reference/logging.md#proteanaccesshttp)**:
   full field schema for `access.http_completed` and `access.http_failed`.
-- **[Logging concepts](../../concepts/observability/logging.md#two-layers-of-wide-events)**:
+- **[Logging concepts](../../concepts/observability/logging.md#protean-emits-wide-events-at-two-layers)**:
   why the HTTP and domain layers are separate loggers.
 - **[Correlation and Causation IDs](../observability/correlation-and-causation.md)**:
   how `correlation_id` propagates across HTTP headers, commands, events,

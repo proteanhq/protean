@@ -1,15 +1,16 @@
 # Choose a Path
 
 Protean supports three architectural approaches to building applications.
-Rather than forcing a single pattern, it lets you pick the right level of
-sophistication for your domain, and evolve over time as your needs change.
+Protean does not force a single pattern: you pick the right level of
+sophistication for your domain. You can change that level over time as your
+needs change.
 
 Each approach **builds on the one before it**, so the concepts you learn at
 one level carry forward to the next:
 
 1. **[Domain-Driven Design](./ddd.md)**: Model your domain with aggregates,
-   application services, and repositories. Events propagate side effects.
-   This is the foundation.
+   application services, and repositories. Events propagate side effects. CQRS
+   and Event Sourcing both start from DDD.
 
 2. **[CQRS](./cqrs.md)**: Separate reads from writes with explicit commands,
    command handlers, and read-optimized projections. Builds on everything in
@@ -26,7 +27,7 @@ one level carry forward to the next:
     Decision](../../concepts/architecture/architecture-decision.md) guide for a
     systematic framework.
 
-## What a pathway gives you
+## What does a pathway give you?
 
 Each pathway page gives you:
 
@@ -35,9 +36,9 @@ Each pathway page gives you:
 - The specific Protean elements you'll use
 - A **guided reading order** through the existing documentation
 
-The pathway pages are not standalone tutorials. They orient you and then point
-you to the detailed guides for each concept. Think of them as a curated reading
-list tailored to your chosen architecture.
+The pathway pages are not standalone tutorials. They give you an overview of
+the approach first. Then they link you to the detailed guides for each concept.
+Each pathway page is a curated reading list for the architecture you choose.
 
 ## What Elements Do I Need?
 

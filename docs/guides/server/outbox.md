@@ -1,10 +1,10 @@
 # Using the Outbox
 
-The outbox pattern guarantees that domain events are published to your message
-broker if (and only if) the transaction that produced them committed. Without
-it, a broker outage after a successful database commit would silently drop the
-event; with it, the event stays in the outbox table until the broker can accept
-it.
+With the outbox, Protean publishes the domain events of a transaction to your
+message broker if (and only if) that transaction committed. Without the outbox,
+a broker outage after a successful database commit would silently drop the
+event. With the outbox, the event stays in the outbox table until the broker
+can accept it.
 
 Here is how to enable the outbox, confirm it is working, and tune its retry
 and cleanup behaviour. For the end-to-end sequence,
@@ -64,29 +64,29 @@ $ protean db setup-outbox --domain=my_domain
 
 Multiple database providers produce one outbox per provider. Each provider owns
 its own outbox table. The Engine runs an `OutboxProcessor` only for a managed
-provider that an aggregate is stored in, since no other provider receives
-outbox rows. If a provider's outbox still holds unpublished rows after the
-last aggregate on it moved elsewhere, the Engine logs an
+provider that stores an aggregate. No other provider receives outbox rows.
+Sometimes the last aggregate on a provider moves elsewhere while the provider's
+outbox still holds unpublished rows. In that case the Engine logs an
 `engine.outbox_rows_without_processor` warning at startup. If the Engine cannot
 count those rows, it logs `engine.outbox_leftover_probe_failed` and starts
 anyway.
 
 The outbox table ships with the indexes the processor needs, created
 automatically by the commands above: a partial index on the active set
-(`status`, `priority`, `created_at`, `sequence_number`) for the polling query, a composite unique index on
-(`message_id`, `target_broker`) for idempotency, an index on
-`correlation_id`, and `ix_outbox_hold_back` on (`target_broker`,
+(`status`, `priority`, `created_at`, `sequence_number`) for the polling query,
+a composite unique index on (`message_id`, `target_broker`) for idempotency, an
+index on `correlation_id`, and `ix_outbox_hold_back` on (`target_broker`,
 `stream_category`, `partition_key`, `status`) for the check that holds a
-partition key's later rows. The unique index is composite because a single event is
-dual-written once per target broker (the internal broker plus every external
-broker), all rows sharing one `message_id` and differing only by
-`target_broker`, so `message_id` is not unique on its own across those
+partition key's later rows. The unique index is composite because Protean
+dual-writes a single event once per target broker (the internal broker plus
+every external broker). All those rows share one `message_id` and differ only
+by `target_broker`, so `message_id` is not unique on its own across those
 per-broker rows. The framework always writes a non-NULL `target_broker`, so the
 composite index still enforces one outbox row per (`message_id`, broker),
-including in single-broker configurations. These are declared as
-[index declarations](../domain-definition/indexes.md) on the framework's
-`Outbox` aggregate, so on a large, long-running outbox the polling and
-cleanup paths stay fast without any manual tuning.
+including in single-broker configurations. Protean declares the outbox indexes
+as [index declarations](../domain-definition/indexes.md) on the framework's
+`Outbox` aggregate. On a large, long-running outbox, these indexes keep the
+polling and cleanup paths fast without any manual tuning.
 
 ---
 
@@ -125,10 +125,9 @@ If no batch processing logs appear, check that:
 
 ## Configure retries
 
-Failed publish attempts retry with exponential backoff and jitter.
-Tune the defaults when a broker is slower to recover than the default
-schedule, or when some messages are important enough to justify more
-attempts:
+Failed publish attempts retry with exponential backoff and jitter. A broker can
+be slower to recover than the default schedule, or some messages can be
+important enough to justify more attempts. In either case, tune the defaults:
 
 ```toml
 [outbox.retry]
@@ -162,14 +161,13 @@ cleanup_interval_ticks = 86400    # Run cleanup roughly daily
 batch_size = 5000                 # Rows deleted per bounded batch
 ```
 
-Cleanup never deletes an abandoned row that has a partition key. That row
-holds its key's later rows (see
-[A partitioned key can halt](#a-partitioned-key-can-halt)), and deleting it
-would let them publish out of order. A discarded row no longer holds its key,
-so it is deleted `abandoned_retention_hours` after it was discarded, partition
-key or not.
+Cleanup never deletes an abandoned row that has a partition key. That row holds
+its key's later rows (see [A partitioned key can
+halt](#a-partitioned-key-can-halt)), and deleting it would let them publish out
+of order. A discarded row no longer holds its key. Cleanup deletes a discarded
+row `abandoned_retention_hours` after it was discarded, partition key or not.
 
-Tune these with two trade-offs in mind:
+Tune the `[outbox.cleanup]` retention settings with two trade-offs in mind:
 
 - **Shorter `published_retention_hours`** = less storage, less audit
   trail. 24 hours is fine if you don't need cross-system replay.
@@ -177,20 +175,20 @@ Tune these with two trade-offs in mind:
   chronic failures before the evidence disappears. 30+ days is
   reasonable while a system is stabilizing.
 
-Cleanup deletes in bounded batches of `batch_size` rows rather than one large
-`DELETE`, so a backlog of millions of rows is cleared without holding a long
-lock or bloating the transaction log. When you run cleanup standalone (a cron
-job calling `cleanup_old_messages()`), each batch commits before the next
-begins. Lower `batch_size` for gentler load on a busy table; raise it for fewer
-round trips on a quiet one.
+Cleanup deletes rows in bounded batches of `batch_size` rows, never in one
+large `DELETE`. Cleanup then clears a backlog of millions of rows without
+holding a long lock or growing the transaction log. When you run cleanup
+standalone (a cron job calling `cleanup_old_messages()`), cleanup commits each
+batch and then starts the next one. On a busy table, lower `batch_size` for
+gentler load. On a quiet table, raise `batch_size` for fewer round trips.
 
 ---
 
 ## Reduce idle polling
 
 By default the processor polls every `tick_interval` seconds whether or not
-there is work, which keeps a quiet outbox under constant low-level load. Set
-`max_tick_interval` to let an idle processor back off:
+there is work. These polls put a quiet outbox under constant low-level load.
+Set `max_tick_interval` to let an idle processor back off:
 
 ```toml
 [outbox]
@@ -199,9 +197,9 @@ max_tick_interval = 30     # Back off to at most 30s when idle
 ```
 
 Each empty poll doubles the wait (1s, 2s, 4s, and so on up to 30s); the first
-non-empty batch resets it to the base `tick_interval`. This trims wasted
+non-empty batch resets it to the base `tick_interval`. The backoff cuts wasted
 queries on a mostly idle deployment without adding latency under load, since a
-pending message snaps polling back to full speed on the next tick.
+pending message returns polling to the base `tick_interval` on the next tick.
 
 Backoff is disabled by default: omit `max_tick_interval` (or set it to a value
 at or below `tick_interval`) and the processor polls at a constant
@@ -215,12 +213,12 @@ Messages that exhaust `max_attempts` move to the `ABANDONED` state and stop
 retrying. They do **not** route to a DLQ. The outbox table itself is durable
 storage.
 
-**The CLI**: `protean outbox halted` lists the partition keys an abandoned
-row halts, with the row's id, its last error and the number of rows waiting
-behind it. `protean outbox retry <id>` sends a failed or abandoned row back to
-`pending`, and `protean outbox discard <id> --reason "..."` skips it for good.
-See [A partitioned key can halt](#a-partitioned-key-can-halt) and the
-[`protean outbox` reference](../../reference/cli/data/outbox.md).
+**The CLI**: `protean outbox halted` lists the partition keys an abandoned row
+halts, with the row's id, its last error and the number of rows waiting behind
+it. `protean outbox retry <id>` sends a failed or abandoned row back to
+`pending`. `protean outbox discard <id> --reason "..."` skips the row
+permanently. See [A partitioned key can halt](#a-partitioned-key-can-halt) and
+the [`protean outbox` reference](../../reference/cli/data/outbox.md).
 
 ```bash
 protean outbox halted --domain=my_domain
@@ -230,7 +228,7 @@ protean outbox discard 6f1c2a9e-... --reason "payload rejected by the broker" --
 
 **Observatory**, the `/api/outbox` endpoint reports per-domain outbox status including
 counts by state. See [Observatory
-Dashboard](../../reference/cli/runtime/observatory.md#endpoints).
+Dashboard](../../reference/cli/runtime/observatory.md#which-endpoints-does-the-observatory-serve).
 
 **A shell session**, query the outbox repository directly. Each database
 provider has its own outbox repository, looked up by the provider's name.
@@ -245,10 +243,10 @@ a larger `limit`. `limit=None` does not lift the cap: it still returns at most
 --8<-- "guides/server/outbox/001.py:inspect"
 ```
 
-**The database**: abandoned rows can also be inspected with regular SQL.
-Prefer `protean outbox retry` and `discard` for changing them, because those
-commands refuse a row that is not failed or abandoned, and a row a worker
-claims while the command runs.
+**The database**: abandoned rows can also be inspected with regular SQL. To
+change abandoned rows, prefer `protean outbox retry` and `discard` over SQL.
+Those commands refuse two kinds of row: a row in a status other than failed or
+abandoned, and a row a worker claims during the command.
 
 ### A partitioned key can halt
 
@@ -266,18 +264,18 @@ abandoned:
 - A **failed** row holds its key until its retry is due and it publishes.
   If it runs out of retries, it becomes abandoned.
 - An **abandoned** row halts its key. None of the key's later rows publish
-  until you release it. `protean outbox halted` lists the halted keys. Then
-  either run `protean outbox retry <id>`, which sends the row back to
-  `pending` with its retry count at zero, or run
-  `protean outbox discard <id> --reason "..."`, which drops its event for that
-  broker. A discarded row stays in the table with the `discarded` status and
-  your reason in `last_error`, as a record of what was skipped. Do not delete
-  the row: when its event belongs to an event-sourced aggregate,
-  reconciliation at server start can rebuild it as `pending`, and it would
-  then publish after the key's later rows.
-- When a row fails in the middle of a batch, the processor puts the later
-  rows of its group (same key, stream and lane) from that batch back to `pending` without publishing them. Their
-  retry counts do not change.
+  until you release it. `protean outbox halted` lists the halted keys. Then run
+  `protean outbox retry <id>` to send the row back to `pending` with its retry
+  count at zero. Or run `protean outbox discard <id> --reason "..."` to drop
+  the row's event for that broker. A discarded row stays in the table with the
+  `discarded` status and your reason in `last_error`, as a record of what was
+  skipped. Do not delete the row: when its event belongs to an event-sourced
+  aggregate, reconciliation at server start can rebuild it as `pending`, and it
+  would then publish after the key's later rows.
+- When a row fails in the middle of a batch, the processor does not publish the
+  later rows of its group (same key, stream and lane) from that batch. The
+  processor puts those rows back to `pending`. Their retry counts do not
+  change.
 
 Other keys, rows without a partition key, and the other priority lane keep
 publishing while a key is halted.
@@ -292,9 +290,9 @@ When the server runs with `--workers N`, every worker runs its own
 worker crashes mid-publish, its lock expires after 5 minutes and the message
 becomes eligible again.
 
-Scale the outbox throughput by increasing `messages_per_tick` or the
-worker count, not by lowering `tick_interval`, smaller ticks just increase database load
-without increasing throughput.
+To scale the outbox throughput, increase `messages_per_tick` or the worker
+count. Lowering `tick_interval` increases database load without increasing
+throughput.
 
 See [Multi-Worker Mode](../../reference/server/supervisor.md) for the
 supervisor configuration and
@@ -305,44 +303,45 @@ for the locking details.
 
 ## Recover from a crash: reconciliation
 
-The commit sequence appends events to the event store *before* it commits the
-relational transaction that carries aggregate state and the outbox rows. The
-event store is the durable anchor (see
-[ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md)). This
-closes the corrupting failure where the event store could be left missing a
-committed event, but it leaves a narrow window: if the process dies between
-the append and the relational commit, the event is durable in the store while
-its outbox row never landed, so the event would never be published.
+The commit sequence appends events to the event store *before* the relational
+commit. The relational transaction carries aggregate state and the outbox rows.
+The event store is the durable anchor (see
+[ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md)). Appending
+first prevents the corrupting failure of an event store missing a committed
+event. A crash in the short time between the append and the relational commit
+still leaves the event durable in the store with no outbox row, so Protean
+would never publish the event.
 
-Reconciliation repairs that window for event-sourced aggregates by re-deriving
-the missing outbox rows directly from the event store. It does not repair
-state-based aggregates' events (see below). It runs two ways:
+For event-sourced aggregates, reconciliation repairs the result of that crash
+by re-deriving the missing outbox rows directly from the event store. It does
+not repair state-based aggregates' events (see below). It runs two ways:
 
-**Automatically on server startup.** Every `protean server` boot runs a one-time
-sweep before subscriptions start, so an event-sourced aggregate's lost row is
-rebuilt on restart with no operator action:
+**Automatically on server startup.** Every `protean server` boot runs a
+one-time sweep of the `default` provider before subscriptions start. The sweep
+rebuilds an event-sourced aggregate's lost row on restart with no operator
+action:
 
 ```bash
 $ protean server --domain=my_domain
 ```
 
 The sweep reads nothing when no event-sourced aggregate is on the provider.
-Otherwise it reads the newest 1,000 messages and rebuilds the row of every
-event-sourced aggregate's event among them that is missing its row. This
-covers a row lost behind a later commit by another process in the same domain.
-The sweep never blocks boot (a failure is logged and startup continues),
-and is safe under `--workers N`, because the composite unique index on
-(`message_id`, `target_broker`) makes concurrent sweeps idempotent. A sweep is
-also safe while a command is committing. If the sweep writes a row before the
-command saves it, the command keeps the sweep's row, skips its own copy and
-commits. SQLite and Elasticsearch have exceptions, listed in the
-[`protean outbox reconcile`](../../reference/cli/data/outbox.md#protean-outbox-reconcile)
-reference.
-The startup sweep covers only the `default` provider. Run the CLI with
-`--provider` for aggregates on other providers.
+Otherwise the sweep reads the newest 1,000 messages. For each event among them
+from an event-sourced aggregate, the sweep rebuilds the outbox row when that
+row is missing. This covers a row lost behind a later commit by another process
+in the same domain. The sweep never blocks boot (a failure is logged and
+startup continues). The sweep is safe under `--workers N`, because the
+composite unique index on (`message_id`, `target_broker`) makes concurrent
+sweeps idempotent. A sweep is also safe while a command is committing.
+Sometimes the sweep writes a row before the command saves that row. The command
+then keeps the sweep's row, skips its own copy and commits. SQLite and
+Elasticsearch have exceptions, listed in the [`protean outbox
+reconcile`](../../reference/cli/data/outbox.md#protean-outbox-reconcile)
+reference. The startup sweep covers only the `default` provider. Run the CLI
+with `--provider` for aggregates on other providers.
 
-**On demand with the CLI.** Run the same reconciliation yourself after a
-suspected crash, or from a cron job as a periodic safety net:
+**On demand with the CLI.** After a suspected crash, or on a schedule from a
+cron job, run the same reconciliation yourself:
 
 ```bash
 # Repair the default provider's outbox now
@@ -357,44 +356,47 @@ Reconciled 2 outbox row(s) from the event store.
 ```
 
 Reconciliation repairs only events raised by this domain's event-sourced
-aggregates on the given provider. For an event-sourced aggregate the event store
-holds the aggregate's state, so the event is the saved change. For a state-based
-aggregate the relational row is the state. On a transactional provider that row
-commits or rolls back together with its outbox rows, so a state-based event with
-no outbox row has no saved change behind it, and publishing it would report a
-change that did not happen. Reconciliation skips every state-based event,
-whether or not the aggregate row exists. On a provider that keeps writes without
-a transaction, such as Elasticsearch, the aggregate row can be saved while its
-outbox row is lost. That change did happen, and its event stays unpublished.
+aggregates on the given provider. For an event-sourced aggregate the event
+store holds the aggregate's state, so the event is the saved change. For a
+state-based aggregate the relational row is the state. On a transactional
+provider, that row commits or rolls back together with its outbox rows. So a
+state-based event with no outbox row has no saved change, and publishing the
+event would report a change that did not happen. Reconciliation skips every
+state-based event, whether or not the aggregate row exists. Some providers,
+such as Elasticsearch, keep writes without a transaction. On such a provider,
+the aggregate row can be saved while its outbox row is lost. That change did
+happen, and its event stays unpublished.
 
-Another domain's events in a shared event store, commands, process manager
-transition events, and events of aggregates on other providers never get a row
-either.
+Reconciliation never writes a row for these messages either: another domain's
+events in a shared event store, commands, process manager transition events,
+and events of aggregates on other providers.
 
-An event counts as missing only when its internal-broker row is missing. A
-`published` event that is missing gets back one row per broker in
-`[outbox].external_brokers`, so it reaches external brokers again. The list is
-read from the current configuration, so it includes brokers added after the
-event was written. External rows lost on their own, while the internal row
-remains, are not rebuilt. If the event's `partition_key` can no longer be
-computed, every rebuilt row is saved as abandoned and the event is not sent.
+An event counts as missing only when its internal-broker row is missing. For a
+missing `published` event, reconciliation rebuilds one row per broker in
+`[outbox].external_brokers`, so the event reaches external brokers again. The
+list is read from the current configuration, so it includes brokers added after
+the event was written. Reconciliation does not rebuild an external row lost on
+its own while the internal row remains. If the event's `partition_key` can no
+longer be computed, every rebuilt row is saved as abandoned and the event is
+not sent.
 
 Cleanup deletes delivered rows after `published_retention_hours`. After
 `abandoned_retention_hours` it deletes abandoned rows without a partition key
-and every discarded row. A deleted row
-looks the same as a row lost in a crash. So reconciliation skips events older than the shorter of the
-two retentions, which keeps a restart from sending old events again. An event
-lost in a crash and left unrepaired for longer than that is not repaired. The
-cutoff uses the current retentions. If you raise the shorter retention after cleanup
-ran with a lower value, the next sweep rebuilds the rows cleanup deleted in between,
-and those events are published again.
+and every discarded row. A deleted row looks the same as a row lost in a crash.
+So reconciliation skips events older than the shorter of the two retentions,
+which keeps a restart from sending old events again. Reconciliation does not
+repair an event lost in a crash and left unrepaired for longer than that
+shorter retention. The cutoff uses the current retentions. Suppose you raise
+the shorter retention after cleanup ran with a lower value. The next sweep then
+rebuilds the rows cleanup deleted in between, and the processor publishes those
+events again.
 
 A rebuilt row is created when the sweep saves it, with priority 0. For a
 `sequential_by` key, the processor publishes the key's rows in the order they
-were created within one priority lane. So an event rebuilt behind a later
-commit is delivered after that commit's events for the same key when both rows
-are in the same lane. When the later row is in the other lane, either one can
-be delivered first.
+were created within one priority lane. So when both rows are in the same lane,
+the processor delivers an event rebuilt behind a later commit after that
+commit's events for the same key. When the later row is in the other lane,
+either one can be delivered first.
 
 See the
 [`protean outbox reconcile` reference](../../reference/cli/data/outbox.md) for
@@ -404,10 +406,10 @@ options and output.
 
 ## Dispatch to external brokers
 
-When events marked `published=True` need to reach partner systems or
-other bounded contexts, configure additional brokers in
-`[outbox].external_brokers`. Each published event creates one outbox
-row per broker, and each row is processed independently.
+When events marked `published=True` need to reach partner systems or other
+bounded contexts, configure additional brokers in `[outbox].external_brokers`.
+Protean writes one outbox row per broker for each published event. The
+processor publishes each row independently.
 
 The full workflow (including envelope stripping for external consumers) is
 covered in [Dispatching Published Events to External
@@ -415,7 +417,7 @@ Brokers](./external-event-dispatch.md).
 
 ---
 
-## Common errors
+## Fix common errors
 
 | Condition | Behavior |
 |---|---|

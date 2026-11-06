@@ -1,4 +1,4 @@
-# Application Tests
+# Test the application layer with pytest-bdd
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -9,13 +9,13 @@ the outcomes.
 
 We recommend **[pytest-bdd](https://pytest-bdd.readthedocs.io/)** for writing
 these tests. It uses Gherkin feature files to express scenarios in plain
-language and maps each step to a Python function, integrating with
+language and maps each step to a Python function. It also integrates with
 pytest fixtures.
 
-Application tests exercise the full processing pipeline (from command dispatch
-through handler execution to persistence) using synchronous processing and
-in-memory adapters so that assertions are deterministic and no infrastructure
-is required.
+Application tests exercise the full processing pipeline, from command dispatch
+through handler execution to persistence. They use synchronous processing and
+in-memory adapters, so assertions are deterministic and the tests need no
+infrastructure.
 
 ## Installing pytest-bdd
 
@@ -29,10 +29,10 @@ Or with uv:
 uv add --group test pytest-bdd
 ```
 
-## Project Structure
+## Organize tests by domain concept
 
-Organize feature files by domain concept and co-locate step definitions
-nearby:
+Organize feature files by domain concept. Put each concept's step definitions
+in the same directory as its feature files:
 
 ```
 tests/
@@ -63,15 +63,15 @@ tests/
 ```
 
 Each domain concept gets its own directory with feature files and step
-definitions. Shared steps (like creating common entities) live in
-`conftest.py` files at the appropriate level.
+definitions. Put shared steps (like creating common entities) in `conftest.py`
+files at the appropriate level.
 
 ## Writing Feature Files
 
 Feature files describe application behavior in Gherkin. A structured, readable
 format that maps directly to your domain language.
 
-### A Command Processing Scenario
+### Write a command processing scenario
 
 ```gherkin
 --8<-- "guides/testing/application-tests/bdd/registration/features/register_user.feature"
@@ -80,15 +80,15 @@ format that maps directly to your domain language.
 Use `Background` to express setup steps shared by every scenario in a feature
 file. Only `Given` steps belong in a Background.
 
-### An Event Handler Scenario
+### Write an event handler scenario
 
 ```gherkin
 --8<-- "guides/testing/application-tests/bdd/ordering/features/place_order.feature:feature"
 ```
 
-### Scenario Outlines for Data-Driven Tests
+### Run one flow over many inputs with Scenario Outlines
 
-Use Scenario Outlines when the same flow applies to multiple inputs:
+When the same flow applies to multiple inputs, use Scenario Outlines:
 
 ```gherkin
 --8<-- "guides/testing/application-tests/bdd/ordering/features/place_order.feature:outline"
@@ -114,10 +114,10 @@ provide the step definitions:
 
 Use `target_fixture` to pass data between steps. The return value of the step
 becomes a pytest fixture available to all subsequent steps in the same
-scenario. The `Given` steps that return the `book` and `customer` fixtures are
-shared steps, so they live in `tests/bdd/ordering/conftest.py`, shown under
-[Domain-Specific Shared Steps](#domain-specific-shared-steps). The test module
-holds the rest:
+scenario. `tests/bdd/ordering/conftest.py` defines the shared `Given` steps
+that return the `book` and `customer` fixtures. [Domain-Specific Shared
+Steps](#domain-specific-shared-steps) shows that file. The test module holds
+the rest:
 
 ```python
 # fragment
@@ -147,17 +147,17 @@ sequenceDiagram
     Note over T: Queries domain directly
 ```
 
-### Handling Expected Failures
+### Test a command that the domain rejects
 
-When testing that a command is rejected, capture the exception in the `@when`
-step and verify it in `@then`:
+To test a rejected command, capture the exception in the `@when` step. Then
+verify the exception in `@then`:
 
 ```python
 # fragment
 --8<-- "guides/testing/application-tests/bdd/ordering/test_place_order.py:expected_failure"
 ```
 
-### Scenario Outline Steps
+### Write steps for Scenario Outlines
 
 For Scenario Outlines, use `parsers.parse` with format specifiers to extract
 typed values:
@@ -178,14 +178,14 @@ Common format specifiers for `parsers.parse`:
 
 ## Shared Steps in `conftest.py`
 
-Steps that appear across multiple feature files belong in `conftest.py`.
+Put steps that appear across multiple feature files in `conftest.py`.
 pytest-bdd discovers step definitions defined there automatically.
 
-### Root-Level Shared Steps
+### Share steps from the root `conftest.py`
 
-The root `conftest.py` uses `DomainFixture` to initialize the domain and
-manage per-test cleanup (see [Fixtures and Patterns](./fixtures-and-patterns.md)
-for the full setup):
+The root `conftest.py` uses `DomainFixture` to initialize the domain and clean
+up after each test (see [Fixtures and Patterns](./fixtures-and-patterns.md) for
+the full setup):
 
 ??? example "The root `conftest.py` these tests run under"
 
@@ -206,7 +206,7 @@ all decorated domain elements (e.g. `@domain.aggregate`,
 `@domain.command_handler`) are discovered and wired automatically. No manual
 registration is needed.
 
-### Domain-Specific Shared Steps
+### Share steps within one domain concept {#domain-specific-shared-steps}
 
 Steps shared within a single domain concept go in that directory's
 `conftest.py`:
@@ -229,7 +229,7 @@ tests/bdd/registration/conftest.py → steps available in registration/ tests
 ## Testing Application Services
 
 Application services coordinate use cases. Write feature files that describe
-the use case, and step definitions that invoke the service:
+the use case. Then write step definitions that invoke the service:
 
 ```gherkin
 --8<-- "guides/testing/application-tests/bdd/registration/features/activate_user.feature"
@@ -242,10 +242,10 @@ the use case, and step definitions that invoke the service:
 
 ## Using Tags for Selective Execution
 
-Gherkin tags are converted to pytest markers. Use them to organize and filter
-scenarios. The ordering feature above carries `@ordering` and `@smoke` on the
-feature, `@happy_path` on the first scenario and `@validation` on the stock
-check:
+pytest-bdd converts Gherkin tags to pytest markers. Use them to organize and
+filter scenarios. The ordering feature above carries `@ordering` and `@smoke`
+on the feature, `@happy_path` on the first scenario and `@validation` on the
+stock check:
 
 ```gherkin
 @ordering @smoke
@@ -282,7 +282,7 @@ pytest tests/bdd/ -m smoke
 pytest tests/bdd/ -m "happy_path and not validation"
 ```
 
-## Tips for Good Feature Files
+## Write clear feature files
 
 - **Name features after domain concepts**: "User Registration", not
   "Test UserCommandHandler".
@@ -298,6 +298,6 @@ pytest tests/bdd/ -m "happy_path and not validation"
 
 !!!note
     Setting `command_processing` and `event_processing` to `"sync"` is
-    essential for application tests. It ensures commands are handled
-    immediately and events are dispatched synchronously, so your `@then` steps
-    can verify outcomes deterministically.
+    essential for application tests. With this setting, Protean processes
+    commands immediately and dispatches events synchronously. Your `@then`
+    steps can then verify outcomes deterministically.

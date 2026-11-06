@@ -1,4 +1,4 @@
-# Chapter 1: Your First Aggregate
+# Chapter 1: Build your first aggregate
 
 In this chapter we will create the foundation of our online bookstore,
 **Bookshelf**. By the end, we will have a working `Book` aggregate that
@@ -10,7 +10,7 @@ manages books, orders, and inventory. We start with just a `Book`.
 
 ## Setting Up
 
-Create a new directory for the project and install Protean:
+Create a new directory for the project. Then install Protean in it:
 
 ```shell
 mkdir bookshelf
@@ -27,9 +27,8 @@ with a **Domain**, the central registry for all your business logic:
 --8<-- "guides/getting-started/tutorial/ch01.py:domain_instance"
 ```
 
-Protean ships with in-memory adapters for databases, brokers, and event
-stores, so you can focus entirely on domain modeling without setting up
-any infrastructure.
+Protean includes in-memory adapters for databases, brokers, and event stores,
+so you can work on domain modeling without setting up any infrastructure.
 
 ## Defining the Book Aggregate
 
@@ -64,7 +63,7 @@ bottom of `bookshelf.py`:
 --8<-- "guides/getting-started/tutorial/ch01.py:create_book"
 ```
 
-Two important steps happen here:
+The code makes two calls that prepare the domain:
 
 1. **`domain.init()`** initializes the domain, resolving references, validating the model,
    and setting up adapters. The `traverse=False` flag tells Protean we have registered all
@@ -86,7 +85,7 @@ ID: 5eb04301-f191-4bca-9e49-8e5a948f07f6
 Notice that the ID is a UUID generated automatically. Every aggregate
 instance gets a unique identity the moment it is created.
 
-## Persisting and Retrieving
+## Persist and retrieve a book
 
 Creating a `Book` object gives you an in-memory instance, but it is not
 persisted yet. To save and retrieve books, use a **repository**:
@@ -113,9 +112,10 @@ All checks passed!
 
 Everything runs in-memory right now. When we are ready for a real database, we
 will swap in a different adapter through configuration. Domain code stays
-exactly the same. We will do this in [Chapter 8](08-persistence.md).
+exactly the same. We will swap in a real database adapter in [Chapter
+8](08-persistence.md).
 
-## Exploring in the Shell
+## Explore the domain in the shell
 
 Protean includes an interactive shell that pre-loads your domain. Try it:
 
@@ -135,7 +135,7 @@ can create books, persist them, and query, all interactively:
 '1984'
 ```
 
-The shell is a great way to experiment as you build out the domain.
+Use the shell to test code interactively while you add elements to the domain.
 
 ## What We Built
 
@@ -147,7 +147,7 @@ The shell is a great way to experiment as you build out the domain.
 All of this ran in-memory with no infrastructure. In the next chapter,
 we will add richer fields and create value objects for price and address.
 
-## Full Source
+## Read the full source
 
 ??? example "ch01.py, 57 lines"
 
@@ -155,6 +155,6 @@ we will add richer fields and create value objects for price and address.
     --8<-- "guides/getting-started/tutorial/ch01.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 2: Rich Fields and Value Objects →](02-fields-and-value-objects.md)

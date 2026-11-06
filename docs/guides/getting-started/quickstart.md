@@ -1,11 +1,11 @@
-# Quickstart
+# Build your first Protean domain
 
 Build your first Protean domain in a few minutes. You will model a blog
 `Post`: a command publishes a post, an event handler reacts to the publish, a
 projector keeps a read-optimized feed, and you query that feed to read the
 post back. Everything runs in-memory, with no infrastructure to set up.
 
-## Prerequisites
+## Check what you need first
 
 - Python 3.11+
 - Protean installed ([Installation](./installation.md))
@@ -21,8 +21,9 @@ Create a file called `blog.py` and add:
 --8<-- "reference_app/blog.py:imports"
 ```
 
-Protean ships in-memory adapters for databases, brokers, and event stores, so
-you can write your domain logic before you pick any infrastructure.
+Protean ships in-memory adapters for databases, brokers, and event stores. With
+these adapters, you can write your domain logic before you pick any
+infrastructure.
 
 ## Define an aggregate
 
@@ -62,7 +63,8 @@ A command handler receives the command and makes the change:
 
 `PostCommandHandler` creates a `Post` from the command, calls `publish()`, and
 saves it through the repository. Protean wraps each handler method in a
-transaction. `domain.process()` routes a `PublishPost` command to this handler.
+transaction. `domain.process()` routes a `PublishPost` command to
+`PostCommandHandler`.
 
 ## React to events
 
@@ -90,10 +92,11 @@ to events:
 for `PostPublished` and adds a row, so a query against the feed returns
 published posts without loading the `Post` aggregate.
 
-## Put it all together
+## Run the whole example
 
-Initialize the domain and run the full arc. The command publishes a post, and
-the last lines query the feed and print what the projector recorded:
+Add the code below, which initializes the domain and runs every step from the
+command to the query. The command publishes a post. The last lines query the
+feed and print what the projector recorded:
 
 ```python
 --8<-- "reference_app/blog.py:usage"
@@ -135,18 +138,18 @@ sequenceDiagram
 ```
 
 1. `domain.process()` routes the `PublishPost` command to `PostCommandHandler`.
-2. The handler creates a `Post`, calls `publish()`, which changes the status
-   and raises a `PostPublished` event, and persists the post.
+2. The handler creates a `Post` and calls `publish()`, which changes the status
+   and raises a `PostPublished` event. The handler then persists the post.
 3. On commit, `PostPublished` reaches `PostEventHandler`, which prints the
-   announcement, and `PublishedPostsFeedProjector`, which adds a row to
-   `PublishedPostsFeed`.
+   announcement. The event also reaches `PublishedPostsFeedProjector`, which
+   adds a row to `PublishedPostsFeed`.
 4. You query `PublishedPostsFeed` and get the published post back.
 
 All of this runs in-memory, with no database, message broker, or event store.
 When you are ready for production, swap in real adapters with
 [configuration](../../reference/configuration/index.md).
 
-## Full source
+## Read the full source
 
 Here is the complete example in a single file:
 

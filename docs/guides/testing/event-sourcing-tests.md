@@ -1,4 +1,4 @@
-# Event Sourcing Tests
+# Test event-sourced aggregates
 
 <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -28,7 +28,7 @@ The examples on this page test this event-sourced `Order`:
     --8<-- "guides/testing/event-sourcing-tests/ordering_es/__init__.py:domain"
     ```
 
-## The Three Words
+## Write a test in three words
 
 ### `given(AggregateCls, *events)`
 
@@ -63,7 +63,7 @@ self:
 order = given(Order, order_created, order_confirmed).process(initiate_payment)
 ```
 
-## Multi-Command Chaining
+## Chain several commands
 
 Call `.process()` multiple times to build up aggregate state through the real
 pipeline, no hand-crafted event fixtures needed:
@@ -74,7 +74,7 @@ pipeline, no hand-crafted event fixtures needed:
 ```
 
 Each `.process()` runs the command through the real pipeline. The event store
-accumulates naturally, just like production.
+collects the events from each command, as it does in production.
 
 After chaining:
 
@@ -95,14 +95,14 @@ After chaining:
 | `given(Order).process(cmd1).process(cmd2)` | You're testing a lifecycle or user journey. The setup steps aren't the focus; the final command is. |
 | `Order.from_events([e1, e2])` | Unit testing aggregate logic directly, without the command pipeline. |
 
-Both patterns coexist. Event-based `given()` gives surgical precision.
-Command chaining gives lifecycle-level testing.
+Both patterns coexist. Event-based `given()` gives you precise control over the
+aggregate's history. Command chaining gives lifecycle-level testing.
 
 ## Asserting Outcomes
 
 After `.process()`, the result object provides:
 
-### Aggregate State
+### Read the aggregate state
 
 Attribute access is proxied to the underlying aggregate:
 
@@ -135,14 +135,14 @@ was accepted.
 ### Events (EventLog)
 
 New events raised by the command are available via `.events`. The `EventLog`
-class uses Python's own vocabulary:
+class supports Python's built-in operators:
 
 ```python
 # fragment
 --8<-- "guides/testing/event-sourcing-tests/001.py:event_log"
 ```
 
-### Raw Aggregate
+### Get the raw aggregate
 
 If you need the aggregate instance directly:
 
@@ -151,7 +151,7 @@ If you need the aggregate instance directly:
 --8<-- "guides/testing/event-sourcing-tests/001.py:raw_aggregate"
 ```
 
-## Complete Examples
+## Work through complete examples
 
 ### Testing a Create Command
 
@@ -221,22 +221,21 @@ prior successful commands:
 --8<-- "guides/testing/event-sourcing-tests/001.py:rejection_mid_chain"
 ```
 
-## Test Setup
+## Set up the tests
 
 ### conftest.py for Event-Sourced Tests
 
-Event-sourced tests use the same `DomainFixture` setup as other Protean
-tests. The domain must have `event_processing` and `command_processing`
-set to `"sync"`. In your project these fixtures go in `tests/conftest.py`,
-and they import `domain` from your application's package (`ordering_es`
-here):
+Event-sourced tests use the same `DomainFixture` setup as other Protean tests.
+The domain must have `event_processing` and `command_processing` set to
+`"sync"`. In your project, these fixtures go in `tests/conftest.py`. They
+import `domain` from your application's package (`ordering_es` here):
 
 ```python
 # fragment
 --8<-- "guides/testing/event-sourcing-tests/conftest.py:conftest"
 ```
 
-### Event Fixtures
+### Define event fixtures
 
 Define reusable event fixtures for your aggregate's history in the same
 `conftest.py`, so every test module can use them:
@@ -246,7 +245,7 @@ Define reusable event fixtures for your aggregate's history in the same
 --8<-- "guides/testing/event-sourcing-tests/conftest.py:event_fixtures"
 ```
 
-## Design Notes
+## Why does the DSL work this way?
 
 ### Why Integration Tests, Not Unit Tests
 
@@ -269,9 +268,9 @@ assertion methods. Python's built-in operators carry the meaning.
 
 ### Why Multi-Command Chaining
 
-Event-based `given(Order, e1, e2)` requires hand-crafting events that
-encode knowledge of the aggregate's internal event structure. If the
-aggregate changes which events a command produces, all fixtures break.
+Event-based `given(Order, e1, e2)` requires hand-crafting events that encode
+knowledge of the aggregate's internal event structure. Every fixture breaks
+when the aggregate starts to raise different events for a command.
 
 Multi-command chaining uses the real pipeline to build up state, so tests
 describe the user journey in terms of commands (the public API). If
@@ -280,11 +279,12 @@ aggregate internals change, chained tests survive untouched.
 ### Location at `protean.testing`
 
 Following the convention of `django.test`, `flask.testing`, and
-`unittest.mock`, a top-level testing module for test utilities. Separate from
-the pytest plugin in `protean.integrations.pytest`, which handles fixture
-lifecycle (`DomainFixture`), not domain-level test DSL.
+`unittest.mock`, a top-level testing module for test utilities. The module is
+separate from the pytest plugin in `protean.integrations.pytest`, which runs
+the fixture lifecycle (`DomainFixture`). The plugin contains no domain-level
+test DSL.
 
-## API Reference
+## Look up the API
 
 ### `given(aggregate_cls, *events) -> AggregateResult`
 

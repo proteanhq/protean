@@ -1,15 +1,15 @@
-# Mutating Aggregates
+# Mutate an aggregate through its methods
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-In DDD, aggregates are not passive data containers. They are the guardians of
-business rules. If external code could freely set fields on an aggregate (the
-"anemic domain model" anti-pattern), invariants would be bypassed and the
-aggregate could silently drift into an invalid state. Instead, state changes
+In DDD, aggregates are not passive data containers. Aggregates enforce business
+rules. If external code could freely set fields on an aggregate (the "anemic
+domain model" anti-pattern), that code would bypass invariants and could leave
+the aggregate in an invalid state without any error. Instead, state changes
 happen through **methods on the aggregate** that encapsulate the business
 logic, enforce invariants, and raise events.
 
-## Typical Workflow
+## How does a typical state change flow?
 
 A typical workflow of a state change is depicted below:
 
@@ -24,11 +24,12 @@ sequenceDiagram
   ApplicationService->>Repository: Persist Aggregate
 ```
 
-An Application Service (or another element from the Application Layer, like
-[Command Handler](../change-state/command-handlers.md) or
-[Event Handler](../consume-state/event-handlers.md)) loads the aggregate from
-the repository. It then invokes a method on the aggregate that mutates state.
-Below is the aggregate method that mutates state:
+An Application Service loads the aggregate from the repository. Another element
+from the Application Layer, like a [Command
+Handler](../change-state/command-handlers.md) or an [Event
+Handler](../consume-state/event-handlers.md), can load it the same way. It then
+invokes a method on the aggregate that mutates state. Below is the aggregate
+method that mutates state:
 
 ```python hl_lines="20-25 27-30"
 --8<-- "guides/domain-behavior/002.py:full"
@@ -37,18 +38,16 @@ Below is the aggregate method that mutates state:
 Also visible is the invariant (business rule) that the balance should never
 be below the overdraft limit.
 
-## Mutating State
+## Change state by updating attributes
 
-Changing state within an aggregate is straightforward, in the form of attribute
-updates.
+You change state within an aggregate by updating its attributes.
 
 ```python hl_lines="15"
 --8<-- "guides/domain-behavior/002.py:account"
 ```
 
-If the state change is successful, meaning it satisfies all
-invariants defined on the model, the aggregate immediately reflects the
-changes.
+If the state change satisfies all invariants defined on the model, the
+aggregate immediately reflects the changes.
 
 ```shell hl_lines="8"
 In [1]: account = Account(account_number="1234", balance=1000.0, overdraft_limit=50.0)
@@ -64,8 +63,9 @@ Out[3]:
  '_version': -1}
 ```
 
-If the change does not satisfy an invariant, Protean raises a `ValidationError`
-that carries the invariant's message under the field it names.
+If the change does not satisfy an invariant, Protean raises a
+`ValidationError`. The `ValidationError` carries the invariant's message under
+the field the invariant names.
 
 ```shell hl_lines="3 7"
 In [1]: account = Account(account_number="1234", balance=1000.0, overdraft_limit=50.0)
@@ -94,10 +94,11 @@ intercepted by `__setattr__`, which runs a full validation cycle:
 4. **The entity is marked as changed**: Protean's internal `_EntityState`
    tracks the mutation so the Unit of Work knows to persist it.
 
-This means that **every individual assignment** triggers the full invariant
-cycle. If you need to change multiple fields together (where intermediate
-states would be invalid), use `atomic_change`. This example uses the `Order`
-aggregate from the [Invariants](invariants.md) guide:
+Because `__setattr__` intercepts each field assignment, **every individual
+assignment** triggers the full invariant cycle. Intermediate states can be
+invalid when you change multiple fields together. In that case, use
+`atomic_change`. This example uses the `Order` aggregate from the
+[Invariants](invariants.md) guide:
 
 ```python
 --8<-- "guides/domain-behavior/001.py:atomic_change"
@@ -105,9 +106,9 @@ aggregate from the [Invariants](invariants.md) guide:
 
 Within `atomic_change`, pre-invariants fire on entry, individual assignment
 checks are suspended, and post-invariants fire on exit. See
-[Invariants, Atomic Changes](invariants.md#atomic-changes) for details.
+[Invariants, Atomic Changes](invariants.md#batch-changes-with-atomic_change) for details.
 
-### Identifier Immutability
+### Identifiers cannot change once set
 
 Identifier fields (marked with `identifier=True` or using the `Auto`/
 `Identifier` field type) cannot be changed once set. Attempting to reassign
@@ -119,13 +120,14 @@ In [1]: account.id = "new-id"
 InvalidOperationError: Identifiers cannot be changed once set
 ```
 
-### Child Entity Mutations
+### Changes to a child entity run the root aggregate's invariants
 
 When a child entity's attribute is changed, the **root aggregate's** invariants
-fire, not just the entity's own. This ensures cross-entity business rules are
-always enforced, even when mutations happen deep in the aggregate cluster.
+fire, not just the entity's own. As a result, Protean always enforces
+cross-entity business rules, including for mutations to nested entities in the
+aggregate cluster.
 
-## Event-Sourced Aggregates
+## Change state in event-sourced aggregates
 
 For **event-sourced aggregates**, state is never mutated directly in
 business methods. Instead, business methods raise events via `raise_()`,
@@ -136,12 +138,12 @@ handler to perform the state change:
 --8<-- "guides/domain-behavior/aggregate-mutation/001.py:es_order"
 ```
 
-This ensures the **same code path** runs whether the aggregate is
-processing a live command or being reconstructed from stored events.
+With `@apply` handlers, the aggregate runs the **same code path** for a live
+command and for reconstruction from stored events.
 
-The `raise_()` method wraps the `@apply` call inside `atomic_change()`, so
-invariants are checked before and after the state change, the "always valid"
-guarantee is preserved.
+The `raise_()` method wraps the `@apply` call inside `atomic_change()`. As a
+result, Protean checks invariants before and after the state change and
+preserves the "always valid" guarantee.
 
 See [Raising Events](raising-events.md#es-raise-apply) for full
 details on the `raise_()` + `@apply` integration.

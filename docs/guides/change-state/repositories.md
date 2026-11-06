@@ -2,15 +2,16 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Repositories provide a collection-oriented interface to persist and retrieve
-[aggregates](../domain-definition/aggregates.md). They hide the details of the
-underlying storage technology behind a clean, domain-focused API.
+A repository persists and retrieves
+[aggregates](../domain-definition/aggregates.md) through a collection-oriented
+interface. Its API is clean and domain-focused, and it exposes no details of
+the underlying storage technology.
 
 Protean automatically provides a default repository for every registered
-aggregate. You only need to define a custom repository when you want to add
-business-oriented query methods.
+aggregate. When you want to add business-oriented query methods, define a
+custom repository. Otherwise, the default repository is enough.
 
-## Default repository
+## Use the default repository
 
 Every aggregate gets a default repository. You access it with
 `domain.repository_for()`:
@@ -66,7 +67,7 @@ In [4]: repo.find_by_email("john.doe@example.com")
 Out[4]: <Person: Person object (id: 9ba6a890-e783-455e-9a6b-a0a16c0514df)>
 ```
 
-### Multiple domain-named methods
+### Add several domain-named methods
 
 A repository can contain as many query methods as needed. Name them after
 the domain concepts they represent:
@@ -91,7 +92,7 @@ Out[3]: [<Person: Person object (id: ...)>]
 !!!note
     Methods in the repository should be named for the business queries they
     perform. `adults` is a better name than `filter_by_age_gte_18`. The
-    repository should speak the ubiquitous language of the domain.
+    repository's method names should use the ubiquitous language of the domain.
 
 ## Querying inside repositories
 
@@ -100,7 +101,7 @@ Every repository exposes these methods for building queries:
 - **`self.query`**: A [QuerySet](./retrieve-aggregates.md#queryset) for
   building filtered, sorted, paginated queries.
 - **`self.find_by(**kwargs)`**: find a single aggregate matching the given
-  fields. Raises `ObjectNotFoundError` if no match is found, and
+  fields. Raises `ObjectNotFoundError` if no match is found. Raises
   `TooManyObjectsError` if multiple matches are found.
 - **`self.find(criteria)`**: Find all aggregates matching a `Q` expression.
   Returns a `ResultSet`.
@@ -115,13 +116,13 @@ Internally, these delegate to the repository's Data Access Object (DAO), the
 layer that talks to the database.
 
 !!!warning "Avoid direct `_dao` access"
-    The underlying DAO is accessible as `self._dao`, but it is an internal
-    API intended for framework use and infrastructure-level escape hatches
-    (hard deletion, test teardown, GDPR compliance). For custom repository
-    queries, always prefer `self.query`, `self.find`, `self.find_by()`, and
-    `self.exists()`.
+    The underlying DAO is accessible as `self._dao`, but it is an internal API.
+    It is meant for framework use and for infrastructure-level operations that
+    bypass the domain model (hard deletion, test teardown, GDPR compliance).
+    For custom repository queries, always prefer `self.query`, `self.find`,
+    `self.find_by()`, and `self.exists()`.
 
-### Error handling in queries
+### Handle errors in queries
 
 `get()` and `find_by()` raise exceptions when the expected result is not found:
 
@@ -135,9 +136,9 @@ layer that talks to the database.
 --8<-- "guides/change-state/repositories/003.py:exists"
 ```
 
-Use `get_or_none()` when a miss is a normal outcome rather than an error, such
-as resolving an optional reference by id (for example, an order's
-`referred_by` customer id that may not exist):
+When a miss is a normal outcome and does not signal an error, use
+`get_or_none()`. For example, you resolve an optional reference by id, such as
+an order's `referred_by` customer id that may not exist:
 
 ```python
 --8<-- "guides/change-state/repositories/003.py:get_or_none"
@@ -162,16 +163,16 @@ database, so `domain.repository_for(Person)` returns
 --8<-- "guides/change-state/repositories/001.py:reporting"
 ```
 
-When no `database` is specified, the default value is `"ALL"`, which means
-the repository works with whichever provider the aggregate is assigned to
-(via the aggregate's `provider` option, which itself defaults to the
-`"default"` provider).
+When no `database` is specified, the default value is `"ALL"`. With `"ALL"`,
+Protean uses the repository for whichever provider the aggregate's `provider`
+option assigns. The `provider` option itself defaults to the `"default"`
+provider.
 
 !!!note
-    Use `database` when an aggregate needs different query code on different
-    databases, for example a raw SQL query that only PostgreSQL understands.
-    If the aggregate's provider is a different type, Protean returns the
-    generic repository instead.
+    When an aggregate needs different query code on different databases, use
+    `database`. An example is a raw SQL query only PostgreSQL understands. If
+    the aggregate's provider is a different type, Protean returns the generic
+    repository instead.
 
 ## `domain.repository_for()`
 
@@ -223,8 +224,8 @@ Repositories intentionally do not provide a `delete()` or `remove()` method.
 In Domain-Driven Design, "deleting" a business entity is almost always a
 **state transition**, not a record erasure. An order is *cancelled*, a user is
 *deactivated*, a subscription is *archived*. These transitions are meaningful
-domain events that should be modeled explicitly (with commands, aggregate
-methods, and events) not hidden behind a database `DELETE`.
+domain events. Model them explicitly with commands, aggregate methods, and
+events, and do not replace them with a database `DELETE`.
 
 For infrastructure-level record removal (projection rebuilds, test teardown,
 GDPR right-to-erasure compliance), you can access the underlying DAO directly:
@@ -233,22 +234,24 @@ GDPR right-to-erasure compliance), you can access the underlying DAO directly:
 --8<-- "guides/change-state/repositories/004.py:dao_delete"
 ```
 
-This is an intentional escape hatch, not a recommended domain operation. Use it
-only when the domain model does not apply (e.g., cleaning up test data).
+Direct DAO access deliberately bypasses the domain model. It is not a
+recommended domain operation. Use it only when the domain model does not apply
+(e.g., cleaning up test data).
 
 ## Transactions and Unit of Work
 
 Every call to `repository.add()` participates in the enclosing [Unit of
-Work](./unit-of-work.md). Inside a command handler or `@use_case` method, this
-happens automatically. Changes are committed when the handler completes, or
-rolled back if an exception is raised.
+Work](./unit-of-work.md), or in a temporary one when no Unit of Work encloses
+it. Inside a command handler or `@use_case` method, this happens automatically.
+When the handler completes, the Unit of Work commits the changes. When the
+handler raises an exception, the Unit of Work rolls them back.
 
 Outside a handler (e.g., in a shell session or script), `add()` creates a
 temporary UoW, commits immediately, and discards it.
 
 ## When to define a custom repository
 
-Define a custom repository when you need to:
+When you need to do one of the following, define a custom repository:
 
 - **Express domain queries**: Methods like `overdue_orders()` or
   `customers_in_region(region)` that encapsulate business-oriented queries.
@@ -260,7 +263,8 @@ Define a custom repository when you need to:
 
 You do **not** need a custom repository for:
 
-- Basic `add` and `get` operations, the default repository handles these.
+- Basic `add` and `get` operations: the default repository already provides
+  these.
 - One-off queries in command handlers or application services, consider adding
   a named method to a custom repository instead.
 

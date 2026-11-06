@@ -3,9 +3,10 @@
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Subscribers consume messages from external message brokers and other systems
-outside the domain boundary. They bridge external messaging infrastructure and
-the domain's internal handling, serving as the entry point for inter-system
-integration at the messaging level.
+outside the domain boundary. A subscriber takes a message from external
+messaging infrastructure and passes it to the domain's internal handling.
+Subscribers are the entry point for integration between systems at the
+messaging level.
 
 !!!note "Subscribers vs. Event Handlers"
     **Event handlers** consume domain events from the internal event store and
@@ -18,7 +19,7 @@ integration at the messaging level.
 
     See [Event Handlers](event-handlers.md) for handling domain events.
 
-For background on how subscribers bridge external systems, see
+For background on how subscribers connect external systems to the domain, see
 [Subscribers concept](../../concepts/building-blocks/subscribers.md).
 
 ## Defining a Subscriber
@@ -39,7 +40,7 @@ Subscribers are defined with the `Domain.subscriber` decorator:
 3. The subscriber loads the relevant aggregate from the repository, applies
    business logic, and persists the changes.
 
-## Subscriber Workflow
+## How a subscriber processes a message
 
 ```mermaid
 sequenceDiagram
@@ -72,17 +73,19 @@ sequenceDiagram
    subscriber and calls its `__call__` method with the raw `dict` payload.
 
 1. **Subscriber Processes Message**: The subscriber extracts data from the
-   payload and performs business logic.
+   payload. It then runs business logic on that data.
 
 1. **Load/Update Aggregate**: The subscriber may load and modify aggregates
    through repositories.
 
-1. **Persist Changes**: Modified aggregates are persisted.
+1. **Persist Changes**: The subscriber persists the modified aggregates through
+   the repository.
 
-1. **Acknowledge/Nack**: On success, the message is acknowledged. On failure,
-   it is negatively acknowledged for potential reprocessing.
+1. **Acknowledge/Nack**: On success, the engine acknowledges the message to the
+   broker. On failure, the engine negatively acknowledges the message, so the
+   broker can reprocess it.
 
-## Configuration Options
+## Configure a subscriber
 
 ### `stream` (required)
 
@@ -112,9 +115,9 @@ configures an `analytics` broker next to the default one:
     See [Brokers](../../reference/adapters/broker/index.md) for details on configuring
     brokers.
 
-## Processing Modes
+## Choose a processing mode
 
-### Synchronous Processing
+### Process messages synchronously
 
 When `message_processing` is set to `"sync"`, subscribers are invoked
 immediately within the `publish()` call. This is useful for development,
@@ -129,7 +132,7 @@ In sync mode, when a message is published to a broker stream, the broker looks
 up all subscribers registered for that stream and invokes them inline before
 returning.
 
-### Asynchronous Processing
+### Process messages asynchronously
 
 When `message_processing` is set to `"async"` (the default), messages are
 stored in the broker and processed later by the Protean Engine. This is the
@@ -152,11 +155,12 @@ managing consumer groups, message batching, and acknowledgment automatically.
 Learn more in [Server](../../concepts/async-processing/index.md) and
 [Subscriptions](../../concepts/async-processing/subscriptions.md).
 
-## Error Handling
+## Handle errors in a subscriber
 
 Subscribers support custom error handling through the optional `handle_error`
-method. This method is called when an exception occurs during message
-processing, allowing you to implement specialized error handling strategies.
+method. The Protean Engine calls this method when an exception occurs during
+message processing. In it, you can implement specialized error handling
+strategies.
 
 ### The `handle_error` Method
 
@@ -176,15 +180,15 @@ exceptions:
    - The original exception that was raised
    - The message `dict` being processed when the exception occurred
 4. After `handle_error` completes, processing continues with the next message.
-5. The failed message is negatively acknowledged for potential reprocessing by
-   the broker.
+5. The engine negatively acknowledges the failed message, so the broker can
+   reprocess it.
 
-### Error Handler Failures
+### What happens when the error handler fails?
 
 If an exception occurs within the `handle_error` method itself, the Protean
-Engine will catch and log that exception as well, ensuring that the message
-processing pipeline continues to function. This provides an additional layer
-of resilience:
+Engine will catch and log that exception as well. The message processing
+pipeline then continues to function. This second catch keeps the pipeline
+running even when your error handler fails:
 
 ```python
 # fragment
@@ -199,7 +203,7 @@ def handle_error(cls, exc: Exception, message: dict) -> None:
         # Processing continues regardless
 ```
 
-### Best Practices
+### Follow these practices for error handlers
 
 1. Keep error handlers simple, and avoid logic that might itself fail.
 2. Use error handlers for logging, notification, and simple recovery.
@@ -207,9 +211,9 @@ def handle_error(cls, exc: Exception, message: dict) -> None:
 4. Consider implementing retry logic or dead-letter patterns for persistent
    failures.
 
-## Patterns
+## Apply common subscriber patterns
 
-### Payload Validation
+### Validate the payload
 
 Subscribers receive raw dicts from external systems. Validate shape and types
 before trusting the data:
@@ -238,19 +242,19 @@ The context `Message` wraps the broker metadata:
 | `msg.metadata.headers.stream` | The broker stream from which the message was consumed |
 | `msg.data` | The raw payload `dict` |
 
-Because this is the same `message_in_context` used for domain events and
-commands, any commands dispatched by the subscriber via `domain.process()`
-automatically inherit this message ID as their `causation_id`, linking
-the full trace chain back to the original external message. The
-`correlation_id` from the source service is also preserved automatically,
-stitching the causal chain across service boundaries.
+Subscribers use the same `message_in_context` as domain events and commands. So
+any command the subscriber dispatches via `domain.process()` automatically
+inherits this message ID as its `causation_id`. That `causation_id` links the
+full trace chain back to the original external message. Protean also preserves
+the `correlation_id` from the source service automatically, so the causal chain
+stays connected across service boundaries.
 
-The context is automatically set before `__call__` is invoked and cleaned up
-afterward, even if the subscriber raises an exception.
+The Protean Engine automatically sets the context before it invokes `__call__`
+and clears it afterward, even if the subscriber raises an exception.
 
 For a complete guide on how correlation and causation IDs flow across service
 boundaries, see
-[Correlation and Causation IDs](../observability/correlation-and-causation.md#service-boundary-handling).
+[Correlation and Causation IDs](../observability/correlation-and-causation.md#keep-the-correlation-chain-across-service-boundaries).
 
 ## Subscribers vs. Event Handlers
 
@@ -264,11 +268,11 @@ boundaries, see
 | **Processing config** | `event_processing` | `message_processing` |
 | **Use case** | React to domain changes within bounded context | Consume messages from external systems |
 
-Use **event handlers** when you need to react to events raised by aggregates
-within your domain. Use **subscribers** when you need to integrate with external
-systems that publish messages to a broker.
+When you need to react to events raised by aggregates within your domain, use
+**event handlers**. When an external system publishes messages to a broker, use
+**subscribers** to integrate with it.
 
-## Complete Example
+## Process webhooks from two external systems
 
 Below is a comprehensive example showing two subscribers processing webhooks
 from different external systems, a payment gateway and a shipping provider:
@@ -284,8 +288,8 @@ from different external systems, a payment gateway and a shipping provider:
    ID and status, and updates the order accordingly.
 
 3. The `handle_error` classmethod provides custom error handling. If `__call__`
-   raises an exception, this method is invoked with the exception and the
-   original message.
+   raises an exception, the engine invokes this method with the exception and
+   the original message.
 
 4. `ShippingUpdateSubscriber` listens to a different stream
    (`"shipping_updates"`), demonstrating that multiple subscribers can coexist,

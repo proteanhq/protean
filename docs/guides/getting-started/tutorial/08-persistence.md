@@ -1,8 +1,7 @@
 # Chapter 8: Connecting a Real Database
 
-In this chapter we will switch Bookshelf from in-memory storage to
-PostgreSQL, with only a configuration change. Our domain code stays exactly the
-same.
+You switch Bookshelf from in-memory storage to PostgreSQL by changing only the
+configuration. Our domain code stays exactly the same.
 
 ## Creating the Configuration File
 
@@ -18,9 +17,9 @@ provider = "postgresql"
 database_uri = "postgresql://postgres:postgres@localhost:5432/bookshelf"
 ```
 
-That is the only change needed. Every aggregate, command, event, and
-projection we have built will now persist to PostgreSQL instead of
-memory.
+Adding `domain.toml` is the only change you need. Protean now persists every
+aggregate, command, event, and projection you have built to PostgreSQL instead
+of memory.
 
 ## Starting PostgreSQL
 
@@ -42,14 +41,14 @@ Run the same code we have been running throughout the tutorial:
 $ python bookshelf.py
 ```
 
-The output should look the same as before, but now the data is stored in
-PostgreSQL. Protean creates the necessary tables automatically on first run.
+The output looks the same as before. Protean now stores the data in PostgreSQL.
+Protean creates the necessary tables automatically on first run.
 
 ## Managing the Database Schema
 
-Protean provides CLI commands to manage your database schema explicitly.
-These are essential for production deployments where you want full
-control over when tables are created or dropped:
+Protean provides CLI commands to create, drop, and truncate the tables in your
+database schema explicitly. These commands are essential in production
+deployments. With them, you decide when tables are created or dropped:
 
 ```shell
 # Create all tables (aggregates, entities, projections)
@@ -67,10 +66,10 @@ use `protean database setup` as part of your deployment process.
 
 ## Indexing for Performance
 
-Now that the data lives in a real database, queries that aren't simple
-identifier lookups need indexes to stay fast. The catalog is browsed by
-`category` and looked up by `isbn`, so declare indexes for those paths on the
-`Book` aggregate:
+The data is now stored in a real database. Queries other than simple identifier
+lookups need indexes to stay fast. The catalog is browsed by `category` and
+looked up by `isbn`, so declare indexes for those paths on the `Book`
+aggregate:
 
 ```python
 # fragment
@@ -78,11 +77,10 @@ identifier lookups need indexes to stay fast. The catalog is browsed by
 ```
 
 `protean database setup` creates these indexes alongside the table. The same
-declaration works unchanged on every SQL backend. The in-memory provider you
-used in earlier chapters has no indexes to create, but it still rejects a
-second book with the same `isbn`. See [Declaring
-Indexes](../../domain-definition/indexes.md) for composite, descending, and
-partial indexes.
+declaration works unchanged on every SQL backend. The in-memory provider from
+earlier chapters creates no indexes. It still rejects a second book with the
+same `isbn`. See [Declaring Indexes](../../domain-definition/indexes.md) for
+composite, descending, and partial indexes.
 
 ## Verifying Persistence
 
@@ -121,6 +119,6 @@ docker exec -it bookshelf-db psql -U postgres -d bookshelf -c "SELECT title FROM
 Our domain logic is now decoupled from storage. In the next chapter,
 we will organize the growing codebase into a proper project structure.
 
-## Next
+## Continue to the next chapter
 
 [Chapter 9: Structuring the Project →](09-project-structure.md)

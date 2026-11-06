@@ -1,4 +1,4 @@
-# Chapter 15: Fact Events and the Reporting Pipeline
+# Chapter 15: Report the current account state with fact events
 
 The finance team needs a flat reporting database showing the current state of
 every account for regulatory filings. They do not want to process individual
@@ -7,7 +7,7 @@ contains the **complete, current account state**.
 
 This is what **fact events** provide.
 
-## Delta Events vs. Fact Events
+## How do delta events differ from fact events?
 
 | | Delta Events | Fact Events |
 |---|-------------|------------|
@@ -17,8 +17,8 @@ This is what **fact events** provide.
 | **Stream** | `fidelis::account-{id}` | `fidelis::account-fact-{id}` |
 | **Use for** | Aggregate replay, handlers | Reporting, external consumers |
 
-Delta events describe what happened. Fact events describe where things
-stand.
+Delta events describe what happened. Fact events describe the current state of
+the aggregate.
 
 ## Enabling Fact Events
 
@@ -35,8 +35,8 @@ raise fact events manually. They are a byproduct of persistence.
 
 ## The Reporting Projector
 
-A projector that consumes fact events is simpler than one that consumes
-delta events, because every fact event is a complete state snapshot:
+Every fact event is a complete state snapshot, so a projector for fact events
+is simpler to write than a projector for delta events:
 
 ```python
 # fragment
@@ -81,7 +81,7 @@ Do **not** use fact events for:
 In the next chapter, an auditor asks to trace the complete chain of
 events triggered by a suspicious deposit.
 
-## Full Source
+## Read the full source
 
 ??? example "ch15.py, 275 lines"
 
@@ -89,6 +89,6 @@ events triggered by a suspicious deposit.
     --8<-- "guides/getting-started/es-tutorial/ch15.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 16: Following the Trail with Message Tracing →](16-message-tracing.md)

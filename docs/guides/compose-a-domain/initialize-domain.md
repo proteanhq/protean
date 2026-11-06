@@ -10,7 +10,7 @@ The domain is initialized by calling the `init` method.
 
 ## `Domain.init()`
 
-A call to `init` does the following:
+When you call `init`, Protean does the following:
 
 ### 1. Traverse the domain model
 
@@ -37,8 +37,8 @@ exposes them in a registry.
 
 ### 3. Initialize dependencies
 
-Calling `domain.init()` establishes connectivity with the underlying infra,
-testing access, and making them available for use by the rest of the system.
+When you call `domain.init()`, Protean connects to the underlying infra, tests
+access, and makes the infra available to the rest of the system.
 
 By default, a protean domain is configured to use in-memory replacements for
 infrastructure, like databases, brokers, and caches. They are useful for
@@ -58,7 +58,7 @@ the domain.
 ### 4. Validate Domain Model
 
 In the final part of domain initialization, Protean performs additional setup
-tasks on domain elements and also conducts various checks to ensure the domain
+tasks on domain elements. Protean also runs checks to confirm that the domain
 model is specified correctly.
 
 Examples of checks include:
@@ -69,11 +69,11 @@ Examples of checks include:
 --8<-- "guides/compose-a-domain/initialize-domain/003.py:string-reference"
 ```
 
-1. Setting up Aggregate clusters and their shared settings. The object graph
-constructed earlier is used to homogenize settings across all elements under
-an aggregate, like the stream category and database provider.
+1. Setting up Aggregate clusters and their shared settings. Protean uses the
+   object graph it constructed earlier to apply the same settings, like the
+   stream category and database provider, to all elements under an aggregate.
 
 1. Constructing a map of command and event types to reference when processing
 incoming messages later.
 
-1. Various checks and validations to ensure the domain structure is valid.
+1. Running checks that confirm the domain structure is valid.

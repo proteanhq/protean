@@ -19,12 +19,12 @@ Out[1]: <Person: Person object (id: 1)>
 `get` raises `ObjectNotFoundError` if no aggregate is found with the given
 identity.
 
-Finding an aggregate by a field value is also possible, but requires a custom
-repository to be defined with a business-oriented method. See the
+You can also find an aggregate by a field value, but you need to define a
+custom repository with a business-oriented method for it. See the
 [Repositories](./repositories.md) guide for details on defining custom
 repositories.
 
-## Querying beyond `get`
+## Query aggregates beyond `get`
 
 Beyond `get`, every repository exposes convenience methods for querying:
 
@@ -40,7 +40,7 @@ Beyond `get`, every repository exposes convenience methods for querying:
 These are available both on the repository instance returned by
 `domain.repository_for()` and inside custom repository methods via `self`.
 
-## Sample data
+## Set up the sample data
 
 For the purposes of this guide, assume that the following `Person` aggregates
 exist in the database:
@@ -63,8 +63,8 @@ All queries below can be placed in
 
 ### `find_by`
 
-Use `find_by` when you want to find a single aggregate matching one or more
-field values:
+When you want to find a single aggregate matching one or more field values, use
+`find_by`:
 
 ```shell
 In [1]: person = repository.find_by(age=36, country="CA")
@@ -73,7 +73,7 @@ In [2]: person.name
 Out[2]: 'Jane Doe'
 ```
 
-`find_by` raises `ObjectNotFoundError` if no aggregates are found, and
+`find_by` raises `ObjectNotFoundError` when it finds no aggregate. It raises
 `TooManyObjectsError` when more than one aggregate matches.
 
 ### `find`
@@ -110,8 +110,8 @@ using `find()` with reusable, domain-named query criteria.
 ### `exists`
 
 Use `exists` to check whether any aggregate matches. It runs the same query as
-`find` and checks whether any rows came back, so it still reads the matching
-aggregates:
+`find` and checks whether any rows came back. As a result, `exists` still reads
+the matching aggregates:
 
 ```shell
 In [1]: repository.exists(Q(country="US"))
@@ -145,9 +145,9 @@ repository's `.query` property:
 ```
 
 QuerySets are **lazy**. They don't access the database until you actually need
-the data. This allows you to chain multiple operations efficiently without
-hitting the database repeatedly. Each method returns a new QuerySet clone,
-leaving the original unchanged.
+the data. Laziness lets you chain multiple operations efficiently, without a
+database query for each one. Each method returns a new QuerySet clone, leaving
+the original unchanged.
 
 ### `filter` and `exclude`
 
@@ -170,7 +170,7 @@ In [2]: [person.name for person in people]
 Out[2]: ['John Doe', 'Jane Doe', 'Baby Doe', 'Boy Doe', 'Girl Doe']
 ```
 
-### Chaining operations
+### Chain operations
 
 QuerySets can chain operations. Each chained call returns a new QuerySet. The
 original is never modified:
@@ -223,7 +223,7 @@ In [3]: repository.query.filter(name__in=["John Doe", "Jane Doe"]).all().total
 Out[3]: 2
 ```
 
-The `isnull` lookup is handy for fields that may be unset:
+Use the `isnull` lookup for fields that may be unset:
 
 ```python
 --8<-- "guides/change-state/retrieve-aggregates/002.py:article"
@@ -258,9 +258,9 @@ discarded in Python. Only a bare field reference is supported: arithmetic
 !!!note
     These lookups have database-specific implementations, and a few (the array
     lookups `any` / `overlap`, and `F()`) are not supported on every adapter. See
-    the [lookup support matrix](../../concepts/internals/query-system.md#lookup-support-across-adapters)
-    for which adapter supports what; an unsupported lookup raises
-    `NotImplementedError` rather than returning wrong results.
+    the [lookup support matrix](../../concepts/internals/query-system.md#which-lookups-each-adapter-supports)
+    for which adapter supports what. An unsupported lookup raises
+    `NotImplementedError`, so it never returns wrong results.
 
 ---
 
@@ -300,7 +300,7 @@ Negate a Q object with `~` to exclude matching records:
 --8<-- "guides/change-state/retrieve-aggregates/001.py:q_not"
 ```
 
-### Nesting
+### Nest Q objects
 
 Q objects can be combined and nested to express complex criteria:
 
@@ -319,8 +319,8 @@ and keyword arguments are ANDed together:
 
 ## Composable query functions
 
-When the same filter criteria appears in multiple places (a command handler, an
-event handler, a projector, a scheduled job) you can extract it into a plain
+The same filter criteria can appear in multiple places: a command handler, an
+event handler, a projector, a scheduled job. You can extract it into a plain
 Python function that returns a `Q` object. This gives you named, reusable,
 composable query criteria without any framework overhead:
 
@@ -349,16 +349,16 @@ And inside custom repository methods:
 --8<-- "guides/change-state/retrieve-aggregates/003.py:repository"
 ```
 
-This pattern gives you most of the formal [Specification
+Plain Q-returning functions give you most of the formal [Specification
 Pattern](https://martinfowler.com/apsupp/spec.pdf)'s value (named, composable,
 testable query criteria) with zero framework complexity. The Q functions are
 regular Python: easy to write, easy to test, and easy to understand.
 
-### Structuring as specifications
+### Structure criteria as specifications
 
-When you need both database queries *and* in-memory evaluation of the same
-business rule, for example, querying overdue orders from the database and also
-checking whether a single order is overdue inside an event handler. You can
+Sometimes you need both database queries *and* in-memory evaluation of the same
+business rule. For example, you query overdue orders from the database and also
+check inside an event handler whether a single order is overdue. You can
 structure your query criteria as specification classes:
 
 ```python
@@ -382,11 +382,11 @@ Use `to_query()` with `find()` for database queries, and
 ```
 
 !!! tip
-    Start with plain Q-returning functions. Graduate to specification
-    classes only when you genuinely need `is_satisfied_by()` for in-memory
-    evaluation alongside database queries.
+    Start with plain Q-returning functions. Switch to specification classes
+    only when you need `is_satisfied_by()` for in-memory evaluation alongside
+    database queries.
 
-## Sorting results
+## Sort results
 
 Use `order_by()` to sort results by one or more fields. Prefix a field name
 with `-` for descending order:
@@ -414,9 +414,9 @@ An empty field (`None`) sorts after every value in ascending order, and before
 every value in descending order. The in-memory adapter and every SQL database
 sort it this way. Elasticsearch puts empty fields last in both directions.
 
-## Pagination
+## Paginate results
 
-### Controlling result size
+### Control the result size
 
 By default, Protean limits the number of records returned by a query to 100.
 You can control this behavior in several ways.
@@ -448,7 +448,7 @@ Combine `limit` with `offset` for pagination:
 --8<-- "guides/change-state/retrieve-aggregates/001.py:get_page"
 ```
 
-### Pagination navigation
+### Navigate between pages
 
 The result provides pagination properties for navigating through pages:
 
@@ -456,7 +456,7 @@ The result provides pagination properties for navigating through pages:
 --8<-- "guides/change-state/retrieve-aggregates/001.py:pagination"
 ```
 
-## Evaluating a QuerySet
+## Evaluate a QuerySet
 
 A QuerySet is lazy. It does not hit the database until it is **evaluated**.
 Evaluation is triggered when you:
@@ -512,10 +512,11 @@ In [1]: repository.query.filter(country="CA").count()
 Out[1]: 5
 ```
 
-`count()` ignores `offset`, `limit`, and `order_by`, since none of them affect
-the number of matching rows. Prefer it over `len(queryset)` or `.all().total`
-when you don't need the rows themselves: those evaluate the full query and
-build entity objects, while `count()` asks the database for the number alone.
+`count()` ignores `offset`, `limit`, and `order_by`, since none of them change
+the number of matching rows. When you don't need the rows themselves, prefer
+`count()` over `len(queryset)` or `.all().total`. Those two evaluate the full
+query and build entity objects, while `count()` asks the database for the
+number alone.
 
 ### Fetching items without a total
 
@@ -534,7 +535,7 @@ search, so it still sets `total` to the number of matching rows.
 
 ## Projecting fields with `only`
 
-When you need a few columns rather than whole aggregates, `only()` restricts
+When you need only a few columns of each aggregate, use `only()`. It restricts
 the query to the named fields (the identifier is always included) and returns
 read-only `Record` objects instead of fully materialized entities:
 
@@ -571,27 +572,29 @@ record.name = "X"   # NotSupportedError: Records are read-only
 
 Because a `Record` is not an entity, `only()` cannot be combined with the
 entity-loading operations `update()` and `delete()`; both raise
-`NotSupportedError`. `count()` works with `only()` (the projection is moot for a
-count), and `raw()` ignores any projection and always returns full entities.
+`NotSupportedError`. `count()` works with `only()`, because a projection makes
+no difference to a count. `raw()` ignores any projection and always returns
+full entities.
 
-Calling `only()` again replaces the projection (projections do not compose);
-calling it with no arguments clears the projection and restores full-entity
-loading. See the [QuerySet API reference](../../api/queryset.md) for the full
-`Record` surface.
+Calling `only()` again replaces the projection, because projections do not
+compose. Calling it with no arguments clears the projection and restores
+full-entity loading. See the [QuerySet API reference](../../api/queryset.md)
+for every attribute and method of `Record`.
 
-## Bulk operations
+## Update and delete in bulk
 
 QuerySets provide methods for updating and deleting multiple records at once.
 
 ### `update`
 
 !!! warning "Deprecated in 0.18.0, removed in 0.20.0"
-    `update()` patches fields straight onto the store, so the change never goes
-    through a behaviour method on the aggregate and the events that change
+    `update()` patches fields straight onto the store. The change never goes
+    through a behaviour method on the aggregate, so the events that change
     should raise never fire. Calling it emits a `RemovedInProtean020Warning`.
     Load each match, invoke a behaviour method on it, and persist it with
-    `repository.add()`. See the
-    [migration note](../../reference/migration/v0-18.md#daoupdate-and-querysetupdate-are-deprecated).
+    `repository.add()`. See the [migration
+    note](../../reference/migration/v0-18.md#daoupdate-and-querysetupdate-are-deprecated)
+    for how to replace calls to `update()`.
 
 Updates each matching object individually: it loads every entity and triggers
 callbacks and validations:
@@ -614,17 +617,17 @@ Returns the number of objects deleted.
 
 ## ResultSet
 
-The `.all()` method returns a `ResultSet` instance. This class prevents
-DAO-specific data structures from leaking into the domain layer.
+The `.all()` method returns a `ResultSet` instance. The `ResultSet` class wraps
+the result, so the domain layer never receives DAO-specific data structures.
 
-### Attributes
+### Read the ResultSet attributes
 
 - **`offset`**: The current offset (zero-indexed)
 - **`limit`**: The number of items requested
 - **`total`**: Total number of items matching the query (across all pages)
 - **`items`**: List of result entity objects in the current page
 
-### Properties
+### Use the ResultSet properties
 
 - **`first`**: First item, or `None` if empty
 - **`last`**: Last item, or `None` if empty
@@ -634,7 +637,7 @@ DAO-specific data structures from leaking into the domain layer.
 - **`page_size`**: Number of items per page (alias for `limit`; `None` when unlimited)
 - **`total_pages`**: Total number of pages (0 when no results)
 
-### Methods
+### Call the ResultSet methods
 
 - **`to_dict()`**: Returns the result as a dictionary with `offset`,
   `limit`, `total`, `page`, `page_size`, `total_pages`, `has_next`,
@@ -667,7 +670,7 @@ Out[3]:
   <Person: Person object (id: 4683a592-ffd5-4f01-84bc-02401c785922)>]}
 ```
 
-## Raw queries
+## Run raw queries
 
 For database-specific queries that cannot be expressed through the QuerySet
 API, use `raw()`:
@@ -685,11 +688,12 @@ SQL for SQLAlchemy, etc. All other query options (`order_by`, `offset`,
     database technology. Use them sparingly and only when the QuerySet API
     cannot express your query.
 
-## Query performance
+## Speed up queries with indexes
 
-A query that filters or sorts on the same fields repeatedly needs a database
-index to stay fast as the table grows, without one, the database falls back to
-a full scan. Declare the indexes a query path needs on the aggregate itself:
+When a query filters or sorts on the same fields repeatedly, it needs a
+database index to stay fast as the table grows. Without an index, the database
+falls back to a full scan. Declare the indexes a query path needs on the
+aggregate itself:
 
 ```python
 --8<-- "guides/change-state/retrieve-aggregates/005.py:index"

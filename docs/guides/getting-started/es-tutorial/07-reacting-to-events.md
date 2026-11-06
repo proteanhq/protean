@@ -7,7 +7,7 @@ the aggregate or the projector. In this chapter we will create **event
 handlers**, decoupled listeners that react to events and trigger external
 actions.
 
-## Event Handlers vs. Projectors
+## How do event handlers differ from projectors?
 
 | | Projectors | Event Handlers |
 |---|-----------|---------------|
@@ -40,7 +40,7 @@ A single event handler can handle multiple event types. The
 `NotificationHandler` listens for both `AccountOpened` (welcome message)
 and `WithdrawalMade` (large withdrawal alert).
 
-## Multiple Consumers, One Event
+## Let several consumers react to one event
 
 A key principle of event-driven architecture: **a single event can be
 consumed by multiple listeners**. When a large deposit occurs:
@@ -49,8 +49,8 @@ consumed by multiple listeners**. When a large deposit occurs:
 2. The **ComplianceAlertHandler** triggers an alert
 3. The **NotificationHandler** could send a receipt
 
-None of these consumers know about each other. They are decoupled by
-the event.
+None of these consumers know about each other. Each consumer depends only on
+the event, so no consumer depends on another.
 
 ## Trying It Out
 
@@ -87,9 +87,10 @@ def on_large_deposit(self, event: DepositMade):
         )
 ```
 
-This is how **cross-aggregate coordination** works without coupling, the
+This is how **cross-aggregate coordination** works without coupling. The
 Account aggregate knows nothing about the Compliance aggregate. The event
-handler bridges them.
+handler receives the `DepositMade` event from the Account aggregate and issues
+a command to the Compliance aggregate.
 
 ## What We Built
 
@@ -104,7 +105,7 @@ Our system now reacts to events. But everything still runs synchronously, a
 slow compliance check blocks the deposit response. In the next chapter, we will
 switch to asynchronous processing with Redis and the Protean server.
 
-## Full Source
+## See the full source
 
 ??? example "ch07.py, 270 lines"
 
@@ -112,6 +113,6 @@ switch to asynchronous processing with Redis and the Protean server.
     --8<-- "guides/getting-started/es-tutorial/ch07.py:full"
     ```
 
-## Next
+## Go to the next chapter
 
 [Chapter 8: Going Async with the Server →](08-going-async.md)

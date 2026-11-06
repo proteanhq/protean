@@ -3,10 +3,11 @@
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 The `Domain` is the central composition root of a Protean application. It
-registers domain elements, loads configuration, and manages adapter
-lifecycle. Every Protean project starts by creating a `Domain` instance.
+registers domain elements and loads configuration. It also opens the
+connections of its database, broker, cache and event store adapters, and closes
+them on shutdown. Every Protean project starts by creating a `Domain` instance.
 
-## Creating a Domain
+## Create a domain
 
 The simplest way to create a domain:
 
@@ -40,7 +41,7 @@ For the full list of constructor parameters, see
 For configuration options, see
 [Configuration](../../reference/configuration/index.md).
 
-## Guides in this section
+## What do the guides in this section cover?
 
 ### [Register Elements](./register-elements.md)
 
@@ -65,20 +66,20 @@ scripts, and the Protean server.
 Environment overlays, environment variable substitution, adapter
 selection, and dual-mode testing configuration.
 
-### [Choosing Adapters](./choosing-adapters.md)
+### [Choose adapters](./choosing-adapters.md)
 
-Decide which database, broker, event store, and cache to use for each
-workload. Compares the built-in options by use case and trade-offs.
+Decide which database, broker, event store, and cache to use for each workload.
+The guide compares the built-in options by use case and trade-offs.
 
-### [Inspecting the IR](./inspecting-the-ir.md)
+### [Inspect the IR](./inspecting-the-ir.md)
 
 Generate and explore the domain's Intermediate Representation.
 
-### [Schema Generation](./schema-generation.md)
+### [Generate JSON Schema files](./schema-generation.md)
 
 Generate JSON Schema files for domain elements.
 
-## Related
+## Where can you read more?
 
 - [Domain Constructor Reference](../../reference/domain-elements/domain-constructor.md):
   Full parameter documentation.

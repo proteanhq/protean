@@ -7,13 +7,12 @@ validations built into them. They don't have distinct identities, so they are
 *identified* by attributes values. They tend to act primarily as data
 containers, enclosing attributes of primitive types.
 
-## Defining a Value Object
+## Define a value object
 
-Consider the example of an Email Address. A User’s Email can be treated
-as a simple “String.” If we do so, validations that check for the value
-correctness (an email address) are either specified as part of the `User`
-class' lifecycle methods or as independent business logic present in the
-services layer.
+Consider the example of an Email Address. You can treat a user's email as a
+plain string. The checks for a correct value (an email address) then go either
+in the lifecycle methods of the `User` class or in separate business logic in
+the services layer.
 
 But an Email is more than just another string in the system. It has
 well-defined, explicit rules associated with it, like:
@@ -24,11 +23,10 @@ well-defined, explicit rules associated with it, like:
 - The domain URL to be among the list of acceptable domains, if defined
 - A total length of less 255 characters
 
-So it makes better sense to make Email a Value Object, with a simple string
-representation to the outer world, but having a distinct local_part (the part
-of the email address before @) and domain_part (the domain part of the
-address). Any value assignment will have to satisfy the domain rules listed
-above.
+So make Email a Value Object. It shows a plain string to the outside world and
+keeps a separate local_part (the part of the email address before @) and
+domain_part (the domain part of the address). Any value assignment will have to
+satisfy the domain rules listed above.
 
 Below is a sample implementation of the `Email` concept as a Value Object:
 
@@ -36,9 +34,9 @@ Below is a sample implementation of the `Email` concept as a Value Object:
 --8<-- "guides/domain-definition/009.py:full"
 ```
 
-The complex validation logic of an email address is contained in a
-validator class attached to the `Email` Value Object. Assigning an invalid
-email address now raises a `ValidationError`.
+The complex validation logic of an email address is contained in a validator
+class attached to the `Email` Value Object. When you assign an invalid email
+address, the validator now raises a `ValidationError`.
 
 ```shell
 In [1]: Email(address="john.doe@gmail.com")
@@ -55,7 +53,7 @@ ValidationError: {'address': ['Invalid email address']}
     This example was for illustration purposes only. It is better to
     validate an email address with [regex](https://emailregex.com/).
 
-## Configuration
+## Configure a value object
 
 A value object's behavior can be customized by passing options to the
 `@domain.value_object` decorator.
@@ -68,14 +66,15 @@ fields across multiple concrete value object types.
 
 ### `part_of`
 
-Associates the value object with a specific aggregate. While optional,
-setting `part_of` registers the value object within the aggregate's cluster
-and ensures it participates in the aggregate's validation lifecycle.
+Associates the value object with a specific aggregate. Setting `part_of` is
+optional. When you set it, Protean registers the value object within the
+aggregate's cluster, and the value object takes part in the aggregate's
+validation lifecycle.
 
-`part_of` takes the aggregate class or its name as a string. A string is
-resolved to the class at `domain.init()`, and it must name an aggregate: a name
-that matches no aggregate, such as a typo or an entity's name, makes
-`domain.init()` raise `ConfigurationError`.
+`part_of` takes the aggregate class or its name as a string. Protean resolves a
+string to the class at `domain.init()`, so the string must name an aggregate.
+When the name matches no aggregate, such as a typo or an entity's name,
+`domain.init()` raises `ConfigurationError`.
 
 ## Embedding Value Objects
 
@@ -87,16 +86,16 @@ Value Objects can be embedded into Aggregates and Entities with the
 ```
 
 !!!note
-    You can also specify a Value Object's class name as input to the
-    `ValueObject` field, which will be resolved when the domain is initialized.
-    This can help avoid the problem of circular references.
+    You can also pass a Value Object's class name to the `ValueObject` field.
+    Protean resolves the name when the domain is initialized. This can help
+    avoid the problem of circular references.
 
     ```python
     --8<-- "guides/domain-definition/value-objects/001.py:aggregate"
     ```
 
-An email address can be supplied during user object creation, and the
-value object takes care of its own validations.
+You can supply an email address when you create a user object. The `Email`
+value object runs its own validations.
 
 ```shell
 ...
@@ -138,7 +137,7 @@ Value Objects are typically initialized along with the enclosing entity.
 Python's `decimal.Decimal` as `D` so it does not clash with the field of the
 same name: `from decimal import Decimal as D`.
 
-Assigning value is straight-forward with a `Balance` object:
+You assign a value by passing a `Balance` object:
 
 ```shell
 ...
@@ -177,21 +176,20 @@ The attribute names are a combination of the field name defined in `Account`
 class (`balance`) and the field names defined in the `Balance` Value Object
 (`currency` and `amount`).
 
-The resultant `Account` object would be the same in all aspects in either case.
-But note that you can only assign by attributes when initializing an
-entity. Trying to update an attribute value directly after initialization does
-not work because Value Objects are immutable - they cannot be changed once
-initialized. Read more in [Immutability](#immutability) section.
+The `Account` object is the same in every way in either case. You can assign by
+attributes only when you initialize an entity. You cannot update an attribute
+value directly after initialization. Value Objects are immutable: once
+initialized, they cannot be changed. Read more in [Immutability](#immutability)
+section.
 
-The approach of assigning an entirely new Value Object instead of editing
-attributes also makes sense because all invariants (validations) should be
-satisfied at all times.
+You assign an entirely new Value Object instead of editing attributes for a
+second reason: all invariants (validations) should be satisfied at all times.
 
 !!!note
-    It is recommended that you always deal with Value Objects by their class.
-    Attributes are generally used by Protean during persistence and retrieval.
+    In your own code, create and pass Value Objects by their class. Attributes
+    are generally used by Protean during persistence and retrieval.
 
-## Nested Value Objects
+## Nest value objects inside other value objects
 
 Value objects can be composed of other value objects, forming richer domain
 concepts:
@@ -218,9 +216,9 @@ Build a nested value object and pass it in:
 --8<-- "guides/domain-definition/value-objects/002.py:nested"
 ```
 
-The aggregate also accepts the flattened names from the table, one level
-deep. A nested value object is still passed as an object. Deeper names such
-as `address_location_latitude` are rejected with a `ValidationError`:
+An aggregate also accepts the flattened column names from the table above, one
+level deep. A nested value object is still passed as an object. Deeper names
+such as `address_location_latitude` are rejected with a `ValidationError`:
 
 ```python
 --8<-- "guides/domain-definition/value-objects/002.py:flattened"
@@ -228,15 +226,16 @@ as `address_location_latitude` are rejected with a `ValidationError`:
 
 ## Dict-Based Initialization
 
-Value objects can be initialized from dictionaries, which is especially
-useful when receiving data from APIs or external sources:
+You can initialize value objects from dictionaries. Dictionaries help when you
+receive data from APIs or external sources:
 
 ```python
 --8<-- "guides/domain-definition/value-objects/003.py:dict"
 ```
 
-This works for nested value objects too, any dict matching the value object's
-field structure will be automatically converted.
+Dict-based initialization also works for nested value objects: Protean
+automatically converts any dict that matches the value object's field
+structure.
 
 ## Invariants
 
@@ -263,11 +262,12 @@ Protean offers two ways to validate value object data:
   format validation, "is this a valid email?" or "is this a valid phone
   number?"
 - **`@invariant.post` methods**: Cross-field business rules that span
-  multiple attributes (e.g. "balance cannot be negative for USD"). Use
-  these when validation depends on the combination of two or more fields.
+  multiple attributes (e.g. "balance cannot be negative for USD"). When
+  validation depends on the combination of two or more fields, use these
+  methods.
 
-As a rule of thumb: if the rule involves only one field, use a field
-validator; if it involves multiple fields, use an invariant.
+For a rule on one field, use a field validator. For a rule that spans multiple
+fields, use an invariant.
 
 Refer to the [Invariants](../domain-behavior/invariants.md) guide for a
 deeper explanation, and [Validation Layering](../../patterns/validation-layering.md)
@@ -275,15 +275,15 @@ for the overall strategy.
 
 ## The `defaults()` Hook
 
-Override the `defaults()` method when a value object attribute's default
-depends on other attribute values:
+When a value object attribute's default depends on other attribute values,
+override the `defaults()` method:
 
 ```python
 --8<-- "guides/domain-definition/value-objects/004.py:value_object"
 ```
 
-`defaults()` runs during initialization, after all field values have been
-set but before invariants are checked.
+`defaults()` runs during initialization, after all field values are set.
+Invariants are checked after `defaults()` runs.
 
 ## Equality
 
@@ -309,22 +309,23 @@ Out[5]: False
 
 Value objects compare and hash their field values, so `D('100.0')` and
 `D('100.00')` count as the same amount. A `Balance` holding one equals a
-`Balance` holding the other, and both hash the same. `to_dict()` still keeps
-each amount as it was given, so the two render as `"100.0"` and `"100.00"`.
-A value object of a different class, including a subclass, is never equal,
-even when its field values match.
+`Balance` holding the other. The two `Balance` objects also have the same hash.
+`to_dict()` still keeps each amount in its original form. The two `Balance`
+objects render as `"100.0"` and `"100.00"`. A value object never equals a value
+object of a different class, including a subclass, even when the field values
+match.
 
-## Identity
+## Value objects have no identity
 
 Unlike Aggregates and Entities, Value Objects do not have any inbuilt concept
 of unique identities. This allows two instances of value objects to be swapped
 or even be replaced by a single object instance.
 
-This also means that all functionalities related to identity or uniqueness
-are not applicable to Value Objects.
+Because Value Objects have no unique identity, no functionality related to
+identity or uniqueness applies to them.
 
-For example, trying to mark a Value Object field with `unique = True` or
-`identifier = True` will throw a `IncorrectUsageError` exception.
+For example, when you mark a Value Object field with `unique = True` or
+`identifier = True`, Protean raises an `IncorrectUsageError` exception.
 
 ```shell
 In [1]: @domain.value_object
@@ -344,7 +345,7 @@ In [5]: id_field(Balance) is None
 Out[5]: True
 ```
 
-## Immutability
+## Value objects cannot change after initialization { #immutability }
 
 A Value Object cannot be altered once initialized. Trying to do so raises an
 `IncorrectUsageError`.
@@ -357,7 +358,7 @@ In [2]: bal1.currency = "CAD"
 IncorrectUsageError: "Value Objects are immutable and cannot be modified once created"
 ```
 
-## Replacing Fields
+## Replace fields to get a new value object { #replacing-fields }
 
 Since value objects are immutable, you cannot modify them after creation.
 Instead, use `replace()` to create a new instance with selected fields
@@ -395,7 +396,7 @@ Unknown field names raise `IncorrectUsageError`:
 `replace()` also works with nested value objects. Pass a new value object
 instance for the nested field, or omit it to preserve the original.
 
-## Hashability
+## Use value objects as dictionary keys or in sets
 
 Because value objects are immutable and define equality by their attributes,
 they are hashable by default. This means you can use them as dictionary
@@ -405,12 +406,13 @@ keys or in sets:
 --8<-- "guides/domain-definition/value-objects/008.py:hash"
 ```
 
-## Projecting Entities into Value Objects
+## Project an entity into a value object { #projecting-entities-into-value-objects }
 
-When building commands and events, you often need a value object that
-mirrors an entity's fields, for example, to carry `OrderItem` data in a `PlaceOrder` command.
-Manually duplicating the fields is tedious and error-prone. Protean provides
-`value_object_from_entity()` to auto-generate the VO class:
+When building commands and events, you often need a value object that mirrors
+an entity's fields, for example, to carry `OrderItem` data in a `PlaceOrder`
+command. You can copy the fields by hand, but that work is tedious and
+error-prone. Protean provides `value_object_from_entity()` to auto-generate the
+VO class:
 
 ```python
 --8<-- "guides/domain-definition/value-objects/009.py:derive"
@@ -427,8 +429,8 @@ adjustments:
   entities become nested value objects or lists of value objects.
 - **Private fields (prefixed with `_`) are skipped.**
 - **Length and range limits are not copied**: each field keeps its type,
-  `choices`, required flag, and default, but limits such as `max_length`
-  and `min_value` are left behind.
+  `choices`, required flag, and default, but the generated class drops limits
+  such as `max_length` and `min_value`.
 
 You can customize the generated class name and exclude specific fields:
 
@@ -436,10 +438,10 @@ You can customize the generated class name and exclude specific fields:
 --8<-- "guides/domain-definition/value-objects/009.py:custom"
 ```
 
-### Inline field descriptor
+### Derive the value object inline with a field descriptor
 
-For inline use in commands and events, use the `ValueObjectFromEntity`
-field descriptor instead of calling the function separately:
+For inline use in commands and events, use the `ValueObjectFromEntity` field
+descriptor instead of calling `value_object_from_entity()` separately:
 
 ```python
 --8<-- "guides/domain-definition/value-objects/009.py:command"
@@ -448,7 +450,7 @@ field descriptor instead of calling the function separately:
 This derives the VO class from the entity at class-body evaluation time, no
 separate variable needed.
 
-### Round-trip: VO back to Entity
+### Convert a value object back into an entity
 
 To convert a value object back into an entity instance (e.g., in a command
 handler), use the `from_value_object()` classmethod on the entity:
@@ -458,10 +460,10 @@ handler), use the `from_value_object()` classmethod on the entity:
 ```
 
 `from_value_object()` calls `vo.to_dict()`, strips `None` values for
-identifier/unique fields (so auto-generated defaults kick in), and
-constructs the entity. This is the inverse of `value_object_from_entity()`.
+identifier/unique fields (so auto-generated defaults apply), and constructs the
+entity. This is the inverse of `value_object_from_entity()`.
 
-### Fact event refactoring
+### Fact events use the same projection
 
 Protean's fact event generation internally uses `value_object_from_entity()`
 to convert entity associations in aggregates. If your aggregate has
@@ -469,7 +471,7 @@ to convert entity associations in aggregates. If your aggregate has
 the generated fact event automatically includes value object projections
 of those entities.
 
-## Common Errors
+## Which errors can a value object raise?
 
 | Exception | When it occurs |
 |---|---|

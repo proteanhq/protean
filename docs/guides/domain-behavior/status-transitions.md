@@ -1,11 +1,11 @@
-# Status Transitions
+# Enforce status transitions
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Most aggregates are state machines. An Order moves through DRAFT, PLACED,
-CONFIRMED, SHIPPED, and DELIVERED. A Subscription cycles through TRIAL,
-ACTIVE, PAUSED, and CANCELLED. The business rules about which transitions
-are legal often define the most critical behavior in a domain.
+CONFIRMED, SHIPPED, and DELIVERED. A Subscription cycles through TRIAL, ACTIVE,
+PAUSED, and CANCELLED. In many domains, the most critical behavior is the set
+of business rules about which transitions are legal.
 
 Protean's `Status` field makes these lifecycle rules explicit and
 automatically enforced.
@@ -38,7 +38,7 @@ terminal states.
 
 ## How enforcement works
 
-### Direct mutation
+### Assign a new status directly
 
 When you assign a new status value, the framework validates the transition
 immediately:
@@ -47,19 +47,21 @@ immediately:
 --8<-- "guides/domain-behavior/status-transitions/002.py:direct"
 ```
 
-The error message tells you exactly what's wrong:
+Protean raises a `ValidationError` that names the current state, the target
+state and the allowed transitions:
 
 ```
 ValidationError: {'status': ["Invalid status transition from 'PLACED' to 'SHIPPED'. Allowed transitions: CONFIRMED, CANCELLED"]}
 ```
 
-Attempting to leave a terminal state produces a different message:
+When you assign a new status to an aggregate in a terminal state, Protean
+raises a `ValidationError` with a different message:
 
 ```
 ValidationError: {'status': ["Invalid status transition from 'DELIVERED'. 'DELIVERED' is a terminal state with no allowed transitions"]}
 ```
 
-### Same-value assignment (self-transitions)
+### Assign a status its current value (self-transitions)
 
 By default, assigning a status to its current value is **rejected**. It is
 treated as a transition and must appear in the transition map like any other.
@@ -70,7 +72,7 @@ the framework level instead of requiring manual guards.
 --8<-- "guides/domain-behavior/status-transitions/002.py:reentry"
 ```
 
-The error message guides you toward the fix:
+Protean raises a `ValidationError` with the fix in its message:
 
 ```
 ValidationError: {'status': ["Re-entry into 'DRAFT' is not allowed. If this operation should be idempotent, add 'DRAFT' to its own target list in transitions"]}
@@ -89,14 +91,14 @@ Now `order.status = "CANCELLED"` succeeds when the order is already cancelled.
 !!! note "Three categories of same-value behavior"
     When designing your transition map, classify each state:
 
-    1. **Re-entry is a business error** (most common), don't list the state in
+    1. **Re-entry is a business error** (most common): Don't list the state in
        its own targets. `approve()` on a published review fails.
-    2. **Idempotent by design**: List the state in its own targets.
+    2. **Re-entry is idempotent by design**: List the state in its own targets.
        `cancel()` on a cancelled order succeeds as a no-op.
-    3. **Terminal state**: Omit it from the map entirely. No transitions
+    3. **The state is terminal**: Omit it from the map entirely. No transitions
        (including self-transitions) are allowed.
 
-### Initialization
+### Set the initial value
 
 Setting the initial value (from `None`) is always allowed, regardless of the
 transition map:
@@ -105,7 +107,7 @@ transition map:
 --8<-- "guides/domain-behavior/status-transitions/002.py:initialization"
 ```
 
-## Working with `atomic_change`
+## Batch status changes with `atomic_change`
 
 When using `atomic_change` to batch multiple mutations, the framework captures
 status snapshots on entry and validates the **start-to-end** transition on exit.
@@ -133,7 +135,7 @@ For event-sourced aggregates, `raise_()` wraps the `@apply` handler in
 **Event replay** (`from_events()`) does **not** validate transitions.
 Replayed events are historical facts, the framework trusts them.
 
-## Programmatic checking
+## Check a transition before you make it
 
 Use `can_transition_to()` to check whether a transition would be valid
 without actually performing it. For an order in `DRAFT`:
@@ -142,13 +144,13 @@ without actually performing it. For an order in `DRAFT`:
 --8<-- "guides/domain-behavior/status-transitions/002.py:can_transition"
 ```
 
-This is useful for:
+`can_transition_to()` is useful for:
 
 - Aggregate methods that want to check before raising an event
 - API responses showing available actions to the client
 - Conditional logic in command handlers
 
-## Multiple status fields
+## Use multiple status fields on one aggregate
 
 An aggregate can have multiple independent `Status` fields. Each validates
 its transitions independently:
@@ -157,13 +159,14 @@ its transitions independently:
 --8<-- "guides/domain-behavior/status-transitions/005.py:multiple"
 ```
 
-## Best practices
+## Follow these best practices
 
 1. **Design the Enum first**: The Enum defines all possible states. Name
    values clearly. They appear in error messages and database records.
 
 2. **Keep transition maps in the aggregate**: The transition map is business
-   logic. It belongs where the business rules live.
+   logic. The transition map belongs in the aggregate, with the other business
+   rules.
 
 3. **Use terminal states intentionally**: Terminal states are states with no
    outgoing transitions (absent from the map's keys). Design them as
@@ -174,9 +177,9 @@ its transitions independently:
    operation should be safe to call twice (e.g., for race conditions), add
    the state to its own target list: `CANCELLED: [CANCELLED]`.
 
-5. **Combine with invariants**: `Status` handles *which* transitions are
-   legal. Use `@invariant.pre` for *under what conditions*, for example, "can only confirm
-   an order if payment has been received."
+5. **Combine with invariants**: `Status` enforces *which* transitions are
+   legal. Use `@invariant.pre` for *under what conditions*, for example, "can
+   only confirm an order if payment has been received."
 
 6. **Status on Value Objects is not allowed**: Value Objects are immutable
    and cannot transition. `Status` with `transitions` on a Value Object

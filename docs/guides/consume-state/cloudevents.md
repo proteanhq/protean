@@ -1,4 +1,4 @@
-# CloudEvents Interoperability
+# Exchange events with other systems as CloudEvents
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -16,8 +16,8 @@ standards-compliant event format.
 
 ## Producing CloudEvents
 
-Any Protean `Message` can be serialized to a CloudEvents v1.0 JSON object.
-Here an `Order` raises an `OrderPlaced` event, and the event goes out as a
+Any Protean `Message` can be serialized to a CloudEvents v1.0 JSON object. Here
+an `Order` raises an `OrderPlaced` event, and Protean serializes the event as a
 CloudEvent:
 
 ```python
@@ -52,9 +52,9 @@ Nothing is stored redundantly. Attributes with no value are left out. Here
 the event was raised outside a command handler, so it has no
 `proteancorrelationid` or `proteancausationid`.
 
-## Attribute Mapping
+## How Protean maps its metadata to CloudEvents attributes
 
-### Required attributes
+### Which attributes does every CloudEvent carry?
 
 | CloudEvents | Derived from | Notes |
 |---|---|---|
@@ -63,7 +63,7 @@ the event was raised outside a command handler, so it has no
 | `type` | `metadata.headers.type` | Protean format `Domain.Event.v1`, valid per spec |
 | `source` | `source_uri` config or domain name | See [Configuring source](#configuring-source) |
 
-### Optional attributes
+### Which attributes are optional?
 
 | CloudEvents | Derived from | Notes |
 |---|---|---|
@@ -71,9 +71,9 @@ the event was raised outside a command handler, so it has no
 | `subject` | Parsed from stream name | Aggregate identifier |
 | `datacontenttype` | Literal `"application/json"` | Protean always uses JSON |
 
-### Protean extensions
+### How Protean carries metadata that CloudEvents does not define
 
-Protean-specific metadata that has no CloudEvents equivalent is carried as
+Protean carries its own metadata with no CloudEvents equivalent as
 `protean`-namespaced extension attributes:
 
 | Extension | Derived from | Purpose |
@@ -86,20 +86,21 @@ Protean-specific metadata that has no CloudEvents equivalent is carried as
 | `proteanchecksum` | `metadata.envelope.checksum` | SHA-256 payload integrity hash |
 | `proteankind` | `metadata.domain.kind` | `"EVENT"` or `"COMMAND"` |
 
-User-supplied extensions from [message enrichers](../domain-behavior/message-enrichment.md)
-(`metadata.extensions`) are merged into the top level of the CloudEvent.
+`to_cloudevent()` merges user-supplied extensions from [message
+enrichers](../domain-behavior/message-enrichment.md) (`metadata.extensions`)
+into the top level of the CloudEvent.
 
 ## Configuring source
 
 The CloudEvents `source` attribute identifies the context in which the event
-occurred, in DDD terms, the bounded context. Protean derives it automatically,
-but you can configure an explicit URI:
+occurred, in DDD terms, the bounded context. Protean derives the `source`
+attribute automatically. You can also configure an explicit URI:
 
 ```toml title="domain.toml"
 source_uri = "https://orders.example.com"
 ```
 
-**Fallback chain** (when `source_uri` is not configured):
+**How Protean derives `source`** (when `source_uri` is not configured):
 
 1. Domain name → `urn:protean:<normalized_domain_name>`
 2. Stream category prefix → `urn:protean:<domain_part>`
@@ -116,7 +117,7 @@ Parse an incoming CloudEvents JSON object into a Protean `Message`:
 --8<-- "guides/consume-state/cloudevents/001.py:consume"
 ```
 
-### External events
+### Read events from a non-Protean system
 
 When consuming events from a non-Protean system, the `type` string won't match
 any registered Protean event. Access the data directly:
@@ -125,7 +126,7 @@ any registered Protean event. Access the data directly:
 --8<-- "guides/consume-state/cloudevents/002.py:subscriber"
 ```
 
-### Protean-to-Protean round-trip
+### Resolve events from another Protean service
 
 When two Protean services communicate via CloudEvents, the type string
 is in Protean format and can be resolved back to the original domain object:
@@ -154,7 +155,7 @@ locations:
 | `sequence` | `domain.sequence_id` |
 | Unknown extensions | `extensions` (preserved as-is) |
 
-## Round-tripping
+## Round-trip a CloudEvent through Protean
 
 A CloudEvent produced by Protean can be consumed back with full fidelity:
 
@@ -166,7 +167,7 @@ The `source` attribute is re-derived during the next `to_cloudevent()` call
 (from domain config), so it is preserved in `extensions["ce_source"]` for
 reference but not mapped to a dedicated internal field.
 
-## Validation
+## What does `from_cloudevent()` validate?
 
 `from_cloudevent()` validates the incoming CloudEvent:
 

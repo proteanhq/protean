@@ -1,26 +1,27 @@
-# Endpoint Tests
+# Test FastAPI endpoints
 
-Protean endpoints are thin adapters. They translate HTTP into domain commands
-and let `domain.process()` handle the rest. Testing them means verifying that
-the HTTP layer correctly dispatches commands and returns appropriate responses,
-while the domain takes care of business logic. This separation makes endpoint
-tests surprisingly straightforward.
+Protean endpoints are thin adapters. They translate HTTP requests into domain
+commands. `domain.process()` then passes each command to its command handler.
+An endpoint test checks that the HTTP layer dispatches the correct command and
+returns the correct response. The domain runs the business logic. This
+separation makes endpoint tests surprisingly straightforward.
 
 ## What You're Actually Testing
 
-Endpoint tests sit at the boundary between HTTP and your domain. They verify:
+Endpoint tests check how an endpoint connects HTTP requests to your domain.
+They verify:
 
-- **Request → Command translation**: Does the endpoint extract the right
-  data from the request and build the correct command?
-- **Response shaping**: Does the endpoint return the right status code
-  and body for success and failure cases?
-- **Error mapping**: Do domain exceptions become the correct HTTP errors?
+- **Does the endpoint turn the request into the right command?** It should
+  extract the right data from the request and build the correct command.
+- **Does the endpoint return the right response?** It should return the right
+  status code and body for success and failure cases.
+- **Do domain exceptions become the correct HTTP errors?**
 
 They do *not* test business logic, that belongs in [domain model
 tests](../testing/domain-model-tests.md) and [application
 tests](../testing/application-tests.md).
 
-## Setup
+## Set up the test environment
 
 ### Install dependencies
 
@@ -39,7 +40,7 @@ uv add fastapi httpx
     [httpx](https://www.python-httpx.org/) internally. You need `httpx`
     installed for `TestClient` to work.
 
-### Project layout
+### Lay out the project
 
 A typical Protean + FastAPI project separates the domain from the web layer:
 
@@ -61,19 +62,19 @@ tests/
     └── test_get_customer.py
 ```
 
-### The example app
+### What does the example app do?
 
-Take a small bookstore app. A customer places an order for books, and an event
-handler takes the ordered books out of stock:
+Take a small bookstore app. A customer places an order for books. An event
+handler then takes the ordered books out of stock:
 
 ```python
 --8<-- "guides/fastapi/testing-endpoints/001.py:domain-imports"
 --8<-- "guides/fastapi/testing-endpoints/001.py:domain"
 ```
 
-In the layout above, this code lives in `myapp/`, and each example below goes
-in the file named in its title. The examples leave out the imports of `domain`
-and the elements from `myapp`, so each block shows only the new code.
+In the layout above, this code goes in `myapp/`. Each example below goes in the
+file named in its title. The examples leave out the imports of `domain` and the
+elements from `myapp`, so each block shows only the new code.
 
 ### The `conftest.py` recipe
 
@@ -92,48 +93,48 @@ and a FastAPI `TestClient` wired to that domain.
 --8<-- "guides/fastapi/testing-endpoints/001.py:client"
 ```
 
-That's it. The root `conftest.py` handles domain lifecycle and per-test cleanup
-(via `DomainFixture`). The API-specific `conftest.py` provides the client.
-Every test starts with a clean slate, no leftover data from previous tests.
+The root `conftest.py` uses `DomainFixture` to set up the domain and to clean
+up its data after each test. The API-specific `conftest.py` provides the
+client. Every test starts with no data left over from previous tests.
 
 !!! tip "Why a separate `tests/api/conftest.py`?"
-    Keeping the `TestClient` fixture local to `tests/api/` avoids creating
+    With the `TestClient` fixture local to `tests/api/`, pytest does not create
     the FastAPI app for domain model tests and BDD tests that don't need it.
-    pytest's conftest hierarchy means `_ctx` (domain context) is still
+    Through its conftest hierarchy, pytest still makes `_ctx` (domain context)
     available from the root.
 
 ## Testing `domain.process()` endpoints
 
-The most common Protean endpoint pattern accepts a request, builds a command,
-and hands it to `domain.process()`:
+In the most common Protean endpoint pattern, the endpoint accepts a request,
+builds a command, and hands it to `domain.process()`:
 
 ```python title="myapp/api.py"
 --8<-- "guides/fastapi/testing-endpoints/001.py:api-imports"
 --8<-- "guides/fastapi/testing-endpoints/001.py:api"
 ```
 
-### The happy path
+### Test the happy path
 
 ```python title="tests/api/test_create_order.py"
 --8<-- "guides/fastapi/testing-endpoints/001.py:happy-path"
 ```
 
-Notice the pattern:
+Each test follows three steps:
 
 1. **Seed**: Set up the preconditions using repositories directly.
 2. **Act**: Make an HTTP request through the `TestClient`.
 3. **Assert**: Check the HTTP response.
 
-The `DomainContextMiddleware` pushes the domain context for the request,
-so `current_domain` resolves correctly inside the endpoint. And because
-`command_processing` is set to `"sync"`, the command handler runs
-immediately, by the time the response returns, all side effects (aggregate
-creation, events, projections) have completed.
+The `DomainContextMiddleware` pushes the domain context for the request, so
+`current_domain` resolves correctly inside the endpoint. Because
+`command_processing` is set to `"sync"`, the command handler runs immediately.
+By the time the response returns, all side effects (aggregate creation, events,
+projections) have completed.
 
 ### Verifying side effects
 
-Sometimes you want to verify what happened *inside* the domain after the
-endpoint returns. Query the repository directly:
+After the endpoint returns, you may want to verify the state *inside* the
+domain. Query the repository directly:
 
 ```python
 --8<-- "guides/fastapi/testing-endpoints/001.py:side-effects"
@@ -167,8 +168,8 @@ commands:
 
 ## Testing event-driven side effects through endpoints
 
-When a command triggers events that cause cross-aggregate side effects,
-sync processing ensures everything completes before the response returns:
+A command can raise events that cause cross-aggregate side effects. With sync
+processing, all of those side effects complete before the response returns:
 
 ```python
 --8<-- "guides/fastapi/testing-endpoints/001.py:event-side-effects"
@@ -178,9 +179,9 @@ With `event_processing = "sync"`, event handlers and projectors fire
 synchronously within the same request. This gives you full end-to-end
 confidence without needing to poll or wait.
 
-## Fixture patterns for endpoint tests
+## Reuse test setup with fixtures
 
-### Seed data fixture
+### Share seed data across tests
 
 When multiple tests need the same preconditions:
 
@@ -195,7 +196,7 @@ When multiple tests need the same preconditions:
 --8<-- "guides/fastapi/testing-endpoints/001.py:seed-fixture-test"
 ```
 
-### Authenticated request fixture
+### Send authenticated requests
 
 For endpoints behind authentication:
 
@@ -203,7 +204,7 @@ For endpoints behind authentication:
 --8<-- "guides/fastapi/testing-endpoints/001.py:auth-client"
 ```
 
-### Response assertion helpers
+### Reuse response assertions
 
 For repeated response shape checks:
 
@@ -211,7 +212,7 @@ For repeated response shape checks:
 --8<-- "guides/fastapi/testing-endpoints/001.py:assert-helper"
 ```
 
-## Multi-domain applications
+## Test applications with several domains
 
 When your application has multiple bounded contexts, the middleware maps
 URL prefixes to domains. Tests create separate clients or use the same
@@ -228,13 +229,14 @@ client with different URL paths:
 ```
 
 Each request path activates the correct domain context automatically. The test
-makes requests, the middleware handles the rest.
+only makes requests. The middleware activates the domain context for each
+request.
 
 ## Keeping endpoints thin
 
-The Proteanic way is to keep endpoints as thin adapters. If you find
-yourself writing complex test setups or testing business logic through
-HTTP, that's a signal to push the logic down:
+The Proteanic way is to keep endpoints as thin adapters. When you write complex
+test setups or test business logic through HTTP, move that logic out of the
+endpoint and into the domain:
 
 | If your endpoint... | Move it to... |
 |---------------------|---------------|
@@ -243,12 +245,13 @@ HTTP, that's a signal to push the logic down:
 | Queries and transforms data | Projection + projector |
 | Catches and maps exceptions | `register_exception_handlers` |
 
-When endpoints are thin, endpoint tests become thin too. Most of your testing
-energy goes into [domain model tests](../testing/domain-model-tests.md) and
-[application tests](../testing/application-tests.md). The endpoint tests are
-just the final sanity check that HTTP wiring works.
+When endpoints hold no business logic, endpoint tests stay short too. You write
+most of your tests as [domain model tests](../testing/domain-model-tests.md)
+and [application tests](../testing/application-tests.md). The endpoint tests
+are the last check that the HTTP layer passes requests to the domain and
+returns its responses.
 
-## Checklist
+## Check your setup before you ship
 
 Before shipping endpoint tests, verify:
 
@@ -262,7 +265,7 @@ Before shipping endpoint tests, verify:
 - [ ] `DomainFixture.domain_context()` resets all data after each test
   (via the `_ctx` autouse fixture)
 
-## Next steps
+## Where to go next
 
 - [FastAPI Integration](./index.md): Middleware and exception handler
   reference

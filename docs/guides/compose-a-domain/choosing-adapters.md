@@ -17,13 +17,13 @@ capability matrix of each adapter, see the
 ## Start in memory, switch later
 
 Protean's **memory adapters are complete implementations**, not stubs. Every
-port has one, every memory adapter satisfies the full port contract, and your
+port has a memory adapter, and each one satisfies the full port contract. Your
 domain code cannot tell the difference between in-memory and production
 runtimes. That's deliberate. The right workflow is:
 
 1. Build your domain against memory adapters (no Docker, no setup).
 2. Write your test suite against memory adapters (fast feedback).
-3. Switch to production adapters via `domain.toml` when you deploy.
+3. When you deploy, switch to production adapters via `domain.toml`.
 
 No domain code changes. The only diff is the overlay in
 `domain.toml`. This is also how [dual-mode testing](../../patterns/dual-mode-testing.md)
@@ -33,9 +33,9 @@ runs the same tests against both memory and real infrastructure in CI.
 
 ## Database
 
-The database persists aggregate state. Every Protean application needs
-exactly one `default` database; you can register additional named
-databases for aggregates that should live elsewhere (search indices,
+The database persists aggregate state. Every Protean application needs exactly
+one `default` database. You can register additional named databases for
+aggregates that you want to store in a different database (search indices,
 reporting stores).
 
 | Provider | Best for | Trade-offs |
@@ -45,7 +45,7 @@ reporting stores).
 | `postgresql` | Production | Full relational feature set including `JSONB` and `ARRAY`. The default recommendation for most applications. |
 | `elasticsearch` | Search, read-heavy analytics, document-store workloads | No transactions. Use it for read models, not aggregates whose invariants depend on atomic writes. |
 
-**Typical production pick: PostgreSQL** for the write side, optionally
+**For production, use PostgreSQL** for the write side, and optionally
 Elasticsearch as a named database for search-optimized projections:
 
 ```toml
@@ -64,16 +64,16 @@ Then route specific aggregates or projections to the named database:
 --8<-- "guides/compose-a-domain/choosing-adapters/001.py:named-database"
 ```
 
-See the [Database capability matrix](../../reference/adapters/database/index.md#provider-capability-matrix)
+See the [Database capability matrix](../../reference/adapters/database/index.md#which-provider-supports-which-capability)
 for the exhaustive per-feature breakdown.
 
 ---
 
 ## Broker
 
-The broker carries messages between publishers and subscribers, typically
-domain events flowing through the outbox to consumers, or external integration
-messages consumed by subscribers.
+The broker carries messages between publishers and subscribers. Typical
+messages are domain events flowing through the outbox to consumers, and
+external integration messages consumed by subscribers.
 
 | Provider | Best for | Trade-offs |
 |---|---|---|
@@ -81,7 +81,7 @@ messages consumed by subscribers.
 | `redis` (Redis Streams) | Production event/command delivery | Durable, ordered per stream, consumer groups, acknowledgment + DLQ support. The default production pick. |
 | `redis_pubsub` | Simple notification fan-out | List-backed queuing without consumer groups. Use when you need best-effort pub/sub without the operational complexity of streams. |
 
-**Typical production pick: Redis Streams** for the default broker, and
+**For production, use Redis Streams** for the default broker, and
 `redis_pubsub` for auxiliary notification channels if needed:
 
 ```toml
@@ -90,18 +90,17 @@ provider = "redis"
 URI = "${REDIS_URL}"
 ```
 
-The [outbox pattern](../server/outbox.md) is the supported way to
-publish domain events to brokers, StreamSubscription reads from the outbox via
-the broker, which is why Redis Streams (with DLQ support) is the standard
-choice.
+The [outbox pattern](../server/outbox.md) is the supported way to publish
+domain events to brokers. StreamSubscription reads from the outbox via the
+broker, so Redis Streams (with DLQ support) is the standard choice.
 
 !!! note "Brokers vs. event stores"
-    Protean uses an **event store** (not a broker) for intra-domain
-    event distribution when event sourcing is enabled. The broker is
-    primarily for **integration**, publishing to partner systems, fan-out to
-    downstream services, consuming external webhooks. See [Subscription
-    Types](../../reference/server/subscription-types.md) for how the two fit
-    together.
+    Protean uses an **event store** (not a broker) for intra-domain event
+    distribution when event sourcing is enabled. The broker is primarily for
+    **integration**, publishing to partner systems, fan-out to downstream
+    services, consuming external webhooks. See [Subscription
+    Types](../../reference/server/subscription-types.md) for how the event
+    store and the broker work together.
 
 ---
 
@@ -117,8 +116,8 @@ don't require one.
 | `memory` | Development, testing, event-sourcing prototypes | In-memory only; events vanish on restart. |
 | `message_db` | Production event sourcing | Requires PostgreSQL with the [Message DB](https://github.com/message-db/message-db) extension installed. Durable, ordered, replayable streams. |
 
-**Typical production pick: Message DB** co-located with your
-PostgreSQL write database, in a separate database on the same server:
+**For production event sourcing, use Message DB** in a separate database on the
+same server as your PostgreSQL write database:
 
 ```toml
 [event_store]
@@ -126,17 +125,17 @@ provider = "message_db"
 database_uri = "postgresql://message_store@localhost:5433/message_store"
 ```
 
-If you're not event-sourcing any aggregates, leave the event store on
-`memory`, Protean still uses it internally for event-handler delivery in sync mode,
-but no persistence is needed.
+If you're not event-sourcing any aggregates, leave the event store on `memory`,
+because no persistence is needed. Protean still uses the event store internally
+for event-handler delivery in sync mode.
 
 ---
 
 ## Cache
 
-The cache speeds up projection reads. It's optional (projections work fine
-without a cache) and is most valuable for cache-backed projections that avoid a
-database round-trip entirely.
+The cache speeds up projection reads. The cache is optional, because
+projections work without a cache. It is most valuable for cache-backed
+projections that avoid a database round-trip entirely.
 
 | Provider | Best for | Trade-offs |
 |---|---|---|
@@ -150,43 +149,42 @@ URI = "${REDIS_URL}"
 TTL = 300
 ```
 
-The same Redis instance can host the broker (on DB 0) and cache
-(on DB 2) in small deployments; isolate them when traffic grows.
+In small deployments, the same Redis instance can serve the broker (on DB 0)
+and the cache (on DB 2). When traffic grows, put the broker and the cache on
+separate Redis instances.
 
 ---
 
-## Typical stacks
+## Start from a typical stack
 
 A few combinations cover most real-world Protean deployments:
 
-**Local development (framework default):** all memory, no external
-services. Boot time is instant, the test suite runs in seconds, and
-everything behaves like production for domain logic.
+**For local development, keep the framework default:** all memory, no external
+services. Boot time is instant, and the test suite runs in seconds. For domain
+logic, everything behaves like production.
 
-**Small production (single server):** PostgreSQL + Redis + memory
-cache. Fits on a single VM, no orchestration needed. Add a cache
-adapter later when projection load demands it.
+**For a small production deployment on a single server, use** PostgreSQL +
+Redis + memory cache. Fits on a single VM, no orchestration needed. When
+projection load demands it, add a cache adapter.
 
-**Event-sourced production:** PostgreSQL (aggregates) + Message DB
+**For event-sourced production, use** PostgreSQL (aggregates) + Message DB
 (event store, separate PostgreSQL database) + Redis Streams (outbox to
 integration consumers) + Redis cache.
 
-**Search-heavy read side:** PostgreSQL (write side) + Elasticsearch
-(named `search` database for read models) + Redis Streams +
-Redis cache.
+**For a search-heavy read side, use** PostgreSQL (write side) + Elasticsearch
+(named `search` database for read models) + Redis Streams + Redis cache.
 
 For the TOML that wires these together (including environment variable
 substitution and overlays) see [Configure for Production: Adapter
-selection](./production-configuration.md#adapter-selection).
+selection](./production-configuration.md#choose-your-adapters).
 
 ---
 
 ## Switching adapters without code changes
 
-The whole point of the port-and-adapter architecture is that adapter
-choice is a deployment decision, not a code decision. When you switch
-from `memory` to `postgresql`, you should change exactly one thing: the
-overlay in `domain.toml`.
+With the port-and-adapter architecture, you choose adapters at deployment time
+and change no code. When you switch from `memory` to `postgresql`, you should
+change exactly one thing: the overlay in `domain.toml`.
 
 ```toml
 # Base: memory for dev
@@ -199,8 +197,7 @@ provider = "postgresql"
 database_uri = "${DATABASE_URL}"
 ```
 
-If the switch requires code changes, one of three things is probably
-happening:
+If the switch requires code changes, you probably hit one of three problems:
 
 - **You used an adapter-specific capability** (e.g. a raw SQL query).
   Check with `provider.has_capability(...)` and guard capability-dependent
@@ -211,8 +208,9 @@ happening:
 - **You skipped `protean db setup`** after switching. Memory adapters
   don't need schema setup; relational ones do.
 
-Add `pytest` in dual-mode to your CI to catch this drift continuously, see
-[Dual-Mode Testing](../../patterns/dual-mode-testing.md).
+To catch drift between memory and real adapters continuously, add `pytest` in
+dual-mode to your CI. See [Dual-Mode
+Testing](../../patterns/dual-mode-testing.md).
 
 ---
 

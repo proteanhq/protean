@@ -1,10 +1,10 @@
-# Chapter 22: The Full Picture
+# Chapter 22: See how the whole bookstore fits together
 
-We have built a complete online bookstore from scratch. Let's step back
-and see the full architecture, review what we built, and look at where
-to go from here.
+You have built a complete online bookstore, starting from an empty project.
+Let's step back and see the full architecture, review what we built, and look
+at where to go from here.
 
-## Architecture Overview
+## How the parts connect
 
 ```
                               ┌──────────────┐
@@ -42,9 +42,9 @@ to go from here.
                          └──────┘ └──────┘ └─────────┘
 ```
 
-## Everything We Built
+## What you built
 
-### Domain Elements
+### Which domain elements the bookstore uses
 
 | Element | Count | Examples |
 |---------|-------|---------|
@@ -64,7 +64,7 @@ to go from here.
 ### How an Order Is Confirmed and Shipped
 
 1. `ConfirmOrder` reaches `OrderCommandHandler`. The handler loads the order
-   and the inventory records for its titles, and `OrderFulfillmentService`
+   and the inventory records for its titles. `OrderFulfillmentService` then
    checks the stock. If it is short, the command fails and the order stays
    `PENDING`.
 2. If the stock is there, the handler saves the order alone, as `CONFIRMED`.
@@ -78,7 +78,7 @@ to go from here.
 
 Each step changes one aggregate.
 
-### CLI Commands Used
+### Which CLI commands you used
 
 | Command | Purpose | Chapter |
 |---------|---------|---------|
@@ -95,7 +95,7 @@ Each step changes one aggregate.
 | `protean subscriptions status` | Check handler health | 18 |
 | `protean observatory` | Real-time monitoring dashboard | 18 |
 
-### CQRS Patterns Applied
+### Which CQRS patterns you applied
 
 | Pattern | How We Used It |
 |---------|---------------|
@@ -109,7 +109,7 @@ Each step changes one aggregate.
 | Priority Lanes | Bulk imports without starving production |
 | Dead Letter Queues | Failure recovery with fix-and-replay |
 
-## Production Configuration Reference
+## Configure the domain for production
 
 A complete `domain.toml` for production:
 
@@ -166,7 +166,7 @@ protean observatory --port 9000 &
 
 ## Where to Go from Here
 
-### Event Sourcing
+### Learn event sourcing
 
 Store events as the source of truth instead of snapshots. The
 **[Event Sourcing Tutorial](../es-tutorial/index.md)** is a
@@ -191,16 +191,15 @@ temporal queries, snapshots, event upcasting, and more.
 This tutorial used **Commands and Command Handlers** (the CQRS approach). In
 the **pure DDD** approach, **Application Services** fill the same role. They
 receive requests directly and coordinate the domain logic, without the explicit
-command objects. See [Application
-Services](../../change-state/application-services.md) and the [DDD
-Pathway](../../pathways/ddd.md) for that reading order.
+command objects. To build with application services in place of commands, read
+[Application Services](../../change-state/application-services.md) and then the
+[DDD Pathway](../../pathways/ddd.md).
 
 ---
 
-You have built and operated a complete production CQRS
-system with Protean. The bookstore handles real traffic asynchronously,
-validates business rules across aggregates, integrates with external
-systems, and has full operational tooling for monitoring, debugging,
-and recovery.
+You have built and operated a complete production CQRS system with Protean. The
+bookstore processes real traffic asynchronously, validates business rules
+across aggregates and integrates with external systems. It also has full
+operational tooling for monitoring, debugging and recovery.
 
 ---

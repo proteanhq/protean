@@ -2,9 +2,10 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-A domain exception starts at an aggregate invariant and ends as an API
-response. Here is how to raise one, how it propagates, and where to handle it
-along the way.
+An aggregate invariant raises a domain exception, and the API layer returns
+that exception as an HTTP response. You raise the exception in the aggregate.
+Protean passes it up through each layer to the endpoint, where an exception
+handler maps it to an HTTP status code.
 
 ---
 
@@ -26,7 +27,7 @@ through the application layers:
 
 ## Raising errors in aggregates
 
-### From invariants
+### Raise errors from invariants
 
 Invariants raise `ValidationError` when business rules are violated.
 The error dict uses `"_entity"` as the key for aggregate-level errors:
@@ -35,7 +36,7 @@ The error dict uses `"_entity"` as the key for aggregate-level errors:
 --8<-- "guides/domain-behavior/error-handling/001.py:invariant"
 ```
 
-### From domain methods
+### Raise errors from domain methods
 
 Use `InvalidStateError` or `InvalidOperationError` for explicit
 business logic checks:
@@ -46,7 +47,7 @@ business logic checks:
 
 ---
 
-## Error propagation through layers
+## Let errors propagate through the layers
 
 Protean exceptions propagate naturally, don't catch them in handlers or
 services unless you need to translate them:
@@ -60,7 +61,7 @@ Aggregate method
                           └── mapped to HTTP response by exception handler
 ```
 
-### In command handlers
+### Let errors propagate from command handlers
 
 Let exceptions propagate. Don't wrap them:
 
@@ -68,7 +69,7 @@ Let exceptions propagate. Don't wrap them:
 --8<-- "guides/domain-behavior/error-handling/003.py:handler"
 ```
 
-### In application services
+### Let errors propagate from application services
 
 Same principle, let domain exceptions propagate to the caller:
 
@@ -78,7 +79,7 @@ Same principle, let domain exceptions propagate to the caller:
 
 ---
 
-## Repository errors
+## Know what each repository method raises
 
 | Method | Raises | When |
 |--------|--------|------|
@@ -88,8 +89,8 @@ Same principle, let domain exceptions propagate to the caller:
 | `repo.find(criteria)` | *(never)* | Returns empty `ResultSet` |
 | `repo.exists(criteria)` | *(never)* | Returns `bool` |
 
-Use `repo.find()` or `repo.exists()` when absence is expected, and
-`repo.get()` when absence is an error:
+When absence is expected, use `repo.find()` or `repo.exists()`. When absence is
+an error, use `repo.get()`:
 
 ```python
 --8<-- "guides/domain-behavior/error-handling/003.py:repository"
@@ -97,7 +98,7 @@ Use `repo.find()` or `repo.exists()` when absence is expected, and
 
 ---
 
-## Unit of Work errors
+## Know what the Unit of Work raises on commit
 
 Transaction failures during `UnitOfWork.commit()` raise:
 
@@ -127,7 +128,7 @@ to HTTP status codes in FastAPI:
 | `InvalidOperationError` | 422 | `{"error": "message"}` |
 
 When a domain context is active, the response body also carries a
-`correlation_id` that matches the `X-Correlation-ID` response header.
+`correlation_id`. Its value matches the `X-Correlation-ID` response header.
 
 Your endpoints don't need try/except blocks:
 

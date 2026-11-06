@@ -1,13 +1,13 @@
-# Inspecting the IR
+# Inspect the IR
 
 After you define and initialize a domain, Protean can generate its
-**Intermediate Representation (IR)**, a JSON document that captures the
-complete topology of your domain model: what elements exist, what shape they
-have, and how they connect.
+**Intermediate Representation (IR)**. The IR is a JSON document of the complete
+topology of your domain model: what elements exist, what shape they have, and
+how they connect.
 
 The IR is useful for:
 
-- **Reviewing** your domain structure at a glance
+- **Reviewing** your whole domain structure in one document
 - **Diffing** changes between versions in source control
 - **Feeding** downstream tools (documentation generators, diagram builders,
   contract validators)
@@ -53,7 +53,7 @@ See the [CLI reference](../../reference/cli/ir.md) for all options.
 
 ---
 
-## Top-level structure
+## What does an IR document contain at the top level?
 
 Every IR document has the same shape:
 
@@ -90,7 +90,7 @@ Every IR document has the same shape:
 
 Alongside its structure, the IR records what causes what. An element that owns
 methods can carry a `method_edges` map, keyed by method name. If the domain
-above lives in `ecommerce/ordering.py`, the `Order` aggregate carries:
+above is defined in `ecommerce/ordering.py`, the `Order` aggregate carries:
 
 ```json
 "method_edges": {
@@ -111,34 +111,36 @@ and `OrderCommandHandler` carries:
 - **`raises`** appears on aggregates and entities. It lists the events a method
   raises, derived by co-location: every event built in a method that also calls
   `raise_`. It can over-report (a method that builds two events and raises one
-  records both) and under-report (an event built in a helper and raised through
-  it is missed).
+  records both). It can also under-report (an event built in a helper and
+  raised through it is missed).
 - **`invokes`** appears on command handlers, event handlers, projectors, and
-  process managers. It lists the element methods a handler method calls, matched
-  by name against the methods in scope. The match is receiver-blind: a name
-  shared by more than one method in scope is skipped (so an edge can be
-  missing), and a unique name is recorded even when the real receiver is
-  something else (so an edge can be wrong). A projector or process manager is
-  scoped to aggregate and entity method names, so it rarely carries a real edge.
+  process managers. It lists the element methods a handler method calls,
+  matched by name against the methods in scope. The match is receiver-blind: a
+  name shared by more than one method in scope is skipped, so an edge can be
+  missing. A unique name is recorded even when the real receiver is something
+  else, so an edge can be wrong. A projector or process manager is scoped to
+  aggregate and entity method names, so it rarely carries a real edge.
 
 Both edges are read from the source as written, not proven, so treat them as a
-guide to the domain's behavior. A method with no edge is absent, and an element
-with no edged method carries no `method_edges` key.
+guide to the domain's behavior. A method with no edge is absent from the map.
+An element with no edged method carries no `method_edges` key.
 
 ---
 
 ## Determinism and diffing
 
 The same domain always produces **byte-identical** IR JSON (excluding the
-`generated_at` timestamp). Keys are sorted alphabetically at every level,
-and optional attributes with default values are omitted. Lists are sorted,
-except the `enrichers` lists, which keep registration order because enrichers
-run in that order. Domain traversal loads modules in name order, so enrichers
-registered by traversed modules land in the same order on every machine.
+`generated_at` timestamp). Keys are sorted alphabetically at every level.
+Optional attributes with default values are omitted. Lists are sorted, except
+the `enrichers` lists. The `enrichers` lists keep registration order, because
+enrichers run in that order. Domain traversal loads modules in name order, so
+enrichers registered by traversed modules appear in the same order on every
+machine.
 
-This makes the IR safe to commit to source control and diff across versions.
-The `checksum` field (SHA-256 of the canonical JSON) provides a quick staleness
-check. If the checksum hasn't changed, the domain structure hasn't changed.
+Because the output is byte-identical, you can safely commit the IR to source
+control and diff it across versions. The `checksum` field (SHA-256 of the
+canonical JSON) provides a quick staleness check. If the checksum hasn't
+changed, the domain structure hasn't changed.
 
 See the [Compatibility Checking](../compatibility-checking.md) guide for
 how to use IR diffing, pre-commit hooks, and CI integration to detect
@@ -153,10 +155,11 @@ The `$schema` field names the schema version and the URL it is published at,
 ships with the Protean package at `protean.ir.SCHEMA_PATH`, so validation needs
 no network access.
 
-IR files written by earlier releases carry `https://protean.dev/ir/v0.3.0/schema.json`.
-`protean ir check` and `protean ir diff` ignore `$schema`, so the old URL alone
-does not make a baseline stale or show up as a change. It picks up the new URL the next time you
-regenerate it.
+IR files written by earlier releases carry
+`https://protean.dev/ir/v0.3.0/schema.json`. `protean ir check` and `protean ir
+diff` ignore `$schema`, so the old URL alone does not make a baseline stale or
+show up as a change. The baseline gets the new URL the next time you regenerate
+it.
 
 To validate an IR document programmatically:
 
@@ -166,10 +169,9 @@ To validate an IR document programmatically:
 
 ---
 
-## Compatibility contract for tool authors
+## What must a tool that reads the IR do to stay compatible?
 
-If you are building tools that consume IR documents, follow these rules to
-ensure forward compatibility:
+To keep a tool that reads IR documents forward compatible, follow these rules:
 
 **Ignore unknown keys.** Every object in the IR may gain new keys in future
 minor versions. Your tool must skip keys it does not recognize rather than
@@ -182,16 +184,16 @@ code should not depend on iteration order for correctness.
 `description` on elements or `via` on association fields) may be absent.
 Treat missing keys as their default value.
 
-**Check `ir_version`.** Reject documents whose major version is higher than
-what your tool supports. Minor version increases are always backward
-compatible. New keys may appear, but existing keys retain their meaning.
+**Check `ir_version`.** Reject a document with a major version above the one
+your tool supports. Minor version increases are always backward compatible. New
+keys may appear, but existing keys retain their meaning.
 
 See the [IR specification](../../concepts/internals/ir-specification.md) for
 the full compatibility contract, field reference, and design decisions.
 
 ---
 
-## From IR to JSON Schema
+## Generate JSON Schema from the IR
 
 Once you have an IR document, you can generate **JSON Schema (Draft 2020-12)**
 files for every data-carrying element, aggregates, entities, value objects,

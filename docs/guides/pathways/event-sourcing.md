@@ -1,4 +1,4 @@
-# Event Sourcing with Protean
+# Build an event-sourced application with Protean
 
 !!! info "Builds on CQRS"
     Event Sourcing extends the [CQRS pathway](./cqrs.md) with event replay,
@@ -6,25 +6,25 @@
     pathway yet, start there, Event Sourcing builds on those concepts.
 
 !!! tip "Hands-On Tutorial"
-    For a hands-on, project-based introduction, see the
-    **[Event Sourcing Tutorial](../getting-started/es-tutorial/index.md)**:
-    A 22-chapter guide that builds a complete banking platform from
-    scratch, covering every Event Sourcing capability in Protean.
+    For a practical, project-based introduction, see the **[Event Sourcing
+    Tutorial](../getting-started/es-tutorial/index.md)**: a 22-chapter guide
+    that builds a complete banking platform from an empty project and covers
+    every Event Sourcing capability in Protean.
 
-## Overview
+## How does Event Sourcing work in Protean?
 
-In Event Sourcing, aggregate state is not stored as a snapshot in a
-database. Instead, every state change is captured as an **event**, and the
-aggregate's current state is **reconstructed by replaying** its event
-history. This gives you a complete, immutable audit trail and the ability
-to answer "what was the state at time T?" for any aggregate.
+In Event Sourcing, aggregate state is not stored as a snapshot in a database.
+Instead, every state change is captured as an **event**. The aggregate's
+current state is **reconstructed by replaying** its event history. This gives
+you a complete, immutable audit trail and the ability to answer "what was the
+state at time T?" for any aggregate.
 
-In Protean, you enable Event Sourcing on a per-aggregate basis by marking
-it with `event_sourced=True`. The aggregate uses `@apply` methods to
-define how each event type mutates state, and an Event Sourced Repository
-handles persistence to the event store.
+In Protean, you enable Event Sourcing on a per-aggregate basis by marking it
+with `event_sourced=True`. The aggregate uses `@apply` methods to define how
+each event type mutates state. An Event Sourced Repository writes the
+aggregate's events to the event store.
 
-## Request Flow
+## How does a request flow through an event-sourced aggregate?
 
 ```mermaid
 sequenceDiagram
@@ -74,7 +74,7 @@ sequenceDiagram
 | Persistence Store | Replace with **Event Store** (e.g., Message DB) |
 | Everything else | Commands, Command Handlers, Projections, Projectors, unchanged |
 
-## Elements You'll Use
+## Which elements will you use?
 
 Everything from the [CQRS pathway](./cqrs.md), **with these changes**:
 
@@ -86,10 +86,10 @@ Everything from the [CQRS pathway](./cqrs.md), **with these changes**:
 | Fact Events | Auto-generated snapshot events capturing full aggregate state |
 | [Event Store adapter](../../reference/adapters/eventstore/index.md) | Infrastructure for storing and retrieving events (e.g., Message DB) |
 
-## Guided Reading Order
+## Read the guides in this order
 
-If you've already worked through the CQRS pathway, pick up from step 1
-below. These guides cover the Event Sourcing-specific concepts:
+If you have already read the CQRS pathway, start at step 1 below. These guides
+cover the Event Sourcing-specific concepts:
 
 ### Understand the foundations
 
@@ -122,8 +122,8 @@ views and asynchronous processing:
 
 ### Coordinate, evolve, and test
 
-To manage cross-aggregate workflows, evolve event schemas over time, and
-verify everything works:
+The next guides show you how to coordinate workflows across aggregates, evolve
+event schemas over time, and test your event-sourced code:
 
 | Step | Guide | What You'll Learn |
 |------|-------|-------------------|
@@ -132,7 +132,7 @@ verify everything works:
 | 11 | [Event Upcasting](../consume-state/event-upcasting.md) | Transform old event schemas during replay |
 | 12 | [Testing](../testing/index.md) | Test event-sourced aggregates and projections |
 
-## Relevant Patterns
+## Which patterns apply to Event Sourcing?
 
 These patterns complement the Event Sourcing approach. They span aggregate
 design, command and event handling, and event schema evolution:
@@ -153,15 +153,16 @@ design, command and event handling, and event schema evolution:
 | [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) | Manage multi-step workflows with process managers |
 | [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md) | Evolve event schemas over time |
 
-## Key Concepts
+## Understand the key concepts
 
 ### The `@apply` Decorator
 
-In event-sourced aggregates, state changes are expressed through events.
-The `@apply` decorator marks methods that define how each event type
-mutates the aggregate's state. These handlers are invoked automatically
-by `raise_()` during live operations and during event replay, making them the **single
-source of truth** for all state mutations:
+In event-sourced aggregates, state changes are expressed through events. You
+mark one method per event type with the `@apply` decorator. Each of these
+methods defines how its event type mutates the aggregate's state. Protean
+invokes these `@apply` methods automatically from `raise_()` during live
+operations and during event replay, so they are the **single source of truth**
+for all state mutations:
 
 ```python
 --8<-- "guides/pathways/event-sourcing/001.py:aggregate"

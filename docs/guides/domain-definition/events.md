@@ -2,15 +2,15 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Most applications have a definite state - they reflect past user input and
-interactions in their current state. It is advantageous to model these past
-changes as a series of discrete events. Domain events happen to be those
-activities that domain experts care about and represent what happened as-is.
+Most applications have a definite state. Their current state reflects past user
+input and interactions. It helps to model these past changes as a series of
+discrete events. Domain events are the activities that domain experts care
+about. Each domain event represents what happened as-is.
 
 In Protean, an `Event` is an immutable object that represents a significant
-occurrence or change in the domain. Events are raised by aggregates to signal
-that something noteworthy has happened, allowing other parts of the system to
-react - and sync - to these changes in a decoupled manner.
+occurrence or change in the domain. Aggregates raise events to signal that
+something noteworthy has happened. Other parts of the system can then react to
+these changes, and sync with them, in a decoupled manner.
 
 ## Defining Events
 
@@ -29,7 +29,7 @@ Events are always connected to an Aggregate class, specified with the
 `part_of` param in the decorator. An exception to this rule is when the
 Event class has been marked _Abstract_.
 
-### Abstract Events
+### Define abstract events
 
 Use the `abstract` option to define a base event with shared fields that
 concrete events can inherit:
@@ -44,14 +44,16 @@ emitted to a stream.
 
 ---
 
-## Synchronous vs Asynchronous Processing
+## Choose synchronous or asynchronous processing
 
 Events in Protean can be processed either synchronously or asynchronously:
 
-- **Synchronous processing**: The event is processed immediately when raised. Event handlers are called in the same execution flow, and the operation is blocked until all event handlers have completed.
+- **Synchronous processing**: The event is processed immediately when raised.
+  Protean calls event handlers in the same execution flow. The operation blocks
+  until all event handlers have completed.
 - **Asynchronous processing**: The event is stored in the event store and processed later by a background worker. The operation continues without waiting for event handlers to complete.
 
-### Domain Configuration
+### Set the processing mode in the domain configuration
 
 You can configure the event processing mode through the domain configuration:
 
@@ -67,11 +69,11 @@ event_processing = "sync"  # or "async"
 
 By default, Protean sets `event_processing` to `async` in the domain configuration.
 
-### Event Processing Workflows
+### How events flow in each mode
 
 The workflow for event processing differs based on whether synchronous or asynchronous mode is used:
 
-#### Synchronous Event Flow
+#### How an event flows in synchronous mode
 
 ```mermaid
 sequenceDiagram
@@ -85,7 +87,7 @@ sequenceDiagram
     Domain-->>Aggregate: Continue execution
 ```
 
-#### Asynchronous Event Flow
+#### How an event flows in asynchronous mode
 
 ```mermaid
 sequenceDiagram
@@ -134,7 +136,7 @@ The server continually polls the event store for new events that have the `async
   - You want to distribute load across background workers
   - You're implementing event-driven or reactive architectures
 
-### Relationship with Command Processing
+### How command processing compares
 
 Protean offers similar configuration options for commands through:
 
@@ -147,11 +149,12 @@ Both events and commands in Protean follow similar processing patterns, enabling
 --8<-- "guides/domain-definition/events/006.py:config"
 ```
 
-This flexibility allows you to implement various architectural patterns like CQRS, Event Sourcing, and Event-Driven Architecture within your Protean applications.
+With these options, you can implement various architectural patterns like CQRS,
+Event Sourcing, and Event-Driven Architecture within your Protean applications.
 
 ---
 
-## Event Structure
+## What makes up an event
 
 An event is made of three parts:
 
@@ -243,14 +246,16 @@ The stream name follows the pattern `<domain>::<stream_category>-<aggregate_id>`
 - `stream_category` is the aggregate's [stream category](../../concepts/async-processing/stream-categories.md)
 - `aggregate_id` is the unique identifier of the aggregate instance
 
-All events for a specific aggregate instance are stored in its dedicated stream, enabling event sourcing and message ordering guarantees.
+Protean stores all events for a specific aggregate instance in its dedicated
+stream. With one stream per aggregate instance, Protean supports event sourcing
+and guarantees message ordering.
 
 See the [Stream Categories](../../concepts/async-processing/stream-categories.md) guide for comprehensive details on how stream categories organize and route messages.
 
 #### `origin_stream`
 
-Name of the stream that originated this event or command. `origin_stream` comes
-handy when correlating related events or understanding causality.
+Name of the stream that originated this event or command. Use `origin_stream`
+to correlate related events or to understand causality.
 
 #### `time`
 
@@ -277,16 +282,16 @@ position of the event in its stream.
 
 A boolean flag indicating whether the event should be processed asynchronously
 (`true`) or synchronously (`false`). This is determined by the domain's
-`event_processing` configuration. When `true`, the event is stored and
-processed later by the Protean server; when `false`, event handlers are
-invoked immediately during the same execution flow.
+`event_processing` configuration. When the flag is `true`, Protean stores the
+event and the Protean server processes it later. When the flag is `false`,
+Protean invokes event handlers immediately during the same execution flow.
 
 #### `correlation_id`
 
 A string identifier that is constant across an entire causal chain of messages.
-Every command and event spawned from a single business operation shares the same
-`correlation_id`. It answers: *"Which business operation does this message
-belong to?"*
+A single business operation spawns commands and events that all share the same
+`correlation_id`. With it, you can answer: *"Which business operation does this
+message belong to?"*
 
 The `correlation_id` is typically generated at the earliest entry point (often
 the API gateway or frontend) and passed into `domain.process()`. If no external
@@ -307,7 +312,7 @@ how correlation IDs propagate through the system.
 #### `causation_id`
 
 The message ID (`headers.id`) of the immediate parent message that caused this
-one. It answers: *"What directly triggered this message?"*
+one. With it, you can answer: *"What directly triggered this message?"*
 
 For example, when a command handler raises an event, the event's `causation_id`
 is the command's `headers.id`. When an event handler dispatches a new command
@@ -325,8 +330,8 @@ causation tree for any business operation.
 The payload is a dictionary of key-value pairs that convey the information
 about the event.
 
-The payload is made available as the body of the event, which also includes
-the event metadata. If you want to extract just the payload, you can use the
+The payload is available as the body of the event. The body also includes the
+event metadata. If you want to extract just the payload, you can use the
 `payload` property of the event.
 
 ```shell hl_lines="12 36-37"
@@ -369,15 +374,14 @@ In [6]: event.payload
 Out[6]: {'user_id': '1'}
 ```
 
-## Versioning
+## Version an event
 
 Because events serve as API contracts of an aggregate with the rest of the
 ecosystem, they are versioned to signal changes to contract.
 
 Events have a default version of **1**.
 
-You can override and customize the version with the `__version__` class
-attribute:
+You can set the version with the `__version__` class attribute:
 
 ```python hl_lines="3"
 --8<-- "guides/domain-definition/events/007.py:event"
@@ -393,17 +397,17 @@ other options rather than inside the class body:
 Use whichever reads better; declaring the version both ways on the same class
 raises an `IncorrectUsageError`. Commands accept the same `version=` option.
 
-When event schemas evolve you have a full toolkit: add defaulted fields, rename a
+You have four ways to evolve event schemas: add defaulted fields, rename a
 field in place with
-[`renamed_from`](../../reference/fields/arguments.md#renamed_from), retire an event
-with the `deprecated` and `superseded_by` decorator options, and register
+[`renamed_from`](../../reference/fields/arguments.md#renamed_from), retire an
+event with the `deprecated` and `superseded_by` decorator options, and register
 **upcasters** that transform old payloads to the current schema during
-deserialization. See the [Evolving Events Over Time](../evolving-events.md) guide
-for the end-to-end workflow, the
-[Event Upcasting guide](../consume-state/event-upcasting.md) for the upcaster
-mechanism, and the
-[Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
-pattern for broader versioning strategies.
+deserialization. See the [Evolving Events Over Time](../evolving-events.md)
+guide for the end-to-end workflow, the [Event Upcasting
+guide](../consume-state/event-upcasting.md) for the upcaster mechanism, and the
+[Event Versioning and
+Evolution](../../patterns/event-versioning-and-evolution.md) pattern for
+broader versioning strategies.
 
 The configured version is reflected in `version` and `type` attributes of the
 generated event's metadata:
@@ -412,7 +416,7 @@ generated event's metadata:
 --8<-- "guides/domain-definition/events/002.py:full"
 ```
 
-## End-to-End Event Flow
+## Follow an event from end to end
 
 Here is a complete example showing the full lifecycle: defining an event,
 raising it from an aggregate, and handling it in an event handler.
@@ -421,10 +425,11 @@ raising it from an aggregate, and handling it in an event handler.
 --8<-- "guides/domain-definition/events/009.py:full"
 ```
 
-When `order.place()` is called, the `OrderPlaced` event is raised and
-collected in `order._events`. Once the aggregate is persisted (via
-repository or Unit of Work), the event is dispatched to registered handlers, either synchronously or
-asynchronously depending on domain configuration.
+When `order.place()` is called, the `OrderPlaced` event is raised and collected
+in `order._events`. Once you persist the `order` aggregate (via repository or
+Unit of Work), Protean dispatches the `OrderPlaced` event to registered
+handlers, either synchronously or asynchronously depending on domain
+configuration.
 
 See [Raising Events](../domain-behavior/raising-events.md) for details on
 dispatching and the event-sourcing variant, and
@@ -439,13 +444,13 @@ describe the fact in the context of your business. You can think of a fact
 event similarly to how you may think of a row in a database: a complete set of
 data pertaining to the row at that point in time.
 
-Fact events enable a pattern known as **Event-carried State Transfer**, which is
-one of the best ways to asynchronously distribute immutable state to all
-consumers who need it. With fact events, consumers do not have to build up the
-state themselves from multiple delta event types, which can be risky and
-error-prone, especially as data schemas evolve and change over time. Instead,
-they rely on the owning service to compute and produce a fully detailed fact
-event.
+Fact events enable a pattern known as **Event-carried State Transfer**. With
+this pattern, you distribute immutable state asynchronously to all consumers
+who need it. With fact events, consumers do not have to build the state
+themselves from multiple delta event types. Building state from delta events
+can be risky and error-prone, especially as data schemas evolve over time.
+Instead, they rely on the owning service to compute and produce a fully
+detailed fact event.
 
 Fact events are generated automatically by the framework with the
 `fact_events=True` option in the `domain.aggregate` decorator. The
@@ -455,7 +460,7 @@ separation lets internal consumers subscribe to granular delta events while
 external consumers subscribe to the fact stream for complete state snapshots.
 
 Read about generating fact events in the section on
-[raising events](../domain-behavior/raising-events.md#fact-events). For
+[raising events](../domain-behavior/raising-events.md#how-protean-generates-fact-events). For
 the integration pattern, see
 [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md).
 
@@ -506,5 +511,7 @@ IncorrectUsageError: 'Event/Command Objects are immutable and cannot be modified
 
     - [Design Events for Consumers](../../patterns/design-events-for-consumers.md): Structuring events so consumers can process them reliably.
     - [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md): Using fact events for cross-context communication.
-    - [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md): Managing event schema changes over time.
+    - [Event Versioning and
+      Evolution](../../patterns/event-versioning-and-evolution.md): How to
+      version and change event schemas over time.
     - [Message Tracing in Event-Driven Systems](../../patterns/message-tracing.md): Design considerations for correlation and causation tracking.

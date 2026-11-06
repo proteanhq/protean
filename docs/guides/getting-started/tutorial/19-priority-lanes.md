@@ -1,11 +1,12 @@
-# Chapter 19: The Great Catalog Import, Run on Priority Lanes
+# Chapter 19: Import a large catalog on priority lanes
 
 Bookshelf has acquired the catalog of **Vintage Press**, 50,000 books that need
-to be imported. Running 50,000 `AddBook` commands through the normal pipeline would
-flood the Redis streams and starve real-time orders and browsing. We need a way
-to run the import without affecting production traffic.
+to be imported. If you send 50,000 `AddBook` commands through the normal
+pipeline, they fill the Redis streams with a backlog. Real-time orders and
+browsing then wait behind that backlog. We need a way to run the import without
+delaying production traffic.
 
-## Priority Lanes
+## What are priority lanes?
 
 Protean supports **priority lanes**, two separate processing streams:
 
@@ -18,7 +19,7 @@ The server always drains the primary lane first. Backfill messages are
 only processed when the primary lane is empty. This guarantees that
 production traffic is never delayed by bulk operations.
 
-## Configuration
+## Enable priority lanes
 
 Enable priority lanes in `domain.toml`:
 
@@ -27,7 +28,7 @@ Enable priority lanes in `domain.toml`:
 enabled = true
 ```
 
-## The Import Script
+## Write the import script
 
 ```python
 # fragment
@@ -79,7 +80,7 @@ BookCatalogProjector      bookshelf::book           0              28,109
 The primary lane stays at zero lag. Production traffic is unaffected. The
 backfill lane processes the import at its own pace.
 
-## Priority Levels
+## Which priority levels can you use?
 
 | Level | Value | Use Case |
 |-------|-------|----------|
@@ -98,11 +99,10 @@ backfill lane processes the import at its own pace.
   lanes.
 
 That completes Part IV. The bookstore now has full production operations:
-message tracing, dead-letter queue management, monitoring, and bulk
-import support. In the next chapter, we will tackle advanced patterns
-starting with process managers.
+message tracing, dead-letter queue management, monitoring, and bulk import
+support. The next chapter starts the advanced patterns with process managers.
 
-## Full Source
+## Read the full source
 
 ??? example "ch19.py, 88 lines"
 
@@ -110,6 +110,6 @@ starting with process managers.
     --8<-- "guides/getting-started/tutorial/ch19.py:full"
     ```
 
-## Next
+## Go to the next chapter
 
 [Chapter 20: Orchestrating Multi-Step Workflows with Process Managers →](20-process-managers.md)

@@ -1,13 +1,13 @@
-# Chapter 9: Transferring Funds
+# Chapter 9: Transfer funds between accounts
 
 The product team wants account-to-account transfers. This is not a
 single-aggregate operation. It involves debiting one account and crediting
 another. If the debit succeeds but the credit fails, we have inconsistent
 state.
 
-In this chapter we will introduce a **process manager**, a stateful coordinator
-that orchestrates multi-step workflows across aggregates using events and
-commands.
+You add a **process manager** to solve this. A process manager is a stateful
+coordinator that runs a multi-step workflow across aggregates through events
+and commands.
 
 ## Why Not a Single Transaction?
 
@@ -16,7 +16,7 @@ two aggregates in the same transaction. A funds transfer must:
 
 1. Debit the source account
 2. Credit the destination account
-3. Handle failures (reverse the debit if the credit fails)
+3. Reverse the debit if the credit fails
 
 A process manager coordinates these steps through events and commands,
 maintaining eventual consistency.
@@ -38,7 +38,7 @@ itself:
 
 The transfer tracks its own lifecycle: INITIATED → COMPLETED or FAILED.
 
-## The Process Manager
+## Coordinate the transfer with a process manager
 
 The `FundsTransferPM` process manager listens to events from both
 the Transfer and Account streams and coordinates the flow:
@@ -51,9 +51,8 @@ the Transfer and Account streams and coordinates the flow:
 Key concepts:
 
 - **`@handle(TransferInitiated, start=True, correlate="transfer_id")`**:
-  `start=True` means "create a new PM instance when this event
-  arrives." The `correlate` parameter maps the event to the PM
-  instance.
+  `start=True` means "create a new process manager instance when this event
+  arrives." The `correlate` parameter maps the event to the PM instance.
 - **`correlate="transfer_id"`** on subsequent events routes them to
   the correct PM instance based on the transfer ID.
 - Each handler can issue commands via `current_domain.process()` to
@@ -61,7 +60,7 @@ Key concepts:
 - **`mark_as_complete()`** ends the process. No further events will be
   processed for this instance.
 
-## The Flow
+## Follow a transfer from command to completion
 
 ```
 InitiateTransfer (command)
@@ -86,7 +85,7 @@ MakeWithdrawal (command)
                     └── TransferFailed (event)
 ```
 
-## Process Manager State
+## How does a process manager keep its state?
 
 Process managers are themselves event-sourced. Their state changes are
 persisted as **transition events** in the event store. When the server
@@ -103,11 +102,10 @@ just like aggregates.
 - **`mark_as_complete()`** for process termination.
 - Failure handling that reverses partial operations.
 
-Process managers are the event-sourcing answer to distributed
-transactions. They maintain eventual consistency without distributed
-locks.
+An event-sourced system uses process managers in place of distributed
+transactions. They maintain eventual consistency without distributed locks.
 
-## Full Source
+## Read the full source
 
 ??? example "ch09.py, 383 lines"
 
@@ -115,6 +113,6 @@ locks.
     --8<-- "guides/getting-started/es-tutorial/ch09.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 10: Entities Inside Aggregates →](10-entities-inside-aggregates.md)

@@ -1,15 +1,14 @@
-# Fields
+# Declare fields on domain elements
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Fields are the attributes you declare on aggregates, entities, value objects,
-commands, and events. They define what data an element carries, which values
-are valid, how defaults are supplied, and how relationships are expressed.
+commands, and events. They define the data an element carries, the values it
+accepts, its defaults, and its relationships.
 
-Here is the everyday work of **putting fields on a domain element**: picking
-the right type, making a field required, giving it a default, constraining its
-values, and hooking up relationships. For the full
-list of field types and every argument they accept, see the
+To put **fields on a domain element**, you pick the right type, make a field
+required, give it a default, constrain its values, and connect relationships.
+For the full list of field types and every argument they accept, see the
 [Fields Reference](../../reference/fields/index.md).
 
 ## Declaring a field
@@ -23,8 +22,8 @@ annotation:
 ```
 
 You can also assign fields as class attributes (`name = String(...)`). The two
-styles are interchangeable and can be mixed freely. A third escape hatch lets
-you use raw Pydantic annotations when you need more control.
+styles are interchangeable and can be mixed freely. As a third option, you can
+use raw Pydantic annotations when you need more control.
 
 See [Defining Fields](../../reference/fields/defining-fields.md) for the
 differences between styles and a caveat about
@@ -49,9 +48,9 @@ A typical aggregate uses all three:
 --8<-- "guides/domain-definition/fields/002.py:aggregate"
 ```
 
-Lifecycle state gets its own type, use
-[`Status`](../../reference/fields/simple-fields.md#status) when the value must move
-through a defined state machine. See the [Status
+Lifecycle state gets its own type. Use
+[`Status`](../../reference/fields/simple-fields.md#status) when the value must
+move through a defined state machine. See the [Status
 Transitions](../domain-behavior/status-transitions.md) guide for patterns like
 `atomic_change` and event-sourced flows.
 
@@ -66,8 +65,8 @@ reject construction when the value is missing or blank:
 --8<-- "guides/domain-definition/fields/003.py:aggregate"
 ```
 
-Attempting to build a `Customer` without an email raises a
-`ValidationError` with a `messages` dict pointing at the offending field:
+When you build a `Customer` without an email, Protean raises a
+`ValidationError`. Its `messages` dict names the offending field:
 
 ```shell
 In [1]: Customer(name="Jane Doe")
@@ -121,10 +120,9 @@ Most field types accept constraints as arguments. The common ones:
 --8<-- "guides/domain-definition/fields/005.py:aggregate"
 ```
 
-`choices` also accepts an `Enum` class, which is the preferred form when
-the set of values is reused across the domain. See the
-[Arguments reference](../../reference/fields/arguments.md) for the full
-list of options.
+`choices` also accepts an `Enum` class. Prefer the `Enum` form when the set of
+values is reused across the domain. See the [Arguments
+reference](../../reference/fields/arguments.md) for the full list of options.
 
 ### Enforcing uniqueness
 
@@ -151,15 +149,15 @@ addresses, phone numbers, SKUs) pass a callable to `validators`:
 --8<-- "guides/domain-definition/fields/007.py:aggregate"
 ```
 
-Validators run on every assignment and raise `ValidationError` if the
-value is rejected. Empty values (`None`, `""`, and empty collections) skip
-validators, so an optional field left unset is never validated and your
-validators do not need to be `None`-aware.
+Validators run on every assignment of a non-empty value and raise
+`ValidationError` if they reject the value. Empty values (`None`, `""`, and
+empty collections) skip validators, so an optional field left unset is never
+validated and your validators do not need to be `None`-aware.
 
 !!! tip "Single field vs. cross-field rules"
-    Use `validators` when the rule involves **one field in isolation**.
-    When a rule spans multiple fields ("shipping date must be after order
-    date", "balance cannot go negative for USD") express it as an
+    Use `validators` when the rule checks **one field in isolation**. When a
+    rule spans multiple fields ("shipping date must be after order date",
+    "balance cannot go negative for USD") express it as an
     [invariant](../domain-behavior/invariants.md) on the aggregate or value
     object instead.
 
@@ -167,9 +165,9 @@ validators do not need to be `None`-aware.
 
 ## Expressing relationships
 
-Associations connect aggregates to the entities they own and let entities
-reference their parent aggregate. Use the association field that matches
-the cardinality you need:
+Associations connect aggregates to the entities they own. They also let
+entities reference their parent aggregate. Use the association field that
+matches the cardinality you need:
 
 - `HasOne`: The aggregate owns exactly one child entity.
 - `HasMany`: The aggregate owns zero or more child entities.
@@ -190,32 +188,33 @@ bidirectional navigation, `via`, and shadow fields.
 
 ## Embedding value objects
 
-When a group of fields always travels together and represents a single
-concept (money, an address, a coordinate), promote them to a
-[value object](./value-objects.md) and embed it with `ValueObject`:
+When a group of fields is always used together and represents a single concept
+(money, an address, a coordinate), move them into a [value
+object](./value-objects.md) and embed it with `ValueObject`:
 
 ```python
 --8<-- "guides/domain-definition/fields/009.py:aggregate"
 ```
 
-You can hand in a `Money(...)` instance or the flattened attributes
-(`balance_currency`, `balance_amount`), Protean reconstitutes the VO in either case.
+You can pass a `Money(...)` instance or the flattened attributes
+(`balance_currency`, `balance_amount`). Protean reconstitutes the VO in either
+case.
 
 ---
 
 ## Mapping to a different storage name
 
-Use `referenced_as` when the persisted column or document key needs to differ
-from the Python attribute name, typically when matching an existing database
-schema:
+When the persisted column or document key needs to differ from the Python
+attribute name, use `referenced_as`. A typical case is matching an existing
+database schema:
 
 ```python
 --8<-- "guides/domain-definition/fields/010.py:aggregate"
 ```
 
 The attribute on the aggregate stays `name`, but the persisted field is
-`full_name`. Domain code reads and writes `person.name`. Reflection helpers
-that describe storage, such as `attributes()`, list the field as `full_name`.
+`full_name`. Domain code reads and writes `person.name`. Storage reflection
+helpers such as `attributes()` list the field as `full_name`.
 
 ---
 
@@ -231,8 +230,8 @@ In [2]: list(declared_fields(Post))
 Out[2]: ['title', 'id', 'comments']
 ```
 
-`attributes()` additionally exposes shadow fields such as the foreign
-key columns that `HasMany` and `Reference` create behind the scenes.
+`attributes()` additionally exposes shadow fields, such as the foreign key
+columns that `HasMany` and `Reference` add automatically.
 
 ---
 
@@ -244,7 +243,7 @@ key columns that `HasMany` and `Reference` create behind the scenes.
 | `ValidationError` | A custom `validators` callable raises it. The message from the validator is preserved. |
 | `ValidationError` | A `unique` field collides with an existing record at persistence time. |
 | `IncorrectUsageError` | A value object field is marked `unique=True` or `identifier=True`, value objects have no concept of identity. |
-| Silent mis-declaration | `from __future__ import annotations` is active and the annotation style is used, the `FieldSpec` is treated as a string. Use assignment style instead. See [Defining Fields](../../reference/fields/defining-fields.md#known-limitation-from-__future__-import-annotations). |
+| Silent mis-declaration | `from __future__ import annotations` is active and the annotation style is used, the `FieldSpec` is treated as a string. Use assignment style instead. See [Defining Fields](../../reference/fields/defining-fields.md#annotation-style-does-not-work-with-from-__future__-import-annotations). |
 
 ---
 

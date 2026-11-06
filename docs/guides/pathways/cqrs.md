@@ -1,24 +1,25 @@
-# CQRS with Protean
+# Build with CQRS in Protean
 
 !!! info "Builds on DDD"
-    This approach adds Commands, Command Handlers, and Projections on top of
-    the [DDD foundation](./ddd.md). If you haven't read the DDD pathway yet,
-    start there, CQRS extends those concepts.
+    This approach extends the [DDD foundation](./ddd.md) with Commands, Command
+    Handlers, and Projections. If you haven't read the DDD pathway yet, start
+    there. CQRS extends the concepts in the DDD pathway.
 
-## Overview
+## How CQRS splits your application
 
-CQRS (Command Query Responsibility Segregation) separates your application
-into a **write side** and a **read side**. On the write side, explicit
-Commands capture user intent and Command Handlers orchestrate aggregate
-changes. On the read side, Projections provide query-optimized views built
-from domain events.
+CQRS (Command Query Responsibility Segregation) separates your application into
+a **write side** and a **read side**. On the write side, explicit Commands
+capture user intent. Command Handlers then orchestrate the aggregate changes.
+On the read side, Projections provide query-optimized views built from domain
+events.
 
-This replaces Application Services with a more structured pattern: instead
-of calling methods directly, the API layer submits Commands via
-`domain.process()`, and Command Handlers execute the business logic. Events
-flow to Projectors that maintain read models optimized for each query need.
+CQRS replaces Application Services with a more structured pattern. Instead of
+calling methods directly, the API layer submits Commands via
+`domain.process()`, and Command Handlers execute the business logic. The
+framework delivers events to Projectors, which maintain read models optimized
+for each query need.
 
-## Request Flow
+## What happens when you submit a command
 
 ```mermaid
 sequenceDiagram
@@ -51,8 +52,8 @@ sequenceDiagram
 4. It invokes the **domain method** on the aggregate
 5. The aggregate mutates state and **raises events**
 6. The handler **persists** the aggregate
-7. Events flow to **Event Handlers** for side effects and to **Projectors**
-   that update read-optimized **Projections**
+7. The framework dispatches events to **Event Handlers** for side effects and
+   to **Projectors** that update read-optimized **Projections**
 
 ## What CQRS Adds to DDD
 
@@ -64,7 +65,7 @@ sequenceDiagram
 | Events + Event Handlers | Same as DDD, but now also feed projectors |
 | Repositories | Same as DDD |
 
-## Elements You'll Use
+## Which elements you'll use
 
 Everything from the [DDD pathway](./ddd.md), **plus**:
 
@@ -77,10 +78,10 @@ Everything from the [DDD pathway](./ddd.md), **plus**:
 | [Subscribers](../consume-state/subscribers.md) | Consume messages from external message brokers |
 | [Server](../../concepts/async-processing/index.md) | Async processing engine for events and commands |
 
-## Guided Reading Order
+## Read the guides in this order
 
-If you've already worked through the DDD pathway, pick up from step 4.
-Otherwise, start from the beginning:
+If you've already read the DDD pathway, start at step 4. Otherwise, start from
+the beginning:
 
 ### Start with DDD foundations
 
@@ -124,10 +125,10 @@ infrastructure:
 | 12 | [Configuration](../../reference/configuration/index.md) | Configure databases, brokers, and event stores |
 | 13 | [Testing](../testing/index.md) | Test commands, handlers, and projections |
 
-## Relevant Patterns
+## Which patterns help with CQRS
 
-These patterns complement the CQRS approach. The first group applies to any
-DDD project; the second group addresses concerns specific to CQRS:
+These patterns complement the CQRS approach. The first group applies to any DDD
+project. The second group solves problems specific to CQRS:
 
 | Pattern | What It Covers |
 |---------|---------------|

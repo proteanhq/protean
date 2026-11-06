@@ -2,17 +2,16 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Here is how to structure `domain.toml` for more than one environment, switch
-between in-memory and real adapters, and keep secrets in environment
-variables.
+You can structure `domain.toml` for more than one environment, switch between
+in-memory and real adapters, and keep secrets in environment variables.
 
 ---
 
-## Environment overlays
+## Select settings per environment with overlays
 
-Protean uses the `PROTEAN_ENV` environment variable to select a
-configuration overlay. Overlays are TOML sections that deeply merge
-into the base configuration, overriding only the keys they specify.
+Protean uses the `PROTEAN_ENV` environment variable to select a configuration
+overlay. Overlays are TOML sections. Each overlay deeply merges into the base
+configuration and overrides only the keys it specifies.
 
 ```toml
 # domain.toml
@@ -72,7 +71,7 @@ pytest
 
 ---
 
-## Environment variable substitution
+## Read values from environment variables
 
 Use `${VAR_NAME}` syntax in TOML values. Provide a default with
 `${VAR_NAME|default_value}`:
@@ -93,9 +92,9 @@ is missing and no default is provided.
 
 ---
 
-## Adapter selection
+## Choose your adapters
 
-### Databases
+### Choose a database
 
 ```toml
 # In-memory (default, no external dependencies)
@@ -118,7 +117,7 @@ provider = "elasticsearch"
 database_uri = { hosts = ["localhost"] }
 ```
 
-### Brokers
+### Choose a broker
 
 ```toml
 # Inline (synchronous, no external service)
@@ -136,7 +135,7 @@ provider = "redis_pubsub"
 URI = "redis://localhost:6379/0"
 ```
 
-### Event stores
+### Choose an event store
 
 ```toml
 # In-memory (default)
@@ -149,7 +148,7 @@ provider = "message_db"
 database_uri = "postgresql://message_store@localhost:5433/message_store"
 ```
 
-### Caches
+### Choose a cache
 
 ```toml
 # In-memory (default)
@@ -165,7 +164,7 @@ TTL = 300
 
 ---
 
-## Multiple databases
+## Use more than one database
 
 Register adapters under named keys to use different providers for
 different aggregates:
@@ -188,7 +187,7 @@ Then associate elements with specific databases in your domain:
 
 ---
 
-## Dual-mode testing
+## Run one test suite in two modes
 
 Define a `[memory]` overlay so the same test suite runs against both
 in-memory and real adapters:
@@ -225,7 +224,7 @@ complete setup and CI configuration.
 
 ---
 
-## Production checklist
+## Check your setup before you deploy
 
 - [ ] Set `PROTEAN_ENV=production` in your deployment environment
 - [ ] Configure real database, broker, event store, and cache providers

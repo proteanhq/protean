@@ -1,11 +1,11 @@
-# Chapter 16: Following the Trail with Message Tracing
+# Chapter 16: Trace messages with correlation and causation IDs
 
 A customer reports that their order was confirmed but inventory was
 never updated. The support team needs to trace what happened: did the
 command arrive? Did the event fire? Did the handler run? Where did the
 chain break?
 
-## Correlation and Causation
+## How do correlation and causation IDs link messages?
 
 Every message in Protean carries two tracing identifiers:
 
@@ -53,10 +53,9 @@ Trace for correlation abc-123:
   └─ Complete ✓
 ```
 
-If the chain is broken (a handler failed or didn't run), the trace
-shows where the gap is.
+If a handler failed or did not run, the trace shows which step is missing.
 
-## Programmatic Tracing
+## Trace messages in code
 
 You can also trace programmatically. The event store's
 `build_causation_tree()` returns the tree for a correlation ID, starting at
@@ -76,7 +75,7 @@ Bookshelf.AddBook.v1 (COMMAND)
 
 ## Debugging the Customer's Issue
 
-Armed with the order's correlation ID, the support team can:
+With the order's correlation ID, the support team can:
 
 1. Find the `ConfirmOrder` command in the trace.
 2. See if it produced an `OrderConfirmed` event.
@@ -92,6 +91,6 @@ Armed with the order's correlation ID, the support team can:
 In the next chapter, we will handle the case where a handler fails
 entirely, dead-letter queue management.
 
-## Next
+## Continue to the next chapter
 
 [Chapter 17: Handling Failures with Dead Letter Queues →](17-dead-letter-queues.md)

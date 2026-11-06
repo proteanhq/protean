@@ -1,12 +1,12 @@
 # Chapter 8: Going Async with the Server
 
 Processing everything synchronously was fine for development. But in
-production, a slow compliance check should not block the deposit
-response. In this chapter we will configure Redis as the message broker,
-enable the outbox pattern for reliable delivery, and start the Protean
-server for asynchronous event processing.
+production, a slow compliance check should not block the deposit response. You
+configure Redis as the message broker and enable the outbox pattern for
+reliable delivery. Then you start the Protean server for asynchronous event
+processing.
 
-## The Outbox Pattern
+## How does the outbox pattern deliver events?
 
 When an aggregate raises events, they need to reach event handlers and
 projectors reliably. Protean uses the **outbox pattern**:
@@ -21,7 +21,7 @@ projectors reliably. Protean uses the **outbox pattern**:
 This guarantees **at-least-once delivery**. Events are never lost, even if
 Redis is temporarily unavailable.
 
-## Configuration
+## Configure the broker and the server
 
 Create a `domain.toml` file in your project directory:
 
@@ -68,7 +68,7 @@ You need Redis running:
 docker run -d --name fidelis-redis -p 6379:6379 redis:7-alpine
 ```
 
-Or use Protean's Docker Compose (if available):
+If Protean's Docker Compose setup is available, you can use it instead:
 
 ```shell
 make up
@@ -167,7 +167,7 @@ The system is now truly asynchronous. In the next chapter, we will add
 account-to-account transfers. A multi-aggregate workflow that requires a
 process manager.
 
-## Full Source
+## Read the full source
 
 ??? example "ch08.py, 315 lines"
 
@@ -175,6 +175,6 @@ process manager.
     --8<-- "guides/getting-started/es-tutorial/ch08.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 9: Transferring Funds →](09-transferring-funds.md)

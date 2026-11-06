@@ -50,9 +50,10 @@ Last failure: 2024-03-15 10:23:52
 
 Now we can see the issue: the handler assumes `isbn` is always present.
 
-## The Fix-and-Replay Cycle
+## Fix and replay the failed messages
 
-1. **Fix the bug**: Handle the `None` case in the handler:
+1. **Fix the bug**: Change the handler to store an empty string when `isbn` is
+   `None`:
 
 ```python
 # fragment
@@ -76,15 +77,15 @@ Replayed 2 messages. 0 failures.
 
 ## Purging Abandoned Messages
 
-If a message is truly unrecoverable (bad data that will never process
-successfully), purge it:
+Some messages hold bad data and will never process successfully. Purge these
+unrecoverable messages:
 
 ```shell
 $ protean dlq purge --domain bookshelf
 Purged 0 messages from DLQ.
 ```
 
-## DLQ Configuration
+## Configure the DLQ
 
 The DLQ behavior is configured in `domain.toml`:
 
@@ -108,9 +109,9 @@ enable_dlq = true
 - Using `protean dlq list`, `inspect`, `replay`, and `purge`.
 - Configuring retry behavior and DLQ settings.
 
-In the next chapter, we will set up monitoring so the team knows about
-problems before customers report them.
+The next chapter adds monitoring. With monitoring, the team sees problems
+before customers report them.
 
-## Next
+## Continue to the next chapter
 
 [Chapter 18: Monitoring Subscription Health →](18-monitoring.md)

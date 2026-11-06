@@ -1,9 +1,9 @@
-# Chapter 21: Advanced Query Patterns
+# Chapter 21: Query read models and combine aggregates
 
-The storefront needs rich browsing capabilities: filter books by author,
-sort by price, paginate results, and show inventory availability
-alongside book information. In this chapter we will explore the full
-range of `domain.view_for()` and build a cross-aggregate projection.
+The storefront needs rich browsing capabilities: filter books by author, sort
+by price, paginate results, and show inventory availability alongside book
+information. You meet these needs with the full range of `domain.view_for()`.
+You also build a cross-aggregate projection.
 
 ## ReadOnlyQuerySet in detail
 
@@ -13,35 +13,35 @@ projection that we build later in this chapter. Each one is a small function.
 The first one gets the view with `domain.view_for(StorefrontView)`, and the
 rest take that view as `catalog`. The `ReadOnlyQuerySet` supports:
 
-### Filtering
+### Filter results
 
 ```python
 # fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:filtering"
 ```
 
-### Excluding
+### Exclude results
 
 ```python
 # fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:excluding"
 ```
 
-### Ordering
+### Order results
 
 ```python
 # fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:ordering"
 ```
 
-### Pagination
+### Paginate results
 
 ```python
 # fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:pagination"
 ```
 
-### Chaining
+### Chain the methods
 
 All methods can be chained:
 
@@ -60,10 +60,10 @@ All methods can be chained:
 --8<-- "guides/getting-started/tutorial/ch21.py:read_only"
 ```
 
-This enforces the CQRS principle: read models are read-only. Changes
-flow through commands on the write side.
+This enforces the CQRS principle: read models are read-only. You change data by
+sending commands to the write side.
 
-## Cross-Aggregate Projections
+## Combine two aggregates in one projection
 
 The storefront needs a unified view showing books *with their stock
 levels*, data from two aggregates (Book and Inventory).
@@ -86,7 +86,7 @@ The projector subscribes to events from *both* Book and Inventory
 aggregates. It maintains a single denormalized view that the storefront
 can query directly.
 
-## Enhanced API Endpoints
+## Add query support to the API endpoints
 
 Update the API with rich query support:
 
@@ -108,7 +108,7 @@ $ curl "http://localhost:8000/storefront?author=Orwell&sort=-price"
 $ curl "http://localhost:8000/storefront?limit=10&offset=20"
 ```
 
-## What We Built
+## What did you build?
 
 - A deep understanding of **`ReadOnlyQuerySet`**, filtering, sorting, pagination, and
   read-only enforcement.
@@ -116,10 +116,9 @@ $ curl "http://localhost:8000/storefront?limit=10&offset=20"
   Inventory data.
 - **Enhanced API endpoints** with query parameters for rich browsing.
 
-In the final chapter, we will step back and look at the complete
-architecture.
+The final chapter reviews the complete architecture.
 
-## Full Source
+## Read the full source
 
 ??? example "ch21.py, 223 lines"
 
@@ -127,6 +126,6 @@ architecture.
     --8<-- "guides/getting-started/tutorial/ch21.py:full"
     ```
 
-## Next
+## Go to the next chapter
 
 [Chapter 22: The Full Picture →](22-full-picture.md)

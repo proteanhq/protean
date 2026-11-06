@@ -14,7 +14,7 @@ separation:
 - An API layer needs clean imports from organized modules.
 - Tests mirror the source structure.
 
-## The Target Layout
+## What does the target layout look like?
 
 ```
 bookshelf/
@@ -33,16 +33,16 @@ tests/
 
 ## Creating the Package
 
-### The Domain Instance
+### Create the domain instance
 
-The domain lives in `bookshelf/__init__.py`:
+`bookshelf/__init__.py` defines the domain instance:
 
 ```python
 # fragment
 --8<-- "guides/getting-started/tutorial/bookshelf/__init__.py:domain_init"
 ```
 
-### Models
+### Move the models into `models.py`
 
 Aggregates, entities, and value objects go in `bookshelf/models.py`:
 
@@ -51,7 +51,7 @@ Aggregates, entities, and value objects go in `bookshelf/models.py`:
 --8<-- "guides/getting-started/tutorial/bookshelf/models.py:models"
 ```
 
-### Events
+### Move the events into `events.py`
 
 Domain events go in `bookshelf/events.py`:
 
@@ -60,7 +60,7 @@ Domain events go in `bookshelf/events.py`:
 --8<-- "guides/getting-started/tutorial/bookshelf/events.py:events"
 ```
 
-### Commands
+### Move the commands into `commands.py`
 
 Commands go in `bookshelf/commands.py`:
 
@@ -69,7 +69,7 @@ Commands go in `bookshelf/commands.py`:
 --8<-- "guides/getting-started/tutorial/bookshelf/commands.py:commands"
 ```
 
-### Handlers
+### Move the handlers into `handlers.py`
 
 Command handlers and event handlers go in `bookshelf/handlers.py`:
 
@@ -78,7 +78,7 @@ Command handlers and event handlers go in `bookshelf/handlers.py`:
 --8<-- "guides/getting-started/tutorial/bookshelf/handlers.py:handlers"
 ```
 
-### Projections
+### Move the projections into `projections.py`
 
 Projections and projectors go in `bookshelf/projections.py`:
 
@@ -87,14 +87,14 @@ Projections and projectors go in `bookshelf/projections.py`:
 --8<-- "guides/getting-started/tutorial/bookshelf/projections.py:projections"
 ```
 
-## Domain Auto-Discovery
+## How does Protean discover the domain elements?
 
 Notice that we no longer pass `traverse=False` to `domain.init()`. With
 a proper package structure, Protean auto-discovers all domain elements
 by scanning the package.
 
-`bookshelf/__init__.py` only creates the domain. The code that starts the
-application imports `domain` from the package and calls `init()` once. In the
+`bookshelf/__init__.py` only creates the domain. Your startup code imports
+`domain` from the package. The startup code then calls `init()` once. In the
 next chapter, that is the API module:
 
 ```python
@@ -102,10 +102,11 @@ next chapter, that is the API module:
 --8<-- "guides/getting-started/tutorial/bookshelf/api.py:init_domain"
 ```
 
-This finds all `@domain.aggregate`, `@domain.command`, `@domain.event`,
-etc. decorators across every module in the `bookshelf/` package.
+`domain.init()` finds all `@domain.aggregate`, `@domain.command`,
+`@domain.event`, etc. decorators across every module in the `bookshelf/`
+package.
 
-## The Configuration File
+## Move the configuration file
 
 Move `domain.toml` to the project root (next to the `bookshelf/`
 package):
@@ -122,8 +123,8 @@ database_uri = "${DATABASE_URL|postgresql://postgres:postgres@localhost:5432/boo
 
 ## Using CLI Tools
 
-With a package structure, Protean CLI tools need to know where the
-domain lives. Use the `--domain` flag:
+With a package structure, Protean CLI tools need to know which package defines
+the domain. Use the `--domain` flag:
 
 ```shell
 $ protean shell --domain bookshelf
@@ -155,14 +156,14 @@ All domain elements should be discovered and registered just as before.
 
 - A proper **Python package** with separate modules for models, commands,
   events, handlers, and projections.
-- **Domain auto-discovery**: `domain.init()` scans the package
+- `domain.init()` scans the package and discovers the domain elements
   automatically.
-- **CLI integration** with `--domain` and `PROTEAN_DOMAIN`.
+- The CLI tools find the domain through `--domain` or `PROTEAN_DOMAIN`.
 - The same functionality as before, but organized for growth.
 
-In the next chapter, we will add a FastAPI web layer to expose our
-domain through HTTP endpoints.
+Chapter 10 adds a FastAPI web layer that exposes the domain through HTTP
+endpoints.
 
-## Next
+## Continue with chapter 10
 
 [Chapter 10: Exposing the Domain Through an API →](10-api.md)

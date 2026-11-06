@@ -1,6 +1,6 @@
-# Event Upcasting
+# Upcast old events to the current schema
 
-## The Problem
+## Why do old events fail to load?
 
 In an event-sourced system, the event store is the source of truth. Events are
 immutable facts stored forever. But the domain model evolves: fields get
@@ -71,7 +71,7 @@ method: `upcast(self, data: dict) -> dict`.
 --8<-- "guides/consume-state/event-upcasting/001.py:full"
 ```
 
-### Decorator Options
+### Which options does the decorator take?
 
 | Option | Type | Description |
 |--------|------|-------------|
@@ -83,15 +83,16 @@ method: `upcast(self, data: dict) -> dict`.
 
 - Receives the raw event payload as a Python `dict`.
 - Must return the transformed `dict`.
-- Operates on raw data **before** the typed event object is constructed, so
-  field types are their serialized form (strings, numbers, lists, dicts).
+- Operates on raw data **before** Protean constructs the typed event object.
+  Field types are therefore in their serialized form (strings, numbers, lists,
+  dicts).
 - Should be **fast and side-effect-free**, no database queries, no I/O.
   Upcasting runs on every deserialization.
 - May mutate the input dict in place or return a new dict.
 
 ---
 
-## Real-World Scenarios
+## Apply upcasters to common schema changes
 
 ### Scenario 1: Adding a New Required Field
 
@@ -117,7 +118,7 @@ track currency, and it's required for correct calculations.
 
 The field `customer_name` was split into `first_name` and `last_name`.
 
-**Current event and upcaster:**
+**Define the current event and its upcaster:**
 ```python
 --8<-- "guides/consume-state/event-upcasting/003.py:current"
 
@@ -126,9 +127,9 @@ The field `customer_name` was split into `first_name` and `last_name`.
 
 `split(" ", 1)` splits on the first space only, so "Mary Ann Evans" becomes
 `first_name="Mary"` and `last_name="Ann Evans"`. Every v1 event stored a
-`customer_name`, so the upcaster reads it without a default. A stored event
-that lacks it fails to load with a `DeserializationError` that names
-`customer_name`.
+`customer_name`, so the upcaster reads it without a default. If a stored event
+lacks `customer_name`, Protean fails to load the event and raises a
+`DeserializationError` naming `customer_name`.
 
 ### Scenario 3: Changing Data Structure
 
@@ -140,7 +141,7 @@ new `Address` value object).
 --8<-- "guides/consume-state/event-upcasting/003.py:nest-address"
 ```
 
-### Scenario 4: Multi-Step Chain
+### Scenario 4: Chain upcasters across several versions
 
 When events evolve through multiple versions, each step gets its own upcaster.
 The framework chains them automatically.
@@ -149,21 +150,21 @@ The framework chains them automatically.
 --8<-- "guides/consume-state/event-upcasting/004.py:chain"
 ```
 
-A stored v1 event automatically passes through both upcasters: v1→v2→v3.
-A stored v2 event passes through only v2→v3.
-A stored v3 event skips upcasting entirely (zero overhead).
-The v2→v3 step reads `amount` without a default, so a stored event that
-lacks it fails to load with a `DeserializationError` that names `amount`.
+A stored v1 event automatically passes through both upcasters: v1→v2→v3. A
+stored v2 event passes through only v2→v3. A stored v3 event skips upcasting
+entirely (zero overhead). The v2→v3 step reads `amount` without a default. If a
+stored event lacks `amount`, Protean fails to load the event and raises a
+`DeserializationError` naming `amount`.
 
 The `amount → total_amount` step renames a field inside a version bump to show
 how the chain composes. A rename on its own uses `renamed_from` and needs no
-version bump; the decision table below covers which change calls for which tool.
+version bump. The decision table below shows which change calls for which tool.
 
 ### Scenario 5: Removing an Obsolete Field
 
 The `legacy_code` field was never used by any handler but was stored in v1
-events. In v2, the event schema no longer includes it. The upcaster strips
-it out so the current constructor doesn't receive unknown fields:
+events. In v2, the event schema no longer includes it. The upcaster removes
+`legacy_code` so the current constructor doesn't receive unknown fields:
 
 ```python
 --8<-- "guides/consume-state/event-upcasting/005.py:upcaster"
@@ -180,13 +181,13 @@ data:
 
 ---
 
-## Upcasters and Event-Sourced Aggregates
+## How do upcasters work with event-sourced aggregates?
 
 Upcasting is especially important for event-sourced aggregates because every
 aggregate reconstruction replays every event from the stream (or from the last
 snapshot). Without upcasting, `@apply` handlers must accommodate every
 historical schema variant. A snapshot itself does not go through this upcaster
-path; see [Snapshots](../../concepts/internals/event-upcasting.md#snapshots)
+path; see [Snapshots](../../concepts/internals/event-upcasting.md#upcasting-does-not-apply-to-snapshots)
 for what happens to a snapshot taken under an old schema.
 
 **With upcasting**, `@apply` handlers are clean and only handle the current
@@ -210,7 +211,7 @@ their current version and pass through with zero overhead.
 
 ---
 
-## Upcasters and Event Handlers / Projectors
+## How do upcasters work with event handlers and projectors?
 
 Upcasting also applies to asynchronous event processing. When an event handler
 or projector reads events from a subscription, old events are upcast before
@@ -225,12 +226,12 @@ old events are automatically transformed to the current schema.
 
 ---
 
-## Validation at Startup
+## What does Protean check at startup?
 
 During `domain.init()`, the framework validates all registered upcaster chains.
 The following errors are caught at startup (not at runtime):
 
-### Duplicate upcasters
+### Two upcasters share the same source version
 
 ```python
 # fragment
@@ -243,7 +244,7 @@ class UpcasterB(BaseUpcaster): ...
 # → ConfigurationError: Duplicate upcaster for OrderPlaced from version 1
 ```
 
-### Version cycles
+### Upcasters form a version cycle
 
 ```python
 # fragment
@@ -256,7 +257,7 @@ class Backward(BaseUpcaster): ...
 # → ConfigurationError: Upcaster chain does not converge
 ```
 
-### Non-convergent chains
+### The chain does not converge to one version
 
 ```python
 # fragment
@@ -269,7 +270,7 @@ class BranchB(BaseUpcaster): ...
 # → ConfigurationError: does not converge to a single current version
 ```
 
-### Missing event class for terminal version
+### No event class exists for the terminal version
 
 ```python
 # fragment
@@ -282,19 +283,19 @@ class WrongTarget(BaseUpcaster): ...
 ### Version gaps (`protean check`)
 
 The errors above are *hard* failures at `domain.init()`. A subtler problem
-passes startup but fails later, at read time: an event whose `__version__` has
-outrun its upcasters, so an old stored payload has no path to the current
-version. `protean check` flags this at build time as an `UPCASTER_GAP`
-**warning**. For example, an event at `__version__` 3 with only a `2→3`
-upcaster leaves stored `v1` payloads unreadable. Add an upcaster covering the
-missing versions (or ignore the warning if no payloads at those versions were
-ever stored).
+passes startup but fails at read time: the upcasters for an event do not cover
+every version below its `__version__`. Protean then cannot upcast an old stored
+payload to the current version. `protean check` flags this at build time as an
+`UPCASTER_GAP` **warning**. For example, an event at `__version__` 3 with only
+a `2→3` upcaster leaves stored `v1` payloads unreadable. Add an upcaster
+covering the missing versions. If no payloads at those versions were ever
+stored, you can ignore the warning instead.
 
 ---
 
-## Guidelines
+## How should you write upcasters?
 
-### Do
+### Follow these practices
 
 - **One upcaster per version step**: Keep transformations small and focused.
   v1→v2 does one thing, v2→v3 does another.
@@ -304,17 +305,18 @@ ever stored).
   easy to unit test.
 - **Place upcasters near the event they transform**: In the same module or a
   dedicated `upcasters.py` module within the same domain concept.
-- **Bump `__version__`** on the event class whenever you register a new upcaster
-  targeting it.
+- Whenever you register a new upcaster targeting an event class, **bump
+  `__version__`** on that class.
 
-### Don't
+### Avoid these mistakes
 
 - **Don't skip versions in the chain**: If the current version is v3, you need
   both v1→v2 and v2→v3 upcasters. A direct v1→v3 upcaster is valid only if
   there was no v2 in production.
 - **Don't modify the stored event**: Upcasting transforms data in memory during
-  deserialization; the event store is never modified. Rewriting stored events is a
-  separate, deliberate operator migration (see [Migration Strategies](../../patterns/event-versioning-and-evolution.md#migration-strategies)).
+  deserialization. Protean never modifies the event store. Rewriting stored
+  events is a separate, deliberate operator migration (see [Migration
+  Strategies](../../patterns/event-versioning-and-evolution.md#migration-strategies)).
 - **Don't use upcasting for semantic changes**: If the *meaning* of an event
   changes (not just its structure), create a new event type instead.
 - **Don't perform expensive operations**: Upcasting happens synchronously during
@@ -339,15 +341,17 @@ ever stored).
 
 ---
 
-## Limitations
+## What can't upcasting do?
 
 - **No event type renaming**: If you rename an event class (e.g. `OrderCreated`
-  → `OrderPlaced`), the type strings differ and upcasting can't bridge them.
-  Use the "new event type" strategy instead.
+  → `OrderPlaced`), the type strings differ and upcasting can't convert events
+  from the old type string to the new one. Use the "new event type" strategy
+  instead.
 
 - **No multi-event transformations**: An upcaster transforms one event at a
-  time. Splitting one event into two or merging two events into one is not
-  supported. Use compensating events or the copy-transform migration pattern.
+  time. Protean does not support splitting one event into two or merging two
+  events into one. Use compensating events or the copy-transform migration
+  pattern.
 
 - **No eager/batch migration**: Upcasting is lazy (on-read) and never rewrites
   the store. To rewrite the event store in a new format, use an operator
@@ -361,5 +365,8 @@ ever stored).
 
     **Related guides:**
 
-    - [Evolving Events Over Time](../evolving-events.md): The broader event-evolution workflow: upcasting sits alongside `renamed_from` field renames, event `deprecated`/`superseded_by`, and opt-in lenient deserialization.
+    - [Evolving Events Over Time](../evolving-events.md): The broader
+      event-evolution workflow, which covers upcasting together with
+      `renamed_from` field renames, event `deprecated`/`superseded_by`, and
+      opt-in lenient deserialization.
     - [Temporal Queries](../change-state/temporal-queries.md): Load aggregate state at a specific version or point in time.

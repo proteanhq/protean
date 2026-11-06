@@ -1,29 +1,29 @@
 # Chapter 11: Testing Your Domain
 
-In this chapter we will set up pytest for Bookshelf and write tests that
-verify our business logic, commands, events, invariants, projections, and API
-endpoints.
+You set up pytest for Bookshelf and write tests that verify its business logic,
+commands, events, invariants, projections, and API endpoints.
 
 !!! tip "Focus on business logic"
-    Protean handles field validation, immutability, and wiring automatically.
-    Your tests should focus on the behavior *you* wrote, invariants, state
-    transitions, command flows, and event reactions. For a deeper discussion,
-    see [Testing](../../testing/index.md).
+    Protean validates fields, enforces immutability, and wires domain elements
+    together automatically. Your tests should focus on the behavior *you*
+    wrote, invariants, state transitions, command flows, and event reactions.
+    For a deeper discussion, see [Testing](../../testing/index.md).
 
 ## Setting Up Tests
 
-Protean ships with a pytest plugin and `DomainFixture` that handles
-initialization, context management, and cleanup. Create a `conftest.py`:
+Protean ships with a pytest plugin and `DomainFixture`, which initialize the
+domain, activate its context for each test, and clean up afterwards. Create a
+`conftest.py`:
 
 ```python
 --8<-- "guides/getting-started/tutorial/tests/conftest.py:full"
 ```
 
-`DomainFixture.setup()` calls `domain.init()` to discover and wire all
-domain elements, and creates database schema if needed. The `_ctx`
-fixture activates the domain context for each test and resets all data
-on exit. Inside your tests, use `current_domain` to access the active
-domain.
+`DomainFixture.setup()` calls `domain.init()` to discover and wire all domain
+elements. It also creates the database schema if needed. The `_ctx` fixture
+activates the domain context for each test. When the test exits, the `_ctx`
+fixture resets all data. Inside your tests, use `current_domain` to access the
+active domain.
 
 ## Testing Aggregates and Invariants
 
@@ -77,7 +77,7 @@ Test the FastAPI endpoints using `TestClient`:
 --8<-- "guides/getting-started/tutorial/tests/test_api.py:full"
 ```
 
-## Integration Testing
+## Test complete flows with integration tests
 
 Test complete flows from command to final state:
 

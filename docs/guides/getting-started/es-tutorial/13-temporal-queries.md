@@ -49,7 +49,7 @@ When an aggregate is loaded with `at_version` or `as_of`, it is marked as
 **temporal**. Any attempt to call `raise_()` raises `IncorrectUsageError`. This
 is a safety mechanism. You should never raise new events on a historical view.
 
-## Interaction with Snapshots
+## How temporal queries use snapshots
 
 Temporal queries work with snapshots:
 
@@ -82,10 +82,10 @@ Add `--data` to see full event payloads:
 $ protean events history --aggregate=Account --id=acc-7742 --data --domain=fidelis
 ```
 
-This is invaluable for debugging. You can see exactly what happened to an
-aggregate and when.
+This history helps you debug an aggregate. You can see exactly what happened to
+an aggregate and when.
 
-## What We Built
+## What did you build?
 
 - **`repo.get(id, at_version=N)`**: Reconstruct at a specific version.
 - **`repo.get(id, as_of=datetime)`**: Reconstruct at a specific
@@ -93,12 +93,11 @@ aggregate and when.
 - **Read-only temporal aggregates** that prevent accidental mutations.
 - **Event history CLI** for exploring an aggregate's timeline.
 
-Temporal queries are a superpower unique to Event Sourcing. Traditional
-CRUD systems cannot answer "what was the state at time T?" without
-complex auditing infrastructure. With Event Sourcing, it is a one-line
-query.
+Temporal queries are a capability unique to Event Sourcing. Traditional CRUD
+systems cannot answer "what was the state at time T?" without complex auditing
+infrastructure. With Event Sourcing, it is a one-line query.
 
-## Full Source
+## Read the full source
 
 ??? example "ch13.py, 286 lines"
 
@@ -106,6 +105,6 @@ query.
     --8<-- "guides/getting-started/es-tutorial/ch13.py:full"
     ```
 
-## Next
+## Continue to the next chapter
 
 [Chapter 14: Connecting to the Outside World →](14-connecting-outside-world.md)

@@ -1,14 +1,13 @@
-# Chapter 12: Snapshots for High-Volume Accounts
+# Chapter 12: Speed up high-volume accounts with snapshots
 
 A corporate trading account has accumulated 50,000 events over the past
 year. Every time the system loads this account, it must replay all
 50,000 events through the `@apply` handlers. This takes seconds, unacceptable for
 real-time operations.
 
-**Snapshots** solve this. A snapshot captures the full aggregate state
-at a point in time. When loading, Protean reads the snapshot plus only
-the events that occurred after it, reducing replay from 50,000 events
-to a handful.
+**Snapshots** solve this. A snapshot captures the full aggregate state at a
+point in time. On load, Protean reads the snapshot plus only the events after
+it. Replay drops from 50,000 events to a handful.
 
 ## How Snapshots Work
 
@@ -41,7 +40,7 @@ With this setting, Protean automatically creates a snapshot when
 For development, keep the threshold low (10–50). For production, set it
 based on your aggregate's event rate and acceptable load latency.
 
-## Manual Snapshot Creation
+## Create snapshots manually
 
 You can create snapshots on demand, useful for maintenance, after migrations,
 or to optimize specific aggregates:
@@ -51,7 +50,7 @@ or to optimize specific aggregates:
 --8<-- "guides/getting-started/es-tutorial/ch12.py:on_demand"
 ```
 
-## CLI Commands
+## Create snapshots from the CLI
 
 ```shell
 # Snapshot a specific account
@@ -80,8 +79,8 @@ When `repo.get(account_id)` is called:
 5. If the number of new events exceeds `snapshot_threshold`, create a
    fresh snapshot
 
-If no snapshot exists, all events are replayed from the beginning, the same
-behavior as before.
+If no snapshot exists, Protean replays all events from the beginning, as it
+does for an aggregate without snapshots.
 
 ## Snapshots Are Not Source of Truth
 
@@ -103,7 +102,7 @@ Snapshots are an **optimization**, not a replacement for events:
 | High activity (1,000+ events/year) | 50–100 |
 | Extreme activity (trading accounts) | 25–50 |
 
-The right threshold balances write overhead (creating snapshots) against
+You pick the threshold by weighing write overhead (creating snapshots) against
 read performance (replaying fewer events).
 
 ## What We Built
@@ -119,7 +118,7 @@ In the next chapter, a regulatory inquiry arrives that requires looking at the
 past. We will use temporal queries to reconstruct the account at any historical
 point.
 
-## Full Source
+## Read the full source
 
 ??? example "ch12.py, 257 lines"
 
@@ -127,6 +126,6 @@ point.
     --8<-- "guides/getting-started/es-tutorial/ch12.py:full"
     ```
 
-## Next
+## Go to the next chapter
 
 [Chapter 13: Looking Back in Time →](13-temporal-queries.md)
