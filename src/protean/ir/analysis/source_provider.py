@@ -222,30 +222,13 @@ class SourceProvider:
             # enumerate whatever happens to be there.
             return ()
 
-        root_path = Path(raw_root)
-        # ``root_path`` is commonly given as ``__file__``; the package is the
-        # directory that file sits in. Made absolute (without resolving
-        # symlinks, which would rename the package) so that a relative
-        # ``root_path`` still has a parent to name the package against.
-        root_dir = Path(
-            os.path.abspath(root_path.parent if root_path.is_file() else root_path)
-        )
+        root_dir = _package_root_dir(Path(raw_root))
+        directories = _package_directories(root_dir)
+        if directories is None:
+            return ()
         # Module names are relative to the parent of the root directory, so
         # the root directory itself is the top-level package name.
         system_folder_path = root_dir.parent
-
-        directories = [root_dir]
-        try:
-            entries = sorted(os.listdir(root_dir))
-        except OSError:
-            return ()
-        for name in entries:
-            subdirectory = root_dir / name
-            if name == "__pycache__" or not subdirectory.is_dir():
-                continue
-            if any((subdirectory / f).is_file() for f in _DOMAIN_MARKER_FILES):
-                continue
-            directories.append(subdirectory)
 
         found: dict[str, Path] = {}
         for directory in directories:
@@ -254,18 +237,58 @@ class SourceProvider:
                 # Only reachable when the root directory is the filesystem
                 # root, where there is no package to name.
                 continue
-            try:
-                filenames = os.listdir(directory)
-            except OSError:  # pragma: no cover - directory vanished mid-walk
-                filenames = []
-            for filename in filenames:
-                path = directory / filename
-                if os.path.splitext(filename)[1] != ".py" or not path.is_file():
-                    continue
-                if filename == "__init__.py":
-                    found[package_name] = path
-                else:
-                    stem = os.path.splitext(filename)[0]
-                    found[f"{package_name}.{stem}"] = path
+            found.update(_package_modules(package_name, directory))
 
         return tuple((name, found[name]) for name in sorted(found))
+
+
+def _package_root_dir(root_path: Path) -> Path:
+    """The absolute directory a domain's ``root_path`` names as its package."""
+    # ``root_path`` is commonly given as ``__file__``; the package is the
+    # directory that file sits in. Made absolute (without resolving
+    # symlinks, which would rename the package) so that a relative
+    # ``root_path`` still has a parent to name the package against.
+    return Path(os.path.abspath(root_path.parent if root_path.is_file() else root_path))
+
+
+def _package_directories(root_dir: Path) -> list[Path] | None:
+    """The root directory and its subdirectories that belong to the domain.
+
+    A subdirectory holding a domain marker file is another domain's package and
+    is left out. ``None`` when the root directory cannot be listed.
+    """
+    directories = [root_dir]
+    try:
+        entries = sorted(os.listdir(root_dir))
+    except OSError:
+        return None
+    for name in entries:
+        subdirectory = root_dir / name
+        if name == "__pycache__" or not subdirectory.is_dir():
+            continue
+        if any((subdirectory / f).is_file() for f in _DOMAIN_MARKER_FILES):
+            continue
+        directories.append(subdirectory)
+    return directories
+
+
+def _package_modules(package_name: str, directory: Path) -> dict[str, Path]:
+    """Module name -> source file for every ``.py`` file directly in ``directory``.
+
+    ``__init__.py`` names the package itself.
+    """
+    found: dict[str, Path] = {}
+    try:
+        filenames = os.listdir(directory)
+    except OSError:  # pragma: no cover - directory vanished mid-walk
+        filenames = []
+    for filename in filenames:
+        path = directory / filename
+        if os.path.splitext(filename)[1] != ".py" or not path.is_file():
+            continue
+        if filename == "__init__.py":
+            found[package_name] = path
+        else:
+            stem = os.path.splitext(filename)[0]
+            found[f"{package_name}.{stem}"] = path
+    return found

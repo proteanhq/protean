@@ -883,14 +883,46 @@ def _cluster_change_phrases(
     # right, a removed event by the left. An event that crosses the predicate
     # gains or loses its node without being added or removed, so it reads as
     # added or removed with the reason in parentheses.
-    left_events = left_clusters.get(cluster_fqn, {}).get("events", {})
-    right_events = right_cluster.get("events", {})
-    events = delta.get("events", {})
     phrases.extend(
+        _event_change_phrases(
+            prefix,
+            delta.get("events", {}),
+            left_clusters.get(cluster_fqn, {}).get("events", {}),
+            right_cluster.get("events", {}),
+            drawn_types,
+        )
+    )
+
+    # Commands (triggers): changes only. An added or removed command is a
+    # gained or lost slice, reported as such by the caller.
+    commands_changed = delta.get("commands", {}).get("changed", {})
+    phrases.extend(
+        f"{prefix}command {short_name(cmd_fqn)} {phrase}"
+        for cmd_fqn, cmd_delta in sorted(commands_changed.items())
+        for phrase in _element_change_phrases(cmd_delta, drawn_types)
+    )
+
+    return phrases
+
+
+def _event_change_phrases(
+    prefix: str,
+    events: dict[str, Any],
+    left_events: dict[str, Any],
+    right_events: dict[str, Any],
+    drawn_types: _DrawnEventTypes,
+) -> list[str]:
+    """Render a cluster's ``events`` delta as ``<prefix>event <name> ...`` phrases.
+
+    Added events come first, then removed ones, then changed ones, each sorted
+    by FQN. An event that became or stopped being a fact event reads as added
+    or removed, with the reason in parentheses.
+    """
+    phrases = [
         f"{prefix}event {short_name(evt_fqn)} added"
         for evt_fqn in sorted(events.get("added", {}))
         if _draws_event(right_events, evt_fqn)
-    )
+    ]
     phrases.extend(
         f"{prefix}event {short_name(evt_fqn)} removed"
         for evt_fqn in sorted(events.get("removed", {}))
@@ -909,16 +941,6 @@ def _cluster_change_phrases(
             phrases.append(f"{prefix}event {name} added (no longer a fact event)")
         elif was_drawn:
             phrases.append(f"{prefix}event {name} removed (now a fact event)")
-
-    # Commands (triggers): changes only. An added or removed command is a
-    # gained or lost slice, reported as such by the caller.
-    commands_changed = delta.get("commands", {}).get("changed", {})
-    phrases.extend(
-        f"{prefix}command {short_name(cmd_fqn)} {phrase}"
-        for cmd_fqn, cmd_delta in sorted(commands_changed.items())
-        for phrase in _element_change_phrases(cmd_delta, drawn_types)
-    )
-
     return phrases
 
 
@@ -1102,38 +1124,8 @@ def generate_event_model_diff(
         drawn_types,
     )
 
-    added: list[str] = []
-    removed: list[str] = []
-    changed: list[str] = []
-
     # --- Added slices and read models ----------------------------------
-    # A whole new cluster collapses to one diff entry, so enumerate its
-    # commands from the right snapshot: one added slice per command.
-    for cluster_fqn in sorted(clusters.get("added", {})):
-        cmd_fqns = sorted(right_clusters.get(cluster_fqn, {}).get("commands", {}))
-        agg = short_name(cluster_fqn)
-        if cmd_fqns:
-            added.extend(
-                f"slice {short_name(cmd_fqn)} (new cluster {agg})"
-                for cmd_fqn in cmd_fqns
-            )
-        else:
-            # A command-less new cluster has no trigger to name; name the
-            # aggregate so the new cluster is never reported silently.
-            added.append(f"slice {agg} (new cluster)")
-
-    # New commands added to an existing cluster.
-    for _cluster_fqn, delta in sorted(clusters.get("changed", {}).items()):
-        added.extend(
-            f"slice {short_name(cmd_fqn)}"
-            for cmd_fqn in sorted(delta.get("commands", {}).get("added", {}))
-        )
-
-    # A new projection is a new read model.
-    added.extend(
-        f"read model {_summary_name(info, proj_fqn)}"
-        for proj_fqn, info in sorted(projections.get("added", {}).items())
-    )
+    added = _added_slices_and_read_models(clusters, projections, right_clusters)
 
     # A consumer the right snapshot draws and the left does not is a node the
     # diagram gained, so it belongs in the added section rather than as a
@@ -1146,54 +1138,23 @@ def generate_event_model_diff(
     )
 
     # --- Removed slices and read models --------------------------------
-    # A whole removed cluster collapses to one diff entry, so enumerate its
-    # commands from the left snapshot: one removed slice per command, mirroring
-    # the added path. A command-less removed cluster is named by its aggregate.
-    for cluster_fqn, info in sorted(clusters.get("removed", {}).items()):
-        cmd_fqns = sorted(left_clusters.get(cluster_fqn, {}).get("commands", {}))
-        agg = _summary_name(info, cluster_fqn)
-        if cmd_fqns:
-            removed.extend(
-                f"slice {short_name(cmd_fqn)} (removed cluster {agg})"
-                for cmd_fqn in cmd_fqns
-            )
-        else:
-            removed.append(f"slice {agg} (removed cluster)")
-    for _cluster_fqn, delta in sorted(clusters.get("changed", {}).items()):
-        removed.extend(
-            f"slice {short_name(cmd_fqn)}"
-            for cmd_fqn in sorted(delta.get("commands", {}).get("removed", {}))
-        )
-    removed.extend(
-        f"read model {_summary_name(info, proj_fqn)}"
-        for proj_fqn, info in sorted(projections.get("removed", {}).items())
-    )
+    removed = _removed_slices_and_read_models(clusters, projections, left_clusters)
     removed.extend(f"automation {short_name(fqn)}" for fqn in auto_removed)
     removed.extend(
         _projector_lines(proj_removed, left_homes, projections.get("removed", {}))
     )
 
     # --- Changed slices ------------------------------------------------
+    changed: list[str] = []
     for cluster_fqn, delta in sorted(clusters.get("changed", {}).items()):
         changed.extend(
             _cluster_change_phrases(
                 cluster_fqn, delta, left_clusters, right_clusters, drawn_types
             )
         )
-
-    # A read model changes when the projection element changes: its fields, or
-    # anything else it carries. Queries and query handlers are not drawn, so
-    # their deltas are left out.
-    for proj_fqn, delta in sorted(projections.get("changed", {}).items()):
-        name = right_projections.get(proj_fqn, {}).get("projection", {}).get(
-            "name"
-        ) or short_name(proj_fqn)
-        changed.extend(
-            f"read model {name}: {phrase}"
-            for phrase in _element_change_phrases(
-                delta.get("projection", {}), drawn_types
-            )
-        )
+    changed.extend(
+        _read_model_change_phrases(projections, right_projections, drawn_types)
+    )
 
     # A consumer drawn on both sides is a node that stayed and was redrawn: a
     # projector rewired to a different event, an automation whose routing moved.
@@ -1202,6 +1163,117 @@ def generate_event_model_diff(
     changed.extend(_projector_lines(proj_changed, right_homes, {}, " changed"))
     changed.extend(f"automation {short_name(fqn)}" for fqn in auto_changed)
 
+    return _render_model_changes(added, removed, changed)
+
+
+def _whole_cluster_slices(
+    cluster_fqn: str, agg: str, snapshot_clusters: dict[str, Any], label: str
+) -> list[str]:
+    """Render a cluster added or removed whole as slices.
+
+    The diff collapses such a cluster to one entry, so its commands come from
+    the snapshot it exists in: one slice per command, each tagged
+    ``(<label> <agg>)``. A command-less cluster has no trigger to name, so it
+    is one slice named after the aggregate and is never reported silently.
+    """
+    cmd_fqns = sorted(snapshot_clusters.get(cluster_fqn, {}).get("commands", {}))
+    if cmd_fqns:
+        return [f"slice {short_name(cmd_fqn)} ({label} {agg})" for cmd_fqn in cmd_fqns]
+    return [f"slice {agg} ({label})"]
+
+
+def _changed_cluster_command_slices(
+    clusters: dict[str, Any], section: str
+) -> list[str]:
+    """Render the commands a changed cluster gained or lost as slices.
+
+    ``section`` is ``added`` or ``removed``.
+    """
+    slices: list[str] = []
+    for _cluster_fqn, delta in sorted(clusters.get("changed", {}).items()):
+        slices.extend(
+            f"slice {short_name(cmd_fqn)}"
+            for cmd_fqn in sorted(delta.get("commands", {}).get(section, {}))
+        )
+    return slices
+
+
+def _added_slices_and_read_models(
+    clusters: dict[str, Any],
+    projections: dict[str, Any],
+    right_clusters: dict[str, Any],
+) -> list[str]:
+    """The added section's slice and read-model entries, consumers aside."""
+    added: list[str] = []
+    for cluster_fqn in sorted(clusters.get("added", {})):
+        added.extend(
+            _whole_cluster_slices(
+                cluster_fqn, short_name(cluster_fqn), right_clusters, "new cluster"
+            )
+        )
+
+    # New commands added to an existing cluster.
+    added.extend(_changed_cluster_command_slices(clusters, "added"))
+
+    # A new projection is a new read model.
+    added.extend(
+        f"read model {_summary_name(info, proj_fqn)}"
+        for proj_fqn, info in sorted(projections.get("added", {}).items())
+    )
+    return added
+
+
+def _removed_slices_and_read_models(
+    clusters: dict[str, Any],
+    projections: dict[str, Any],
+    left_clusters: dict[str, Any],
+) -> list[str]:
+    """The removed section's slice and read-model entries, consumers aside."""
+    removed: list[str] = []
+    for cluster_fqn, info in sorted(clusters.get("removed", {}).items()):
+        removed.extend(
+            _whole_cluster_slices(
+                cluster_fqn,
+                _summary_name(info, cluster_fqn),
+                left_clusters,
+                "removed cluster",
+            )
+        )
+    removed.extend(_changed_cluster_command_slices(clusters, "removed"))
+    removed.extend(
+        f"read model {_summary_name(info, proj_fqn)}"
+        for proj_fqn, info in sorted(projections.get("removed", {}).items())
+    )
+    return removed
+
+
+def _read_model_change_phrases(
+    projections: dict[str, Any],
+    right_projections: dict[str, Any],
+    drawn_types: _DrawnEventTypes,
+) -> list[str]:
+    """Render each changed projection as ``read model <name>: ...`` phrases."""
+    # A read model changes when the projection element changes: its fields, or
+    # anything else it carries. Queries and query handlers are not drawn, so
+    # their deltas are left out.
+    phrases: list[str] = []
+    for proj_fqn, delta in sorted(projections.get("changed", {}).items()):
+        name = right_projections.get(proj_fqn, {}).get("projection", {}).get(
+            "name"
+        ) or short_name(proj_fqn)
+        phrases.extend(
+            f"read model {name}: {phrase}"
+            for phrase in _element_change_phrases(
+                delta.get("projection", {}), drawn_types
+            )
+        )
+    return phrases
+
+
+def _render_model_changes(
+    added: list[str], removed: list[str], changed: list[str]
+) -> str:
+    """Join the three sections into the diff text, skipping empty ones."""
     if not (added or removed or changed):
         return "No model changes."
 

@@ -116,6 +116,23 @@ def _render_cluster(
     return lines
 
 
+def _references_out_of_cluster(
+    source_fqn: str,
+    fields: dict[str, Any],
+    cluster_fqn: str,
+) -> list[tuple[str, str, str]]:
+    """``(source_fqn, target, field_name)`` for each ``reference`` field of
+    ``fields`` whose target is set and is not ``cluster_fqn``."""
+    refs: list[tuple[str, str, str]] = []
+    for fname, fspec in fields.items():
+        if fspec.get("kind") == "reference":
+            target = fspec.get("target", "")
+            # Only cross-aggregate references (not self-referencing)
+            if target and target != cluster_fqn:
+                refs.append((source_fqn, target, fname))
+    return refs
+
+
 def _collect_cross_references(
     ir: dict[str, Any],
 ) -> list[tuple[str, str, str]]:
@@ -130,20 +147,17 @@ def _collect_cross_references(
     for cluster_fqn, cluster in clusters.items():
         # Check entity reference fields that point to other aggregates
         for entity_fqn, entity in cluster.get("entities", {}).items():
-            for fname, fspec in entity.get("fields", {}).items():
-                if fspec.get("kind") == "reference":
-                    target = fspec.get("target", "")
-                    # Only cross-aggregate references (not self-referencing)
-                    if target and target != cluster_fqn:
-                        refs.append((entity_fqn, target, fname))
+            refs.extend(
+                _references_out_of_cluster(
+                    entity_fqn, entity.get("fields", {}), cluster_fqn
+                )
+            )
 
         # Check aggregate fields for reference kind
         agg = cluster.get("aggregate", {})
-        for fname, fspec in agg.get("fields", {}).items():
-            if fspec.get("kind") == "reference":
-                target = fspec.get("target", "")
-                if target and target != cluster_fqn:
-                    refs.append((cluster_fqn, target, fname))
+        refs.extend(
+            _references_out_of_cluster(cluster_fqn, agg.get("fields", {}), cluster_fqn)
+        )
 
     return sorted(refs)
 

@@ -386,32 +386,38 @@ class _FlowBuilder:
             self._order[id(stmt)] = len(self._statements)
             self._statements.append(stmt)
             self._coverage[id(stmt)] = BlockCoverage(contexts, loops)
+            self._walk_nested_blocks(stmt, contexts, loops)
 
-            if isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)):
-                self._walk_structure(stmt.body, contexts, (*loops, stmt))
-                # ``else`` runs after the loop completes, so it is not nested in
-                # the loop it belongs to.
-                self._walk_structure(stmt.orelse, contexts, loops)
-            elif isinstance(stmt, (ast.With, ast.AsyncWith)):
-                added = tuple(
-                    WithContext(
-                        self._resolve_context(item.context_expr), item.context_expr
-                    )
-                    for item in stmt.items
-                )
-                self._walk_structure(stmt.body, (*contexts, *added), loops)
-            elif isinstance(stmt, ast.If):
-                self._walk_structure(stmt.body, contexts, loops)
-                self._walk_structure(stmt.orelse, contexts, loops)
-            elif isinstance(stmt, (ast.Try, ast.TryStar)):
-                self._walk_structure(stmt.body, contexts, loops)
-                for handler in stmt.handlers:
-                    self._walk_structure(handler.body, contexts, loops)
-                self._walk_structure(stmt.orelse, contexts, loops)
-                self._walk_structure(stmt.finalbody, contexts, loops)
-            elif isinstance(stmt, ast.Match):
-                for case in stmt.cases:
-                    self._walk_structure(case.body, contexts, loops)
+    def _walk_nested_blocks(
+        self,
+        stmt: ast.stmt,
+        contexts: tuple[WithContext, ...],
+        loops: tuple[LoopNode, ...],
+    ) -> None:
+        """Index the blocks one compound statement holds, in written order."""
+        if isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)):
+            self._walk_structure(stmt.body, contexts, (*loops, stmt))
+            # ``else`` runs after the loop completes, so it is not nested in
+            # the loop it belongs to.
+            self._walk_structure(stmt.orelse, contexts, loops)
+        elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+            added = tuple(
+                WithContext(self._resolve_context(item.context_expr), item.context_expr)
+                for item in stmt.items
+            )
+            self._walk_structure(stmt.body, (*contexts, *added), loops)
+        elif isinstance(stmt, ast.If):
+            self._walk_structure(stmt.body, contexts, loops)
+            self._walk_structure(stmt.orelse, contexts, loops)
+        elif isinstance(stmt, (ast.Try, ast.TryStar)):
+            self._walk_structure(stmt.body, contexts, loops)
+            for handler in stmt.handlers:
+                self._walk_structure(handler.body, contexts, loops)
+            self._walk_structure(stmt.orelse, contexts, loops)
+            self._walk_structure(stmt.finalbody, contexts, loops)
+        elif isinstance(stmt, ast.Match):
+            for case in stmt.cases:
+                self._walk_structure(case.body, contexts, loops)
 
     def _resolve_context(self, context_expr: ast.expr) -> str | None:
         """The FQN a ``with`` context expression names, or ``None``.
@@ -483,66 +489,24 @@ class _FlowBuilder:
         order = self._order.get(id(stmt), -1)
 
         if isinstance(stmt, ast.If):
-            self._record_uses(stmt.test, state, order)
-            taken = self._run(stmt.body, _copy(state))
-            skipped = (
-                self._run(stmt.orelse, _copy(state)) if stmt.orelse else _copy(state)
-            )
-            return _merge_optional(taken, skipped)
+            return self._step_if(stmt, state, order)
 
         if isinstance(stmt, (ast.For, ast.AsyncFor)):
-            self._record_uses(stmt.iter, state, order)
-            entry = _copy(state)
-            self._bind(stmt.target, stmt, None, DefKind.FOR_TARGET, entry)
-            self._break_states.append([])
-            self._continue_states.append([])
-            after = self._run_loop_body(stmt.body, entry, state)
-            self._continue_states.pop()
-            return self._after_loop(after, self._break_states.pop(), stmt.orelse)
+            return self._step_for(stmt, state, order)
 
         if isinstance(stmt, ast.While):
-            self._break_states.append([])
-            self._continue_states.append([])
-            after = self._run_loop_body(
-                stmt.body,
-                _copy(state),
-                state,
-                on_test=lambda invariant: self._record_uses(
-                    stmt.test, invariant, order
-                ),
-            )
-            self._continue_states.pop()
-            return self._after_loop(after, self._break_states.pop(), stmt.orelse)
+            return self._step_while(stmt, state, order)
 
         if isinstance(stmt, ast.Break):
-            # A break is a possible loop exit that skips the ``else``; record the
-            # state so the enclosing loop can merge it in. It does not fall
-            # through to whatever follows it in the same block.
-            if self._break_states:
-                self._break_states[-1].append(_copy(state))
+            self._record_break(state)
             return None
 
         if isinstance(stmt, ast.Continue):
-            # A continue jumps back to the loop rather than falling through to
-            # whatever follows it in the same block; its state instead feeds
-            # the next iteration's entry (and a ``while``'s re-evaluated test).
-            if self._continue_states:
-                self._continue_states[-1].append(_copy(state))
+            self._record_continue(state)
             return None
 
         if isinstance(stmt, (ast.With, ast.AsyncWith)):
-            new = _copy(state)
-            for item in stmt.items:
-                self._record_uses(item.context_expr, new, order)
-                if item.optional_vars is not None:
-                    self._bind(
-                        item.optional_vars,
-                        stmt,
-                        item.context_expr,
-                        DefKind.WITH_TARGET,
-                        new,
-                    )
-            return self._run(stmt.body, new)
+            return self._step_with(stmt, state, order)
 
         if isinstance(stmt, (ast.Try, ast.TryStar)):
             return self._step_try(stmt, state, order)
@@ -556,6 +520,72 @@ class _FlowBuilder:
             return state
 
         return self._step_simple(stmt, state, order)
+
+    def _step_if(self, stmt: ast.If, state: _State, order: int) -> _State | None:
+        """Advance across an ``if``: the merge of the taken and skipped branches."""
+        self._record_uses(stmt.test, state, order)
+        taken = self._run(stmt.body, _copy(state))
+        skipped = self._run(stmt.orelse, _copy(state)) if stmt.orelse else _copy(state)
+        return _merge_optional(taken, skipped)
+
+    def _step_for(
+        self, stmt: ast.For | ast.AsyncFor, state: _State, order: int
+    ) -> _State | None:
+        """Advance across a ``for`` loop, whose target is bound on loop entry."""
+        self._record_uses(stmt.iter, state, order)
+        entry = _copy(state)
+        self._bind(stmt.target, stmt, None, DefKind.FOR_TARGET, entry)
+        self._break_states.append([])
+        self._continue_states.append([])
+        after = self._run_loop_body(stmt.body, entry, state)
+        self._continue_states.pop()
+        return self._after_loop(after, self._break_states.pop(), stmt.orelse)
+
+    def _step_while(self, stmt: ast.While, state: _State, order: int) -> _State | None:
+        """Advance across a ``while`` loop, whose test reads the loop-head state."""
+        self._break_states.append([])
+        self._continue_states.append([])
+        after = self._run_loop_body(
+            stmt.body,
+            _copy(state),
+            state,
+            on_test=lambda invariant: self._record_uses(stmt.test, invariant, order),
+        )
+        self._continue_states.pop()
+        return self._after_loop(after, self._break_states.pop(), stmt.orelse)
+
+    def _record_break(self, state: _State) -> None:
+        """Record a ``break`` exit for the innermost loop."""
+        # A break is a possible loop exit that skips the ``else``; record the
+        # state so the enclosing loop can merge it in. It does not fall
+        # through to whatever follows it in the same block.
+        if self._break_states:
+            self._break_states[-1].append(_copy(state))
+
+    def _record_continue(self, state: _State) -> None:
+        """Record a ``continue`` exit for the innermost loop."""
+        # A continue jumps back to the loop rather than falling through to
+        # whatever follows it in the same block; its state instead feeds
+        # the next iteration's entry (and a ``while``'s re-evaluated ``test``).
+        if self._continue_states:
+            self._continue_states[-1].append(_copy(state))
+
+    def _step_with(
+        self, stmt: ast.With | ast.AsyncWith, state: _State, order: int
+    ) -> _State | None:
+        """Advance across a ``with``, binding each ``as`` target before the body."""
+        new = _copy(state)
+        for item in stmt.items:
+            self._record_uses(item.context_expr, new, order)
+            if item.optional_vars is not None:
+                self._bind(
+                    item.optional_vars,
+                    stmt,
+                    item.context_expr,
+                    DefKind.WITH_TARGET,
+                    new,
+                )
+        return self._run(stmt.body, new)
 
     def _run_loop_body(
         self,
@@ -698,61 +728,73 @@ class _FlowBuilder:
         passes through unchanged.
         """
         if isinstance(stmt, ast.Assign):
-            self._record_uses(stmt.value, state, order)
-            for target in stmt.targets:
-                self._record_uses(target, state, order)
-            new = _copy(state)
-            for target in stmt.targets:
-                self._bind(target, stmt, stmt.value, DefKind.ASSIGN, new)
-            return new
+            return self._step_assign(stmt, state, order)
 
         if isinstance(stmt, ast.AnnAssign):
-            self._record_uses(stmt.annotation, state, order)
-            self._record_uses(stmt.target, state, order)
-            if stmt.value is None:
-                # A bare annotation (``x: int``) binds no value.
-                return state
-            self._record_uses(stmt.value, state, order)
-            new = _copy(state)
-            self._bind(stmt.target, stmt, stmt.value, DefKind.ANN_ASSIGN, new)
-            return new
+            return self._step_ann_assign(stmt, state, order)
 
         if isinstance(stmt, ast.Delete):
-            new = _copy(state)
-            for target in stmt.targets:
-                # ``del a[i]`` reads ``a`` and ``i``; a plain ``del x`` reads
-                # nothing (its target is in Del context, not Load).
-                self._record_uses(target, state, order)
-                self._kill(target, new)
-            return new
+            return self._step_delete(stmt, state, order)
 
         if isinstance(stmt, (ast.Import, ast.ImportFrom)):
-            # An in-body import binds a module or imported object this analysis
-            # cannot value; kill the name so a use resolves to the empty tuple
-            # rather than a prior definition the import shadows.
-            new = _copy(state)
-            for alias in stmt.names:
-                bound = alias.asname or alias.name.split(".", 1)[0]
-                if bound != "*":
-                    new[bound] = frozenset()
-            return new
+            return _step_import(stmt, state)
 
         if isinstance(stmt, ast.AugAssign):
-            self._record_uses(stmt.value, state, order)
-            # ``x += 1`` reads ``x`` before it writes it. The target is in Store
-            # context, so record it as a use explicitly.
-            if isinstance(stmt.target, ast.Name):
-                self._record_name(stmt.target, state)
-            else:
-                self._record_uses(stmt.target, state, order)
-            new = _copy(state)
-            self._bind(stmt.target, stmt, stmt.value, DefKind.AUG_ASSIGN, new)
-            return new
+            return self._step_aug_assign(stmt, state, order)
 
         for child in ast.iter_child_nodes(stmt):
             if isinstance(child, ast.expr):
                 self._record_uses(child, state, order)
         return state
+
+    def _step_assign(self, stmt: ast.Assign, state: _State, order: int) -> _State:
+        """Advance across ``a = b = value``, binding every target."""
+        self._record_uses(stmt.value, state, order)
+        for target in stmt.targets:
+            self._record_uses(target, state, order)
+        new = _copy(state)
+        for target in stmt.targets:
+            self._bind(target, stmt, stmt.value, DefKind.ASSIGN, new)
+        return new
+
+    def _step_ann_assign(
+        self, stmt: ast.AnnAssign, state: _State, order: int
+    ) -> _State:
+        """Advance across ``x: T = value``; a bare ``x: T`` binds nothing."""
+        self._record_uses(stmt.annotation, state, order)
+        self._record_uses(stmt.target, state, order)
+        if stmt.value is None:
+            # A bare annotation (``x: int``) binds no value.
+            return state
+        self._record_uses(stmt.value, state, order)
+        new = _copy(state)
+        self._bind(stmt.target, stmt, stmt.value, DefKind.ANN_ASSIGN, new)
+        return new
+
+    def _step_delete(self, stmt: ast.Delete, state: _State, order: int) -> _State:
+        """Advance across a ``del``, unbinding every plain-name target."""
+        new = _copy(state)
+        for target in stmt.targets:
+            # ``del a[i]`` reads ``a`` and ``i``; a plain ``del x`` reads
+            # nothing (its target is in Del context, not Load).
+            self._record_uses(target, state, order)
+            self._kill(target, new)
+        return new
+
+    def _step_aug_assign(
+        self, stmt: ast.AugAssign, state: _State, order: int
+    ) -> _State:
+        """Advance across ``x += value``, which reads ``x`` before writing it."""
+        self._record_uses(stmt.value, state, order)
+        # ``x += 1`` reads ``x`` before it writes it. The target is in Store
+        # context, so record it as a use explicitly.
+        if isinstance(stmt.target, ast.Name):
+            self._record_name(stmt.target, state)
+        else:
+            self._record_uses(stmt.target, state, order)
+        new = _copy(state)
+        self._bind(stmt.target, stmt, stmt.value, DefKind.AUG_ASSIGN, new)
+        return new
 
     def _record_uses(self, expr: ast.expr, state: _State, order: int) -> None:
         """Record every local-name load in ``expr`` against the current state.
@@ -845,6 +887,19 @@ class _FlowBuilder:
 # ----------------------------------------------------------------------
 # Module-level helpers
 # ----------------------------------------------------------------------
+
+
+def _step_import(stmt: ast.Import | ast.ImportFrom, state: _State) -> _State:
+    """Advance across an in-body import, unbinding every name it binds."""
+    # An in-body import binds a module or imported object this analysis
+    # cannot value; kill the name so a use resolves to the empty tuple
+    # rather than a prior definition the import shadows.
+    new = _copy(state)
+    for alias in stmt.names:
+        bound = alias.asname or alias.name.split(".", 1)[0]
+        if bound != "*":
+            new[bound] = frozenset()
+    return new
 
 
 def _pattern_names(pattern: ast.pattern) -> set[str]:

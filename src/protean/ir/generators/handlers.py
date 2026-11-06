@@ -163,49 +163,14 @@ def _render_process_managers(
 
     for pm_fqn, pm in sorted(pms.items()):
         pm_id = _pm_node_id(pm_fqn)
-        pm_short = short_name(pm_fqn)
-
-        # Lifecycle annotations on node label
-        lifecycle: list[str] = []
-        for _evt_type, handler_info in sorted(pm.get("handlers", {}).items()):
-            if handler_info.get("start"):
-                lifecycle.append("start")
-                break
-        for _evt_type, handler_info in sorted(pm.get("handlers", {}).items()):
-            if handler_info.get("end"):
-                lifecycle.append("end")
-                break
-
-        label = pm_short
-        if lifecycle:
-            label = f"{pm_short} ({', '.join(lifecycle)})"
-
+        label = _pm_label(short_name(pm_fqn), pm)
         nodes.append(f"        {pm_id}[{mermaid_escape(label)}]")
 
         # events → PM with lifecycle edge labels
         for evt_type in sorted(pm.get("handlers", {}).keys()):
             evt_fqn = evt_type_to_fqn.get(evt_type, "")
             if evt_fqn:
-                evt_id = _evt_node_id(evt_fqn)
-                evt_short = short_name(evt_fqn)
-                handler_info = pm["handlers"][evt_type]
-
-                edge_labels: list[str] = []
-                if handler_info.get("start"):
-                    edge_labels.append("start")
-                if handler_info.get("end"):
-                    edge_labels.append("end")
-
-                if edge_labels:
-                    edge_label = ", ".join(edge_labels)
-                    edges.append(
-                        f"    {evt_id}([{mermaid_escape(evt_short)}])"
-                        f" -->|{mermaid_escape(edge_label)}| {pm_id}"
-                    )
-                else:
-                    edges.append(
-                        f"    {evt_id}([{mermaid_escape(evt_short)}]) --> {pm_id}"
-                    )
+                edges.append(_pm_event_edge(evt_fqn, pm["handlers"][evt_type], pm_id))
 
     if not nodes:
         return [], []
@@ -216,6 +181,40 @@ def _render_process_managers(
         "    end",
     ]
     return subgraph, edges
+
+
+def _pm_label(pm_short: str, pm: dict[str, Any]) -> str:
+    """Label a process manager node, noting whether it has start/end handlers."""
+    handler_infos = pm.get("handlers", {}).values()
+    lifecycle: list[str] = []
+    if any(info.get("start") for info in handler_infos):
+        lifecycle.append("start")
+    if any(info.get("end") for info in handler_infos):
+        lifecycle.append("end")
+
+    if lifecycle:
+        return f"{pm_short} ({', '.join(lifecycle)})"
+    return pm_short
+
+
+def _pm_event_edge(evt_fqn: str, handler_info: dict[str, Any], pm_id: str) -> str:
+    """Render an event → PM edge, labelled when the handler starts or ends it."""
+    evt_id = _evt_node_id(evt_fqn)
+    evt_short = short_name(evt_fqn)
+
+    edge_labels: list[str] = []
+    if handler_info.get("start"):
+        edge_labels.append("start")
+    if handler_info.get("end"):
+        edge_labels.append("end")
+
+    if edge_labels:
+        edge_label = ", ".join(edge_labels)
+        return (
+            f"    {evt_id}([{mermaid_escape(evt_short)}])"
+            f" -->|{mermaid_escape(edge_label)}| {pm_id}"
+        )
+    return f"    {evt_id}([{mermaid_escape(evt_short)}]) --> {pm_id}"
 
 
 def _render_projectors(

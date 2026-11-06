@@ -563,50 +563,50 @@ _NOT_PLAIN_BEHAVIOR = frozenset(
 )
 
 
+#: The role a ``@handle``/``@on`` method plays, per handler element type. A
+#: method of these types without such a decorator has no role.
+_HANDLER_ROLES: dict[str, MethodRole] = {
+    DomainObjects.COMMAND_HANDLER.value: MethodRole.COMMAND_HANDLER_METHOD,
+    DomainObjects.EVENT_HANDLER.value: MethodRole.EVENT_HANDLER_METHOD,
+    DomainObjects.PROCESS_MANAGER.value: MethodRole.EVENT_HANDLER_METHOD,
+    DomainObjects.PROJECTOR.value: MethodRole.PROJECTOR_ON_EVENT,
+}
+
+_REPOSITORY_TYPES = frozenset(
+    {
+        DomainObjects.REPOSITORY.value,
+        DomainObjects.EVENT_SOURCED_REPOSITORY.value,
+    }
+)
+
+
 def _role(element_type: str, method: MethodEntry) -> MethodRole | None:
     """Derive a method's role from its element type and its decorators."""
     decorators = method.decorators
-    # A name-derived role needs a public name and a body that no decorator
-    # claims for something else.
-    plain = not method.name.startswith("_") and not _NOT_PLAIN_BEHAVIOR.intersection(
-        decorators
-    )
 
-    handles = bool(_HANDLES.intersection(decorators))
-
-    if element_type == DomainObjects.COMMAND_HANDLER.value:
-        if handles:
-            return MethodRole.COMMAND_HANDLER_METHOD
-        return None
-
-    if element_type in (
-        DomainObjects.EVENT_HANDLER.value,
-        DomainObjects.PROCESS_MANAGER.value,
-    ):
-        if handles:
-            return MethodRole.EVENT_HANDLER_METHOD
-        return None
-
-    if element_type == DomainObjects.PROJECTOR.value:
-        if handles:
-            return MethodRole.PROJECTOR_ON_EVENT
-        return None
+    handler_role = _HANDLER_ROLES.get(element_type)
+    if handler_role is not None:
+        return handler_role if _HANDLES.intersection(decorators) else None
 
     if element_type == DomainObjects.AGGREGATE.value:
         # ``@apply`` first: an apply method is an event application, not a
         # behavior, even though it is public and undecorated-looking otherwise.
         if _APPLY in decorators:
             return MethodRole.EVENT_APPLY
-        if plain:
-            return MethodRole.AGGREGATE_BEHAVIOR
-        return None
+        return MethodRole.AGGREGATE_BEHAVIOR if _is_plain_behavior(method) else None
 
-    if element_type in (
-        DomainObjects.REPOSITORY.value,
-        DomainObjects.EVENT_SOURCED_REPOSITORY.value,
-    ):
-        if plain:
-            return MethodRole.REPOSITORY_METHOD
-        return None
+    if element_type in _REPOSITORY_TYPES:
+        return MethodRole.REPOSITORY_METHOD if _is_plain_behavior(method) else None
 
     return None
+
+
+def _is_plain_behavior(method: MethodEntry) -> bool:
+    """Whether a method can take a name-derived role.
+
+    It needs a public name and a body that no decorator claims for something
+    else.
+    """
+    return not method.name.startswith("_") and not _NOT_PLAIN_BEHAVIOR.intersection(
+        method.decorators
+    )

@@ -107,6 +107,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import partial
 from typing import TYPE_CHECKING
 
 from protean.ir.analysis.element_index import ElementIndex, FunctionNode
@@ -114,6 +115,8 @@ from protean.ir.analysis.source_provider import SourceProvider
 from protean.ir.analysis.symbols import NESTED_SCOPES, MethodScope, SymbolResolver
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from protean.domain import Domain
 
 #: The FQN of a repository/DAO query method the receiver-role rule recognizes.
@@ -335,32 +338,16 @@ class FactCatalog:
         # the recursion guard below.
         scope = self._resolver.method_scope(module, method)
 
-        def visit(node: ast.AST, is_callee: bool) -> None:
-            if isinstance(node, NESTED_SCOPES):
-                # A fact inside a nested function/lambda/class belongs to it,
-                # not to the method being cataloged.
-                return
-            if isinstance(node, ast.Call):
-                self._record_call(scope, path, node, calls, constructions)
-                # The callee names the method, not a data access; its receiver
-                # and the argument expressions still carry facts of their own.
-                visit(node.func, True)
-                for arg in node.args:
-                    visit(arg, False)
-                for keyword in node.keywords:
-                    visit(keyword.value, False)
-                return
-            if isinstance(node, ast.Attribute):
-                if not is_callee:
-                    attributes.append(self._attribute_fact(path, node))
-                visit(node.value, False)
-                return
-            for child in ast.iter_child_nodes(node):
-                visit(child, False)
-
+        walker = _FactWalker(
+            partial(
+                self._record_call, scope, path, calls=calls, constructions=constructions
+            ),
+            partial(self._attribute_fact, path),
+            attributes,
+        )
         try:
             for statement in method.body:
-                visit(statement, False)
+                walker.visit(statement, False)
         except RecursionError:
             # A method that parses but nests expressions deeper than the
             # interpreter's stack (a pathological attribute or operator chain)
@@ -528,6 +515,48 @@ class FactCatalog:
                 if name not in collected:
                     collected.append(name)
         return tuple(collected), dynamic
+
+
+class _FactWalker:
+    """Walk the expressions of one method body, gathering its facts.
+
+    Calls go to ``record_call``; attribute reads and writes are built by
+    ``attribute_fact`` and appended to ``attributes``. The walk stops at a
+    nested function, lambda or class, whose facts are its own.
+    """
+
+    def __init__(
+        self,
+        record_call: Callable[[ast.Call], None],
+        attribute_fact: Callable[[ast.Attribute], AttributeFact],
+        attributes: list[AttributeFact],
+    ) -> None:
+        self._record_call = record_call
+        self._attribute_fact = attribute_fact
+        self._attributes = attributes
+
+    def visit(self, node: ast.AST, is_callee: bool) -> None:
+        if isinstance(node, NESTED_SCOPES):
+            # A fact inside a nested function/lambda/class belongs to it,
+            # not to the method being cataloged.
+            return
+        if isinstance(node, ast.Call):
+            self._record_call(node)
+            # The callee names the method, not a data access; its receiver
+            # and the argument expressions still carry facts of their own.
+            self.visit(node.func, True)
+            for arg in node.args:
+                self.visit(arg, False)
+            for keyword in node.keywords:
+                self.visit(keyword.value, False)
+            return
+        if isinstance(node, ast.Attribute):
+            if not is_callee:
+                self._attributes.append(self._attribute_fact(node))
+            self.visit(node.value, False)
+            return
+        for child in ast.iter_child_nodes(node):
+            self.visit(child, False)
 
 
 # ----------------------------------------------------------------------
