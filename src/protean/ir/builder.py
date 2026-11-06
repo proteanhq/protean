@@ -842,7 +842,11 @@ class IRBuilder:
         return entry
 
     def _resolved_type_entry(self, field: Any) -> dict[str, Any]:
-        """Return the ``kind`` and ``type`` keys of a resolved field's entry."""
+        """Return the type keys of a resolved field's entry.
+
+        The entry always has ``kind`` and ``type``. A typed list or dict also
+        has ``content_type``, and a dict of value objects also has ``target``.
+        """
         entry: dict[str, Any] = {}
         python_type = field._python_type
         base_type = self._unwrap_type(python_type)
