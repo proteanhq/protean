@@ -27,15 +27,15 @@ times in the same process, most commonly in tests, where each test case may
 create its own `Domain(name="Test")` with different configuration. The OTEL global registration
 model creates three problems in this context:
 
-1. **Single-assignment semantics**: OTEL globals are write-once: the first
-   call to `set_tracer_provider()` wins, and subsequent calls are silently
-   ignored (or log a warning). A second domain in the same process cannot
+1. **Single-assignment semantics**: OTEL globals are write-once: the first call
+   to `set_tracer_provider()` sets the provider, and OTEL silently ignores
+   later calls (or logs a warning). A second domain in the same process cannot
    override the provider with its own configuration.
 
 2. **Shutdown leaves broken globals**: Calling `shutdown()` on the global
    provider puts it into a terminal state. Any spans created afterward are
-   silently dropped. In tests, where domains are created, activated, and
-   shut down repeatedly, this means only the first test gets real spans.
+   silently dropped. Tests create, activate, and shut down domains repeatedly,
+   so only the first test gets real spans.
 
 3. **No per-domain configuration**: Different domains may need different
    service names, exporters, or resource attributes. A single global
@@ -83,11 +83,11 @@ The `Domain` class exposes two lazy properties:
 Both use deferred imports so the `opentelemetry` package is never loaded
 unless telemetry is actually accessed.
 
-Telemetry is **disabled by default** (`telemetry.enabled: False` in
-domain config) and all OTEL packages are optional extras
-(`pip install protean[telemetry]`). When disabled or when packages are
-absent, all public functions return lightweight no-op objects that
-implement the minimal OTEL interface, so instrumentation code never
+Telemetry is **disabled by default** (`telemetry.enabled: False` in domain
+config). All OTEL packages are optional extras
+(`pip install protean[telemetry]`). When telemetry is disabled or the packages
+are absent, all public functions return lightweight no-op objects. These
+objects implement the minimal OTEL interface, so instrumentation code never
 needs conditional guards.
 
 ## Consequences
@@ -100,24 +100,24 @@ needs conditional guards.
 - Multiple domains in the same process (e.g., a multi-bounded-context
   deployment) can have independent service names, exporters, and resource
   attributes.
-- Clean shutdown/re-init cycles work correctly, no "zombie provider" problem
-  where a shut-down global silently drops spans.
+- Clean shutdown/re-init cycles work correctly. Protean sets no global
+  provider, so no shut-down global can silently drop spans.
 - Observatory and OTEL coexist cleanly at instrumentation callsites.
   The `/metrics` endpoint serves OTEL Prometheus exposition when available,
   falling back to the hand-rolled implementation when not.
 
 **Negative:**
 
-- Diverges from OTEL's documented best practice. Contributors familiar
-  with OTEL will initially reach for `trace.get_tracer()` (the global)
-  and need to learn the domain-scoped pattern.
+- Diverges from OTEL's documented best practice. Contributors familiar with
+  OTEL will first call `trace.get_tracer()` (the global) and need to learn the
+  domain-scoped pattern.
 - Every instrumented callsite must have access to the `Domain` instance
   (typically via `current_domain` context or direct reference) to obtain
   a tracer or meter.
-- Third-party OTEL auto-instrumentation libraries that expect global
-  providers (e.g., `opentelemetry-instrumentation-requests`) will not
-  automatically participate in Protean's domain-scoped traces. Manual
-  bridging would be needed.
+- Some third-party OTEL auto-instrumentation libraries expect global providers
+  (e.g., `opentelemetry-instrumentation-requests`). They will not automatically
+  participate in Protean's domain-scoped traces. An application has to bridge
+  them to the domain's providers manually.
 
 ## Alternatives Considered
 
@@ -128,7 +128,7 @@ unlikely to change upstream.
 
 **Per-thread providers.** Would solve test isolation for single-threaded
 test runners but not for async or multi-domain production scenarios.
-Also adds complexity without addressing the configuration problem.
+Also adds complexity and does not solve the configuration problem.
 
 **Monkey-patching OTEL globals per test.** Fragile, requires careful
 teardown ordering, and breaks if any library caches a reference to the

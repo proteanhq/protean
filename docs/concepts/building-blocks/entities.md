@@ -4,9 +4,10 @@
 
 Not every concept in a domain stands on its own. An `OrderItem` only makes
 sense within an `Order`; a `Reservation` belongs to a `Booking`. These objects
-have their own identity (you need to distinguish one line item from another)
-but they don't manage their own lifecycle. If you modeled every identified
-object as an independent aggregate, you'd lose the ability to enforce rules
+have their own identity, because you need to distinguish one line item from
+another. But they don't control their own lifecycle, because their parent
+creates, changes, and deletes them. If you modeled every identified object as
+an independent aggregate, you'd lose the ability to enforce rules
 that span the parent and its children (e.g. "an order's total must equal the
 sum of its line items").
 
@@ -36,8 +37,9 @@ various state changes.
 
 ### Entities can contain other entities or value objects. { data-toc-label="Composition" }
 Entities can compose other entities and [value objects](./value-objects.md),
-enabling the modeling of complex domain relationships. However, care should be
-taken to manage the complexity and maintain the boundaries of aggregates.
+enabling the modeling of complex domain relationships. However, keep the
+composed structure manageable. Keep every composed object inside the boundaries
+of its aggregate.
 
 ### Entities enforce business rules. { data-toc-label="Business Rules" }
 Entities are responsible for ensuring that business rules and invariants are
@@ -52,19 +54,18 @@ seat numbers to patrons. If visitors are not allotted specific seats, then a
 seat can be considered a ValueObject, as one seat can be exchanged with another.
 
 ### Aggregates handle entity persistence.  { data-toc-label="Persistence" }
-Entities are persisted and retrieved through their aggregates. They should not
-be queried or updated directly, as it can lead to an invalid state because of
-unsatisfied domain invariants.
+Entities are persisted and retrieved through their aggregates. You should not
+query or update entities directly, because that skips the aggregate's invariant
+checks. The entity can then end up in an invalid state.
 
 ### Entities are related through associations. { data-toc-label="Associations" }
-Associations define how entities are connected. These associations are
-typically managed within the context of an aggregate to ensure consistency and
-integrity.
+Associations define how entities are connected. The aggregate typically
+controls these associations, so it can keep them consistent and intact.
 
 ### Entities can contain nested entities and value objects. { data-toc-label="Nested Objects" }
 Entities can nest other entities and value objects to form hierarchical
-structures. These nested objects are managed as part of the aggregate's
-lifecycle and contribute to the overall state of the entity.
+structures. The aggregate controls these nested objects as part of its
+lifecycle. Their values form part of the overall state of the entity.
 
 ### Entity graphs should be kept manageable. { data-toc-label="Nesting" }
 While entities can form complex graphs, it is crucial to maintain manageable
