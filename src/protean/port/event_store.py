@@ -1408,15 +1408,15 @@ class BaseEventStore(metaclass=ABCMeta):
         self, event_cls: type[BaseEvent], stream_category: str | None = None
     ) -> BaseEvent | BaseCommand | None:
         stream_category = stream_category or "$all"
-        events = [
-            event
-            for event in self._read_all_raw(stream_category)
-            if event["type"] == event_cls.__type__
-        ]
+        # Keep only the latest match so memory stays bounded by one read page.
+        last_event = None
+        for event in self._read_all_raw(stream_category):
+            if event["type"] == event_cls.__type__:
+                last_event = event
 
         return (
-            Message.deserialize(events[-1]).to_domain_object()
-            if len(events) > 0
+            Message.deserialize(last_event).to_domain_object()
+            if last_event is not None
             else None
         )
 
