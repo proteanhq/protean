@@ -197,7 +197,7 @@ transitions in one place:
 
 ---
 
-### Add `@invariant.pre` and `@invariant.post` as a second check
+### Using `@invariant.pre` and `@invariant.post` as safety nets
 
 For a second check on top of the method guards, add invariants that run on
 every mutation. These invariants catch any invalid change that a method guard
@@ -223,7 +223,7 @@ its own data.
 
 ## Anti-Patterns
 
-### Assigning bare strings without guards
+### Bare string assignments without guards
 
 ```python
 # fragment
@@ -248,7 +248,7 @@ def ship(self, tracking_number: str) -> None:
     self.tracking_number = tracking_number
 ```
 
-### Leaving the status field open-ended
+### Open-ended status field
 
 ```python
 # fragment
@@ -281,7 +281,7 @@ becomes `order.update_status("shipped")` instead of `order.ship()`.
 Each transition has different preconditions, different side effects, and
 different events. They deserve separate methods.
 
-### Putting transition logic in handlers
+### Transition logic in handlers
 
 ```python
 # fragment

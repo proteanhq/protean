@@ -109,7 +109,7 @@ without needing to understand the field-level mechanics.
 
 ## Applying the Pattern
 
-### Before: the handler sets fields directly
+### Before: Direct Field Manipulation
 
 ```python
 # fragment
@@ -188,7 +188,7 @@ Problems with this approach:
 - To test the rules, you must build a command and run it through the handler
 - The aggregate has no behavior; it's a data structure
 
-### After: move the logic into named methods on the aggregate
+### After: Named Methods on the Aggregate
 
 ```python
 --8<-- "patterns/encapsulate-state-changes/001.py:after"
@@ -200,7 +200,7 @@ aggregate.
 
 ---
 
-## What are the three responsibilities of an aggregate method?
+## The Three Responsibilities of an Aggregate Method
 
 Every state-changing method on an aggregate should do three things:
 
@@ -273,7 +273,7 @@ The `withdraw` method validates its own preconditions (positive amount). The
 invariant catches any state that violates the business rule, regardless of how
 it was reached. Together, they provide defense in depth.
 
-### How named methods work with event sourcing
+### Event Sourcing Integration
 
 For event-sourced aggregates, methods and events are even more tightly coupled.
 The method raises an event. The `@apply` handler then mutates state:
@@ -310,7 +310,7 @@ Inside that method, the aggregate groups its changes with `atomic_change`.
 
 ---
 
-## How commands map to methods
+## The Command-Method Connection
 
 Commands name the intent. Methods execute it. The command handler calls the
 method with the command's data.
@@ -347,7 +347,7 @@ business operation in different tenses: imperative (command), present
 
 ## Anti-Patterns
 
-### Don't give a setter a business name
+### Setter Methods Disguised as Business Methods
 
 ```python
 # fragment
@@ -388,7 +388,7 @@ changes, and different events. A generic `update_status` method merges these
 operations, so the code loses the ubiquitous language. Every change to one
 operation also means editing a method that the other operations share.
 
-### Keep business logic out of constructors
+### Business Logic in Constructors
 
 ```python
 # fragment
@@ -413,7 +413,7 @@ operations at creation time, use a class method or a separate `place()` /
 
 ---
 
-## Why are named methods easier to test?
+## Testing Benefits
 
 Encapsulated methods make domain logic directly testable without
 infrastructure:
@@ -430,14 +430,14 @@ check each business operation on its own.
 
 ## When Not to Use This Pattern
 
-### Skip the pattern for CRUD aggregates with no business rules
+### Simple CRUD Without Business Rules
 
 Some aggregates are data containers with no business rules: no state machine,
 no preconditions, no events. For such an aggregate, direct field assignment is
 acceptable. But this is rare in a DDD system. If most of your aggregates look
 like data bags, consider whether DDD is the right approach for your domain.
 
-### Let the framework set fields when it loads aggregates
+### Bulk Data Loading
 
 When hydrating aggregates from a database or event stream, the framework sets
 fields directly. This is internal framework behavior, not application-level

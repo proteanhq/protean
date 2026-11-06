@@ -1,10 +1,10 @@
-# Store projections in a cache
+# Caches
 
 The Cache port provides a key-value interface for storing and retrieving
 projection data. Caches are part of the read side of CQRS. They give fast
 access to the denormalized views that projectors build.
 
-## What does a cache adapter do?
+## Overview
 
 Protean's cache adapters store
 [Projection](../../../guides/consume-state/projections.md) instances keyed by
@@ -16,7 +16,7 @@ their identifier. The `BaseCache` interface provides:
 - **Check cache health**: Verify cache connectivity
 - **Clear the cache in bulk**: Flush all entries
 
-## Which caches can you use?
+## Available Caches
 
 ### Memory
 
@@ -38,7 +38,7 @@ support.
 - **Requires**: Redis server and the `redis` Python package
 - Full TTL support with millisecond precision
 
-## Declare caches in the domain configuration
+## Configuration
 
 Caches are configured in the `[caches]` section of your domain configuration:
 
@@ -54,7 +54,7 @@ URI = "redis://localhost:6379/2"
 TTL = 300  # Default TTL in seconds
 ```
 
-### Which options can you set?
+### Configuration Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -127,7 +127,7 @@ for the cache, you see that warning instead of getting a silent partial read.
 To page a large projection set, query the projection's repository
 (`repository_for(Projection).query`), which has indexes and native pagination.
 
-## Which methods does every cache adapter implement?
+## Interface
 
 All cache adapters implement these methods:
 
@@ -146,7 +146,7 @@ All cache adapters implement these methods:
 | `set_ttl(key, ttl)` | Set a TTL on a specific key. Does nothing if the key is absent, but still rejects an invalid TTL |
 | `get_ttl(key)` | Seconds remaining before a key expires; `None` if there is no such key, `math.inf` if it never expires. See below |
 
-### How are cache keys formed?
+### Key Format
 
 Cache keys follow the pattern `{projection_name}:::{identifier}`:
 
@@ -172,7 +172,7 @@ negation and escaping can differ, so keep patterns to the `name:::*` shape.
 4. **Monitor cache health**: Use `cache.ping()` in your health check
    endpoints.
 
-## Read more about caches and projections
+## Related pages
 
 - Learn about [Redis cache](./redis.md) for production use
 - Understand [projections](../../../guides/consume-state/projections.md)

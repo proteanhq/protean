@@ -1,4 +1,4 @@
-# Split generated wiring from hand-owned logic with a generation-gap seam (ADR-0035)
+# ADR-0035: Generation-gap seam between generated wiring and hand-owned logic
 
 **Status:** Accepted
 

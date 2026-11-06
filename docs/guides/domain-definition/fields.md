@@ -1,4 +1,4 @@
-# Declare fields on domain elements
+# Fields
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -243,7 +243,7 @@ columns that `HasMany` and `Reference` add automatically.
 | `ValidationError` | A custom `validators` callable raises it. The message from the validator is preserved. |
 | `ValidationError` | A `unique` field collides with an existing record at persistence time. |
 | `IncorrectUsageError` | A value object field is marked `unique=True` or `identifier=True`, value objects have no concept of identity. |
-| Silent mis-declaration | `from __future__ import annotations` is active and the annotation style is used, the `FieldSpec` is treated as a string. Use assignment style instead. See [Defining Fields](../../reference/fields/defining-fields.md#annotation-style-does-not-work-with-from-__future__-import-annotations). |
+| Silent mis-declaration | `from __future__ import annotations` is active and the annotation style is used, the `FieldSpec` is treated as a string. Use assignment style instead. See [Defining Fields](../../reference/fields/defining-fields.md#known-limitation-from-__future__-import-annotations). |
 
 ---
 

@@ -21,7 +21,7 @@ All commands accept a `--domain` option for the domain module path (defaults to
 the current directory). `list` and `inspect` also accept a `--json` flag for the
 shared CLI result envelope; `replay` and `purge` have no JSON output.
 
-## Which commands does the group have?
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -184,7 +184,7 @@ find no handler for the command, and the replay would report the position
 resolved without running anything. Protean does not yet have a handler-level
 idempotency declaration, so replay cannot refuse a non-idempotent target.
 
-### What does `EventStoreSubscription.replay_exhausted` return?
+### The replay return contract
 
 `EventStoreSubscription.replay_exhausted` is the method `replay` calls. It
 returns a `ReplayOutcome`:
@@ -225,7 +225,7 @@ protean eventstore dlq purge 42 --domain=my_domain --yes
 | `--handler` | Handler (its fqn or class name, as `list` prints it) when a position is exhausted in more than one | All handlers |
 | `--yes`, `-y` | Skip the confirmation prompt | `False` |
 
-## What does each exit code mean?
+## Exit codes
 
 | Code | Meaning |
 |------|---------|
@@ -233,7 +233,7 @@ protean eventstore dlq purge 42 --domain=my_domain --yes
 | `1` | Human mode (`--json` not set): the domain failed to load; `replay`/`purge` was not confirmed (Typer aborts, the same as every other `protean` command); or a `replay` that reopened the position (the handler failed again). |
 | `2` | Usage or environment error: unknown `--subscription` or `--handler`, unknown position, an event that can no longer be re-read, an expired command, a command with no registered handler, a position another command cleared while the prompt was open, or a position exhausted in more than one subscription with no `--handler` to choose one. Under `--json`, a domain that failed to load also exits `2` and emits the error envelope. |
 
-## Which errors can the commands report?
+## Error handling
 
 | Condition | Behavior |
 |-----------|----------|
@@ -269,7 +269,7 @@ For the full error-handling guide, see
 lifecycle details, see
 [Subscriptions](../../../concepts/async-processing/subscriptions.md).
 
-## How do the commands find the domain?
+## Domain discovery
 
 The `protean eventstore dlq` commands use the same domain discovery mechanism
 as other CLI commands. See [Domain Discovery](../project/discovery.md) for the

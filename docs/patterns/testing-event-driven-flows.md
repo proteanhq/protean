@@ -57,7 +57,7 @@ Test event-driven flows at three levels. Each level trades speed for realism.
 Most teams need all three levels. The middle level covers the majority of
 integration needs.
 
-### Level 1: Unit-test the domain logic
+### Level 1: Domain unit tests
 
 Test aggregates, value objects, and domain services directly. No handlers,
 no repositories, no event processing infrastructure.
@@ -73,7 +73,7 @@ that projections update.
 
 **Use for:** Business rules, invariants, state transitions, event payloads.
 
-### Level 2: Test the flow with sync processing
+### Level 2: Sync flow tests
 
 Set `event_processing = "sync"` in the domain configuration. With sync
 processing, event handlers and projectors fire **inline** during the Unit of
@@ -105,7 +105,7 @@ assert dashboard.status == "placed"
 event routing, projection correctness. Sync flow testing is your primary
 integration testing tool.
 
-### Level 3: Test end to end with the async engine
+### Level 3: Async E2E tests
 
 Use `Engine(domain, test_mode=True)` for tests that exercise the actual async
 processing infrastructure. The engine's `run()` method in test mode starts
@@ -175,7 +175,7 @@ The examples below use a consistent e-commerce domain: an `Order` aggregate
 that raises `OrderPlaced`, an `InventoryEventHandler` that reserves stock, and
 an `OrderDashboard` projection that tracks order status.
 
-### Set up the domain
+### Domain setup
 
 The domain is in `ecommerce/domain.py`. `InventoryEventHandler` belongs to
 `Inventory` but listens to the order stream, so it names that stream with
@@ -186,7 +186,7 @@ and never receive `OrderPlaced`.
 --8<-- "patterns/testing-event-driven-flows/ecommerce/domain.py:domain"
 ```
 
-### Define the test fixtures
+### Test fixtures
 
 A `tests/conftest.py` that initializes the domain with sync processing and
 provides a per-test context. `DomainFixture` resets the data after each test:
@@ -196,7 +196,7 @@ provides a per-test context. `DomainFixture` resets the data after each test:
 --8<-- "patterns/testing-event-driven-flows/conftest.py:fixtures"
 ```
 
-### Level 1: Unit-test the domain logic
+### Level 1: Domain unit tests
 
 Test the aggregate's business logic and event raising directly:
 
@@ -208,7 +208,7 @@ Test the aggregate's business logic and event raising directly:
 These tests run in microseconds. They verify that `Order.place()` produces
 the correct state and the correct event payload.
 
-### Level 2: Test the flow with sync processing
+### Level 2: Sync flow tests
 
 Test the full command-to-projection chain with sync processing:
 
@@ -221,7 +221,7 @@ These tests verify the **wiring**: commands reach handlers, events reach
 projectors, and projections reflect the correct state. They run at near
 unit-test speed because sync processing has no async overhead.
 
-### Level 3: Test end to end with the async engine
+### Level 3: Async E2E tests
 
 Test the async engine for scenarios that require the full infrastructure. The
 `async_events` fixture switches event processing to async for one test and

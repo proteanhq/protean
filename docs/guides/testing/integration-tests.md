@@ -18,7 +18,7 @@ definitions, but they swap in real adapters (PostgreSQL, Redis, etc.) via
 configuration overrides. Use pytest markers to
 keep them separate from your fast in-memory suite.
 
-## Configure the domain for real infrastructure
+## Configuring for Real Infrastructure
 
 The key difference from application tests is the domain configuration. Override
 your database, broker, or event store settings in a dedicated `conftest.py`
@@ -72,7 +72,7 @@ def domain_initialized():
     after each test. The same application code and domain elements are
     used, only the infrastructure changes.
 
-## Run the server in test mode
+## Using Server Test Mode
 
 For integration tests that exercise async message flows (event handlers,
 projectors, process managers), use the server's **test mode**. It processes
@@ -123,7 +123,7 @@ You can also invoke test mode from the CLI:
 protean server --domain=my_domain --test-mode
 ```
 
-See [Run the Server](../server/index.md#run-in-test-mode) for CLI details.
+See [Run the Server](../server/index.md#test-mode) for CLI details.
 
 ## Driving flows with `process_and_wait`
 
@@ -182,24 +182,24 @@ see an unmet expectation. An engine pass stops once nothing is left to process
 and takes at most about a second, so raise `max_cycles` only for flows that
 genuinely need more passes.
 
-## Write feature files for full flows
+## Full-Flow Feature Files
 
 Integration tests exercise complete flows from command to projection,
 verifying that every layer works together through real infrastructure.
 
-### Follow a command through to a projection
+### Command Through to Projection
 
 ```gherkin
 --8<-- "guides/testing/integration-tests/integration/features/order_flow.feature:feature"
 ```
 
-### Check that an aggregate survives a persistence round-trip
+### Persistence Round-Trip
 
 ```gherkin
 --8<-- "guides/testing/integration-tests/integration/features/persistence.feature"
 ```
 
-## Write step definitions for integration tests
+## Step Definitions for Integration Tests
 
 Step definitions are written the same way as in application tests. They import
 your domain and use `domain.process()` and `domain.repository_for()`:
@@ -216,7 +216,7 @@ The persistence feature's steps go in `tests/integration/test_persistence.py`:
 --8<-- "guides/testing/integration-tests/integration/test_persistence.py:steps"
 ```
 
-## Keep integration tests separate from fast tests
+## Separating Integration Tests
 
 Use Gherkin tags and pytest markers to separate integration tests from fast
 in-memory tests:
@@ -258,7 +258,7 @@ tests/
     └── test_persistence.py
 ```
 
-## Test with different adapters
+## Testing with Different Adapters
 
 !!!tip "Prefer `--protean-env` for adapter switching"
     Instead of writing per-directory `conftest.py` overrides, consider using
@@ -301,13 +301,13 @@ The integration feature files and step definitions then run unchanged against
 whichever adapter `TEST_DB` names. The domain logic is identical, only the
 infrastructure changes.
 
-## Clean up data after each test
+## Per-Test Data Cleanup
 
 `DomainFixture.domain_context()` automatically resets data in all providers,
 brokers, and the event store after each test. If you use the recommended
 `_ctx` fixture pattern above, **no additional cleanup fixture is needed**.
 
-## Report test coverage
+## Coverage Reporting
 
 Run your full test suite with coverage to check that you reach the 100% target
 on business logic:

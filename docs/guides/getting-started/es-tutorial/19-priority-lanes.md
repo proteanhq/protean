@@ -8,7 +8,7 @@ customers would wait behind millions of migration events.
 With **priority lanes**, Protean sends production traffic and bulk operations
 to separate streams, so the migration does not delay deposits and withdrawals.
 
-## Why does the migration slow down production?
+## The Problem
 
 Without priority lanes, the migration floods the event stream:
 
@@ -62,7 +62,7 @@ All commands within the `processing_priority(Priority.BULK)` context
 are routed to the backfill stream. Production traffic continues flowing
 through the primary stream at full speed.
 
-## Nest priority contexts
+## Nested Priorities
 
 Contexts nest. The priority of the innermost context applies:
 
@@ -71,7 +71,7 @@ Contexts nest. The priority of the innermost context applies:
 --8<-- "guides/getting-started/es-tutorial/ch19.py:nested_priorities"
 ```
 
-## Set the priority of one command
+## Per-Command Priority
 
 You can also set priority on individual commands:
 
@@ -123,7 +123,7 @@ That completes Part IV. The platform now has fact events, message tracing, DLQ
 management, monitoring, and priority lanes. In Part V, you learn to operate the
 complete system, starting with rebuilding projections in Chapter 20.
 
-## Read the full source
+## Full Source
 
 ??? example "ch19.py, 278 lines"
 
@@ -131,6 +131,6 @@ complete system, starting with rebuilding projections in Chapter 20.
     --8<-- "guides/getting-started/es-tutorial/ch19.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 20: Rebuilding the World →](20-rebuilding-projections.md)

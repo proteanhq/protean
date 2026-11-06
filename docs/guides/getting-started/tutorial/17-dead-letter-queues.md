@@ -50,7 +50,7 @@ Last failure: 2024-03-15 10:23:52
 
 Now we can see the issue: the handler assumes `isbn` is always present.
 
-## Fix and replay the failed messages
+## The Fix-and-Replay Cycle
 
 1. **Fix the bug**: Change the handler to store an empty string when `isbn` is
    `None`:
@@ -85,7 +85,7 @@ $ protean dlq purge --domain bookshelf
 Purged 0 messages from DLQ.
 ```
 
-## Configure the DLQ
+## DLQ Configuration
 
 The DLQ behavior is configured in `domain.toml`:
 
@@ -112,6 +112,6 @@ enable_dlq = true
 The next chapter adds monitoring. With monitoring, the team sees problems
 before customers report them.
 
-## Continue to the next chapter
+## Next
 
 [Chapter 18: Monitoring Subscription Health →](18-monitoring.md)

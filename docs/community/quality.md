@@ -1,4 +1,4 @@
-# How Protean measures its quality
+# Quality Report
 
 Protean is built with a strong emphasis on code quality, test coverage,
 and long-term maintainability. This page documents the engineering
@@ -6,7 +6,7 @@ practices and metrics behind the framework.
 
 ---
 
-## What are the headline numbers?
+## At a Glance
 
 | Metric | Value |
 |---|---|
@@ -23,7 +23,7 @@ practices and metrics behind the framework.
 
 ---
 
-## What does the test suite cover?
+## Test Suite
 
 Protean has a comprehensive test suite covering domain logic, application
 services, infrastructure adapters, and integration scenarios. The current
@@ -41,7 +41,7 @@ other page states an exact count. The counts change with every PR, so the test
 does not check their values. It checks that the counts have only **one place to
 change**.
 
-### How do the tests break down by kind?
+### Test Breakdown
 
 | Metric | Count |
 |---|---|
@@ -51,7 +51,7 @@ change**.
 | Pytest Fixtures | 1,461 |
 | Parametrized Tests | 543 |
 
-### How many tests need real infrastructure?
+### Core vs. Integration
 
 | Category | Tests | Share |
 |---|---|---|
@@ -64,7 +64,7 @@ real databases and message brokers. A test counts as an integration test
 when it carries one of the backing-service markers listed in
 `scripts/metrics.py`, the same markers as the table below.
 
-### Which backing services do the integration tests use?
+### Infrastructure Coverage
 
 Every merge to `main` is tested against real backing services:
 
@@ -87,9 +87,9 @@ results to [Codecov](https://codecov.io/gh/proteanhq/protean).
 
 ---
 
-## How is code quality checked?
+## Code Quality
 
-### Lint and format the code with Ruff
+### Linting
 
 Protean uses [Ruff](https://docs.astral.sh/ruff/) for both linting and
 formatting. The codebase has **zero linting violations**. Pre-commit
@@ -98,7 +98,7 @@ hooks enforce this on every commit:
 - `ruff check --fix` (linting with auto-fix)
 - `ruff format` (consistent formatting)
 
-### Measure cyclomatic complexity with Radon
+### Cyclomatic Complexity
 
 Measured with [Radon](https://radon.readthedocs.io/):
 
@@ -111,7 +111,7 @@ Measured with [Radon](https://radon.readthedocs.io/):
 An average complexity under 5 indicates straightforward, easy-to-follow
 code paths throughout the framework.
 
-### Limit cognitive complexity with complexipy
+### Cognitive Complexity
 
 Cognitive complexity measures how hard a function is to read. It counts
 branches and loops, and charges more for each level of nesting.
@@ -138,7 +138,7 @@ The check counts a function marked `# noqa: complexipy` or `# complexipy:
 ignore` like any other. When a function fails the check, split it along what it
 does. Leave the limit and the snapshot as they are.
 
-### How maintainable are the source files?
+### Maintainability Index
 
 | Rank | Files | Share |
 |---|---|---|
@@ -152,9 +152,9 @@ does. Leave the limit and the snapshot as they are.
 
 ---
 
-## How is the codebase organized?
+## Codebase Structure
 
-### How large is the codebase?
+### Size
 
 | Area | Python Files | Lines of Code | Documentation Lines |
 |---|---|---|---|
@@ -162,7 +162,7 @@ does. Leave the limit and the snapshot as they are.
 | Tests (`tests/`) | 810 | 145,248 | 13,505 |
 | **Total** | **963** | **193,595** | **19,412** |
 
-### Which packages make up the source?
+### Architecture
 
 Protean's source is organized into 10 top-level packages:
 
@@ -179,7 +179,7 @@ Protean's source is organized into 10 top-level packages:
 | `utils/` | Shared utilities (outbox, eventing, mixins) |
 | `template/` | Project scaffolding templates |
 
-### How many domain elements and adapters does Protean have?
+### Domain Elements and Adapters
 
 | Category | Count |
 |---|---|
@@ -189,9 +189,9 @@ Protean's source is organized into 10 top-level packages:
 
 ---
 
-## What does the CI/CD pipeline run?
+## CI/CD Pipeline
 
-### Which Python versions and services does CI test against?
+### Test Matrix
 
 Protean tests across five Python versions and seven backing services, split
 between per-PR CI and a nightly run:
@@ -214,7 +214,7 @@ versions. A merge needs the tests to pass on every stable version. While 3.15
 is a prerelease, the 3.15 prerelease leg runs nightly as an early-warning check
 that does not block a merge.
 
-### Which checks does each pull request run?
+### Pipeline Steps
 
 Each pull request runs these gates, all in CI so none can be bypassed by a
 missing pre-commit hook, a `--no-verify`, or a web edit:
@@ -237,7 +237,7 @@ missing pre-commit hook, a `--no-verify`, or a web edit:
 
 Documentation is deployed on merge to `main`.
 
-### How are the docs built and deployed?
+### Documentation
 
 Documentation is built with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/)
 and automatically deployed to [docs.proteanhq.com](https://docs.proteanhq.com)
@@ -245,7 +245,7 @@ on every merge to `main`.
 
 ---
 
-## What does Protean depend on?
+## Dependencies
 
 Protean keeps its list of dependencies short:
 
@@ -268,7 +268,7 @@ pip install protean[elasticsearch] # Adds the elasticsearch client
 
 ---
 
-## How old and active is the project?
+## Project History
 
 | Metric | Value |
 |---|---|
@@ -282,7 +282,7 @@ pip install protean[elasticsearch] # Adds the elasticsearch client
 
 ---
 
-## Which tools does the project use?
+## Tools and Practices
 
 | Practice | Tool |
 |---|---|

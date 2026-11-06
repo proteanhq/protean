@@ -189,7 +189,7 @@ map it to a local field or ignore it. No new event type to handle. The
 subscriber cannot miss a new event type and leave its local copy out of date
 without any error.
 
-### Serve multiple external consumers from one stream
+### Multiple external consumers
 
 The fact event stream can serve any number of consuming domains. Each extracts
 only the fields it needs:

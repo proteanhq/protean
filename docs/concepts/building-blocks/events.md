@@ -76,7 +76,7 @@ When bounded contexts communicate through events, you need no two-phase commits
 (global transactions) across them. Each transaction then performs better on its
 own.
 
-## What does an event carry?
+## Structure
 
 ### Events have **metadata**. { data-toc-label="Metadata" }
 Protean adds metadata such as timestamps, unique event identifiers, and version
@@ -101,12 +101,12 @@ Events are written to and read from streams. Review the section on
 [Streams](../foundations/streams.md) for a detailed explanation of how streams
 work.
 
-## What types of events are there?
+## Event Types
 
 Events are categorized into two different types based on their purpose and the
 kind of information they carry.
 
-### Delta events record what changed
+### Delta Events
 
 Delta events capture incremental changes that have occurred in the state of
 an aggregate. They provide detailed information about the specific
@@ -122,12 +122,12 @@ notifying external consumers of selected events, like `LowInventoryAlert`. They
 are also appropriate for composing a custom projection of the state based on
 events (for example in Command Query Resource Separation).
 
-#### An aggregate emits several delta event types
+#### Multiple Event Types
 
 Aggregates usually emit events of multiple delta event types. Each event
 is individually associated with the aggregate.
 
-### Fact events carry the full state
+### Fact Events
 
 A fact event encloses the entire state of the aggregate at that specific point
 in time. It contains all of the attributes and values necessary to completely
@@ -143,7 +143,7 @@ data schemas evolve and change over time. Instead, they rely on the owning
 service to compute and produce a fully detailed fact event.
 
 
-## How are events stored and consumed?
+## Persistence
 
 ### Events are stored in an Event Store. { data-toc-label="Event Store" }
 Events are often persisted in an Event Store, which acts as an append-only
@@ -171,7 +171,7 @@ sender because the sender's state could have already mutated.
 
 ---
 
-## What to read next
+## Next steps
 
 For practical details on defining, raising and consuming events in Protean, see
 the guides:

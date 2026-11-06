@@ -111,7 +111,7 @@ to observe. On that adapter the list is empty. Guard on that: on a real backend
 an empty capture means the hook never fired, so assert the list is non-empty
 before trusting an ordering check.
 
-## Which engine do the assertions observe?
+## Engine resolution
 
 By default the engine is resolved from the active domain's **default**
 provider. For tests that set up their own domain or target a non-default

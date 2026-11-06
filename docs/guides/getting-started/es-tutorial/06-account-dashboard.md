@@ -1,4 +1,4 @@
-# Chapter 6: Build the account dashboard
+# Chapter 6: The Account Dashboard
 
 The product team needs a customer-facing dashboard showing account summaries,
 current balance, transaction count, last activity. Reading this from the event
@@ -6,7 +6,7 @@ store by replaying events every time is not practical. You build a
 **projection** (a denormalized, read-optimized view) and a **projector**. The
 projector keeps the projection up to date automatically as events occur.
 
-## How does the write model differ from the read model?
+## The Write Model vs. Read Model
 
 Our `Account` aggregate is the **write model**. It enforces business rules and
 records events. But to query the aggregate, the repository must replay its
@@ -74,7 +74,7 @@ Dashboard:
 The projection was updated automatically by the projector as events
 flowed through the system.
 
-## Review what you built
+## What We Built
 
 - An **AccountSummary** projection. A flat, query-optimized read model.
 - An **AccountSummaryProjector** that listens to account events and
@@ -89,7 +89,7 @@ In the next chapter, we will add event handlers for side effects like
 compliance alerts and notifications. Reactions that do not update a projection
 but trigger external actions.
 
-## Read the full source
+## Full Source
 
 ??? example "ch06.py, 284 lines"
 
@@ -97,6 +97,6 @@ but trigger external actions.
     --8<-- "guides/getting-started/es-tutorial/ch06.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 7: Reacting to Events →](07-reacting-to-events.md)

@@ -19,7 +19,7 @@ Command Handlers are defined with the `Domain.command_handler` decorator:
 --8<-- "guides/change-state/007.py:full"
 ```
 
-### Set options on the decorator
+### Decorator options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -58,7 +58,7 @@ looks up the `@handle`-decorated method that matches the command's type and
 invokes it. You never need to wire this routing manually. It is all derived
 from the `part_of` associations on the command and command handler.
 
-### How a command handler gets its stream category {#stream-category}
+### Stream Category {#stream-category}
 
 Command handlers automatically subscribe to commands in their associated
 aggregate's [stream
@@ -110,11 +110,11 @@ Learn more about stream categories and message routing in the [Stream Categories
     1. **Command Handler Persists Aggregate**: The handler persists the modified
     aggregate back to the repository, committing changes within the Unit of Work.
 
-## Get a return value from a command handler
+## Return Values from Command Handlers
 
 Command handlers can optionally return values to the caller when processed synchronously. This behavior is determined by how the command is processed by the domain.
 
-### Get the return value with synchronous processing
+### Synchronous Processing
 
 When commands are processed synchronously, the command handler's return value is passed back to the caller. This is useful for:
 
@@ -198,7 +198,7 @@ For details on how the Unit of Work pattern works, see the
     to perform the business process, but should never persist more than one at
     a time. Sync the other aggregates eventually through domain events.
 
-## Handle errors in command handlers
+## Error Handling
 
 Error handling differs between synchronous and asynchronous command processing:
 
@@ -221,7 +221,7 @@ You can define a `handle_error` class method in your command handler to handle e
 --8<-- "guides/change-state/command-handlers/003.py:handler"
 ```
 
-### How `handle_error` works
+### How It Works
 
 1. When an exception occurs in a command handler method, the Protean Engine catches it.
 2. The engine logs detailed error information including stack traces.
@@ -249,7 +249,7 @@ def handle_error(cls, exc: Exception, message):
         # The engine will continue processing regardless
 ```
 
-### How should you write an error handler?
+### Best Practices
 
 1. Keep error handlers simple, with no logic that might itself fail.
 2. Use error handlers for logging, notification, and simple recovery.

@@ -2,7 +2,7 @@
 
 The Redis Stream broker uses Redis Streams to provide durable, ordered message streaming with consumer group support. It's ideal for production environments requiring reliable message delivery.
 
-## What does the Redis Stream broker offer?
+## Overview
 
 Redis 5.0 added Redis Streams, an append-only log data structure built for
 message streaming. The Redis broker uses these features to offer:
@@ -13,7 +13,7 @@ message streaming. The Redis broker uses these features to offer:
 - **Ordered message processing** within streams
 - **Automatic reconnection** and connection pooling
 
-## Install the Redis broker
+## Installation
 
 The Redis broker requires the `redis` Python package:
 
@@ -25,7 +25,7 @@ pip install "protean[redis]"
 pip install "redis>=8.0.0,<8.2.0"
 ```
 
-## Configure the Redis broker
+## Configuration
 
 ```toml
 [brokers.default]
@@ -37,7 +37,7 @@ max_connections = 10
 socket_timeout = 5
 ```
 
-### Which options does the Redis broker take?
+### Configuration Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -64,7 +64,7 @@ redis://:password@redis.example.com:6379/1  # With password
 redis://username:password@redis.example.com:6379  # With username and password
 ```
 
-## Publish, read and acknowledge a message
+## Usage
 
 The broker maps each operation to a Redis Streams command. This example needs
 a running Redis server:
@@ -76,7 +76,7 @@ a running Redis server:
 
 `ack` returns `True`, and the next `get_next` for the group returns `None`.
 
-## Which capabilities does the Redis Stream broker provide?
+## Capabilities
 
 The Redis Stream broker provides the following capabilities:
 
@@ -107,9 +107,9 @@ This includes:
   [Stream retention](../../server/subscription-types.md#stream-retention) for the
   full caveats.
 
-## Monitor and debug the Redis broker
+## Monitoring and Debugging
 
-### Inspect streams with the Redis CLI
+### Redis CLI Commands
 
 Useful Redis commands for debugging:
 
@@ -133,14 +133,14 @@ redis-cli XRANGE user-events - + COUNT 10
 redis-cli MONITOR
 ```
 
-### Which loggers does the Redis broker write to?
+### Logging
 
 The broker logs through the `protean.adapters.broker.redis` logger. The Redis
 client logs through the `redis` logger. When you troubleshoot, set either
 logger to `DEBUG` with the standard `logging` module.
 
-## Where do you go next?
+## Related pages
 
 - Explore [Redis PubSub broker](./redis-pubsub.md) for simpler use cases
-- Learn about [broker capabilities](./index.md#what-can-each-broker-do) in detail
+- Learn about [broker capabilities](./index.md#broker-capabilities) in detail
 - Understand [custom broker development](./custom-brokers.md)

@@ -29,7 +29,7 @@ Each handler method is responsible for handling a single type of command. With
 one command type per method, you keep the command handling logic focused and
 manageable.
 
-### Handlers should change only the associated aggregate. { data-toc-label="Single Aggregate" }
+### Handlers should deal only with the associated aggregate. { data-toc-label="Single Aggregate" }
 
 Methods in a command handler should only deal with managing the lifecycle of
 the aggregate associated with it. Any state change beyond an aggregate's
@@ -77,7 +77,7 @@ Synchronous command handling is the norm because it preserves data integrity.
 For performance reasons, you can configure the domain to handle commands
 asynchronously.
 
-## Follow these best practices
+## Best Practices
 
 ### Ensure idempotency. { data-toc-label="Idempotency" }
 
@@ -105,7 +105,7 @@ of the caller.
 
 ---
 
-## Where should you go next?
+## Next steps
 
 For practical details on defining and using command handlers in Protean, see the guide:
 

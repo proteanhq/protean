@@ -16,7 +16,7 @@ SARIF consumers: renaming or removing one is a breaking change.
 tool emits the codes from that module, so the codes on this page match its
 output.
 
-## How severe is a finding?
+## Severity levels
 
 | Level | Meaning |
 |-------|---------|
@@ -694,7 +694,7 @@ break at the removal version.
 
 ---
 
-## How do custom rules report findings?
+## Custom rules
 
 Rules loaded through `[lint].rules` emit findings under the `custom` category by
 default. See

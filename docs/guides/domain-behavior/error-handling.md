@@ -27,7 +27,7 @@ through the application layers:
 
 ## Raising errors in aggregates
 
-### Raise errors from invariants
+### From invariants
 
 Invariants raise `ValidationError` when business rules are violated.
 The error dict uses `"_entity"` as the key for aggregate-level errors:
@@ -36,7 +36,7 @@ The error dict uses `"_entity"` as the key for aggregate-level errors:
 --8<-- "guides/domain-behavior/error-handling/001.py:invariant"
 ```
 
-### Raise errors from domain methods
+### From domain methods
 
 Use `InvalidStateError` or `InvalidOperationError` for explicit
 business logic checks:
@@ -47,7 +47,7 @@ business logic checks:
 
 ---
 
-## Let errors propagate through the layers
+## Error propagation through layers
 
 Protean exceptions propagate naturally, don't catch them in handlers or
 services unless you need to translate them:
@@ -61,7 +61,7 @@ Aggregate method
                           └── mapped to HTTP response by exception handler
 ```
 
-### Let errors propagate from command handlers
+### In command handlers
 
 Let exceptions propagate. Don't wrap them:
 
@@ -69,7 +69,7 @@ Let exceptions propagate. Don't wrap them:
 --8<-- "guides/domain-behavior/error-handling/003.py:handler"
 ```
 
-### Let errors propagate from application services
+### In application services
 
 Same principle, let domain exceptions propagate to the caller:
 
@@ -79,7 +79,7 @@ Same principle, let domain exceptions propagate to the caller:
 
 ---
 
-## Know what each repository method raises
+## Repository errors
 
 | Method | Raises | When |
 |--------|--------|------|
@@ -98,7 +98,7 @@ an error, use `repo.get()`:
 
 ---
 
-## Know what the Unit of Work raises on commit
+## Unit of Work errors
 
 Transaction failures during `UnitOfWork.commit()` raise:
 

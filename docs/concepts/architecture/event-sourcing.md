@@ -1,10 +1,10 @@
-# How event sourcing works in Protean
+# Event Sourcing
 
 Event Sourcing is a pattern where the state of a system is derived by replaying
 a sequence of events, allowing complete reconstruction and auditing of past
 states.
 
-# Which elements take part in event sourcing?
+# Elements
 
 | Element | Layer | Purpose  |
 | ------- | ----- | -------  |
@@ -18,7 +18,7 @@ states.
 | Event Store | Infrastructure | A specialized storage system that captures and persists all domain events, allowing the reconstruction of aggregate states and enabling event sourcing patterns. |
 
 
-## How a request flows through an event-sourced system
+## Workflow
 
 ![Event Sourcing](../../images/es-workflow.jpg)
 

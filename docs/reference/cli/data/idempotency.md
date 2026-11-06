@@ -10,7 +10,7 @@ no longer needed.
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Which commands does the group provide?
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -53,7 +53,7 @@ When no projector opts into idempotency, or nothing is old enough to prune:
 No idempotency markers to clean up.
 ```
 
-## Set the cleanup defaults
+## Configuration
 
 You set the defaults in the `[consume_idempotency.cleanup]` section of
 `domain.toml`:
@@ -67,7 +67,7 @@ batch_size = 5000       # Rows deleted per bounded batch
 Deletes run in bounded batches of `batch_size` rows rather than one large
 `DELETE`, so a backlog of millions of markers clears without holding a long lock.
 
-## How the commands find your domain
+## Domain Discovery
 
 The `protean idempotency` commands use the same domain discovery mechanism as
 other CLI commands. See [Domain Discovery](../project/discovery.md) for the

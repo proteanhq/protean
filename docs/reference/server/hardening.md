@@ -1,15 +1,15 @@
-# Look up server hardening settings
+# Server Hardening Reference
 
 Every option, default, and metric for server hardening: pool tuning, health
 probes, DLQ policy, subscription profiles, OpenTelemetry metrics, shutdown, and
 optimistic locking. For an operational walkthrough that uses these settings
 together, see the [Server Hardening guide](../../guides/server/hardening.md).
 For the `--reload` development flag, see [Run the
-Server](../../guides/server/index.md#reload-on-code-changes-during-development).
+Server](../../guides/server/index.md#hot-reload-in-development).
 
-## Tune connection pools
+## Connection pools
 
-### Tune SQLAlchemy provider pools
+### SQLAlchemy providers
 
 Pool defaults for the `postgresql`, `mssql` and `mysql` providers (SQLite uses
 `SingletonThreadPool` and ignores these keys).
@@ -24,7 +24,7 @@ Pool defaults for the `postgresql`, `mssql` and `mysql` providers (SQLite uses
 --8<-- "reference/server/hardening/database_pool.toml"
 ```
 
-### Tune Redis broker and cache pools
+### Redis broker and cache
 
 Both adapters forward pool parameters to `redis.ConnectionPool`.
 
@@ -35,7 +35,7 @@ Both adapters forward pool parameters to `redis.ConnectionPool`.
 | `socket_connect_timeout` | Connection timeout, seconds |
 | `retry_on_timeout` | Retry reads that time out |
 
-### Set the MessageDB event store pool size
+### MessageDB event store
 
 Forward `max_connections` directly through `conn_info`.
 
@@ -70,7 +70,7 @@ silence the warning.
 | `port` | `8080` | Listen port |
 | `port_auto_increment` | `false` | Try `8081`, `8082`, ... when `port` is taken, so engines can share a host |
 
-### Which endpoints does the engine serve?
+### Engine endpoints
 
 | Path | Probe | Response |
 |------|-------|----------|
@@ -376,7 +376,7 @@ server. The `/healthz` and `/livez` bodies differ. The FastAPI router returns
 `{"status": "ok", "checks": {"application": "running"}}`, since the request
 cycle has no event-loop task that the router could probe.
 
-## Set the dead-letter queue policy
+## Dead-letter queue policy
 
 ### `[server.dlq]`
 
@@ -394,7 +394,7 @@ The alert callback is invoked with keyword arguments:
 --8<-- "reference/server/hardening/001.py:alert_callback"
 ```
 
-### Override DLQ settings for one subscription
+### Per-subscription overrides
 
 Fields on `SubscriptionConfig` that override the global defaults for
 a single subscription:
@@ -413,13 +413,13 @@ The maintenance task runs only when the configured broker advertises the
 `DEAD_LETTER_QUEUE` capability. Redis Streams implements time-based trimming
 via `XTRIM MINID`. Other brokers fall back to a no-op `dlq_trim()`.
 
-## Pick a subscription profile
+## Subscription profiles
 
 Five profiles (`PRODUCTION`, `FAST`, `BATCH`, `DEBUG`, `PROJECTION`) resolve at
 engine startup to concrete `SubscriptionConfig` values. For the full
 per-profile value dictionaries (`messages_per_tick`, `blocking_timeout_ms`,
 `max_retries`, `enable_dlq`, etc.), see [Subscription Configuration → Profile
-Defaults](./configuration.md#what-does-each-profile-set).
+Defaults](./configuration.md#profile-defaults).
 
 `SubscriptionConfig` fields resolvable at every precedence level:
 
@@ -442,7 +442,7 @@ Defaults](./configuration.md#what-does-each-profile-set).
 See [Subscription Configuration](./configuration.md) for the full
 precedence hierarchy.
 
-## Pause reads with the circuit breaker
+## Circuit breaker
 
 Every `StreamSubscription` carries an in-memory circuit breaker. The breaker
 pauses reads after repeated handler failures, so a failing downstream service
@@ -483,14 +483,14 @@ counter (see below). It also emits a trace event:
 `subscription.circuit_breaker.opened`, `subscription.circuit_breaker.closed`,
 or `subscription.circuit_breaker.half_open`.
 
-## Read the OpenTelemetry metrics
+## OpenTelemetry metrics
 
 Every metric below is registered on `DomainMetrics`. Each one is emitted as a
 no-op when `opentelemetry-api` is not installed. For the exporter and
 propagation setup, see [OpenTelemetry
 Integration](../../guides/server/opentelemetry.md).
 
-### Track each subscription with counters and histograms
+### Per-subscription counters and histograms
 
 Emitted directly by the engine.
 
@@ -502,7 +502,7 @@ Emitted directly by the engine.
 | `protean.subscription.circuit_breaker.state` | Counter | `{transition}` | `subscription`, `handler`, `state` (`opened`/`closed`/`half_open`) |
 | `protean.subscription.processing_duration` | Histogram | `s` | `subscription`, `handler`, `stream` |
 
-### Watch the engine with gauges
+### Engine gauges
 
 Emitted directly by the engine.
 
@@ -512,7 +512,7 @@ Emitted directly by the engine.
 | `protean.engine.uptime_seconds` | Observable gauge | `s` | Seconds since the engine started |
 | `protean.engine.active_subscriptions` | Observable gauge | `{subscription}` | Current count of live subscriptions |
 
-### Count DLQ maintenance work
+### DLQ maintenance counters
 
 Emitted by `DLQMaintenanceTask`.
 
@@ -541,7 +541,7 @@ endpoint. See [Observability](./observability.md).
 checked_in}`. SQLAlchemy providers return live counts. Memory and Elasticsearch
 providers return an empty dict.
 
-## How does the engine shut down?
+## Shutdown sequence
 
 `Engine.shutdown()` runs these steps on `SIGINT`, `SIGTERM`, or
 `SIGHUP`:
@@ -639,7 +639,7 @@ claim the entries of consumers that are still running. So does anything that is
 not a finite number. A failed claim is logged as a warning and does not stop
 the subscription from starting.
 
-## Detect conflicting writes with optimistic locking
+## Optimistic locking
 
 `ExpectedVersionError` is raised when two writers race for the same aggregate
 version. Each adapter makes the version check atomic in its own way:
@@ -653,4 +653,4 @@ version. Each adapter makes the version check atomic in its own way:
 | MessageDB event store | Stored-procedure API enforces expected version inside PostgreSQL |
 
 Command handlers auto-retry on `ExpectedVersionError`; see
-[Error Handling](../../guides/server/error-handling.md#retry-version-conflicts-automatically).
+[Error Handling](../../guides/server/error-handling.md#version-conflict-auto-retry).

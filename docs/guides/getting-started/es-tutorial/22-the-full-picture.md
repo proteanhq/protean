@@ -1,11 +1,11 @@
-# Chapter 22: Review the whole platform
+# Chapter 22: The Full Picture
 
 You have built a complete digital banking platform, starting from an empty
 project. In this final chapter, we step back and survey the full architecture,
 add a multi-aggregate projection, present the complete production
 configuration, and review every tool at our disposal.
 
-## Combine events from two aggregates in one projection
+## A Multi-Aggregate Projection
 
 So far, our projections consumed events from a single aggregate. But
 what about an **activity feed** that combines account transactions
@@ -25,7 +25,7 @@ The key difference is **`aggregates=[Account, Transfer]`**: this projector
 subscribes to events from both aggregates and combines them into a single
 projection.
 
-## Configure the platform for production
+## The Complete Production Configuration
 
 ```toml
 # domain.toml (production)
@@ -95,7 +95,7 @@ This configuration uses:
 | `protean dlq purge --subscription=<name>` | Purge DLQ messages |
 | `protean subscriptions status` | Monitor subscription health |
 
-## How do the parts of the platform connect?
+## Architecture Overview
 
 ```
                          ┌──────────────┐
@@ -149,35 +149,35 @@ This configuration uses:
 
 ## What We Built Across 22 Chapters
 
-### Model the domain (Part I)
+### Domain Modeling (Part I)
 - Event-sourced aggregates with `@apply` handlers
 - Domain methods that validate and raise events
 - Commands as typed DTOs for external contracts
 - Post-invariants for business rule enforcement
 - Fluent testing DSL for comprehensive coverage
 
-### Grow the platform (Part II)
+### Growing the Platform (Part II)
 - Projections as read-optimized views
 - Event handlers for side effects
 - Async processing with Redis and StreamSubscription
 - Process managers for cross-aggregate coordination
 - Child entities inside aggregates
 
-### Evolve the domain over time (Part III)
+### Evolution (Part III)
 - Event upcasting for schema evolution
 - Snapshots for high-volume aggregate performance
 - Temporal queries for historical state reconstruction
 - Subscribers as anti-corruption layers
 - Message enrichment for cross-cutting metadata
 
-### Run the platform in production (Part IV)
+### Production Operations (Part IV)
 - Fact events for reporting pipelines
 - Correlation and causation tracing for auditing
 - Dead-letter queue management for failure recovery
 - Observatory and Prometheus for monitoring
 - Priority lanes for migration isolation
 
-### Rebuild, query and configure the platform (Part V)
+### Mastery (Part V)
 - Projection rebuilding from event history
 - Event store exploration and querying
 - Multi-aggregate projections
@@ -198,7 +198,7 @@ This configuration uses:
 - **[Testing](../../testing/event-sourcing-tests.md)**: Advanced
   testing patterns for event-sourced systems
 
-## Read the full source
+## Full Source
 
 ??? example "ch22.py, 666 lines"
 

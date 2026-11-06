@@ -62,7 +62,7 @@ that slip through one layer are caught by the next.
 
 ---
 
-## Layer 1: Field constraints check each value
+## Layer 1: Field Constraints
 
 **What it validates:** Data types, formats, ranges, required-ness, and
 choices at the individual field level.
@@ -96,7 +96,7 @@ in the field definition, and enforced automatically by Protean.
 
 ---
 
-## Layer 2: Value objects check their own rules
+## Layer 2: Value Object Invariants
 
 **What it validates:** Rules intrinsic to a domain concept, format patterns,
 internal consistency, and constraints that define what makes a concept valid.
@@ -131,7 +131,7 @@ it.
 
 ---
 
-## Layer 3: Aggregate invariants enforce business rules
+## Layer 3: Aggregate Invariants
 
 **What it validates:** Business rules that depend on the aggregate's state,
 cross-field consistency, state machine rules, and domain-specific constraints.
@@ -164,7 +164,7 @@ or a reservation enforceable.
 
 ---
 
-## Layer 4: Handlers and services check the operation's context
+## Layer 4: Handler and Service Guards
 
 **What it validates:** Contextual rules that depend on the current operation,
 the caller's identity, external state, or cross-aggregate conditions.
@@ -194,7 +194,7 @@ service.
 
 ---
 
-## Commands validate their own fields
+## Command Validation
 
 Commands validate their own fields at Layer 1. This check confirms the data
 structure is correct before it reaches the handler:
@@ -213,7 +213,7 @@ is a handler concern.
 
 ---
 
-## Follow one order through the layers
+## The Layers in Action
 
 Consider a complete flow for placing an order with the `PlaceOrder` command
 above:
@@ -248,7 +248,7 @@ of the processing pipeline.
 
 ## Anti-Patterns
 
-### Don't put business rules in field validators
+### Business Rules in Field Validators
 
 ```python
 # fragment
@@ -265,7 +265,7 @@ business rule layer. Use an invariant instead:
 --8<-- "patterns/validation-layering/004.py:discount_policy"
 ```
 
-### Don't duplicate validation across layers
+### Duplicating Validation Across Layers
 
 ```python
 # fragment
@@ -295,7 +295,7 @@ The `Email` value object already validates format. The aggregate invariant
 duplicates the check. Each layer should validate what the previous layers
 don't cover.
 
-### Don't put authorization in aggregate invariants
+### Authorization in Aggregate Invariants
 
 ```python
 # fragment
@@ -315,7 +315,7 @@ the handler's responsibility (Layer 4). The aggregate should validate the
 domain rule: "discount cannot exceed 50%." The handler validates the
 authorization rule: "only admins can set discounts above 20%."
 
-### Don't put all validation in the handler
+### All Validation in the Handler
 
 ```python
 # fragment

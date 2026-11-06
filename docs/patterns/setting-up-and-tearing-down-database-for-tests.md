@@ -124,7 +124,7 @@ The recipes below show how to apply `DomainFixture` to various scenarios.
 
 ## Applying the Pattern
 
-### Recipe 1: Test with in-memory adapters only
+### Recipe 1: In-Memory Only
 
 The simplest configuration. No schema management is needed because in-memory adapters have no persistent schema. In `tests/conftest.py`:
 
@@ -147,7 +147,7 @@ test fails:
 
 ---
 
-### Recipe 2: Test against one real database
+### Recipe 2: Single Real Database
 
 When you test against PostgreSQL, SQLite, or Elasticsearch, `DomainFixture`
 creates and drops the schema automatically. In `tests/conftest.py`:
@@ -192,7 +192,7 @@ tables.
 
 ---
 
-### Recipe 3: Switch between in-memory and real databases
+### Recipe 3: Switch Between In-Memory and Real Database
 
 !!! tip "Prefer `--protean-env` for whole-suite switching"
     If you want to switch **all** adapters between in-memory and real
@@ -233,7 +233,7 @@ TEST_DB=sqlite pytest tests/
 
 ---
 
-### Recipe 4: Test against full infrastructure (database + broker + event store)
+### Recipe 4: Full Infrastructure (Database + Broker + Event Store)
 
 Production systems often use a real database, a message broker, and an event
 store. `DomainFixture` sets up and resets all three automatically. In
@@ -296,7 +296,7 @@ TEST_INFRA=full \
 
 ---
 
-### Recipe 5: Keep unit and integration fixtures apart
+### Recipe 5: Separate Unit and Integration Fixtures
 
 For larger projects, separate `conftest.py` files allow unit tests to run with in-memory
 adapters while integration tests use real infrastructure, without environment
@@ -371,7 +371,7 @@ the integration tests keep the integration fixture's database setting.
 
 ## Common Anti-Patterns
 
-### Skipping the data reset
+### No Data Reset
 
 ```python
 # fragment

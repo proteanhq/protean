@@ -1,11 +1,11 @@
-# Pick a database provider for your domain
+# Database Providers
 
 Database providers abstract the underlying persistence technology, allowing
 Protean to support various databases without changing domain or application
 logic. Each provider implements the `BaseProvider` interface. Each provider
 also declares the capabilities it supports.
 
-## How the database port works
+## Overview
 
 The Database port in Protean provides a unified interface for different
 database technologies. Each provider adapter implements this interface while
@@ -14,7 +14,7 @@ exposing the unique features of its underlying technology. Protean ships a
 develop and test your entire domain model without running any external
 services.
 
-## Which providers ship with Protean?
+## Available Providers
 
 ### Memory
 
@@ -89,7 +89,7 @@ for document store operations.
 
 [Elasticsearch provider reference](./elasticsearch.md)
 
-## Configure a provider
+## Configuration
 
 Providers are configured in your domain configuration file (`domain.toml` or
 `.domain.toml`):
@@ -120,14 +120,14 @@ Each database configuration must specify:
     You must define a `default` database in your configuration. This database
     will be used for all aggregates unless a specific database is requested.
 
-## How providers declare capabilities
+## Database Capabilities
 
 Providers declare their capabilities through a flag-based system. Broker
 capabilities form hierarchical tiers, but database capabilities are
 **orthogonal**: each provider declares any subset of capabilities it supports.
 You can combine individual flags freely.
 
-### Which capability flags can a provider declare?
+### Capability Flags
 
 Capabilities are organized into five tiers:
 
@@ -168,7 +168,7 @@ Capabilities are organized into five tiers:
 | `NATIVE_JSON` | Native JSON column support (e.g. PostgreSQL `JSONB`) |
 | `NATIVE_ARRAY` | Native array column support (e.g. PostgreSQL `ARRAY`) |
 
-### Combine flags with convenience sets
+### Convenience Sets
 
 Common capability combinations are bundled as convenience sets:
 
@@ -196,7 +196,7 @@ On the memory provider, `results` holds one record, Ada's.
     capabilities explicitly when writing code that adapts its behavior based on
     what is available.
 
-### Which provider supports which capability?
+### Provider Capability Matrix
 
 |  | Memory | SQLite | PostgreSQL | MSSQL | MySQL | Elasticsearch |
 |— |:------:|:------:|:----------:|:-----:|:-----:|:-------------:|
@@ -221,7 +221,7 @@ under the `protean.providers` group. This means third-party database adapters
 can be pip-installed and automatically discovered by Protean without any source
 code changes.
 
-### How built-in providers register
+### Built-in Entry Points
 
 Protean's built-in providers are registered in `pyproject.toml`:
 
@@ -241,7 +241,7 @@ with the `ProviderRegistry`. Each `register()` function wraps its dependencies
 in `try/except`. When a provider's optional dependencies are not installed,
 Protean silently skips that provider.
 
-### Register a third-party provider
+### Third-Party Providers
 
 External packages can register their own providers by adding an entry point in
 their `pyproject.toml`:
@@ -262,7 +262,7 @@ database_uri = "dynamodb://localhost:8000"
 See [Building Custom Database Adapters](./custom-databases.md) for a complete
 guide.
 
-## Which lookups must every provider register?
+## Required Lookups
 
 Every provider must register a minimum set of **12 standard lookups** that
 power Protean's filtering API. Protean validates these lookups when it first
@@ -316,7 +316,7 @@ Providers may register additional lookups beyond this required set.
 6. **Monitor provider health**: Use `provider.is_alive()` to verify
    connectivity during health checks.
 
-## How do providers support indexes?
+## Indexes
 
 Aggregates and entities declare the indexes their query paths need with the
 `indexes=` option (see [Indexes](../../domain-elements/indexes.md)). Every SQL
@@ -333,7 +333,7 @@ degrades that feature gracefully:
 ⚠️ = falls back to a full index with a logged warning. The memory provider
 validates declarations but does not enforce them.
 
-## See also
+## Related pages
 
 - Configure a specific provider: [Memory](./memory.md),
   [SQLite](./sqlite.md), [PostgreSQL](./postgresql.md), [MSSQL](./mssql.md),

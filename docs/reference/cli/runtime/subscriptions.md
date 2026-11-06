@@ -2,7 +2,7 @@
 
 Monitor subscription lag and health for all handlers in a Protean domain.
 
-## Check subscription health
+## Commands
 
 ### `protean subscriptions status`
 
@@ -33,14 +33,14 @@ last processed position. Only event-store subscriptions track it today, so
 every other type shows `-`. A `-` means the seconds are unavailable. A `0.0`
 means the subscription is caught up.
 
-### Choose the domain and the output format
+### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
 | `--json` | Output raw JSON instead of a table | `False` |
 
-### Get the output as JSON
+### JSON output
 
 Use `--json` for machine-readable output suitable for scripting or
 integration with external monitoring:
@@ -95,7 +95,7 @@ recovery-pass streams the same command scans and clears. All three are `null`
 for broker, stream, and outbox subscriptions, which do not track event-store
 recovery state.
 
-## How does the command measure lag for each subscription type?
+## Subscription types
 
 The command discovers all subscriptions from the domain registry and queries
 the appropriate backend for each:
@@ -107,7 +107,7 @@ the appropriate backend for each:
 | `broker` | Broker consumer group info | Same as stream for Redis brokers |
 | `outbox` | Outbox repository | `pending + processing` count |
 
-## What does each status mean?
+## Status values
 
 | Status | Meaning |
 |--------|---------|

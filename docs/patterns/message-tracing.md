@@ -1,4 +1,4 @@
-# Trace messages through an event-driven system
+# Message Tracing in Event-Driven Systems
 
 In event-driven architectures, a single user action often triggers a cascade of
 commands and events across multiple aggregates and services. Without tracing,
@@ -47,7 +47,7 @@ PlaceOrder [corr=X, cause=None]              <-- root command
               +-- NotificationSent [corr=X, cause=NotifyCustomer.id]
 ```
 
-## How Protean designs the tracing fields
+## Design Decisions
 
 ### Where to Generate correlation_id
 
@@ -72,7 +72,7 @@ When you call `domain.process()` without an external `correlation_id`, Protean
 generates one automatically. This means every message chain always has a
 `correlation_id`. You never have to check for `None`.
 
-### Correlation IDs accept any string format
+### Format: Flexible Strings, Not UUIDs
 
 The `correlation_id` is a flexible string, not strictly a UUID. It can be:
 
@@ -87,7 +87,7 @@ The `causation_id` is always a Protean message ID (e.g.,
 `myapp::order-abc123-0.1`), which is intentionally human-readable for
 debugging.
 
-### Keep domain tracing separate from W3C TraceParent
+### Separation from W3C TraceParent
 
 Protean supports W3C `TraceParent` in `MessageHeaders.traceparent` for
 integration with distributed tracing tools (Jaeger, Zipkin, Datadog). The
@@ -105,11 +105,11 @@ tracing. It identifies the same operation. But you cannot store `causation_id`
 in `TraceParent.parent_id`, because Protean's message IDs are human-readable
 strings and `TraceParent.parent_id` takes a 16-hex-char span ID.
 
-## How Protean Supports It
+## Protean's Implementation
 
 Protean implements the tracing pattern automatically. No opt-in required.
 
-### Protean propagates trace context automatically
+### Automatic Propagation
 
 Protean copies trace context into every message it constructs, through
 `g.message_in_context`:
@@ -126,7 +126,7 @@ Step 3's `causation_id` holds only in async mode. In sync mode the event
 handler runs inside the original command's handler, so the new command records
 that original command as its cause.
 
-### The outbox stores trace IDs as indexed columns
+### Outbox Denormalization
 
 The outbox stores `correlation_id` and `causation_id` as indexed columns
 alongside the full message metadata. This enables efficient queries:
@@ -154,7 +154,7 @@ These methods answer the three debugging questions directly:
 2. **"What was the immediate trigger?"**: Check `causation_id` on the message
 3. **"What other effects did that request produce?"**: `trace_effects()` walks down
 
-### Inspect traces from the CLI
+### CLI Inspection
 
 The `protean events` CLI supports tracing with both tree and flat views:
 
@@ -190,7 +190,7 @@ Only in the following cases should you generate IDs at the Protean boundary:
 - The message originates from an external system that doesn't provide trace IDs
 - You're in development/testing and don't have an API gateway
 
-## Trace messages across services
+## Multi-Service Tracing
 
 When one Protean service consumes events from another (via subscribers),
 forward the `correlation_id` from the source event. A subscriber receives the
@@ -210,7 +210,7 @@ direct call in a test or a script. The Engine looks for the ID at
 top-level `correlation_id`. A message with none of these starts a new chain
 with a generated ID.
 
-## Test trace propagation
+## Testing Trace Propagation
 
 Protean's test DSL runs a command through `given(...).process()` and records
 the events it raised, with their trace metadata:
@@ -226,7 +226,7 @@ explicitly:
 --8<-- "patterns/message-tracing/001.py:dsl_forward"
 ```
 
-## Summary
+## Key Takeaways
 
 - **`correlation_id`** groups all messages from one business operation.
   Generate early, propagate everywhere.
@@ -248,7 +248,7 @@ explicitly:
 
     **Reference:** [`protean events trace`](../reference/cli/data/events.md): CLI command for following causal chains.
 
-    **Internals:** [Causation Chain Traversal](../concepts/internals/event-sourcing.md#trace-the-causation-chain): Algorithm details for `trace_causation`, `trace_effects`, and `build_causation_tree`.
+    **Internals:** [Causation Chain Traversal](../concepts/internals/event-sourcing.md#causation-chain-traversal): Algorithm details for `trace_causation`, `trace_effects`, and `build_causation_tree`.
 
     **Related patterns:**
 

@@ -1,4 +1,4 @@
-# Decide how events are published and made visible across bounded context boundaries (ADR-0002)
+# ADR-0002: Event Publication and Visibility for Cross-BC Boundaries
 
 **Status:** Proposed
 

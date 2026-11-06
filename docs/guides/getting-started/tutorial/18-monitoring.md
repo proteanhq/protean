@@ -98,6 +98,6 @@ groups:
 In the next chapter, you run a bulk import on priority lanes, so the import
 does not delay production traffic.
 
-## Continue to the next chapter
+## Next
 
 [Chapter 19: The Great Catalog Import, Run on Priority Lanes →](19-priority-lanes.md)

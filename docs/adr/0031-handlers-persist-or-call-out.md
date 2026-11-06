@@ -131,7 +131,7 @@ Around it:
   correlation and causation IDs already trace it. You can also test each step
   of the chain on its own.
 
-### Which handler shapes does this decision produce?
+### The shapes this produces
 
 Two reactions to one event, one persisting and one calling out. The two
 reactions are independent and run in no particular order. Neither reaction can

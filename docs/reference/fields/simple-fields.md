@@ -1,4 +1,4 @@
-# Define simple fields
+# Simple Fields
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -343,7 +343,7 @@ In [3]: order.status = "SHIPPED"
 ValidationError: {'status': ["Invalid status transition from 'PLACED' to 'SHIPPED'. Allowed transitions: CONFIRMED, CANCELLED"]}
 ```
 
-### Check a transition in code
+### Programmatic checking
 
 Use `can_transition_to()` to check whether a transition is valid without raising:
 

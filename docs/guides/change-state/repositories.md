@@ -11,7 +11,7 @@ Protean automatically provides a default repository for every registered
 aggregate. When you want to add business-oriented query methods, define a
 custom repository. Otherwise, the default repository is enough.
 
-## Use the default repository
+## Default repository
 
 Every aggregate gets a default repository. You access it with
 `domain.repository_for()`:
@@ -67,7 +67,7 @@ In [4]: repo.find_by_email("john.doe@example.com")
 Out[4]: <Person: Person object (id: 9ba6a890-e783-455e-9a6b-a0a16c0514df)>
 ```
 
-### Add several domain-named methods
+### Multiple domain-named methods
 
 A repository can contain as many query methods as needed. Name them after
 the domain concepts they represent:
@@ -122,7 +122,7 @@ layer that talks to the database.
     For custom repository queries, always prefer `self.query`, `self.find`,
     `self.find_by()`, and `self.exists()`.
 
-### Handle errors in queries
+### Error handling in queries
 
 `get()` and `find_by()` raise exceptions when the expected result is not found:
 

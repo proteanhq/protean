@@ -7,7 +7,7 @@ CLI or from your own Python code.
 For the conceptual architecture behind the server, see
 [Async Processing](../../concepts/async-processing/index.md).
 
-## Use the `protean server` command
+## CLI Command
 
 Start the server using the `protean server` command:
 
@@ -15,7 +15,7 @@ Start the server using the `protean server` command:
 protean server [OPTIONS]
 ```
 
-### Choose the command options
+### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -25,7 +25,7 @@ protean server [OPTIONS]
 | `--reload` | Auto-reload on Python source changes (development only) | `False` |
 | `--help` | Show help message | |
 
-## Set up the database first
+## Database Setup
 
 Before starting the server, ensure your database tables are created:
 
@@ -47,7 +47,7 @@ protean db truncate --domain=my_domain --yes  # Skip confirmation
 
 See [Database Commands](../../reference/cli/data/database.md) for the full reference.
 
-## Run the server in common setups
+## Basic Usage
 
 ### Starting the Server
 
@@ -65,7 +65,7 @@ protean server --domain=my_package.my_domain
 protean server --domain=my_domain:custom_domain
 ```
 
-### Run multiple workers
+### Multiple Workers
 
 Run multiple Engine processes from a single command using `--workers`:
 
@@ -92,7 +92,7 @@ shared memory is needed between workers.
 For the full multi-worker guide including architecture, coordination details,
 and deployment patterns, see [Multi-Worker Mode](../../reference/server/supervisor.md).
 
-### How does the server find your domain?
+### Domain Discovery
 
 The server discovers your domain in this order:
 
@@ -107,7 +107,7 @@ Within a module, the server looks for:
 2. Any variable that is a `Domain` instance
 3. Raises error if multiple instances found
 
-### Turn on debug logging
+### Debug Mode
 
 Enable verbose logging for troubleshooting with the global `--log-level DEBUG`
 flag:
@@ -123,7 +123,7 @@ Debug logging includes:
 - Position updates
 - Configuration resolution
 
-### Reload on code changes during development
+### Hot Reload in Development
 
 Pass `--reload` to watch the working directory and restart the Engine
 on every Python source change:
@@ -145,7 +145,7 @@ worker when sources change. It uses `watchfiles.PythonFilter` to skip `.pyc`,
     file change, with no condition. It is a development ergonomics feature, not
     a deployment strategy.
 
-### Run in test mode
+### Test Mode
 
 Test mode processes available messages and exits, useful for integration tests:
 
@@ -168,7 +168,7 @@ In test mode, the server:
 For examples of using test mode in your test suite, see
 [Integration Tests](../testing/integration-tests.md).
 
-## Start the engine from Python code
+## Programmatic Usage
 
 You can also start the engine programmatically. Here `domain` is your
 `Domain` object:
@@ -177,13 +177,13 @@ You can also start the engine programmatically. Here `domain` is your
 --8<-- "guides/server/index/001.py:engine"
 ```
 
-### Pass custom options
+### With Custom Options
 
 ```python
 --8<-- "guides/server/index/001.py:options"
 ```
 
-## How does the server respond to shutdown signals?
+## Signal Handling
 
 The server handles shutdown signals gracefully:
 
@@ -201,7 +201,7 @@ During graceful shutdown:
 4. Clean up resources
 5. Exit with appropriate code
 
-## What do the exit codes mean?
+## Exit Codes
 
 | Code | Meaning |
 |------|---------|

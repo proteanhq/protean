@@ -132,7 +132,7 @@ Right mental model:
    gets one projection, shaped to serve it directly."
 ```
 
-### Ask four questions about each consumer
+### The decision framework
 
 For every screen, API resource, or query pattern, ask these questions:
 
@@ -154,7 +154,7 @@ For every screen, API resource, or query pattern, ask these questions:
    over two separate projections. The API layer can select which fields to
    return.
 
-### Match each situation to a projection design
+### Rules of thumb
 
 | Situation | Guidance |
 |-----------|----------|
@@ -177,7 +177,7 @@ aggregates. Their events carry the data the projections need:
 --8<-- "patterns/projection-granularity/001.py:model"
 ```
 
-### Example 1: Build a cross-aggregate projection
+### Example 1: Cross-aggregate projection
 
 An order summary page needs data from two aggregates: Order (status, total,
 item count) and Customer (name, email). Instead of two projections joined at
@@ -207,7 +207,7 @@ both aggregates, keeping the projection current as either side changes.
 
 ---
 
-### Example 2: Back a real-time dashboard with a cache-backed projection
+### Example 2: Cache-backed projection for a real-time dashboard
 
 A warehouse dashboard shows live order counts by status. The data changes
 every few seconds as orders move through the pipeline. A database-backed
@@ -319,7 +319,7 @@ aggregate's table does not support well.
 
 ## Anti-Patterns
 
-### Copying the aggregate field for field
+### The carbon copy projection
 
 ```python
 # fragment
@@ -348,7 +348,7 @@ If the projection mirrors the aggregate, you are maintaining two copies of the
 same data with no benefit. Either add consumer-specific value (join in customer
 name, precompute derived fields) or remove the projection entirely.
 
-### Creating one projection per endpoint
+### The per-endpoint explosion
 
 ```python
 # fragment
@@ -383,7 +383,7 @@ class InvoiceForExport:      # CSV export
 their fields. Consolidate them into one `InvoiceView` with optional fields. Let
 the API layer select what to return.
 
-### Querying aggregates from a projector
+### The projector that queries aggregates
 
 ```python
 # fragment
@@ -410,7 +410,7 @@ data. Fix the events first. They should carry enough context for the projector
 to work independently. See [Design Events for
 Consumers](design-events-for-consumers.md).
 
-### Keeping a projection that nothing reads
+### The orphaned projection
 
 A projection that no API endpoint or UI view actually reads. This happens when
 endpoints are deleted or refactored but the projection and projector remain.

@@ -1,4 +1,4 @@
-# What are Protean's building blocks?
+# Building Blocks
 
 Building blocks are the tactical patterns of Domain-Driven Design: the concrete
 elements you use to model, enforce, and evolve business logic in code. Protean
@@ -74,7 +74,7 @@ graph TB
     style PERSIST fill:#f3e5f5,stroke:#8e24aa
 ```
 
-## Model the business in the domain model
+## Domain Model
 
 The domain model holds the business logic of the system. The domain model
 states the essential complexity of the business in code: the concepts, rules,
@@ -87,7 +87,7 @@ and relationships that the software exists to serve.
 | [Value Object](./value-objects.md) | Immutable, identity-less object defined entirely by its attributes |
 | [Domain Service](./domain-services.md) | Stateless operation that spans multiple aggregates |
 
-## Turn requests into domain operations in the application layer
+## Application Layer
 
 The application layer receives requests from the external world and passes them
 to the domain model. It translates intentions into domain operations without
@@ -99,7 +99,7 @@ containing business logic itself.
 | [Command](./commands.md) | Immutable DTO expressing an intent to change state |
 | [Command Handler](./command-handlers.md) | Receives a command, loads the aggregate, invokes domain logic, and persists |
 
-## React to past changes in the reactive layer
+## Reactive Layer
 
 The reactive layer responds to events, which record changes that have already
 happened. Reactive elements propagate state changes, maintain read models, and
@@ -117,7 +117,7 @@ produced the original change.
 | [Query Handler](./query-handlers.md) | Processes named read intents and returns results from projections |
 | [Subscriber](./subscribers.md) | Consumes messages from an external message broker |
 
-## Store aggregates with persistence elements
+## Persistence
 
 Persistence elements separate the domain model from storage technology, so
 aggregates do not depend on how and where they are stored.

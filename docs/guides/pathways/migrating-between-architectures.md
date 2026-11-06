@@ -1,4 +1,4 @@
-# Migrate between architectures
+# Migrating Between Architectures
 
 Protean is designed so you can start simple and evolve your architecture
 incrementally. This guide shows the concrete code transformations for each
@@ -9,7 +9,7 @@ works, without rewriting that code.
 
 ---
 
-## Move from DDD to CQRS
+## DDD to CQRS
 
 The main change is to replace direct application service calls with explicit
 commands routed through `domain.process()`. You also add read-optimized
@@ -94,7 +94,7 @@ Replace direct aggregate queries with purpose-built projections.
 --8<-- "guides/pathways/migrating-between-architectures/002.py:projection"
 ```
 
-### Check off each step of the CQRS migration
+### Migration checklist
 
 - [ ] Identify application service methods that change state
 - [ ] Create a command for each state-changing method
@@ -107,7 +107,7 @@ Replace direct aggregate queries with purpose-built projections.
 
 ---
 
-## Move from CQRS to Event Sourcing
+## CQRS to Event Sourcing
 
 The core shift: instead of persisting aggregate state directly, persist the
 events that produce that state. The aggregate reconstructs itself by
@@ -177,7 +177,7 @@ See the
 [Architecture Decision](../../concepts/architecture/architecture-decision.md)
 guide for criteria on which aggregates benefit from event sourcing.
 
-### Check off each step of the event sourcing migration
+### Migration checklist
 
 - [ ] Identify aggregates that need audit trails or temporal queries
 - [ ] Add `event_sourced=True` to those aggregates
@@ -190,7 +190,7 @@ guide for criteria on which aggregates benefit from event sourcing.
 
 ---
 
-## Follow these practices in any migration
+## General advice
 
 **Migrate one aggregate at a time.** Don't try to move your entire domain in
 one step. Pick the aggregate that benefits most from the next architecture

@@ -1,4 +1,4 @@
-# Chapter 21: Query the event store as a database
+# Chapter 21: The Event Store as a Database
 
 We have been working with events through aggregates, projections, and handlers
 for the entire tutorial. But we have never looked at the event store directly.
@@ -43,7 +43,7 @@ $ protean events read "fidelis::account" --limit=10 --domain=fidelis
 This returns events from all account instances, ordered by
 `global_position`.
 
-## How Protean names streams
+## Stream Naming Conventions
 
 | Stream | Pattern | Example |
 |--------|---------|---------|
@@ -56,7 +56,7 @@ This returns events from all account instances, ordered by
 The stream category is derived from the aggregate's class name
 (lowercased, underscored).
 
-## View statistics for the whole domain
+## Domain-Wide Statistics
 
 ```shell
 $ protean events stats --domain=fidelis
@@ -103,7 +103,7 @@ Two position numbers appear in event listings:
 Global position is critical for projection rebuilding (events must be
 replayed in global order) and for subscription position tracking.
 
-## Choose between the memory event store and MessageDB
+## Memory vs. MessageDB
 
 Throughout this tutorial we used the **memory event store**, which suits
 development and testing. The memory event store does not keep events across
@@ -140,7 +140,7 @@ The event store is not just an implementation detail. It is a database of facts
 about your business. When you query the event store directly, you can debug
 problems and analyze your data.
 
-## Read the full source
+## Full Source
 
 ??? example "ch21.py, 160 lines"
 
@@ -148,6 +148,6 @@ problems and analyze your data.
     --8<-- "guides/getting-started/es-tutorial/ch21.py:full"
     ```
 
-## What comes next?
+## Next
 
 [Chapter 22: The Full Picture →](22-the-full-picture.md)

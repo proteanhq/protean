@@ -1,4 +1,4 @@
-# Diagnose init-time and runtime failures by code
+# Init-time and Runtime Diagnostics
 
 Some failures cannot be caught by static analysis: they depend on what you pass
 to a runtime accessor, or on calling one before `domain.init()` has run.
@@ -42,7 +42,7 @@ failures carry different codes, `code` is `None`. No single code names the
 failure. With exactly one distinct code, `code` holds it and `rationale`/`fix`
 resolve from it, even when several invariants failed with that same code.
 
-## What severity does each code carry?
+## Severity levels
 
 Every code here is an `error`: the operation cannot proceed. (Advisory
 `warning`/`info` levels belong to the lint codes in the fitness-function

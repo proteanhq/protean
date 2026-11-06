@@ -67,7 +67,7 @@ Both types of tests are valuable. But domain unit tests should be the
 **majority** of your test suite because they test the most important code
 (business rules) with the least overhead (no infrastructure).
 
-### Set up the tests
+### Test Setup
 
 The examples below assume a `tests/conftest.py` that uses Protean's
 `DomainFixture` to initialize the domain and provide a per-test context. The
@@ -84,9 +84,9 @@ reset between tests automatically.
 
 ---
 
-## Test aggregates
+## Testing Aggregates
 
-### Test basic state changes
+### Basic State Changes
 
 Test aggregate methods by constructing an aggregate, calling a method, and
 asserting the resulting state:
@@ -98,7 +98,7 @@ asserting the resulting state:
 
 No repository, no handler, no command. Just the aggregate and its behavior.
 
-### Test preconditions and business rules
+### Preconditions and Business Rules
 
 Each business rule gets its own test:
 
@@ -110,7 +110,7 @@ Each business rule gets its own test:
 Five tests, each targeting a specific business rule. Each runs in
 milliseconds. Together, they comprehensively test the withdrawal behavior.
 
-### Check the domain events an aggregate raises
+### Domain Events
 
 Verify that aggregate methods raise the correct events:
 
@@ -124,30 +124,30 @@ This allows direct inspection without infrastructure.
 
 ---
 
-## Test value objects
+## Testing Value Objects
 
-### Test construction and validation
+### Construction and Validation
 
 ```python
 # fragment
 --8<-- "patterns/testing-domain-logic-in-isolation/test_value_objects.py:construction"
 ```
 
-### Test equality
+### Equality
 
 ```python
 # fragment
 --8<-- "patterns/testing-domain-logic-in-isolation/test_value_objects.py:equality"
 ```
 
-### Test operations
+### Operations
 
 ```python
 # fragment
 --8<-- "patterns/testing-domain-logic-in-isolation/test_value_objects.py:operations"
 ```
 
-### Test immutability
+### Immutability
 
 ```python
 # fragment
@@ -156,9 +156,9 @@ This allows direct inspection without infrastructure.
 
 ---
 
-## Test invariants
+## Testing Invariants
 
-### Test post-invariants
+### Post-Invariants
 
 Protean runs post-invariants when an aggregate is created and after every
 change to it. When a change breaks one, Protean undoes the change:
@@ -168,7 +168,7 @@ change to it. When a change breaks one, Protean undoes the change:
 --8<-- "patterns/testing-domain-logic-in-isolation/test_invariants.py:post"
 ```
 
-### Test pre-invariants
+### Pre-Invariants
 
 Protean runs pre-invariants before every change, against the state the
 aggregate is in at that moment. Here a closed account rejects any change:
@@ -180,7 +180,7 @@ aggregate is in at that moment. Here a closed account rejects any change:
 
 ---
 
-## Test domain services
+## Testing Domain Services
 
 Domain services coordinate logic across aggregates. Test them by building the
 service with aggregate instances directly:
@@ -195,7 +195,7 @@ to the service, and asserts the results.
 
 ---
 
-## Test entities through their parent aggregate
+## Testing Entities Within Aggregates
 
 ```python
 # fragment
@@ -207,28 +207,28 @@ accessed in production.
 
 ---
 
-## When do you need integration tests?
+## When Integration Tests Are Needed
 
 Domain unit tests don't replace integration tests. They complement them.
 Integration tests verify that the pipeline works end-to-end. They use the
 domain that `conftest.py` already initialized, with its repositories and
 handlers. They need no setup of their own:
 
-### Test persistence through the repository
+### Repository Integration
 
 ```python
 # fragment
 --8<-- "patterns/testing-domain-logic-in-isolation/test_integration.py:persistence"
 ```
 
-### Test the handler pipeline
+### Handler Pipeline
 
 ```python
 # fragment
 --8<-- "patterns/testing-domain-logic-in-isolation/test_integration.py:handler"
 ```
 
-### Test event handlers against the domain
+### Event Handler Integration
 
 ```python
 # fragment
@@ -237,7 +237,7 @@ handlers. They need no setup of their own:
 
 ---
 
-## Balance your tests with the testing pyramid
+## The Testing Pyramid
 
 ```
                     /\

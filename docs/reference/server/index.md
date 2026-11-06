@@ -1,4 +1,4 @@
-# Configure and operate the server
+# Server Reference
 
 Configuration and operational reference for Protean's async processing server.
 

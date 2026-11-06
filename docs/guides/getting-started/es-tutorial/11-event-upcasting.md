@@ -54,7 +54,7 @@ When the event store reads a message with type
 The historical event in the store is untouched. Protean transforms the payload
 lazily, at read time.
 
-## Chain upcasters across versions
+## Chaining Upcasters
 
 Later, the regulators require a `currency` field. Bump to v3:
 
@@ -67,7 +67,7 @@ Later, the regulators require a `currency` field. Bump to v3:
 Protean automatically chains: **v1 → v2 → v3**. A historical v1 event
 passes through both upcasters before reaching the handler.
 
-## Validate upcaster chains at startup
+## Startup Validation
 
 During `domain.init()`, Protean validates upcaster chains:
 
@@ -81,7 +81,7 @@ During `domain.init()`, Protean validates upcaster chains:
 
 If any validation fails, `domain.init()` raises an error immediately.
 
-## What does upcasting cost at read time?
+## Performance
 
 - **Current events (v2 reading v2)**: Zero overhead. Direct type lookup,
   no upcasting.
@@ -105,7 +105,7 @@ If any validation fails, `domain.init()` raises an error immediately.
 In event sourcing, upcasting takes the place of database migrations. No
 downtime, no data rewriting, no migration scripts.
 
-## Read the full source
+## Full Source
 
 ??? example "ch11.py, 288 lines"
 
@@ -113,6 +113,6 @@ downtime, no data rewriting, no migration scripts.
     --8<-- "guides/getting-started/es-tutorial/ch11.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 12: Snapshots for High-Volume Accounts →](12-snapshots.md)

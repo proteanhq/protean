@@ -2,7 +2,7 @@
 
 In this pattern, you use only the tactical elements that are part of core DDD.
 
-## Which elements does this pattern use?
+## Elements
 
 | Element | Layer | Purpose  |
 | ------- | ----- | -------  |
@@ -14,7 +14,7 @@ In this pattern, you use only the tactical elements that are part of core DDD.
 | Persistence Store | Infrastructure | A general-purpose storage system that holds the application's data, typically used for saving the current state of domain objects outside of event-driven contexts. |
 | Event Store | Infrastructure | A specialized storage system that captures and persists all domain events, allowing the reconstruction of aggregate states and enabling event sourcing patterns. |
 
-## How does a request flow through the elements?
+## Workflow
 
 ![Pure DDD](../../images/ddd-workflow.jpg)
 

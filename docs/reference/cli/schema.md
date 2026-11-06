@@ -7,7 +7,7 @@ entities, value objects, commands, events, and projections.
 All commands accept either `--domain` (live domain module) or `--ir`
 (serialized IR file) as input.
 
-## Which commands does `protean schema` provide?
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -229,7 +229,7 @@ support matrix.
 
 ---
 
-## What format do generated schemas follow?
+## Schema format
 
 Generated schemas follow JSON Schema Draft 2020-12 with `x-protean-*`
 extension fields for domain metadata. See the
@@ -239,7 +239,7 @@ for the full schema structure reference, including extension fields, nested
 
 ---
 
-## How do the commands report errors?
+## Error handling
 
 | Condition | Behavior |
 |-----------|----------|
@@ -251,7 +251,7 @@ for the full schema structure reference, including extension fields, nested
 
 ---
 
-## How does `--domain` find the domain?
+## Domain discovery
 
 The `--domain` option uses the same domain discovery mechanism as other
 Protean commands. See [Domain Discovery](project/discovery.md) for the full

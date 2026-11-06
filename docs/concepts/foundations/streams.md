@@ -1,4 +1,4 @@
-# What is a stream?
+# Streams
 
 Streams are the primary unit of organization in evented systems. A stream is an
 ordered, append-only sequence of events that represents the history of a single
@@ -20,7 +20,7 @@ append creates it. That first event is written at position 0. If the stream
 already exists, the event is appended at the next position number. There is no
 explicit "create stream" operation, streams come into existence through use.
 
-## An entity stream holds one aggregate's events
+## Entity Streams
 
 An entity stream contains the events for a single aggregate instance. The
 stream name includes both the aggregate type and the instance's unique
@@ -29,7 +29,7 @@ raised by that specific order: `OrderPlaced`, `ItemAdded`, `OrderShipped`, and s
 
 To reconstitute an aggregate, the system reads the entity stream from the beginning and replays each event in order, rebuilding the aggregate's current state from its complete history. This is the fundamental mechanism of event sourcing.
 
-## A category stream groups all streams of one aggregate type
+## Category Streams
 
 A category stream groups all entity streams of the same aggregate type. For
 example, the `Order` category stream contains events from every order in the
@@ -42,7 +42,7 @@ from all instances of an aggregate type. For example, a projector that
 maintains an order summary table subscribes to the `Order` category and
 receives events from every order as they occur.
 
-## How stream names are built
+## Stream Names
 
 Stream names follow a structured convention: the category name, a separator,
 and the entity identity. The category is typically the aggregate type name. The
@@ -56,7 +56,7 @@ distinguishing prefix or suffix to the names.
 
 ## Event Streams Are Typically Safe
 
-### Writes are immutable and append-only
+### Immutable, Append-Only Writes
 
 Because all events are appended in chronological order and never updated in
 place, a valid history will normally remain intact over time. The event store
@@ -64,11 +64,11 @@ writes each event with a version number (often called an "aggregate version").
 With that number, the event store enforces optimistic concurrency and stops two
 updates from conflicting with or overwriting each other.
 
-### The aggregate validates changes before they become events
+### Validation at the Aggregate
 
 Each aggregate enforces its own [invariants](./invariants.md) and rejects invalid changes before they can be turned into events. Consequently, only valid events are ever committed to the event store.
 
-### The event store checks the stream version on every append
+### Version Control and Concurrency Checks
 
 On each append, the system compares the current version of the stream with the
 version expected by the command. For example, the command says "I expect the
@@ -77,7 +77,7 @@ versions do not match, the commit is rejected. With this version check, the
 system prevents partial or out-of-sequence writes. The stream stays a
 consistent, ordered record of the aggregate's history.
 
-## See also
+## Further Reading
 
 - [Event Sourcing](../architecture/event-sourcing.md): The architectural pattern that uses streams as the primary persistence mechanism
 - [Stream Categories Guide](../async-processing/stream-categories.md): Defining

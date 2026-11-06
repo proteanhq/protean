@@ -1,4 +1,4 @@
-# Trace each message back to its cause
+# Message Tracing
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -82,7 +82,7 @@ domain-specific section of message metadata:
 --8<-- "guides/domain-behavior/message-tracing/001.py:access"
 ```
 
-## How do the trace IDs pass from message to message?
+## Propagation Rules
 
 The trace context flows through all message construction paths:
 
@@ -102,7 +102,7 @@ shows. With synchronous processing the event handler runs inside the original
 command's handler, so the new command records that original command as its
 cause.
 
-## How do the trace IDs relate to W3C TraceParent?
+## Relationship to W3C TraceParent
 
 Protean maintains two distinct tracing layers:
 
@@ -221,7 +221,7 @@ table view.
 See [`protean events`](../../reference/cli/data/events.md) for the complete CLI
 reference.
 
-## Query trace IDs in the outbox
+## Outbox Integration
 
 When events are committed to the outbox (for reliable message delivery), the
 `correlation_id` and `causation_id` are denormalized into the outbox record for
@@ -248,7 +248,7 @@ operational dashboards and debug delivery issues.
 
     **Reference:** [`protean events trace`](../../reference/cli/data/events.md): CLI command for following causal chains.
 
-    **Internals:** [Causation Chain Traversal](../../concepts/internals/event-sourcing.md#trace-the-causation-chain): Algorithm details for the traversal methods.
+    **Internals:** [Causation Chain Traversal](../../concepts/internals/event-sourcing.md#causation-chain-traversal): Algorithm details for the traversal methods.
 
     **API:** [BaseEventStore](../../api/ports/event-store.md): Auto-generated API reference for `trace_causation`, `trace_effects`, `build_causation_tree`, and `CausationNode`.
 

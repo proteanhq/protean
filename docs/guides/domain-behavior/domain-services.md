@@ -31,7 +31,7 @@ itself.
 
 The service methods in a Domain Service can be structured in three flavors:
 
-### 1. Write the service with class methods
+### 1. Class with class methods
 
 If the Domain Service has no invariants, each of its methods can be a class
 method. Each class method receives all the input the business function needs.
@@ -60,7 +60,7 @@ OrderPlacementService.place_order(order, inventories)
     raises `TypeError`, because the instance is passed as one argument too
     many.
 
-### 2. Write the service with instance methods
+### 2. Class with instance methods
 
 In this flavor, you instantiate the Domain Service with the aggregates. Each
 method performs a distinct business function.
@@ -79,7 +79,7 @@ service = OrderPlacementService(order, inventories)
 service.place_order()
 ```
 
-### 3. Write the service as a callable class
+### 3. Callable class
 
 If you have a single business function, you can model it as a callable
 class:
@@ -140,7 +140,7 @@ For detailed guidance, see the
 [Application Service vs Command Handler](../../patterns/application-service-vs-command-handler.md)
 pattern.
 
-## How does a domain service run inside a command flow?
+## Typical Workflow
 
 In the example below, an `OrderPlacementService` checks inventory stock and
 confirms an order. The typical workflow of a Domain Service is below:
@@ -167,7 +167,7 @@ own transaction. In [Chapter 13 of the
 tutorial](../getting-started/tutorial/13-domain-services.md), you build the
 whole flow, including the event handler and the inventory command.
 
-### Call a domain service from a command handler
+### Handler Integration Example
 
 ```python
 # fragment
@@ -191,7 +191,7 @@ happens.
    invariant that does not use multiple aggregates likely belongs within an
    aggregate and not in the service.
 
-## Place an order with a domain service
+## A Full-Blown Example
 
 ```python hl_lines="105-150"
 --8<-- "guides/domain-behavior/006.py:full"

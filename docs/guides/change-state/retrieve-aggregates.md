@@ -24,7 +24,7 @@ custom repository with a business-oriented method for it. See the
 [Repositories](./repositories.md) guide for details on defining custom
 repositories.
 
-## Query aggregates beyond `get`
+## Querying beyond `get`
 
 Beyond `get`, every repository exposes convenience methods for querying:
 
@@ -40,7 +40,7 @@ Beyond `get`, every repository exposes convenience methods for querying:
 These are available both on the repository instance returned by
 `domain.repository_for()` and inside custom repository methods via `self`.
 
-## Set up the sample data
+## Sample data
 
 For the purposes of this guide, assume that the following `Person` aggregates
 exist in the database:
@@ -170,7 +170,7 @@ In [2]: [person.name for person in people]
 Out[2]: ['John Doe', 'Jane Doe', 'Baby Doe', 'Boy Doe', 'Girl Doe']
 ```
 
-### Chain operations
+### Chaining operations
 
 QuerySets can chain operations. Each chained call returns a new QuerySet. The
 original is never modified:
@@ -258,7 +258,7 @@ discarded in Python. Only a bare field reference is supported: arithmetic
 !!!note
     These lookups have database-specific implementations, and a few (the array
     lookups `any` / `overlap`, and `F()`) are not supported on every adapter. See
-    the [lookup support matrix](../../concepts/internals/query-system.md#which-lookups-each-adapter-supports)
+    the [lookup support matrix](../../concepts/internals/query-system.md#lookup-support-across-adapters)
     for which adapter supports what. An unsupported lookup raises
     `NotImplementedError`, so it never returns wrong results.
 
@@ -300,7 +300,7 @@ Negate a Q object with `~` to exclude matching records:
 --8<-- "guides/change-state/retrieve-aggregates/001.py:q_not"
 ```
 
-### Nest Q objects
+### Nesting
 
 Q objects can be combined and nested to express complex criteria:
 
@@ -354,7 +354,7 @@ Pattern](https://martinfowler.com/apsupp/spec.pdf)'s value (named, composable,
 testable query criteria) with zero framework complexity. The Q functions are
 regular Python: easy to write, easy to test, and easy to understand.
 
-### Structure criteria as specifications
+### Structuring as specifications
 
 Sometimes you need both database queries *and* in-memory evaluation of the same
 business rule. For example, you query overdue orders from the database and also
@@ -386,7 +386,7 @@ Use `to_query()` with `find()` for database queries, and
     only when you need `is_satisfied_by()` for in-memory evaluation alongside
     database queries.
 
-## Sort results
+## Sorting results
 
 Use `order_by()` to sort results by one or more fields. Prefix a field name
 with `-` for descending order:
@@ -414,9 +414,9 @@ An empty field (`None`) sorts after every value in ascending order, and before
 every value in descending order. The in-memory adapter and every SQL database
 sort it this way. Elasticsearch puts empty fields last in both directions.
 
-## Paginate results
+## Pagination
 
-### Control the result size
+### Controlling result size
 
 By default, Protean limits the number of records returned by a query to 100.
 You can control this behavior in several ways.
@@ -448,7 +448,7 @@ Combine `limit` with `offset` for pagination:
 --8<-- "guides/change-state/retrieve-aggregates/001.py:get_page"
 ```
 
-### Navigate between pages
+### Pagination navigation
 
 The result provides pagination properties for navigating through pages:
 
@@ -456,7 +456,7 @@ The result provides pagination properties for navigating through pages:
 --8<-- "guides/change-state/retrieve-aggregates/001.py:pagination"
 ```
 
-## Evaluate a QuerySet
+## Evaluating a QuerySet
 
 A QuerySet is lazy. It does not hit the database until it is **evaluated**.
 Evaluation is triggered when you:
@@ -581,7 +581,7 @@ compose. Calling it with no arguments clears the projection and restores
 full-entity loading. See the [QuerySet API reference](../../api/queryset.md)
 for every attribute and method of `Record`.
 
-## Update and delete in bulk
+## Bulk operations
 
 QuerySets provide methods for updating and deleting multiple records at once.
 
@@ -620,14 +620,14 @@ Returns the number of objects deleted.
 The `.all()` method returns a `ResultSet` instance. The `ResultSet` class wraps
 the result, so the domain layer never receives DAO-specific data structures.
 
-### Read the ResultSet attributes
+### Attributes
 
 - **`offset`**: The current offset (zero-indexed)
 - **`limit`**: The number of items requested
 - **`total`**: Total number of items matching the query (across all pages)
 - **`items`**: List of result entity objects in the current page
 
-### Use the ResultSet properties
+### Properties
 
 - **`first`**: First item, or `None` if empty
 - **`last`**: Last item, or `None` if empty
@@ -637,7 +637,7 @@ the result, so the domain layer never receives DAO-specific data structures.
 - **`page_size`**: Number of items per page (alias for `limit`; `None` when unlimited)
 - **`total_pages`**: Total number of pages (0 when no results)
 
-### Call the ResultSet methods
+### Methods
 
 - **`to_dict()`**: Returns the result as a dictionary with `offset`,
   `limit`, `total`, `page`, `page_size`, `total_pages`, `has_next`,
@@ -670,7 +670,7 @@ Out[3]:
   <Person: Person object (id: 4683a592-ffd5-4f01-84bc-02401c785922)>]}
 ```
 
-## Run raw queries
+## Raw queries
 
 For database-specific queries that cannot be expressed through the QuerySet
 API, use `raw()`:
@@ -688,7 +688,7 @@ SQL for SQLAlchemy, etc. All other query options (`order_by`, `offset`,
     database technology. Use them sparingly and only when the QuerySet API
     cannot express your query.
 
-## Speed up queries with indexes
+## Query performance
 
 When a query filters or sorts on the same fields repeatedly, it needs a
 database index to stay fast as the table grows. Without an index, the database

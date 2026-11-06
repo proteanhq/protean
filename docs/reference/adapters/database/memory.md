@@ -4,7 +4,7 @@ The Memory provider is an in-memory database adapter that stores data in Python
 dictionaries. It is the default provider in Protean. It requires no external
 dependencies.
 
-## What is the Memory provider for?
+## Overview
 
 The Memory provider is designed for:
 
@@ -23,14 +23,14 @@ threading locks:
 The Memory provider is the default provider, so you need no configuration at
 all. A fresh domain uses the Memory provider automatically.
 
-## Configure the Memory provider
+## Configuration
 
 ```toml
 [databases.default]
 provider = "memory"
 ```
 
-### Which options does the Memory provider take?
+### Configuration Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -39,7 +39,7 @@ provider = "memory"
 No other options are needed. There is no connection URI, no pool size, no
 schema, just `provider = "memory"`.
 
-## Which capabilities does the Memory provider support?
+## Capabilities
 
 The Memory provider supports the following capabilities:
 
@@ -62,7 +62,7 @@ The Memory provider supports the following capabilities:
     rollback only discards uncommitted changes. It cannot undo side effects
     that already happened in the Python process.
 
-## How does the Memory provider enforce indexes?
+## Indexes
 
 The memory provider accepts [`Index`](../../domain-elements/indexes.md)
 declarations and validates them for shape at `Domain.init()`. Non-unique
@@ -76,7 +76,7 @@ provider accepts the same index declarations as a SQL backend. You can declare
 the indexes your aggregates need, develop against the memory provider, and
 switch to a SQL backend without changing the domain.
 
-## Run raw queries
+## Raw Queries
 
 The Memory provider supports raw queries through JSON-string criteria that are
 evaluated against in-memory records:
@@ -90,7 +90,7 @@ evaluated against in-memory records:
 The query string is parsed as JSON and interpreted as filter criteria using the
 same lookup syntax as the QuerySet API.
 
-## How do datetime lookups compare values?
+## Datetime lookups
 
 `exact`, `in`, `lt`, `lte`, `gt`, `gte`, `any` and `overlap` compare two
 datetimes as UTC instants, so `12:00+00:00` equals `14:00+02:00`. A naive
@@ -98,7 +98,7 @@ datetime on either side is read as UTC. `contains`, `startswith` and
 `endswith` compare the string form, and so does a datetime filtered with a
 string.
 
-## What are the Memory provider's limits?
+## Limitations
 
 - **Data does not persist**: Data is lost on process restart. The Memory
   provider is purely ephemeral.
@@ -113,7 +113,7 @@ string.
 - **JSON and array fields are not native**: Complex fields are stored as
   serialized Python objects instead of native database types.
 
-## Move to a production provider
+## Migration Path
 
 The Memory provider is designed to be easily replaced with production-ready
 providers:
@@ -133,12 +133,12 @@ All providers implement the same `BaseProvider` interface, so your domain code
 stays the same when you switch providers. To switch, update the configuration,
 and Protean uses the new provider.
 
-## Read related pages
+## Related pages
 
 - Learn about [SQLite](./sqlite.md) for local development with real SQL
   semantics
 - Learn about [PostgreSQL](./postgresql.md) for production environments
-- Understand [database capabilities](./index.md#how-providers-declare-capabilities) in
+- Understand [database capabilities](./index.md#database-capabilities) in
   detail
 - See the [Dual-Mode Testing](../../../patterns/dual-mode-testing.md) pattern
   for running the same tests against memory and real databases

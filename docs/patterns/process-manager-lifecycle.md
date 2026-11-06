@@ -1,4 +1,4 @@
-# Design the lifecycle and failure paths of a process manager
+# Process Manager Lifecycle and Failure Design
 
 This content has been merged into the comprehensive pattern guide:
 

@@ -1,4 +1,4 @@
-# Chapter 10: Add entities inside an aggregate
+# Chapter 10: Entities Inside Aggregates
 
 Business accounts can have multiple authorized signatories. People who are
 allowed to operate the account. Each signatory has a name, role, and email. You
@@ -17,7 +17,7 @@ An entity is an object with identity that is part of an aggregate:
 The entity is declared with `part_of=Account`. It cannot exist independently.
 It is always accessed and persisted through its parent aggregate.
 
-## Define events for entity changes
+## Events for Entity Operations
 
 The account's state changes when it adds or removes a signatory. So the
 aggregate raises an event for each change:
@@ -47,7 +47,7 @@ Key points:
   runs, rebuilding the entity collection from events.
 - Protean generates each entity's identity within the aggregate automatically.
 
-## Change entities only through events
+## The Rule
 
 In event-sourced aggregates, **every state change is recorded as an event**,
 including entity creation and removal. You never modify the `signatories`
@@ -73,7 +73,7 @@ entities. In Part III, we will face real-world challenges: changing
 requirements, performance problems, regulatory inquiries, and external
 integrations.
 
-## Read the full source
+## Full Source
 
 ??? example "ch10.py, 332 lines"
 
@@ -81,6 +81,6 @@ integrations.
     --8<-- "guides/getting-started/es-tutorial/ch10.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 11: Upcasting Events When Requirements Change →](11-event-upcasting.md)

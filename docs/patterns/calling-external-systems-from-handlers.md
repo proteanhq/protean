@@ -265,7 +265,7 @@ and a connection while it waits on the partner, and an OCC retry re-posts.
 Split the method into `confirm` and `notify_partner`. When the call must follow
 the write, chain it to `OrderConfirmed`.
 
-### Issuing one command per facet
+### One command per facet
 
 It can look tidier to give each facet its own command: `UpdateContact`,
 `ChangePlan` and `SetFlags`, all issued by the same event handler. With async
@@ -278,7 +278,7 @@ instead of one.
 Keep facets that depend on each other in one command and one command handler
 method, where their order is the order of the code.
 
-### Carrying the snapshot on the event or fetching it for each facet
+### A fat event or a re-fetch per facet
 
 If you pass the fetched snapshot on the event, the event grows large and the
 event store keeps the payload permanently. If you re-fetch the snapshot for

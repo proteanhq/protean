@@ -23,7 +23,7 @@ application:
    handlers, and application services are worth covering completely.
    Configuration files, setup scripts, and adapter glue code are not.
 
-## Which layers of tests should you write?
+## Testing Layers
 
 You can test a Protean application in three complementary layers:
 
@@ -47,7 +47,7 @@ graph TD
     style C fill:#fff3e0,color:#e65100
 ```
 
-## How much of your code should tests cover?
+## Coverage Goals
 
 The goal is **100% test coverage** on all business logic:
 
@@ -70,7 +70,7 @@ initializes the domain, sets up and tears down the database schema, and cleans
 up per-test data across all adapters. See [Fixtures and
 Patterns](./fixtures-and-patterns.md) for full details and recipes.
 
-## Run the same tests in two modes
+## Dual-Mode Testing
 
 Protean's memory adapters are complete implementations (not stubs) that behave
 identically to real adapters for domain logic. This enables
@@ -93,7 +93,7 @@ See the [Dual-Mode Testing](../../patterns/dual-mode-testing.md)
 guide for the full setup, CI configuration, and guidance on when modes
 may diverge.
 
-## Find the guide for each kind of test
+## Guides in this section
 
 - **[Domain Model Tests](./domain-model-tests.md)**: Unit testing aggregates,
   entities, value objects, invariants, and domain services.

@@ -8,7 +8,7 @@ For the architectural rationale and trade-off analysis, see
 
 ---
 
-## What you need before you start
+## Prerequisites
 
 - A running Protean domain with the outbox enabled
   (`default_subscription_type = "stream"`)
@@ -161,7 +161,7 @@ the deduplication key.
 
 ---
 
-## Send events to multiple external brokers
+## Multiple external brokers
 
 When you configure multiple external brokers, each published event creates
 one outbox row per external broker. Each row is processed and retried
@@ -181,7 +181,7 @@ Published event: OrderShipped
 
 ---
 
-## Monitor external dispatch
+## Monitoring
 
 External outbox processors emit distinct trace events:
 
@@ -197,7 +197,7 @@ external dispatch health independently from internal processing.
 
 ---
 
-## When does Protean warn about missing external brokers?
+## Validation warning
 
 If your domain has events with `published=True` but no `external_brokers`
 configured, Protean logs a warning during domain initialization:
@@ -213,7 +213,7 @@ external brokers.
 
 ---
 
-## Where to go next
+## Next steps
 
 - [Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md):
   Pattern: architecture, trade-offs, and anti-patterns

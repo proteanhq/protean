@@ -1,4 +1,4 @@
-# Test the application layer with pytest-bdd
+# Application Tests
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -29,7 +29,7 @@ Or with uv:
 uv add --group test pytest-bdd
 ```
 
-## Organize tests by domain concept
+## Project Structure
 
 Organize feature files by domain concept. Put each concept's step definitions
 in the same directory as its feature files:
@@ -71,7 +71,7 @@ files at the appropriate level.
 Feature files describe application behavior in Gherkin. A structured, readable
 format that maps directly to your domain language.
 
-### Write a command processing scenario
+### A Command Processing Scenario
 
 ```gherkin
 --8<-- "guides/testing/application-tests/bdd/registration/features/register_user.feature"
@@ -80,13 +80,13 @@ format that maps directly to your domain language.
 Use `Background` to express setup steps shared by every scenario in a feature
 file. Only `Given` steps belong in a Background.
 
-### Write an event handler scenario
+### An Event Handler Scenario
 
 ```gherkin
 --8<-- "guides/testing/application-tests/bdd/ordering/features/place_order.feature:feature"
 ```
 
-### Run one flow over many inputs with Scenario Outlines
+### Scenario Outlines for Data-Driven Tests
 
 When the same flow applies to multiple inputs, use Scenario Outlines:
 
@@ -147,7 +147,7 @@ sequenceDiagram
     Note over T: Queries domain directly
 ```
 
-### Test a command that the domain rejects
+### Handling Expected Failures
 
 To test a rejected command, capture the exception in the `@when` step. Then
 verify the exception in `@then`:
@@ -157,7 +157,7 @@ verify the exception in `@then`:
 --8<-- "guides/testing/application-tests/bdd/ordering/test_place_order.py:expected_failure"
 ```
 
-### Write steps for Scenario Outlines
+### Scenario Outline Steps
 
 For Scenario Outlines, use `parsers.parse` with format specifiers to extract
 typed values:
@@ -181,7 +181,7 @@ Common format specifiers for `parsers.parse`:
 Put steps that appear across multiple feature files in `conftest.py`.
 pytest-bdd discovers step definitions defined there automatically.
 
-### Share steps from the root `conftest.py`
+### Root-Level Shared Steps
 
 The root `conftest.py` uses `DomainFixture` to initialize the domain and clean
 up after each test (see [Fixtures and Patterns](./fixtures-and-patterns.md) for
@@ -206,7 +206,7 @@ all decorated domain elements (e.g. `@domain.aggregate`,
 `@domain.command_handler`) are discovered and wired automatically. No manual
 registration is needed.
 
-### Share steps within one domain concept {#domain-specific-shared-steps}
+### Domain-Specific Shared Steps
 
 Steps shared within a single domain concept go in that directory's
 `conftest.py`:
@@ -282,7 +282,7 @@ pytest tests/bdd/ -m smoke
 pytest tests/bdd/ -m "happy_path and not validation"
 ```
 
-## Write clear feature files
+## Tips for Good Feature Files
 
 - **Name features after domain concepts**: "User Registration", not
   "Test UserCommandHandler".

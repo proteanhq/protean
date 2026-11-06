@@ -22,7 +22,7 @@ substrate](../behavioral-analysis.md). A method can reach an adapter through
 call-site coupling. The module imports only `protean`, so the module-level
 import rule's name-prefix check does not see the call.
 
-## Turn the rule on
+## Opt-in
 
 The rule is **off by default**. Turn it on in `domain.toml`:
 
@@ -39,7 +39,7 @@ sets out. The rule has its own flag and does not reuse `check_infra_imports`.
 You switch each rule on or off by itself, so turning on the call-site rule
 never changes what the import rule does.
 
-## What the rule reads and what it misses
+## Scope and limits
 
 The rule walks **every non-internal registered domain element** in fqn order:
 aggregates, entities, value objects, repositories, handlers, domain services,
@@ -82,7 +82,7 @@ configuration should wire in the concrete adapter. You can then swap
 infrastructure (memory for tests, Postgres for production) without editing
 domain code.
 
-## See a flagged call and a compliant one
+## Example
 
 Flagged, a domain method constructs a concrete broker adapter:
 
@@ -103,7 +103,7 @@ to no FQN, so the rule does not flag it:
 - Depend on a domain-layer abstraction instead. The domain's provider
   configuration then wires in the adapter.
 
-## Suppress the rule
+## Suppressing
 
 Suppress the rule for a single element with `suppress_checks`:
 

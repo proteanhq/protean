@@ -6,7 +6,7 @@ initialization.
 
 All commands accept a `--domain` option to specify the domain module path.
 
-## What commands does `protean ir` include?
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -246,7 +246,7 @@ from the current schema version, so its checksum is not comparable. The `json`
 output reports `stored_version` and `current_version`. Regenerate the baseline
 against the current schema to clear the version mismatch.
 
-## Read the IR from Python code
+## Programmatic access
 
 In Python code, call `domain.to_ir()` directly:
 

@@ -26,7 +26,7 @@ arrives at the same state regardless of how many times the command is delivered.
 
 ---
 
-## What is an idempotency key?
+## Idempotency Keys
 
 An idempotency key is a unique token that identifies a specific **request**,
 not a specific data shape or entity. The key tells a retry apart from a new
@@ -66,7 +66,7 @@ The payload alone cannot tell a second intentional call from a retry of the
 same call. Only the caller knows whether a submission is a retry or a new
 intent. This is why the idempotency key must come from the caller.
 
-### Why does the caller provide the key in Protean?
+### Protean's Design: Caller-Provided Keys
 
 Protean follows the model established by Stripe and other well-designed APIs:
 the idempotency key is a **header-level field provided by the caller**, not
@@ -137,7 +137,7 @@ def on_payment_confirmed(self, event: PaymentConfirmed):
 
 ---
 
-## How does Protean make commands idempotent in three layers?
+## Protean's Approach: Three-Layer Idempotency
 
 Protean splits command idempotency into three independent, complementary
 layers. Each layer provides value on its own. Together they form defense in
@@ -154,12 +154,12 @@ Layer 1: Submission-Level Deduplication
          Redis-backed check in domain.process()
 ```
 
-### Layer 1: Deduplicate commands at submission
+### Layer 1: Submission-Level Deduplication
 
 When a caller provides an idempotency key, `domain.process()` checks a
 Redis-backed idempotency cache before doing any work.
 
-#### How does Layer 1 check a submission?
+#### How It Works
 
 ```
 domain.process(command, idempotency_key="req-123")
@@ -215,7 +215,7 @@ domain.process(command, idempotency_key="req-123")
    receives the exception and can safely retry with the same idempotency key.
    The retry runs every step again from the start.
 
-#### What happens to a duplicate submission?
+#### Duplicate Behavior
 
 By default, Protean **silently acknowledges** duplicate submissions. The caller
 receives the same result as the first submission. This is critical for retry
@@ -253,7 +253,7 @@ except DuplicateCommandError as exc:
     original_result = exc.original_result
 ```
 
-#### What happens without an idempotency key?
+#### Without an Idempotency Key
 
 When no key is provided, Layer 1 is bypassed entirely. Every call to
 `domain.process()` appends to the event store and proceeds with handling. This
@@ -261,7 +261,7 @@ behavior suits internal framework use, such as saga-generated commands whose
 caller manages idempotency at a higher level. It also suits commands that
 handler-level patterns already protect.
 
-### Layer 2: Deduplicate commands at the subscription
+### Layer 2: Subscription-Level Deduplication
 
 The Protean server engine processes commands asynchronously through event store
 subscriptions. Each subscription tracks its read position in the stream so it
@@ -294,7 +294,7 @@ already seen based on its stored position.
 - A replay of any command with an idempotency key that the subscription has
   already processed successfully.
 
-### Layer 3: Make the handler idempotent
+### Layer 3: Handler-Level Idempotency
 
 Layers 1 and 2 provide framework-level deduplication for commands that carry
 idempotency keys. Layer 3 is about making the handler logic itself resilient
@@ -310,9 +310,9 @@ Handler-level idempotency falls into two categories: operations that are
 
 ---
 
-## Which patterns can you use in your handlers?
+## Developer Patterns
 
-### Use set-based operations for natural idempotency
+### Natural Idempotency: Set-Based Operations
 
 Commands that overwrite state rather than accumulate it are inherently
 idempotent. "Set the email to X" produces the same result whether executed once
@@ -332,7 +332,7 @@ set-based operations, they are idempotent with no extra code.
 - `AssignRole`: Assigns a role (assigning the same role twice is a no-op)
 - `RenameProduct`: Replaces the product name
 
-### Check-then-act: check for the aggregate before you create it
+### Create Operations: Check-Then-Act
 
 Commands that create new aggregates can use existence checks:
 
@@ -381,7 +381,7 @@ The version check alone does not stop a duplicate. When two copies run at the
 same time, both load the same version, the first commits, and the second fails
 its commit. A command handler then retries the second copy, because [version
 conflict
-auto-retry](../guides/server/error-handling.md#retry-version-conflicts-automatically) is
+auto-retry](../guides/server/error-handling.md#version-conflict-auto-retry) is
 on by default (`version_retry`, 3 retries). The retry loads the newer version,
 the check passes, and the deposit is applied a second time. A late copy can
 also arrive after the first one has committed. That late copy takes the same
@@ -396,7 +396,7 @@ command. Swallowing it would also drop a different command that happened to
 collide, so leave conflicts to the version retry. The error reaches the caller
 only when the retries run out or `version_retry` is turned off.
 
-### How do you make cross-aggregate commands idempotent?
+### Cross-Aggregate Commands
 
 When a command changes multiple aggregates through events, follow one key
 principle: **each aggregate is independently responsible for its own
@@ -415,13 +415,13 @@ the handler again. Make the event handler idempotent itself, as described in
 --8<-- "patterns/command-idempotency/006.py:transfer"
 ```
 
-### Make external side effects idempotent yourself
+### External Side Effects
 
 External side effects (sending emails, calling payment APIs, posting to
 third-party services) cannot be made idempotent by the framework alone. You
 must make these side effects idempotent explicitly in your handler code.
 
-#### Track the side effect with a status flag
+#### Pattern: Status Flag
 
 Track whether the side effect has already occurred:
 
@@ -441,7 +441,7 @@ def send_welcome(self, command: SendWelcomeEmail):
     repo.add(user)
 ```
 
-#### Pass the idempotency key through to the external API
+#### Pattern: Pass-Through Idempotency Key
 
 Many external APIs support idempotency keys natively (Stripe, payment
 processors, notification services). Pass the command's idempotency key
@@ -463,7 +463,7 @@ the command at Protean's layer also protects the external API call. If the
 charge already went through, Stripe returns the existing result instead of
 charging again.
 
-#### Use the outbox pattern for side effects
+#### Pattern: Outbox for Side Effects
 
 For side effects that must happen exactly once and survive crashes, use the
 outbox pattern. Instead of performing the side effect directly in the handler,
@@ -494,7 +494,7 @@ def send_welcome(self, command: SendWelcomeEmail):
 A critical edge case: the command is appended to the event store, but
 processing fails. What should happen on retry?
 
-### What happens when a synchronous handler fails?
+### Synchronous Processing
 
 The caller submitted a command with an idempotency key and
 `asynchronous=False`. The command was stored in the event store, but the
@@ -513,7 +513,7 @@ The duplicate command in the event store is harmless. The framework marks both
 copies as processed synchronously. The subscription skips commands that were
 already handled inline.
 
-### What happens when an asynchronous handler fails?
+### Asynchronous Processing
 
 The command was stored in the event store and a position was returned. The
 subscription reads the command from the event store. The handler then fails.
@@ -608,7 +608,7 @@ layer needs to be perfect.
 
 ---
 
-## How do you configure idempotency?
+## Configuration
 
 Idempotency behavior is configured in `domain.toml`:
 

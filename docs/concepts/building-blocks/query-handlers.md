@@ -43,7 +43,7 @@ Event handlers return nothing, and command handlers optionally return values.
 Query handlers **always** return data. The return value from the handler method
 passes through `domain.dispatch()` to the caller.
 
-### Query handlers do not wrap reads in a UnitOfWork. { data-toc-label="No UoW" }
+### No UnitOfWork wrapping. { data-toc-label="No UoW" }
 
 Query handlers do not create transactions. Reads are stateless and should
 never cause side effects. The absence of UoW is enforced by the `@read`
@@ -55,12 +55,12 @@ Unlike command and event handlers, query handlers have no async mode, no
 stream subscriptions, and no event store involvement. They execute
 synchronously and return immediately.
 
-### Each query has exactly one handler. { data-toc-label="Single Handler" }
+### One handler per query. { data-toc-label="Single Handler" }
 
 Each query can only be handled by one handler method. Command handlers follow
 the same constraint, so the domain always knows which handler receives a query.
 
-## How should you write query handlers?
+## Best Practices
 
 ### Keep handlers thin. { data-toc-label="Thin Handlers" }
 
@@ -82,7 +82,7 @@ before reaching the handler.
 
 ---
 
-## Read more about query handlers
+## Next steps
 
 For practical details on defining and using query handlers in Protean, see
 the guide:

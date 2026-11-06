@@ -40,7 +40,7 @@ Index(*fields, name=None, unique=False, desc=(), where=None, include=())
 `Index` is a frozen value object. Field names are validated against the
 element's declared fields during `Domain.init()`.
 
-### How Protean names an index { #naming }
+### Naming
 
 When you omit `name`, Protean derives the index name as
 `<prefix>_<table>_<fields>`. The prefix is `uq` for unique indexes and `ix`
@@ -90,7 +90,7 @@ through `Index.from_sql`.
 
 ---
 
-## Which dialects support each feature?
+## Dialect support
 
 The portable subset (composite, descending, unique, naming) is honored
 everywhere indexes apply. Protean honors the opt-in features (`where`,
@@ -140,7 +140,7 @@ See the per-adapter pages under
 
 ---
 
-## How Protean validates index declarations
+## Validation
 
 Index declarations are validated during `Domain.init()` (after reference
 resolution), raising `IncorrectUsageError` on:
@@ -167,7 +167,7 @@ it silently.
 
 ---
 
-## See also
+## Related
 
 - [Element Decorators](element-decorators.md): The `indexes=` option in context.
 - [Declaring Indexes](../../guides/domain-definition/indexes.md): The how-to guide.

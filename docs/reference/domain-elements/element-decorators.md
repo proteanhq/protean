@@ -1,4 +1,4 @@
-# Register domain elements with decorators
+# Decorators
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -16,7 +16,7 @@ All options are accessible at runtime via `element.meta_`.
 
 ---
 
-## What options does every element accept?
+## Options every element accepts
 
 ### `suppress_checks`
 
@@ -45,7 +45,7 @@ You set config-wide suppressions with the `[lint].suppressions` key in
 
 ---
 
-## Model the domain
+## Domain Model
 
 ### `Domain.aggregate`
 
@@ -120,7 +120,7 @@ Guide: [Domain Services](../../guides/domain-behavior/domain-services.md)
 
 ---
 
-## Define messages
+## Messages
 
 ### `Domain.command`
 
@@ -186,7 +186,7 @@ Query](../../guides/consume-state/projections.md#querying-projections)
 
 ---
 
-## Define handlers
+## Handlers
 
 ### `Domain.command_handler`
 
@@ -263,7 +263,7 @@ Guide: [Application Services](../../guides/change-state/application-services.md)
 
 ---
 
-## Build read models
+## Read Models
 
 ### `Domain.projection`
 
@@ -334,7 +334,7 @@ Guide: [Process Managers](../../guides/consume-state/process-managers.md)
 
 ---
 
-## Integrate external systems
+## External Integration
 
 ### `Domain.subscriber`
 
@@ -350,7 +350,7 @@ Guide: [Subscribers](../../guides/consume-state/subscribers.md)
 
 ---
 
-## Persist domain elements
+## Persistence
 
 ### `Domain.repository`
 

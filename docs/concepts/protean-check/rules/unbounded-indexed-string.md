@@ -21,7 +21,7 @@ A normal `String()` defaults to `max_length=255` and is therefore bounded. It
 is never flagged. Non-string fields (`Integer`, `Date`, and so on) are never
 flagged.
 
-## What does the rule read, and what does it skip?
+## Scope and limits
 
 The rule reads each aggregate root's own scalar fields and the indexes declared
 on it. It deliberately does **not** cover:
@@ -54,7 +54,7 @@ this reason: most engines cannot create an index on an unbounded string. This
 rule detects the same mismatch mechanically, at build time, for every
 aggregate.
 
-## How does a flagged aggregate compare with a compliant one?
+## Example
 
 Flagged. An unbounded `Text` field is indexed:
 
@@ -75,7 +75,7 @@ of every index:
   or
 - if the field does not need to be indexed, remove the field from the index.
 
-## Suppress the rule for one aggregate
+## Suppressing
 
 Suppress the rule for a single aggregate with `suppress_checks`:
 

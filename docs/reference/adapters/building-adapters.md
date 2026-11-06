@@ -1,10 +1,10 @@
-# Build your own adapters
+# Building Adapters
 
 Protean's adapter architecture is designed for extensibility. Third-party
 packages can add new database providers, message brokers, event stores, and
 cache backends without modifying Protean's source code.
 
-## How does Protean find an adapter?
+## How It Works
 
 All adapter types use Python [entry
 points](https://packaging.python.org/en/latest/specifications/entry-points/)
@@ -20,7 +20,7 @@ Each adapter package provides:
 3. An **entry point** in `pyproject.toml` that points to the `register()`
    function
 
-## Build a database adapter
+## Database Adapters
 
 Database adapters implement the `BaseProvider` interface. Each database adapter
 declares its capabilities through the `DatabaseCapabilities` flag system.
@@ -34,7 +34,7 @@ for a complete guide with a worked DynamoDB example, including:
 - How to declare capabilities
 - How to test with the conformance suite
 
-## Build a broker adapter
+## Broker Adapters
 
 Broker adapters implement the `BaseBroker` interface. Each broker adapter
 declares its capabilities through the `BrokerCapabilities` tier system.
@@ -47,14 +47,14 @@ for a complete guide with a worked Kafka example, including:
 - Entry point registration
 - Testing patterns
 
-## Build event store and cache adapters
+## Event Store and Cache Adapters
 
 Event store adapters extend `BaseEventStore` and implement stream write/read
 operations. Cache adapters extend `BaseCache` and implement key-value
 operations with TTL support. These follow the same entry-point registration
 pattern as database and broker adapters.
 
-## Test your adapter with the conformance suite
+## Conformance Testing
 
 Protean provides a generic conformance test suite that validates any database
 adapter against its declared capabilities. Use it to verify your adapter
@@ -67,7 +67,7 @@ protean test test-adapter --provider=your-adapter-name
 See [Adapter Conformance Testing](../testing/conformance.md) for
 the full reference.
 
-## Where can you get help?
+## Getting Help
 
 - [GitHub Discussions](https://github.com/proteanhq/protean/discussions):
   Ask questions and share your adapter with the community.

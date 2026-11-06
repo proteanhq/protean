@@ -1,4 +1,4 @@
-# Chapter 6: Raise events and react to them
+# Chapter 6: Events and Reactions
 
 You define domain events, raise them from aggregates, and build event handlers.
 The event handlers create Inventory records automatically whenever a book is
@@ -83,7 +83,7 @@ We can also handle Order events to send notifications:
 
 A single event handler class can handle multiple event types.
 
-## Define commands for the full flow
+## Commands for the Full Flow
 
 Just like Chapter 5, we define commands and handlers for every state
 change. Here are the commands for placing, confirming, and shipping
@@ -106,7 +106,7 @@ The `BookCommandHandler` calls `book.add_to_catalog()` which raises the
 repository, calls the domain method, and persists the result. Protean
 dispatches the events automatically when the repository saves the aggregate.
 
-## Run the flow end to end
+## End-to-End Flow
 
 In the complete flow, adding a book triggers inventory creation. Order
 lifecycle events trigger notifications. You call `domain.process()` for every
@@ -154,7 +154,7 @@ decoupling. As in Chapter 5, every operation runs as an explicit command.
 The next chapter builds a read-optimized projection for browsing the book
 catalog. The read side of CQRS.
 
-## See the full source
+## Full Source
 
 ??? example "ch06.py, 301 lines"
 

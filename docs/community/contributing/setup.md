@@ -5,7 +5,7 @@ Protean from source. Only collaborators can open pull requests on Protean.
 [CONTRIBUTING](https://github.com/proteanhq/protean/blob/main/CONTRIBUTING.md)
 explains how to propose a change.
 
-## Set up Protean locally for the first time
+## First time local setup
 
 - Download and install [git](https://git-scm.com/downloads).
 - Configure git with your `username`_ and `email`.
@@ -69,7 +69,7 @@ your patch. Run the tests as described below.
 $ git push --set-upstream origin your-branch-name
 ```
 
-## Run the tests
+## Running Tests
 
 Run the basic test suite with:
 

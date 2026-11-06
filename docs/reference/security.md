@@ -1,4 +1,4 @@
-# What Protean secures and what it leaves to you
+# Security considerations
 
 Read this before you run Protean in production. It covers what the framework
 does about security, what it leaves to you, and the settings that affect it.
@@ -12,7 +12,7 @@ field values into the query text. It does not provide authentication, transport
 security, or output escaping. The sections below say where each responsibility
 sits.
 
-## How Protean validates input
+## Input handling
 
 Protean validates every field value through Pydantic v2: types, `choices`,
 length and range constraints, and required or empty checks. This is structural
@@ -23,7 +23,7 @@ validation is still just a string. Your code may then place it in HTML, in a
 shell command, or in a SQL string you built by hand. You escape the value at
 the output or sink where your code uses it.
 
-## How field sanitization works
+## Field sanitization
 
 `String` and `Text` fields do not sanitize their input by default. The stored
 value is the raw input you gave them. Protean leaves sanitization off on
@@ -51,7 +51,7 @@ Sanitization is a convenience for text you render as HTML. It does not make
 untrusted input safe to use everywhere. Turning it on domain-wide does not make
 untrusted input safe everywhere either.
 
-## How the adapters build queries
+## Persistence
 
 The bundled SQLAlchemy adapter builds queries through SQLAlchemy with bound
 parameters. The Elasticsearch adapter builds structured query objects. Neither
@@ -69,7 +69,7 @@ ignore it. That path runs your string as is with nothing bound, so parameterize
 on the provider path instead. On either raw query path, when you paste user
 input into the query string, you are responsible for preventing injection.
 
-## What Protean does with secrets in configuration
+## Secrets in configuration
 
 Protean reads broker URLs, database credentials, and similar values from your
 domain configuration and the environment. It does not encrypt them, store them
@@ -87,7 +87,7 @@ outside the redact list. It also does not mask a secret that reaches an error
 message or a traceback. You control what your code logs and what your error
 output exposes.
 
-## What you provide as the operator
+## Left to the operator
 
 Protean leaves the following to you and the platform you run on. None of it ships
 in the framework:
@@ -102,7 +102,7 @@ in the framework:
 - **Output escaping.** Escaping a value for HTML, SQL, shell, or any other sink
   happens where the value is used, not where it is stored.
 
-## Which Protean services listen on a port
+## Network services Protean ships
 
 Four services can listen on a port. None of them authenticates the caller. The
 first three bind to loopback (`127.0.0.1`) by default. The fourth, the docs

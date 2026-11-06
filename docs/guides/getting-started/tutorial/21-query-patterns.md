@@ -1,4 +1,4 @@
-# Chapter 21: Query read models and combine aggregates
+# Chapter 21: Advanced Query Patterns
 
 The storefront needs rich browsing capabilities: filter books by author, sort
 by price, paginate results, and show inventory availability alongside book
@@ -13,35 +13,35 @@ projection that we build later in this chapter. Each one is a small function.
 The first one gets the view with `domain.view_for(StorefrontView)`, and the
 rest take that view as `catalog`. The `ReadOnlyQuerySet` supports:
 
-### Filter results
+### Filtering
 
 ```python
 # fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:filtering"
 ```
 
-### Exclude results
+### Excluding
 
 ```python
 # fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:excluding"
 ```
 
-### Order results
+### Ordering
 
 ```python
 # fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:ordering"
 ```
 
-### Paginate results
+### Pagination
 
 ```python
 # fragment
 --8<-- "guides/getting-started/tutorial/ch21.py:pagination"
 ```
 
-### Chain the methods
+### Chaining
 
 All methods can be chained:
 
@@ -63,7 +63,7 @@ All methods can be chained:
 This enforces the CQRS principle: read models are read-only. You change data by
 sending commands to the write side.
 
-## Combine two aggregates in one projection
+## Cross-Aggregate Projections
 
 The storefront needs a unified view showing books *with their stock
 levels*, data from two aggregates (Book and Inventory).
@@ -86,7 +86,7 @@ The projector subscribes to events from *both* Book and Inventory
 aggregates. It maintains a single denormalized view that the storefront
 can query directly.
 
-## Add query support to the API endpoints
+## Enhanced API Endpoints
 
 Update the API with rich query support:
 
@@ -108,7 +108,7 @@ $ curl "http://localhost:8000/storefront?author=Orwell&sort=-price"
 $ curl "http://localhost:8000/storefront?limit=10&offset=20"
 ```
 
-## What did you build?
+## What We Built
 
 - A deep understanding of **`ReadOnlyQuerySet`**, filtering, sorting, pagination, and
   read-only enforcement.
@@ -118,7 +118,7 @@ $ curl "http://localhost:8000/storefront?limit=10&offset=20"
 
 The final chapter reviews the complete architecture.
 
-## Read the full source
+## Full Source
 
 ??? example "ch21.py, 223 lines"
 
@@ -126,6 +126,6 @@ The final chapter reviews the complete architecture.
     --8<-- "guides/getting-started/tutorial/ch21.py:full"
     ```
 
-## Go to the next chapter
+## Next
 
 [Chapter 22: The Full Picture →](22-full-picture.md)

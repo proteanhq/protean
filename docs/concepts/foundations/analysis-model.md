@@ -1,4 +1,4 @@
-# What is the Analysis Model?
+# Analysis Model
 
 The Analysis Model describes the real-world domain in a form that developers
 can implement in software. It is a layer of abstraction that describes the core
@@ -8,7 +8,7 @@ When you build an Analysis Model, you get a structured way to understand and
 model the domain. Everyone involved then shares a common language and a shared
 understanding of the system being built.
 
-## How the model expresses the ubiquitous language
+## Ubiquitous Language in Action
 
 The Analysis Model is developed collaboratively by domain experts and
 developers. It is one of the artifacts that make up the ubiquitous language of
@@ -19,7 +19,7 @@ technical representation with DDD's tactical patterns (like Aggregates,
 Entities, Value Objects, and Repositories). The system's design and
 implementation then follow that representation.
 
-## Why the model stays standalone and technology-agnostic
+## Standalone and Technology-Agnostic
 
 The Analysis Model should remain independent of implementation aspects such as
 specific technologies and infrastructure choices. When you describe the essence
@@ -39,7 +39,7 @@ business functionalities. Developers can translate those functionalities from
 business needs into code, and neither group has to use technology-specific
 jargon.
 
-## How does the Analysis Model differ from the code model?
+## Analysis Model vs. Code Model
 
 The analysis model is a conceptual artifact, diagrams, documents, and
 conversations that capture the team's understanding of the domain. The code
@@ -82,7 +82,7 @@ declared, the refactoring is mechanical: rename the class, update the
 decorator, adjust the references. The cost of keeping the models aligned stays
 low throughout the life of the project.
 
-## Make the model 100% testable
+## 100% Testable
 
 The Analysis Model should be designed to be testable in isolation from the
 final software implementation. You can then verify the domain logic in the

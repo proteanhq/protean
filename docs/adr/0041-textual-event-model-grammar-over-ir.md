@@ -51,7 +51,7 @@ generator (#1472). The IR schema and the worked example below define that
 contract, and the conformance test and `protean verify` enforce it. The code
 and tests state the precise contract, so this ADR records only decisions.
 
-### What does the grammar look like?
+### The grammar
 
 A model is a sequence of blocks. Each block is a header at column zero and an
 indented body:
@@ -123,7 +123,7 @@ depend on the project's composition root, and the grammar does not carry it. In
 this ADR we fix the shapes. The parser (#1471) and the generator (#1472) fix
 the full list of rules.
 
-### Which field types does the grammar carry?
+### The primitive types
 
 The grammar carries eight field types, each a lexical token (`string`,
 `integer`) that maps to one IR field `kind` and `type` through the table below.
@@ -273,7 +273,7 @@ Field order is not part of the contract. The IR keys fields by name in a map, an
 Generation field order is therefore non-normative: the generator emits fields in a
 deterministic name order, and the round trip matches fields by name.
 
-### Which functions implement the grammar?
+### The API
 
 The grammar is implemented in `protean.scaffold.model_parser`, which carries
 both halves of the IR-to-text-to-IR round trip: the parser and the emitter.

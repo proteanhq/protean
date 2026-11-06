@@ -1,4 +1,4 @@
-# ADR-0023: Express the query API conformance contract through capability tiers
+# ADR-0023: Query API Conformance Contract and Capability Tiers
 
 **Status:** Accepted
 

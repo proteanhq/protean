@@ -1,4 +1,4 @@
-# ADR-0018: Adopt type safety in stages
+# ADR-0018: Type-safety adoption strategy
 
 **Status:** Accepted
 

@@ -1,4 +1,4 @@
-# How ports and adapters separate the domain from infrastructure
+# Ports & Adapters Architecture
 
 A core principle of Protean is to keep the domain separate from the underlying
 infrastructure. You can write and test your models before you choose any
@@ -23,7 +23,7 @@ states what the application requires from that technology.
 Protean exposes several ports with an array of built-in adapters for
 each port.
 
-## Use in-memory adapters by default
+## In-Memory Adapters
 
 Every port ships with a **complete in-memory implementation** that is active by
 default. These are not stubs or mocks. They implement the full provider
@@ -44,7 +44,7 @@ Testing](../../patterns/dual-mode-testing.md) for the full pattern.
 | Event Store | `memory` | Yes |
 | Cache | `memory` | Yes |
 
-## How a database adapter is built
+## Database Adapter Architecture
 
 A database adapter has four components that work together to make database
 communication possible. Each adapter will override the corresponding base
@@ -166,9 +166,9 @@ flags indicating which features the adapter supports. This enables:
 Database capabilities are independent of each other, so each provider supports
 any combination of them. Broker capabilities are organized into hierarchical
 tiers. See [Database
-Capabilities](../../reference/adapters/database/index.md#how-providers-declare-capabilities)
+Capabilities](../../reference/adapters/database/index.md#database-capabilities)
 and [Broker
-Capabilities](../../reference/adapters/broker/index.md#what-can-each-broker-do) for
+Capabilities](../../reference/adapters/broker/index.md#broker-capabilities) for
 full details.
 
 ## Provider Registry
@@ -187,7 +187,7 @@ source code. See [Building Custom Database
 Adapters](../../reference/adapters/database/custom-databases.md) and [Building
 Custom Brokers](../../reference/adapters/broker/custom-brokers.md) for guides.
 
-## How Protean initializes adapters
+## Initialization
 
 Adapters are initialized as part of Domain initialization. Protean creates the
 provider objects in the adapter. Protean then connects each provider to the

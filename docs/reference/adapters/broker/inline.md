@@ -20,7 +20,7 @@ The Inline broker maintains messages in memory using Python data structures:
 - Consumer groups track message processing state
 - All data is lost when the process terminates
 
-## Configure the Inline broker
+## Configuration
 
 ```toml
 [brokers.default]
@@ -34,7 +34,7 @@ message_timeout = 300.0  # Message timeout in seconds (5 minutes default)
 enable_dlq = true  # Enable dead letter queue for failed messages
 ```
 
-### Which options can you set?
+### Configuration Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -45,7 +45,7 @@ enable_dlq = true  # Enable dead letter queue for failed messages
 | `message_timeout` | `300.0` | Timeout for message processing (seconds) |
 | `enable_dlq` | `true` | Enable dead letter queue |
 
-## Which capabilities does the Inline broker support?
+## Capabilities
 
 The Inline broker supports the following capabilities:
 
@@ -56,9 +56,9 @@ The Inline broker supports the following capabilities:
 - ❌ **ORDERED_MESSAGING** - Not supported
 - ❌ **ENTERPRISE_STREAMING** - Not supported
 
-## How do you use the Inline broker?
+## Usage Examples
 
-### Publish and subscribe to messages
+### Basic Publishing and Subscribing
 
 A subscriber is a class with a `__call__` method that receives each message as
 a dict:
@@ -69,7 +69,7 @@ a dict:
 
 The subscriber prints `User created: John Doe`.
 
-### Test with the Inline broker
+### Testing with Inline Broker
 
 The Inline broker is ideal for testing as it provides deterministic,
 synchronous behavior. Use Protean's `DomainFixture` to set up and tear down the
@@ -79,7 +79,7 @@ domain in your tests:
 --8<-- "adapters/broker/inline/002.py:full"
 ```
 
-### How do consumer groups receive messages?
+### Consumer Groups
 
 Consumer groups read a stream independently. Each group receives every message.
 Within a group, the broker hands out each message once:
@@ -88,7 +88,7 @@ Within a group, the broker hands out each message once:
 --8<-- "adapters/broker/inline/001.py:consumer_groups"
 ```
 
-## What are the Inline broker's limits?
+## Limitations
 
 - **No Persistence**
     - Messages are lost on process restart
@@ -109,7 +109,7 @@ Within a group, the broker hands out each message once:
       [`protean dlq`](../../cli/data/dlq.md) CLI or the
       [Observatory dashboard](../../server/observability.md)
 
-## Move to a production broker
+## Migration Path
 
 The Inline broker is designed to be easily replaced with production-ready brokers:
 
@@ -130,8 +130,8 @@ Your application code remains unchanged when switching brokers, as long as you:
 2. Catch the errors that each broker raises in your code
 3. Test with the production broker before deployment
 
-## Where can you learn more?
+## Related pages
 
 - Learn about [Redis broker](./redis.md) for production use
-- Understand [broker capabilities](./index.md#what-can-each-broker-do) in detail
+- Understand [broker capabilities](./index.md#broker-capabilities) in detail
 - Explore [custom broker development](./custom-brokers.md)

@@ -1,4 +1,4 @@
-# How subscriptions connect handlers to message sources
+# Subscriptions
 
 Subscriptions are the mechanism that connects handlers to message sources. They
 manage the flow of messages from event stores and message brokers to your
@@ -31,11 +31,11 @@ sequenceDiagram
     end
 ```
 
-## Which types of subscription does Protean provide?
+## Types of Subscriptions
 
 Protean provides two types of subscriptions:
 
-### Handler subscriptions deliver messages to your handlers
+### Handler Subscriptions
 
 Handler subscriptions connect **event handlers**, **command handlers**, and
 **projectors** to message sources. They can use either:
@@ -46,7 +46,7 @@ Handler subscriptions connect **event handlers**, **command handlers**, and
 The `SubscriptionFactory` automatically selects the appropriate type based on
 configuration.
 
-### Broker subscriptions deliver external messages to subscribers
+### Broker Subscriptions
 
 Broker subscriptions connect **subscribers** to external message brokers. They
 are used for consuming messages from systems outside your domain. A subscriber
@@ -56,7 +56,7 @@ receives each message's payload in its `__call__` method:
 --8<-- "concepts/async-processing/subscriptions/001.py:subscriber"
 ```
 
-## Subscriptions read from stream categories {#stream-categories}
+## Stream Categories {#stream-categories}
 
 Subscriptions connect handlers to **[stream categories](./stream-categories.md)**, which are logical groupings of related messages (events and commands). Stream categories determine how messages are organized and routed from message sources (event stores, brokers) to handlers.
 
@@ -75,7 +75,7 @@ The engine creates a subscription that:
 3. Tracks the handler's position in the stream
 4. Handles errors and retries
 
-### Handlers subscribe to their aggregate's stream category by default
+### Default Stream Category Subscription
 
 Handlers automatically subscribe to their associated aggregate's stream category:
 
@@ -83,7 +83,7 @@ Handlers automatically subscribe to their associated aggregate's stream category
 --8<-- "concepts/async-processing/subscriptions/003.py:default_category"
 ```
 
-### Subscribe a handler to a different stream category
+### Custom Stream Category Subscription
 
 Handlers can subscribe to a different stream category. A handler on a shared
 stream such as `all_orders` usually reads every event on it with
@@ -93,7 +93,7 @@ stream such as `all_orders` usually reads every event on it with
 --8<-- "concepts/async-processing/subscriptions/002.py:custom_category"
 ```
 
-### Coordinate a change across aggregates
+### Cross-Aggregate Coordination
 
 When an `Order` event must change `Inventory`, the event handler stays with
 `Order`. The event handler subscribes to the `order` stream. The event handler
@@ -120,16 +120,16 @@ when it has already applied that order.
 
 For comprehensive details on stream categories, including message organization, routing patterns, event sourcing, and best practices, see the [Stream Categories](./stream-categories.md) guide.
 
-## How a subscription runs from start to shutdown
+## Subscription Lifecycle
 
-### A subscription prepares its message source when it starts
+### Initialization
 
 When a subscription starts, it performs type-specific initialization:
 
 - **StreamSubscription**: Ensures consumer group exists in Redis
 - **EventStoreSubscription**: Loads last processed position from event store
 
-### A subscription polls for messages in a loop
+### Polling Loop
 
 Subscriptions run a continuous polling loop:
 
@@ -148,7 +148,7 @@ async def poll(self):
         await asyncio.sleep(self.tick_interval)
 ```
 
-### How a subscription processes each message
+### Message Processing
 
 For each message in a batch:
 
@@ -157,7 +157,7 @@ For each message in a batch:
 3. On success: Acknowledge the message, update position
 4. On failure: Retry or move to dead letter queue
 
-### What a subscription does at shutdown
+### Shutdown
 
 During shutdown, subscriptions:
 
@@ -166,7 +166,7 @@ During shutdown, subscriptions:
 3. Persist final position
 4. Clean up resources
 
-## How subscriptions track their position
+## Position Tracking
 
 Subscriptions track their position to ensure messages are not reprocessed after
 restarts.
@@ -197,7 +197,7 @@ StreamSubscription uses Redis Streams' built-in consumer group tracking:
 - Pending messages are tracked automatically
 - Failed messages can be retried or moved to DLQ
 
-## How far behind is a projection?
+## Projection staleness
 
 Each EventStoreSubscription records its position together with the time it
 wrote that position. From these two values, Protean can tell how far behind a
@@ -213,11 +213,11 @@ Inspect staleness with `protean projection status` or the
 `protean_projection_staleness_seconds` metric; see [Monitor the
 System](../../guides/server/monitoring.md#monitoring-projection-staleness).
 
-## How subscriptions respond to errors
+## Error Handling
 
 Subscriptions handle errors at multiple levels:
 
-### A handler raises an exception
+### Handler Errors
 
 When a handler raises an exception:
 
@@ -225,7 +225,7 @@ When a handler raises an exception:
 2. The handler's `handle_error` method is called (if defined)
 3. The subscription continues processing
 
-### A subscription retries transient errors
+### Subscription Errors
 
 For transient errors (network issues, etc.):
 
@@ -233,7 +233,7 @@ For transient errors (network issues, etc.):
 - Configurable maximum retries
 - Dead letter queue for persistent failures (StreamSubscription only)
 
-### A fatal error shuts down the engine
+### Fatal Errors
 
 For unrecoverable errors:
 
@@ -241,7 +241,7 @@ For unrecoverable errors:
 - Graceful shutdown is initiated
 - Exit code indicates failure
 
-### Inspect, replay and purge messages in the dead letter queue
+### Dead Letter Queue Management
 
 When a message exhausts all retries in a `StreamSubscription`, the subscription
 moves it to a **Dead Letter Queue (DLQ)**, a separate stream named

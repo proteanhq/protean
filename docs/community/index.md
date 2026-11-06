@@ -1,4 +1,4 @@
-# Join the Protean community
+# Community
 
 !!! note
 
@@ -7,7 +7,7 @@
     Tech](https://codeforgovtech.in/) initiatives.
 
 
-## Ask questions on the forum
+## Forum
 
 When you have a problem in your project and need help, ask on GitHub
 Discussions. GitHub Discussions is the place to ask questions and get answers.
@@ -18,7 +18,7 @@ Keep the issue tracker for bugs and feature requests.
 
 [Get help on the forum →](https://github.com/proteanhq/protean/discussions)
 
-## Find Protean on GitHub
+## Github
 
 Found a bug, have a feature request, or want to contribute to the framework
 itself?
@@ -43,7 +43,7 @@ Click the "watch" button at the top right in
 You will then receive notifications (in your email) whenever there's a new
 release (a new version) of Protean with bug fixes and new features.
 
-## Contribute to Protean
+## Contributing
 
 Protean is designed and maintained by a single maintainer, from one coherent
 view of the whole framework. The maintainer chose this setup on purpose, to

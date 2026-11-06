@@ -24,7 +24,7 @@ In [2]: domain.repository_for(Person).get("1").to_dict()
 Out[2]: {'name': 'John Doe', 'email': 'john.doe@localhost', 'id': '1', '_version': 0}
 ```
 
-## Save changes in one transaction
+## Transaction
 
 The `add` method is enclosed in a [Unit of Work](unit-of-work.md) context by
 default. Changes are committed to the persistence store when the Unit of Work
@@ -50,7 +50,7 @@ transaction, when the underlying database supports transactions.
     A single transaction matters most in ***Relational databases*** because
     each entity is a separate table.
 
-## Publish events when the aggregate is saved
+## Events
 
 The `add` method also publishes events to configured brokers upon successfully
 persisting to the database.
@@ -85,7 +85,7 @@ In [6]: post._events
 Out[6]: []
 ```
 
-## Update an aggregate
+## Updates
 
 Recall that Protean repositories behave like a `set` collection. To update an
 aggregate, you mutate it and persist it with `add` again.

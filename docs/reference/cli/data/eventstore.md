@@ -6,7 +6,7 @@ Its first command, `verify`, runs a read-only integrity check.
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Which commands does the group have?
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -47,7 +47,7 @@ body or a malformed snapshot becomes a violation rather than a silent pass.
 | `--domain` | Domain module path | `.` (current directory) |
 | `--json` | Emit the result as the shared CLI envelope | Off |
 
-## What does the command print?
+## Output
 
 A clean store prints a one-line summary and exits 0:
 
@@ -71,7 +71,7 @@ exits 1:
 1 violation(s) across 2 message(s) and 1 stream(s).
 ```
 
-## What does `--json` print?
+## JSON output
 
 With `--json`, the command emits the shared CLI result envelope. The report is
 under `data`, with the violation list under `data.violations`:
@@ -98,7 +98,7 @@ Each violation carries a stable `kind` (`malformed_message`,
 `position` it was found at (either may be `null`), and a human-readable
 `detail`.
 
-## Which exit codes does `verify` return?
+## Exit codes
 
 | Code | Meaning |
 |------|---------|
@@ -116,7 +116,7 @@ Under `--json`, stdout holds one envelope with `status` set to `error` and the
 connection error under `data.error`. Without `--json`, the command prints the
 connection error as one line on stderr.
 
-## How do you back up and restore the event store?
+## Backup and restore
 
 `verify` checks the store's *internal* consistency. Physical backup and restore
 stay with the database and its own tooling. For MessageDB, that means the
@@ -124,7 +124,7 @@ PostgreSQL tooling (`pg_dump`, `pg_restore`, and point-in-time recovery). Run
 `protean eventstore verify` after a restore to confirm the recovered store is
 internally consistent.
 
-## How do the commands find the domain?
+## Domain discovery
 
 The `protean eventstore` commands use the same domain discovery mechanism as
 `protean server`. See [Domain Discovery](../project/discovery.md) for the full

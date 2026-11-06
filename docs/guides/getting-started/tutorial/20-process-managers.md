@@ -11,7 +11,7 @@ validation: it checks the rule before one aggregate changes. A **process
 manager** runs asynchronous, multi-step workflows, including their compensation
 logic.
 
-### How does a domain service differ from a process manager?
+### Domain Service vs. Process Manager
 
 | | Domain Service | Process Manager |
 |---|---------------|----------------|
@@ -56,7 +56,7 @@ The `OrderFulfillmentPM` coordinates the fulfillment workflow:
 --8<-- "guides/getting-started/tutorial/ch20.py:process_manager"
 ```
 
-### What do the parts of the process manager do?
+### Key Concepts
 
 **`stream_categories`**, The process manager subscribes to events from the `order`, `inventory`, and `shipment`
 streams. It sees all events from these three aggregates.
@@ -153,7 +153,7 @@ event chain. In sync processing mode (`domain.config["event_processing"] =
 "sync"`), events are processed immediately. Saving the confirmed order runs the
 whole chain. The test then checks the final state of the order and the stock.
 
-## Review what you built
+## What We Built
 
 - A **Shipping aggregate** representing shipments with success and
   failure outcomes.
@@ -166,7 +166,7 @@ whole chain. The test then checks the final state of the order and the stock.
 
 Chapter 21 uses advanced query patterns to build a rich storefront.
 
-## Read the full source
+## Full Source
 
 ??? example "ch20.py, 352 lines"
 
@@ -174,6 +174,6 @@ Chapter 21 uses advanced query patterns to build a rich storefront.
     --8<-- "guides/getting-started/tutorial/ch20.py:full"
     ```
 
-## Go to the next chapter
+## Next
 
 [Chapter 21: Advanced Query Patterns →](21-query-patterns.md)

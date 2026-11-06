@@ -1,9 +1,9 @@
-# Build a custom broker
+# Custom Brokers
 
 You can write a custom broker adapter to connect Protean to any message broker
 or streaming platform.
 
-## What can a custom broker do?
+## Overview
 
 Custom brokers allow you to:
 
@@ -11,7 +11,7 @@ Custom brokers allow you to:
 - Add company-specific messaging systems
 - Create specialized brokers for testing or development
 
-## What must a broker implement?
+## Architecture
 
 All brokers must inherit from `BaseBroker` and implement its abstract methods.
 They are these, plus the `capabilities` property:
@@ -200,7 +200,7 @@ class KafkaBroker(BaseBroker):
 
 This listing shows the core methods only. A complete Kafka broker also
 implements `_get_next`, `_ensure_group`, `_info`, `_data_reset` and the five
-`_dlq_*` methods from the [Architecture](#what-must-a-broker-implement) list. Without them,
+`_dlq_*` methods from the [Architecture](#architecture) list. Without them,
 Python refuses to create an instance of the class.
 
 ## Installation & Usage
@@ -259,7 +259,7 @@ def capabilities(self) -> BrokerCapabilities:
     return BrokerCapabilities.ENTERPRISE_STREAMING
 ```
 
-### Support blocking reads
+### Blocking reads
 
 If your broker declares `BLOCKING_READ`, it implements `_read_blocking`. The
 public `read_blocking` method calls it, and falls back to `_read` on brokers
@@ -288,9 +288,9 @@ def _read_blocking_streams(
     ...
 ```
 
-## Test your broker
+## Testing Your Broker
 
-### Write unit tests
+### Unit Tests
 
 ```python
 # fragment
@@ -310,7 +310,7 @@ def test_publish():
         assert result is not None
 ```
 
-### Write integration tests
+### Integration Tests
 
 ```python
 # fragment
@@ -334,7 +334,7 @@ def test_end_to_end():
     assert len(messages) == 1
 ```
 
-## Follow these practices when you write an adapter
+## Guidance for adapter authors
 
 1. **Reconnect after a connection failure**: Implement reconnection logic in
    `_ensure_connection()`
@@ -343,9 +343,9 @@ def test_end_to_end():
 4. **Provide Health Checks**: Implement meaningful `_ping()` and `_health_stats()`
 5. **Document Configuration**: Clearly document all configuration options
 
-## Apply common patterns
+## Common Patterns
 
-### Pool your connections
+### Connection Pooling
 
 ```python
 # fragment
@@ -361,7 +361,7 @@ def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
         self.pool.append(conn)
 ```
 
-### Retry a failed publish
+### Retry Logic
 
 ```python
 # fragment
@@ -379,9 +379,9 @@ def _publish(self, stream: str, message: dict) -> str:
             time.sleep(2 ** attempt)  # Exponential backoff
 ```
 
-## See also
+## Related pages
 
 - Review [existing broker implementations](https://github.com/proteanhq/protean/tree/main/src/protean/adapters/broker) for examples
-- Understand [broker capabilities](./index.md#what-can-each-broker-do) in detail
+- Understand [broker capabilities](./index.md#broker-capabilities) in detail
 - Test with the [broker test suite](https://github.com/proteanhq/protean/tree/main/tests/adapters/broker)
 - Share your broker with the [Protean community](https://github.com/proteanhq/protean/discussions)

@@ -10,7 +10,7 @@ and CI integration, see
 
 ---
 
-## How Protean classifies each change
+## Breaking change rules
 
 Protean classifies changes to persisted domain elements using these rules:
 
@@ -113,7 +113,7 @@ itself as `Union`. So the check also reports the unchanged field when you diff
 an IR built on 3.13 against one built on 3.14. Build both IRs on the same
 Python version to avoid it.
 
-### How Protean checks published event contracts { #published-event-contracts }
+### Published event contracts
 
 `diff_ir()` also checks every published event in its `contracts` section and
 lists the breaks in `contracts.breaking_changes`. `diff_ir()` sets
@@ -151,7 +151,7 @@ the List column names the key under `contracts` that holds each entry:
 field and the same kind of change), `protean ir diff` prints it once, with the
 contract message.
 
-### What stops an event-sourced aggregate from rebuilding { #replay-hazards-on-an-event-sourced-aggregate }
+### Replay hazards on an event-sourced aggregate
 
 An event-sourced aggregate's authoritative state is a stream of events, rebuilt
 by reading that stream and applying the events in it. Protean may store a
@@ -180,7 +180,7 @@ reported again here: a change to the identity field's *type* is a
 `element_removed` on that event. Deleting an event class and its `@apply`
 method together is one act, so it reports once, as the removal.
 
-### How reserved names, deprecation and upcasters make a change safe
+### Evolution-aware classification
 
 The checker understands three evolution mechanisms:
 
@@ -230,13 +230,13 @@ The checker understands three evolution mechanisms:
 
 ---
 
-## How Protean sorts breaking changes into three tiers
+## Three-tier breaking change taxonomy
 
 Protean follows a tiered approach to breaking changes (see
 [ADR-0004](../../adr/0004-release-workflow-and-breaking-change-policy.md)
 for the full rationale):
 
-### Tier 1: How Protean deprecates a surface break
+### Tier 1: Surface breaks
 
 Renamed classes, moved imports, changed signatures.
 
@@ -248,7 +248,7 @@ implementation. Keep the old API for at least **2 minor versions**.
 --8<-- "reference/compatibility/001.py:old_method"
 ```
 
-### Tier 2: How Protean phases in a behavioral break
+### Tier 2: Behavioral breaks
 
 Same signature, different behavior.
 
@@ -264,7 +264,7 @@ Transition timeline:
 | v0.N+1 | Warning emitted if flag is unset |
 | v0.N+2 | Default flips to new behavior |
 
-### Tier 3: How Protean versions a structural break
+### Tier 3: Structural breaks
 
 Persistence format, event schema, serialization changes.
 
@@ -277,7 +277,7 @@ structural changes.
 
 ---
 
-## How to deprecate and remove an element or field
+## Deprecation lifecycle
 
 When deprecating a domain element or field:
 

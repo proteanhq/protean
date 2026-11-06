@@ -1,4 +1,4 @@
-# How do CLI commands report results and exit codes?
+# CLI conventions: the result envelope and exit codes
 
 Protean is standardizing two contracts so that a script or an agent can consume a
 command's output uniformly: one **result envelope** for machine-readable output,
@@ -21,7 +21,7 @@ findings and `2` for a usage or environment error, printed on stderr. Its
 `ir check` predates the contracts and is **not yet converged**: its exit codes
 and output shape still differ.
 
-## What does the result envelope contain?
+## The result envelope
 
 Each command listed above as following the envelope wraps its machine-readable
 output (under `--json`, or `--format json` for `check`) in one stable JSON
@@ -71,7 +71,7 @@ SARIF and GitHub-annotations output (`check --format sarif` /
 `--format github-annotations`) are **not** wrapped: they are external standard
 schemas consumed by other tools, and stay as-is.
 
-## Which exit code does a command return?
+## The exit-code convention
 
 | Exit code | Meaning |
 |-----------|---------|
@@ -83,7 +83,7 @@ schemas consumed by other tools, and stay as-is.
 Click exits `2` by default for a malformed command line, which matches `2 =
 usage`. A command that sets no explicit exit code therefore already conforms.
 
-### Which codes does each command use?
+### Per-command codes
 
 **`protean check`**
 
@@ -125,14 +125,14 @@ See [`protean ir diff`](ir.md#protean-ir-diff) for the details.
 
 See [`protean upgrade-check`](upgrade-check.md#exit-codes) for the details.
 
-## What does stdout carry under machine-readable output?
+## Clean stdout
 
 Under machine-readable output, stdout carries **only** the envelope: exactly
 one JSON object and nothing else. Every log line, warning, and human error
 message goes to stderr, so `protean check --format json | jq` (or
 `protean verify --json | jq`) stays parseable.
 
-## See also
+## Related
 
 - [`protean check`](check.md): The exemplar command.
 - [`protean verify`](verify.md): Init, check, and tests in one verdict.

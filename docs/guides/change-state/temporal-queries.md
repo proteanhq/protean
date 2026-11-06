@@ -1,4 +1,4 @@
-# Query an aggregate's past state
+# Temporal Queries
 
 <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -18,7 +18,7 @@ the fifth:
 --8<-- "guides/change-state/temporal-queries/001.py:history"
 ```
 
-## Load an aggregate at a version
+## By version
 
 Pass `at_version` to `get()` to reconstitute an aggregate at a specific event
 version. Versions are 0-indexed: version 0 is the state after the first event,
@@ -31,7 +31,7 @@ version 1 after the second, and so on.
 Use `at_version` to compare state before and after a particular event, or to
 debug unexpected state transitions.
 
-## Load an aggregate as of a moment in time
+## By timestamp
 
 Pass `as_of` to `get()` to reconstitute an aggregate as it existed at a
 particular moment in time. Only events written on or before the given
@@ -46,7 +46,7 @@ particular moment in time. Only events written on or before the given
     event was persisted to the event store, not any business-level timestamp
     embedded in the event payload.
 
-## Temporal aggregates are read-only
+## Read-only aggregates
 
 Temporal aggregates are **read-only**. Calling `raise_()` on them raises
 `IncorrectUsageError`:
@@ -68,7 +68,7 @@ The read-only guard on temporal aggregates prevents accidental writes to
 historical state. If you need to modify an aggregate, load it at its current
 version with a plain `get()`.
 
-## Pass only one of `at_version` and `as_of`
+## Mutual exclusivity
 
 `at_version` and `as_of` cannot be used together. Passing both raises
 `IncorrectUsageError`:
@@ -79,11 +79,11 @@ version with a plain `get()`.
 repo.get("order-123", at_version=5, as_of=cutoff)
 ```
 
-## How temporal queries use snapshots
+## Interaction with snapshots
 
 Protean's snapshot mechanism optimizes aggregate loading by caching state at
 periodic intervals (see
-[Event Sourcing Internals](../../concepts/internals/event-sourcing.md#how-protean-uses-snapshots)).
+[Event Sourcing Internals](../../concepts/internals/event-sourcing.md#snapshots)).
 
 Temporal queries use a snapshot only when it gives the correct historical
 state:
@@ -95,7 +95,7 @@ state:
   a snapshot's creation time does not correspond to any particular aggregate
   state timestamp.
 
-## Temporal queries bypass the identity map
+## Identity map bypass
 
 Temporal queries always bypass the Unit of Work's identity map. The identity
 map holds the aggregate when the current transaction loaded or saved it
@@ -106,7 +106,7 @@ historical state is accurate:
 --8<-- "guides/change-state/temporal-queries/001.py:identity_map"
 ```
 
-## Which errors do temporal queries raise?
+## Error handling
 
 | Scenario | Exception |
 |----------|-----------|

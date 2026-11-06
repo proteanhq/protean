@@ -20,7 +20,7 @@ through association fields (`HasOne`, `HasMany`) and their corresponding
 reference fields (`Reference`), which work together to establish
 bidirectional linkages.
 
-## Choose a relationship type
+## Relationship Types
 
 ### One-to-One (HasOne)
 
@@ -38,7 +38,7 @@ A `HasMany` relationship represents a one-to-many association where an aggregate
 --8<-- "guides/domain-definition/relationships/002.py:aggregate"
 ```
 
-### Embed a value object
+### Value Object Embedding
 
 Value objects are embedded using the `ValueObject` field type, not
 `HasOne`/`HasMany`. Unlike entity associations, value objects are stored inline
@@ -55,7 +55,7 @@ and initialization.
 
 Every association automatically creates a corresponding `Reference` field in the child entity that points back to the parent aggregate. This establishes the inverse relationship and provides access to the parent from the child.
 
-### How Protean adds reference fields for you
+### Automatic Reference Creation
 
 Protean automatically adds a `Reference` field to entities based on the aggregate they belong to:
 
@@ -66,7 +66,7 @@ Protean automatically adds a `Reference` field to entities based on the aggregat
 # post_id = String()      # Shadow field for the foreign key
 ```
 
-### Define reference fields explicitly
+### Explicit Reference Fields
 
 You can explicitly define reference fields for more control:
 
@@ -109,7 +109,7 @@ When you use both `via` and `referenced_as`, give them the same value. The
 `via` value on the `HasOne`/`HasMany` side must match the `referenced_as` value
 on the `Reference` side, so both ends resolve to the same field.
 
-## Use the generated helper methods
+## Auto-Generated Helper Methods
 
 For `HasMany` associations, Protean automatically generates helper methods
 on the parent object. Given a field named `comments`, the following methods
@@ -133,7 +133,7 @@ The method names are derived from the field name: `add_<field>`,
     `HasOne` fields do not generate helper methods. Assign the entity to the
     field directly (e.g. `blog.settings = BlogSettings(...)`).
 
-## Navigate a relationship in both directions
+## Bidirectional Navigation
 
 Relationships in Protean are bidirectional, allowing navigation in both directions:
 
@@ -141,7 +141,7 @@ Relationships in Protean are bidirectional, allowing navigation in both directio
 --8<-- "guides/domain-definition/relationships/002.py:navigation"
 ```
 
-## Assign a plain dictionary
+## Dictionary Assignment
 
 You can assign a plain dictionary where an entity or value object is
 expected. Protean will automatically convert it:
@@ -152,7 +152,7 @@ expected. Protean will automatically convert it:
 
 This also works during aggregate initialization for nested structures.
 
-## Enforce required associations with invariants
+## Association Constraints
 
 All association fields (`HasOne`, `HasMany`, `Reference`) are implicitly
 optional, Protean sets `required=False` on them internally. There is currently no way to
@@ -163,7 +163,7 @@ through aggregate invariants instead:
 --8<-- "guides/domain-definition/relationships/007.py:aggregate"
 ```
 
-## Reference another aggregate by identity { #cross-aggregate-references }
+## Cross-Aggregate References
 
 Aggregates are independent consistency boundaries. They should **never** hold
 direct object references (`HasOne`, `HasMany`, `Reference`) to other
@@ -187,7 +187,7 @@ This keeps each aggregate independently loadable, persistable, and
 deployable. For keeping aggregates in sync after state changes, use
 [domain events](../domain-behavior/raising-events.md).
 
-## Persist and delete entities with their aggregate
+## Cascade Behavior
 
 When an aggregate is persisted, all enclosed entities (connected via
 `HasOne`/`HasMany`) are persisted together as part of the same transaction.
@@ -197,7 +197,7 @@ cannot exist independently.
 Removing an entity from a `HasMany` collection (via `remove_<field>`) marks
 it for deletion during the next persistence operation.
 
-## How a repository loads an aggregate
+## Loading Behavior
 
 Entity associations within an aggregate are loaded **eagerly**. When you
 retrieve an aggregate from a repository, all its enclosed entities are loaded
@@ -208,7 +208,7 @@ This is by design: an aggregate is a consistency boundary, and partial
 loading would make it impossible to enforce invariants that span the root
 and its children.
 
-## How associations behave in event-sourced aggregates
+## Event Sourcing Considerations
 
 For **event-sourced aggregates** (`event_sourced=True`), associations
 behave differently because state is reconstructed from events rather than

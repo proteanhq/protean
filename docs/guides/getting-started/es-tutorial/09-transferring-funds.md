@@ -1,4 +1,4 @@
-# Chapter 9: Transfer funds between accounts
+# Chapter 9: Transferring Funds
 
 The product team wants account-to-account transfers. This is not a
 single-aggregate operation. It involves debiting one account and crediting
@@ -38,7 +38,7 @@ itself:
 
 The transfer tracks its own lifecycle: INITIATED → COMPLETED or FAILED.
 
-## Coordinate the transfer with a process manager
+## The Process Manager
 
 The `FundsTransferPM` process manager listens to events from both
 the Transfer and Account streams and coordinates the flow:
@@ -60,7 +60,7 @@ Key concepts:
 - **`mark_as_complete()`** ends the process. No further events will be
   processed for this instance.
 
-## Follow a transfer from command to completion
+## The Flow
 
 ```
 InitiateTransfer (command)
@@ -85,7 +85,7 @@ MakeWithdrawal (command)
                     └── TransferFailed (event)
 ```
 
-## How does a process manager keep its state?
+## Process Manager State
 
 Process managers are themselves event-sourced. Their state changes are
 persisted as **transition events** in the event store. When the server
@@ -105,7 +105,7 @@ just like aggregates.
 An event-sourced system uses process managers in place of distributed
 transactions. They maintain eventual consistency without distributed locks.
 
-## Read the full source
+## Full Source
 
 ??? example "ch09.py, 383 lines"
 
@@ -113,6 +113,6 @@ transactions. They maintain eventual consistency without distributed locks.
     --8<-- "guides/getting-started/es-tutorial/ch09.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 10: Entities Inside Aggregates →](10-entities-inside-aggregates.md)

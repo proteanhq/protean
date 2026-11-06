@@ -1,10 +1,10 @@
-# Configure subscriptions
+# Subscription Configuration
 
 Protean provides a flexible configuration system for subscriptions that allows
 you to configure settings at multiple levels. Configuration follows a priority
 hierarchy, with more specific settings overriding general ones.
 
-## How does Protean pick the value of a setting? {#configuration-priority-hierarchy}
+## Configuration Priority Hierarchy
 
 Configuration is resolved using this priority order (highest to lowest):
 
@@ -35,12 +35,12 @@ flowchart TD
     style G fill:#fce4ec
 ```
 
-## Start from a configuration profile
+## Configuration Profiles
 
 Profiles provide pre-configured settings optimized for common scenarios. Using
 profiles simplifies configuration while still allowing overrides.
 
-### Which profiles come built in?
+### Available Profiles
 
 | Profile | Type | Description |
 |---------|------|-------------|
@@ -50,7 +50,7 @@ profiles simplifies configuration while still allowing overrides.
 | `debug` | Stream | Development and debugging |
 | `projection` | Event Store | Building read models |
 
-### What does each profile set?
+### Profile Defaults
 
 #### `production` Profile
 
@@ -170,7 +170,7 @@ To apply a whole profile, name it at a higher level: a per-handler `profile`
 (priority 4) or a handler's Meta `subscription_profile` (priority 3). Built-in
 and custom profiles behave the same way here.
 
-## What options can you set?
+## Configuration Options Reference
 
 Each default below is the value a handler gets in a domain with no `[server]`
 settings and no profile. One exception: `enable_dlq` defaults to true, but such
@@ -204,7 +204,7 @@ a domain resolves to the `event_store` subscription type, and the engine turns
     `dlq_retention_hours` or `dlq_alert_threshold`. The engine therefore
     applies the `[server.dlq]` values to every handler.
 
-See [Server Hardening → Circuit breaker](./hardening.md#pause-reads-with-the-circuit-breaker) for
+See [Server Hardening → Circuit breaker](./hardening.md#circuit-breaker) for
 the state machine, the metric, and the trace events. See
 [Tuning subscriptions](../../guides/server/tuning-subscriptions.md) for how to
 choose between the StreamSubscription options in the table above.
@@ -216,9 +216,9 @@ choose between the StreamSubscription options in the table above.
 | `position_update_interval` | int | 10 | Messages between position writes |
 | `origin_stream` | string | None | Filter by origin stream category |
 
-## Where can you set configuration?
+## Configuration Methods
 
-### 1. Set options on the handler decorator
+### 1. Handler Decorator Options
 
 The examples on this page use this model:
 
@@ -239,7 +239,7 @@ The options combine with priority:
    another type
 3. `subscription_profile` provides base defaults
 
-### 2. Set options in the domain configuration file
+### 2. Domain Configuration File
 
 Configure in `domain.toml`:
 
@@ -247,7 +247,7 @@ Configure in `domain.toml`:
 --8<-- "reference/server/configuration/server.toml"
 ```
 
-### 3. Set options per environment
+### 3. Environment-Specific Configuration
 
 Use environment sections for different deployment environments. Protean picks
 the section that matches `PROTEAN_ENV` and merges it into the base `[server]`
@@ -264,7 +264,7 @@ defaults, so it sets few fields (see the [caveat](#custom-profiles)).
 
 ## Configuration Examples
 
-### Example 1: Configure a production event handler
+### Example 1: Production Event Handler
 
 A handler with production settings and custom batch size:
 
@@ -277,7 +277,7 @@ Resolved configuration:
 --8<-- "reference/server/configuration/003.py:production_resolved"
 ```
 
-### Example 2: Configure a low-latency handler
+### Example 2: Low-Latency Handler
 
 A handler optimized for fast processing:
 
@@ -290,7 +290,7 @@ Resolved configuration:
 --8<-- "reference/server/configuration/003.py:fast_resolved"
 ```
 
-### Example 3: Configure a projection handler
+### Example 3: Projection Handler
 
 A projector using EventStoreSubscription:
 
@@ -303,7 +303,7 @@ Resolved configuration:
 --8<-- "reference/server/configuration/003.py:projector_resolved"
 ```
 
-### Example 4: Combine domain config with handler config
+### Example 4: Mixed Configuration
 
 Combining domain config with handler config. The handler's server config names
 the profile, so the profile takes priority over the server-level defaults (see
@@ -322,7 +322,7 @@ Resolved configuration:
 --8<-- "reference/server/configuration/004.py:special_resolved"
 ```
 
-### Example 5: Filter events by origin stream
+### Example 5: Origin Stream Filtering
 
 Filter events by their origin stream:
 
@@ -330,11 +330,11 @@ Filter events by their origin stream:
 --8<-- "reference/server/configuration/003.py:origin_stream"
 ```
 
-## How does Protean report configuration errors?
+## Configuration Validation
 
 Protean validates configuration and provides helpful error messages:
 
-### The outbox conflicts with the event store subscription type
+### Outbox / Subscription Type Conflict
 
 Setting `enable_outbox = true` with `default_subscription_type = "event_store"`
 is a configuration error.  The outbox publishes events to Redis Streams, but
@@ -351,7 +351,7 @@ or remove enable_outbox.
 Setting `default_subscription_type = "stream"` automatically enables the outbox
 without needing to set `enable_outbox` at all.
 
-### An unregistered external broker stops startup
+### Missing External Broker
 
 Configuring an `external_brokers` entry that doesn't match a registered broker
 is a startup error. This configuration is wrong on purpose:
@@ -367,7 +367,7 @@ ValueError: External broker 'nonexistent_broker' configured in
 outbox.external_brokers but not found in domain broker configuration
 ```
 
-### Published events without external brokers log a warning
+### Published Events Without External Brokers
 
 If your domain has events with `published=True` but no `external_brokers`
 configured, Protean logs a warning during initialization:
@@ -381,7 +381,7 @@ This is informational, not an error. See
 [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md)
 to configure external dispatch.
 
-### An unknown subscription type falls back to `event_store`
+### Invalid Subscription Type
 
 ```python
 # fragment
@@ -398,7 +398,7 @@ WARNING: Unknown subscription type 'invalid', defaulting to EVENT_STORE
 If a handler does not get the subscription you expect, check the log at
 startup.
 
-### An unknown profile raises an error
+### Invalid Profile
 
 ```python
 # fragment
@@ -412,7 +412,7 @@ ConfigurationError: Unknown subscription profile 'nonexistent'.
 Valid profiles: batch, debug, fast, production, projection
 ```
 
-### The engine turns off `enable_dlq` for an event store subscription
+### Incompatible Options
 
 ```python
 # fragment
@@ -429,7 +429,7 @@ event store subscription records failed positions in its own failed-position
 stream. It retries them in a recovery pass, described in [Error
 Handling](../../guides/server/error-handling.md#eventstoresubscription).
 
-## How should you configure subscriptions?
+## Configuration guidance
 
 ### 1. Use Profiles as a Starting Point
 
@@ -491,7 +491,7 @@ Always enable DLQ for production workloads to capture failed messages:
 subscription_config={"enable_dlq": True}
 ```
 
-## See also
+## Related pages
 
 - [Subscription Types](subscription-types.md): Subscription
   types

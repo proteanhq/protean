@@ -46,7 +46,7 @@ you.
 
 ---
 
-## Why does a deadline behave differently in sync and async processing?
+## The Synchronous / Asynchronous Asymmetry
 
 The same deadline behaves differently in synchronous and asynchronous
 processing. Protean does this on purpose:
@@ -98,7 +98,7 @@ processing more reliable on its own. You get complete behaviour by combining
 three mechanisms:
 
 - **Deadline**: Don't execute work that is no longer valid.
-- **[Retry with backoff](../guides/change-state/command-handlers.md#handle-errors-in-command-handlers)**:
+- **[Retry with backoff](../guides/change-state/command-handlers.md#error-handling)**:
   recover from transient faults. Retries should respect the deadline: once it
   has passed, stop retrying.
 - **Dead-lettering**: Quarantine what can neither succeed nor expire cleanly.
@@ -130,7 +130,7 @@ too coarse on its own; let specific commands and handlers refine it.
 
 ---
 
-## See also
+## Related
 
 - [Commands → Deadlines and Timeouts](../guides/change-state/commands.md#deadlines-and-timeouts): How to set deadlines.
 - [Command Idempotency](command-idempotency.md): The complementary "ran more than once" problem.

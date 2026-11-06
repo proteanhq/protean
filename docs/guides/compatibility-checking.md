@@ -1,4 +1,4 @@
-# Check your domain model for breaking changes
+# Compatibility checking
 
 Protean's IR (Intermediate Representation) tooling helps you detect breaking
 changes to your domain model before they reach production. This guide walks
@@ -31,7 +31,7 @@ contract actually changes. Your baseline diffs stay reviewable and carry no
 per-file timestamp changes. The `--fix` staleness hook writes the same
 canonical output.
 
-### Set up a multi-domain project
+### Multi-domain projects
 
 Projects with multiple bounded contexts use a subdirectory per domain:
 
@@ -271,7 +271,7 @@ When `strictness = "warn"`, breaking changes are reported but the exit code is
 both sides. If either step fails, the command exits 2. It then exits 0 without
 comparing them.
 
-### Read the Avro compatibility verdict
+### Avro compatibility verdict
 
 `ir diff` also reports an **Avro-style verdict** (`BACKWARD`, `FORWARD`,
 `FULL`, or `NONE`) matching the rules a schema registry applies to the Avro

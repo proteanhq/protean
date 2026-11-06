@@ -9,20 +9,20 @@ already exists, or a write fails partway, `add` exits `1`. On a partway
 failure, `add` rolls back what it wrote. It then names anything it could not
 remove.
 
-## Run the command
+## Usage
 
 ```shell
 protean add [OPTIONS] ELEMENT_TYPE NAME
 ```
 
-## What arguments it takes
+## Arguments
 
 | Argument       | Description                                        | Default | Required |
 |----------------|----------------------------------------------------|---------|----------|
 | `ELEMENT_TYPE` | The element type to add. Only `aggregate` for now. | None    | Yes      |
 | `NAME`         | The aggregate name, e.g. `Order`.                  | None    | Yes      |
 
-## What options it accepts
+## Options
 
 - `--path`, `-p`: Project directory to plan against. Defaults to the current
   directory.
@@ -86,7 +86,7 @@ The project is resolved from `src/<package>/domain.py`. `add` reads the package
 name and the domain variable (the name your `@domain.aggregate` decorators use)
 straight from that file, without importing it.
 
-## Run `add` in common cases
+## Examples
 
 Write the `Order` aggregate slice into the current project:
 
@@ -106,7 +106,7 @@ Point at another project directory:
 protean add aggregate Order --path ./my-project
 ```
 
-## What each exit code means
+## Exit codes
 
 - `0`: the slice was applied (or, with `--dry-run`, the plan was printed).
 - `1`: an apply failure. Either a target file already exists (`add` refuses to

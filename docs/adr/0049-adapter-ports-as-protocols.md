@@ -153,7 +153,7 @@ Callers reach every framework feature through one object. Application code
 that needs the native client calls the service's `get_connection()`
 (decision 10). A test that needs adapter internals reads `_adapter`.
 
-### 7. `protean.infra` holds the services, the containers and the registry
+### 7. Services, containers and the registry live in `protean.infra`
 
 `protean.infra` holds the services, the containers and the adapter registry, in
 flat modules. `protean.adapters` holds adapter implementations only.
@@ -240,7 +240,7 @@ against the adapter's declared capabilities.
 One plugin and one marker give every port the same way to select an adapter
 and skip a test.
 
-### 13. Breaking port changes follow the Stable, Provisional and Internal tiers
+### 13. The port break follows the stable-surface tiers
 
 - The `Base*` adapter classes are removed. The adapters of one technology keep
   their shared code in that technology's adapter package. For example, the

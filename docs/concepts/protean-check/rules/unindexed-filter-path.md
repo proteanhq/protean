@@ -54,7 +54,7 @@ Only the *leading* column of a composite index is covered. A filter on a
 non-leading column alone (for example `Index("channel", "region")` with a filter
 on `region`) is **flagged**, because that index cannot serve it.
 
-## What the rule leaves out
+## Scope and limits
 
 The rule is deterministic and conservative: when it cannot resolve a query to a
 specific aggregate, it **skips the query and does not guess**. An unresolved
@@ -88,7 +88,7 @@ missing index, so the slow query typically first appears as a production
 incident. This rule detects it mechanically, at build time, from the code as
 written.
 
-## What a flagged and a compliant aggregate look like
+## Example
 
 Flagged, a repository filters on a field the aggregate does not index:
 
@@ -110,7 +110,7 @@ Compliant. The filtered field is indexed:
 - when the scan cost does not matter, as for a small lookup table or a one-off
   admin/reporting query, suppress the check.
 
-## How to suppress the rule
+## Suppressing
 
 Suppress the rule for a single aggregate with `suppress_checks` (it resolves
 against the aggregate FQN the finding is attributed to):

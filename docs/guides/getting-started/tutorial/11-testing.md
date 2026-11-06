@@ -77,7 +77,7 @@ Test the FastAPI endpoints using `TestClient`:
 --8<-- "guides/getting-started/tutorial/tests/test_api.py:full"
 ```
 
-## Test complete flows with integration tests
+## Integration Testing
 
 Test complete flows from command to final state:
 

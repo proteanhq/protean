@@ -11,7 +11,7 @@ protean upgrade-check --domain=my_app
 protean upgrade-check --domain=my_app --format=json
 ```
 
-## What options does the command take?
+## Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -33,9 +33,9 @@ source, so the mode runs with the databases and brokers down.
 | `2` | A usage or environment error: a bad `--format`, a bad or misplaced `--pinned-version`, an unknown option, a domain that does not load, an error while the domain initializes, or an error outside a single check. A check that fails on its own reports `CHECK_FAILED` and exits `1`. The message goes to stderr, and stdout stays empty, including under `--format json`. |
 
 `--format json` prints the findings as a plain JSON list. It does not use the
-[result envelope](conventions.md#what-does-the-result-envelope-contain).
+[result envelope](conventions.md#the-result-envelope).
 
-## Which changes does the command check?
+## Checks
 
 | Code | Level | Surface | What it reports |
 |------|-------|---------|-----------------|
@@ -91,7 +91,7 @@ A clean report can still miss three cases:
   Neither tool flags a call into a client library outside that list either,
   such as `stripe` or `boto3`.
 
-## Review the SQL the command generates
+## Generated SQL
 
 For `OUTBOX_NEEDS_ALTER`, the command introspects the live table and emits the
 `ALTER` tailored to the connected database, for example on PostgreSQL:
@@ -139,7 +139,7 @@ queue-vocabulary choices before it fires. Detector findings are advisory
 (`info`) and do not change the exit code. The one exception is `CHECK_FAILED`:
 if a detector cannot complete, that is a `warning`, and any warning exits `1`.
 
-### How does the pinned version filter findings?
+### The pinned version
 
 Each detector declares the release its capability arrived in. A finding is
 reported only when that release is at or below the *pinned* version, i.e. you
@@ -153,7 +153,7 @@ capability's finding, because you do not own it yet.
 release tag: `0.16`, `0.16.3`, `0.16.0rc1`, `0.16.0.dev1`. Anything else exits
 `2`, so a typo does not silently read as some other version.
 
-### Which hand-rolled code does each detector find?
+### Detectors
 
 | Code | Level | Capability (release) | What it finds |
 |------|-------|----------------------|---------------|
@@ -163,7 +163,7 @@ release tag: `0.16`, `0.16.3`, `0.16.0rc1`, `0.16.0.dev1`. Anything else exits
 | `SANITIZE_DEFAULT_CHANGED` | info | Sanitize default flip (0.18.0) | A `String`/`Text` field that leaves `sanitize` unset, either by not passing it or by passing `None`, and therefore relied on the pre-0.18 default of `sanitize=True`. Every site is listed by `module:line` so the finding works as a migration checklist. Not flagged: a field that declares `sanitize` by keyword or positionally (`Text(True)`), a field with a real `choices=` value (never sanitized), a container content spec (`List(String(...))`, never sanitized), a `String`/`Text` that is not Protean's, and a field whose arguments hide behind a splat (`String(**opts)`). The whole finding is suppressed when the domain sets `[field_defaults] sanitize = true`, which opts every unset field back into the old behaviour. See [the migration guide](../migration/v0-18.md#string-and-text-no-longer-sanitize-by-default). |
 | `CHECK_FAILED` | warning | n/a | A detector could not complete; the report may be incomplete for that area. |
 
-### Which advice does this mode leave out?
+### Where the line is
 
 `--opportunities` ships only deterministic detectors, so the report gives the
 same verdict every run. Most of the detectors report a capability that the

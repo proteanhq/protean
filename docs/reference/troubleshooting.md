@@ -1,4 +1,4 @@
-# Troubleshoot common problems
+# Troubleshooting
 
 This page lists common problems and shows how to debug each one. For error
 classification patterns in production, see [Classify Async Processing
@@ -191,7 +191,7 @@ For tests, use test mode to process messages synchronously.
 
 ---
 
-## Aggregate validation fails
+## Aggregate validation errors
 
 **What you see:** Creating or updating an aggregate raises a `ValidationError`.
 
@@ -233,7 +233,7 @@ causes:
 
 ---
 
-## Trace messages and debug event chains
+## Message tracing and debugging event chains
 
 When a command triggers a chain of events and handlers, use Protean's
 built-in tracing to follow the full causal chain.
@@ -267,7 +267,7 @@ guide.
 
 ---
 
-## Debug with these CLI commands
+## Common CLI debugging commands
 
 ```bash
 # Check subscription status and lag

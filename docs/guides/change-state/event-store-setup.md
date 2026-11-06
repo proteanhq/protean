@@ -1,4 +1,4 @@
-# Set up the event store
+# Event Store Setup
 
 <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -21,7 +21,7 @@ regardless of provider.
 
 ---
 
-## Configure the event store
+## Configuration
 
 ### In-memory (default)
 
@@ -75,7 +75,7 @@ as usual. You can mix both patterns in the same domain.
 
 ## Reading events
 
-### Read events with the CLI
+### CLI
 
 ```bash
 # Read events from a specific aggregate instance
@@ -94,7 +94,7 @@ protean events stats --domain=myapp
 protean events search --type=Deposited --domain=myapp
 ```
 
-### Read events in code
+### Programmatic
 
 ```python
 --8<-- "guides/change-state/event-store-setup/001.py:read"
@@ -106,7 +106,7 @@ snapshot rows. You never get a snapshot back where you expect an event.
 
 ---
 
-## How does Protean name streams?
+## Stream naming conventions
 
 Protean generates stream names automatically:
 
@@ -122,7 +122,7 @@ underscored).
 
 ---
 
-## Query an aggregate's past state
+## Temporal queries
 
 Event-sourced aggregates support time-travel queries:
 
@@ -135,7 +135,7 @@ See [Temporal Queries](./temporal-queries.md) for the full guide.
 
 ---
 
-## Load aggregates faster with snapshots
+## Snapshots
 
 For aggregates with many events, snapshots optimize load times by
 storing periodic state checkpoints. See [Snapshots](./snapshots.md).

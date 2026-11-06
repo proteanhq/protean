@@ -64,7 +64,7 @@ Then route specific aggregates or projections to the named database:
 --8<-- "guides/compose-a-domain/choosing-adapters/001.py:named-database"
 ```
 
-See the [Database capability matrix](../../reference/adapters/database/index.md#which-provider-supports-which-capability)
+See the [Database capability matrix](../../reference/adapters/database/index.md#provider-capability-matrix)
 for the exhaustive per-feature breakdown.
 
 ---
@@ -155,7 +155,7 @@ separate Redis instances.
 
 ---
 
-## Start from a typical stack
+## Typical stacks
 
 A few combinations cover most real-world Protean deployments:
 
@@ -176,7 +176,7 @@ integration consumers) + Redis cache.
 
 For the TOML that wires these together (including environment variable
 substitution and overlays) see [Configure for Production: Adapter
-selection](./production-configuration.md#choose-your-adapters).
+selection](./production-configuration.md#adapter-selection).
 
 ---
 

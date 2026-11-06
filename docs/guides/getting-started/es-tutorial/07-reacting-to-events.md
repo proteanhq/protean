@@ -7,7 +7,7 @@ the aggregate or the projector. In this chapter we will create **event
 handlers**, decoupled listeners that react to events and trigger external
 actions.
 
-## How do event handlers differ from projectors?
+## Event Handlers vs. Projectors
 
 | | Projectors | Event Handlers |
 |---|-----------|---------------|
@@ -40,7 +40,7 @@ A single event handler can handle multiple event types. The
 `NotificationHandler` listens for both `AccountOpened` (welcome message)
 and `WithdrawalMade` (large withdrawal alert).
 
-## Let several consumers react to one event
+## Multiple Consumers, One Event
 
 A key principle of event-driven architecture: **a single event can be
 consumed by multiple listeners**. When a large deposit occurs:
@@ -105,7 +105,7 @@ Our system now reacts to events. But everything still runs synchronously, a
 slow compliance check blocks the deposit response. In the next chapter, we will
 switch to asynchronous processing with Redis and the Protean server.
 
-## See the full source
+## Full Source
 
 ??? example "ch07.py, 270 lines"
 
@@ -113,6 +113,6 @@ switch to asynchronous processing with Redis and the Protean server.
     --8<-- "guides/getting-started/es-tutorial/ch07.py:full"
     ```
 
-## Go to the next chapter
+## Next
 
 [Chapter 8: Going Async with the Server →](08-going-async.md)

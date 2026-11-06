@@ -1,4 +1,4 @@
-# Create and explore Protean projects
+# Project Commands
 
 Commands for creating, exploring, and working with Protean projects.
 

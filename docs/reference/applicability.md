@@ -1,4 +1,4 @@
-# Decide whether Protean fits your system
+# Applicability charter
 
 This page helps you decide whether Protean fits what you are building. It is as
 clear about the systems Protean is not for as about the ones it is.
@@ -18,7 +18,7 @@ contract.
 
 ---
 
-## What is Protean for, in one sentence?
+## In one sentence
 
 **Protean is for backend systems in Python where the hard part is the business
 rules, not moving large volumes of data at very low latency.**
@@ -84,7 +84,7 @@ tests. See [Adapters](adapters/index.md) for the details.
 
 ---
 
-## What is Protean not built for?
+## What Protean is not built for
 
 If your system is one of these, choose a different tool. The sooner you see the
 mismatch, the cheaper it is to act on.
@@ -131,7 +131,7 @@ to your code.
 
 ---
 
-## How far does Protean scale, and how do you run it?
+## Scale and how you run it
 
 Most business systems fall between the two extremes this page rules out.
 Protean is built for ordinary web, API, and line-of-business backends, and for
@@ -199,7 +199,7 @@ to Protean itself.
 
 ---
 
-## See also
+## Related reading
 
 - [Hello, Protean!](../guides/getting-started/hello.md): Build and run a real slice in a few minutes.
 - [Consistency & delivery guarantees](guarantees.md): The exact promises per store.

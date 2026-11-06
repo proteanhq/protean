@@ -1,4 +1,4 @@
-# Check Protean code with mypy
+# Type Checking
 
 Protean ships a **mypy plugin** that tells static type checkers what the
 framework changes at runtime. The plugin resolves field factories to native
@@ -36,7 +36,7 @@ decorator base class injection. There are no further flags.
 Debug mode: set `PROTEAN_MYPY_DEBUG=1` to print plugin diagnostic
 traces to stderr while mypy runs.
 
-## How field factories resolve to Python types
+## Field Type Resolution
 
 Field factories resolve to their Python types:
 
@@ -127,7 +127,7 @@ the function's name. The plugin therefore accepts any such call in an
 annotation as a field. A call without keyword arguments counts only when it
 names a Protean field factory: `label: str()` still reports `valid-type`.
 
-## How decorators add base classes
+## Decorator Base Class Injection
 
 A class decorated with `@domain.aggregate` (or another element decorator)
 is a subclass of the matching base class for mypy, as it is at runtime. For
@@ -167,7 +167,7 @@ decorated elements
 ([ADR-0047](../../adr/0047-mypy-plugin-subclasses-decorated-elements.md)) for
 how the base is added.
 
-## Which framework entry points return precise types
+## Typed framework entry points
 
 - `domain.view_for(Projection)` returns `ReadView[Projection]`, so `.get()`
   and `.find_by()` return the projection class. Without the plugin, a
@@ -205,7 +205,7 @@ off Pylance's strict checker. The settings combination:
 Protean's own repository ships this configuration in its
 `.vscode/settings.json` for reference.
 
-## What the plugin does not cover
+## Known Limitations
 
 - **`auto_add_id_field=False`**: The plugin does not inspect decorator
   arguments. If you pass `auto_add_id_field=False` to `@domain.aggregate`,

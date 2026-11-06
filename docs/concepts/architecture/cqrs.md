@@ -3,7 +3,7 @@
 With CQRS, you use different models for command (write) and query (read)
 actions, so you can optimize and scale reading and writing data separately.
 
-## What elements does CQRS use?
+## Elements
 
 | Element | Layer | Purpose  |
 | ------- | ----- | -------  |
@@ -18,7 +18,7 @@ actions, so you can optimize and scale reading and writing data separately.
 | Event Store | Infrastructure | A specialized storage system that captures and persists all domain events, allowing the reconstruction of aggregate states and enabling event sourcing patterns. |
 
 
-## How does a request flow through CQRS?
+## Workflow
 
 ![CQRS](../../images/cqrs-workflow.jpg)
 

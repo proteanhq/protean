@@ -9,7 +9,7 @@
 
 ## Context
 
-### Why does an optional dependency make instrumentation hard?
+### The optional dependency problem
 
 OpenTelemetry is an optional dependency in Protean (`pip install
 protean[telemetry]`). Instrumentation code (span creation, metric recording,
@@ -27,7 +27,7 @@ Each was corrected by adding a helper to the central module. This demonstrated
 that the boundary needs to be explicit and well-documented, not just a
 convention.
 
-### How does a trace cross message boundaries?
+### The distributed tracing problem
 
 Protean is an asynchronous, message-driven framework. A single user
 action can span multiple processing steps:
@@ -54,7 +54,7 @@ OTEL imports.
 
 ## Decision
 
-### Part 1: Route every OpenTelemetry call through one gateway module
+### Part 1: Centralized telemetry gateway
 
 One module, `src/protean/utils/telemetry.py`, makes every OpenTelemetry call in
 Protean. The rest of the codebase **never imports `opentelemetry` directly**.
@@ -85,7 +85,7 @@ minimal interface that instrumentation code depends on (e.g.,
 Instrumentation code calls `tracer.start_as_current_span()` unconditionally and
 gets either a real span or a no-op, no conditional guards anywhere.
 
-### Part 2: Name every span by subsystem and operation
+### Part 2: Span conventions
 
 All spans follow the naming pattern `protean.<subsystem>.<operation>`:
 
@@ -109,7 +109,7 @@ set_status_on_exception=False`. Errors are recorded explicitly via
 exception handler decides what gets recorded. The `StatusCode` import also
 stays centralized in the gateway module.
 
-### Part 3: Bridge TraceParent and the OTEL context in both directions
+### Part 3: Bidirectional TraceParent bridging
 
 Protean carries distributed traces across its message boundaries at three
 injection/extraction points:
@@ -148,7 +148,7 @@ discarded headers that contained only a `traceparent` (it required `type`
 or `id` to be present). This was corrected to preserve headers with any
 meaningful content.
 
-### Part 4: Define a fixed set of metric instruments per domain
+### Part 4: Metrics
 
 A fixed set of metric instruments is defined in the `DomainMetrics` class,
 created lazily per domain via `get_domain_metrics(domain)`:
@@ -230,7 +230,7 @@ because OTEL is the standard that the tracing industry has adopted. Jaeger and
 Zipkin both accept OTLP. Choosing OTEL avoids vendor lock-in and gives users
 freedom to pick their backend.
 
-## Update: Log records carry the active trace identifiers (Epic 6.6, sub-issue #917)
+## Update: Log↔Trace Correlation (Epic 6.6, sub-issue #917)
 
 The Logging Overhaul (Epic 6.6) extended this telemetry work with automatic
 log↔trace correlation. When `telemetry.enabled=True`,

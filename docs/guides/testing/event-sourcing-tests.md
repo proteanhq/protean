@@ -1,4 +1,4 @@
-# Test event-sourced aggregates
+# Event Sourcing Tests
 
 <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -28,7 +28,7 @@ The examples on this page test this event-sourced `Order`:
     --8<-- "guides/testing/event-sourcing-tests/ordering_es/__init__.py:domain"
     ```
 
-## Write a test in three words
+## The Three Words
 
 ### `given(AggregateCls, *events)`
 
@@ -63,7 +63,7 @@ self:
 order = given(Order, order_created, order_confirmed).process(initiate_payment)
 ```
 
-## Chain several commands
+## Multi-Command Chaining
 
 Call `.process()` multiple times to build up aggregate state through the real
 pipeline, no hand-crafted event fixtures needed:
@@ -102,7 +102,7 @@ aggregate's history. Command chaining gives lifecycle-level testing.
 
 After `.process()`, the result object provides:
 
-### Read the aggregate state
+### Aggregate State
 
 Attribute access is proxied to the underlying aggregate:
 
@@ -142,7 +142,7 @@ class supports Python's built-in operators:
 --8<-- "guides/testing/event-sourcing-tests/001.py:event_log"
 ```
 
-### Get the raw aggregate
+### Raw Aggregate
 
 If you need the aggregate instance directly:
 
@@ -151,7 +151,7 @@ If you need the aggregate instance directly:
 --8<-- "guides/testing/event-sourcing-tests/001.py:raw_aggregate"
 ```
 
-## Work through complete examples
+## Complete Examples
 
 ### Testing a Create Command
 
@@ -221,7 +221,7 @@ prior successful commands:
 --8<-- "guides/testing/event-sourcing-tests/001.py:rejection_mid_chain"
 ```
 
-## Set up the tests
+## Test Setup
 
 ### conftest.py for Event-Sourced Tests
 
@@ -235,7 +235,7 @@ import `domain` from your application's package (`ordering_es` here):
 --8<-- "guides/testing/event-sourcing-tests/conftest.py:conftest"
 ```
 
-### Define event fixtures
+### Event Fixtures
 
 Define reusable event fixtures for your aggregate's history in the same
 `conftest.py`, so every test module can use them:
@@ -245,7 +245,7 @@ Define reusable event fixtures for your aggregate's history in the same
 --8<-- "guides/testing/event-sourcing-tests/conftest.py:event_fixtures"
 ```
 
-## Why does the DSL work this way?
+## Design Notes
 
 ### Why Integration Tests, Not Unit Tests
 
@@ -284,7 +284,7 @@ separate from the pytest plugin in `protean.integrations.pytest`, which runs
 the fixture lifecycle (`DomainFixture`). The plugin contains no domain-level
 test DSL.
 
-## Look up the API
+## API Reference
 
 ### `given(aggregate_cls, *events) -> AggregateResult`
 

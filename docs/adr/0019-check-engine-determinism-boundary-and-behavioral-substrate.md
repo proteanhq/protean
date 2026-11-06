@@ -1,4 +1,4 @@
-# ADR-0019: Draw a determinism boundary for the check engine and build a behavioral analysis substrate
+# ADR-0019: Check-engine determinism boundary and a behavioral analysis substrate
 
 **Status:** Accepted
 

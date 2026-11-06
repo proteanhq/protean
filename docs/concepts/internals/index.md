@@ -1,4 +1,4 @@
-# How Protean works internally
+# Internals
 
 The design reasoning and internal architecture behind Protean's core systems.
 When you contribute to Protean, read these pages. Read them also to learn
@@ -8,7 +8,7 @@ These pages give more detail than the guides. The guides show you what code to
 write. These pages explain how Protean runs that code and why its design took
 that form.
 
-## What does each page explain?
+## Topics
 
 - [Field system](./field-system.md): How Protean's field functions translate
   domain vocabulary into Pydantic's type system. The page also explains why

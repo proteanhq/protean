@@ -46,13 +46,13 @@ writes from different handlers are serialized. They are not.
 
 ---
 
-## Which four classes of concurrency problem can occur?
+## The Four Concurrency Problem Classes
 
 The HubSpot incident is one instance of a broader class of concurrency issues
 in event-driven systems. When you know which of the four classes a bug belongs
 to, you can pick the right solution.
 
-### Class 1: Several events create the same entity at once
+### Class 1: Concurrent entity creation
 
 Multiple events trigger creation logic for the same aggregate. Without
 coordination, duplicates are created.
@@ -61,7 +61,7 @@ coordination, duplicates are created.
 handler's write hasn't committed when the second handler checks for
 existence.
 
-### Class 2: Several events change the same aggregate at once
+### Class 2: Concurrent aggregate mutation
 
 Multiple events modify the same aggregate instance simultaneously.
 Without version checking, the last write silently overwrites the first,
@@ -71,7 +71,7 @@ losing state changes.
 One sets it to "paid", the other to "shipped". The last writer wins, and
 one status change is lost.
 
-### Class 3: An event runs before the event it depends on
+### Class 3: Causal dependency violation
 
 Event B depends on the side effects of event A (e.g., B reads an entity
 that A creates). When processed concurrently, B may execute before A's
@@ -80,7 +80,7 @@ effects are visible.
 **Example:** An `AssociationChanged` event expects a Client from a
 `ClientCreated` event. That `ClientCreated` event hasn't been committed yet.
 
-### Class 4: A handler processes the same event twice
+### Class 4: Duplicate processing
 
 The same event is delivered to the same handler twice (at-least-once
 delivery). Without idempotency, the handler's side effects are applied
@@ -113,7 +113,7 @@ handlers.
 
 ## How Protean Already Protects You
 
-### Optimistic concurrency control is always on
+### Optimistic Concurrency Control (always-on)
 
 Every aggregate has an automatic `_version` field. The DAO checks this version
 on every save. When another transaction has modified the aggregate since the
@@ -145,7 +145,7 @@ Manager](coordinating-long-running-processes.md) is the DDD-correct solution.
 The Process Manager correlates related events and tracks what has happened. It
 then issues commands in the right order.
 
-### Idempotent handlers make duplicate deliveries safe
+### Idempotent handler patterns (for duplicates)
 
 Protean's at-least-once delivery means every event handler must be safe
 to run more than once. The
@@ -153,7 +153,7 @@ to run more than once. The
 covers three strategies: naturally idempotent operations, deduplication,
 and upserts.
 
-### Command idempotency stops duplicate commands at submission
+### Command idempotency (at the submission boundary)
 
 For commands submitted by external callers, Protean provides a
 Redis-backed `IdempotencyStore` that prevents duplicate processing.
@@ -209,7 +209,7 @@ start handler.
 **Use this solution when** events have causal dependencies. Multiple aggregates
 are involved. You need explicit state tracking of the integration flow.
 
-### Solution C: Add a unique constraint and retry idempotently
+### Solution C: Idempotent retry with unique constraints
 
 If the aggregate has a unique business key, the database prevents duplicates.
 The handler then skips any work that an earlier delivery already did:
@@ -239,7 +239,7 @@ coordination is more than it needs.
 
 ---
 
-## Which solution should you choose?
+## Decision Tree
 
 When you're unsure which approach to use, follow this sequence:
 
@@ -272,7 +272,7 @@ flowchart TD
 
 ## Anti-Patterns
 
-### Running "find or create" without coordination
+### "Find or create" without coordination
 
 ```python
 # fragment

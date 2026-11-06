@@ -8,7 +8,7 @@ event history of an aggregate instance, all without writing custom scripts.
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Which commands does the group provide?
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -334,7 +334,7 @@ and Protobuf) the catalog forms a **local schema-registry on-ramp**: exactly
 what an external registry (Confluent, Apicurio) would publish, without
 integrating the service. See [`protean schema`](../schema.md).
 
-## What happens when a command fails?
+## Error Handling
 
 | Condition | Behavior |
 |-----------|----------|
@@ -346,7 +346,7 @@ integrating the service. See [`protean schema`](../schema.md).
 | No aggregates in domain (`stats`) | Prints "No aggregates registered" |
 | No events for correlation ID (`trace`) | Prints "No events found for correlation ID" |
 
-## How do the commands find your domain?
+## Domain Discovery
 
 The `protean events` commands use the same domain discovery mechanism as
 other CLI commands. The `--domain` option accepts:

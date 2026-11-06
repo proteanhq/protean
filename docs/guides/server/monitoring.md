@@ -1,4 +1,4 @@
-# Monitor the server
+# Monitoring
 
 Protean includes a built-in monitoring server called the **Observatory** that
 provides real-time visibility into the message processing pipeline.
@@ -28,7 +28,7 @@ The Observatory exposes:
 | `GET /api/subscriptions` | Subscription lag, pending, DLQ per handler |
 | `GET /metrics` | Prometheus text exposition format |
 
-## Which metrics should you watch?
+## Key metrics
 
 Monitor these metrics in production (available at `/metrics`):
 
@@ -108,7 +108,7 @@ groups:
 See [`protean projection status`](../../reference/cli/data/projection.md#protean-projection-status)
 for full CLI documentation.
 
-## Configure Prometheus to scrape the Observatory
+## Prometheus scrape configuration
 
 ```yaml
 # prometheus.yml

@@ -25,7 +25,7 @@ All commands accept a `--domain` option to specify the domain module path
     processing during a rebuild can cause data inconsistencies because the
     rebuild truncates projection data before replaying events.
 
-## Which commands does the group provide?
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -68,7 +68,7 @@ Each projection is rebuilt independently.
 | `--projection` | Projection class name (e.g. `Balances`) | All projections |
 | `--batch-size` | Number of events to read per batch | `500` |
 
-## What does the rebuild print?
+## Output
 
 ```
 # Single projection:
@@ -89,7 +89,7 @@ domain object. Such an event is typically of a deprecated type that was removed
 from the codebase without an upcaster chain. Skipped events are logged as
 warnings but do not cause the rebuild to fail.
 
-## How does the rebuild respond to errors?
+## Error handling
 
 | Condition | Behavior |
 |-----------|----------|
@@ -129,7 +129,7 @@ across all of them.
     so it is reported for event-store-backed projectors. Stream-backed (Redis)
     projectors show lag and status, but their staleness is blank.
 
-### Get the status as JSON
+### JSON output
 
 ```bash
 protean projection status --domain=my_domain --json
@@ -174,7 +174,7 @@ stays parseable.
 For continuous monitoring, scrape the `protean_projection_staleness_seconds`
 metric instead; see [Server Observability](../../server/observability.md).
 
-## How do the commands find the domain?
+## Domain discovery
 
 The `protean projection` commands use the same domain discovery mechanism as
 `protean server`. The `--domain` option accepts:
@@ -188,7 +188,7 @@ See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 
 ---
 
-## Run the same operations from Python code
+## Programmatic API
 
 The same functionality is available as Domain methods for use in scripts or
 the `protean shell`:
@@ -224,7 +224,7 @@ Rebuild every projection in the domain. Returns a
 
 ---
 
-## How does a rebuild work?
+## How it works
 
 The rebuild process has three phases:
 

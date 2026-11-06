@@ -1,6 +1,6 @@
 # Process Managers
 
-## What problem do process managers solve?
+## The Problem They Solve
 
 Event handlers react to domain events and execute side effects, updating
 another aggregate, sending a notification, syncing a projection. Each handler
@@ -158,7 +158,7 @@ events without importing from the other domain's package. When domains are
 distributed as independent services, use subscribers to translate external
 messages into internal commands or events. The PM then reacts to those commands
 or events. See [Multi-Domain
-Applications](../../guides/multi-domain-applications.md#communicate-across-domains)
+Applications](../../guides/multi-domain-applications.md#cross-domain-communication)
 for guidance on choosing between the two approaches.
 
 ### Process managers are event-sourced. { data-toc-label="Event-Sourced" }
@@ -201,7 +201,7 @@ discards any command the handler issued before the failure. Message-DB writes
 such a command on its own connection, so the command survives the rollback.
 Keep issued commands idempotent so re-issuing one is safe.
 
-## Follow these practices when you design a process manager
+## Best Practices
 
 ### Keep process managers focused on coordination. { data-toc-label="Coordination Only" }
 
@@ -239,7 +239,7 @@ in an inconsistent intermediate state. Use `end=True` or
 
 ---
 
-## Read more about process managers
+## Next steps
 
 For practical details on defining and using process managers in Protean, see the guide:
 

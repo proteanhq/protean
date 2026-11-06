@@ -91,7 +91,7 @@ The core principles:
 
 ## Applying the Pattern
 
-### Rebuild a projection after a schema change
+### Simple rebuild after a schema change
 
 The most common scenario: you add, rename, or remove fields on a projection.
 After you deploy the updated projector, rebuild the projection.
@@ -142,7 +142,7 @@ Or from within a script:
 
 ---
 
-### Rebuild with zero downtime using blue-green deployment
+### Blue-green deployment for zero-downtime rebuilds
 
 You cannot truncate and rebuild a projection that serves live traffic (e.g. an
 API endpoint backed by `OrderSummary`) in place without leaving it empty or

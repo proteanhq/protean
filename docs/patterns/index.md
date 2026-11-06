@@ -1,4 +1,4 @@
-# Solve recurring design problems with patterns
+# Patterns
 
 Patterns are **prescriptive understanding**. They explain *what to do* about a
 recurring design problem and *why*, with explicit boundaries on when the
@@ -14,7 +14,7 @@ These patterns **span multiple domain elements**. They describe good practices
 that Protean supports but does not enforce. You follow these patterns to build
 a well-designed DDD system. Using DDD terminology alone does not give you one.
 
-## Which order should you read the patterns in?
+## Reading Paths
 
 If you are new to these patterns, these sequences build on each other:
 
@@ -69,7 +69,7 @@ State Machines](aggregate-state-machines.md)
 
 ---
 
-## Design aggregates
+## Aggregate Design
 
 - **[Design Small Aggregates](design-small-aggregates.md)**: Draw aggregate
   boundaries around consistency requirements, not data relationships. Reference
@@ -110,7 +110,7 @@ State Machines](aggregate-state-machines.md)
   invalid transitions impossible. The enum shows the aggregate's lifecycle in
   one place.
 
-## Design event-driven flows
+## Event-Driven Patterns
 
 - **[Design Events for Consumers](design-events-for-consumers.md)**: Events
   should carry enough context for consumers to act independently, without
@@ -247,7 +247,7 @@ State Machines](aggregate-state-machines.md)
   lifecycle (reset after every test). Applies to all infrastructure, not just
   databases.
 
-## Create identities and communicate across domains
+## Identity & Communication
 
 - **[Creating Identities Early](creating-identities-early.md)**: Generating
   aggregate identities at the point of creation (or earlier, at the client or

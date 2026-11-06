@@ -1,4 +1,4 @@
-# Which arguments do all fields accept?
+# Common Arguments
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -89,7 +89,7 @@ Out[2]:
  '_version': -1}
 ```
 
-### How do defaults that hold mutable objects behave?
+### Mutable object defaults
 
 Protean copies a `list` or `dict` default for each instance, so `default=[]`
 and `default={}` are safe. The copy is shallow: objects nested inside the list
@@ -116,7 +116,7 @@ Out[2]:
  '_version': -1}
 ```
 
-### Use a lambda expression as a default
+### Lambda expressions
 
 You can use lambda expressions to specify an anonymous function:
 

@@ -3,13 +3,13 @@
 
 The `protean new` command initializes a new project with a given name.
 
-## Run the command
+## Usage
 
 ```shell
 protean new [OPTIONS] PROJECT_NAME
 ```
 
-## Pass the project name
+## Arguments
 
 | Argument       | Description             | Default | Required |
 |----------------|-------------------------|---------|----------|
@@ -20,7 +20,7 @@ name has to be a single directory segment: not empty, not `.` or `..`, and
 without `<>:"/\|?*` or whitespace. The command rejects any other name before it
 writes any file.
 
-## Choose options for the new project
+## Options
 
 - `--output-dir`, `-o`: Specifies the directory where the project should be
 created. If not provided, the current directory is used.
@@ -48,7 +48,7 @@ project with the example slice off. It does honour `--force`, which clears an
 existing target the same way a plain `protean new` does.
 - `--help`: Shows the help message and exits.
 
-### Preview or overwrite the output
+### Behavior Modifiers
 
 - `--dry-run`: Prints the project-relative path of every file the command
 would create, one per line, and writes nothing. The target directory is left
@@ -59,11 +59,11 @@ existing files. The target directory has to be inside the output directory. If
 `<output-dir>/<name>` is a symlink to another location, the command refuses to
 run and so never clears files outside the output directory.
 
-## What does the command generate?
+## Generated Project Structure
 
 The command creates a complete project structure with the following components:
 
-### Which files does the command write to the project root?
+### Root Files
 
 - `pyproject.toml`: Python project configuration with uv
 - `README.md`: Project documentation
@@ -83,7 +83,7 @@ The command creates a complete project structure with the following components:
   (`AGENTS.md`, `CLAUDE.md`) and the pack version. `protean dx check` and
   `refresh` read this record to verify and update those files.
 
-### Which Docker files does the command write?
+### Docker Configuration
 
 - `Dockerfile`: Production Docker image
 - `Dockerfile.dev`: Development Docker image
@@ -92,7 +92,7 @@ The command creates a complete project structure with the following components:
 - `docker-compose.prod.yml`: Production configuration
 - `nginx.conf`: Nginx configuration for production
 
-### Activate the virtual environment in your shell
+### Activation Scripts
 
 The `scripts/` directory contains virtual environment activation scripts for different shells:
 
@@ -100,7 +100,7 @@ The `scripts/` directory contains virtual environment activation scripts for dif
 - `scripts/activate.fish`: Fish shell activation
 - `scripts/activate.bat`: Windows batch activation
 
-### How is the source code organized?
+### Source Code Structure
 
 The generated structure follows the
 [Organize by Domain Concept](../../../patterns/organize-by-domain-concept.md)
@@ -155,7 +155,7 @@ As your domain grows, add new aggregates as peer folders alongside
 pattern for guidance on evolving this structure, including colocating
 commands with their handlers in capability files.
 
-### How are the tests organized?
+### Test Structure
 
 ```
 tests/
@@ -179,11 +179,11 @@ command/event write path, the other asserts the projection reflects the created
 aggregate. `pytest` passes on a fresh project, so you start with a working test
 to copy.
 
-### Which CI pipeline does the command write?
+### CI/CD Configuration
 
 - `.github/workflows/ci.yml`: GitHub Actions CI pipeline
 
-## What do the generated modules provide?
+## Generated Modules
 
 ### Logging Module (`shared/logging.py`)
 
@@ -224,7 +224,7 @@ Domain-specific exception hierarchy:
 - `DuplicateException`: Duplicate resource creation attempt
 - `ValidationException`: Domain validation failure
 
-## See example commands
+## Examples
 
 ### Creating a New Project
 
@@ -264,7 +264,7 @@ protean new authentication \
   --defaults
 ```
 
-### Set up a project quickly with defaults
+### Quick Setup with Defaults
 
 To quickly create a project with default options:
 

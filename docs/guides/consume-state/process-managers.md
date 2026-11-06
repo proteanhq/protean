@@ -123,7 +123,7 @@ connection. With Message-DB, the command survives and the PM's transition rolls
 back. Do not rely on how either event store treats the command. Keep issued
 commands idempotent so re-issuing one is safe.
 
-## How a process manager handles each event
+## Process Manager Workflow
 
 Each time the event store delivers an event to a PM, the PM runs these steps:
 
@@ -154,12 +154,12 @@ sequenceDiagram
    the PM's field state as a transition event. The framework appends the
    transition event to the PM's stream.
 
-## Match each event to a PM instance with correlation
+## Correlation
 
 Correlation determines which PM instance handles each event. Every handler must
 declare a `correlate` parameter.
 
-### Correlate by naming the event field
+### String Correlation
 
 In the simplest form, you pass the name of the event field that holds the
 correlation value:
@@ -174,7 +174,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
 Here, the framework extracts `event.order_id` and uses it to find or create the
 PM instance.
 
-### Map a PM field to a differently named event field
+### Dictionary Correlation
 
 When the event carries the value under a different name than the PM field,
 use a dictionary:
@@ -191,7 +191,7 @@ framework reads only the dictionary's value. The key, `order_id`, records which
 PM field the value belongs to. Events are matched by value, so two handlers can
 name different event fields as long as those fields hold the same value.
 
-## Start and complete a process
+## Lifecycle Management
 
 ### Starting a Process
 
@@ -238,9 +238,9 @@ at least one terminating handler `end=True`.
 Once a PM is marked complete, any subsequent events for that correlation value
 are silently skipped. No new transition is persisted and no handler runs.
 
-## Configure a process manager
+## Configuration Options
 
-### Choose the streams a PM subscribes to
+### Stream Sources
 
 - **`stream_categories`**: List of stream categories the PM subscribes to.
   Include the stream that triggers the workflow. Also include the stream of
@@ -266,7 +266,7 @@ are silently skipped. No new transition is persisted and no handler runs.
         ...
     ```
 
-### Set subscription options
+### Subscription Options
 
 Process managers support the same subscription configuration as
 [event handlers](./event-handlers.md#subscription-options):
@@ -311,10 +311,10 @@ When domains are **distributed as independent services**, use subscribers
 instead. The subscriber acts as an anti-corruption layer, translating raw
 broker payloads into internal commands or events that your PM can react to. See
 [Multi-Domain Applications, Cross-domain
-communication](../../guides/multi-domain-applications.md#communicate-across-domains)
+communication](../../guides/multi-domain-applications.md#cross-domain-communication)
 for guidance on choosing between `register_external_event()` and subscribers.
 
-## Handle errors in a process manager
+## Error Handling
 
 Process managers can define a `handle_error` class method for custom error
 handling, following the same pattern as
@@ -331,7 +331,7 @@ class OrderFulfillmentPM:
         logger.error(f"PM failed to process {message.type}: {exc}")
 ```
 
-## How Protean records PM state as transition events
+## Transition Events
 
 After each handler runs, Protean auto-generates a transition event that
 captures:

@@ -37,11 +37,11 @@ a combination of **separate models per context**, **identity correlation**, and
 
 ---
 
-## Tell apart two cases that look alike
+## Two Variations
 
 Two scenarios look similar but need different approaches:
 
-### Rename different concepts that share a name
+### Different Concepts, Same Name
 
 "Account" in Banking means a financial account with a balance and transaction
 history. "Account" in Identity Management means a user account with credentials
@@ -51,7 +51,7 @@ The solution here is simple: **rename to remove ambiguity**. Use the Ubiquitous
 Language of each context. `FinancialAccount` in Banking, `UserAccount` in
 Identity Management. No connection is needed because these are not the same thing.
 
-### Connect one concept that appears in several contexts
+### Same Concept, Multiple Contexts
 
 A "Customer" who places orders in Sales is the same person who receives invoices
 in Billing and packages in Shipping. The real-world entity is one, but each
@@ -67,7 +67,7 @@ where one concept appears in several contexts.
 
 ---
 
-## The Pattern: Correlate identity and propagate events
+## The Pattern: Identity Correlation and Event Propagation
 
 The solution has three parts:
 
@@ -142,7 +142,7 @@ These events carry the **shared identity** and the data that other contexts need
 --8<-- "patterns/connect-concepts-across-domains/002.py:sales-events"
 ```
 
-### Choose between delta events and fact events
+### Delta Events vs. Fact Events
 
 You have two choices for how events carry state across context boundaries:
 
@@ -205,7 +205,7 @@ events depends on the deployment relationship between the two contexts.
     **Distributed domains:** Use subscribers as anti-corruption layers.
 
     See [Multi-Domain Applications, Cross-domain
-    communication](../guides/multi-domain-applications.md#communicate-across-domains)
+    communication](../guides/multi-domain-applications.md#cross-domain-communication)
     for the full decision framework.
 
 ### Same Domain: An Event Handler That Issues Commands
@@ -239,7 +239,7 @@ fails. The server retries a failed message, and by then the account usually
 exists. See [Error Handling](../guides/server/error-handling.md) for the retry
 settings.
 
-### Separate domains: use subscribers as anti-corruption layers
+### Separate Domains: Subscribers as Anti-Corruption Layers
 
 When bounded contexts are deployed as separate services communicating through a
 message broker, use subscribers. Subscribers receive raw payloads from external
@@ -259,7 +259,7 @@ comes with `CustomerAddressUpdated`. A subscriber can also receive the same
 message twice. So the subscriber skips a registration for a customer it already
 knows.
 
-### Build cross-context projections
+### Cross-Context Projections
 
 For read-only views that combine data from multiple aggregates or contexts,
 use projectors. Projectors can subscribe to multiple stream categories
@@ -278,13 +278,13 @@ The projector keeps the ids of the invoices it has counted. So an
 
 ---
 
-## Link the contexts with the correlation ID
+## The Correlation ID
 
 Every part of this pattern relies on one shared identifier, the correlation ID.
 Every context stores it on its local model and uses it to connect incoming
 events to the right local entity.
 
-### How should you design the correlation ID?
+### Design Guidelines
 
 **Use the source context's identity.** The context that owns the concept generates
 its identity. All other contexts store this identity as a reference:
@@ -316,7 +316,7 @@ class CustomerEmailUpdated:
 the correlation ID. Index the field in the persistence layer that stores the
 local model.
 
-### Carry multiple correlation IDs on one local model
+### Multiple Correlation IDs
 
 A complex workflow may combine concepts from several source contexts. A local
 model can carry multiple correlation IDs:
@@ -331,7 +331,7 @@ correct `Shipment` instance using the appropriate correlation ID.
 
 ---
 
-## Propagate a concept's state with events
+## Event Propagation Patterns
 
 ### Initialize on Creation
 

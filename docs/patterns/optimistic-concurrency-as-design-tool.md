@@ -273,13 +273,13 @@ re-checks its preconditions against the reloaded aggregate:
     attempt and catches the error outside the `with` block.
 
 For auto-retry configuration, see
-[Version conflict auto-retry](../guides/server/error-handling.md#retry-version-conflicts-automatically).
+[Version conflict auto-retry](../guides/server/error-handling.md#version-conflict-auto-retry).
 To disable auto-retry entirely, set `enabled = false` in
 `[server.version_retry]`.
 
 ---
 
-## How do the adapters keep the version check atomic?
+## Atomicity guarantee across adapters
 
 The pattern above assumes that `ExpectedVersionError` is raised reliably
 whenever two writers race on the same aggregate. Whether that assumption holds
@@ -323,7 +323,7 @@ discard writes.
 
 ## Anti-Patterns
 
-### Catching every conflict in one generic handler
+### Generic catch-all handler
 
 The most common anti-pattern: catching `ExpectedVersionError` at the API
 boundary and returning a generic message for all conflict types.
@@ -343,7 +343,7 @@ This tells the user nothing useful. Was their seat taken? Did their cart
 change? Is their data lost? The caller cannot distinguish between a harmless
 race condition and a fundamental problem.
 
-### Retrying every conflict blindly
+### Blind retry on all conflicts
 
 Wrapping every operation in a retry loop without considering the semantics.
 
@@ -394,7 +394,7 @@ The code drops the inventory adjustment, and no later step recovers it. The
 caller believes the operation succeeded. Downstream systems may act on that
 assumption. Inventory counts will drift from reality.
 
-### Building oversized aggregates that increase contention
+### Oversized aggregates that amplify contention
 
 When an aggregate is too large, unrelated changes cause spurious version
 conflicts. Suppose `Order` contains the customer profile, shipping address,
@@ -453,4 +453,4 @@ Aggregates](design-small-aggregates.md).
 
     - [Unit of Work](../guides/change-state/unit-of-work.md): Transaction management and version tracking.
     - [Persist Aggregates](../guides/change-state/persist-aggregates.md): Repository persistence patterns.
-    - [Error Handling](../guides/server/error-handling.md#retry-version-conflicts-automatically): Framework auto-retry configuration for version conflicts.
+    - [Error Handling](../guides/server/error-handling.md#version-conflict-auto-retry): Framework auto-retry configuration for version conflicts.

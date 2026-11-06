@@ -1,4 +1,4 @@
-# Make event handlers idempotent
+# Idempotent Event Handlers
 
 ## The Problem
 
@@ -99,13 +99,13 @@ option.
 
 ---
 
-## Strategy 1: Use naturally idempotent operations
+## Strategy 1: Naturally Idempotent Operations
 
 The simplest and most reliable approach. Some operations produce the same
 result whether they run once or ten times. For those operations, duplicates are
 harmless.
 
-### Set state instead of adding to it
+### Set-Based Operations
 
 When you **set** state instead of **adding** to it, the operation is naturally
 idempotent:
@@ -150,7 +150,7 @@ twice changes nothing:
 
 ---
 
-## Strategy 2: Deduplicate deliveries
+## Strategy 2: Deduplication
 
 When the operation is inherently additive (incrementing counters, appending
 to lists, creating new records), you need explicit deduplication.
@@ -212,13 +212,13 @@ instead.
 
 ---
 
-## Strategy 3: Use upsert operations
+## Strategy 3: Upsert Operations
 
 When a handler creates new records (like projections), use upsert semantics. An
 upsert updates the existing record at the database level instead of inserting a
 duplicate.
 
-### Upsert in a projector
+### Projector Upserts
 
 Projectors are a common case where idempotency matters. When a projector
 processes `OrderPlaced` to create an `OrderSummary` projection, a duplicate
@@ -234,7 +234,7 @@ projector catches it to tell a first delivery from a repeat. The projector
 creates the record on the first delivery and updates it on a duplicate
 delivery. The result is the same either way.
 
-### Check that the aggregate does not exist yet
+### Existence Guard
 
 For handlers that create an aggregate, check whether one already exists for the
 source of the event before creating it. `ShipmentRepository.find_by_order_id`
@@ -248,7 +248,7 @@ looks the shipment up by order ID and returns `None` when there is none:
 
 ## Applying the Pattern: Worked Examples
 
-### Example 1: Award loyalty points, an additive operation
+### Example 1: Loyalty Points (Additive Operation)
 
 Loyalty points are additive. Awarding points twice doubles the reward. This
 requires explicit deduplication.
@@ -261,7 +261,7 @@ The aggregate's `award_points` method contains the idempotency logic. The
 handler contains none. The handler is thin. The aggregate checks its
 `point_transactions` to detect duplicates.
 
-### Example 2: Reserve inventory as a cross-aggregate side effect
+### Example 2: Inventory Reservation (Cross-Aggregate Side Effect)
 
 ```python
 --8<-- "patterns/idempotent-event-handlers/002.py:inventory_imports"
@@ -272,7 +272,7 @@ The `Reservation` entity within the `Inventory` aggregate acts as a
 deduplication record. The `order_id` on each reservation uniquely identifies
 the source event, making the operation idempotent.
 
-### Example 3: Send a notification as an external side effect
+### Example 3: Notification (External Side Effect)
 
 External side effects (sending emails, calling APIs) require special care
 because they cannot be rolled back:
@@ -302,7 +302,7 @@ notification twice.
 
 ---
 
-## How event handler and projector idempotency differ
+## Event Handler vs Projector Idempotency
 
 Projectors and event handlers have different idempotency characteristics:
 
@@ -337,7 +337,7 @@ explicit deduplication).
 
 Some scenarios make perfect idempotency difficult:
 
-### Base time-dependent decisions on the event's time
+### Time-Dependent Operations
 
 If the handler's behavior depends on the current time, two executions at
 different times may produce different results:
@@ -361,7 +361,7 @@ def on_order_placed(self, event: OrderPlaced):
         order.flag_as_delayed()
 ```
 
-### Guard calls to external APIs
+### External API Calls
 
 If the handler calls an external API that's not idempotent, duplicate
 processing produces duplicate external effects:
@@ -379,7 +379,7 @@ deduplication).
 
 ---
 
-## How to tell that a handler is not idempotent
+## Signs Your Handler Isn't Idempotent
 
 1. **The handler increments a counter**: `stats.count += 1` is not idempotent.
 

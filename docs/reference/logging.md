@@ -1,4 +1,4 @@
-# Look up Protean's logging settings, functions and loggers
+# Logging
 
 Factual reference for Protean's structured logging system. For task-oriented
 instructions, see the [Logging guide](../guides/server/logging.md). For design
@@ -99,7 +99,7 @@ Explicit keyword arguments to the `DomainContextMiddleware` constructor
 (`emit_http_wide_event=`, `exclude_paths=`, `log_request_headers=`,
 `log_response_headers=`) override these values for that middleware instance.
 
-### Which setting wins?
+### Precedence
 
 Effective values are resolved in this order (first match wins):
 
@@ -109,7 +109,7 @@ Effective values are resolved in this order (first match wins):
 3. `domain.toml [logging]` section
 4. Environment-based defaults (see below)
 
-### How the environment sets the defaults
+### Environment defaults
 
 When `level` is empty and `PROTEAN_LOG_LEVEL` is unset, Protean picks a
 default from `PROTEAN_ENV` (falling back to `ENV` / `ENVIRONMENT`):
@@ -175,7 +175,7 @@ handlers on the root logger.
 
 ---
 
-## Set logging through environment variables
+## Environment variables
 
 | Variable | Purpose | Accepted values |
 |----------|---------|-----------------|
@@ -185,7 +185,7 @@ handlers on the root logger.
 
 ---
 
-## Call the public logging functions
+## Public API
 
 ### `configure_logging`
 
@@ -293,7 +293,7 @@ of your test output.
 
 ---
 
-## Which loggers does the framework write to?
+## Framework logger catalog
 
 Every logger below is a stdlib `logging.Logger`. Events flow through the
 same `ProcessorFormatter` pipeline as `get_logger()` calls, so JSON output
@@ -342,7 +342,7 @@ Same fields as `access.handler_completed`, plus:
 | `error_type` | `str` | Exception class name. |
 | `error_message` | `str` | `str(exc)` truncated to 256 characters. |
 
-#### What a rendered wide event looks like
+#### Sample rendered output
 
 A successful `PlaceOrder` command under `PROTEAN_ENV=production` (JSON
 renderer):
@@ -411,7 +411,7 @@ Emitted on responses with status `< 500`.
 | `user_agent` | `str` | `User-Agent` header, truncated to 256 characters. |
 | `http_request_headers` | <code>dict[str, str] &#124; None</code> | Present only when `[logging.http].log_request_headers = true`. |
 | `http_response_headers` | <code>dict[str, str] &#124; None</code> | Present only when `[logging.http].log_response_headers = true`. |
-| **Application fields** | any | Everything bound via `bind_event_context()` inside the endpoint; see [Two layers of wide events](../concepts/observability/logging.md#protean-emits-wide-events-at-two-layers). |
+| **Application fields** | any | Everything bound via `bind_event_context()` inside the endpoint; see [Two layers of wide events](../concepts/observability/logging.md#two-layers-of-wide-events). |
 
 #### `access.http_failed`
 
@@ -686,7 +686,7 @@ Level: WARNING. Index lifecycle and query failures. Event names follow
 
 ---
 
-## Which trace-context fields does each record carry?
+## Trace-context fields
 
 When `telemetry.enabled = true` in `domain.toml`,
 `Domain.configure_logging()` attaches `OTelTraceContextFilter` to the root stdlib logger and to each of its handlers.
@@ -705,7 +705,7 @@ per-record cost.
 
 ---
 
-## Which correlation fields does each record carry?
+## Correlation fields
 
 Always present on every record when auto-configuration is active:
 
@@ -727,7 +727,7 @@ the literal string `[REDACTED]`. Protean matches keys case-insensitively.
 Nested `dict`, `list`, and `tuple` values are scanned up to **5 levels deep**;
 deeper nesting is left untouched.
 
-### Which keys are redacted by default?
+### Default redact keys
 
 ```
 password, token, secret, api_key, authorization, cookie, session, csrf
@@ -775,5 +775,5 @@ overhead.
 
 See [`protean.server.supervisor`](server/supervisor.md) for supervisor
 configuration, and the
-[concept page](../concepts/observability/logging.md#keep-log-records-whole-across-multiple-workers)
+[concept page](../concepts/observability/logging.md#multi-worker-hygiene)
 for the rationale.

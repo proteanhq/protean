@@ -1,4 +1,4 @@
-# Use standard JSON Schema with x-protean extensions (ADR-0006)
+# ADR-0006: Standard JSON Schema with x-protean Extensions
 
 **Status:** Accepted
 

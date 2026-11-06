@@ -128,7 +128,7 @@ every event and command. Do this during domain setup, before `domain.init()`:
 --8<-- "patterns/message-enrichment/001.py:domain"
 ```
 
-### Keep only business data in the domain model
+### Clean Domain Model
 
 When enrichers add the cross-cutting metadata, the domain model carries only
 business data:
@@ -164,7 +164,7 @@ The handler belongs to `Inventory` but reacts to an `Order` event, so it sets
 --8<-- "patterns/message-enrichment/003.py:projector"
 ```
 
-### Choose what to add for each event
+### Conditional Enrichment
 
 Enrichers can inspect the event or aggregate to decide what metadata to add.
 This is useful when different event types need different extensions:
@@ -188,7 +188,7 @@ The `enrich_with_tracing` enricher lets you correlate domain events with
 infrastructure spans in tools like Jaeger, Zipkin, or Datadog. The domain model
 stays free of tracing infrastructure.
 
-### Register enrichers with function calls
+### Functional Registration
 
 The decorator form (`@domain.event_enricher`) is convenient when enrichers are
 defined alongside the domain. For enrichers defined in separate modules or
@@ -208,7 +208,7 @@ Command and event enrichers add to message metadata. To set fields on the
 aggregate itself, such as `updated_by`, register an aggregate enricher with
 `@domain.aggregate_enricher`. It receives the aggregate just before a
 repository saves it and sets fields on it in place. See
-[Aggregate Pre-Persist Enrichers](../guides/domain-behavior/message-enrichment.md#stamp-fields-on-the-aggregate-before-it-is-saved)
+[Aggregate Pre-Persist Enrichers](../guides/domain-behavior/message-enrichment.md#aggregate-pre-persist-enrichers)
 and [Track Audit and Lifecycle Fields](track-audit-fields.md).
 
 ### Testing with Enrichers
@@ -221,7 +221,7 @@ entirely. They just get empty extensions:
 --8<-- "patterns/message-enrichment/001.py:tests"
 ```
 
-### Follow a multi-tenant SaaS request end to end
+### End-to-End: Multi-Tenant SaaS
 
 A multi-tenant order placement runs through these steps, from the HTTP request
 to the server's handlers:

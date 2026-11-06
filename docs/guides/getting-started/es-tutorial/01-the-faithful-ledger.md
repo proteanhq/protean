@@ -10,7 +10,7 @@ Every deposit and every withdrawal is a **fact** that happened. A fact cannot
 be undone. With Event Sourcing, you store the events that produced the state
 instead of storing the state itself.
 
-## Set up the project
+## Setting Up
 
 Create a new directory for the project. Then install Protean in it:
 
@@ -78,7 +78,7 @@ There is a lot happening here. Let's break it down:
     which then calls the `@apply` handler. This guarantees that replaying
     events produces identical state.
 
-## Create an account
+## Creating an Account
 
 The code below creates an account, persists it, and loads it back from the
 repository:
@@ -117,7 +117,7 @@ The balance was not stored anywhere. It was derived from the single
 `AccountOpened` event. The `_version` starts at `0`, corresponding to the first
 event.
 
-## Explore the domain in the shell
+## Exploring in the Shell
 
 Protean includes an interactive shell that pre-loads your domain:
 
@@ -152,7 +152,7 @@ All of this ran in-memory with no infrastructure. In the next chapter,
 we will add deposits and withdrawals, multiple events flowing through a single
 aggregate.
 
-## Read the full source
+## Full Source
 
 ??? example "ch01.py, 81 lines"
 
@@ -160,6 +160,6 @@ aggregate.
     --8<-- "guides/getting-started/es-tutorial/ch01.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 2: Deposits and Withdrawals →](02-deposits-and-withdrawals.md)

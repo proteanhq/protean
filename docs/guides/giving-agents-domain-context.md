@@ -1,4 +1,4 @@
-# Give an agent domain context
+# Giving an Agent Domain Context
 
 A coding agent working on your project needs to know your domain: the aggregate
 clusters, the commands and events, the handlers, the projections. There are two
@@ -69,7 +69,7 @@ command finds the config. The command looks for the config in the directory you
 run it from and in its two parents. Keep the key in a config file at the
 project root, and run the command from the root or at most two levels below it.
 
-### Check the snapshot in a pre-commit hook
+### A pre-commit recipe
 
 To fail a commit when the snapshot is stale, wire the check as a local
 [pre-commit](https://pre-commit.com) hook. This is a recipe you choose to add;
@@ -87,7 +87,7 @@ repos:
         pass_filenames: false
 ```
 
-### Check the snapshot in a CI step
+### A CI recipe
 
 To fail a build when the snapshot is stale, run the same check as a CI step. It
 exits non-zero on drift, so the job fails on its own.

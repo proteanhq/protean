@@ -1,5 +1,5 @@
 
-# Set up Protean
+# Installation
 
 ## Install Python
 
@@ -50,7 +50,7 @@ $ pip install protean
 This installs a lean core: everything you need to define a domain, persist
 through the in-memory adapter, and run the async engine (`protean server`).
 
-## Install optional features
+## Optional features
 
 Protean ships some features as install extras so the core package stays small
 (see the decision on the runtime dependency boundary and extras,
@@ -72,7 +72,7 @@ Adapters are extras too, for example `pip install "protean[postgresql]"` or
 If you run a command without its extra, Protean tells you which one to install
 rather than failing with a raw import error.
 
-## Verify the installation
+## Verifying
 
 Use the ``protean`` CLI to verify the installation:
 

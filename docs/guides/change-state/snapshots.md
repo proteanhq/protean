@@ -1,4 +1,4 @@
-# Speed up aggregate loading with snapshots
+# Snapshots
 
 <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -24,7 +24,7 @@ time.
 
 ---
 
-## What happens to a snapshot when the schema changes?
+## Snapshots and schema changes
 
 When you change an event-sourced aggregate's fields, a snapshot written before
 the change may no longer match the class. When you rename a field, remove one,
@@ -51,7 +51,7 @@ the aggregate name, its identifier, and the reason the snapshot was rejected.
 
 ---
 
-## Set the snapshot threshold
+## Configuration
 
 Set the snapshot threshold globally in `domain.toml`:
 
@@ -65,7 +65,7 @@ auto-created on the next load.
 
 ---
 
-## Create snapshots manually
+## Manual snapshot creation
 
 The examples below use this event-sourced `Account`, with one account
 `acc-001` that has three events:
@@ -74,13 +74,13 @@ The examples below use this event-sourced `Account`, with one account
 --8<-- "guides/change-state/snapshots/001.py:aggregate"
 ```
 
-### Create snapshots from Python code
+### Programmatic API
 
 ```python
 --8<-- "guides/change-state/snapshots/001.py:manual"
 ```
 
-### Create snapshots from the command line
+### CLI
 
 ```bash
 # Single aggregate instance
@@ -95,7 +95,7 @@ protean snapshot create --domain=myapp
 
 ---
 
-## How do temporal queries use snapshots?
+## Interaction with temporal queries
 
 - **`at_version=N`**: Uses the snapshot if the snapshot version is
   <= N, then applies remaining events up to version N.

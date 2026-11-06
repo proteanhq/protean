@@ -96,7 +96,7 @@ compatible monitoring tool. Set alerts on:
 - `protean_subscription_consumer_lag > 100`: Handler falling behind
 - `protean_subscription_dlq_depth > 0`: Failed messages accumulating
 
-## Follow the trace events the engine emits
+## Trace Events
 
 The engine emits structured trace events for every message processed:
 
@@ -123,7 +123,7 @@ With monitoring in place, we can detect problems early. In the next chapter, a
 bank acquisition triggers a large migration. We learn how to run that migration
 without disrupting production.
 
-## Read the full source
+## Full Source
 
 ??? example "ch18.py, 215 lines"
 
@@ -131,6 +131,6 @@ without disrupting production.
     --8<-- "guides/getting-started/es-tutorial/ch18.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 19: The Great Migration, Run on Priority Lanes →](19-priority-lanes.md)

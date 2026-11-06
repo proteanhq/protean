@@ -1,4 +1,4 @@
-# Chapter 1: Build your first aggregate
+# Chapter 1: Your First Aggregate
 
 In this chapter we will create the foundation of our online bookstore,
 **Bookshelf**. By the end, we will have a working `Book` aggregate that
@@ -85,7 +85,7 @@ ID: 5eb04301-f191-4bca-9e49-8e5a948f07f6
 Notice that the ID is a UUID generated automatically. Every aggregate
 instance gets a unique identity the moment it is created.
 
-## Persist and retrieve a book
+## Persisting and Retrieving
 
 Creating a `Book` object gives you an in-memory instance, but it is not
 persisted yet. To save and retrieve books, use a **repository**:
@@ -115,7 +115,7 @@ will swap in a different adapter through configuration. Domain code stays
 exactly the same. We will swap in a real database adapter in [Chapter
 8](08-persistence.md).
 
-## Explore the domain in the shell
+## Exploring in the Shell
 
 Protean includes an interactive shell that pre-loads your domain. Try it:
 
@@ -147,7 +147,7 @@ Use the shell to test code interactively while you add elements to the domain.
 All of this ran in-memory with no infrastructure. In the next chapter,
 we will add richer fields and create value objects for price and address.
 
-## Read the full source
+## Full Source
 
 ??? example "ch01.py, 57 lines"
 
@@ -155,6 +155,6 @@ we will add richer fields and create value objects for price and address.
     --8<-- "guides/getting-started/tutorial/ch01.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 2: Rich Fields and Value Objects →](02-fields-and-value-objects.md)

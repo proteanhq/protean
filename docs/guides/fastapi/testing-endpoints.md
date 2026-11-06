@@ -1,4 +1,4 @@
-# Test FastAPI endpoints
+# Endpoint Tests
 
 Protean endpoints are thin adapters. They translate HTTP requests into domain
 commands. `domain.process()` then passes each command to its command handler.
@@ -21,7 +21,7 @@ They do *not* test business logic, that belongs in [domain model
 tests](../testing/domain-model-tests.md) and [application
 tests](../testing/application-tests.md).
 
-## Set up the test environment
+## Setup
 
 ### Install dependencies
 
@@ -40,7 +40,7 @@ uv add fastapi httpx
     [httpx](https://www.python-httpx.org/) internally. You need `httpx`
     installed for `TestClient` to work.
 
-### Lay out the project
+### Project layout
 
 A typical Protean + FastAPI project separates the domain from the web layer:
 
@@ -62,7 +62,7 @@ tests/
     └── test_get_customer.py
 ```
 
-### What does the example app do?
+### The example app
 
 Take a small bookstore app. A customer places an order for books. An event
 handler then takes the ordered books out of stock:
@@ -113,7 +113,7 @@ builds a command, and hands it to `domain.process()`:
 --8<-- "guides/fastapi/testing-endpoints/001.py:api"
 ```
 
-### Test the happy path
+### The happy path
 
 ```python title="tests/api/test_create_order.py"
 --8<-- "guides/fastapi/testing-endpoints/001.py:happy-path"
@@ -179,9 +179,9 @@ With `event_processing = "sync"`, event handlers and projectors fire
 synchronously within the same request. This gives you full end-to-end
 confidence without needing to poll or wait.
 
-## Reuse test setup with fixtures
+## Fixture patterns for endpoint tests
 
-### Share seed data across tests
+### Seed data fixture
 
 When multiple tests need the same preconditions:
 
@@ -196,7 +196,7 @@ When multiple tests need the same preconditions:
 --8<-- "guides/fastapi/testing-endpoints/001.py:seed-fixture-test"
 ```
 
-### Send authenticated requests
+### Authenticated request fixture
 
 For endpoints behind authentication:
 
@@ -204,7 +204,7 @@ For endpoints behind authentication:
 --8<-- "guides/fastapi/testing-endpoints/001.py:auth-client"
 ```
 
-### Reuse response assertions
+### Response assertion helpers
 
 For repeated response shape checks:
 
@@ -212,7 +212,7 @@ For repeated response shape checks:
 --8<-- "guides/fastapi/testing-endpoints/001.py:assert-helper"
 ```
 
-## Test applications with several domains
+## Multi-domain applications
 
 When your application has multiple bounded contexts, the middleware maps
 URL prefixes to domains. Tests create separate clients or use the same
@@ -251,7 +251,7 @@ and [application tests](../testing/application-tests.md). The endpoint tests
 are the last check that the HTTP layer passes requests to the domain and
 returns its responses.
 
-## Check your setup before you ship
+## Checklist
 
 Before shipping endpoint tests, verify:
 
@@ -265,7 +265,7 @@ Before shipping endpoint tests, verify:
 - [ ] `DomainFixture.domain_context()` resets all data after each test
   (via the `_ctx` autouse fixture)
 
-## Where to go next
+## Next steps
 
 - [FastAPI Integration](./index.md): Middleware and exception handler
   reference

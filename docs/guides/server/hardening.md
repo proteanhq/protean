@@ -99,7 +99,7 @@ containers:
 provider, broker, cache, and the event store, and returns `503` when any
 component is unhealthy or the engine is shutting down.
 
-### Expose health probes from a FastAPI app
+### FastAPI apps
 
 Mount Protean's health-probe router on your API process:
 
@@ -111,7 +111,7 @@ Mount Protean's health-probe router on your API process:
 The router exposes the same `/healthz`, `/livez`, and `/readyz` paths
 with the same readiness semantics as the engine server.
 
-## Trim and monitor the DLQ
+## Keep the DLQ under control
 
 By default, messages that exhaust their retries pile up in
 `{stream}:dlq` forever. Enable the maintenance task to trim old entries

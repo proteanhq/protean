@@ -1,4 +1,4 @@
-# Validate field values
+# Basic Validations
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -25,7 +25,7 @@ constraints, built-in validators, and custom validators. To see how the four
 layers divide the rules between them, read the [Validation
 Layering](../../patterns/validation-layering.md) pattern.
 
-## Restrict values with field types and options
+## Field Restrictions
 
 Field restrictions begin with the type of field chosen to represent an
 attribute.
@@ -96,7 +96,7 @@ ValidationError: {'account_number': ['is required']}
 A full list of field types and their options is available in the
 [Fields](../../reference/fields/index.md) section.
 
-## Use the built-in validations
+## In-built Validations
 
 Many field classes in Protean come pre-equipped with basic validations, like
 length and value.
@@ -129,7 +129,7 @@ A full list of in-built validators is available in the
 [Fields](../../reference/fields/index.md) section under each field.
 
 
-## Write custom validators
+## Custom Validators
 
 You can also add validations at the field level by defining custom validators.
 A validator is any callable class that accepts a value and raises `ValueError`
@@ -169,7 +169,7 @@ option for customizing error text, see the
     Layering](../../patterns/validation-layering.md) for guidance on choosing
     the right layer.
 
-## How does Protean validate fields?
+## How It Works
 
 Every aggregate, entity, and value object validates field assignments
 automatically:

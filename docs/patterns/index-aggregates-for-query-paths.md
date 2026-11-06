@@ -122,13 +122,13 @@ hand-maintained migration, you split one decision across two places. Over time,
 one place changes and the other does not. The aggregate author knows the query
 shape; capture it where the aggregate is defined.
 
-### Putting composite index columns in the wrong order
+### A composite index in the wrong order
 
 `(priority, status)` does not serve "filter by status, sort by priority". The
 leading column must match the filter. Column order is not cosmetic; an index in
 the wrong order is an index the query cannot use.
 
-### Putting storage-specific tuning in the domain declaration
+### Smuggling storage tuning into the domain
 
 A GIN index on a JSON blob is storage-specific and only meaningful on
 PostgreSQL. Inline dialect-only DDL adds options that only one database
@@ -163,7 +163,7 @@ model decorator) for tuning that only one backend understands.
 
 ---
 
-## See also
+## Related reading
 
 - [Declaring Indexes](../guides/domain-definition/indexes.md): The how-to guide.
 - [Indexes reference](../reference/domain-elements/indexes.md): Every `Index` option and dialect support.

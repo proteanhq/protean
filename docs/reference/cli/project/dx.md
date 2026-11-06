@@ -37,7 +37,7 @@ The per-editor set, one file each for Cursor, Copilot, and opencode:
   natively, so it gets no separate instruction file. This config only supplies
   the MCP registration.
 
-## How Protean shares each file with you
+## Managed regions
 
 Each file is co-owned, except the Cursor rule file, which Protean owns whole.
 For the Markdown files (`AGENTS.md`, `CLAUDE.md`,
@@ -78,7 +78,7 @@ editors. `refresh` keeps the project baseline-only. It re-renders what the
 project already has and never adds an optional file. After you upgrade a
 scaffolded project, the project stays baseline-only until you run `install`.
 
-## Choose a `protean dx` verb
+## Verbs
 
 ```shell
 protean dx install       # write the canonical and per-editor files
@@ -115,12 +115,12 @@ not counted as drift. Because the two share a scope, `refresh` fixes exactly wha
 every managed target, including a pending create for an optional file you have not
 installed.
 
-### Which options do the verbs take?
+### Options
 
 - `--path`, `-p`: The project directory to write into or check. Defaults to the
   current directory. A path that exists but is not a directory is rejected.
 
-### What does each exit code mean?
+### Exit codes
 
 - `0`: the command succeeded. For `check`, every target is up to date.
 - `1`: for `check`, a target has drifted. For `install` and `refresh`, a managed
@@ -132,7 +132,7 @@ installed.
 A conflict on one file does not stop the others. `install` applies every file it
 safely can, reports the conflict, and then exits non-zero.
 
-## Check the agent files in CI
+## In CI
 
 Run `check` in a pipeline so a project's agent files keep matching the
 framework. `check` writes nothing. It fails the job when a target has drifted.

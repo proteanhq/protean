@@ -1,4 +1,4 @@
-# Chapter 16: Tracing Every Message a Command Causes
+# Chapter 16: Following the Trail with Message Tracing
 
 An auditor asks: "Show me every system action triggered by deposit DEP-9921."
 This deposit was over $10,000. It triggered a compliance alert. The alert
@@ -78,7 +78,7 @@ $ protean events read "fidelis::account-acc-7742" --trace --domain=fidelis
 $ protean events search --type=DepositMade --trace --domain=fidelis
 ```
 
-## Trace messages from code
+## Programmatic Tracing
 
 Use the causation chain API for programmatic access:
 
@@ -95,7 +95,7 @@ The `CausationNode` tree structure contains:
 - `timestamp`: When it was created
 - `children`: List of `CausationNode` children
 
-## Correlation IDs propagate automatically
+## Automatic Propagation
 
 Correlation IDs propagate automatically through the system:
 
@@ -123,7 +123,7 @@ Message tracing is essential for debugging, auditing, and understanding the
 behavior of event-driven systems. Next, we face a production incident, a
 handler bug that fills the dead-letter queue.
 
-## Read the full source
+## Full Source
 
 ??? example "ch16.py, 266 lines"
 
@@ -131,6 +131,6 @@ handler bug that fills the dead-letter queue.
     --8<-- "guides/getting-started/es-tutorial/ch16.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 17: Handling Failures with Dead Letter Queues →](17-dead-letter-queues.md)

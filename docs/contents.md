@@ -1,4 +1,4 @@
-# Find any page in the Protean docs
+# Contents
 
 A complete listing of every page in the Protean documentation. Use your
 browser's search (`Ctrl+F` / `Cmd+F`) to find any topic.
@@ -58,7 +58,7 @@ A guided, hands-on tutorial building a complete online bookstore.
 
 ---
 
-## Learn each topic from the guides
+## Guides
 
 Comprehensive reference organized by topic. Each guide covers one area in
 detail.
@@ -234,7 +234,7 @@ detail.
 
 ---
 
-## Look up the Python API
+## Python API Reference
 
 Auto-generated documentation from source code docstrings.
 
@@ -258,11 +258,11 @@ Auto-generated documentation from source code docstrings.
 
 ---
 
-## Understand the core concepts
+## Core Concepts
 
 Architectural theory and the building blocks of domain-driven systems.
 
-### Learn the DDD foundations
+### Foundations
 
 - [Ubiquitous Language](./concepts/foundations/ubiquitous-language.md): The shared vocabulary between domain experts and developers.
 - [Bounded Contexts](./concepts/foundations/bounded-contexts.md): Boundaries within which a domain model is defined and applicable.
@@ -273,14 +273,14 @@ Architectural theory and the building blocks of domain-driven systems.
 - [Changing State](./concepts/foundations/changing-state.md): Principles governing how state transitions occur in DDD.
 - [Streams](./concepts/foundations/streams.md): The primary unit of organization in evented systems.
 
-### Compare the architecture patterns
+### Architecture Patterns
 
 - [Domain-Driven Design](./concepts/architecture/ddd.md): Tactical elements and their roles in the DDD pattern.
 - [CQRS](./concepts/architecture/cqrs.md): Separating read and write responsibilities.
 - [Event Sourcing](./concepts/architecture/event-sourcing.md): Deriving state from replaying event sequences.
 - [Choosing an Architecture](./concepts/architecture/architecture-decision.md): When to use CQRS vs Event Sourcing.
 
-### Learn the building blocks
+### Building Blocks
 
 - [Domain Elements Overview](./concepts/building-blocks/index.md): Tactical patterns organized into four layers.
 - [Aggregates](./concepts/building-blocks/aggregates.md): Clusters of objects treated as a single unit for data changes.
@@ -302,7 +302,7 @@ Architectural theory and the building blocks of domain-driven systems.
 
 ---
 
-## Choose adapters for your infrastructure
+## Adapters
 
 Plug-in infrastructure that keeps your domain code free of technology
 dependencies.
@@ -310,7 +310,7 @@ dependencies.
 - [Ports and Adapters](./concepts/ports-and-adapters/index.md): Hexagonal Architecture in Protean.
 - [Adapters Catalog](./reference/adapters/index.md): Available database, broker, cache, and event store adapters.
 
-### Choose a database adapter
+### Database
 
 - [Database Providers](./reference/adapters/database/index.md): Overview of supported database adapters, capabilities, and provider registry.
 - [Memory](./reference/adapters/database/memory.md): Default in-memory provider for development and testing.
@@ -321,7 +321,7 @@ dependencies.
 - [Elasticsearch](./reference/adapters/database/elasticsearch.md): Document store adapter for search and analytics.
 - [Custom Database Adapters](./reference/adapters/database/custom-databases.md): Build your own database adapter with entry-point registration.
 
-### Choose a broker adapter
+### Brokers
 
 - [Broker Overview](./reference/adapters/broker/index.md): Unified interface for message broker implementations.
 - [Inline Broker](./reference/adapters/broker/inline.md): Synchronous in-memory broker for development and testing.
@@ -330,25 +330,25 @@ dependencies.
 - [Redis PubSub](./reference/adapters/broker/redis-pubsub.md): Redis Lists-based queuing with consumer groups.
 - [Custom Brokers](./reference/adapters/broker/custom-brokers.md): Build your own broker adapter.
 
-### Choose a cache adapter
+### Caches
 
 - [Cache Overview](./reference/adapters/cache/index.md): Cache port interface, available providers, and configuration.
 - [Redis Cache](./reference/adapters/cache/redis.md): Persistent distributed cache with TTL support.
 
-### Choose an event store adapter
+### Event Stores
 
 - [Event Store Overview](./reference/adapters/eventstore/index.md): Event store port, core operations, temporal queries, and causation tracing.
 - [MessageDB](./reference/adapters/eventstore/message-db.md): MessageDB event store adapter.
 
 ---
 
-## Apply patterns and recipes
+## Patterns & Recipes
 
 In-depth guides for recurring patterns in domain-driven applications. These
 patterns span multiple domain elements. They are good practices that Protean
 supports but does not enforce.
 
-### Design aggregates
+### Aggregate Design
 
 - [Design Small Aggregates](./patterns/design-small-aggregates.md): Draw boundaries around consistency requirements, not data relationships.
 - [One Aggregate Per Transaction](./patterns/one-aggregate-per-transaction.md):
@@ -361,7 +361,7 @@ supports but does not enforce.
 - [Factory Methods for Aggregate Creation](./patterns/factory-methods-for-aggregate-creation.md): Encapsulate complex construction in factory classmethods on the aggregate or standalone factory classes.
 - [Model Aggregate Lifecycle as a State Machine](./patterns/aggregate-state-machines.md): Define explicit lifecycle states and guarded transition methods to enforce valid state changes.
 
-### Build event-driven flows
+### Event-Driven Patterns
 
 - [Design Events for Consumers](./patterns/design-events-for-consumers.md): Events carry enough context for consumers to act independently.
 - [Idempotent Event Handlers](./patterns/idempotent-event-handlers.md): Produce the same result whether an event is processed once or many times.
@@ -378,7 +378,7 @@ supports but does not enforce.
   `to_cloudevent()` and `from_cloudevent()` as an anti-corruption layer for
   interoperability.
 
-### Structure and test the domain code
+### Architecture & Quality
 
 - [Organize by Domain Concept](./patterns/organize-by-domain-concept.md):
   Arrange folders by domain concept. The framework records the layer of each
@@ -400,7 +400,7 @@ supports but does not enforce.
   in the UI while the CQRS read side lags behind the write side.
 - [Testing Domain Logic in Isolation](./patterns/testing-domain-logic-in-isolation.md): Test aggregates and value objects directly, without infrastructure.
 
-### Create identities and connect bounded contexts
+### Identity & Communication
 
 - [Creating Identities Early](./patterns/creating-identities-early.md): Generate aggregate identities at creation, not at the database.
 - [Connecting Concepts Across Bounded Contexts](./patterns/connect-concepts-across-domains.md): Synchronize the same real-world concept across multiple contexts.
@@ -412,7 +412,7 @@ supports but does not enforce.
 - [Use Fact Events as Cross-Context Integration Contracts](./patterns/fact-events-as-integration-contracts.md): Publish full aggregate snapshots for external consumers instead of forcing them to reconstruct state from granular deltas.
 - [Publishing Events to External Brokers](./patterns/publishing-events-to-external-brokers.md): Deliver published events to external brokers via the outbox with independent retry, failure isolation, and stripped metadata envelopes.
 
-### Test event flows and set up test databases
+### Testing & Infrastructure
 
 - [Test Event-Driven Flows End-to-End](./patterns/testing-event-driven-flows.md): Three testing levels for event chains: domain unit tests, sync flow tests, and async E2E tests with the Engine in test mode.
 - [Setting Up and Tearing Down Databases for
@@ -420,7 +420,7 @@ supports but does not enforce.
   and tear down the database schema separately from test data, for fast,
   isolated integration tests.
 
-### Run and recover a system in production
+### Operations
 
 - [Running Data Migrations with Priority Lanes](./patterns/running-data-migrations-with-priority-lanes.md): Route migration events to a separate backfill lane so they do not block production event processing.
 - [Classify and Handle Async Processing Errors](./patterns/classify-async-processing-errors.md): Override `handle_error()` to classify failures as transient, data, or logic errors and route each to the right recovery path.
@@ -428,7 +428,7 @@ supports but does not enforce.
 
 ---
 
-## Learn how Protean works inside
+## Internals
 
 Design reasoning and internal architecture for contributors and advanced users.
 
@@ -445,7 +445,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 
 ---
 
-## Upgrade between Protean versions
+## Migration
 
 - [Compatibility Reference](./reference/compatibility/index.md): Breaking change rules, three-tier taxonomy, deprecation lifecycle, and config.toml reference.
 - [Migrating to 0.18](./reference/migration/v0-18.md): Upgrade guide for the
@@ -457,7 +457,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 
 ---
 
-## Look up definitions, principles and guarantees
+## Reference
 
 - [Glossary](./glossary.md): Definitions of key terms.
 - [Philosophy & Design Principles](./concepts/philosophy/index.md): The
@@ -475,7 +475,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 
 ---
 
-## Test your domain and adapters
+## Testing
 
 - [Testing Reference](./reference/testing/index.md): Testing tools and plugins.
 - [Pytest Plugin](./reference/testing/pytest-plugin.md): Protean's pytest integration and fixtures.
@@ -483,7 +483,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 
 ---
 
-## Get help and contribute to Protean
+## Community
 
 - [Community](./community/index.md): Get help and connect with other Protean users.
 - [Development Setup](./community/contributing/setup.md): Set up Protean locally for contributing.

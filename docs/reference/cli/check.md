@@ -31,7 +31,7 @@ If the IR cannot be built, `check` reports the failure as one error, with
 `element` set to `to_ir` and the exception class name as its `code`, and
 exits `1`.
 
-## Which options does `check` take?
+## Options
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
@@ -40,7 +40,7 @@ exits `1`.
 | `--level` | `-l` | `info` | Minimum severity to **display**: `error`, `warning`, or `info`. Filters the `rich`/`--quiet` human output only. It never changes the exit code, and it never filters the machine formats (`json`, `sarif`, `github-annotations`). |
 | `--quiet` | `-q` | `false` | Show only a one-line count summary and set the exit code. |
 
-## Choose an output format
+## Output formats
 
 | Format | Description |
 |--------|-------------|
@@ -86,7 +86,7 @@ the full set of config keys.
 ## Result envelope
 
 The `--format=json` output is the shared CLI
-[result envelope](conventions.md#what-does-the-result-envelope-contain): a coarse `status`, the
+[result envelope](conventions.md#the-result-envelope): a coarse `status`, the
 check report under `data`, and the diagnostics list at the top level.
 
 ```json
@@ -152,7 +152,7 @@ On a usage/environment error (`status: "error"`, exit 2) `data` carries a single
 | `suggestion` | str | Remediation text. Currently equals `rule.fix`; reserved for AI-populated, context-aware text in a future release. |
 | `teaching_skills` | list | Names of the DX-pack skills that teach this code, sorted. Present only when a skill declares the code (under `metadata.diagnostic_codes` in its `SKILL.md`); omitted for a code no skill teaches, or when the pack is stripped from the install. |
 
-## Run `check` in CI
+## CI integration
 
 Emit a SARIF document for GitHub Code Scanning, or inline annotations without it:
 
@@ -162,11 +162,11 @@ protean check --domain=my_app.domain --format=github-annotations
 ```
 
 See the [Architecture Fitness Functions
-guide](../../guides/architecture-fitness-functions.md#run-the-checks-in-ci) for the
+guide](../../guides/architecture-fitness-functions.md#ci-integration) for the
 full CI walkthrough: the GitHub Actions workflow, SARIF upload, and how to
 choose the gating floor.
 
-## See also
+## Related
 
 - [Architecture Fitness Functions guide](../../guides/architecture-fitness-functions.md): Running, suppressing, and extending the checks.
 - [Fitness Function Catalog](../fitness-functions.md): Every rule, its rationale, and its fix.

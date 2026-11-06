@@ -5,7 +5,7 @@ The MySQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) with
 One provider serves both servers. The same conformance tests that run against
 PostgreSQL, SQLite and MSSQL run against this provider.
 
-## Install the provider
+## Installation
 
 ```bash
 pip install "protean[mysql]"
@@ -54,7 +54,7 @@ SHOW STATUS LIKE 'Ssl_cipher';
 
 An empty value means the connection is in the clear.
 
-## Configure the database
+## Configuration
 
 ```toml
 [databases.default]
@@ -84,7 +84,7 @@ provider reads the dialect name to decide how to emit table DDL. You can point
 a `mysql+pymysql://` URI at a MariaDB server, but the provider then emits DDL
 written for MySQL.
 
-## What does the provider support?
+## Capabilities
 
 - :white_check_mark: **CRUD**: Create, read, update, delete single records.
 - :white_check_mark: **FILTER**: Query and filter records with lookup criteria.
@@ -99,7 +99,7 @@ written for MySQL.
 - :x: **NATIVE_ARRAY**: MySQL has no array type. The provider stores a `List`
   field as JSON, as the MSSQL provider does.
 
-## Why the provider sets a case-sensitive collation
+## Collation and case sensitivity
 
 MySQL 8 defaults to `utf8mb4_0900_ai_ci` and MariaDB to
 `utf8mb4_uca1400_ai_ci`. Both collations ignore case and accents. On a table
@@ -152,7 +152,7 @@ kwarg it declares. The charset and the collation must match. If a model set
 only the charset, the table would get the provider's collation with a different
 character set, and MySQL rejects that pair at `CREATE TABLE`.
 
-## Which isolation level does the provider use?
+## Isolation level
 
 InnoDB defaults to `REPEATABLE READ`. At that level, a transaction keeps
 reading the snapshot it opened with. Protean runs a Unit of Work as one real
@@ -244,7 +244,7 @@ model and leaves it to `protean db setup`.
 `mariadb` dialects, so a rendered `.sql` file never carries DDL the server would
 reject on apply.
 
-## Why the provider sets the storage engine and row format
+## Storage engine and row format
 
 The provider creates tables with `ENGINE=InnoDB ROW_FORMAT=DYNAMIC` stated
 explicitly instead of taking the server defaults, because two of the provider's
@@ -262,7 +262,7 @@ Under `COMPACT` or `REDUNDANT` the limit is 767 bytes.
 either row format the key-width guard would pass an index the server then
 refuses.
 
-## How the provider stores timestamps
+## Timestamps
 
 MySQL's `DATETIME` keeps zero fractional-second digits unless the column
 declares a precision. On write, MySQL drops the microseconds without an error.
@@ -277,7 +277,7 @@ wall-clock time they were saved with; see [Datetimes are compared and stored as
 UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc) to
 convert them.
 
-## Which index options does MySQL support?
+## Indexes
 
 MySQL supports some of the [`Index`](../../domain-elements/indexes.md) options,
 which Protean emits during `protean db setup`:
@@ -296,7 +296,7 @@ which Protean emits during `protean db setup`:
 `protean schema render --indexes --dialects mysql` (or `mariadb`) writes the
 `CREATE INDEX` statements to `.sql` files without touching a database.
 
-## How the outbox claims messages on MySQL
+## Outbox claim
 
 The outbox claims messages through the portable path: a bounded `SELECT`
 followed by a guarded `UPDATE ... WHERE` per row. MySQL has `SKIP LOCKED` but
@@ -331,19 +331,19 @@ the same as for [PostgreSQL](./postgresql.md#sqlalchemy-model).
     Column names in the model must match the attribute names of the aggregate
     or entity they represent.
 
-## Detect slow queries
+## Slow query detection
 
 The provider emits the same structured
 `protean.adapters.repository.sqlalchemy.slow_query` WARNING and
 `protean.adapters.repository.sqlalchemy.query` DEBUG events as the
-[PostgreSQL provider](./postgresql.md#detect-slow-queries). Set the threshold
+[PostgreSQL provider](./postgresql.md#slow-query-detection). Set the threshold
 with `[logging].slow_query_threshold_ms` in `domain.toml`.
 
-## Where to read next
+## Related pages
 
 - [PostgreSQL](./postgresql.md): The full-capability relational provider,
   including native arrays.
 - [MSSQL](./mssql.md): The other provider that stores lists as JSON.
-- [Database capabilities](./index.md#how-providers-declare-capabilities): What each
+- [Database capabilities](./index.md#database-capabilities): What each
   capability flag means.
 - [Indexes](../../domain-elements/indexes.md): Declaring indexes on an aggregate.

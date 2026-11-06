@@ -1,4 +1,4 @@
-# ADR-0001: Protean versions events with monotonic integers
+# ADR-0001: Monotonic Integer Versioning for Events
 
 **Status:** Accepted. The compatibility semantics are defined in the
 schema-evolution ladder of [ADR-0040](0040-schema-evolution-ladder.md).

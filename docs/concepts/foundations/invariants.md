@@ -13,7 +13,7 @@ either case, the domain model has failed at its most fundamental job. Protean
 checks invariants to stop these invalid states from ever occurring inside an
 aggregate.
 
-## At what levels do invariants apply?
+## Types of Invariants
 
 Invariants operate at different levels of granularity:
 
@@ -37,7 +37,7 @@ Invariants operate at different levels of granularity:
   you enforce them through eventual consistency via [domain
   events](../building-blocks/events.md).
 
-## How does Protean keep an aggregate always valid?
+## The Always-Valid Guarantee
 
 Protean enforces a strict design principle: **an aggregate cluster can never
 exist in an invalid state.** Protean checks the field constraints, value object
@@ -116,7 +116,7 @@ This is why aggregates should be small. An aggregate that enforces fewer
 invariants has a smaller consistency boundary. A smaller consistency boundary
 creates less contention in a concurrent system.
 
-## Enforce cross-aggregate invariants with domain events
+## Invariants and Domain Events
 
 When invariants span aggregate boundaries, they cannot be enforced
 synchronously. Instead, one aggregate raises an event, and another aggregate
@@ -130,7 +130,7 @@ sufficient stock exists and reserving it. If stock is insufficient, the
 inventory aggregate raises its own event. That event may trigger a compensation
 action on the order.
 
-## Read more about invariants
+## Further Reading
 
 - [The Always-Valid Domain](../philosophy/always-valid.md): How the four
   validation layers work and what the always-valid guarantee means for your

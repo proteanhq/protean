@@ -6,7 +6,7 @@ object](./value-objects.md). Specifically, domain services model business
 operations that take **two or more aggregates** as input. In these operations,
 the logic genuinely spans aggregate boundaries.
 
-## What problem do domain services solve?
+## The Problem
 
 Consider placing an order that requires confirming the order and reserving
 inventory. Which element should hold this logic?
@@ -80,7 +80,7 @@ them when:
 
 ---
 
-## Read more about domain services
+## Next steps
 
 For practical details on defining and using domain services in Protean, see the guide:
 

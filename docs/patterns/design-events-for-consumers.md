@@ -110,7 +110,7 @@ Rich event (pattern):
 This doesn't mean events should contain the entire aggregate. It means events
 should contain the data that **consumers need to do their job**.
 
-### Test each event with one question
+### The Litmus Test
 
 For every event you design, ask:
 
@@ -121,12 +121,12 @@ If the answer is no, the event is too thin. Add the data that consumers need.
 
 ---
 
-## Choose between delta events and fact events
+## Delta Events vs Fact Events
 
 Protean supports two styles of events, and you design event payloads
 differently for each style.
 
-### Use delta events to record what changed
+### Delta Events: What Changed
 
 Delta events capture **the specific change** that occurred. They carry the data
 relevant to that particular state transition:
@@ -146,7 +146,7 @@ hand-crafted domain events.
 - When events represent meaningful business operations with specific data
 - When using event sourcing (events are the source of truth)
 
-### Use fact events to snapshot the complete state
+### Fact Events: Complete State Snapshot
 
 Fact events capture **the aggregate's complete state** after a change. Protean
 can generate these automatically:
@@ -178,7 +178,7 @@ state as a snapshot.
 | Event sourcing | Required | Not suitable (no operation semantics) |
 | Protean support | Hand-crafted | Auto-generated with `fact_events=True` |
 
-### Combine both styles on one aggregate
+### Combining Both
 
 You can use both delta and fact events on the same aggregate. Raise specific
 delta events for meaningful operations. Let fact events carry every state
@@ -193,7 +193,7 @@ Projections that just need the latest state listen for the fact event.
 
 ---
 
-## Follow these principles when you design event payloads
+## Event Payload Design Principles
 
 ### 1. Include Identifiers for All Referenced Aggregates
 
@@ -259,7 +259,7 @@ but removing a field breaks its consumers.
 
 ---
 
-## Design events backward from the projection
+## Projection-Driven Event Design
 
 Projections are the most common event consumers. A practical approach to event
 design is to **work backward from the projection**:
@@ -295,7 +295,7 @@ no cross-boundary queries, no coupling.
 
 ---
 
-## Design events that cross domain boundaries
+## Handling Cross-Domain Events
 
 When events cross domain boundaries (consumed by another bounded context),
 the payload design becomes even more critical. The consuming domain should
@@ -332,7 +332,7 @@ Consumers that need full state can listen for the fact event instead:
 --8<-- "patterns/design-events-for-consumers/010.py:thin_delta"
 ```
 
-### Accept a thin event that has a single consumer
+### Single-Consumer Events
 
 If an event has exactly one consumer and that consumer is in the same bounded
 context, a thin event with an aggregate lookup is a pragmatic choice. But
@@ -342,7 +342,7 @@ consider that consumers may be added later.
 
 ## Anti-Patterns
 
-### Avoid the "Just Load It" event
+### The "Just Load It" Event
 
 ```python
 # fragment
@@ -353,7 +353,7 @@ class OrderPlaced(BaseEvent):
     # That's it. Every consumer must load the Order aggregate.
 ```
 
-### Avoid the event that carries everything
+### The event that carries everything
 
 ```python
 # fragment
@@ -382,7 +382,7 @@ Include what consumers need, not everything the aggregate has. Derivable fields
 (item_count from items, subtotal from items) repeat data that consumers can
 compute, so leave them out.
 
-### Avoid exposing internal state
+### Exposing Internal State
 
 ```python
 # fragment

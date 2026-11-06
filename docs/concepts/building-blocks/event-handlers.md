@@ -72,7 +72,7 @@ the two: a persisting method raises an event, and a calling method handles it.
 See [Calling External Systems from
 Handlers](../../patterns/calling-external-systems-from-handlers.md).
 
-## How do event handlers differ from related elements?
+## Event Handlers vs. Related Elements
 
 | Aspect | Event Handler | Projector | Subscriber | Query Handler |
 |--------|--------------|-----------|------------|---------------|
@@ -83,7 +83,7 @@ Handlers](../../patterns/calling-external-systems-from-handlers.md).
 | **Returns** | Nothing | Nothing | Nothing | Always returns data |
 | **UoW** | Yes (per handler method) | Yes (per handler method) | No | No |
 
-## How should you design event handlers?
+## Best Practices
 
 ### Keep handlers idempotent. { data-toc-label="Idempotency" }
 
@@ -91,7 +91,7 @@ Events may be delivered more than once, during retries, resubscriptions, or
 infrastructure recovery. A well-designed handler produces the same outcome
 whether it processes an event once or multiple times.
 
-### Define what happens when a handler fails. { data-toc-label="Error Handling" }
+### Handle errors gracefully. { data-toc-label="Error Handling" }
 
 Event handlers can define error-handling logic for when processing fails.
 Unhandled exceptions should not silently disappear; they should be logged,
@@ -105,7 +105,7 @@ into separate handlers or let the second aggregate react to its own event.
 
 ---
 
-## Learn more about event handlers
+## Next steps
 
 For practical details on defining and using event handlers in Protean, see the guide:
 

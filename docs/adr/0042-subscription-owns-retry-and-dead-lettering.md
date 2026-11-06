@@ -85,7 +85,7 @@ the DLQ usually recovers, and the subscription then acks the message.
 
 The InlineBroker keeps its native DLQ and ceiling for the broker-direct path, so its existing broker-level retry and DLQ tests stay valid.
 
-## Does this change break compatibility?
+## Compatibility
 
 This is a Tier-2 behavioral change under the release and breaking-change policy
 (ADR-0004). It ships without an opt-in flag.

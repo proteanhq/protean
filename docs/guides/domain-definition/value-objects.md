@@ -7,7 +7,7 @@ validations built into them. They don't have distinct identities, so they are
 *identified* by attributes values. They tend to act primarily as data
 containers, enclosing attributes of primitive types.
 
-## Define a value object
+## Defining a Value Object
 
 Consider the example of an Email Address. You can treat a user's email as a
 plain string. The checks for a correct value (an email address) then go either
@@ -53,7 +53,7 @@ ValidationError: {'address': ['Invalid email address']}
     This example was for illustration purposes only. It is better to
     validate an email address with [regex](https://emailregex.com/).
 
-## Configure a value object
+## Configuration
 
 A value object's behavior can be customized by passing options to the
 `@domain.value_object` decorator.
@@ -189,7 +189,7 @@ second reason: all invariants (validations) should be satisfied at all times.
     In your own code, create and pass Value Objects by their class. Attributes
     are generally used by Protean during persistence and retrieval.
 
-## Nest value objects inside other value objects
+## Nested Value Objects
 
 Value objects can be composed of other value objects, forming richer domain
 concepts:
@@ -315,7 +315,7 @@ objects render as `"100.0"` and `"100.00"`. A value object never equals a value
 object of a different class, including a subclass, even when the field values
 match.
 
-## Value objects have no identity
+## Identity
 
 Unlike Aggregates and Entities, Value Objects do not have any inbuilt concept
 of unique identities. This allows two instances of value objects to be swapped
@@ -345,7 +345,7 @@ In [5]: id_field(Balance) is None
 Out[5]: True
 ```
 
-## Value objects cannot change after initialization { #immutability }
+## Immutability
 
 A Value Object cannot be altered once initialized. Trying to do so raises an
 `IncorrectUsageError`.
@@ -358,7 +358,7 @@ In [2]: bal1.currency = "CAD"
 IncorrectUsageError: "Value Objects are immutable and cannot be modified once created"
 ```
 
-## Replace fields to get a new value object { #replacing-fields }
+## Replacing Fields
 
 Since value objects are immutable, you cannot modify them after creation.
 Instead, use `replace()` to create a new instance with selected fields
@@ -396,7 +396,7 @@ Unknown field names raise `IncorrectUsageError`:
 `replace()` also works with nested value objects. Pass a new value object
 instance for the nested field, or omit it to preserve the original.
 
-## Use value objects as dictionary keys or in sets
+## Hashability
 
 Because value objects are immutable and define equality by their attributes,
 they are hashable by default. This means you can use them as dictionary
@@ -406,7 +406,7 @@ keys or in sets:
 --8<-- "guides/domain-definition/value-objects/008.py:hash"
 ```
 
-## Project an entity into a value object { #projecting-entities-into-value-objects }
+## Projecting Entities into Value Objects
 
 When building commands and events, you often need a value object that mirrors
 an entity's fields, for example, to carry `OrderItem` data in a `PlaceOrder`
@@ -438,7 +438,7 @@ You can customize the generated class name and exclude specific fields:
 --8<-- "guides/domain-definition/value-objects/009.py:custom"
 ```
 
-### Derive the value object inline with a field descriptor
+### Inline field descriptor
 
 For inline use in commands and events, use the `ValueObjectFromEntity` field
 descriptor instead of calling `value_object_from_entity()` separately:
@@ -450,7 +450,7 @@ descriptor instead of calling `value_object_from_entity()` separately:
 This derives the VO class from the entity at class-body evaluation time, no
 separate variable needed.
 
-### Convert a value object back into an entity
+### Round-trip: VO back to Entity
 
 To convert a value object back into an entity instance (e.g., in a command
 handler), use the `from_value_object()` classmethod on the entity:
@@ -463,7 +463,7 @@ handler), use the `from_value_object()` classmethod on the entity:
 identifier/unique fields (so auto-generated defaults apply), and constructs the
 entity. This is the inverse of `value_object_from_entity()`.
 
-### Fact events use the same projection
+### Fact event refactoring
 
 Protean's fact event generation internally uses `value_object_from_entity()`
 to convert entity associations in aggregates. If your aggregate has
@@ -471,7 +471,7 @@ to convert entity associations in aggregates. If your aggregate has
 the generated fact event automatically includes value object projections
 of those entities.
 
-## Which errors can a value object raise?
+## Common Errors
 
 | Exception | When it occurs |
 |---|---|

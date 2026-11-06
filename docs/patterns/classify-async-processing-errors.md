@@ -211,7 +211,7 @@ Note the escalation: transient errors log at `WARNING`, data errors at
 `ERROR`, logic errors at `CRITICAL`. This maps directly to monitoring
 thresholds.
 
-### Reuse the classification in a mixin
+### A reusable error classification mixin
 
 To avoid repeating the classification logic in every handler, extract it
 into a mixin:
@@ -300,7 +300,7 @@ It also delays the real fix.
 
 **Fix:** Classify the error first. Only transient errors benefit from retry.
 
-### Leaving DLQ depth unmonitored
+### No monitoring on DLQ depth
 
 ```python
 # fragment

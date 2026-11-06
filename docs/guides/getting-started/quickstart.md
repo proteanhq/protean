@@ -1,11 +1,11 @@
-# Build your first Protean domain
+# Quickstart
 
 Build your first Protean domain in a few minutes. You will model a blog
 `Post`: a command publishes a post, an event handler reacts to the publish, a
 projector keeps a read-optimized feed, and you query that feed to read the
 post back. Everything runs in-memory, with no infrastructure to set up.
 
-## Check what you need first
+## Prerequisites
 
 - Python 3.11+
 - Protean installed ([Installation](./installation.md))
@@ -92,7 +92,7 @@ to events:
 for `PostPublished` and adds a row, so a query against the feed returns
 published posts without loading the `Post` aggregate.
 
-## Run the whole example
+## Put it all together
 
 Add the code below, which initializes the domain and runs every step from the
 command to the query. The command publishes a post. The last lines query the
@@ -149,7 +149,7 @@ All of this runs in-memory, with no database, message broker, or event store.
 When you are ready for production, swap in real adapters with
 [configuration](../../reference/configuration/index.md).
 
-## Read the full source
+## Full source
 
 Here is the complete example in a single file:
 

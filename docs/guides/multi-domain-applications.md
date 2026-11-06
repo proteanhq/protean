@@ -1,4 +1,4 @@
-# Build an application from multiple domains
+# Multi-Domain Applications
 
 A large system usually has more than one bounded context. In Protean, each
 bounded context is a separate `Domain` instance. You give each bounded context
@@ -25,7 +25,7 @@ maintains it, a single domain is simpler and sufficient.
 
 ---
 
-## Give each domain its own package
+## Project structure
 
 Organize each bounded context as a separate Python package with its own
 domain instance, configuration, and elements:
@@ -61,7 +61,7 @@ Each domain's `__init__.py` creates its own `Domain` instance:
 
 ---
 
-## Configure each domain on its own
+## Independent configuration
 
 Each domain can have its own `domain.toml` with separate database, broker,
 and event store settings:
@@ -123,7 +123,7 @@ a domain context.
 
 ---
 
-## Communicate across domains
+## Cross-domain communication
 
 Domains communicate through events, never by importing each other's aggregates
 or calling each other's services directly. Protean supports two integration
@@ -145,7 +145,7 @@ bounded contexts.
     can use both paths, `register_external_event` for tightly coordinated domains in the same repo,
     and subscribers for external systems you don't control.
 
-### Connect co-located domains with registered external events
+### Co-located domains: Registered external events
 
 When multiple domains live in the same repository and share the same event
 store, use `register_external_event()` to give your domain typed access to
@@ -187,7 +187,7 @@ you can also use event handlers with `stream_category`:
 --8<-- "guides/multi-domain-applications/001.py:event-handler"
 ```
 
-### Connect distributed domains with subscribers as anti-corruption layers
+### Distributed domains: Subscribers as anti-corruption layers
 
 When domains run as independent services with separate brokers, use
 subscribers. Use them also to consume events from external systems you don't
@@ -224,7 +224,7 @@ Key principles:
 See [Consuming Events from Other Domains](../patterns/consuming-events-from-other-domains.md)
 for the full pattern.
 
-### Transfer state with fact events
+### Fact events for state transfer
 
 When an external consumer needs complete aggregate state (not granular
 deltas), enable fact events on the source aggregate:
@@ -241,7 +241,7 @@ See [Fact Events as Integration Contracts](../patterns/fact-events-as-integratio
 
 ---
 
-## Correlate an entity across contexts
+## Correlation across contexts
 
 The same real-world entity (e.g. a customer) often appears in multiple
 bounded contexts with different names and shapes. Link them using a shared
@@ -289,7 +289,7 @@ protean observatory \
 
 ## Testing multi-domain applications
 
-### Give each domain its own fixtures
+### Separate fixtures per domain
 
 Create independent test fixtures for each domain:
 
@@ -320,7 +320,7 @@ shared event store, as in production.
 
 ---
 
-## How should you design multiple domains?
+## Design guidelines
 
 1. **Start with one domain**: When you observe genuine language divergence or
    team boundaries, split the domain. Until then, keep one. Premature splitting

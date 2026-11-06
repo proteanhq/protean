@@ -19,7 +19,7 @@ interface stays familiar, and each call states its intent. You add and retrieve
 aggregates as if they were items in a collection, without thinking about SQL
 statements or storage engines.
 
-### Every registered aggregate has a repository. { data-toc-label="Default Repository" }
+### Every aggregate has a repository. { data-toc-label="Default Repository" }
 
 Protean automatically provides a default repository for every registered
 aggregate. You do not need to write a repository class unless you want to add
@@ -82,7 +82,7 @@ The event-sourced repository reconstructs state by replaying events from the
 aggregate's stream instead of reading from a database table. The calling code
 does not change.
 
-## Follow these practices for repositories
+## Best Practices
 
 ### Name query methods after domain concepts. { data-toc-label="Domain Naming" }
 
@@ -96,7 +96,7 @@ Repositories should contain query logic, not business logic. If a retrieval
 method starts making decisions or enforcing rules, that logic belongs in the
 aggregate or a [domain service](./domain-services.md).
 
-### Keep database details out of the repository interface. { data-toc-label="No Leaking" }
+### Do not leak persistence concerns. { data-toc-label="No Leaking" }
 
 Avoid exposing database-specific details (column names, join strategies, raw
 query syntax) through the repository interface. The domain model should be able
@@ -104,7 +104,7 @@ to evolve independently of the storage layer.
 
 ---
 
-## Learn more in the guides
+## Next steps
 
 For practical details on defining and using repositories in Protean, see the
 guide pages:

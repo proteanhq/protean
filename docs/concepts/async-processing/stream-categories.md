@@ -1,4 +1,4 @@
-# How stream categories group messages
+# Stream Categories
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -19,7 +19,7 @@ category. It does the same for every command sent to that aggregate.
 
 ## How Stream Categories Work
 
-### How Protean names a stream
+### Message Organization
 
 Messages in Protean are organized in streams with a hierarchical naming structure:
 
@@ -40,7 +40,7 @@ Protean names streams this way so that:
 3. Event sourcing can reconstruct aggregate state from its message stream
 4. Messages maintain ordering guarantees within a stream
 
-### How Protean scopes a category to its domain
+### Domain-Scoped Categories
 
 Internally, Protean prefixes stream categories with the domain name to create fully qualified stream categories. This ensures uniqueness across different domains in multi-domain applications:
 
@@ -48,7 +48,7 @@ Internally, Protean prefixes stream categories with the domain name to create fu
 --8<-- "concepts/async-processing/stream-categories/001.py:order"
 ```
 
-## How do you define a stream category?
+## Defining Stream Categories
 
 ### Aggregates
 
@@ -94,13 +94,13 @@ stored in `ecommerce::order:command-<id>`:
 --8<-- "concepts/async-processing/stream-categories/001.py:command"
 ```
 
-## How handlers use stream categories
+## Stream Categories in Handlers
 
 Handlers (event handlers, command handlers, and projectors) use stream categories to determine which message streams they subscribe to.
 Event handlers and projectors read the aggregate's stream category. Command
 handlers read its command stream, `<stream_category>:command`, as shown above.
 
-### What does a handler subscribe to by default?
+### Default Behavior
 
 An event handler subscribes to its aggregate's stream category by default:
 
@@ -108,7 +108,7 @@ An event handler subscribes to its aggregate's stream category by default:
 --8<-- "concepts/async-processing/stream-categories/003.py:default_handler"
 ```
 
-### Set a handler's stream category explicitly
+### Explicit Stream Categories
 
 Handlers can explicitly specify which stream category to subscribe to:
 
@@ -160,11 +160,11 @@ Learn more:
 - [Command Handlers](../../guides/change-state/command-handlers.md#stream-category)
 - [Projections](../../guides/consume-state/projections.md)
 
-## How the engine subscribes by stream category
+## Stream Categories in Subscriptions
 
 The Protean [Server/Engine](./engine.md) uses stream categories to create subscriptions that poll for new messages and deliver them to handlers.
 
-### How does the engine create subscriptions?
+### Subscription Creation
 
 When the engine starts, it:
 
@@ -187,7 +187,7 @@ subscription = engine.subscription_factory.create_subscription(
 )
 ```
 
-### Several handlers can share one stream category
+### Multiple Handlers, Same Stream
 
 Multiple handlers can subscribe to the same stream category. Each handler gets its own subscription with independent position tracking:
 
@@ -199,7 +199,7 @@ Both handlers receive all events from the `order` stream category, but process t
 
 Learn more in [Subscriptions](./subscriptions.md#stream-categories).
 
-## How event sourcing uses stream categories
+## Stream Categories and Event Sourcing
 
 For event-sourced aggregates (marked with `event_sourced=True`), stream categories become even more critical:
 
@@ -218,7 +218,7 @@ Each event-sourced aggregate instance has its own stream, such as
 `ecommerce::account-123`. That stream holds the complete history of the
 aggregate's state changes.
 
-## Which stream category do fact events use?
+## Fact Events and Stream Categories
 
 When you configure an aggregate with `fact_events=True`, Protean generates fact
 events. These fact events use a modified stream category:
@@ -229,9 +229,9 @@ events. These fact events use a modified stream category:
 
 Fact event streams use the pattern `<stream_category>-fact-<aggregate_id>`, allowing separate subscription management for fact events versus delta events.
 
-Learn more in [Raising Events](../../guides/domain-behavior/raising-events.md#how-protean-generates-fact-events).
+Learn more in [Raising Events](../../guides/domain-behavior/raising-events.md#fact-events).
 
-## How do you choose good stream categories?
+## Best Practices
 
 ### 1. Use Descriptive Names
 
@@ -292,9 +292,9 @@ stream contains:
 @domain.aggregate(stream_category="order")
 ```
 
-## Use these common patterns
+## Common Patterns
 
-### Pattern 1: One aggregate feeds one handler
+### Pattern 1: Single Aggregate, Single Handler
 
 The simplest pattern - one aggregate, one handler:
 
@@ -302,7 +302,7 @@ The simplest pattern - one aggregate, one handler:
 --8<-- "concepts/async-processing/stream-categories/009.py:single_handler"
 ```
 
-### Pattern 2: One aggregate feeds several handlers
+### Pattern 2: Single Aggregate, Multiple Handlers
 
 Multiple handlers processing events from the same aggregate:
 
@@ -312,7 +312,7 @@ Multiple handlers processing events from the same aggregate:
 
 Each handler subscribes to the `order` stream category independently.
 
-### Pattern 3: One aggregate reacts to another aggregate's events
+### Pattern 3: Cross-Aggregate Event Propagation
 
 One aggregate reacting to another's events. The event handler stays with
 `Order` and issues a command that `Inventory` handles:
@@ -321,7 +321,7 @@ One aggregate reacting to another's events. The event handler stays with
 --8<-- "concepts/async-processing/stream-categories/011.py:cross_aggregate"
 ```
 
-### Pattern 4: A projection reads several aggregate streams
+### Pattern 4: Multi-Aggregate Projections
 
 Projections built from multiple aggregate streams:
 

@@ -54,7 +54,7 @@ They ensure that the aggregate is in a valid state after the change.
 **`pre` invariants** are triggered before elements are updated. They are used
 to check whether a proposed change is allowed given the current state.
 
-### Guard a withdrawal with a pre-invariant
+### Pre-invariant example
 
 Pre-invariants are useful when you want to guard against invalid transitions.
 For example, checking that an account has sufficient balance before a
@@ -116,7 +116,7 @@ Invariant validations are triggered throughout the lifecycle of domain objects.
 The aggregate is the root of the triggering mechanism. Protean runs validations
 recursively: first on the aggregate, then on each enclosed entity.
 
-### Check invariants after initialization
+### Post-Initialization
 
 Immediately after an object (aggregate or entity) is initialized, all
 **post-invariant** checks are triggered to ensure the aggregate starts in a
@@ -140,7 +140,7 @@ ERROR: Error during initialization: {'_entity': ['Total should be sum of item pr
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
 
-### Check invariants on every attribute change
+### Attribute Changes
 
 On every attribute change in an aggregate or its enclosed entities, Protean
 validates invariants throughout the aggregate cluster. Protean runs these
@@ -171,14 +171,14 @@ field assignment and runs the full pre-check → validate → post-check cycle. 
 [Aggregate Mutation](aggregate-mutation.md#how-it-works) for the complete
 mechanism.
 
-### Check root invariants when a child entity changes
+### Entity-to-Root Delegation
 
 When a child entity's attribute is changed, invariants fire on the **root
 aggregate**, not just the entity itself. This ensures that cross-entity
 business rules (defined on the aggregate) are always enforced, even when the
 mutation happens deep in the aggregate cluster.
 
-### Check invariants when you add or remove entities
+### Adding and Removing Entities
 
 `add_*` and `remove_*` methods on `HasMany` associations also trigger
 invariants. Both pre-invariants and post-invariants fire, just as they do
@@ -197,7 +197,7 @@ When you add or remove entities as part of a coordinated change (like updating
 a total), use `atomic_change` to batch the mutations.
 
 
-## Batch changes with `atomic_change`
+## Atomic Changes
 
 Sometimes you need to change multiple attributes together. In that case,
 validations should not trigger until the entire operation is complete. The
@@ -268,13 +268,13 @@ Events](raising-events.md#es-raise-apply) for details.
     `atomic_change` can only be applied when updating or changing an already
     initialized element.
 
-## Inherit invariants from a parent class
+## Invariant Inheritance
 
 Invariants defined on a parent class are inherited by subclasses through
 standard Python MRO resolution. A subclass inherits all `@invariant.pre` and
 `@invariant.post` methods from its parents. It can also add its own.
 
-## How invariant errors are structured
+## Error Structure
 
 When invariants raise `ValidationError`, the framework aggregates all
 violations into a single `ValidationError` with a dictionary structure:
@@ -290,7 +290,7 @@ The `_entity` key is a convention for errors that apply to the entity as a
 whole rather than a specific field. Multiple invariant violations are collected
 and reported together.
 
-### Read the code on a failed invariant
+### Coded diagnostics
 
 The raised `ValidationError` also carries a stable **code** you can act on
 without reading the messages. On an aggregate, entity, or domain service, a

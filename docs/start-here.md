@@ -9,7 +9,7 @@ The [Applicability Charter](./reference/applicability.md) states what Protean
 is a good fit for. It also names the shapes of systems Protean does not fit,
 with the reason in each case. It is worth reading before you invest much time.
 
-## Install Protean
+## Installation
 
 The [Installation guide](./guides/getting-started/installation.md) covers setting
 up Python, creating a virtual environment, and installing Protean.
@@ -20,13 +20,13 @@ up Python, creating a virtual environment, and installing Protean.
 it, and loads it back in under 20 lines. It is the fastest way to see what
 Protean feels like.
 
-## Build a domain in 5 minutes
+## Quickstart
 
 The [Quickstart](./guides/getting-started/quickstart.md) builds a working domain
 in 5 minutes: an aggregate, a command, an event, and handlers, all running in
 memory with no infrastructure.
 
-## Work through the Bookshelf tutorial
+## Tutorial
 
 [Building Bookshelf](./guides/getting-started/tutorial/index.md) is a 22-chapter
 tutorial that takes you from your first aggregate to a tested application running
@@ -41,19 +41,19 @@ against a real database. It covers:
 - **Part V**: Process managers, advanced query patterns, and how the pieces fit
   together.
 
-## Learn event sourcing with the Fidelis tutorial
+## Event Sourcing tutorial
 
 [Building Fidelis](./guides/getting-started/es-tutorial/index.md) is a 22-chapter
 tutorial that builds a banking ledger with immutable audit trails, projections,
 and production tooling. It assumes you have worked through Bookshelf.
 
-## Upgrade an existing project
+## Upgrading
 
 If you are migrating an existing project, the
 [migration guides](./reference/migration/index.md) cover the required changes,
 behavioural differences, and what is new in each version.
 
-## Learn the core concepts
+## Core concepts
 
 [Philosophy](./concepts/philosophy/index.md) covers the principles and ideas that
 shape the framework. One of them is the
@@ -88,7 +88,7 @@ When you know your task but not the page for it, use one of these:
 - **[Contents](./contents.md)**: A flat, searchable listing of every page in the
   documentation.
 
-## Configure databases, brokers, and caches
+## Configuration and infrastructure
 
 Protean reads a configuration file (`domain.toml`) to connect databases,
 brokers, caches, and other infrastructure without changing domain code. See
@@ -97,7 +97,7 @@ brokers, caches, and other infrastructure without changing domain code. See
 For the infrastructure adapters themselves, including PostgreSQL, Elasticsearch,
 Redis, and MessageDB, see [Adapters](./reference/adapters/index.md).
 
-## Process messages in the background
+## Async processing
 
 The Protean [Server](./concepts/async-processing/index.md) is an async engine
 that processes events, commands, and external messages in the background. It
@@ -111,25 +111,25 @@ The `protean` command-line tool scaffolds projects, runs the server, and sets
 up, truncates, and drops database tables. See [CLI](./reference/cli/index.md)
 for the full list of commands.
 
-## Test your domain
+## Testing
 
 Protean provides pytest fixtures and a layered testing strategy, from fast
 in-memory [domain model tests](./guides/testing/domain-model-tests.md) to full
 [integration tests](./guides/testing/integration-tests.md) against real
 infrastructure. See [Testing](./guides/testing/index.md).
 
-## Learn the recurring design patterns
+## Patterns
 
 The [Patterns](./patterns/index.md) section covers recurring designs and their
 trade-offs, including aggregate sizing, idempotent handlers, validation layering,
 and event versioning.
 
-## Look up a term in the glossary
+## Glossary
 
 The [Glossary](glossary.md) defines the concepts and terms you will meet across
 these pages.
 
-## Ask questions and contribute
+## Community
 
 The [Community](./community/index.md) page covers where to ask questions, how to
 report a problem, and how to contribute.

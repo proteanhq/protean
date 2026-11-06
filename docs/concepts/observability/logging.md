@@ -143,7 +143,7 @@ of `handler` or `uow_outcome` therefore never depends on what the caller bound.
 
 ---
 
-## Choose fields for the queries operators run
+## Query-oriented field design
 
 When choosing what to `bind_event_context()`, favour fields that:
 
@@ -163,7 +163,7 @@ DEBUG-level thin events, not the wide event.
 
 ---
 
-## Pick a backend that indexes high-cardinality fields
+## High-cardinality fields and backend choice
 
 Wide events produce data that legacy log backends index and query slowly. A
 single event carries a request id, a user id, an aggregate id, a correlation id
@@ -203,7 +203,7 @@ FastAPI leave them to the operator.
 
 ---
 
-## Which of four sources sets each logging setting?
+## The four sources of context
 
 Every resolved setting comes from one of four places. The precedence,
 from highest to lowest:
@@ -302,7 +302,7 @@ Authentication tokens belong in a vault, not a best-effort log filter.
 
 ---
 
-## Keep log records whole across multiple workers
+## Multi-worker hygiene
 
 stdout writes from separate processes are not atomic beyond `PIPE_BUF` bytes,
 typically 4096 on Linux, 512 on BSD. A structured JSON log record easily
@@ -321,7 +321,7 @@ unchanged, no queue overhead.
 
 ---
 
-## Protean emits wide events at two layers
+## Two layers of wide events
 
 Protean emits wide events at **two** layers, deliberately kept as separate
 loggers so operators can route and sample them independently:
@@ -340,7 +340,7 @@ event for the request with a single log-aggregator query:
 {logger=~"protean.access.*"} | json | correlation_id="req-abc-123"
 ```
 
-### Why does Protean use two loggers?
+### Why the split
 
 The Protean team considered a unified `protean.access` logger covering both
 layers and rejected it. Operational concerns differ:

@@ -1,4 +1,4 @@
-# Chapter 12: Speed up high-volume accounts with snapshots
+# Chapter 12: Snapshots for High-Volume Accounts
 
 A corporate trading account has accumulated 50,000 events over the past
 year. Every time the system loads this account, it must replay all
@@ -40,7 +40,7 @@ With this setting, Protean automatically creates a snapshot when
 For development, keep the threshold low (10–50). For production, set it
 based on your aggregate's event rate and acceptable load latency.
 
-## Create snapshots manually
+## Manual Snapshot Creation
 
 You can create snapshots on demand, useful for maintenance, after migrations,
 or to optimize specific aggregates:
@@ -50,7 +50,7 @@ or to optimize specific aggregates:
 --8<-- "guides/getting-started/es-tutorial/ch12.py:on_demand"
 ```
 
-## Create snapshots from the CLI
+## CLI Commands
 
 ```shell
 # Snapshot a specific account
@@ -118,7 +118,7 @@ In the next chapter, a regulatory inquiry arrives that requires looking at the
 past. We will use temporal queries to reconstruct the account at any historical
 point.
 
-## Read the full source
+## Full Source
 
 ??? example "ch12.py, 257 lines"
 
@@ -126,6 +126,6 @@ point.
     --8<-- "guides/getting-started/es-tutorial/ch12.py:full"
     ```
 
-## Go to the next chapter
+## Next
 
 [Chapter 13: Looking Back in Time →](13-temporal-queries.md)

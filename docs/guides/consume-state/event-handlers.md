@@ -201,7 +201,7 @@ A `$any` handler stays scoped to its aggregate's stream: it receives all events
 for that aggregate, and only those. It fires under both synchronous
 (`event_processing="sync"`) and asynchronous processing.
 
-## Why do event handlers return no value?
+## Return Values from Event Handlers
 
 Event handlers in Protean follow the standard CQRS pattern where event handlers
 do not return values to the caller. Protean follows this pattern on purpose,
@@ -220,7 +220,7 @@ If an event handler needs to communicate information as part of its processing, 
 - Update relevant aggregates that can be queried later
 - Log information for monitoring purposes
 
-## Make event handlers idempotent for at-least-once delivery
+## Idempotency and at-least-once delivery
 
 Event delivery is at-least-once, so a handler can receive the same event more
 than once. This happens after a crash-and-republish, or after a redelivery when
@@ -237,7 +237,7 @@ because a projector has one known projection provider.
 
 ## Configuration Options
 
-### Set handler options
+### Handler Options
 
 - **`part_of`**: The aggregate to which the event handler is connected.
 - **`stream_category`**: The event handler listens to events on this [stream
@@ -296,13 +296,13 @@ messages:
     - `enable_dlq`: Enable dead letter queue (stream only)
     - `position_update_interval`: Position update frequency (event_store only)
 
-#### Configure a subscription on an event handler
+#### Example with Subscription Configuration
 
 ```python
 --8<-- "guides/consume-state/event-handlers/002.py:subscription-config"
 ```
 
-### Retry failed messages and send them to the Dead Letter Queue (DLQ)
+### Retry and Dead Letter Queue (DLQ)
 
 When using Redis Streams (`subscription_type="stream"`), Protean supports
 automatic retries and dead-letter queuing for failed messages:
@@ -367,7 +367,7 @@ You can add a `handle_error` class method to your event handler to implement cus
 --8<-- "guides/consume-state/event-handlers/003.py:handle-error"
 ```
 
-### What happens when an event handler raises an exception?
+### How It Works
 
 1. When an exception occurs during event processing, the Protean Engine catches it.
 2. The engine logs detailed error information including stack traces.
@@ -376,7 +376,7 @@ You can add a `handle_error` class method to your event handler to implement cus
    - The event message being processed when the exception occurred
 4. After `handle_error` completes, processing continues with subsequent events.
 
-### What happens when `handle_error` itself fails?
+### Error Handler Failures
 
 If an exception occurs within the `handle_error` method itself, the Protean
 Engine catches and logs that exception as well. The event processing pipeline

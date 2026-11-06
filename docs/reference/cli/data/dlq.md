@@ -9,7 +9,7 @@ replay, and purge those failed messages, both from the terminal and via the
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Which commands does the group provide?
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -156,7 +156,7 @@ The Observatory exposes DLQ management endpoints for programmatic access:
 | `/api/dlq/replay-all` | POST | Replay all messages (`?subscription=...`) |
 | `/api/dlq` | DELETE | Purge all messages (`?subscription=...`) |
 
-## Which errors can the commands report?
+## Error Handling
 
 | Condition | Behavior |
 |-----------|----------|
@@ -192,7 +192,7 @@ For the full error handling guide, see
 lifecycle details, see
 [Subscriptions](../../../concepts/async-processing/subscriptions.md).
 
-## How do the commands find the domain?
+## Domain Discovery
 
 The `protean dlq` commands use the same domain discovery mechanism as
 other CLI commands. See [Domain Discovery](../project/discovery.md) for the

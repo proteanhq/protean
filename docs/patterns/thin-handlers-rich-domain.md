@@ -1,4 +1,4 @@
-# Keep handlers thin and the domain rich
+# Thin Handlers, Rich Domain
 
 ## The Problem
 
@@ -128,7 +128,7 @@ Load. Call. Save. Everything else belongs in the domain model.
 
 ## Applying the Pattern
 
-### Before: the handler contains the business logic
+### Before: Thick Handler
 
 ```python
 # fragment
@@ -162,7 +162,7 @@ def request_refund(self, command: RequestRefund):
     repo.add(order)
 ```
 
-### After: the aggregate contains the business logic
+### After: Thin Handler, Rich Aggregate
 
 ```python
 --8<-- "patterns/thin-handlers-rich-domain/refunds/domain.py:aggregate"
@@ -174,9 +174,9 @@ clear, named methods with specific responsibilities.
 
 ---
 
-## Which domain element should contain the logic?
+## Where Logic Lives
 
-### Put single-aggregate business rules in aggregate methods
+### Aggregate Methods: Single-Aggregate Business Rules
 
 Logic that depends only on the aggregate's own state belongs in aggregate
 methods:
@@ -192,7 +192,7 @@ tracking) is in the aggregate. The handler is:
 --8<-- "patterns/thin-handlers-rich-domain/001.py:handler"
 ```
 
-### Put cross-aggregate coordination in domain services
+### Domain Services: Cross-Aggregate Coordination
 
 Logic that reads from multiple aggregates but modifies only one belongs in a
 domain service:
@@ -207,7 +207,7 @@ service runs the validation across both aggregates. The aggregate's `debit()`
 method makes the actual state change. Each component has a clear
 responsibility.
 
-### Put concept-level logic in value objects
+### Value Objects: Concept-Level Logic
 
 Logic intrinsic to a domain concept belongs in the value object:
 
@@ -220,7 +220,7 @@ monetary amounts does not check the currency itself.
 
 ---
 
-## Test whether your handler needs more than three lines
+## The Three-Line Handler Test
 
 Your handler may have more than the three canonical lines (load, call, save).
 In that case, ask whether the extra logic belongs in the domain model:
@@ -240,7 +240,7 @@ The handler sequences the calls. The domain model makes the business decisions.
 
 ---
 
-## How can you tell your handler is too thick?
+## Signs Your Handler Is Too Thick
 
 1. **The handler branches on business rules**: Put conditional branching based
    on aggregate state inside the aggregate.
@@ -263,11 +263,11 @@ The handler sequences the calls. The domain model makes the business decisions.
 
 ---
 
-## How do thin handlers make testing easier?
+## Testing Benefits
 
 The main reason for thin handlers: **you can test domain logic directly**.
 
-### Test through thick handlers (hard)
+### Testing with Thick Handlers (Hard)
 
 ```python
 # fragment
@@ -296,7 +296,7 @@ class TestRefund:
             assert updated.status == "refund_requested"
 ```
 
-### Test with thin handlers (easy)
+### Testing with Thin Handlers (Easy)
 
 The `test_domain` fixture comes from a `conftest.py` next to the tests. It
 initializes the domain and opens a domain context, so the aggregate can raise
@@ -352,7 +352,7 @@ steps in order. The domain model contains the business logic.
 
 Some legitimate additions to the three-line pattern:
 
-### Load additional data for domain services
+### Loading Additional Data for Domain Services
 
 ```python
 --8<-- "patterns/thin-handlers-rich-domain/002.py:handler"
@@ -361,7 +361,7 @@ Some legitimate additions to the three-line pattern:
 The handler can load a second aggregate for a domain service. The handler is
 still just orchestrating.
 
-### Create new aggregates
+### Creating New Aggregates
 
 ```python
 # fragment
@@ -380,7 +380,7 @@ def place_order(self, command: PlaceOrder):
 The handler builds the order with multiple `add_item` calls. That code
 orchestrates aggregate methods and contains no business logic.
 
-### Apply Layer 4 guards in the handler
+### Layer 4 Guards
 
 ```python
 # fragment

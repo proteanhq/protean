@@ -71,7 +71,7 @@ Like other elements in Protean, a command is validated as soon as you
 initialize it. Protean checks that the command contains all required
 information and that its data is in the correct format.
 
-## How commands lead to persisted state
+## Persistence
 
 ### Commands do not persist data directly. { data-toc-label="Persistence" }
 Commands themselves do not persist data but trigger domain operations that
@@ -82,7 +82,7 @@ Once a command has been successfully handled, it may result in domain events
 being published. Event handlers in other parts of the system can then consume
 these events to learn about the changes.
 
-## How to design good commands
+## Best Practices
 
 ### Keep commands simple. { data-toc-label="Simplicity" }
 Commands should be simple and focused on a single responsibility. This makes
@@ -103,7 +103,7 @@ place to protect this data.
 
 ---
 
-## What to read next
+## Next steps
 
 For practical details on defining and processing commands in Protean, see the guide:
 

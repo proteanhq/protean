@@ -54,7 +54,7 @@ to that type at the call site instead of `Any`. Both mypy and pyright check
 this type. Declaring the result type is optional and changes nothing at
 runtime.
 
-## How should you design queries?
+## Best Practices
 
 ### Keep queries to read parameters. { data-toc-label="Read Parameters Only" }
 
@@ -69,7 +69,7 @@ also validate more precisely.
 
 ---
 
-## What should you read next?
+## Next steps
 
 For practical details on defining queries and answering them, see the guide:
 

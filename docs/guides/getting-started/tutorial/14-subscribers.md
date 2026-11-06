@@ -5,7 +5,7 @@ sends webhook notifications when new books become available or when stock is
 replenished. These messages arrive on a Redis stream from an external system.
 We need to consume them and translate them into our domain language.
 
-## How do subscribers differ from event handlers?
+## Subscribers vs. Event Handlers
 
 | | Event Handlers | Subscribers |
 |---|---------------|-------------|
@@ -43,7 +43,7 @@ We need a new command and handler for restocking:
 --8<-- "guides/getting-started/tutorial/ch14.py:restock_handler"
 ```
 
-## Follow a message from BookSupply to the command handler
+## How It Works
 
 ```
 External System           Protean
@@ -76,7 +76,7 @@ format, only the subscriber needs to change.
 --8<-- "guides/getting-started/tutorial/ch14.py:tests"
 ```
 
-## Review what you built in this chapter
+## What We Built
 
 - A **`BookSupplyWebhookSubscriber`** that consumes messages from an
   external system.
@@ -87,7 +87,7 @@ format, only the subscriber needs to change.
 In the next chapter, we will enable fact events so the marketing team
 can get complete state snapshots for their analytics dashboard.
 
-## Read the full source for this chapter
+## Full Source
 
 ??? example "ch14.py, 129 lines"
 
@@ -95,6 +95,6 @@ can get complete state snapshots for their analytics dashboard.
     --8<-- "guides/getting-started/tutorial/ch14.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 15: Fact Events and the Reporting Pipeline →](15-fact-events.md)

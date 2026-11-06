@@ -1,4 +1,4 @@
-# Define custom database models
+# Custom Database Models
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span>
 
@@ -44,7 +44,7 @@ Map aggregate fields to adapter-specific types:
 --8<-- "guides/change-state/database-models/002.py:field_types"
 ```
 
-### Map only some of the fields
+### Partial field mapping
 
 A model can map fewer fields than the aggregate. Protean auto-generates the
 mapping for each field the model leaves out:
@@ -55,7 +55,7 @@ mapping for each field the model leaves out:
 
 ---
 
-## Choose the registration options
+## Registration options
 
 | Option | Type | Description |
 |--------|------|-------------|
@@ -69,7 +69,7 @@ mapping for each field the model leaves out:
 
 ---
 
-## Use a different model for each database type
+## Multi-database deployment
 
 Register multiple models for the same aggregate, each targeting a
 different database type:
@@ -85,7 +85,7 @@ and `CustomerWriteModel` on PostgreSQL. The aggregate is not written to both.
 
 ---
 
-## Which fields can a model declare?
+## Validation rules
 
 - Model fields **must be a subset** of the aggregate's fields. Defining
   a field that doesn't exist on the aggregate raises `IncorrectUsageError`.

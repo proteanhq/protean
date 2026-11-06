@@ -4,13 +4,13 @@ The PostgreSQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) as its
 ORM to communicate with the database. It is the recommended provider for
 production deployments.
 
-## What does the PostgreSQL provider offer?
+## Overview
 
 PostgreSQL is a relational provider that supports the full
 range of database capabilities, including native JSON and array columns. It
 provides real ACID transactions, connection pooling, and schema management.
 
-## Install the provider
+## Installation
 
 ```bash
 pip install "protean[postgresql]"
@@ -37,7 +37,7 @@ This installs `psycopg2-binary`. Install `psycopg2` in its place to build from
 source. Both provide the same `psycopg2` module, so install only one. See the
 [psycopg2 installation guide](https://www.psycopg.org/docs/install.html).
 
-## Configure the provider
+## Configuration
 
 ```toml
 [databases.default]
@@ -45,7 +45,7 @@ provider = "postgresql"
 database_uri = "postgresql://postgres:postgres@localhost:5432/postgres"
 ```
 
-### Which options can you set?
+### Configuration Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -55,7 +55,7 @@ database_uri = "postgresql://postgres:postgres@localhost:5432/postgres"
 | `pool_size` | `5` | Number of connections in the SQLAlchemy connection pool |
 | `max_overflow` | `10` | Additional connections allowed beyond `pool_size` |
 
-### Write the connection string
+### Connection String Format
 
 ```
 postgresql[+driver]://[username]:[password]@[host]:[port]/[database]
@@ -86,7 +86,7 @@ If Protean cannot import the URL's driver, `domain.init()` raises a
 psycopg2 driver, the provider does not fall back to psycopg 3. To choose the
 driver yourself, write it into the URL.
 
-## Which capabilities does the provider support?
+## Capabilities
 
 The PostgreSQL provider supports the following capabilities:
 
@@ -106,7 +106,7 @@ Of the built-in providers, only PostgreSQL supports **all 12 capability
 flags**. The 12 exclude `SIMULATED_TRANSACTIONS`, a flag specific to the Memory
 provider.
 
-## Declare indexes
+## Indexes
 
 PostgreSQL supports every option of
 [`Index`](../../domain-elements/indexes.md). Declarations on an aggregate or
@@ -132,7 +132,7 @@ generates internally, allowing you full customization.
     The column names specified in the model should exactly match the attribute
     names of the Aggregate or Entity it represents.
 
-## Run raw queries
+## Raw Queries
 
 Use the `raw()` method to execute SQL directly:
 
@@ -148,7 +148,7 @@ Use the `raw()` method to execute SQL directly:
 Raw queries execute immediately in their own transaction context. Results are
 returned as-is from the database without entity conversion.
 
-## Detect slow queries
+## Slow Query Detection
 
 Protean installs SQLAlchemy ``before_cursor_execute`` /
 ``after_cursor_execute`` listeners on the engine when it constructs the
@@ -177,7 +177,7 @@ performance investigations). The ``ProteanCorrelationFilter`` on the root
 logger's handlers adds the correlation context (``correlation_id``,
 ``causation_id``) to every record automatically.
 
-## What are the provider's limitations?
+## Limitations
 
 - **Requires Running Server**: PostgreSQL must be installed and running as a
   separate service. Use `make up` to start Protean's Docker-based development
@@ -185,9 +185,9 @@ logger's handlers adds the correlation context (``correlation_id``,
 - **Limit the connection overhead**: Each connection consumes server resources.
   Tune `pool_size` and `max_overflow` for your workload.
 
-## See also
+## Related pages
 
-- Learn about [database capabilities](./index.md#how-providers-declare-capabilities) in
+- Learn about [database capabilities](./index.md#database-capabilities) in
   detail
 - Explore [Elasticsearch](./elasticsearch.md) for search-oriented storage
 - See [Building Custom Database Adapters](./custom-databases.md) to support

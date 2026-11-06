@@ -1,4 +1,4 @@
-# How event upcasting works inside Protean
+# Event Upcasting Internals
 
 Upcasting turns an old event into its current shape at read time. A stream
 written months ago therefore still deserializes into today's classes. Protean
@@ -7,7 +7,7 @@ and integration points described below.
 
 For usage-level documentation, see the [Event Upcasting guide](../../guides/consume-state/event-upcasting.md).
 
-## How upcasting fits into deserialization
+## Architecture Overview
 
 Upcasting runs after the first of these two existing systems and before the
 second:
@@ -43,7 +43,7 @@ Upcasting adds zero overhead to current-version events, because step 1 in the
 diagram above finds their class directly (the fast path). The upcaster chain is
 only consulted when the type string cache misses.
 
-## How upcasters are registered
+## Registration Model
 
 ### Upcasters register through the standard element lifecycle
 
@@ -128,9 +128,9 @@ Both paths call `upcaster_factory()` for validation and store the result in the
 domain registry. Together the two upcasters in the registration example above
 form the chain `v1 → v2 → v3`.
 
-## How Protean builds upcaster chains
+## Chain Building
 
-### What `UpcasterChain` stores
+### Data Structures
 
 `UpcasterChain` (defined in `src/protean/utils/upcasting.py`) maintains three
 internal structures:
@@ -177,7 +177,7 @@ The method:
 3. Registers each edge in `UpcasterChain`
 4. Calls `build_chains(events_and_commands)` to validate and pre-compute
 
-### How `build_chains()` constructs each chain
+### Chain Construction Algorithm
 
 For each `event_base_type`, `build_chains()` performs:
 
@@ -243,7 +243,7 @@ self._version_map[f"{event_base_type}.v{start_version}"] = current_cls
 
 After building, `_edges` is cleared. It is no longer needed.
 
-### Which errors chain validation catches
+### Validation Errors
 
 All validation runs at startup during `domain.init()`. No validation happens
 at runtime during deserialization. The following errors are caught:
@@ -256,7 +256,7 @@ at runtime during deserialization. The following errors are caught:
 | Gap | Chain doesn't reach terminal | `1→2` registered but `2→3` missing, terminal is `3` |
 | Missing event class | Terminal version not in `_events_and_commands` | Chain ends at `99` but event `__version__` is `2` |
 
-## How upcasting runs at read time
+## Runtime Execution
 
 ### The `to_domain_object()` Integration
 
@@ -291,7 +291,7 @@ The real method also maps renamed field names. In lenient mode, the real method
 also drops fields the class no longer has. It re-raises any failure, including
 the `ConfigurationError` above, as a `DeserializationError`.
 
-### How Protean parses a type string
+### Type String Parsing
 
 Type strings follow the format `"{DomainName}.{EventName}.{version}"`.
 The `rpartition(".")` call splits on the **last** dot:
@@ -302,7 +302,7 @@ The `rpartition(".")` call splits on the **last** dot:
 Splitting on the last dot parses an event name that contains dots correctly.
 Protean event names conventionally contain no dots.
 
-### How `upcast()` applies a chain
+### Chain Application
 
 `UpcasterChain.upcast()` is a simple loop:
 
@@ -321,7 +321,7 @@ Each upcaster receives the output of the previous one. `build_chains()`
 pre-computed the chain, so lookup is O(1). Application is O(n), with n the
 number of version hops (typically 1-3).
 
-### What metadata the upcast event carries
+### Metadata Handling
 
 After upcasting, the event is constructed with the **original metadata**:
 
@@ -340,7 +340,7 @@ event, `metadata.domain.version` therefore reads the current version (`3` for a
 `v1` message upcast to `v3`). The stored version stays on the `Message` that
 was read (`message.metadata.domain.version`).
 
-## Which deserialization paths upcast events
+## All Deserialization Paths
 
 Upcasting works transparently in all paths that flow through
 `Message.to_domain_object()`:
@@ -356,9 +356,9 @@ Upcasting works transparently in all paths that flow through
 Because all these paths call `to_domain_object()`, upcasting is automatic in
 all of them. No path needs special handling.
 
-## What upcasting costs at read time
+## Performance Characteristics
 
-### Current-version events take the hot path
+### Current-Version Events (Hot Path)
 
 ```
 _events_and_commands.get(type_string) → hit → construct event
@@ -366,7 +366,7 @@ _events_and_commands.get(type_string) → hit → construct event
 
 A single dict lookup. Zero overhead from the upcasting system.
 
-### Old-version events take the upcast path
+### Old-Version Events (Upcast Path)
 
 ```
 _events_and_commands.get(type_string) → miss
@@ -381,7 +381,7 @@ Two dict lookups + one string split + N upcaster calls. Upcaster instances are
 pre-allocated and chains are pre-computed. The only variable cost is therefore
 the upcaster logic itself, which should be fast dict operations.
 
-### What upcasting keeps in memory
+### Memory
 
 - One `UpcasterChain` instance per domain (attached to `domain._upcaster_chain`)
 - One upcaster instance per registered step (created during `build_chains()`)
@@ -389,7 +389,7 @@ the upcaster logic itself, which should be fast dict operations.
   number of old versions across all event types
 - `_edges` is cleared after building, releasing temporary registration data
 
-## How upcasting relates to other systems
+## Relationship to Other Systems
 
 ### `_events_and_commands` Registry
 
@@ -404,14 +404,14 @@ the same current event class.
 Together, they cover all possible type strings that might appear in the event
 store.
 
-### Upcasting works the same on every event store adapter
+### Event Store Adapters
 
 Upcasting is **adapter-agnostic**. It operates on the `Message` layer, which is
 common to all event store adapters (Memory, MessageDB, etc.). Event store
 adapters read raw messages and return `Message` objects. Upcasting happens when
 `to_domain_object()` is called on those messages.
 
-### Upcasting does not apply to snapshots
+### Snapshots
 
 Snapshot-based aggregate loading (`part_of(**snapshot_data)`) bypasses
 `Message.to_domain_object()` and constructs the aggregate directly, so
@@ -421,7 +421,7 @@ removed, or newly required field can make construction raise. Protean then
 discards the stale snapshot, rebuilds the aggregate by replaying the event
 stream (where upcasting does apply), and logs a warning on the
 `protean.snapshot` channel. See [Snapshots and schema
-changes](../../guides/change-state/snapshots.md#what-happens-to-a-snapshot-when-the-schema-changes)
+changes](../../guides/change-state/snapshots.md#snapshots-and-schema-changes)
 and the [schema-evolution ladder](../../adr/0040-schema-evolution-ladder.md).
 
 ### `domain.init()` Ordering
@@ -439,7 +439,7 @@ domain.init()
 Step 2 depends on step 1 because chain validation verifies that terminal
 versions have matching entries in `_events_and_commands`.
 
-## How the upcasting tests are organized
+## Testing Approach
 
 The upcasting system is tested at four levels:
 

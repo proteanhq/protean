@@ -1,4 +1,4 @@
-# Query past aggregate state for audit, debugging, and compliance
+# Temporal Queries for Audit, Debugging, and Compliance
 
 ## The Problem
 
@@ -104,7 +104,7 @@ Design temporal query endpoints for three categories of consumers:
 
 ## Applying the Pattern
 
-### Define the event-sourced aggregate
+### The event-sourced aggregate
 
 A financial compliance domain with an `Account` aggregate that tracks
 identity verification and transaction limits:
@@ -144,7 +144,7 @@ written on or before that moment are applied.
     Protean normalizes timezone-naive and timezone-aware timestamps before
     comparison. Pass your `as_of` timestamp in UTC for consistent results.
 
-### Expose temporal queries through an application service
+### Application service exposing temporal queries
 
 Wrap temporal queries in an application service that provides a clean API
 for compliance and support teams:
@@ -153,7 +153,7 @@ for compliance and support teams:
 --8<-- "patterns/temporal-queries/001.py:audit_service"
 ```
 
-### Serve the audit trail through an API endpoint
+### API endpoint for audit trail
 
 Expose temporal queries through a REST API so compliance and support teams can
 run them without help from engineers:
@@ -162,7 +162,7 @@ run them without help from engineers:
 --8<-- "patterns/temporal-queries/001.py:api"
 ```
 
-### How Protean keeps temporal aggregates read-only
+### Read-only safety
 
 Protean sets `_is_temporal=True` on every aggregate returned by a temporal
 query. The `raise_()` method checks this flag before accepting new events:
@@ -180,7 +180,7 @@ reporting tools without defensive wrappers.
     attributes. However, those changes will never be persisted because no
     events are raised.
 
-### How temporal queries bypass the identity map
+### Identity map bypass
 
 Within a Unit of Work, once `get()` loads an aggregate or `repo.add()` saves
 it, later `get()` calls return that same instance from the identity map.

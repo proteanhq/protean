@@ -1,4 +1,4 @@
-# Should domains share event classes?
+# Sharing Event Classes Across Domains
 
 ## The Problem
 
@@ -85,7 +85,7 @@ the same Python class.
 
 ## Why Schemas, Not Classes
 
-### Each domain changes its event class independently
+### Independent Evolution
 
 When the Order domain adds `discount_code` to `OrderPlaced`:
 
@@ -98,12 +98,12 @@ When the Order domain adds `discount_code` to `OrderPlaced`:
   filters the payload before building its event (see the consumer-side contract
   test below).
 
-### Each domain deploys independently
+### Independent Deployment
 
 Each domain owns its own class definition. A change to one domain's class
 requires no edit to the other domain's codebase. Deployment is independent.
 
-### Each consumer declares only the fields it uses
+### Subset Consumption
 
 The Fulfillment domain doesn't need every field the Order domain publishes.
 With its own class, it defines only the fields it cares about:
@@ -121,7 +121,7 @@ them and shouldn't depend on them.
 
 ## How to Define the Contract
 
-### Option 1: Document the schema
+### Option 1: Documentation
 
 The simplest approach. The publishing domain documents its event schemas in
 human-readable form:
@@ -145,7 +145,7 @@ accordingly.
 
 **Use it when you have** small teams, few domains, and simple event schemas.
 
-### Option 2: Publish a JSON Schema
+### Option 2: JSON Schema
 
 A machine-readable contract that can be validated automatically:
 
@@ -180,7 +180,7 @@ compatibility without sharing code.
 **Use it when you need** formal integration contracts and CI/CD validation
 across multiple teams.
 
-### Option 3: Use a schema registry
+### Option 3: Schema Registry
 
 For large-scale systems, a centralized schema registry stores event schemas
 and enforces compatibility rules:
@@ -194,18 +194,18 @@ requirements.
 
 ---
 
-## Test the contract on each side
+## Contract Testing
 
 Instead of sharing code, use **contract tests** to verify that the publisher's
 events match what consumers expect:
 
-### Test the contract on the publisher side
+### Publisher-Side Contract Test
 
 ```python
 --8<-- "patterns/sharing-event-classes-across-domains/002.py:publisher_test"
 ```
 
-### Test the contract on the consumer side
+### Consumer-Side Contract Test
 
 ```python
 --8<-- "patterns/sharing-event-classes-across-domains/003.py:consumer_test"
@@ -220,7 +220,7 @@ payload in the contract's shape. Neither test needs shared code.
 
 ## When Sharing Code Is Acceptable
 
-### Choose a shared kernel on purpose
+### Intentional Shared Kernel
 
 In DDD, the **Shared Kernel** pattern means two bounded contexts explicitly
 agree to share a subset of their domain model. This is appropriate when:
@@ -238,7 +238,7 @@ A shared kernel is a conscious architectural decision, not an accidental
 dependency. It should be small, stable, and explicitly agreed upon by both
 teams.
 
-### Share classes when domains deploy together
+### Same Deployment Unit
 
 Some pairs of domains always deploy together (e.g., a monolith with logical
 bounded contexts). For those domains, sharing event classes adds no deployment
@@ -259,11 +259,11 @@ autocomplete, handler signatures). The domains share the contract as a schema
 (the type string) and share no code (no shared import).
 
 See [Multi-Domain Applications, Cross-domain
-communication](../guides/multi-domain-applications.md#communicate-across-domains)
+communication](../guides/multi-domain-applications.md#cross-domain-communication)
 for the full guidance on when to use `register_external_event()` and when to
 use subscribers.
 
-### Generate classes from Protobuf or Avro definitions
+### Protobuf / Avro Definitions
 
 When you use schema-first serialization formats (Protocol Buffers, Avro), a
 code generator builds each domain's classes from the schema. Both domains use

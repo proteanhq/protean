@@ -57,7 +57,7 @@ Right mental model:
    so they belong in the same aggregate."
 ```
 
-### Apply the consistency boundary test
+### The consistency boundary test
 
 Before you add anything to an aggregate, ask:
 
@@ -90,7 +90,7 @@ When one aggregate needs to know about another, store its **identity**, never
 the object. This is what lets you keep aggregates small and still model the
 relationships between them.
 
-### Do not embed one aggregate in another
+### The anti-pattern: embedding aggregates
 
 ```python
 # fragment
@@ -111,7 +111,7 @@ Which gives you:
 - Order and Customer share one transaction boundary
 - You cannot scale their storage separately
 
-### Reference other aggregates by identity
+### The pattern: reference by identity
 
 ```python
 --8<-- "patterns/design-small-aggregates/001.py:order"
@@ -182,7 +182,7 @@ without embedding it:
 Each aggregate is independent of the others. The relationships between
 aggregates are identities.
 
-### Use entities for real composition
+### Entities for real composition
 
 When data has to be consistent with the aggregate in the same transaction, put
 the data inside the aggregate as entities:
@@ -198,7 +198,7 @@ the data inside the aggregate as entities:
 - The order has rules about its items, such as needing at least one
 - An item does not exist without its order
 
-### Use value objects for embedded data
+### Value objects for embedded data
 
 When data describes part of the aggregate but has no identity of its own:
 
@@ -211,7 +211,7 @@ order goes. It does not point at an `Address` aggregate. The order needs the
 address *as it was when the order was placed*, and the customer's current
 address can differ.
 
-### Use domain events across aggregates
+### Domain events across aggregates
 
 When something in one aggregate has to change another, raise a domain event:
 
@@ -233,7 +233,7 @@ hand-off in detail.
 
 ---
 
-## Follow the two-aggregate rule
+## The two-aggregate rule
 
 A rule of thumb: **if an operation looks like it has to change two aggregates,
 it probably wants an event instead**.
@@ -271,7 +271,7 @@ events and by the commands that event handlers issue.
 
 ---
 
-## Work through an example
+## A worked example
 
 Take a project management system with these requirements:
 
@@ -282,7 +282,7 @@ Take a project management system with these requirements:
 - **Time entries** are logged against tasks
 - When a task is completed, the project's progress percentage updates
 
-### Start with the naive design
+### The naive design
 
 ```python
 # fragment
@@ -302,7 +302,7 @@ Logging a single time entry loads and saves the whole Project, with every task,
 team member, comment, and time entry attached. On a project with 500 tasks and
 2,000 time entries that is unusable.
 
-### Refactor the design
+### The refactored design
 
 Put each relationship through the consistency boundary test:
 
@@ -347,7 +347,7 @@ yet.
 
 ## When to do something else
 
-### Keep data together when it must be consistent
+### Data that really must be consistent
 
 Sometimes data does have to share an aggregate. An invoice and its line items
 always have to agree, because the total has to match the sum of the lines. The
@@ -357,7 +357,7 @@ alone.
 The test does not change: must these move together, in one transaction? If yes,
 they stay together.
 
-### Accept a larger aggregate in a small domain
+### Small domains
 
 In a small application with a handful of entities and almost no concurrency,
 splitting into many aggregates may cost more than it returns. With one user at a
@@ -367,7 +367,7 @@ a fair trade.
 Start with the larger aggregate. Split it when contention, performance, or
 complexity becomes a problem.
 
-### Watch stream length in event-sourced aggregates
+### Event-sourced aggregates
 
 With event-sourced aggregates, you have one more thing to watch: stream length.
 A long-lived aggregate with thousands of events takes longer to replay, so keep
@@ -379,7 +379,7 @@ during the next load of the aggregate. You can also create a snapshot by hand
 
 ---
 
-## Avoid these common mistakes
+## Common mistakes
 
 ### Mistake 1: splitting on UI screens
 

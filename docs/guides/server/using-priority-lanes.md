@@ -134,7 +134,7 @@ Batch events should have a negative priority value (e.g., `-50` for
 
 ---
 
-## Fix common problems
+## Troubleshooting
 
 ### Events are going to the primary stream instead of backfill
 

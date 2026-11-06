@@ -1,4 +1,4 @@
-# How Protean generates and holds identities
+# Identity
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -12,7 +12,7 @@ Protean requires every element to satisfy all its invariants from the moment
 you create it. Protean generates the identity at creation so that the element
 meets this requirement.
 
-## Configure identity at the domain level
+## Configuration
 
 Identity options are specified at the Domain level with [configuration
 attributes](../configuration/index.md#identity_strategy). Protean uses the
@@ -26,7 +26,7 @@ identity_type="string"
 ...
 ```
 
-### Choose an identity strategy
+### Strategy
 
 The strategy for generating identity values.
 
@@ -44,7 +44,7 @@ strategy.
   [`identity_function`](./domain-constructor.md#identity_function) when you
   construct the domain object.
 
-### Choose an identity type
+### Type
 
 The type of the generated identity value. Supported identity types are
 `integer`, `string`, and `uuid`. Default is `string`.
@@ -79,7 +79,7 @@ type to it for storage and indexing.
     together. For example, the configured `identity_function` has to return
     values that match the type configured in `identity_type`.
 
-## Hold identity values in fields
+## Fields
 
 Protean can hold identity values in two field types: `Auto` and `Identifier`.
 
@@ -112,7 +112,7 @@ In [6]: user.to_dict()
 Out[6]: {'user_id': '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7', 'name': 'John Doe', '_version': -1}
 ```
 
-### Protean adds an identity field when you leave it out
+### Automatic Identity field
 
 When an identity field is not supplied, an `Auto` field called `id` is
 automatically added to the entity.
@@ -131,7 +131,7 @@ In [3]: id_field(Person).field_name
 Out[3]: 'id'
 ```
 
-### Protean does not support composite keys
+### No Composite keys
 
 Protean does not support composite keys. A `NotSupportedError` is thrown when
 multiple identifier fields are found.

@@ -14,7 +14,7 @@ separation:
 - An API layer needs clean imports from organized modules.
 - Tests mirror the source structure.
 
-## What does the target layout look like?
+## The Target Layout
 
 ```
 bookshelf/
@@ -33,7 +33,7 @@ tests/
 
 ## Creating the Package
 
-### Create the domain instance
+### The Domain Instance
 
 `bookshelf/__init__.py` defines the domain instance:
 
@@ -42,7 +42,7 @@ tests/
 --8<-- "guides/getting-started/tutorial/bookshelf/__init__.py:domain_init"
 ```
 
-### Move the models into `models.py`
+### Models
 
 Aggregates, entities, and value objects go in `bookshelf/models.py`:
 
@@ -51,7 +51,7 @@ Aggregates, entities, and value objects go in `bookshelf/models.py`:
 --8<-- "guides/getting-started/tutorial/bookshelf/models.py:models"
 ```
 
-### Move the events into `events.py`
+### Events
 
 Domain events go in `bookshelf/events.py`:
 
@@ -60,7 +60,7 @@ Domain events go in `bookshelf/events.py`:
 --8<-- "guides/getting-started/tutorial/bookshelf/events.py:events"
 ```
 
-### Move the commands into `commands.py`
+### Commands
 
 Commands go in `bookshelf/commands.py`:
 
@@ -69,7 +69,7 @@ Commands go in `bookshelf/commands.py`:
 --8<-- "guides/getting-started/tutorial/bookshelf/commands.py:commands"
 ```
 
-### Move the handlers into `handlers.py`
+### Handlers
 
 Command handlers and event handlers go in `bookshelf/handlers.py`:
 
@@ -78,7 +78,7 @@ Command handlers and event handlers go in `bookshelf/handlers.py`:
 --8<-- "guides/getting-started/tutorial/bookshelf/handlers.py:handlers"
 ```
 
-### Move the projections into `projections.py`
+### Projections
 
 Projections and projectors go in `bookshelf/projections.py`:
 
@@ -87,7 +87,7 @@ Projections and projectors go in `bookshelf/projections.py`:
 --8<-- "guides/getting-started/tutorial/bookshelf/projections.py:projections"
 ```
 
-## How does Protean discover the domain elements?
+## Domain Auto-Discovery
 
 Notice that we no longer pass `traverse=False` to `domain.init()`. With
 a proper package structure, Protean auto-discovers all domain elements
@@ -106,7 +106,7 @@ next chapter, that is the API module:
 `@domain.event`, etc. decorators across every module in the `bookshelf/`
 package.
 
-## Move the configuration file
+## The Configuration File
 
 Move `domain.toml` to the project root (next to the `bookshelf/`
 package):
@@ -164,6 +164,6 @@ All domain elements should be discovered and registered just as before.
 Chapter 10 adds a FastAPI web layer that exposes the domain through HTTP
 endpoints.
 
-## Continue with chapter 10
+## Next
 
 [Chapter 10: Exposing the Domain Through an API →](10-api.md)

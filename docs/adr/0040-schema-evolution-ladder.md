@@ -57,7 +57,7 @@ lightest rung that covers your change.
 
 --8<-- "diagrams/schema-evolution-ladder.md"
 
-### Rung 1: use weak schema for additive and rename changes
+### Rung 1: weak schema, for additive and rename changes
 
 You need no version bump when you add a field with a default or rename a field.
 When you add the field with a default, Protean decodes old payloads and sets
@@ -67,7 +67,7 @@ Avro `aliases` entry, so an external consumer resolves the old key on the wire
 too. Lenient mode is the tolerant-reader half of this rung: turn it on to read
 a legacy payload that still carries a since-removed field.
 
-### Rung 2: bump the version and write an upcaster for structural changes
+### Rung 2: versioning plus an upcaster, for structural changes
 
 When weak schema cannot express a change (a newly required field, a type
 change, a field split or merge), you bump the version and write an upcaster for
@@ -81,7 +81,7 @@ exception below. An upcaster works only when it can supply the new value from
 the old payload. A newly required field with no computable value has no
 upcaster to write; replace the event with a new type in that case.
 
-### Rung 3: run an operator-level migration when an upcaster chain costs more than it saves
+### Rung 3: an operator-level migration, for a chain grown past usefulness
 
 When maintaining a long upcaster chain costs more than it saves, rewrite the
 stored events. Two tactics apply.
@@ -110,7 +110,7 @@ domain object, though it remains intact in the store. When you can tolerate an
 old field's absence, use lenient mode. When the current schema needs a value
 transformed from the old data, use an upcaster.
 
-### What this ADR corrects in the event-versioning ADR (ADR-0001)
+### The correction to ADR-0001
 
 The versioning decision in the event-versioning ADR (ADR-0001) stands:
 monotonic integers, version in the `__type__` string. This ADR corrects one
@@ -137,7 +137,7 @@ defined, the phrase "the same treatment events get" has a fixed meaning. The
 snapshot fix (#1362) can then apply to a snapshot the rung that matches its
 change.
 
-### Reserve removed names on an event-sourced aggregate
+### Reserved names on an event-sourced aggregate
 
 Removing a field from an event-sourced aggregate is its own rung. The three
 mechanisms above act on a payload as it is decoded; this one acts on the

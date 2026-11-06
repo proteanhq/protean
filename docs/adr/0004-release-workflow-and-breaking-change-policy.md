@@ -1,4 +1,4 @@
-# ADR: Release continuously and phase in each breaking change by its tier
+# ADR: Release Workflow and Breaking Change Policy
 
 | Field | Value |
 |-------|-------|
@@ -37,9 +37,9 @@ We adopt a **continuous release model** with a **tiered breaking change policy**
 
 ---
 
-## 1. Release often and separately from epics
+## 1. Release Philosophy
 
-### Which principles guide a release?
+### Core Principles
 
 Releases are cheap, frequent, and decoupled from epic completion. The guiding question for cutting a release is not "have we completed the epic?" but **"is this release better than what's currently on PyPI?"** If yes, ship it.
 
@@ -49,14 +49,14 @@ more often during periods of high velocity.
 
 Development and stabilization run in parallel. Completing an epic and shipping a release are independent activities. Work on the next set of features begins immediately, without waiting for the current release to go through validation.
 
-### Release when there is something to tell users
+### Release Cadence
 
 There is no fixed schedule. Releases are cut when there is something worth
 telling users about: a meaningful feature, a significant fix, or an important
 behavioral improvement. The changelog is the release trigger: when the
 unreleased section has substantive entries, it's time to ship.
 
-### Skip release candidates
+### No Release Candidates
 
 Protean does **not** use release candidates. Minor versions are cut directly
 from `main` when the changelog has substantive entries. Patch releases on a
@@ -75,7 +75,7 @@ regular releases to wait for feedback.
 
 ---
 
-## 2. Classify each breaking change into one of three tiers
+## 2. Breaking Change Taxonomy
 
 Not all breaking changes carry the same risk or require the same mitigation. We classify them into three tiers, each with a distinct handling strategy.
 
@@ -189,7 +189,7 @@ For any change to how data is persisted or read:
 
 In the short term (pre-1.0), a clear "Upgrade Notes" section in each release is sufficient. Post-1.0, invest in automated migration tooling analogous to Django's `manage.py migrate` or Alembic.
 
-### Compare the three tiers
+### Summary Table
 
 | Tier | Example | Detection | Mitigation | Before removal |
 |------|---------|-----------|------------|----------------|
@@ -197,7 +197,7 @@ In the short term (pre-1.0), a clear "Upgrade Notes" section in each release is 
 | Behavioral | Changed return value, reordered execution | Silent incorrect behavior | Opt-in flag → warning → default flip | At least one warned release per step |
 | Structural | Event schema change, config format change | Varies | Versioned schema + migration docs | Case-by-case |
 
-### When can an operational default change in one release?
+### Exception: Operational Defaults
 
 The Tier-2 transition path has a narrow exception for **operational defaults**.
 These are values that tune infrastructure behaviour (connection pool sizes,
@@ -226,7 +226,7 @@ Engine health server binds port 8080 by default (#795). Both carry opt-out
 paths in `domain.toml` and non-silent failure modes (pool warning,
 port-collision log entry).
 
-### When can a silent correctness bug be rejected in one release?
+### Exception: Silent Correctness Bug
 
 The Tier-2 transition path has a second narrow exception: the "old behaviour"
 being changed was never an intentional contract and was in fact a **silent
@@ -266,7 +266,7 @@ since a stateless read must never run in a UnitOfWork.
 
 ---
 
-## 3. Check a codebase against an upcoming version
+## 3. Compatibility Checking
 
 ### `protean check` CLI Command
 
@@ -281,7 +281,7 @@ Build a lightweight CLI command that scans a user's domain definitions and repor
 easier to find and to use. `protean check` replaces the manual exercise of
 "validate my app against this version" with a 30-second command.
 
-### Fail CI on Protean deprecation warnings
+### CI Integration Guidance
 
 Recommend that users add the following to their test configuration:
 
@@ -309,9 +309,9 @@ built-in categories like `DeprecationWarning` and rejects
 
 ---
 
-## 4. Follow these steps for each kind of release
+## 4. Release Lifecycle
 
-### Cut a standard release
+### Standard Release
 
 1. Work merges into `main` through the normal PR workflow.
 2. The author of every PR that touches a public API answers: **does this break
@@ -324,7 +324,7 @@ built-in categories like `DeprecationWarning` and rejects
 
 **Target: releasing should take less than 10 minutes of manual effort.** Invest in CI automation to achieve this.
 
-### Remove deprecated APIs in an ordinary minor
+### Releases That Remove
 
 A removal ships in an ordinary minor. Protean has no separate release type for
 removals. The goal is that no user is surprised.
@@ -340,7 +340,7 @@ Only a release that removes something intentionally breaks user code. It breaks
 only code that ignored its warnings. Label each removal release clearly when
 you announce it.
 
-### Ship a hotfix release
+### Hotfix Release
 
 For critical bugs discovered after a release:
 
@@ -366,7 +366,7 @@ release branch, which stays stable while `main` keeps changing.
 
 ---
 
-## 5. Tell users what changed
+## 5. Communication
 
 ### CHANGELOG.md
 
@@ -382,7 +382,7 @@ version, with the following sections:
 - **Fixed**: Bug fixes
 - **Upgrade Notes**: Explicit steps users need to take, especially for Tier 2 and Tier 3 changes
 
-### Publish a migration guide for Tier 2 and Tier 3 changes
+### Migration Guides
 
 For releases with Tier 2 or Tier 3 breaking changes, publish a standalone migration guide in the documentation. The guide should:
 
@@ -393,14 +393,14 @@ For releases with Tier 2 or Tier 3 breaking changes, publish a standalone migrat
 
 ---
 
-## 6. What changes at 1.0?
+## 6. Pre-1.0 vs. Post-1.0
 
 The policies in this ADR apply to the current pre-1.0 phase. Pre-1.0, we have
 more latitude: the API is explicitly unstable, and early adopters accept that.
 However, the goal is to build the habits and tooling now so that the process is
 mature by 1.0.
 
-### After 1.0, manage breaking changes through deprecations and drop strict SemVer
+### The post-1.0 model: deprecation-managed, not strict SemVer
 
 At 1.0 Protean adopts a **deprecation-managed** model for the 1.x series, in the style of Django, Rails, and SQLAlchemy rather than strict semantic versioning.
 
@@ -490,7 +490,7 @@ cluster-safe multi-worker operation, which changes the deployment contract and
 leaves every signature as it was. These are shifts a user must think about, not
 mechanically patch.
 
-### Protean follows the SQLAlchemy model and already ships half of it
+### Precedent: this is the SQLAlchemy model, and we already ship half of it
 
 The closest precedent is **SQLAlchemy**, and Django is a weaker match.
 SQLAlchemy describes its scheme as a "modified semantic versioning scheme". It
@@ -538,7 +538,7 @@ window was redundant with the removal version each deprecation already
 declares. Neither rule gave users anything that the contract sentence and the
 invariant above do not give more simply.
 
-### Which rules become stricter at 1.0?
+### What hardens at 1.0
 
 The taxonomy and both exceptions (operational defaults, silent correctness
 bugs) carry over unchanged. The invariant that a removal is never in the same
@@ -560,7 +560,7 @@ release as its deprecation also carries over. Four things become stricter:
 - The theme-based roadmap organization.
 - The principle that releases are cheap and frequent.
 
-### Which question stays open?
+### Related open question
 
 Issue #841 tracks a separate question: how a developer *acknowledges* an
 intentional breaking change in their own domain. This is the inverse problem,

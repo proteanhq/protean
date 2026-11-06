@@ -1,4 +1,4 @@
-# Chapter 2: Add rich fields and value objects
+# Chapter 2: Rich Fields and Value Objects
 
 You will add more field types to the `Book` aggregate. You will then replace
 the plain `Float` price with a `Money` value object that holds both amount and
@@ -50,7 +50,7 @@ ValidationError: {'genre': ["Value 'ROMANCE' is not a valid choice. ..."]}
 Protean checks field values when you create the aggregate. It raises an error
 on an invalid value, so your domain never holds an invalid aggregate.
 
-## Replace the Float price with a Money value object
+## From Float to Money
 
 A `Float` stores only a number, but a price also has a currency. Let's
 create a `Money` value object to capture both. A value object is an
@@ -82,7 +82,7 @@ The currency defaults to `"USD"` because we set `default="USD"` on the field.
 The `price` field now holds both the amount and the currency in one `Money`
 value object.
 
-## Compare value objects by their values
+## Value Equality
 
 Two value objects with the same attributes are considered equal. Identity does
 not matter, only the values:
@@ -133,7 +133,7 @@ All checks passed!
 The repository saved the `Money` value object and loaded it back unchanged. You
 write no extra persistence code for a value object.
 
-## Review what you built
+## What We Built
 
 - **Rich field types**: `Text`, `Date`, `Integer`, `Boolean`, `List`, and
   `choices` for constraining values.
@@ -147,7 +147,7 @@ count, print status, tags and genre. Its price now holds both an amount and a
 currency. In the next chapter, we will build the `Order` aggregate with child
 entities.
 
-## See the full source
+## Full Source
 
 ??? example "ch02.py, 157 lines"
 
@@ -155,6 +155,6 @@ entities.
     --8<-- "guides/getting-started/tutorial/ch02.py:full"
     ```
 
-## Go to the next chapter
+## Next
 
 [Chapter 3: Entities and Associations →](03-entities-and-associations.md)

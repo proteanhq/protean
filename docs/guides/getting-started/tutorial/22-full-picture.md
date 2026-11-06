@@ -1,10 +1,10 @@
-# Chapter 22: See how the whole bookstore fits together
+# Chapter 22: The Full Picture
 
 You have built a complete online bookstore, starting from an empty project.
 Let's step back and see the full architecture, review what we built, and look
 at where to go from here.
 
-## How the parts connect
+## Architecture Overview
 
 ```
                               ┌──────────────┐
@@ -42,9 +42,9 @@ at where to go from here.
                          └──────┘ └──────┘ └─────────┘
 ```
 
-## What you built
+## Everything We Built
 
-### Which domain elements the bookstore uses
+### Domain Elements
 
 | Element | Count | Examples |
 |---------|-------|---------|
@@ -78,7 +78,7 @@ at where to go from here.
 
 Each step changes one aggregate.
 
-### Which CLI commands you used
+### CLI Commands Used
 
 | Command | Purpose | Chapter |
 |---------|---------|---------|
@@ -95,7 +95,7 @@ Each step changes one aggregate.
 | `protean subscriptions status` | Check handler health | 18 |
 | `protean observatory` | Real-time monitoring dashboard | 18 |
 
-### Which CQRS patterns you applied
+### CQRS Patterns Applied
 
 | Pattern | How We Used It |
 |---------|---------------|
@@ -109,7 +109,7 @@ Each step changes one aggregate.
 | Priority Lanes | Bulk imports without starving production |
 | Dead Letter Queues | Failure recovery with fix-and-replay |
 
-## Configure the domain for production
+## Production Configuration Reference
 
 A complete `domain.toml` for production:
 
@@ -166,7 +166,7 @@ protean observatory --port 9000 &
 
 ## Where to Go from Here
 
-### Learn event sourcing
+### Event Sourcing
 
 Store events as the source of truth instead of snapshots. The
 **[Event Sourcing Tutorial](../es-tutorial/index.md)** is a

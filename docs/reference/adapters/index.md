@@ -1,4 +1,4 @@
-# Which adapters ship with Protean?
+# Adapters
 
 Protean provides adapters for four infrastructure ports. Each port ships with
 an in-memory adapter that is active by default.
@@ -14,7 +14,7 @@ with persistent storage systems. It abstracts the underlying database
 technology, allowing Protean to support various databases without changing the
 core application logic.
 
-Each provider declares its [capabilities](./database/index.md#how-providers-declare-capabilities),
+Each provider declares its [capabilities](./database/index.md#database-capabilities),
 enabling capability-gated methods and automatic test selection.
 
 Current implementations:
@@ -28,7 +28,7 @@ Current implementations:
 
 Learn more:
 
-- [Database capabilities](./database/index.md#how-providers-declare-capabilities): What each provider can do.
+- [Database capabilities](./database/index.md#database-capabilities): What each provider can do.
 - [Custom database adapters](./database/custom-databases.md): Writing your own.
 
 ## Broker
@@ -52,7 +52,7 @@ Current Implementations:
 
 Learn more:
 
-- [Broker Capabilities](./broker/index.md#what-can-each-broker-do): Understanding what each broker can do
+- [Broker Capabilities](./broker/index.md#broker-capabilities): Understanding what each broker can do
 - [Custom Brokers](./broker/custom-brokers.md): Create your own broker adapters
 
 ## Cache

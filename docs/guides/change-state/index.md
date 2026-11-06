@@ -57,7 +57,7 @@ Load and query aggregates using QuerySets, filters, Q objects, and lookup expres
 
 [Learn more about retrieving aggregates →](./retrieve-aggregates.md)
 
-### Query aggregates at a past version <span class="pathway-tag pathway-tag-es">ES</span>
+### Temporal Queries <span class="pathway-tag pathway-tag-es">ES</span>
 
 Reconstitute event-sourced aggregates at a specific version or point in time, enabling time-travel over the full event history.
 
@@ -69,19 +69,19 @@ The Unit of Work pattern provides automatic transaction management, ensuring tha
 
 [Learn more about the Unit of Work →](./unit-of-work.md)
 
-### Customize database models <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span>
+### Custom Database Models <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span>
 
 Override the auto-generated storage schema with adapter-specific field types, custom table names, or multi-database deployments.
 
 [Learn more about custom database models →](./database-models.md)
 
-### Set up the event store <span class="pathway-tag pathway-tag-es">ES</span>
+### Event Store Setup <span class="pathway-tag pathway-tag-es">ES</span>
 
 Choose, configure, and operate an event store for event-sourced aggregates. Read events, inspect streams, and understand stream naming.
 
 [Learn more about event store setup →](./event-store-setup.md)
 
-### Load aggregates faster with snapshots <span class="pathway-tag pathway-tag-es">ES</span>
+### Snapshots <span class="pathway-tag pathway-tag-es">ES</span>
 
 Optimize event-sourced aggregate loading with periodic state checkpoints. Configure thresholds and manage snapshots via CLI or API.
 

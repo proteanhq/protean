@@ -163,7 +163,7 @@ In [2]: list(attributes(Comment))
 Out[2]: ['content', 'id', 'post_id']
 ```
 
-### Give a shadow field a custom name
+### Custom Shadow Field Names
 
 Use `referenced_as` to specify a custom name for the shadow field:
 

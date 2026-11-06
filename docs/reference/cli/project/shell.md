@@ -5,13 +5,13 @@ pre-loaded. The `shell` command runs on `ipython`. If you have used `ipython`
 before, the shell works the way you expect. This is useful for testing out
 quick ideas with code and changing data server-side without using an interface.
 
-## Run the command
+## Usage
 
 ```shell
 protean shell [OPTIONS]
 ```
 
-## Choose the options
+## Options
 
 | Option        | Description                               | Default |
 |---------------|-------------------------------------------|---------|

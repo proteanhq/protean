@@ -1,4 +1,4 @@
-# Chapter 5: Add commands and handlers
+# Chapter 5: Commands and Handlers
 
 You add an `AddBook` command and a handler that processes it. From now on, your
 code adds books through a formal command interface instead of creating the
@@ -81,7 +81,7 @@ background server can later process the same command asynchronously (Chapter
 In the next chapter, you add domain events and event handlers. With them, the
 system reacts automatically when an aggregate changes state.
 
-## See the full source
+## Full Source
 
 ??? example "ch05.py, 104 lines"
 
@@ -89,6 +89,6 @@ system reacts automatically when an aggregate changes state.
     --8<-- "guides/getting-started/tutorial/ch05.py:full"
     ```
 
-## Read the next chapter
+## Next
 
 [Chapter 6: Events and Reactions →](06-events-and-reactions.md)

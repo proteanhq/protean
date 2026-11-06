@@ -1,4 +1,4 @@
-# Chapter 3: Send commands through the processing pipeline
+# Chapter 3: Commands and the Processing Pipeline
 
 Calling `account.deposit()` directly works for in-process code, but external
 APIs need a clear contract. **Commands** are typed data objects that represent
@@ -54,7 +54,7 @@ The aggregate's methods contain the business logic (the `deposit()` and
     Inside handlers, it gives you access to repositories and other
     domain services without passing the domain around explicitly.
 
-## Send commands to the domain
+## Processing Commands
 
 The `domain.process()` method routes each command to its command handler:
 
@@ -74,7 +74,7 @@ Balance: $1350.00
 All checks passed!
 ```
 
-## What happens when you call `domain.process()`?
+## How It Works
 
 When you call `domain.process(OpenAccount(...))`, Protean:
 
@@ -111,7 +111,7 @@ Stream categories are derived from the aggregate's class name. You
 rarely need to think about them, but they become important when
 configuring subscriptions in Chapter 8.
 
-## Review what you built
+## What We Built
 
 - **Commands** (`OpenAccount`, `MakeDeposit`, `MakeWithdrawal`) that
   express intent with typed fields.
@@ -124,7 +124,7 @@ loads the aggregate, calls the domain method and saves the result. Next, we
 will add business rules that protect the aggregate from invalid state
 transitions.
 
-## Read the full source
+## Full Source
 
 ??? example "ch03.py, 194 lines"
 
@@ -132,6 +132,6 @@ transitions.
     --8<-- "guides/getting-started/es-tutorial/ch03.py:full"
     ```
 
-## Go to the next chapter
+## Next
 
 [Chapter 4: Business Rules That Never Break →](04-business-rules.md)

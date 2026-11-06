@@ -1,4 +1,4 @@
-# Test your domain model
+# Domain Model Tests
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -18,7 +18,7 @@ model should have a corresponding test.
     logic **you** wrote: custom methods, state transitions, invariants, and
     domain rules.
 
-## Set up the test fixtures
+## Test Setup
 
 Domain model tests use Protean's `DomainFixture` to initialize the domain with
 in-memory adapters (the default) and manage per-test cleanup. Set processing to
@@ -49,12 +49,12 @@ decorated domain elements. It also creates the database schema if needed.
     You do not need Docker, databases, or message brokers for domain model
     tests. Protean's in-memory adapters are used by default.
 
-## Test aggregates
+## Testing Aggregates
 
 Aggregates are the core of your domain model. Test that your custom methods
 correctly transition state and raise events.
 
-### Test state transitions
+### State Transitions
 
 Test that aggregate methods correctly mutate state. These are methods **you**
 wrote, your business logic:
@@ -64,7 +64,7 @@ wrote, your business logic:
 --8<-- "guides/testing/domain-model-tests/001.py:state_transition"
 ```
 
-### Test that methods raise events
+### Event Raising
 
 Verify that your aggregate methods raise the expected domain events:
 
@@ -73,7 +73,7 @@ Verify that your aggregate methods raise the expected domain events:
 --8<-- "guides/testing/domain-model-tests/001.py:event_raising"
 ```
 
-## Test entities
+## Testing Entities
 
 Each entity is part of an aggregate and has its own identity. Test the business
 logic in entity methods, especially when they change the parent aggregate's
@@ -84,7 +84,7 @@ state:
 --8<-- "guides/testing/domain-model-tests/001.py:entity"
 ```
 
-## Test value objects
+## Testing Value Objects
 
 Protean guarantees that value objects are immutable and compared by value. You
 do not need to test these properties. Instead, test any **custom logic** you
@@ -95,7 +95,7 @@ define on your value objects:
 --8<-- "guides/testing/domain-model-tests/001.py:value_object"
 ```
 
-## Test invariants
+## Testing Invariants
 
 Invariants are **your** business rules. They represent domain constraints that
 you define. Protean guarantees that invariants are *enforced* (triggered on
@@ -130,7 +130,7 @@ operations:
 --8<-- "guides/testing/domain-model-tests/001.py:pre_invariant"
 ```
 
-## Test domain services
+## Testing Domain Services
 
 Domain services hold business rules that span multiple aggregates. Test them
 by passing in the aggregates and checking the outcome.
@@ -144,7 +144,7 @@ The service confirms the order and leaves the inventory as it was. The
 example does not reserve stock. If your domain reserves it in a later step,
 test that step on its own.
 
-### Test domain service invariants
+### Domain Service Invariants
 
 Domain services can also have pre-invariants. Test that they reject invalid
 input:
@@ -154,7 +154,7 @@ input:
 --8<-- "guides/testing/domain-model-tests/001.py:domain_service_invariant"
 ```
 
-## Organize domain model tests
+## Organizing Domain Model Tests
 
 A recommended directory structure:
 

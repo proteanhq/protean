@@ -35,7 +35,7 @@ such as `**Breaking (memory cache only).**`.
 Where one change produced several distinct behaviours, write one entry each and
 repeat the issue number. An entry that needs a second paragraph is two entries.
 
-### Pick a scope tag
+### Scope tags
 
 Use a tag already in `CHANGELOG.md`. The set in use:
 

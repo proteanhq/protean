@@ -1,4 +1,4 @@
-# Chapter 4: Enforce business rules with invariants
+# Chapter 4: Business Rules and Invariants
 
 You add two invariants to the Order aggregate. One rejects an empty order, and
 the other rejects any change to a shipped order.
@@ -25,7 +25,7 @@ ValidationError: {'_entity': ['An order must contain at least one item']}
 Notice that the invariant runs automatically. We don't call it ourselves.
 Protean guarantees that the aggregate is always in a valid state.
 
-## Pre-invariants: Reject invalid transitions
+## Pre-Invariants: Guarding Transitions
 
 A **pre-invariant** is checked *before* state changes are applied. We
 use it to prevent invalid operations:
@@ -44,7 +44,7 @@ shipped:
 ValidationError: {'_entity': ['Cannot modify an order that has been shipped']}
 ```
 
-## Change state through aggregate methods
+## Aggregate Methods
 
 Rather than mutating aggregate fields directly, we encapsulate behavior
 in methods:
@@ -58,7 +58,7 @@ Methods become the **public API** of the aggregate. External code calls
 `order.confirm()` rather than `order.status = "CONFIRMED"`. The business logic
 then stays inside the aggregate, where the invariants can enforce it.
 
-## Run all the rules together
+## Putting It Together
 
 ```python
 # fragment
@@ -116,7 +116,7 @@ and business rules.
     The remaining chapters add **CQRS patterns** (Commands, Projections, and
     separated read/write models) to this DDD domain model.
 
-## See the full source
+## Full Source
 
 ??? example "ch04.py, 151 lines"
 
@@ -124,6 +124,6 @@ and business rules.
     --8<-- "guides/getting-started/tutorial/ch04.py:full"
     ```
 
-## Go to the next chapter
+## Next
 
 [Chapter 5: Commands and Handlers →](05-commands.md)

@@ -19,7 +19,7 @@ changes over time.
     additional responsibility of managing the lifecycle of one or more
     related entities.
 
-## Define an entity
+## Definition
 
 An Entity is defined with the `Domain.entity` decorator:
 
@@ -46,7 +46,7 @@ throw `IncorrectUsageError`.
 However, entities *can* enclose other entities using `HasOne` and `HasMany`
 relationships, as described in the [Associations](#associations) section below.
 
-## Configure an entity
+## Configuration
 
 Similar to an aggregate, an entity's behavior can be customized by passing
 options to its decorator. Protean does not read an inner `class Meta:` on an
@@ -93,7 +93,7 @@ aggregates:
 
 See [Declaring Indexes](indexes.md) for the full workflow.
 
-## Use a custom database model
+## Custom Database Models
 
 Protean builds the entity's database model from its fields. To control the
 mapping yourself, register your own model with
@@ -114,7 +114,7 @@ the concrete subclasses:
 The base class is not registered with the domain and gets no table of its own.
 It must subclass `BaseEntity`: a plain mixin class contributes no fields.
 
-## Which lifecycle states does an entity go through?
+## Entity Lifecycle
 
 Protean tracks the lifecycle state of every entity instance internally. When
 you persist the aggregate, Protean uses each entity's state to choose the
@@ -145,7 +145,7 @@ not on the entity itself. The root is the owner of the event stream.
 The event must be associated with the aggregate (`part_of=Order`), not
 with the entity. Access the owning aggregate via `self._owner`.
 
-## Enforce invariants on an entity
+## Invariants
 
 Entities support the same invariant mechanism as aggregates. Use
 `@invariant.post` to enforce rules that must always hold:
@@ -172,7 +172,7 @@ other field values:
 checking invariants. Aggregates, entities, and value objects all support this
 hook.
 
-## Persist entities through their aggregate
+## Persistence
 
 Entities are always persisted as part of their parent aggregate's
 transaction. In relational databases (SQLAlchemy provider), each entity
@@ -235,7 +235,7 @@ A `Reference` field may point only to the entity's parent: the aggregate root,
 or the parent entity when the entity is nested. To link to a different
 aggregate, store its identity in an `Identifier` field.
 
-### Navigate from an entity to its parent
+### Navigation Between Entities
 
 Reference fields enable navigation from child entities back to their parent aggregate:
 
@@ -245,7 +245,7 @@ Reference fields enable navigation from child entities back to their parent aggr
 
 For comprehensive relationship documentation, see [Expressing Relationships](./relationships.md) and [Association Fields](../../reference/fields/association-fields.md).
 
-## Which errors does Protean raise for entities?
+## Common Errors
 
 | Exception | When it occurs |
 |---|---|

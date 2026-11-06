@@ -1,4 +1,4 @@
-# Log one wide event per HTTP request
+# HTTP wide events
 
 !!! abstract "What is a wide event?"
     A **wide event** is one rich, structured log line per unit of work (a
@@ -21,7 +21,7 @@ produced by the handler mixin.
 For the full field schema, see the [logging
 reference](../../reference/logging.md#proteanaccesshttp). For the design
 rationale behind the two-layer split, see the [logging concepts
-page](../../concepts/observability/logging.md#protean-emits-wide-events-at-two-layers).
+page](../../concepts/observability/logging.md#two-layers-of-wide-events).
 
 ---
 
@@ -203,7 +203,7 @@ every slow request.
   logger, `bind_event_context()` on domain handlers.
 - **[Logging reference](../../reference/logging.md#proteanaccesshttp)**:
   full field schema for `access.http_completed` and `access.http_failed`.
-- **[Logging concepts](../../concepts/observability/logging.md#protean-emits-wide-events-at-two-layers)**:
+- **[Logging concepts](../../concepts/observability/logging.md#two-layers-of-wide-events)**:
   why the HTTP and domain layers are separate loggers.
 - **[Correlation and Causation IDs](../observability/correlation-and-causation.md)**:
   how `correlation_id` propagates across HTTP headers, commands, events,

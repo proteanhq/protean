@@ -1,6 +1,6 @@
-# Upcast old events to the current schema
+# Event Upcasting
 
-## Why do old events fail to load?
+## The Problem
 
 In an event-sourced system, the event store is the source of truth. Events are
 immutable facts stored forever. But the domain model evolves: fields get
@@ -71,7 +71,7 @@ method: `upcast(self, data: dict) -> dict`.
 --8<-- "guides/consume-state/event-upcasting/001.py:full"
 ```
 
-### Which options does the decorator take?
+### Decorator Options
 
 | Option | Type | Description |
 |--------|------|-------------|
@@ -92,7 +92,7 @@ method: `upcast(self, data: dict) -> dict`.
 
 ---
 
-## Apply upcasters to common schema changes
+## Real-World Scenarios
 
 ### Scenario 1: Adding a New Required Field
 
@@ -141,7 +141,7 @@ new `Address` value object).
 --8<-- "guides/consume-state/event-upcasting/003.py:nest-address"
 ```
 
-### Scenario 4: Chain upcasters across several versions
+### Scenario 4: Multi-Step Chain
 
 When events evolve through multiple versions, each step gets its own upcaster.
 The framework chains them automatically.
@@ -181,13 +181,13 @@ data:
 
 ---
 
-## How do upcasters work with event-sourced aggregates?
+## Upcasters and Event-Sourced Aggregates
 
 Upcasting is especially important for event-sourced aggregates because every
 aggregate reconstruction replays every event from the stream (or from the last
 snapshot). Without upcasting, `@apply` handlers must accommodate every
 historical schema variant. A snapshot itself does not go through this upcaster
-path; see [Snapshots](../../concepts/internals/event-upcasting.md#upcasting-does-not-apply-to-snapshots)
+path; see [Snapshots](../../concepts/internals/event-upcasting.md#snapshots)
 for what happens to a snapshot taken under an old schema.
 
 **With upcasting**, `@apply` handlers are clean and only handle the current
@@ -211,7 +211,7 @@ their current version and pass through with zero overhead.
 
 ---
 
-## How do upcasters work with event handlers and projectors?
+## Upcasters and Event Handlers / Projectors
 
 Upcasting also applies to asynchronous event processing. When an event handler
 or projector reads events from a subscription, old events are upcast before
@@ -226,12 +226,12 @@ old events are automatically transformed to the current schema.
 
 ---
 
-## What does Protean check at startup?
+## Validation at Startup
 
 During `domain.init()`, the framework validates all registered upcaster chains.
 The following errors are caught at startup (not at runtime):
 
-### Two upcasters share the same source version
+### Duplicate upcasters
 
 ```python
 # fragment
@@ -244,7 +244,7 @@ class UpcasterB(BaseUpcaster): ...
 # → ConfigurationError: Duplicate upcaster for OrderPlaced from version 1
 ```
 
-### Upcasters form a version cycle
+### Version cycles
 
 ```python
 # fragment
@@ -257,7 +257,7 @@ class Backward(BaseUpcaster): ...
 # → ConfigurationError: Upcaster chain does not converge
 ```
 
-### The chain does not converge to one version
+### Non-convergent chains
 
 ```python
 # fragment
@@ -270,7 +270,7 @@ class BranchB(BaseUpcaster): ...
 # → ConfigurationError: does not converge to a single current version
 ```
 
-### No event class exists for the terminal version
+### Missing event class for terminal version
 
 ```python
 # fragment
@@ -293,9 +293,9 @@ stored, you can ignore the warning instead.
 
 ---
 
-## How should you write upcasters?
+## Guidelines
 
-### Follow these practices
+### Do
 
 - **One upcaster per version step**: Keep transformations small and focused.
   v1→v2 does one thing, v2→v3 does another.
@@ -308,7 +308,7 @@ stored, you can ignore the warning instead.
 - Whenever you register a new upcaster targeting an event class, **bump
   `__version__`** on that class.
 
-### Avoid these mistakes
+### Don't
 
 - **Don't skip versions in the chain**: If the current version is v3, you need
   both v1→v2 and v2→v3 upcasters. A direct v1→v3 upcaster is valid only if
@@ -341,7 +341,7 @@ stored, you can ignore the warning instead.
 
 ---
 
-## What can't upcasting do?
+## Limitations
 
 - **No event type renaming**: If you rename an event class (e.g. `OrderCreated`
   → `OrderPlaced`), the type strings differ and upcasting can't convert events

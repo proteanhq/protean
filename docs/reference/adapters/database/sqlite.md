@@ -67,7 +67,7 @@ The SQLite provider supports the following capabilities:
 - :x: **NATIVE_JSON**: No native JSON column type (stored as text)
 - :x: **NATIVE_ARRAY**: No native array column type (stored as text)
 
-## How SQLite stores timestamps
+## Timestamps
 
 A `DateTime` field maps to a `DATETIME` column, which SQLite stores as text. A
 `DateTime` column holds no UTC offset, so Protean converts each value to UTC
@@ -78,7 +78,7 @@ saved with; see [Datetimes are compared and stored as
 UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc) to
 convert them.
 
-## Which index options does SQLite support?
+## Indexes
 
 `protean db setup` creates SQLite indexes with most of the
 [`Index`](../../domain-elements/indexes.md) options:
@@ -104,15 +104,15 @@ models](./postgresql.md#sqlalchemy-model).
     The column names specified in the model should exactly match the attribute
     names of the Aggregate or Entity it represents.
 
-## Detect slow queries
+## Slow Query Detection
 
 The SQLite provider is built on SQLAlchemy, so it emits the same structured
-log events as the [PostgreSQL provider](./postgresql.md#detect-slow-queries).
+log events as the [PostgreSQL provider](./postgresql.md#slow-query-detection).
 These are the ``protean.adapters.repository.sqlalchemy.slow_query`` WARNING and
 the ``protean.adapters.repository.sqlalchemy.query`` DEBUG events. Configure the
 threshold via ``[logging].slow_query_threshold_ms`` in ``domain.toml``.
 
-## What are SQLite's limitations?
+## Limitations
 
 - **SQLite supports only one writer at a time.** Concurrent writes from
   multiple processes will block or fail.
@@ -124,9 +124,9 @@ threshold via ``[logging].slow_query_threshold_ms`` in ``domain.toml``.
 - **File Locking**: The database file must be on a local filesystem. Network
   filesystems (NFS, SMB) are not reliable with SQLite.
 
-## See also
+## Related pages
 
 - Learn about [PostgreSQL](./postgresql.md) for production environments
-- Understand [database capabilities](./index.md#how-providers-declare-capabilities) in
+- Understand [database capabilities](./index.md#database-capabilities) in
   detail
 - Learn about [custom SQLAlchemy models](./postgresql.md#sqlalchemy-model)

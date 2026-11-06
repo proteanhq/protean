@@ -1,4 +1,4 @@
-# Chapter 17: Recovering failed messages from dead letter queues
+# Chapter 17: Handling Failures with Dead Letter Queues
 
 A production bug in the `ComplianceAlertHandler` causes it to crash with a
 `TypeError` on deposits where `source_type` is `None`, a pre-upcasting edge
@@ -108,7 +108,7 @@ $ protean dlq list --domain=fidelis
 No DLQ messages found.
 ```
 
-## Follow the fix-and-replay cycle
+## The Fix-and-Replay Cycle
 
 This pattern will become your standard operating procedure:
 
@@ -118,7 +118,7 @@ This pattern will become your standard operating procedure:
 4. **Replay**: `protean dlq replay-all` reprocesses the messages
 5. **Verify**: `protean dlq list` confirms the DLQ is empty
 
-## Configure the DLQ
+## DLQ Configuration
 
 The DLQ is configured in `domain.toml`:
 
@@ -144,7 +144,7 @@ exhausting retries. This is almost never what you want in production.
 Next, we set up proactive monitoring to catch problems before they
 fill the DLQ.
 
-## Read the full source
+## Full Source
 
 ??? example "ch17.py, 162 lines"
 
@@ -152,6 +152,6 @@ fill the DLQ.
     --8<-- "guides/getting-started/es-tutorial/ch17.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 18: Monitoring Subscription Health →](18-monitoring-health.md)

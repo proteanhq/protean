@@ -59,7 +59,7 @@ manager.
 
 To organize code by domain concept, you resolve three cross-cutting tensions:
 
-### How do you separate the domain model, the application and the infrastructure?
+### Domain Model vs. Application vs. Infrastructure
 
 The framework carries layer metadata. The folder structure doesn't need to.
 
@@ -72,7 +72,7 @@ Infrastructure concerns that are truly external (API endpoints, configuration)
 are top-level files within the bounded context. You can see them there, instead
 of finding them mixed into a catch-all folder.
 
-### Where do the write side and the read side go (CQRS)?
+### Write vs. Read (CQRS)
 
 Projections live in their own top-level folder within the bounded context,
 not nested inside aggregates.
@@ -87,7 +87,7 @@ Placing projections at the domain level also helps as the domain grows. When a
 projection later draws from multiple aggregates, its folder already belongs to
 no single aggregate.
 
-### Where do external adapters go (Hexagonal)?
+### External vs. Internal (Hexagonal)
 
 External adapters live at the domain boundary level, not inside aggregates.
 
@@ -211,7 +211,7 @@ bounded context level:
     └── phone.py
 ```
 
-### See the complete structure
+### The Complete Structure
 
 ```
 src/identity/                              # Bounded context
@@ -307,7 +307,7 @@ decorators already record whether each element belongs to the domain,
 application or infrastructure layer. You do not need to repeat the layer in the
 folder structure.
 
-### Collecting every command in one file
+### Grab-bag files
 
 ```
 # Anti-pattern: all commands in one file
@@ -347,7 +347,7 @@ file count is under six, don't create folders for organizational purity.
 with everything is acceptable. You add structure as the domain becomes clearer.
 Don't let premature organization slow down domain discovery.
 
-## How do you test a structure decision?
+## Litmus Tests
 
 Use the four tests below to check structure decisions as the domain grows:
 

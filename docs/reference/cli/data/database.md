@@ -4,7 +4,7 @@ The `protean db` command group creates and drops the database schema for a
 Protean domain, and deletes its data. All commands accept a `--domain` option
 to specify the domain module path (defaults to the current directory).
 
-## Which commands does `protean db` provide?
+## Commands
 
 | Command | Description | Confirmation |
 |---------|-------------|-------------|
@@ -92,7 +92,7 @@ command exits with an error.
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
 
-## How do `protean db` commands find the domain?
+## Domain Discovery
 
 All `protean db` commands use the same domain discovery mechanism as
 `protean server`. The `--domain` option accepts:
@@ -104,9 +104,9 @@ All `protean db` commands use the same domain discovery mechanism as
 
 See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 
-## Use `protean db` for common tasks
+## Examples
 
-### Set up the tables for a new project
+### Initial Setup
 
 ```bash
 # Create all tables for a new project
@@ -131,7 +131,7 @@ protean db truncate --domain=my_package.domain --yes
 protean db setup-outbox --domain=my_package.domain
 ```
 
-### Drop and recreate all tables
+### Full Reset
 
 ```bash
 # Drop everything and start fresh

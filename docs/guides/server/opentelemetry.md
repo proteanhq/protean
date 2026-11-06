@@ -1,4 +1,4 @@
-# Integrate OpenTelemetry with Protean
+# OpenTelemetry integration
 
 Protean ships with native OpenTelemetry (OTel) support for distributed tracing
 and metrics. When enabled, command processing, event handling, repository
@@ -6,7 +6,7 @@ operations, and server message dispatch automatically emit OTel spans and
 metrics. Any APM backend (Datadog, Jaeger, Grafana Tempo, etc.) can receive
 them with zero user code changes.
 
-## Install the telemetry extras
+## Installation
 
 Install the telemetry extras alongside Protean:
 
@@ -22,7 +22,7 @@ This command installs:
 - `opentelemetry-exporter-prometheus` (serves OTel metrics on the `/metrics`
   endpoint)
 
-## Configure telemetry
+## Configuration
 
 Enable telemetry in your `domain.toml`:
 
@@ -34,7 +34,7 @@ exporter = "otlp"             # "otlp" (default) or "console"
 endpoint = "http://localhost:4317"  # OTLP collector endpoint (optional)
 ```
 
-### Which configuration keys can you set?
+### Configuration keys
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -44,7 +44,7 @@ endpoint = "http://localhost:4317"  # OTLP collector endpoint (optional)
 | `endpoint` | string | SDK default | OTLP collector endpoint (gRPC) |
 | `resource_attributes` | table | `{}` | Additional OTel resource attributes merged into the `Resource` |
 
-### Add resource attributes
+### Resource attributes
 
 Add arbitrary resource attributes for your APM:
 
@@ -60,7 +60,7 @@ enabled = true
 
 These attributes appear on every span and metric exported by the domain.
 
-## Telemetry adds no overhead when disabled
+## Zero-overhead guarantee
 
 When telemetry is disabled (the default) or the `opentelemetry` packages are
 not installed, all instrumentation is a no-op:
@@ -78,14 +78,14 @@ go through `protean.utils.telemetry`.
 
 ---
 
-## What Protean traces automatically
+## Automatic tracing
 
 Protean instruments key operations across every layer of the stack. Each
 instrumentation point creates an OTel span with relevant attributes.
 
-### Which spans does Protean emit?
+### Span catalog
 
-#### What command processing emits
+#### Command processing
 
 | Span name | Emitted by | Description |
 |-----------|-----------|-------------|
@@ -107,7 +107,7 @@ instrumentation point creates an OTel span with relevant attributes.
 | `protean.stream` | string | Target stream name (set after enrichment) |
 | `protean.correlation_id` | string | Correlation ID (when present) |
 
-#### What handler execution emits
+#### Handler execution
 
 | Span name | Emitted by | Description |
 |-----------|-----------|-------------|
@@ -120,7 +120,7 @@ instrumentation point creates an OTel span with relevant attributes.
 | `protean.handler.name` | string | Handler class name |
 | `protean.handler.type` | string | Element type (`command_handler`, `event_handler`, `projector`, etc.) |
 
-#### What query dispatch emits
+#### Query dispatch
 
 | Span name | Emitted by | Description |
 |-----------|-----------|-------------|
@@ -133,7 +133,7 @@ instrumentation point creates an OTel span with relevant attributes.
 | `protean.query.type` | string | Query class type identifier |
 | `protean.handler.name` | string | Query handler class name |
 
-#### What the data layer emits
+#### Data layer
 
 | Span name | Emitted by | Description |
 |-----------|-----------|-------------|
@@ -166,7 +166,7 @@ instrumentation point creates an OTel span with relevant attributes.
 | `protean.uow.event_count` | int | Total events gathered |
 | `protean.uow.session_count` | int | Number of database sessions committed |
 
-#### What the server and outbox emit
+#### Server and outbox
 
 | Span name | Emitted by | Description |
 |-----------|-----------|-------------|
@@ -198,7 +198,7 @@ instrumentation point creates an OTel span with relevant attributes.
 | `protean.outbox.successful_count` | int | Successfully published messages in batch |
 | `protean.outbox.skipped` | bool | Message skipped (already claimed by another worker) |
 
-### How spans nest
+### Span hierarchy
 
 When the server processes a message, spans form a clean parent-child tree:
 
@@ -234,7 +234,7 @@ When telemetry is enabled, Protean records domain-operation metrics through
 OTel counters and histograms. These are created lazily per domain via the
 `DomainMetrics` class.
 
-### Which metrics does Protean record?
+### Metrics catalog
 
 #### Counters
 
@@ -256,7 +256,7 @@ OTel counters and histograms. These are created lazily per domain via the
 | `protean.uow.events_per_commit` | `{event}` | Events gathered per UoW commit |
 | `protean.outbox.latency` | `s` | Time from outbox write to publish |
 
-### Which labels does each metric carry?
+### Metric labels
 
 Different metrics carry different label sets:
 
@@ -324,12 +324,12 @@ The key functions are in `protean.utils.telemetry`:
     kinds of lineage complement each other. The `correlation_id` attribute on
     OTEL spans links each span to its business operation. See [Correlation and
     Causation
-    IDs](../observability/correlation-and-causation.md#how-correlation-ids-relate-to-opentelemetry)
+    IDs](../observability/correlation-and-causation.md#relationship-to-opentelemetry)
     for how these IDs relate to OpenTelemetry spans.
 
 ---
 
-## Instrument FastAPI automatically
+## FastAPI auto-instrumentation
 
 Protean provides a one-line integration to instrument your FastAPI application
 with OpenTelemetry:
@@ -353,7 +353,7 @@ request.
   `protean.handler.execute` spans via OTel context propagation
 - Incoming `traceparent` headers from upstream services are respected
 
-### Set instrumentation options
+### Options
 
 ```python
 --8<-- "guides/server/opentelemetry/002.py:options"
@@ -420,7 +420,7 @@ handlers.
 
 ---
 
-## Set up an APM backend
+## APM setup guides
 
 ### Jaeger
 
@@ -502,12 +502,12 @@ Spans and metrics are printed to stdout.
 
 ---
 
-## Follow the contributor conventions
+## Contributor conventions
 
 When adding new instrumentation to Protean, follow these established
 patterns to keep the telemetry codebase consistent.
 
-### Import OpenTelemetry only in the gateway module
+### Import rule
 
 Never import `opentelemetry` outside of `src/protean/utils/telemetry.py`. All
 OTEL interaction must go through the gateway module's public API. If you need a
@@ -613,7 +613,7 @@ for reference.
 
 ---
 
-## What to read next
+## Next steps
 
 - [Observability reference](../../reference/server/observability.md): Full
   Observatory API, trace events, and Prometheus metric reference

@@ -19,7 +19,7 @@ Protean auto-creates snapshots when the event count exceeds the
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Which commands does the group offer?
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -29,7 +29,7 @@ All commands accept a `--domain` option to specify the domain module path
 
 Creates snapshots for event-sourced aggregates. Supports three modes:
 
-### Snapshot a single aggregate instance
+### Single aggregate instance
 
 ```bash
 protean snapshot create --domain=my_domain --aggregate=User --identifier=abc-123
@@ -39,7 +39,7 @@ Creates a snapshot for one specific aggregate instance. The snapshot is
 reconstructed from the full event stream regardless of whether a snapshot
 already exists (forced refresh).
 
-### Snapshot all instances of one aggregate
+### All instances of one aggregate
 
 ```bash
 protean snapshot create --domain=my_domain --aggregate=User
@@ -48,7 +48,7 @@ protean snapshot create --domain=my_domain --aggregate=User
 Discovers all instances of the specified aggregate and creates a snapshot
 for each.
 
-### Snapshot all event-sourced aggregates
+### All event-sourced aggregates
 
 ```bash
 protean snapshot create --domain=my_domain
@@ -65,7 +65,7 @@ registered in the domain.
 | `--aggregate` | Aggregate class name (e.g. `User`) | All ES aggregates |
 | `--identifier` | Specific aggregate identifier (requires `--aggregate`) | All instances |
 
-## What does the command print?
+## Output
 
 ```
 # Single instance:
@@ -80,7 +80,7 @@ Created 42 snapshot(s) for User.
 Created 57 snapshot(s) across 2 aggregate(s).
 ```
 
-## What happens when the command fails?
+## Error Handling
 
 | Condition | Behavior |
 |-----------|----------|
@@ -91,7 +91,7 @@ Created 57 snapshot(s) across 2 aggregate(s).
 | No events for identifier | Aborts with "does not exist" |
 | No ES aggregates in domain | Prints informational message |
 
-## How do the commands find your domain?
+## Domain Discovery
 
 The `protean snapshot` commands use the same domain discovery mechanism as
 `protean server`. The `--domain` option accepts:
@@ -103,7 +103,7 @@ The `protean snapshot` commands use the same domain discovery mechanism as
 
 See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 
-## Create snapshots from Python code
+## Programmatic API
 
 You can create the same snapshots from scripts or the `protean shell` with the
 Domain methods `create_snapshot`, `create_snapshots` and

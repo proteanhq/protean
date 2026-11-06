@@ -1,4 +1,4 @@
-# Use CloudEvents as a boundary contract
+# CloudEvents as a Boundary Contract
 
 ## The Problem
 
@@ -107,7 +107,7 @@ source_uri = "https://orders.example.com"
 If not configured, Protean derives it from the domain name:
 `urn:protean:<normalized_domain_name>`.
 
-### How Protean uses CloudEvents extensions
+### Extension philosophy
 
 CloudEvents deliberately has a small core (4 required attributes) with an
 extension model for domain-specific concerns. Protean uses this exactly as
@@ -139,7 +139,7 @@ mechanics.
 --8<-- "patterns/cloudevents-interoperability/002.py:webhook"
 ```
 
-### Connect two Protean services through CloudEvents
+### Multi-domain Protean system
 
 Two Protean services communicate via CloudEvents over a message broker:
 

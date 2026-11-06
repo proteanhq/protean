@@ -5,7 +5,7 @@ The Elasticsearch provider uses the
 ships with the `elasticsearch` client (`elasticsearch.dsl`) for document store
 operations, making it suitable for search and analytics workloads.
 
-## What is the Elasticsearch provider for?
+## Overview
 
 Elasticsearch is a document-oriented provider designed for:
 
@@ -18,7 +18,7 @@ or raw queries. Elasticsearch is best used for read-heavy workloads where
 eventual consistency is acceptable. You can also use it alongside a relational
 provider for write operations.
 
-## Install the provider
+## Installation
 
 ```bash
 pip install "protean[elasticsearch]"
@@ -27,7 +27,7 @@ pip install "protean[elasticsearch]"
 pip install "elasticsearch>=8.18.0,<9.0.0"
 ```
 
-## Configure the provider
+## Configuration
 
 ```toml
 --8<-- "adapters/database/elasticsearch/domain.toml"
@@ -40,7 +40,7 @@ environment variable, and uses the value after `|` when it is not set.
 The provider reads `NAMESPACE_PREFIX`, `NAMESPACE_SEPARATOR` and `SETTINGS` in
 upper case only. In lower case they are ignored.
 
-### Set the configuration options
+### Configuration Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -50,7 +50,7 @@ upper case only. In lower case they are ignored.
 | `NAMESPACE_SEPARATOR` | `"_"` | Character joining prefix and index name |
 | `SETTINGS` | `None` | Index settings passed as-is to Elasticsearch |
 
-### Prefix index names with a namespace
+### Namespace Prefixing
 
 Index names are derived from aggregate class names. When `NAMESPACE_PREFIX` is
 set, it is prepended to every index name:
@@ -65,7 +65,7 @@ Using `NAMESPACE_PREFIX = "${PROTEAN_ENV}"` lets you share a single
 Elasticsearch cluster across environments by giving each environment a distinct
 prefix.
 
-## What does the provider support?
+## Capabilities
 
 The Elasticsearch provider supports the following capabilities:
 
@@ -85,7 +85,7 @@ The Elasticsearch provider supports the following capabilities:
   refers to SQL-style JSON columns
 - :x: **NATIVE_ARRAY**: No SQL-style array columns
 
-## How does the provider treat indexes?
+## Indexes
 
 Elasticsearch does not use relational indexes, so portable
 [`Index`](../../domain-elements/indexes.md) declarations are not translated
@@ -93,7 +93,7 @@ into DDL here. Configure search behavior through the Elasticsearch field
 mapping (below) instead. Index declarations on an aggregate remain valid,
 because SQL providers honor them. This adapter does not apply them.
 
-## How are fields mapped?
+## Field Mapping
 
 Protean auto-generates an explicit Elasticsearch mapping for every
 aggregate. Each Protean field type is mapped to an appropriate
@@ -144,7 +144,7 @@ The index is named `articles`, from the aggregate's `schema_name` option.
     `in`, `contains`, `startswith`, and `endswith` on those fields
     automatically use the `.keyword` subfield for exact matching.
 
-## What are the provider's limitations?
+## Limitations
 
 - **Transactions are not supported**: Elasticsearch does not support ACID
   transactions. The session object provides no-op `commit()` and `rollback()`
@@ -156,9 +156,9 @@ The index is named `articles`, from the aggregate's `schema_name` option.
 - **The service must be running**: Elasticsearch must be installed and running.
   Use `make up` to start Protean's Docker-based development services.
 
-## Read related pages
+## Related pages
 
-- Learn about [database capabilities](./index.md#how-providers-declare-capabilities) in
+- Learn about [database capabilities](./index.md#database-capabilities) in
   detail
 - Explore [PostgreSQL](./postgresql.md) for transactional workloads
 - Understand the

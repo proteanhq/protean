@@ -2,13 +2,13 @@
 
 The `server` command runs an asynchronous background server for your Protean application. This server initializes your domain and prepares it to handle requests, running the Protean Engine with the specified configuration.
 
-## Call the command
+## Usage
 
 ```shell
 protean server [OPTIONS]
 ```
 
-## Choose the options
+## Options
 
 | Option                          | Description                                                                 | Default |
 |---------------------------------|-----------------------------------------------------------------------------|---------|
@@ -19,7 +19,7 @@ protean server [OPTIONS]
 | `--allow-event-store-multiworker`| Allow `--workers > 1` even with event-store subscriptions (see below). Also accepted as `--acknowledge-event-store-risk`.      | `False` |
 | `--help`                        | Shows the help message and exits.                                          |         |
 
-### How do multiple workers meet the event-store single-writer boundary?
+### Multiple workers and the event-store single-writer boundary
 
 `--workers N` spawns `N` independent worker processes. Stream subscriptions
 distribute messages across workers via Redis consumer groups, so they scale
@@ -43,7 +43,7 @@ ownership is available, a domain with any event-store subscription must
 therefore run as exactly one process cluster-wide, unless you accept
 double-processed events. To scale horizontally, use stream subscriptions.
 
-## Start the server
+## Starting the Server
 
 To launch the async server with default settings:
 
@@ -51,7 +51,7 @@ To launch the async server with default settings:
 protean server
 ```
 
-### Specify a domain
+### Specifying a Domain
 
 To run the server within a specific domain context, use the `--domain` option followed by the domain path:
 
@@ -62,7 +62,7 @@ protean server --domain auth
 This command starts the server in the context of the `auth` domain. Read
 [Domain Discovery](../project/discovery.md) for options to specify the domain.
 
-### Run in test mode
+### Test Mode
 
 To run the server in test mode, which may change some behaviors to make testing
 easier:
@@ -71,7 +71,7 @@ easier:
 protean server --test-mode
 ```
 
-### Turn on verbose logging
+### Verbose Logging
 
 To raise the log verbosity, pass the global `--log-level DEBUG` flag before the
 subcommand:

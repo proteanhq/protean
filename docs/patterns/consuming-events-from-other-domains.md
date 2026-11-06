@@ -67,7 +67,7 @@ receive only your domain's own commands and events.
     for process managers coordinating cross-domain workflows.
 
     See [Multi-Domain Applications, Cross-domain
-    communication](../guides/multi-domain-applications.md#communicate-across-domains)
+    communication](../guides/multi-domain-applications.md#cross-domain-communication)
     for guidance on choosing between a subscriber and `register_external_event()`.
 
 ---
@@ -110,7 +110,7 @@ The subscriber:
 
 ---
 
-## Translate external events into your domain's language
+## The Translation Layer
 
 ### Translating to Commands
 
@@ -197,7 +197,7 @@ remain unchanged. Only the subscriber code changes to match the new schema.
 
 ---
 
-## Validate external events in the subscriber
+## Error Handling
 
 External events may be malformed, carry unexpected data, or reference entities
 that don't exist in your domain:
@@ -215,7 +215,7 @@ passing it into your domain.
     subscriber's processing context. Any commands dispatched inside the
     subscriber inherit the `correlation_id`, so you can trace one causal chain
     across service boundaries. See [Correlation and Causation
-    IDs](../guides/observability/correlation-and-causation.md#keep-the-correlation-chain-across-service-boundaries)
+    IDs](../guides/observability/correlation-and-causation.md#service-boundary-handling)
     for details.
 
 ---

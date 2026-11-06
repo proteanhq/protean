@@ -11,7 +11,7 @@ For monitoring failed messages in production, see
 
 ---
 
-## What delivery does Protean guarantee?
+## Processing guarantees
 
 Protean provides **at-least-once** delivery for all subscription types.
 When a handler fails to process a message, the framework retries it a
@@ -23,7 +23,7 @@ either retried or preserved for manual inspection.
 
 ---
 
-## How each subscription type retries a failed message
+## Subscription error flows
 
 Each subscription type retries failures in its own way, based on its underlying
 transport. All subscription types share the same configuration model.
@@ -116,7 +116,7 @@ status, no DLQ is needed because the outbox table itself is durable.
 
 ---
 
-## How a message moves through the dead letter queue
+## Dead letter queue lifecycle
 
 ### How messages enter the DLQ
 
@@ -176,7 +176,7 @@ enable_dlq = false
 
 ---
 
-## Which settings control error handling?
+## Configuration reference
 
 You set the error-handling options under `[server]` in `domain.toml`:
 
@@ -198,7 +198,7 @@ creating subscriptions programmatically.
 
 ---
 
-## Retry version conflicts automatically
+## Version conflict auto-retry
 
 `ExpectedVersionError` is the most common transient failure in event-sourced
 and version-tracked systems. It occurs when two handlers concurrently modify
@@ -243,7 +243,7 @@ from the event store (or database), which now reflects the concurrent
 write. The handler's business logic executes against the current state,
 and the write succeeds.
 
-### Configure version retry
+### Configuration
 
 Version retry is **enabled by default** with sensible defaults. Configure
 it under `[server.version_retry]` in `domain.toml`:
@@ -299,7 +299,7 @@ business rejection, conditional merge), see
 
 ---
 
-## Write your own error handling
+## Custom error handling
 
 Every handler and subscriber class can override `handle_error()` to
 implement custom error logic:
@@ -324,7 +324,7 @@ in full.
 
 ---
 
-## Which trace events does the server emit?
+## Trace events
 
 The server emits trace events for observability:
 
@@ -340,7 +340,7 @@ can also use them for alerting.
 
 ---
 
-## Recover from failures in production
+## Operational runbooks
 
 ### Inspect a failure
 
@@ -365,7 +365,7 @@ root cause.
 protean dlq replay MSG_ID --domain=my_domain --subscription=orders
 ```
 
-### Replay many messages at once
+### Bulk replay
 
 After a transient issue (network outage, dependency downtime) is
 resolved:
@@ -384,7 +384,7 @@ protean dlq purge --domain=my_domain --subscription=orders
 
 ---
 
-## What to read next
+## Next steps
 
 - [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md): Classify version conflicts by business meaning
 - [Monitoring](./monitoring.md): Observatory dashboard and metrics

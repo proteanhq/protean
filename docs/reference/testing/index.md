@@ -1,4 +1,4 @@
-# Look up the testing reference
+# Testing Reference
 
 Reference documentation for Protean's testing infrastructure.
 

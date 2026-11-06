@@ -17,7 +17,7 @@ business rules and invariants.
 For background on what commands are and how they fit the architecture,
 see [Commands concept](../../concepts/building-blocks/commands.md).
 
-## Define a command
+## Defining Commands
 
 A command is defined with the `Domain.command` decorator:
 
@@ -30,7 +30,7 @@ option, as seen in the example above. You can use a class reference or a string
 forward reference (`part_of="Article"`) when the aggregate is defined later in
 the same module.
 
-### Which options does the decorator take?
+### Decorator options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -38,7 +38,7 @@ the same module.
 | `abstract` | bool | `False` | When `True`, the command serves as a base class and cannot be instantiated directly. |
 | `aggregate_cluster` | class | derived from `part_of` | Explicitly set the aggregate cluster for stream routing. Rarely needed. |
 
-## Submit a command
+## Submitting Commands
 
 A Protean domain constructs the object graph of all domain elements and routes
 each command to its Command Handler. You don't need to find the handler
@@ -75,7 +75,7 @@ appropriate command handler immediately.
 !!! note "Advanced"
     The following sections cover idempotency and advanced command patterns.
 
-## Make commands idempotent
+## Idempotency
 
 In distributed systems, the same command can arrive more than once due to
 network retries, broker redelivery, user double-clicks, or saga retries.
@@ -115,7 +115,7 @@ command payload. As a result, the command's payload holds only domain data:
     other APIs. Protean does not auto-derive keys from command data, only the
     caller knows whether a submission is a retry or a new intent.
 
-### Choose what happens on a duplicate
+### Duplicate Behavior
 
 By default, Protean silently acknowledges a duplicate submission. The caller
 receives the same result as the first submission. When explicit feedback is
@@ -125,7 +125,7 @@ needed, use `raise_on_duplicate=True`:
 --8<-- "guides/change-state/commands/001.py:place_once"
 ```
 
-### Configure Redis for deduplication
+### Requirements
 
 Submission-level deduplication requires a Redis instance. Configure the
 connection in `domain.toml`:
@@ -144,7 +144,7 @@ The [Command Idempotency](../../patterns/command-idempotency.md) pattern guide
 covers idempotency patterns in full. It includes subscription-level
 deduplication and handler-level strategies.
 
-## Choose synchronous or asynchronous processing
+## Synchronous vs Asynchronous Processing
 
 Commands in Protean can be processed either synchronously or asynchronously:
 
@@ -162,7 +162,7 @@ command:
 --8<-- "guides/change-state/commands/002.py:modes"
 ```
 
-### 2. Set the mode in the domain configuration
+### 2. Domain Configuration
 
 You can set the default processing mode for all commands in the domain configuration:
 
@@ -268,7 +268,7 @@ expiries through the `protean.command.expired` metric (labelled by
 `command_type`) and the `handler.skipped` trace. If dropped commands matter to
 your business, alert on that metric.
 
-### Downstream commands inherit the deadline
+### Propagation through the causal chain
 
 When a handler dispatches a downstream command, that command inherits the
 deadline of the message currently being processed. The whole causal chain is
@@ -278,7 +278,7 @@ bound by the original deadline unless a downstream call overrides it:
 --8<-- "guides/change-state/commands/003.py:propagation"
 ```
 
-### Set a default deadline
+### Default deadlines
 
 To cover commands without an explicit deadline, you can configure a default
 validity window instead of passing one on every call. Protean resolves the
@@ -302,13 +302,13 @@ command_default_timeout = 30
 Both defaults are **disabled** by default, so existing applications are
 unaffected. A default deadline bounds *staleness* and does nothing about
 *failure*. To recover from failures, pair it with
-[retry/backoff](command-handlers.md#handle-errors-in-command-handlers) and a dead-letter strategy.
+[retry/backoff](command-handlers.md#error-handling) and a dead-letter strategy.
 
 The [Expiring Stale Commands](../../patterns/expiring-stale-commands.md)
 pattern explains the design rationale: why deadlines are opt-in, the sync/async
 trade-off, and how deadlines fit DDD.
 
-## Follow a command from request to handler
+## Workflow
 
 Command objects are often instantiated by the API controller, which acts as the
 entry point for external requests into the system. When a client makes a
@@ -322,7 +322,7 @@ identifies the command handler.
 
 The workflow differs slightly depending on whether synchronous or asynchronous processing is used:
 
-### Process a command synchronously
+### Synchronous Command Flow
 
 ```mermaid
 sequenceDiagram
@@ -335,7 +335,7 @@ sequenceDiagram
   Domain-->>API Controller: Return result
 ```
 
-### Process a command asynchronously
+### Asynchronous Command Flow
 
 ```mermaid
 sequenceDiagram
@@ -353,7 +353,7 @@ sequenceDiagram
   Protean Server->>Event Store: Update processed position
 ```
 
-## Commands cannot change after creation
+## Immutability
 
 Like Events, Commands in Protean are immutable. This means that once a
 command is created, it cannot be changed.
@@ -372,7 +372,7 @@ IncorrectUsageError: 'Command Objects are immutable and cannot be modified once 
 }
 ```
 
-## Configure event processing the same way
+## Relationship with Event Processing
 
 Protean offers a similar configuration option for events: the
 `event_processing` domain configuration setting.

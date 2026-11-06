@@ -130,7 +130,7 @@ raised, the UoW rolls back all changes.
     passed directly back to the calling API layer, enabling immediate feedback
     (e.g., a newly created entity ID).
 
-## What does a use case return?
+## Return Values
 
 Application Services execute synchronously and always return values directly
 to the caller. This is one of their key advantages for request-response
@@ -164,7 +164,7 @@ For details on how the Unit of Work pattern works, see the
     than one at a time. Event handlers should sync the other aggregates
     eventually, in response to domain events.
 
-## How do application services report errors?
+## Error Handling
 
 Application Services handle errors differently from Command and Event
 Handlers. Because they execute synchronously with the caller always present,
@@ -189,7 +189,7 @@ are raised by the aggregate, not the service.
 - Use the API layer for cross-cutting concerns like logging failed operations,
 not the application service itself.
 
-## Test application services
+## Testing Application Services
 
 Application services are tested by calling use case methods directly and
 asserting on the return values and persisted state:

@@ -1,4 +1,4 @@
-# What is identity?
+# Identity
 
 Identity is the property that distinguishes one domain object from all others.
 Two objects with the same attributes but different identities are different
@@ -8,7 +8,7 @@ distinction. You use it to decide whether to model a concept as an entity (has
 identity) or a [value object](../building-blocks/value-objects.md) (defined
 entirely by its attributes).
 
-## Why entities and aggregates need an identity
+## Identity in Entities and Aggregates
 
 Every [entity](../building-blocks/entities.md) and [aggregate](../building-blocks/aggregates.md) must have a unique identity. This identity persists across all state changes throughout the object's lifecycle. An order remains the same order whether it is "pending," "shipped," or "delivered." A customer remains the same customer whether they update their email address, change their name, or move to a new country.
 
@@ -53,7 +53,7 @@ the database can occur.
 By default, Protean generates identities on object creation, following the
 practice of generating identity at the point of creation.
 
-## Read more about identity
+## Further Reading
 
 - [Aggregates](../building-blocks/aggregates.md): Identity as the aggregate root's distinguishing property
 - [Value Objects](../building-blocks/value-objects.md): The identity-less counterpart

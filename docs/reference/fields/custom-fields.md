@@ -10,12 +10,12 @@ those objects to the field pipeline that every built-in field uses.
 
 If the type needs none of that, you do not need `Custom`. Declare it as a raw
 `Annotated[YourType, Field(...)]` and Pydantic handles it directly. See the
-[raw Pydantic style](defining-fields.md#use-raw-pydantic-annotations) in the
+[raw Pydantic style](defining-fields.md#raw-pydantic-style) in the
 defining-fields guide. Use `Custom` when you want the field to be `required`,
 carry a default, or reflect through `ResolvedField` to an adapter the way the
 built-in fields do.
 
-## What does `Custom` accept?
+## Signature
 
 ```python
 # fragment
@@ -33,7 +33,7 @@ Custom(python_type, *, validators=(), serializers=(), **constraints)
   `unique`, `description`, `min_value`/`max_value`, and so on), passed straight to
   the field.
 
-## Build a field for a color type
+## A worked example
 
 A `Color` type stored as a `#RRGGBB` hex string. A parser turns a raw string
 into a `Color`. The `Color` type also implements `to_dict()`, so a `Color`
@@ -78,7 +78,7 @@ missing optional value never reaches your parser.
     vocabulary of primitive values. For that, use `String(choices=...)` or
     `Status`.
 
-## Implement `to_dict()` so adapters can serialize your type
+## The serialization boundary adapters read
 
 Adapters and the persistence and event paths do not read your Pydantic
 serializer. They read `ResolvedField.as_dict`, which turns a stored value into

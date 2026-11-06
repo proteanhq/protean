@@ -1,11 +1,11 @@
-# Configure a Protean domain
+# Configuration
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
 You configure Protean through the Domain object, in multiple ways:
 
-## Pass configuration directly
+## Direct Configuration
 
 Pass a configuration dictionary when initializing the Domain object:
 
@@ -13,7 +13,7 @@ Pass a configuration dictionary when initializing the Domain object:
    --8<-- "reference/configuration/index/001.py:direct"
    ```
 
-## Load configuration from a file
+## Configuration Files
 
 Configuration can be supplied in a TOML file in your project directory or up to two levels of parent directories.
 
@@ -33,7 +33,7 @@ A sample configuration file is below:
 --8<-- "reference/configuration/index/sample.toml"
 ```
 
-## Set the basic parameters
+## Basic Configuration Parameters
 
 ### `debug`
 
@@ -245,7 +245,7 @@ turn sanitization off.
 
 Default: `{ sanitize = false }`
 
-## Configure adapters
+## Adapter Configuration
 
 ### `databases`
 
@@ -289,7 +289,7 @@ warning (suppressed when `PROTEAN_ENV` is `development` or `testing`).
 `protean check` does not report it.
 
 Read more in [Adapters → Database](../adapters/database/index.md) or the
-full catalogue in [Server Hardening reference](../server/hardening.md#tune-connection-pools).
+full catalogue in [Server Hardening reference](../server/hardening.md#connection-pools).
 
 ### `caches`
 
@@ -358,7 +358,7 @@ settings.
     `dlq_retention_hours` and `dlq_alert_threshold` keys under
     `OrderEventHandler` above.
 
-#### Choose a subscription profile
+#### Subscription Profiles
 
 Pre-configured settings for common scenarios:
 
@@ -372,7 +372,7 @@ Pre-configured settings for common scenarios:
 
 Read more in [Server → Configuration](../server/configuration.md) section.
 
-#### Trim and monitor DLQ streams
+#### DLQ Maintenance
 
 The `[server.dlq]` section configures a periodic maintenance task. The task
 trims old DLQ entries and alerts when DLQ streams grow deep. It is **disabled
@@ -401,7 +401,7 @@ See the known issue under [`server`](#server).
 For the operational workflow (discover, inspect, replay, purge) see [Dead
 Letter Queues](../../guides/server/dead-letter-queues.md).
 
-#### Expose health checks
+#### Health Checks
 
 The `[server.health]` section configures the built-in HTTP server used
 for Kubernetes liveness and readiness probes. The server is **enabled by
@@ -435,7 +435,7 @@ never claims the entries of a running consumer. A zero, negative or non-numeric
 value falls back to `120`. See
 [`server.reclaim_idle_seconds`](../server/hardening.md#serverreclaim_idle_seconds).
 
-#### Route messages through priority lanes
+#### Priority Lanes
 
 The `[server.priority_lanes]` section configures two-lane event/command
 routing: production messages flow through the primary stream while
@@ -593,7 +593,7 @@ This section configures the Observatory's trace history.
 |-----|------|---------|-------------|
 | `trace_retention_days` | int | `7` | Days of trace events kept in the `protean:traces` Redis Stream. `0` or a negative number turns persistence off; live broadcasting still works. The value goes through Python's `int()`, so `3.9` becomes 3. An `[observatory]` that is not a table, or a value `int()` cannot convert, falls back to 7. |
 
-Read more in [Observability](../server/observability.md#how-long-the-traceemitter-keeps-trace-events).
+Read more in [Observability](../server/observability.md#trace-persistence-and-retention).
 
 ### `[server.partitioning]`
 
@@ -616,7 +616,7 @@ See [Sequential processing](../server/sequential-by.md) for the model these
 configure, and [ADR-0028](https://github.com/proteanhq/protean/blob/main/docs/adr/0028-partition-per-key-sequential-processing.md)
 for why ownership is leased and fenced.
 
-## Define custom attributes
+## Custom Attributes
 
 Custom attributes can be defined in toml under the `[custom]` section (or
 `[tool.protean.custom]` if you are using the `pyproject.toml` file).
@@ -660,7 +660,7 @@ those further, as seen above. There are two environment specific settings above
 for databases - an `sqlite` db configuration for `staging` and a `postgresql`
 db configuration for `prod`.
 
-### Switch overlays in tests
+### Testing Overlays
 
 A common use of environment overlays is **dual-mode testing**, running the same
 test suite against in-memory adapters for speed and real infrastructure for

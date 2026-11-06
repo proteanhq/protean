@@ -136,7 +136,7 @@ Q objects (`protean.utils.query.Q`) represent filter criteria as a tree
 structure. Internally, the QuerySet passes Q objects to the DAO, and the DAO
 turns them into a query for the database.
 
-### How a Q object stores its tree
+### Tree structure
 
 A Q object extends `Node`, which holds:
 
@@ -190,7 +190,7 @@ When you negate a Q object with `~`, Protean wraps the node and flips the
     └── Node(connector=AND, children=[("country", "US")])
 ```
 
-### How squashing flattens the tree
+### Squashing
 
 The `Node.add()` method applies **squashing**, when combining two nodes with the same
 connector, it flattens the children into one level instead of nesting. This
@@ -208,7 +208,7 @@ Q(a=1) & Q(b=2) & Q(c=3)
 
 ---
 
-## How providers resolve lookups
+## Lookup resolution
 
 When a query uses a lookup suffix like `age__gte=18`, the system needs to
 resolve `gte` into a concrete comparison operation for the target database.
@@ -227,7 +227,7 @@ provider._extract_lookup("name")
 # → ("name", ExactLookup)  # default when no suffix
 ```
 
-### How providers register lookups
+### Lookup registration
 
 Each database provider registers its own lookup implementations using
 `RegisterLookupMixin`:
@@ -294,7 +294,7 @@ SQLAlchemy adapters accepts an `F` target without per-lookup changes. The
 outbox poll and claim paths use `F` to push `retry_count < max_retries` into
 the database.
 
-### Which lookups each adapter supports
+### Lookup support across adapters
 
 Every adapter registers the same core set of lookups (`REQUIRED_LOOKUPS` on
 `BaseProvider`). A provider missing one warns at load, and using it raises
@@ -337,7 +337,7 @@ contract.
 
 ---
 
-## How QuerySet translates field names
+## Field name translation
 
 QuerySet translates between **field names** (what domain code uses) and
 **attribute names** (what the database stores). This happens transparently
@@ -392,7 +392,7 @@ for the rationale.
 
 ---
 
-## How lazy evaluation and caching work
+## Lazy evaluation and caching
 
 QuerySets use a **lazy evaluation** strategy:
 
@@ -501,7 +501,7 @@ qs.delete()                        # raises NotSupportedError
 
 ---
 
-## How to get the raw connection
+## Raw connection access
 
 For queries that cannot be expressed through `QuerySet` or `ReadOnlyQuerySet`
 (e.g., database-specific aggregation pipelines, full-text search, or direct
@@ -524,7 +524,7 @@ projection's meta options (`provider` or `cache`).
 
 ---
 
-## How the repository tracks entity state
+## Entity state tracking
 
 When the repository/DAO layer loads or saves entities, each entity's `state_`
 property (an `_EntityState` instance) tracks its lifecycle state:
@@ -546,7 +546,7 @@ The repository uses these flags to determine persistence strategy:
 
 ---
 
-## How the DAO checks the version
+## Version tracking
 
 Aggregates use a `_version` field for optimistic concurrency control. When
 saving an aggregate, the DAO checks that the version in the database matches

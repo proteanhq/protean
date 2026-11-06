@@ -5,7 +5,7 @@
 The domain object is used by the domain's elements to register themselves with
 the domain.
 
-## Register elements with decorators
+## With decorators
 
 ```python hl_lines="7-11"
 --8<-- "guides/compose-a-domain/002.py:full"
@@ -32,7 +32,7 @@ documentation to understand the additional options supported by that element.
 
 See [element decorators](../../reference/domain-elements/element-decorators.md) for the full list of domain elements and their options.
 
-## Register elements explicitly
+## Explicit registration
 
 You can also choose to register elements manually.
 

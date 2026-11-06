@@ -62,7 +62,7 @@ integration boundaries and should not be confused.
 
 ---
 
-## What to read next
+## Next steps
 
 For practical details on defining and using subscribers in Protean, see the guide:
 

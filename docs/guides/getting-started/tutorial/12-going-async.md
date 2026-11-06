@@ -6,7 +6,7 @@ projection, stocks inventory, and sends notifications. You configure Redis as
 the message broker, enable the outbox pattern for reliable delivery, and start
 the Protean server, which processes events and commands asynchronously.
 
-## How does the outbox pattern deliver events?
+## The Outbox Pattern
 
 When an aggregate raises events, they need to reach event handlers and
 projectors reliably. Protean uses the **outbox pattern**:
@@ -21,7 +21,7 @@ projectors reliably. Protean uses the **outbox pattern**:
 This guarantees **at-least-once delivery**. Events are never lost, even if
 Redis is temporarily unavailable.
 
-## Configure the broker and async processing
+## Configuration
 
 Update `domain.toml` to add a broker and switch to async processing:
 
@@ -99,7 +99,7 @@ Each handler gets its own **consumer group** in Redis. This means:
 - A slow handler does not block other handlers.
 - Failed messages are retried automatically before moving to the DLQ.
 
-## How does a command travel from the API to the handlers?
+## How It All Fits Together
 
 ```
               ┌──────────┐
@@ -180,6 +180,6 @@ and the projector updates the projection, all asynchronously.
 The system is now truly asynchronous. Chapter 13 adds a domain service that
 validates inventory before the system confirms an order.
 
-## Continue to the next chapter
+## Next
 
 [Chapter 13: Checking Before You Ship with Domain Services →](13-domain-services.md)

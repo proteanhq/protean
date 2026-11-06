@@ -1,4 +1,4 @@
-# Enforce status transitions
+# Status Transitions
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -38,7 +38,7 @@ terminal states.
 
 ## How enforcement works
 
-### Assign a new status directly
+### Direct mutation
 
 When you assign a new status value, the framework validates the transition
 immediately:
@@ -61,7 +61,7 @@ raises a `ValidationError` with a different message:
 ValidationError: {'status': ["Invalid status transition from 'DELIVERED'. 'DELIVERED' is a terminal state with no allowed transitions"]}
 ```
 
-### Assign a status its current value (self-transitions)
+### Same-value assignment (self-transitions)
 
 By default, assigning a status to its current value is **rejected**. It is
 treated as a transition and must appear in the transition map like any other.
@@ -98,7 +98,7 @@ Now `order.status = "CANCELLED"` succeeds when the order is already cancelled.
     3. **The state is terminal**: Omit it from the map entirely. No transitions
        (including self-transitions) are allowed.
 
-### Set the initial value
+### Initialization
 
 Setting the initial value (from `None`) is always allowed, regardless of the
 transition map:
@@ -107,7 +107,7 @@ transition map:
 --8<-- "guides/domain-behavior/status-transitions/002.py:initialization"
 ```
 
-## Batch status changes with `atomic_change`
+## Working with `atomic_change`
 
 When using `atomic_change` to batch multiple mutations, the framework captures
 status snapshots on entry and validates the **start-to-end** transition on exit.
@@ -135,7 +135,7 @@ For event-sourced aggregates, `raise_()` wraps the `@apply` handler in
 **Event replay** (`from_events()`) does **not** validate transitions.
 Replayed events are historical facts, the framework trusts them.
 
-## Check a transition before you make it
+## Programmatic checking
 
 Use `can_transition_to()` to check whether a transition would be valid
 without actually performing it. For an order in `DRAFT`:
@@ -150,7 +150,7 @@ without actually performing it. For an order in `DRAFT`:
 - API responses showing available actions to the client
 - Conditional logic in command handlers
 
-## Use multiple status fields on one aggregate
+## Multiple status fields
 
 An aggregate can have multiple independent `Status` fields. Each validates
 its transitions independently:
@@ -159,7 +159,7 @@ its transitions independently:
 --8<-- "guides/domain-behavior/status-transitions/005.py:multiple"
 ```
 
-## Follow these best practices
+## Best practices
 
 1. **Design the Enum first**: The Enum defines all possible states. Name
    values clearly. They appear in error messages and database records.

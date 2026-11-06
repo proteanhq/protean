@@ -7,7 +7,7 @@ in-memory and real adapters, and keep secrets in environment variables.
 
 ---
 
-## Select settings per environment with overlays
+## Environment overlays
 
 Protean uses the `PROTEAN_ENV` environment variable to select a configuration
 overlay. Overlays are TOML sections. Each overlay deeply merges into the base
@@ -71,7 +71,7 @@ pytest
 
 ---
 
-## Read values from environment variables
+## Environment variable substitution
 
 Use `${VAR_NAME}` syntax in TOML values. Provide a default with
 `${VAR_NAME|default_value}`:
@@ -92,9 +92,9 @@ is missing and no default is provided.
 
 ---
 
-## Choose your adapters
+## Adapter selection
 
-### Choose a database
+### Databases
 
 ```toml
 # In-memory (default, no external dependencies)
@@ -117,7 +117,7 @@ provider = "elasticsearch"
 database_uri = { hosts = ["localhost"] }
 ```
 
-### Choose a broker
+### Brokers
 
 ```toml
 # Inline (synchronous, no external service)
@@ -135,7 +135,7 @@ provider = "redis_pubsub"
 URI = "redis://localhost:6379/0"
 ```
 
-### Choose an event store
+### Event stores
 
 ```toml
 # In-memory (default)
@@ -148,7 +148,7 @@ provider = "message_db"
 database_uri = "postgresql://message_store@localhost:5433/message_store"
 ```
 
-### Choose a cache
+### Caches
 
 ```toml
 # In-memory (default)
@@ -164,7 +164,7 @@ TTL = 300
 
 ---
 
-## Use more than one database
+## Multiple databases
 
 Register adapters under named keys to use different providers for
 different aggregates:
@@ -187,7 +187,7 @@ Then associate elements with specific databases in your domain:
 
 ---
 
-## Run one test suite in two modes
+## Dual-mode testing
 
 Define a `[memory]` overlay so the same test suite runs against both
 in-memory and real adapters:
@@ -224,7 +224,7 @@ complete setup and CI configuration.
 
 ---
 
-## Check your setup before you deploy
+## Production checklist
 
 - [ ] Set `PROTEAN_ENV=production` in your deployment environment
 - [ ] Configure real database, broker, event store, and cache providers

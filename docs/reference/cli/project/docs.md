@@ -20,7 +20,7 @@ protean docs generate --domain=my_app --type=events
 protean docs generate --ir=domain-ir.json --type=event-model
 ```
 
-### Which options does `protean docs generate` take?
+### Options
 
 - `--domain`, `-d`: Path to the domain module. Mutually exclusive with `--ir`.
 - `--ir`: Path to an IR JSON file. Mutually exclusive with `--domain`.
@@ -47,7 +47,7 @@ protean docs generate --ir=domain-ir.json --type=event-model
   fresh render, write nothing, and exit non-zero on drift. See
   [Checking a committed snapshot for drift](#checking-a-committed-snapshot-for-drift).
 
-### Render the event model as a slice timeline
+### The event model slice timeline
 
 `--type=event-model` renders the domain as an
 [EventModeling](https://eventmodeling.org) slice timeline. Each aggregate
@@ -198,7 +198,7 @@ A config file that cannot be parsed stops the command with an error naming the
 file. Nothing else reads the config file on this path, so without the error a
 typo there would silently drop the configured domain and output.
 
-### Render the AGENTS.md constraint pack
+### The AGENTS.md constraint pack
 
 `--type=agents` renders a versioned [AGENTS.md](https://agents.md)
 negative-constraint pack: the hard rules an agent working on a Protean project
@@ -310,13 +310,13 @@ unmatched-annotation report, which belongs at the end of the render.
 The `protean docs preview` command starts a live preview server for Protean
 documentation. This allows you to view changes in real-time as you edit.
 
-### How do you run `protean docs preview`?
+### Usage
 
 ```shell
 protean docs preview [OPTIONS]
 ```
 
-### Which options does `protean docs preview` take?
+### Options
 
 - `--help`: Shows the help message and exits.
 

@@ -1,4 +1,4 @@
-# Build an event-sourced application with Protean
+# Event Sourcing with Protean
 
 !!! info "Builds on CQRS"
     Event Sourcing extends the [CQRS pathway](./cqrs.md) with event replay,
@@ -11,7 +11,7 @@
     that builds a complete banking platform from an empty project and covers
     every Event Sourcing capability in Protean.
 
-## How does Event Sourcing work in Protean?
+## Overview
 
 In Event Sourcing, aggregate state is not stored as a snapshot in a database.
 Instead, every state change is captured as an **event**. The aggregate's
@@ -24,7 +24,7 @@ with `event_sourced=True`. The aggregate uses `@apply` methods to define how
 each event type mutates state. An Event Sourced Repository writes the
 aggregate's events to the event store.
 
-## How does a request flow through an event-sourced aggregate?
+## Request Flow
 
 ```mermaid
 sequenceDiagram
@@ -74,7 +74,7 @@ sequenceDiagram
 | Persistence Store | Replace with **Event Store** (e.g., Message DB) |
 | Everything else | Commands, Command Handlers, Projections, Projectors, unchanged |
 
-## Which elements will you use?
+## Elements You'll Use
 
 Everything from the [CQRS pathway](./cqrs.md), **with these changes**:
 
@@ -86,7 +86,7 @@ Everything from the [CQRS pathway](./cqrs.md), **with these changes**:
 | Fact Events | Auto-generated snapshot events capturing full aggregate state |
 | [Event Store adapter](../../reference/adapters/eventstore/index.md) | Infrastructure for storing and retrieving events (e.g., Message DB) |
 
-## Read the guides in this order
+## Guided Reading Order
 
 If you have already read the CQRS pathway, start at step 1 below. These guides
 cover the Event Sourcing-specific concepts:
@@ -132,7 +132,7 @@ event schemas over time, and test your event-sourced code:
 | 11 | [Event Upcasting](../consume-state/event-upcasting.md) | Transform old event schemas during replay |
 | 12 | [Testing](../testing/index.md) | Test event-sourced aggregates and projections |
 
-## Which patterns apply to Event Sourcing?
+## Relevant Patterns
 
 These patterns complement the Event Sourcing approach. They span aggregate
 design, command and event handling, and event schema evolution:
@@ -153,7 +153,7 @@ design, command and event handling, and event schema evolution:
 | [Coordinating Long-Running Processes](../../patterns/coordinating-long-running-processes.md) | Manage multi-step workflows with process managers |
 | [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md) | Evolve event schemas over time |
 
-## Understand the key concepts
+## Key Concepts
 
 ### The `@apply` Decorator
 

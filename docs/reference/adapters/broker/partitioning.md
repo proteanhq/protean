@@ -1,4 +1,4 @@
-# Implement the broker partitioning contract
+# Broker partitioning contract
 
 The contract a broker adapter implements to support
 [`sequential_by`](../../server/sequential-by.md). This page is for **adapter
@@ -45,7 +45,7 @@ instead of running part of the contract. Implement the underscore-prefixed
 variants (`_record_partition`, `_partition_keys`, and so on). Protean's base
 broker class provides the public wrappers.
 
-## Discover partitions
+## Discovery
 
 | Method | Contract |
 |--------|----------|
@@ -67,7 +67,7 @@ partition's lease generation counter after a reap, so a re-created partition
 keeps a monotonic fence. A publisher may re-add a key immediately after a reap.
 Consumers rediscover the key on their next cycle.
 
-## Why is partition ownership fenced?
+## Ownership, and why it is fenced
 
 One owner per partition is what makes processing sequential. A lease alone is
 not enough: an owner can stall (GC pause, network partition), lose its lease,
@@ -103,7 +103,7 @@ partition. It is a `ProteanException`. Adapter authors raise `LeaseLostError`.
 Consumers of the partitioned subscription do not normally see it, because the
 subscription catches it and drops the partition.
 
-## Keep streams from growing without bound
+## Stream retention
 
 | Method | Contract |
 |--------|----------|
@@ -117,7 +117,7 @@ Refuse a non-positive `maxlen` rather than emptying the stream. See [Tuning
 subscriptions](../../../guides/server/tuning-subscriptions.md#stop-a-stream-from-growing-forever)
 for the operator-facing consequences.
 
-## Where to read more
+## Related reading
 
 - [Sequential processing](../../server/sequential-by.md): The user-facing option.
 - Partition-per-key decision record

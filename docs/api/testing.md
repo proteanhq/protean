@@ -1,4 +1,4 @@
-# Test a domain with the testing DSL
+# Testing DSL
 
 Test helpers for domains, exported from `protean.testing`. The `given` function
 is the entry point for most tests: it drives the full command pipeline (command
@@ -12,7 +12,7 @@ up a domain.
 Everything on this page is in `protean.testing.__all__`. Anything not on this
 page is internal, whatever its name suggests.
 
-## Start a test with `given`
+## Entry point
 
 ::: protean.testing
     options:
@@ -21,7 +21,7 @@ page is internal, whatever its name suggests.
         - given
       filters: []
 
-## Assert against the result objects
+## Results
 
 `given(...)` and the helpers below return these result objects. Each result
 object holds the events, state and errors produced. A test asserts against that
@@ -39,7 +39,7 @@ one object and does not need to inspect the domain directly.
         - EventSequence
       filters: []
 
-## Use the test helpers
+## Helpers
 
 In a test, asynchronous processing has no fixed point at which the work is
 finished. `drain` and `process_and_wait` run the engine until it is idle. A

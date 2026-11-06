@@ -5,7 +5,7 @@ for proper automated tests. Protean provides a testing DSL for these tests. A
 fluent API that reads like English: "given an Account after these events,
 process this command."
 
-## Write a test with the testing DSL
+## The Testing DSL
 
 Protean provides a `given()` function that starts a test sentence:
 
@@ -56,7 +56,7 @@ Key assertions:
 - **`result.holder_name`**: The result proxies attribute access to the
   aggregate, so you can check final state directly.
 
-## Test a command against prior events
+## Testing with History
 
 When an account already exists, seed the event store with prior events:
 
@@ -70,7 +70,7 @@ replaying this event, then process the command." The command handler
 loads the aggregate (which now has a $1,000 balance from the
 `AccountOpened` event), calls `deposit()`, and persists.
 
-## Test a rejected command
+## Testing Rejections
 
 When a command violates a business rule, use `.rejected`:
 
@@ -86,7 +86,7 @@ When a command violates a business rule, use `.rejected`:
 - **`len(result.events) == 0`**: No events were recorded because the
   command was rejected.
 
-## Chain several commands in one test
+## Multi-Command Chaining
 
 Test an entire lifecycle by chaining `.process()` calls:
 
@@ -99,7 +99,7 @@ Each `.process()` builds on the state left by the previous one. `.events`
 always reflects the **last** command. `.all_events` accumulates events across
 **all** chained commands.
 
-## Test an invariant violation
+## Testing Invariant Violations
 
 Verify that the "cannot close with balance" invariant works:
 
@@ -108,7 +108,7 @@ Verify that the "cannot close with balance" invariant works:
 --8<-- "guides/getting-started/es-tutorial/ch05.py:test_close_rejection"
 ```
 
-## Run the tests
+## Running the Tests
 
 ```shell
 $ pytest test_fidelis.py -v
@@ -148,7 +148,7 @@ That completes Part I. We have a banking ledger with business rules and
 comprehensive tests. Part II adds projections, event handlers, async
 processing, and cross-aggregate coordination to the platform.
 
-## Read the full source
+## Full Source
 
 ??? example "ch05.py, 295 lines"
 
@@ -156,6 +156,6 @@ processing, and cross-aggregate coordination to the platform.
     --8<-- "guides/getting-started/es-tutorial/ch05.py:full"
     ```
 
-## Go to the next chapter
+## Next
 
 [Chapter 6: The Account Dashboard →](06-account-dashboard.md)

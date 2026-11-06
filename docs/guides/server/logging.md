@@ -1,4 +1,4 @@
-# Set up and use logging
+# Logging
 
 Protean ships with structured logging that configures itself. Call
 `domain.init()` to turn logging on. Every log line from framework internals,
@@ -14,7 +14,7 @@ behind the wide event pattern, see
 
 ---
 
-## Start logging with one call
+## Quick start
 
 ```python
 --8<-- "guides/server/logging/quick-start/001.py:quick-start"
@@ -215,7 +215,7 @@ automatically. Your application code adds business-specific fields with
 The framework and application fields merge into the single wide event
 emitted when the handler returns. See the [reference](../../reference/logging.md#bind_event_context-unbind_event_context)
 for field-reservation rules and the
-[concept page](../../concepts/observability/logging.md#choose-fields-for-the-queries-operators-run)
+[concept page](../../concepts/observability/logging.md#query-oriented-field-design)
 for guidance on choosing queryable dimensions.
 
 ---
@@ -341,7 +341,7 @@ setups, you then need no env var.
 
 ---
 
-## Reduce log output in tests
+## Minimize noise in tests
 
 In `conftest.py`:
 

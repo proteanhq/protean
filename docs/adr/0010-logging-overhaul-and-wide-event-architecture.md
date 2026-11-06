@@ -59,7 +59,7 @@ could give:
 
 The epic closed all thirteen gaps across ten PR-sized sub-issues (#913 to #925) plus a documentation rewrite (#920).
 
-### Where does the wide event pattern come from?
+### The loggingsucks.com inheritance
 
 The wide event pattern in this epic follows Jamie Brandon's [*Logging Sucks, So
 Use Wide Events*](https://loggingsucks.com) article directly. Protean's design
@@ -168,7 +168,7 @@ at entry and restores it at exit. Each handler invocation therefore starts with
 an empty context, and surrounding code keeps its outer bindings (per-request
 context from `add_context()`).
 
-### 4. Emit wide events in two layers that share a correlation_id and route independently
+### 4. Two layers of wide events: same correlation_id, independent routing
 
 A single unified access log covering both HTTP requests and domain messages was considered and rejected. The two layers answer different operational questions:
 
@@ -200,7 +200,7 @@ We nested the logger names on purpose. `protean.access.http` is a child of
 automatically. This is why the tail sampling filter's namespace match uses
 `startswith("protean.access.")` rather than an exact match.
 
-### 5. Sample at the tail: opt in, apply rules in order, annotate each kept event
+### 5. Tail sampling: opt-in, rule-ordered, annotated
 
 At scale, emitting a wide event per message is expensive. But head sampling
 (decide at start of request whether to log it) loses the most valuable events
@@ -237,7 +237,7 @@ of the events that survive. With the order reversed, the chain would either
 mask the fields that sampling needs to route or fail to mask the events that
 survive.
 
-### 6. Configure logging automatically on `Domain.init()`, with three safeguards
+### 6. Auto-configuration on `Domain.init()`: with three escape hatches
 
 Django calls `dictConfig` during `Django.setup()`. Protean did not. The
 previous `Domain.init()` required users to remember to call
@@ -289,7 +289,7 @@ Module-level sentinels cache the result, so after the first call the hot path
 is a pure attribute lookup. Merely importing `protean.integrations.logging`
 does not trigger an `opentelemetry` import.
 
-### 8. Redact at the processor and filter level, with unioned defaults and a depth limit
+### 8. Redaction: processor/filter level, unioned defaults, depth-bounded
 
 Redaction at call sites was considered and rejected within the first few
 minutes of design. In real codebases, call-site redaction is the one pattern
@@ -322,7 +322,7 @@ sensitive field and bypass the mask.
 `log_method_call` now inherits the masking transparently because its DEBUG
 records flow through the same pipeline, no per-decorator flag needed.
 
-### 9. Queue logs across multiple workers and leave single-process mode unchanged
+### 9. Multi-worker log queue: single-process unchanged
 
 Multi-process log interleaving is a real operational problem. Separate `protean
 server` worker processes that write JSON records to the same stdout can corrupt
@@ -336,7 +336,7 @@ unparseable JSON line breaks the log aggregator's ingestion for the whole line.
 behavioural change. Protean installs the queue only when more than one worker
 runs, so you pay the queue's cost only when you use it.
 
-### 10. Send security events to the `protean.security` logger for a SIEM, and keep other errors out
+### 10. `protean.security` logger: SIEM feed, not a bucket for every error
 
 Operators need a dedicated channel, distinct from the general access log, for
 invariant violations, validation failures that cross a domain boundary, and
@@ -358,7 +358,7 @@ were not recovered (the ones an operator actually wants to see). If every
 validation error went to this channel, by week two operators could not find the
 real security events among the rest.
 
-### 11. Add CLI logging flags and deprecate `--debug`
+### 11. CLI control surface: deprecation pathway for `--debug`
 
 Every CLI subcommand (`server`, `test`, `shell`, `projection`, `snapshot`, `observatory`, `check`, `dlq`, `events`) now accepts global `--log-level`, `--log-format`, and `--log-config` flags inherited from the Typer callback. Precedence: `--log-config` (dictConfig) > `--log-level` / `--log-format` > `Domain.init()` auto-configuration.
 
@@ -377,7 +377,7 @@ the process. Before this change, a traceback to stderr was the only record of
 the failure. Now an operator running under a log aggregator sees the failure in
 the same structured stream as everything else.
 
-### 12. Detect slow SQL queries in the adapter, outside the framework core
+### 12. Slow SQL query detection: adapter-level, not framework-level
 
 Slow-query detection is closely related to slow-handler detection. We
 deliberately built slow-query detection into the adapter, and the framework

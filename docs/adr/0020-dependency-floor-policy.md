@@ -1,4 +1,4 @@
-# ADR-0020: Each dependency version floor is the lowest version the test suite proves
+# ADR-0020: Dependency version floors are proven minimums, not moving targets
 
 **Status:** Accepted
 

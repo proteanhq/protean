@@ -118,7 +118,7 @@ each mechanism.
 
 Choose based on the **caller's needs**, not the operation's name.
 
-### Follow the decision tree
+### The Decision Tree
 
 ```
 Does the caller need a return value immediately?
@@ -142,7 +142,7 @@ Does the caller need a return value immediately?
                   (domain.process() from event handler or subscriber)
 ```
 
-### How do the two mechanisms differ?
+### The Core Distinction
 
 | Aspect | Application Service | Command Handler |
 |--------|-------------------|-----------------|
@@ -154,7 +154,7 @@ Does the caller need a return value immediately?
 | Transaction | Wrapped in UoW by `@use_case` | Wrapped in UoW by engine |
 | Idempotency | Caller's responsibility | Built-in via `idempotency_key` |
 
-### Pick one coordination path per operation
+### The Rule
 
 **Never define both an application service method and a command handler for the
 same aggregate operation.** One operation, one coordination path. If your
@@ -208,7 +208,7 @@ The webhook endpoint dispatches the command and returns immediately:
 Protean server reads the command from the event store and routes it to the
 handler. The webhook never waits for the order update.
 
-### Apply the decision tree to common scenarios
+### The Decision Tree in Action
 
 | Scenario | Needs return value? | Async possible? | Event-triggered? | Choice |
 |----------|-------------------|-----------------|-----------------|--------|
@@ -221,7 +221,7 @@ handler. The webhook never waits for the order update.
 | Cancel expired orders (scheduled job) | No | Yes | No | Command handler |
 | Look up order details for display | Yes (return order) | No | No | Neither, use repository directly or query handler |
 
-### Process a command synchronously
+### Synchronous Command Processing
 
 Sometimes a command handler makes sense for the domain model, but the caller
 needs the result during development or testing. Protean supports this with
@@ -249,7 +249,7 @@ service instead.
 
 ## Anti-Patterns
 
-### Don't define both for the same operation
+### Defining Both for the Same Operation
 
 ```python
 # fragment
@@ -298,7 +298,7 @@ the other.
 application service. If order placement should be async, use the command
 handler. Not both.
 
-### Don't force async processing when you need sync
+### Forcing Async When Sync Is Needed
 
 ```python
 # fragment
@@ -331,7 +331,7 @@ The endpoint then calls the service and returns the product it gets back:
 --8<-- "patterns/application-service-vs-command-handler/003.py:endpoint"
 ```
 
-### Don't use application services for event reactions
+### Using Application Services for Event Reactions
 
 ```python
 # fragment
@@ -374,7 +374,7 @@ Or, if the reaction should produce a command for another aggregate, use
 --8<-- "patterns/application-service-vs-command-handler/005.py:event_handler"
 ```
 
-### Don't mix invocation styles within a bounded context
+### Mixing Invocation Styles Within a Bounded Context
 
 ```python
 # fragment

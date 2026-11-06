@@ -1,4 +1,4 @@
-# ADR-0043: Dispatch typed queries through a generic query base
+# ADR-0043: Typed query dispatch through a generic query base
 
 **Status:** Accepted
 

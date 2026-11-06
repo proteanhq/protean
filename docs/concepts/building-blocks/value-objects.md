@@ -75,7 +75,7 @@ and defined solely by their attributes.
 
 ---
 
-## Learn more about value objects
+## Next steps
 
 For practical details on defining and using value objects in Protean, see the guide:
 

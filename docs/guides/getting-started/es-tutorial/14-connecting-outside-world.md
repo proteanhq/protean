@@ -31,7 +31,7 @@ The subscriber is the **translation layer**: it converts external
 concepts (PayFlow webhook schema) into domain concepts (Fidelis
 commands). The domain never sees the raw webhook format.
 
-## Handle errors in a subscriber
+## Error Handling
 
 Subscribers can override `handle_error` for custom error handling:
 
@@ -44,7 +44,7 @@ Protean calls `handle_error` when `__call__` raises an exception. In
 `handle_error` you can log, alert, or transform the error before it propagates
 to the subscription's retry/DLQ mechanism.
 
-## Add metadata to messages with enrichers
+## Message Enrichment
 
 Event and command enrichers add metadata that does not belong in the
 event payload itself, infrastructure concerns like tenant IDs, request IDs, and
@@ -113,7 +113,7 @@ That completes Part III. We have evolved the system with schema changes
 covers production operations, the work you do to run an event-sourced system in
 production.
 
-## Read the full source
+## Full Source
 
 ??? example "ch14.py, 340 lines"
 

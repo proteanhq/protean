@@ -1,4 +1,4 @@
-# ADR-0009: Protean keeps its existing building blocks for concurrent event processing
+# ADR-0009: Concurrent Event Processing Strategy
 
 | Field | Value |
 |-------|-------|
@@ -82,7 +82,7 @@ The DDD-correct solutions for creation races are:
   unique constraints. The `ExpectedVersionError` retry then recovers from the
   transient conflict.
 
-### 3. Protean does not add framework-level idempotency for event handlers
+### 3. No framework-level event handler idempotency
 
 We considered adding `idempotent_by` on event handlers with a
 framework-managed idempotency store, but decided against it because:
@@ -94,7 +94,7 @@ framework-managed idempotency store, but decided against it because:
 - Command idempotency via `IdempotencyStore` is already built for the
   submission boundary where framework-level dedup makes sense
 
-### 4. Protean defers `sequential_by` to the Subscription Profiles & Tuning epic (R4)
+### 4. `sequential_by` deferred to R4
 
 > **Superseded by the partition-per-key ADR (ADR-0028).** This deferral no
 longer applies. In the 5.2 Subscription Profiles & Tuning epic, we accepted the
@@ -110,7 +110,7 @@ solve the vast majority of cases. The infrastructure changes required
 changes) belong in the 5.2 Subscription Profiles & Tuning epic (R4), not the
 near-term roadmap.
 
-### 5. Protean adds a lint rule for cross-cluster event handling
+### 5. Lint rule for cross-cluster event handling
 
 A new `HANDLER_CREATES_FOREIGN_AGGREGATE` lint rule (WARNING level) will detect
 an event handler that handles events from a different cluster. A handler's own
@@ -119,7 +119,7 @@ It often means a Process Manager would be more appropriate. The rule reads the
 IR and needs no AST analysis. It belongs with the handler completeness rules
 (3.5.4).
 
-### 6. Protean publishes a pattern page that connects the concurrency patterns
+### 6. Connective pattern documentation
 
 A new pattern page, "Designing for Concurrent Event Processing", will link the
 existing pattern docs on OCC, idempotent handlers, process managers, and error
@@ -165,7 +165,7 @@ worked example.
 
 ## Alternatives Considered
 
-### Build a full infrastructure suite in six phases
+### Full infrastructure suite (6 phases)
 
 We evaluated a comprehensive approach: `concurrency_strategy` Meta
 option, `find_or_create` repository primitive, partitioned streams
@@ -175,7 +175,7 @@ either already exist (OCC, command idempotency), conflict with DDD
 philosophy (`find_or_create`), or are premature for the current roadmap
 stage (partitioned streams).
 
-### Add framework-managed event deduplication
+### Framework-managed event deduplication
 
 We considered an idempotency store for events (similar to the existing command
 `IdempotencyStore`). We decided against it because event handler idempotency is

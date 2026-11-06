@@ -51,7 +51,7 @@ coordination, while projectors exist solely to build and maintain read models.
 With projectors as a separate element, you keep the read-side logic apart from
 the reactive domain logic.
 
-## Follow these practices when you write projectors
+## Best Practices
 
 ### Keep projection logic idempotent. { data-toc-label="Idempotency" }
 
@@ -59,7 +59,7 @@ Events may be replayed during recovery, resubscription, or catch-up
 processing. A projector should produce the same projection state whether it
 processes an event once or multiple times.
 
-### Plan for the order in which events arrive. { data-toc-label="Ordering" }
+### Handle event ordering carefully. { data-toc-label="Ordering" }
 
 Projections often depend on events arriving in the correct order. An
 "OrderShipped" event makes no sense without the preceding "OrderPlaced." Design
@@ -75,7 +75,7 @@ monolithic one.
 
 ---
 
-## Read more about projectors
+## Next steps
 
 For practical details on defining and using projectors in Protean, see the guide:
 

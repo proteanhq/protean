@@ -12,7 +12,7 @@ changes in two rounds, and show the Protean tool for each change. Every output
 on this page comes from running the domain shown. You can follow along without
 writing any code.
 
-## Follow one `OrderPlaced` event through three versions
+## The example: an `OrderPlaced` that grows up
 
 ```mermaid
 flowchart LR
@@ -129,7 +129,7 @@ mechanism.
     still construct from it. When they no longer do, Protean discards the
     snapshot on load and rebuilds the aggregate by replaying its event stream.
     See [Snapshots and schema
-    changes](change-state/snapshots.md#what-happens-to-a-snapshot-when-the-schema-changes).
+    changes](change-state/snapshots.md#snapshots-and-schema-changes).
 
 ## Deprecate and supersede an old event
 
@@ -172,7 +172,7 @@ lenient_deserialization = true
 Use lenience only on the read path for genuinely legacy data. For *structural*
 evolution, an upcaster is the precise tool.
 
-## List every event with `protean events catalog`
+## See the whole picture: `protean events catalog`
 
 Once a domain has events at different versions, some deprecated, some with
 upcaster chains, it helps to see them all at once. `protean events catalog`
@@ -292,7 +292,7 @@ which direction. Under `--format json`, the report carries a per-event
 breakdown under `avro_verdicts`. See the [Compatibility Checking
 guide](compatibility-checking.md) to wire this into pre-commit hooks and CI.
 
-## Pick the approach for each kind of change
+## Putting it together
 
 The diagram below shows which of three approaches fits a change (weak schema,
 versioning with an upcaster, or an operator migration):

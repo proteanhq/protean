@@ -1,4 +1,4 @@
-# Tune subscriptions
+# Tuning subscriptions
 
 How to change the way a handler consumes its stream: pick a profile, override a
 single setting, cap stream growth, pause a failing handler before it retries
@@ -106,7 +106,7 @@ history. For history, use the event store.
 `production`, `fast`, and `batch` already set a cap. The bare default with no
 profile does not.
 
-## Pause a failing handler before it retries its whole backlog
+## Stop a failing handler from burning through its backlog
 
 Without a circuit breaker, Protean retries every message for a repeatedly
 failing handler at the rate the stream delivers them. One broken dependency
@@ -226,7 +226,7 @@ If a subscription is not keeping up, work in this order:
     a fast, visible failure into a slow, invisible one. See [Dead letter
     queues](dead-letter-queues.md).
 
-## Read more about subscriptions
+## Related reading
 
 - [Server configuration reference](../../reference/server/configuration.md): Every option, its default, and the resolution order.
 - [Subscription types](../../reference/server/subscription-types.md): Stream versus event-store consumption.

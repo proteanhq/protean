@@ -29,7 +29,7 @@ This gives us:
 - An **external payment gateway** integration
 - **Production tooling**: Monitoring, dead letter queues, migrations
 
-## How is the tutorial organized?
+## The five parts
 
 The tutorial is divided into five parts. Each chapter builds on the
 previous one, growing the Fidelis platform step by step.
@@ -53,7 +53,7 @@ previous one, growing the Fidelis platform step by step.
     you are looking for the standard CQRS approach, see the [Bookshelf
     tutorial](../tutorial/index.md).
 
-## What do you need before you start?
+## Prerequisites
 
 - **Python 3.11+**
 - **Protean installed**: See [Installation](../installation.md)

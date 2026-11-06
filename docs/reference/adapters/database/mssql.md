@@ -5,7 +5,7 @@ The MSSQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) with
 Server. It carries the same capability set as the PostgreSQL provider. The same
 conformance tests exercise both providers.
 
-## Install the provider
+## Installation
 
 The provider needs SQLAlchemy, pyodbc, and a Microsoft ODBC driver installed on
 the machine:
@@ -27,7 +27,7 @@ that names another driver, such as `mssql+pymssql://`, goes to SQLAlchemy as
 written. So does a database config with a `module` key, which hands SQLAlchemy
 the DBAPI module to use in place of the URL's driver.
 
-## Configure the connection
+## Configuration
 
 ```toml
 [databases.default]
@@ -49,7 +49,7 @@ omitting it fails at connection time rather than at `domain.init()`.
 provider needs them when a repository issues one query in the middle of
 iterating another.
 
-## Which capabilities does the provider support?
+## Capabilities
 
 - :white_check_mark: **CRUD**: Create, read, update, delete single records.
 - :white_check_mark: **FILTER**: Query and filter records with lookup criteria.
@@ -64,7 +64,7 @@ iterating another.
   fields are queryable. SQL Server has no `JSON` column type, so the provider
   stores them through a JSON type backed by `NVARCHAR`.
 
-## Which index options does MSSQL support?
+## Indexes
 
 MSSQL supports some of the [`Index`](../../domain-elements/indexes.md) options,
 and `protean db setup` creates the indexes:
@@ -74,7 +74,7 @@ and `protean db setup` creates the indexes:
 - Partial indexes (`where=Q(...)`) are **not** supported. The index is created
   without the predicate and a warning is logged.
 
-## Set a length on string key columns
+## String columns used as keys
 
 SQL Server rejects an unbounded `VARCHAR` in a primary key or a unique
 constraint. Protean catches this when it generates the schema and raises
@@ -91,7 +91,7 @@ Protean raises `IncorrectUsageError` for a column with no length, such as
 column. Protean raises only when that column is a primary key or is
 `unique=True`.
 
-## Which column types do date and time fields use?
+## Date and time columns
 
 | Field      | Column      |
 |------------|-------------|
@@ -118,7 +118,7 @@ they were saved with; see [Datetimes are compared and stored as
 UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc) to
 convert them.
 
-## Supply your own SQLAlchemy model
+## SQLAlchemy model
 
 You can supply a custom SQLAlchemy model in place of the one Protean generates.
 A custom model gives you control over column types and constraints. The pattern
@@ -137,17 +137,17 @@ A column you declare in the model keeps the type you give it. Declare a
 timestamp column as `DATETIME2` (`sqlalchemy.dialects.mssql.DATETIME2`) to keep
 microseconds.
 
-## Detect slow queries
+## Slow query detection
 
 The provider emits the same structured
 `protean.adapters.repository.sqlalchemy.slow_query` WARNING and
 `protean.adapters.repository.sqlalchemy.query` DEBUG events as the
-[PostgreSQL provider](./postgresql.md#detect-slow-queries). Set the threshold
+[PostgreSQL provider](./postgresql.md#slow-query-detection). Set the threshold
 with `[logging].slow_query_threshold_ms` in `domain.toml`.
 
-## What to read next
+## Related pages
 
 - [PostgreSQL](./postgresql.md): The other full-capability relational provider.
-- [Database capabilities](./index.md#how-providers-declare-capabilities): What each
+- [Database capabilities](./index.md#database-capabilities): What each
   capability flag means.
 - [Indexes](../../domain-elements/indexes.md): Declaring indexes on an aggregate.

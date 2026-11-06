@@ -48,7 +48,7 @@ The domain is initialized once during `create_app()`. The `before_request` hook
 pushes the context before each request. The `teardown_request` hook pops it at
 the end of the request, even if the request fails.
 
-## Compose the domain in console applications and scripts
+## Console applications and scripts
 
 In simple console applications, compose the domain in a `main` function. Inside
 that function, open the domain context with a `with` block:
@@ -57,7 +57,7 @@ that function, open the domain context with a `with` block:
 --8<-- "guides/compose-a-domain/when-to-compose/002.py:full"
 ```
 
-## Run background workers with the Protean server
+## Background workers and the Protean server
 
 The Protean server (`protean server`) composes the domain internally. You only
 need to point it at your domain module:
@@ -69,7 +69,7 @@ $ protean server --domain my_app.domain
 The server initializes the domain and pushes a context. It then runs the event
 processing loop. See [Running the Server](../server/index.md) for details.
 
-## Follow these principles when you compose a domain
+## Key principles
 
 - **Compose once, early**: Call `domain.init()` at startup, not per-request.
   Initialization activates database connections and validates element

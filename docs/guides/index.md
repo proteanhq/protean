@@ -1,4 +1,4 @@
-# Find the guide for your task
+# Guides
 
 Goal-oriented guides for building applications with Protean. Each guide
 covers a specific task with practical code examples.

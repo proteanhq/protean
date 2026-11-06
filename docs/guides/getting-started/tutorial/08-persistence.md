@@ -119,6 +119,6 @@ docker exec -it bookshelf-db psql -U postgres -d bookshelf -c "SELECT title FROM
 Our domain logic is now decoupled from storage. In the next chapter,
 we will organize the growing codebase into a proper project structure.
 
-## Continue to the next chapter
+## Next
 
 [Chapter 9: Structuring the Project →](09-project-structure.md)

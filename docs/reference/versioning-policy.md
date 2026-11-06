@@ -1,4 +1,4 @@
-# How Protean numbers its versions
+# Versioning policy
 
 A Protean version number tells you how much attention an upgrade needs.
 
@@ -7,7 +7,7 @@ strict semantic versioning. The difference matters when you plan upgrades.
 
 ---
 
-## What does Protean promise between minor versions?
+## The contract
 
 **Code that runs warning-free on 1.N runs unmodified on 1.N+1.**
 
@@ -55,7 +55,7 @@ do not happen to exercise.
 | **Minor** | 1.2 → 1.3 | Where change lands: new features, new deprecations, behavior flags flipped after their warning release, schema changes with shipped migrations, and the removal of anything already deprecated. May break code that ignored its warnings. May not break code that had none. |
 | **Major** | 1.x → 2.0 | A shift in what Protean claims to do. See below. |
 
-### When does Protean remove a deprecated API?
+### Removals
 
 There is no fixed number of releases a deprecated API survives for. Instead,
 **every deprecation names the version it will be removed in**, and says so in
@@ -161,7 +161,7 @@ The promise also follows two rules:
 
 ---
 
-## How Protean classifies and mitigates breaking changes
+## How breaking changes are handled
 
 When a break is unavoidable, it is classified and mitigated by type:
 
@@ -183,7 +183,7 @@ behind a flag.
 
 ---
 
-## What to read next
+## Related reading
 
 - [Stable surface](stable-surface.md): What is covered by the contract, tier by tier.
 - [Consistency & delivery guarantees](guarantees.md): The behavioral contract per port and adapter.

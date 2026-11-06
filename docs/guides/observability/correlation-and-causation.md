@@ -1,4 +1,4 @@
-# Trace a business operation with correlation and causation IDs
+# Correlation and causation IDs
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -8,7 +8,7 @@ history of any business operation. This guide covers how the IDs are generated,
 how they propagate, how to supply them from external callers, and how every
 observability layer (logging, OTEL, Observatory) uses them.
 
-## Protean adds both IDs to every message automatically
+## The out-of-the-box guarantee
 
 Protean generates and propagates correlation and causation IDs automatically.
 No opt-in configuration, no manual wiring. The moment you call
@@ -90,7 +90,7 @@ This works for all Protean exception types (`ValidationError`,
 matches the `X-Correlation-ID` response header. Routes outside a domain
 context do not include the field.
 
-### Which correlation ID source wins?
+### Priority of correlation ID sources
 
 When multiple sources provide a correlation ID, Protean resolves them in
 this order:
@@ -103,7 +103,7 @@ this order:
 
 ---
 
-## Follow the IDs through a full command-event chain
+## Full propagation flow
 
 The following diagram shows how `correlation_id` and `causation_id` flow
 through a typical command-event chain, starting from an HTTP request:
@@ -152,7 +152,7 @@ Every message in the chain shares the same `correlation_id` (`ext-123`). Each
 
 ---
 
-## How the two IDs form a causation tree
+## Causation chain semantics
 
 The two IDs together form a **causation tree**. The `correlation_id` is the
 tree's label. The `causation_id` links define the edges:
@@ -166,7 +166,7 @@ PlaceOrder [corr=ext-123, cause=None]                <-- root command
               +-- NotificationSent [corr=ext-123, cause=NotifyCustomer.id]
 ```
 
-### How each entry point sets the IDs
+### Propagation rules
 
 | Entry point | `correlation_id` | `causation_id` |
 |-------------|-------------------|-----------------|
@@ -175,7 +175,7 @@ PlaceOrder [corr=ext-123, cause=None]                <-- root command
 | Command handler raises event | Inherited from command | Command's `headers.id` |
 | Event handler dispatches new command | Inherited from event | Event's `headers.id` |
 
-### Where Protean stores the IDs
+### Where the IDs live
 
 Both IDs are stored in `DomainMeta`, the domain-specific section of message
 metadata:
@@ -214,7 +214,7 @@ classes themselves (their `__type__` is used):
 when the length or any type does not match. You can check an end-to-end
 causation flow in a single assertion.
 
-### Inspect a chain from the CLI
+### CLI inspection
 
 Follow a causal chain from the terminal:
 
@@ -228,13 +228,13 @@ protean events trace "ext-123" --flat --domain=myapp
 
 ---
 
-## Keep the correlation chain across service boundaries
+## Service boundary handling
 
 When one Protean service consumes events from another via subscribers, the
 correlation chain must be preserved across the boundary. Protean preserves the
 correlation chain across the boundary automatically.
 
-### Subscribers carry the correlation ID into the consuming service
+### Automatic bridging in subscribers
 
 When the server processes an incoming broker message, it extracts the
 `correlation_id` from the message's `metadata.domain.correlation_id` and sets
@@ -246,7 +246,7 @@ then still fully traced.
 --8<-- "guides/observability/correlation-and-causation/003.py:payments"
 ```
 
-### Keep the outer message context across nested commands
+### Nested command preservation
 
 When a subscriber dispatches multiple commands within a single handler,
 Protean preserves the outer message context across each `domain.process()`
@@ -259,7 +259,7 @@ chain:
 
 ---
 
-## How correlation IDs relate to OpenTelemetry
+## Relationship to OpenTelemetry
 
 Protean maintains two distinct tracing layers that complement each other:
 
@@ -276,7 +276,7 @@ Protean also sets `protean.causation_id` on each span where a single parent
 message is well-defined. This lets you filter and group spans by business
 operation in your APM dashboard.
 
-### Which spans carry the ID attributes?
+### OTEL span attribute reference
 
 The following spans carry correlation and causation ID attributes:
 
@@ -292,7 +292,7 @@ The following spans carry correlation and causation ID attributes:
 share the same ID.
 
 For the complete span catalog, see the
-[OpenTelemetry integration guide](../server/opentelemetry.md#which-spans-does-protean-emit).
+[OpenTelemetry integration guide](../server/opentelemetry.md#span-catalog).
 
 ---
 
@@ -302,7 +302,7 @@ The Protean Observatory includes `correlation_id` and `causation_id` in
 every `MessageTrace` event. This enables real-time grouping and filtering
 of trace events by business operation.
 
-### Open a chain in the Timeline view
+### Timeline view
 
 The Observatory Timeline page supports deep-linking by correlation ID:
 
@@ -348,7 +348,7 @@ For the full setup, config keys, and the wide event schema, see the
 [Logging guide](../server/logging.md) and the
 [Logging reference](../../reference/logging.md).
 
-### Wire the integrations by hand when auto-configuration is off
+### Manual wiring when auto-configuration is disabled
 
 Two setups turn auto-configuration off: setting `PROTEAN_NO_AUTO_LOGGING=1`,
 and embedding the framework in an application with its own logging. In both
@@ -379,7 +379,7 @@ any domain message exists.
 
 ---
 
-## Review the key facts about both IDs
+## Summary
 
 | Aspect | Detail |
 |--------|--------|

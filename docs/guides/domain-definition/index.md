@@ -8,7 +8,7 @@ value objects, events, and the relationships between them.
 For the conceptual foundations behind aggregates, entities, value objects, and
 events, see [Building Blocks](../../concepts/building-blocks/index.md).
 
-## Which guide do you need?
+## Guides in this section
 
 ### [Aggregates](./aggregates.md)
 
@@ -56,7 +56,7 @@ Define domain events, immutable records of state changes that enable decoupled
 communication between different parts of your system. Events can be processed
 synchronously or asynchronously.
 
-## Read more on fields, identity, and element types
+## Related
 
 - [Fields Reference](../../reference/fields/index.md): All field types,
   arguments, and definition styles.

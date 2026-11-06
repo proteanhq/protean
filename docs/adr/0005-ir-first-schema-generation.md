@@ -1,4 +1,4 @@
-# ADR-0005: Protean generates JSON Schemas from the IR
+# ADR-0005: IR-First Schema Generation
 
 **Status:** Accepted
 

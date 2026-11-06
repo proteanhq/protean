@@ -4,18 +4,18 @@ Protean installs this plugin and registers it with pytest through the
 `pytest11` entry point. You do not need to register it in `conftest.py`.
 
 To switch environments via `--protean-env`, see
-[Dual-Mode Testing](../../guides/testing/index.md#run-the-same-tests-in-two-modes).
+[Dual-Mode Testing](../../guides/testing/index.md#dual-mode-testing).
 For `DomainFixture` and `conftest.py` recipes, see
 [Fixtures and Patterns](../../guides/testing/fixtures-and-patterns.md).
 
-## Which CLI options does the plugin add?
+## CLI options
 
 | Option | Default | Effect |
 |---|---|---|
 | `--protean-env=<name>` | `test` | Sets `PROTEAN_ENV` before test collection, unless the shell already set it, so the matching `[<name>]` overlay in `domain.toml` applies when the domain is constructed at import time. |
 | `--update-snapshots` | off | Causes `assert_snapshot()` calls to regenerate their reference files instead of comparing. |
 
-## Which markers does the plugin register?
+## Registered markers
 
 The plugin registers these markers so `--strict-markers` accepts them
 without configuration:
@@ -57,7 +57,7 @@ User application tests should construct their domain lifecycle with
 `DomainFixture` instead, see [Fixtures and
 Patterns](../../guides/testing/fixtures-and-patterns.md).
 
-## Assert query count and shape in tests
+## Query-shape assertions
 
 Four context managers observe the SQL a block issues against a SQLAlchemy
 backend, to catch query-cost regressions in tests. Three of them assert query
@@ -86,7 +86,7 @@ Shape](../../guides/testing/query-shape-tests.md) for usage.
       show_root_heading: true
       show_source: false
 
-## Run Protean's own test suite
+## Framework development
 
 Protean's contributors use the `protean test` CLI command to run Protean's own
 test suite across adapter configurations. It is not intended for user

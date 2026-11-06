@@ -58,7 +58,7 @@ a top-level export: `from protean import Q`.
 
 ---
 
-## Which adapters must support each primitive?
+## Cross-adapter conformance
 
 The [conformance test suite](../reference/testing/conformance.md) holds every
 built-in adapter to the same behaviour for each of these query-API primitives

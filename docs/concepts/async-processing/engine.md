@@ -1,10 +1,10 @@
-# How the Engine works
+# Engine Architecture
 
 The `Engine` class runs Protean's async message processing system. It creates
 the subscriptions and passes each message to its handler. It also starts every
 component and shuts them down gracefully.
 
-## What the Engine does
+## Responsibilities
 
 The Engine is responsible for:
 
@@ -19,7 +19,7 @@ The Engine is responsible for:
 5. **Emitting trace events**: Publishing structured `MessageTrace` events at
    each stage of message processing for real-time observability
 
-## What happens when you create an Engine
+## Engine Initialization
 
 When you create an Engine instance, it automatically discovers and registers all
 handlers from your domain:
@@ -28,13 +28,13 @@ handlers from your domain:
 --8<-- "concepts/async-processing/engine/001.py:create"
 ```
 
-## How the Engine registers subscriptions
+## Subscription Registration
 
 The Engine associates subscriptions with each handler during initialization.
 The Engine's subscription factory picks the subscription type from the
 [configuration hierarchy](#configuration-hierarchy).
 
-### How event handlers and projectors get subscriptions
+### Handler Subscriptions
 
 For each event handler and projector, the Engine creates one subscription per
 handler, inferring the stream category and resolving configuration:
@@ -49,7 +49,7 @@ a `StreamSubscription` or an `EventStoreSubscription`, for the handler.
 --8<-- "concepts/async-processing/engine/001.py:register"
 ```
 
-### How command handlers share one subscription
+### Command dispatch
 
 When multiple command handlers belong to the same aggregate (and therefore the
 same stream category), the Engine consolidates them into a single subscription
@@ -66,7 +66,7 @@ type:
 The `CommandDispatcher` caches the deserialized domain object between handler
 resolution and execution to avoid double deserialization.
 
-### How subscribers connect to brokers
+### Broker Subscriptions
 
 For external message subscribers, the Engine creates `BrokerSubscription`
 instances that connect to the configured message broker:
@@ -75,7 +75,7 @@ instances that connect to the configured message broker:
 --8<-- "concepts/async-processing/engine/003.py:subscriber"
 ```
 
-### How the Engine runs outbox processors
+### Outbox Processors
 
 When the outbox is enabled (via `default_subscription_type = "stream"`), the
 Engine creates an `OutboxProcessor` for each managed database provider holding
@@ -93,7 +93,7 @@ messages_per_tick = 10
 tick_interval = 1
 ```
 
-### How the Engine publishes to external brokers
+### External Outbox Processors
 
 When `external_brokers` is configured, the Engine creates additional
 `OutboxProcessor` instances. It creates one per external broker for each
@@ -122,7 +122,7 @@ lanes are an internal concern.
 See [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md)
 for the full setup guide.
 
-## How the Engine resolves subscription configuration { #configuration-hierarchy }
+## Configuration Hierarchy
 
 When registering subscriptions, the Engine consults a hierarchy of configuration sources to determine the appropriate subscription type and options for each handler. The resolution process typically follows this order of precedence:
 
@@ -142,7 +142,7 @@ For example, if a handler specifies a custom stream name, the Engine uses it.
 Otherwise, the Engine infers the stream category from the handler’s associated
 aggregate, or falls back to profile or domain defaults.
 
-## How the Engine traces messages
+## Tracing
 
 The Engine initializes a `TraceEmitter` at startup. The `TraceEmitter`
 publishes structured `MessageTrace` events as messages move through the
@@ -156,7 +156,7 @@ Additional trace events are emitted by `StreamSubscription` (`message.acked`,
 `message.nacked`, `message.dlq`) and `OutboxProcessor` (`outbox.published`,
 `outbox.failed`).
 
-### How the emitter writes to two channels
+### Dual-channel output
 
 The TraceEmitter writes to two Redis channels:
 
@@ -166,7 +166,7 @@ The TraceEmitter writes to two Redis channels:
   REST API. The emitter trims old entries automatically, based on the
   configured retention period.
 
-### How long the stream keeps traces
+### Trace retention
 
 The Engine reads `trace_retention_days` from the domain's `[observatory]`
 configuration (default: 7 days). When set to `0`, Stream persistence is
@@ -181,7 +181,7 @@ persistence is disabled. For the full design, the Observatory monitoring
 server, and trace API endpoints, see
 [Observability](../../reference/server/observability.md).
 
-## How the Engine restores request context
+## Context Propagation
 
 When the Engine processes a message, it restores the cross-cutting context
 captured at the message's original creation. This is critical for multi-tenant
@@ -231,7 +231,7 @@ application, see [Multi-Tenancy in Event-Driven Systems](../../patterns/multi-te
 
 ---
 
-## How the Engine shuts down
+## Shutdown sequence
 
 The Engine owns the lifecycle of every infrastructure adapter it opens. When
 the Engine receives `SIGINT`, `SIGTERM`, or `SIGHUP`, it runs a deliberate
@@ -285,7 +285,7 @@ You get two guarantees from this shutdown sequence:
   handles, or background threads, override `close()`.
 
 Two pages give the `terminationGracePeriodSeconds` you need in Kubernetes and
-the full shutdown reference. These pages also explain what `Domain.close()` does per adapter, when `SIGHUP` vs `SIGTERM` matter, and how to disable the health server. See [Server Hardening reference](../../reference/server/hardening.md#how-does-the-engine-shut-down) and [Harden the Server](../../guides/server/hardening.md#shut-down-gracefully).
+the full shutdown reference. These pages also explain what `Domain.close()` does per adapter, when `SIGHUP` vs `SIGTERM` matter, and how to disable the health server. See [Server Hardening reference](../../reference/server/hardening.md#shutdown-sequence) and [Harden the Server](../../guides/server/hardening.md#shut-down-gracefully).
 The design rationale (why subscriptions stop first, why 10 seconds, why
 per-adapter error isolation) is captured in
 [ADR-0011](../../adr/0011-engine-shutdown-and-resource-lifecycle-contract.md).

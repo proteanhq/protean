@@ -1,4 +1,4 @@
-# Keep production events ahead of bulk work with priority lanes
+# Priority Lanes
 
 ## The Problem
 
@@ -89,7 +89,7 @@ This design has several important properties:
 
 ---
 
-## What priority levels does Protean provide?
+## Priority Levels
 
 Protean provides a `Priority` enum with five levels. The numeric values are
 `IntEnum` members, so they can be compared and used as integers.
@@ -121,7 +121,7 @@ messages in descending priority order. It publishes `CRITICAL` messages before
 
 There are two ways to set the priority for events produced by a command.
 
-### Set the priority for a block with a context manager
+### Context Manager
 
 Use `processing_priority()` to set the priority for all commands processed
 within a block. This is the recommended approach for migration scripts and
@@ -142,7 +142,7 @@ the priority:
 Protean always restores the priority when the context exits. It restores the
 priority even if an exception is raised.
 
-### Pass the priority to `domain.process()`
+### Explicit Parameter
 
 Pass `priority` directly to `domain.process()` for one-off overrides:
 
@@ -157,7 +157,7 @@ The explicit parameter takes precedence over any active context manager:
 --8<-- "concepts/async-processing/priority-lanes/001.py:override"
 ```
 
-### How does Protean resolve the priority?
+### Priority Resolution Order
 
 When `domain.process()` is called, the priority is resolved as:
 
@@ -184,7 +184,7 @@ commands are processed synchronously or asynchronously.
 
 ---
 
-## Configure priority lanes
+## Configuration
 
 Enable priority lanes in your `domain.toml`:
 
@@ -195,7 +195,7 @@ threshold = 0           # Priority values below this go to backfill (default: 0)
 backfill_suffix = "backfill"  # Suffix for the backfill stream name (default: "backfill")
 ```
 
-### Which options can you set?
+### Configuration Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -203,7 +203,7 @@ backfill_suffix = "backfill"  # Suffix for the backfill stream name (default: "b
 | `threshold` | int | `0` | Priority values strictly below this threshold are routed to the backfill lane. Values at or above the threshold stay on the primary lane. |
 | `backfill_suffix` | string | `"backfill"` | Suffix appended to the stream category to form the backfill stream name. For example, with `stream_category="customer"` and `backfill_suffix="backfill"`, the backfill stream is `customer:backfill`. |
 
-### Enable priority lanes only in production
+### Environment-Specific Configuration
 
 You can enable priority lanes only in production while keeping them disabled in
 development:
@@ -219,7 +219,7 @@ enabled = true
 threshold = 0
 ```
 
-### Set a custom threshold
+### Custom Threshold
 
 If you want `LOW` (-50) events to go to backfill but want a finer-grained
 split, adjust the threshold:
@@ -231,7 +231,7 @@ threshold = -25  # Only BULK (-100) and LOW (-50) go to backfill
                  # A custom priority of -10 would stay on primary
 ```
 
-### Set a custom suffix
+### Custom Suffix
 
 You can customize the backfill stream name suffix:
 
@@ -243,11 +243,11 @@ backfill_suffix = "migration"  # Streams become "customer:migration" etc.
 
 ---
 
-## What ordering does Protean guarantee?
+## Ordering Guarantees
 
 Priority lanes provide the following ordering guarantees:
 
-### Each lane keeps FIFO order
+### Intra-lane FIFO
 
 Within each lane (primary or backfill), messages are processed in strict FIFO
 order. If events A and B are both on the primary lane and A was published first,
@@ -262,7 +262,7 @@ processed before backfill events. A backfill batch may already be in progress
 when a new primary event arrives. In that case, the Engine reads the primary
 event after the current backfill batch completes.
 
-### The outbox publishes messages by priority
+### Outbox priority ordering
 
 Within the outbox table itself, messages are fetched in descending priority
 order. This means `CRITICAL` (100) messages are published to the broker before
@@ -295,7 +295,7 @@ read.
 
 ---
 
-## When should you use priority lanes?
+## When to Use
 
 Priority lanes are designed for scenarios where bulk or background work could
 starve production traffic:

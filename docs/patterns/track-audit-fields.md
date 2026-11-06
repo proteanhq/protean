@@ -35,7 +35,7 @@ own code contains only its business behavior.
 
 ## How Protean Supports This
 
-### Put the audit fields on an abstract base
+### An abstract audit base
 
 ```python
 --8<-- "patterns/track-audit-fields/001.py:base"
@@ -45,7 +45,7 @@ own code contains only its business behavior.
 `Date`). Protean stamps these fields in the persistence path, so an `auto_now*`
 field is `None` until the first save. The two are mutually exclusive.
 
-### Stamp the acting user with a pre-persist enricher
+### A pre-persist enricher for the acting user
 
 Register a callback that stamps the audit users. The callback runs just before
 the repository saves an aggregate. It **mutates the aggregate in place**
@@ -81,7 +81,7 @@ Create and update, end to end:
 --8<-- "patterns/track-audit-fields/001.py:round_trip"
 ```
 
-## Where does the stamping run?
+## Where it applies
 
 Protean runs the stamping and the enricher on the `repository.add()` → save
 path (the same place Protean manages aggregate versions). Because `update()`
@@ -128,6 +128,6 @@ your application layer.
     - [Simple Fields, Auto-populated
       timestamps](../reference/fields/simple-fields.md#auto-populated-timestamps):
       The `auto_now`/`auto_now_add` reference
-    - [Message Enrichment](../guides/domain-behavior/message-enrichment.md#stamp-fields-on-the-aggregate-before-it-is-saved): The aggregate enricher alongside event/command enrichers
+    - [Message Enrichment](../guides/domain-behavior/message-enrichment.md#aggregate-pre-persist-enrichers): The aggregate enricher alongside event/command enrichers
     - [Multi-Tenancy](multi-tenancy.md): The context-propagation approach from
       this page, applied to tenant isolation

@@ -15,9 +15,9 @@ most important decisions you'll make for your domain model.
 For each aggregate, weigh its technical requirements against your team's
 practical constraints with the criteria below.
 
-## How do you pick a pattern?
+## Decision Framework
 
-### Score each aggregate against the criteria
+### Pattern Selection Criteria
 
 Use this rubric to evaluate each aggregate in your domain:
 
@@ -30,7 +30,7 @@ Use this rubric to evaluate each aggregate in your domain:
 | **Team Expertise** | Standard development skills | Event modeling expertise available |
 | **Operational Complexity** | Standard database operations | Event store + projection management |
 
-### Count the criteria an aggregate meets
+### Decision Matrix
 
 When an aggregate meets **2 or more** of these criteria, choose **Event
 Sourcing**:
@@ -54,7 +54,7 @@ In these cases, choose **CQRS**:
 - Team or operational constraints favor traditional approaches
 - The aggregate needs direct state access to meet its performance requirements
 
-### How do you move an aggregate to the other pattern?
+### Migration Strategies
 
 **To move from CQRS to Event Sourcing**:
 
@@ -70,9 +70,9 @@ In these cases, choose **CQRS**:
 3. Continue event publication via outbox
 4. Archive event stream
 
-## What mistakes should you avoid?
+## Common Pitfalls
 
-### Avoid these anti-patterns
+### Anti-Patterns to Avoid
 
 **Never mix patterns within a single aggregate**: Choose one pattern per
 aggregate and apply it consistently throughout that aggregate's lifecycle.

@@ -15,7 +15,7 @@ Four capabilities make that work.
 
 ---
 
-## 1. Compile your domain into a specification
+## 1. The domain compiler
 
 Most frameworks treat your domain classes as configuration for database tables or
 API schemas. Protean treats them as a **complete, inspectable specification** of
@@ -44,7 +44,7 @@ they ship.
 
 ---
 
-## 2. Keep every domain object valid
+## 2. The always-valid domain
 
 In most frameworks, validation is something you opt into. You call `validate()`,
 `clean()`, or `is_valid()`, and between those calls your objects can hold any
@@ -83,7 +83,7 @@ calls. The aggregate refuses changes that violate its rules.
 
 ---
 
-## 3. Grow the architecture as you need it
+## 3. Progressive architecture
 
 Ambitious systems are rarely complete at the start. You do not need to decide
 your final architecture on day one. Protean supports three approaches that
@@ -123,7 +123,7 @@ same test suite.
 
 ---
 
-## 4. Change infrastructure through configuration
+## 4. Infrastructure portability
 
 Your domain model should know nothing about databases, message brokers, or
 caches. In Protean, infrastructure is **configuration**.
@@ -168,7 +168,7 @@ aggregate from PostgreSQL to Elasticsearch is a configuration change.
 
 ---
 
-## How Protean is engineered and tested
+## Built to last
 
 The Protean codebase meets these engineering standards:
 

@@ -7,7 +7,7 @@ registers domain elements and loads configuration. It also opens the
 connections of its database, broker, cache and event store adapters, and closes
 them on shutdown. Every Protean project starts by creating a `Domain` instance.
 
-## Create a domain
+## Creating a Domain
 
 The simplest way to create a domain:
 
@@ -41,7 +41,7 @@ For the full list of constructor parameters, see
 For configuration options, see
 [Configuration](../../reference/configuration/index.md).
 
-## What do the guides in this section cover?
+## Guides in this section
 
 ### [Register Elements](./register-elements.md)
 
@@ -66,20 +66,20 @@ scripts, and the Protean server.
 Environment overlays, environment variable substitution, adapter
 selection, and dual-mode testing configuration.
 
-### [Choose adapters](./choosing-adapters.md)
+### [Choosing Adapters](./choosing-adapters.md)
 
 Decide which database, broker, event store, and cache to use for each workload.
 The guide compares the built-in options by use case and trade-offs.
 
-### [Inspect the IR](./inspecting-the-ir.md)
+### [Inspecting the IR](./inspecting-the-ir.md)
 
 Generate and explore the domain's Intermediate Representation.
 
-### [Generate JSON Schema files](./schema-generation.md)
+### [Schema Generation](./schema-generation.md)
 
 Generate JSON Schema files for domain elements.
 
-## Where can you read more?
+## Related
 
 - [Domain Constructor Reference](../../reference/domain-elements/domain-constructor.md):
   Full parameter documentation.

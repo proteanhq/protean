@@ -1,11 +1,11 @@
-# Chapter 2: Add deposits and withdrawals
+# Chapter 2: Deposits and Withdrawals
 
 An account that can only be opened is not much use. You now add deposits and
 withdrawals as two new event types on the same aggregate. These events show a
 core principle of Event Sourcing: **the aggregate changes its state only by
 applying events**.
 
-## Define the deposit and withdrawal events
+## New Events
 
 A deposit and a withdrawal are two distinct facts:
 
@@ -18,7 +18,7 @@ Each event captures the data needed to describe what happened. The `reference`
 field is optional. It records why the transaction occurred (a paycheck, a
 refund, a grocery purchase).
 
-## Add domain methods and `@apply` handlers
+## Domain Methods and Apply Handlers
 
 Now we add domain methods to the `Account` aggregate and the
 corresponding `@apply` handlers:
@@ -41,7 +41,7 @@ only the `@apply` handlers run. The validation in `deposit()` and `withdraw()`
 does not re-execute. Those events already happened and were validated at the
 time. Replay trusts the event history.
 
-## Raise several events on one aggregate
+## Multiple Events, One Aggregate
 
 Let's exercise the full lifecycle:
 
@@ -63,7 +63,7 @@ The balance is `$1,550.00`: the opening deposit of $1,000 plus $500 and $200 in
 deposits, minus the $150 withdrawal. But this number was never stored. It was
 computed by replaying four events through their `@apply` handlers.
 
-## Track the aggregate's version
+## Version Tracking
 
 Each event increments the aggregate's `_version`. After four events
 (opened, two deposits, one withdrawal), the version is `3` (0-indexed).
@@ -71,7 +71,7 @@ The version serves as an optimistic concurrency check, if two processes try to
 modify the same account simultaneously, the second one will detect a version
 conflict.
 
-## Validate input at the domain boundary
+## Validation at the Domain Boundary
 
 Try withdrawing more than the balance:
 
@@ -96,7 +96,7 @@ consistent.
     Protean checks the invariants against the aggregate's state after every
     `@apply` handler runs.
 
-## Review what you built
+## What We Built
 
 - **DepositMade** and **WithdrawalMade** events describing financial
   transactions.
@@ -109,7 +109,7 @@ The aggregate now keeps a record of every deposit and withdrawal, as a ledger
 does. Next, we will add commands and the processing pipeline so external
 systems can interact with our domain through typed contracts.
 
-## Read the full source
+## Full Source
 
 ??? example "ch02.py, 140 lines"
 
@@ -117,6 +117,6 @@ systems can interact with our domain through typed contracts.
     --8<-- "guides/getting-started/es-tutorial/ch02.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 3: Commands and the Processing Pipeline →](03-commands-and-pipeline.md)

@@ -1,4 +1,4 @@
-# How the CLI finds your domain
+# Domain Discovery
 
 In most cases, you will use the `protean` script to interact with your domain
 over the CLI. You tell the script where to find your domain. The script then

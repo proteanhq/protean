@@ -1,4 +1,4 @@
-# How Protean's field system works
+# Field system
 
 Protean's field system lets you define domain model attributes in a
 domain-friendly vocabulary (`String(max_length=100)`, `Float(min_value=0)`,
@@ -36,7 +36,7 @@ FieldSpec has three resolution methods:
 - `resolve_annotated()` combines both into `Annotated[resolved_type,
   resolved_field]`, the form Pydantic consumes.
 
-### FieldSpec translates Protean's vocabulary into Pydantic's
+### Vocabulary translation
 
 The user writes constraints in Protean's domain vocabulary. FieldSpec
 translates them to Pydantic's API vocabulary:
@@ -163,7 +163,7 @@ Pydantic are available when they make sense.
 
 ---
 
-## How Protean stores its own field metadata
+## Protean-specific metadata
 
 Pydantic has no concept of `unique`, `identifier`, or `referenced_as`. These
 are Protean concerns. Protean reads `unique` when it generates the database
@@ -234,7 +234,7 @@ integers as IDs are common). The automatic UUID `default_factory` is only
 injected for string-typed identifiers. For non-string identifiers, the user
 must provide their own default or factory.
 
-### Protean converts mutable defaults to `default_factory`
+### Mutable defaults
 
 Mutable defaults (`default=[]`, `default={}`) are detected and automatically
 converted to `default_factory`. `default=[]` becomes `default_factory=list`,
@@ -256,7 +256,7 @@ adapters, VARCHAR vs TEXT/CLOB. Encoding it as metadata rather than a different
 Python type keeps the Pydantic model simple while giving adapters the
 information they need.
 
-### What happens when annotation and assignment define the same field
+### Conflict between annotation and assignment
 
 If a field name appears in both positions, the annotation takes precedence.
 Pydantic follows the same rule: Pydantic discovers fields from

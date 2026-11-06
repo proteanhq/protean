@@ -1,4 +1,4 @@
-# Chapter 7: Build a projection and its projector
+# Chapter 7: Projections and Projectors
 
 In this chapter we will create a `BookCatalog` projection. A read-optimized
 view that stays in sync with our Book aggregate through events.
@@ -47,7 +47,7 @@ When a `BookAdded` event fires, `on_book_added` creates a catalog entry.
 When `BookPriceUpdated` fires, `on_price_updated` updates the existing
 entry.
 
-## Query the projection
+## Querying the Projection
 
 Projections are queried using `domain.view_for()`, which returns a `ReadView`.
 The code below uses this CQRS read-side API:
@@ -98,7 +98,7 @@ latest state of the Book aggregate.
 In the next chapter, we will switch from in-memory storage to a real
 PostgreSQL database.
 
-## Read the full source
+## Full Source
 
 ??? example "ch07.py, 164 lines"
 
@@ -106,6 +106,6 @@ PostgreSQL database.
     --8<-- "guides/getting-started/tutorial/ch07.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 8: Connecting a Real Database →](08-persistence.md)

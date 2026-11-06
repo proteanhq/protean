@@ -6,7 +6,7 @@ configure Redis as the message broker and enable the outbox pattern for
 reliable delivery. Then you start the Protean server for asynchronous event
 processing.
 
-## How does the outbox pattern deliver events?
+## The Outbox Pattern
 
 When an aggregate raises events, they need to reach event handlers and
 projectors reliably. Protean uses the **outbox pattern**:
@@ -21,7 +21,7 @@ projectors reliably. Protean uses the **outbox pattern**:
 This guarantees **at-least-once delivery**. Events are never lost, even if
 Redis is temporarily unavailable.
 
-## Configure the broker and the server
+## Configuration
 
 Create a `domain.toml` file in your project directory:
 
@@ -167,7 +167,7 @@ The system is now truly asynchronous. In the next chapter, we will add
 account-to-account transfers. A multi-aggregate workflow that requires a
 process manager.
 
-## Read the full source
+## Full Source
 
 ??? example "ch08.py, 315 lines"
 
@@ -175,6 +175,6 @@ process manager.
     --8<-- "guides/getting-started/es-tutorial/ch08.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 9: Transferring Funds →](09-transferring-funds.md)

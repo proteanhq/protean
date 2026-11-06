@@ -1,4 +1,4 @@
-# Find weak tests with mutation testing
+# Mutation Testing
 
 Line and branch coverage tell you which code ran during the tests. They do not
 tell you whether a test would *notice* if that code were wrong. Mutation
@@ -202,7 +202,7 @@ knows the skip was deliberate.
     every sync inline-dispatch test) that vanish the moment you touch the file.
     `git diff` shows nothing.
 
-## How often to run it
+## Cadence
 
 Run this as a **quarterly pass** on one or two core modules. Each pass raises a
 module's score by adding the missing tests, never by lowering a threshold.

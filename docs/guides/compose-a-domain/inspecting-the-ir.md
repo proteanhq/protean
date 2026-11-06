@@ -1,4 +1,4 @@
-# Inspect the IR
+# Inspecting the IR
 
 After you define and initialize a domain, Protean can generate its
 **Intermediate Representation (IR)**. The IR is a JSON document of the complete
@@ -53,7 +53,7 @@ See the [CLI reference](../../reference/cli/ir.md) for all options.
 
 ---
 
-## What does an IR document contain at the top level?
+## Top-level structure
 
 Every IR document has the same shape:
 
@@ -169,7 +169,7 @@ To validate an IR document programmatically:
 
 ---
 
-## What must a tool that reads the IR do to stay compatible?
+## Compatibility contract for tool authors
 
 To keep a tool that reads IR documents forward compatible, follow these rules:
 
@@ -193,7 +193,7 @@ the full compatibility contract, field reference, and design decisions.
 
 ---
 
-## Generate JSON Schema from the IR
+## From IR to JSON Schema
 
 Once you have an IR document, you can generate **JSON Schema (Draft 2020-12)**
 files for every data-carrying element, aggregates, entities, value objects,

@@ -22,7 +22,7 @@ tooling, and tests.
 - **Production operations**: Monitoring, tracing, dead-letter queues,
   and bulk imports
 
-## How is the tutorial split into five parts?
+## The five parts
 
 The tutorial is divided into five parts. Each chapter builds on the
 previous one, growing the Bookshelf application step by step.
@@ -48,7 +48,7 @@ previous one, growing the Bookshelf application step by step.
     **DDD** approach with Application Services instead. For that reading order,
     see the [DDD Pathway](../../pathways/ddd.md).
 
-## What do you need before you start?
+## Prerequisites
 
 - **Python 3.11+**
 - **Protean installed**: See [Installation](../installation.md)

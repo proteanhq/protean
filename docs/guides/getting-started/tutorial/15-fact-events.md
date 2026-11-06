@@ -1,11 +1,11 @@
-# Chapter 15: Feed a reporting pipeline with fact events
+# Chapter 15: Fact Events and the Reporting Pipeline
 
 The marketing team wants a reporting dashboard showing current book
 information. They don't want to process individual `BookAdded` and
 `BookPriceUpdated` events. They want a single event per change containing the
 complete, current book state.
 
-## How do delta events differ from fact events?
+## Delta Events vs. Fact Events
 
 So far, our events have been **delta events**. They describe *what changed*:
 
@@ -29,7 +29,7 @@ the aggregate after each change:
 Every time a Book is persisted, Protean automatically generates a fact
 event with the full state.
 
-## Enable fact events
+## Enabling Fact Events
 
 Add `fact_events=True` to the Book aggregate:
 
@@ -40,7 +40,7 @@ Add `fact_events=True` to the Book aggregate:
 You need no other change. Protean now generates a `BookFactEvent` automatically
 whenever a Book is persisted.
 
-## Build a report projection
+## Building a Report Projection
 
 The marketing dashboard needs a `BookReport` projection populated from
 fact events:
@@ -49,7 +49,7 @@ fact events:
 --8<-- "guides/getting-started/tutorial/ch15.py:projection"
 ```
 
-## Consume fact events
+## Consuming Fact Events
 
 Fact events flow through a separate stream, `<domain>::book-fact` instead of `<domain>::book`. An event
 handler subscribed to the aggregate will receive both delta and fact events.
@@ -62,7 +62,7 @@ When running the async server (`protean server`), the handler is invoked automat
 The handler receives the complete state and can overwrite the projection. It
 does not need to track deltas.
 
-## Verify the fact events
+## Verifying
 
 ```python
 --8<-- "guides/getting-started/tutorial/ch15.py:usage"
@@ -84,7 +84,7 @@ inventory before shipping, integrates with external suppliers, and
 feeds a marketing dashboard. In the next chapter, we will enter
 production operations, starting with message tracing.
 
-## See the full source
+## Full Source
 
 ??? example "ch15.py, 159 lines"
 

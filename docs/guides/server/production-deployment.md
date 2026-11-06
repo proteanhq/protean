@@ -1,4 +1,4 @@
-# Deploy the server to production
+# Production Deployment
 
 To deploy the Protean server in production, you set up four things: process
 management, containerization, how you scale, and health checks.
@@ -7,7 +7,7 @@ For basic server usage, see [Run the Server](./index.md). For the full
 production checklist, pool sizing, DLQ maintenance, subscription profiles, OTEL
 metrics, and graceful shutdown, see [Harden the Server](./hardening.md).
 
-## Run the server under a process manager
+## Process Management
 
 Use a process manager like systemd, supervisord, or Docker. Send
 `SIGTERM` to trigger graceful shutdown and give the process at least
@@ -142,7 +142,7 @@ Hardening reference](../../reference/server/hardening.md#health-checks).
     guard cannot catch this double processing. Set `replicas: 1` for such
     domains. See [Scaling Considerations](#scaling-considerations) below.
 
-### Add health checks to FastAPI apps
+### FastAPI apps
 
 API pods serving HTTP traffic should mount the equivalent router on
 their FastAPI app:
@@ -155,7 +155,7 @@ their FastAPI app:
 Point the probes at the same ports your API already exposes, no separate health
 server is needed.
 
-## Choose how to scale the server { #scaling-considerations }
+## Scaling Considerations
 
 **StreamSubscription** supports horizontal scaling:
 

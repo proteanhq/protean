@@ -1,4 +1,4 @@
-# ADR-0011: Shut down the engine in four steps and give every adapter a `close()` contract
+# ADR-0011: Engine Shutdown and Resource Lifecycle Contract
 
 | Field | Value |
 |-------|-------|

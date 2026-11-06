@@ -1,10 +1,10 @@
-# Choose a subscription type for your handlers
+# Subscription Types
 
 Protean provides two subscription types for connecting handlers to message
 sources. Each type suits different use cases. The two types also give different
 guarantees.
 
-## Compare the two types
+## Overview
 
 | Feature | StreamSubscription | EventStoreSubscription |
 | ------- | ------------------ | ---------------------- |
@@ -53,9 +53,9 @@ sequenceDiagram
     SS->>RS: XACK (acknowledge)
 ```
 
-### What StreamSubscription offers {#stream-key-features}
+### Key Features {#stream-key-features}
 
-#### Scale out with consumer groups
+#### Consumer Groups
 
 Multiple instances of your application can process messages in parallel:
 
@@ -70,7 +70,7 @@ Stream: orders
 Each message is delivered to exactly one consumer in the group, enabling
 horizontal scaling.
 
-#### Wait for messages with blocking reads
+#### Blocking Reads
 
 StreamSubscription uses Redis's `XREADGROUP` with blocking, which means:
 
@@ -91,7 +91,7 @@ messages = broker.read_blocking(
 )
 ```
 
-#### Move failed messages to a dead letter queue
+#### Dead Letter Queue
 
 Failed messages are moved to a DLQ after exhausting retries:
 
@@ -119,7 +119,7 @@ debugging. `consumer_group` holds the handler's fully qualified name:
 }
 ```
 
-##### Inspect, replay or purge DLQ messages
+##### Managing DLQ Messages
 
 Protean provides built-in tools to inspect and act on DLQ messages without
 writing custom scripts:
@@ -129,10 +129,10 @@ writing custom scripts:
 - **Observatory**: The [DLQ tab](observability.md) in the Observatory dashboard
   provides a web UI and REST API (`/api/dlq/*`) for the same operations.
 
-See [Dead Letter Queue Management](../../concepts/async-processing/subscriptions.md#inspect-replay-and-purge-messages-in-the-dead-letter-queue)
+See [Dead Letter Queue Management](../../concepts/async-processing/subscriptions.md#dead-letter-queue-management)
 for usage examples.
 
-#### Retry failed messages automatically
+#### Automatic Retries
 
 Failed messages are automatically retried with configurable delays:
 
@@ -152,7 +152,7 @@ Failed messages are automatically retried with configurable delays:
 | `enable_dlq` | true | Whether to use dead letter queue |
 | `retention_maxlen` | none | Cap the stream at this many entries (see [Stream retention](#stream-retention)) |
 
-#### Set stream retention {#stream-retention}
+#### Stream retention {#stream-retention}
 
 By default a StreamSubscription never trims its broker stream: processed
 messages stay in Redis forever, so the stream grows without bound. Set
@@ -184,7 +184,7 @@ is size-based retention only; there is no time-based TTL.
 Each built-in profile carries a default cap (see
 [Stream retention defaults](configuration.md#stream-retention-defaults)).
 
-### When should you use StreamSubscription? {#stream-when-to-use}
+### When to Use {#stream-when-to-use}
 
 Use StreamSubscription when you need:
 
@@ -198,7 +198,7 @@ Use StreamSubscription when you need:
 `EventStoreSubscription` reads messages directly from the event store. It's
 designed for scenarios where you need direct access to the event stream.
 
-### How does EventStoreSubscription work? {#eventstore-how-it-works}
+### How It Works {#eventstore-how-it-works}
 
 ```mermaid
 sequenceDiagram
@@ -220,9 +220,9 @@ sequenceDiagram
     end
 ```
 
-### What EventStoreSubscription offers {#eventstore-key-features}
+### Key Features {#eventstore-key-features}
 
-#### Read events straight from the event store
+#### Direct Event Store Access
 
 Reads events directly from the event store, preserving the complete event
 history:
@@ -236,7 +236,7 @@ messages = event_store.read(
 )
 ```
 
-#### Track the read position in the event store
+#### Position Tracking
 
 Position is stored in the event store itself as a special message type:
 
@@ -256,7 +256,7 @@ f"position-{subscriber_name}-{stream_category}"
 }
 ```
 
-#### Filter messages by origin stream
+#### Origin Stream Filtering
 
 Filter messages by their origin stream. Use this filter when your handler
 processes events raised in response to specific commands:
@@ -283,7 +283,7 @@ When you need any of the following, use EventStoreSubscription:
 - **Debugging**: Inspecting event flow in development
 - **Single-worker scenarios**: When horizontal scaling isn't needed
 
-### Expect a warning in production
+### Production Warning
 
 When using EventStoreSubscription in production, Protean logs a warning:
 
@@ -297,7 +297,7 @@ dead letter queue, and horizontal scaling with consumer groups.
 This warning appears when `PROTEAN_ENV`, `PYTHON_ENV`, `ENV`, or `ENVIRONMENT`
 is set to `production`, `prod`, or `prd`.
 
-## Which type should you use for each scenario?
+## Recommendation Summary
 
 | Scenario | Recommended Type |
 | -------- | ---------------- |
@@ -309,7 +309,7 @@ is set to `production`, `prod`, or `prd`.
 | High-throughput processing | StreamSubscription |
 | Single-server deployment | Either |
 
-## Configure each subscription type
+## Configuration Examples
 
 !!!note
     If you do not explicitly specify a `subscription_type` or
@@ -340,7 +340,7 @@ Or using a profile:
 --8<-- "reference/server/subscription-types/001.py:projection_profile"
 ```
 
-## Monitor subscription lag
+## Monitoring lag
 
 Both subscription types support lag monitoring through the CLI, Observatory
 API, and Prometheus metrics. Lag is computed differently for each type:
@@ -365,7 +365,7 @@ curl http://localhost:9000/api/subscriptions
 See [`protean subscriptions`](../cli/runtime/subscriptions.md) for full CLI
 documentation and [Observability](observability.md) for the Observatory API.
 
-## See also
+## Related pages
 
 - [Configuration](configuration.md): Learn about configuration profiles and
   the priority hierarchy

@@ -8,7 +8,7 @@ adapters.
 --8<-- "reference/domain-elements/domain-constructor/001.py:constructor"
 ```
 
-## What parameters does the constructor take?
+## Parameters
 
 ### `root_path`
 

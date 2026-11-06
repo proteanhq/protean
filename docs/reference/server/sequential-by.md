@@ -219,7 +219,7 @@ check guards every read and ack. This gives four properties:
   partition by an explicit action: the operator inspects the head, then skips
   it or moves it to the DLQ by hand.
 
-### How the consumer finds and retires partitions { #discovery-and-cold-partitions }
+### Discovery and cold partitions
 
 The consumer discovers live partitions by reading a maintained index, a Redis
 set `{stream_category}:__partitions__` the publisher writes on each publish,
@@ -236,7 +236,7 @@ process-manager instance are ever handled at once. Protean does not promise
 cross-category order for one instance, because the events are on different
 streams. Protean promises only that those events never overlap.
 
-### How partitions work with priority lanes
+### Priority lanes
 
 When [priority lanes](../../guides/server/using-priority-lanes.md) are enabled,
 a low-priority partitioned event is published to the key's backfill lane
@@ -260,7 +260,7 @@ failover speed against reclaim churn.
 | `poll_interval_seconds` | float | `0.25` | How long a per-partition worker waits between reads when its partition is empty. |
 | `reap_idle_ms` | int | `3600000` | How long a drained partition must sit idle before its owner retires it from the index. |
 
-## When does partition-per-key fit?
+## Applicability
 
 Partition-per-key on Redis is bounded-cardinality by design. The key must be a
 natural serialization domain with a bounded live set (a tenant, a region, an

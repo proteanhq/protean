@@ -1,4 +1,4 @@
-# Mutate an aggregate through its methods
+# Mutating Aggregates
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -9,7 +9,7 @@ the aggregate in an invalid state without any error. Instead, state changes
 happen through **methods on the aggregate** that encapsulate the business
 logic, enforce invariants, and raise events.
 
-## How does a typical state change flow?
+## Typical Workflow
 
 A typical workflow of a state change is depicted below:
 
@@ -38,7 +38,7 @@ method that mutates state:
 Also visible is the invariant (business rule) that the balance should never
 be below the overdraft limit.
 
-## Change state by updating attributes
+## Mutating State
 
 You change state within an aggregate by updating its attributes.
 
@@ -106,9 +106,9 @@ invalid when you change multiple fields together. In that case, use
 
 Within `atomic_change`, pre-invariants fire on entry, individual assignment
 checks are suspended, and post-invariants fire on exit. See
-[Invariants, Atomic Changes](invariants.md#batch-changes-with-atomic_change) for details.
+[Invariants, Atomic Changes](invariants.md#atomic-changes) for details.
 
-### Identifiers cannot change once set
+### Identifier Immutability
 
 Identifier fields (marked with `identifier=True` or using the `Auto`/
 `Identifier` field type) cannot be changed once set. Attempting to reassign
@@ -120,14 +120,14 @@ In [1]: account.id = "new-id"
 InvalidOperationError: Identifiers cannot be changed once set
 ```
 
-### Changes to a child entity run the root aggregate's invariants
+### Child Entity Mutations
 
 When a child entity's attribute is changed, the **root aggregate's** invariants
 fire, not just the entity's own. As a result, Protean always enforces
 cross-entity business rules, including for mutations to nested entities in the
 aggregate cluster.
 
-## Change state in event-sourced aggregates
+## Event-Sourced Aggregates
 
 For **event-sourced aggregates**, state is never mutated directly in
 business methods. Instead, business methods raise events via `raise_()`,

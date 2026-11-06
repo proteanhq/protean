@@ -1,4 +1,4 @@
-# Look up Protean's options and APIs
+# Reference
 
 The reference section is factual documentation of Protean's components,
 arranged for lookup. Use it to find specific configuration options, field

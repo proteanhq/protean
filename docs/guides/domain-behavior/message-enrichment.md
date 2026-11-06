@@ -1,4 +1,4 @@
-# Enrich every message with metadata
+# Message Enrichment
 
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -15,13 +15,13 @@ The enriched data is stored in `metadata.extensions`. This user-space dict is
 persisted alongside all other metadata in the event store. It survives
 serialization round-trips.
 
-## Enrich events
+## Event Enrichers
 
 An **event enricher** is a callable that receives the event being raised and
 the aggregate instance. It returns a `dict[str, Any]` of key-value pairs, and
 Protean merges them into `metadata.extensions`.
 
-### Register an event enricher
+### Registration
 
 Register enrichers with `domain.register_event_enricher()` or the
 `@domain.event_enricher` decorator. In these examples, helpers such as
@@ -36,7 +36,7 @@ put on Protean's `g`:
 --8<-- "guides/domain-behavior/message-enrichment/001.py:decorator"
 ```
 
-### When do event enrichers run?
+### How It Works
 
 Enrichers run inside `aggregate.raise_()`, **after** the event's full metadata
 (headers, envelope, domain meta) is constructed but **before** the event is
@@ -47,7 +47,7 @@ appended to `aggregate._events`. This means:
 - The event's core metadata (correlation ID, stream, sequence) is already set
 - Extensions are included when the event is stored in the event store
 
-### What does an event enricher receive and return?
+### Enricher Signature
 
 ```python
 # fragment
@@ -61,7 +61,7 @@ def enricher(event: BaseEvent, aggregate: BaseAggregate) -> dict[str, Any]:
 | `aggregate` | The aggregate instance raising the event |
 | **Returns** | A `dict[str, Any]` merged into `metadata.extensions` |
 
-### Register more than one enricher
+### Multiple Enrichers
 
 You can register any number of enrichers. They execute in registration order
 (FIFO). Protean merges their results. If two enrichers set the same key, the
@@ -71,7 +71,7 @@ later one wins:
 --8<-- "guides/domain-behavior/message-enrichment/002.py:fifo"
 ```
 
-## Enrich commands
+## Command Enrichers
 
 A **command enricher** works the same way but for commands processed via
 `domain.process()`. Since commands haven't reached a handler yet, enrichers
@@ -81,7 +81,7 @@ receive only the command (no aggregate):
 --8<-- "guides/domain-behavior/message-enrichment/001.py:command"
 ```
 
-### What does a command enricher receive and return?
+### Enricher Signature
 
 ```python
 # fragment
@@ -89,7 +89,7 @@ def enricher(command: BaseCommand) -> dict[str, Any]:
     """Return key-value pairs to merge into metadata.extensions."""
 ```
 
-## Stamp fields on the aggregate before it is saved
+## Aggregate Pre-Persist Enrichers
 
 Event and command enrichers write to `metadata.extensions`. When you instead
 need to stamp fields **on the aggregate itself** (audit columns like
@@ -133,7 +133,7 @@ abstract audit base with `auto_now`/`auto_now_add` timestamps plus
 `created_by`/`updated_by`), see [Track Audit and Lifecycle
 Fields](../../patterns/track-audit-fields.md).
 
-## Read extensions from the metadata
+## Accessing Extensions
 
 After raising an event, extensions are available on the metadata:
 
@@ -148,7 +148,7 @@ through the event store:
 --8<-- "guides/domain-behavior/message-enrichment/001.py:round_trip"
 ```
 
-## What happens in edge cases?
+## Edge Cases
 
 | Scenario | Behavior |
 |----------|----------|
@@ -164,7 +164,7 @@ Event enrichers also run on [fact events](../domain-definition/events.md#fact-ev
 Since fact events pass through `raise_()` like any other event, they
 are enriched automatically.
 
-## How should you use enrichers?
+## Best Practices
 
 1. **Keep enrichers fast**: They run synchronously inside `raise_()` for
    every event. Avoid I/O calls; prefer reading from thread-local context

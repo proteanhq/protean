@@ -1,4 +1,4 @@
-# What the stable surface covers
+# Stable surface
 
 Protean makes one promise in its [versioning policy](versioning-policy.md):
 
@@ -27,7 +27,7 @@ covers. Everywhere else, the tier definitions below are what to reason with.
 
 ---
 
-## What each of the three tiers promises
+## The three tiers
 
 **Stable.** The compatibility contract applies. These names, their signatures,
 and their documented behaviour change only through the deprecation process. In
@@ -117,7 +117,7 @@ disappears.
 
 ---
 
-## Which surface conventions are settled
+## Ratified conventions
 
 These are settled decisions about how the stable surface is organized. This
 page records them so that you do not mistake them for oversights.
@@ -241,7 +241,7 @@ or `protean.integrations.*`; see their own reference pages for those.
 
 ---
 
-## What to read next
+## Related reading
 
 - [Versioning policy](versioning-policy.md): What the tiers promise, and how to enforce it in CI.
 - [Consistency & delivery guarantees](guarantees.md): The behavioural contract, which is itself part of the Stable surface.

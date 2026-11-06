@@ -29,7 +29,7 @@ Events are always connected to an Aggregate class, specified with the
 `part_of` param in the decorator. An exception to this rule is when the
 Event class has been marked _Abstract_.
 
-### Define abstract events
+### Abstract Events
 
 Use the `abstract` option to define a base event with shared fields that
 concrete events can inherit:
@@ -44,7 +44,7 @@ emitted to a stream.
 
 ---
 
-## Choose synchronous or asynchronous processing
+## Synchronous vs Asynchronous Processing
 
 Events in Protean can be processed either synchronously or asynchronously:
 
@@ -53,7 +53,7 @@ Events in Protean can be processed either synchronously or asynchronously:
   until all event handlers have completed.
 - **Asynchronous processing**: The event is stored in the event store and processed later by a background worker. The operation continues without waiting for event handlers to complete.
 
-### Set the processing mode in the domain configuration
+### Domain Configuration
 
 You can configure the event processing mode through the domain configuration:
 
@@ -69,11 +69,11 @@ event_processing = "sync"  # or "async"
 
 By default, Protean sets `event_processing` to `async` in the domain configuration.
 
-### How events flow in each mode
+### Event Processing Workflows
 
 The workflow for event processing differs based on whether synchronous or asynchronous mode is used:
 
-#### How an event flows in synchronous mode
+#### Synchronous Event Flow
 
 ```mermaid
 sequenceDiagram
@@ -87,7 +87,7 @@ sequenceDiagram
     Domain-->>Aggregate: Continue execution
 ```
 
-#### How an event flows in asynchronous mode
+#### Asynchronous Event Flow
 
 ```mermaid
 sequenceDiagram
@@ -136,7 +136,7 @@ The server continually polls the event store for new events that have the `async
   - You want to distribute load across background workers
   - You're implementing event-driven or reactive architectures
 
-### How command processing compares
+### Relationship with Command Processing
 
 Protean offers similar configuration options for commands through:
 
@@ -154,7 +154,7 @@ Event Sourcing, and Event-Driven Architecture within your Protean applications.
 
 ---
 
-## What makes up an event
+## Event Structure
 
 An event is made of three parts:
 
@@ -374,7 +374,7 @@ In [6]: event.payload
 Out[6]: {'user_id': '1'}
 ```
 
-## Version an event
+## Versioning
 
 Because events serve as API contracts of an aggregate with the rest of the
 ecosystem, they are versioned to signal changes to contract.
@@ -416,7 +416,7 @@ generated event's metadata:
 --8<-- "guides/domain-definition/events/002.py:full"
 ```
 
-## Follow an event from end to end
+## End-to-End Event Flow
 
 Here is a complete example showing the full lifecycle: defining an event,
 raising it from an aggregate, and handling it in an event handler.
@@ -460,7 +460,7 @@ separation lets internal consumers subscribe to granular delta events while
 external consumers subscribe to the fact stream for complete state snapshots.
 
 Read about generating fact events in the section on
-[raising events](../domain-behavior/raising-events.md#how-protean-generates-fact-events). For
+[raising events](../domain-behavior/raising-events.md#fact-events). For
 the integration pattern, see
 [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md).
 

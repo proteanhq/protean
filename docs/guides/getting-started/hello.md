@@ -2,12 +2,12 @@
 
 Define an aggregate, save it, load it, in under 20 lines of Python.
 
-## What do you need first?
+## Prerequisites
 
 - Python 3.11+
 - Protean installed ([Installation](./installation.md))
 
-## Write and run the code
+## The Code
 
 Create a file called `hello.py`:
 

@@ -1,4 +1,4 @@
-# Chapter 3: Add entities and associations
+# Chapter 3: Entities and Associations
 
 You build the `Order` aggregate with child entities and associations, so the
 bookstore can take orders.
@@ -26,7 +26,7 @@ Notice that:
 - `items` is a `HasMany` association. It holds a collection of `OrderItem`
   entities.
 
-## Model order items as child entities
+## Child Entities
 
 Each order item is an **entity**. An object with its own identity that belongs
 to the Order aggregate. Unlike value objects, entities can be individually
@@ -98,7 +98,7 @@ Our domain now has two aggregates: `Book` and `Order`. In the next
 chapter, we will add business rules that keep these aggregates in a
 valid state.
 
-## See the full source
+## Full Source
 
 ??? example "ch03.py, 148 lines"
 
@@ -106,6 +106,6 @@ valid state.
     --8<-- "guides/getting-started/tutorial/ch03.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 4: Business Rules →](04-business-rules.md)

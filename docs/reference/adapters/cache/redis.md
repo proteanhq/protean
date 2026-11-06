@@ -3,7 +3,7 @@
 The Redis cache adapter provides persistent, distributed caching with TTL
 support. It is the recommended cache provider for production environments.
 
-## When should you use the Redis cache?
+## Overview
 
 The Redis cache is designed for:
 
@@ -12,7 +12,7 @@ The Redis cache is designed for:
 - **TTL-based expiry** with millisecond precision
 - **Pattern-based operations** for bulk retrieval and cleanup
 
-## Install the Redis cache
+## Installation
 
 ```bash
 pip install "protean[redis]"
@@ -21,7 +21,7 @@ pip install "protean[redis]"
 pip install "redis>=8.0.0,<8.2.0"
 ```
 
-## Configure the Redis cache
+## Configuration
 
 ```toml
 [caches.default]
@@ -30,7 +30,7 @@ URI = "redis://localhost:6379/2"
 TTL = 300
 ```
 
-### Which options can you set?
+### Configuration Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -60,7 +60,7 @@ The same rule applies wherever a TTL is passed: `cache.add(projection, ttl=...)`
 and `cache.set_ttl(key, ttl)` take the same shapes and reject the same ones.
 Omitting the TTL (or passing an empty string) uses the cache's configured `TTL`.
 
-### Write the connection string
+### Connection String Format
 
 ```
 redis://[[username]:[password]@]host[:port][/database]
@@ -79,7 +79,7 @@ redis://:password@redis.prod:6379/2  # With password, database 2
     broker's streams and consumer groups. Other databases on the server are
     not touched.
 
-## Use the cache from your code
+## Usage
 
 Projections are automatically stored in the cache when a projector writes to a
 cache-backed projection. You can also interact with the cache directly. This
@@ -96,7 +96,7 @@ Each entry's key is the projection's name in snake case, then `:::`, then its
 identifier. `get_ttl` returns the seconds left as a float, so right after
 `set_ttl(..., ttl=600)` it returns a value just under or equal to `600.0`.
 
-## What are the limits of the Redis cache?
+## Limitations
 
 - **Requires Redis Server**: Redis must be installed and running. Use
   `make up` to start Protean's Docker-based development services.
@@ -106,7 +106,7 @@ identifier. `get_ttl` returns the seconds left as a float, so right after
   pattern-based lookups only. For complex queries, use a database-backed
   projection instead.
 
-## Read related pages
+## Related pages
 
 - Learn about [projections](../../../guides/consume-state/projections.md)
 - Understand [cache configuration](../../../reference/configuration/index.md)

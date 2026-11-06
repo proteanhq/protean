@@ -157,9 +157,9 @@ memory:
 --8<-- "guides/testing/fixtures-and-patterns/integration_ready/test_provider.py:provider_check"
 ```
 
-## Reuse common fixture patterns
+## Common Fixture Patterns
 
-### Clean up data after each test
+### Per-Test Data Cleanup
 
 `DomainFixture.domain_context()` automatically resets data in all providers,
 brokers, and the event store after each test. If you use the recommended
@@ -180,7 +180,7 @@ leaks between tests, the second of the two tests fails:
 --8<-- "guides/testing/fixtures-and-patterns/manual_cleanup/test_cleanup.py:tests"
 ```
 
-### Get repositories from a fixture
+### Repository Helper
 
 Provide quick access to repositories for assertions:
 
@@ -196,7 +196,7 @@ Use them in tests:
 --8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:repository_usage"
 ```
 
-### Share BDD steps across feature files
+### Shared BDD Steps
 
 Put steps that appear across multiple feature files in `conftest.py`.
 pytest-bdd discovers the step definitions in that file automatically.
@@ -227,7 +227,7 @@ tests/bdd/ordering/conftest.py    -> steps available in ordering/ tests
 tests/bdd/registration/conftest.py -> steps available in registration/ tests
 ```
 
-### Override the domain configuration for one test directory
+### Custom Domain Configuration
 
 Override specific configuration for a subset of tests using a separate
 `DomainFixture` in that directory's `conftest.py`:
@@ -272,7 +272,7 @@ This overrides the root-level domain fixture for all tests under
 adapters. `DomainFixture` automatically creates the schema, drops it at
 teardown, and cleans up data after each test.
 
-### Reset global state between tests
+### Per-Test Global State Reset
 
 If your domain uses module-level counters or caches, reset them between tests:
 
@@ -281,9 +281,9 @@ If your domain uses module-level counters or caches, reset them between tests:
 --8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:global_state"
 ```
 
-## Organize your test files
+## Test Organization Patterns
 
-### Use a flat layout for smaller projects
+### Flat Layout
 
 For smaller projects, a flat layout works well:
 
@@ -296,7 +296,7 @@ tests/
 └── test_fulfillment.py      # Domain service tests
 ```
 
-### Organize larger projects by testing layer
+### Layered Layout
 
 For larger projects, organize by testing layer:
 
@@ -328,7 +328,7 @@ tests/
     └── test_persistence.py
 ```
 
-### Choose where BDD feature files and steps go
+### BDD Directory Conventions
 
 Feature files can be organized by domain concept or by test module. The key is
 consistency:
@@ -340,7 +340,7 @@ consistency:
 | Shared steps in parent `conftest.py` | Steps reused across multiple test modules |
 | Steps in test module | Steps used only by that module's scenarios |
 
-## Switch between in-memory and real infrastructure
+## Dual-Mode Testing
 
 To switch between in-memory and real infrastructure, Protean recommends
 `--protean-env`. The option swaps all adapters at the configuration level with
@@ -382,9 +382,9 @@ for most projects.
 See the [Dual-Mode Testing](../../patterns/dual-mode-testing.md) pattern for
 the complete setup, CI configuration, and multi-domain guidance.
 
-## Run a subset of your tests
+## Running Tests Selectively
 
-### Select tests by directory
+### By Directory
 
 ```shell
 # Unit tests only (fast)
@@ -397,7 +397,7 @@ pytest tests/bdd/
 pytest tests/integration/
 ```
 
-### Select scenarios by Gherkin tag
+### By Gherkin Tag
 
 ```shell
 # Run only scenarios tagged @ordering
@@ -407,7 +407,7 @@ pytest tests/bdd/ -m ordering
 pytest tests/bdd/ -m "smoke and not slow"
 ```
 
-### Select tests by keyword or path
+### By Keyword
 
 ```shell
 # Run tests matching a pattern
@@ -420,7 +420,7 @@ pytest tests/unit/test_book.py
 pytest tests/unit/test_book.py::test_publish_changes_status
 ```
 
-### Use common pytest flags
+### Useful pytest Flags
 
 | Flag | Purpose |
 |------|---------|
@@ -431,7 +431,7 @@ pytest tests/unit/test_book.py::test_publish_changes_status
 | `--lf` | Re-run only last-failed tests |
 | `--pdb` | Drop into debugger on failure |
 
-## Measure test coverage
+## Coverage Reporting
 
 Run your test suite with coverage to verify that your business logic meets the
 100% coverage target:
@@ -452,7 +452,7 @@ source = ["myapp"]
 omit = ["myapp/__init__.py", "myapp/config.py"]
 ```
 
-## Freeze time in tests
+## Freezing Time
 
 Anything with a deadline, a lock expiry, or a retry backoff is awkward to test
 against the real clock. The usual workaround is to sleep just under the

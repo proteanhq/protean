@@ -1,4 +1,4 @@
-# Recover failed messages from dead letter queues
+# Dead Letter Queues
 
 When a handler or subscriber fails to process a message, Protean retries
 it a configurable number of times and then moves it to a **dead letter
@@ -11,7 +11,7 @@ a fix, and clear out messages that will never succeed. For the full retry flow
 per subscription type (how messages *enter* the DLQ) see [Error
 Handling](./error-handling.md).
 
-## When Protean moves a message to the DLQ
+## When messages end up in the DLQ
 
 A message is routed to the DLQ when:
 
@@ -21,7 +21,7 @@ A message is routed to the DLQ when:
 
 The handler keeps processing subsequent messages. One poison pill does not
 block the stream. See [Error Handling: Subscription error
-flows](./error-handling.md#how-each-subscription-type-retries-a-failed-message) for the retry mechanics of
+flows](./error-handling.md#subscription-error-flows) for the retry mechanics of
 each subscription type.
 
 !!! note "DLQ support depends on the broker"
@@ -114,7 +114,7 @@ zero.
 
 ---
 
-## Replay in bulk after a transient incident
+## Bulk replay after a transient incident
 
 Sometimes an external dependency (database, broker, third-party API) was down,
 and dozens or hundreds of messages with the same root cause have collected in
@@ -196,7 +196,7 @@ enable_dlq = true
 Before you set `enable_dlq = false`, be certain failed messages are safe to
 drop. Without the DLQ you lose the fix-and-replay workflow entirely. The full
 configuration matrix is in [Error Handling: Configuration
-reference](./error-handling.md#which-settings-control-error-handling).
+reference](./error-handling.md#configuration-reference).
 
 ---
 
@@ -259,11 +259,11 @@ dlq_alert_threshold = 5       # Tighter — page early on payment failures
 ```
 
 For the full option reference, see
-[Configuration: DLQ Maintenance](../../reference/configuration/index.md#trim-and-monitor-dlq-streams).
+[Configuration: DLQ Maintenance](../../reference/configuration/index.md#dlq-maintenance).
 
 ---
 
-## Look up common errors
+## Common errors
 
 | Condition | Behavior |
 |---|---|

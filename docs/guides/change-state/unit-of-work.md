@@ -56,7 +56,7 @@ carrying `idempotent=True` reads its processed-message marker before the body
 runs. With a DB-backed marker store, that read is a repository access, so the
 invocation opens a session before the body.
 
-### Create a UoW yourself
+### Manual UoW
 
 For scripts, data migrations, shell sessions, and tests, you can create a UoW
 explicitly. The code must run with the domain active, for example inside
@@ -92,7 +92,7 @@ This is a thread-local proxy backed by a context stack. The outermost `start()`
 does not push onto the stack. It joins the outermost UoW, so `current_uow`
 keeps pointing at that one (see [Nested Units of Work](#nested-units-of-work)).
 
-## What happens when you nest Units of Work { #nested-units-of-work }
+## Nested Units of Work
 
 When you start a UnitOfWork while another is already active on the same
 context, the new UnitOfWork takes part in the outer one and opens no
@@ -110,7 +110,7 @@ application service (`@use_case`) inside its UoW. The application service then
 joins the handler's transaction and does not commit independently. That is
 intended, so the whole use case stays atomic.
 
-### Why does a nested UoW join the outer one?
+### Why joining, not independent inner transactions
 
 Protean **does not support independent inner transactions**: a nested UoW
 cannot commit or roll back on its own. There is also no savepoint to partially
@@ -218,7 +218,7 @@ sequenceDiagram
    aggregates, so those events are not re-processed. An aggregate that was only
    read keeps its events on the instance.
 
-## What happens on rollback
+## Rollback semantics
 
 When an exception is raised inside a UoW block:
 
@@ -237,7 +237,7 @@ When an exception is raised inside a UoW block:
 --8<-- "guides/change-state/unit-of-work/002.py:rollback"
 ```
 
-## What the identity map does
+## The identity map
 
 The UoW maintains an **identity map**: one instance of each aggregate that it
 has loaded or saved during the current transaction. The identity map serves
@@ -312,7 +312,7 @@ With this pattern, each aggregate is always persisted in its own transaction. A
 failed transaction therefore cannot leave a partial update across two
 aggregates.
 
-## How the UoW commits across multiple providers
+## Multi-provider sessions
 
 When your domain uses multiple database providers (e.g., PostgreSQL for
 transactional data, Elasticsearch for search), the UoW opens a separate session
@@ -320,7 +320,7 @@ for each provider. At commit time, each provider's session is committed
 independently. This means that a failure in one provider's commit does not roll
 back another provider's already-committed changes.
 
-## How much transaction support each provider gives
+## Database transaction capabilities
 
 The UoW relies on the underlying database provider's transaction support.
 
@@ -332,7 +332,7 @@ The UoW relies on the underlying database provider's transaction support.
 - **No transaction support**: The UoW logs a warning and proceeds. Changes are
   persisted but not guaranteed to be atomic.
 
-## What happens on a version conflict
+## Optimistic concurrency
 
 When the event store detects a version conflict during commit (another
 transaction modified the same aggregate stream), the UoW raises an
@@ -355,14 +355,14 @@ with version retry on, that handler re-runs the whole chain in a fresh
 `UnitOfWork`. An application service, a process manager or your own
 `UnitOfWork` has no retry, so its caller receives the `ExpectedVersionError`.
 For details, see [Version conflict
-auto-retry](../server/error-handling.md#retry-version-conflicts-automatically).
+auto-retry](../server/error-handling.md#version-conflict-auto-retry).
 
 For application services or direct `UnitOfWork` usage, you must handle
 `ExpectedVersionError` yourself. See
 [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md)
 for the three conflict categories and how to respond to each.
 
-## What happens when a commit fails
+## Errors during commit
 
 If the database commit fails for reasons other than version conflicts on the
 commit's own writes, the UoW raises a `TransactionError` with diagnostic
@@ -385,5 +385,5 @@ arrives as a `TransactionError`, with the `ExpectedVersionError` as its
 
     **Error handling:**
 
-    - [Error Handling](../server/error-handling.md#retry-version-conflicts-automatically): Automatic version conflict retry in async handlers.
+    - [Error Handling](../server/error-handling.md#version-conflict-auto-retry): Automatic version conflict retry in async handlers.
     - [Optimistic Concurrency as a Design Tool](../../patterns/optimistic-concurrency-as-design-tool.md): Classify version conflicts by business meaning.

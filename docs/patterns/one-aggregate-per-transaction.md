@@ -120,7 +120,7 @@ Few business operations truly require multi-aggregate atomicity. When such
 operations arise, first question the aggregate boundaries. Perhaps those two
 "aggregates" should actually be one.
 
-### Aggregates scale independently
+### Independent Scalability
 
 When each aggregate is its own transaction, aggregates can be:
 
@@ -195,7 +195,7 @@ changes when it has already applied that order.
 
 ## Applying the Pattern
 
-### Transfer money between two accounts
+### The Money Transfer Example
 
 The classic example of a multi-aggregate operation: transferring money between
 two accounts.
@@ -231,7 +231,7 @@ retries. If retries are exhausted, a compensating action re-credits the source
 account. This is the saga pattern. It is more complex, but each step is a
 single-aggregate transaction, so failures are predictable and recoverable.
 
-### Fulfill an order across several aggregates
+### Order Fulfillment Pipeline
 
 A more realistic example with multiple downstream aggregates:
 
@@ -265,9 +265,9 @@ modifies one aggregate per transaction.
 
 ---
 
-## When to make an exception to the rule
+## When to Bend the Rule
 
-### When the business truly requires atomic changes
+### True Business Atomicity Requirements
 
 Occasionally, the business genuinely requires two things to change atomically.
 If you meet such a requirement, first ask: are the aggregate boundaries
@@ -287,7 +287,7 @@ Options:
    independent scalability for immediate consistency. Document it as technical
    debt.
 
-### Process bulk operations one aggregate at a time
+### Bulk Operations
 
 Some operations naturally batch changes to many instances of the same aggregate
 type (e.g., closing all orders past a deadline). These are still
@@ -302,7 +302,7 @@ method shares the handler's UoW. An application service method can open a
 
 ---
 
-## How to tell you're violating the pattern
+## Signs You're Violating the Pattern
 
 1. **Your handler calls `repo.add()` for more than one aggregate type.**
    Each `repo.add()` is a persistence operation. Multiple adds for different

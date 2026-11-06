@@ -1,4 +1,4 @@
-# Check your architecture with fitness functions
+# Architecture fitness functions
 
 Architecture fitness functions are automated, objective, repeatable checks that
 enforce your architectural decisions on every commit. Protean runs them with
@@ -56,7 +56,7 @@ actually decided.
 
 ---
 
-## Which rules are built in?
+## Built-in rules
 
 `protean check` ships the following rules, grouped by category. Each links to
 its full entry (rationale, fix, and configuration) in the
@@ -203,12 +203,12 @@ level to `warn`.
 
 ---
 
-## Run the checks in CI
+## CI integration
 
 `protean check` can write its findings in two machine-readable formats. Both
 emit the **unfiltered** set of findings regardless of `--level`.
 
-### Send SARIF results to GitHub Code Scanning
+### SARIF → GitHub Code Scanning
 
 `--format=sarif` emits [SARIF 2.1.0](https://sarifweb.azurewebsites.net/), which
 GitHub Code Scanning renders as inline PR annotations and a security dashboard:
@@ -233,7 +233,7 @@ jobs:
 Each SARIF result carries the rule's rationale and fix, and a `helpUri` back to
 this documentation.
 
-### Show findings as GitHub Actions annotations
+### GitHub Actions annotations
 
 For a simpler pipeline without Code Scanning, `--format=github-annotations`
 emits `::error`/`::warning`/`::notice` workflow commands that appear inline on
@@ -270,7 +270,7 @@ custom findings as to findings from built-in rules.
 
 ---
 
-## Run the checks before each commit
+## Pre-commit integration
 
 Run `protean check` locally on every commit alongside the [IR compatibility
 hooks](compatibility-checking.md#step-3-add-pre-commit-hooks). The
@@ -280,7 +280,7 @@ introduce new violations.
 
 ---
 
-## See also
+## Related
 
 - [Fitness Function Catalog](../reference/fitness-functions.md): Every rule in detail.
 - [`protean check` reference](../reference/cli/check.md): Flags, formats, exit codes, JSON schema.

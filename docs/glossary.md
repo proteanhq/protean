@@ -160,7 +160,7 @@ versions. When a version mismatch is detected, the framework raises
 failed operation with exponential backoff before it passes this error to the
 subscription retry pipeline.
 
-[Learn more →](concepts/building-blocks/aggregates.md) | [Auto-retry config →](guides/server/error-handling.md#retry-version-conflicts-automatically) | **See also**: [Aggregate](#aggregate), [Event Sourcing](#event-sourcing)
+[Learn more →](concepts/building-blocks/aggregates.md) | [Auto-retry config →](guides/server/error-handling.md#version-conflict-auto-retry) | **See also**: [Aggregate](#aggregate), [Event Sourcing](#event-sourcing)
 
 ### Delta Event
 
@@ -557,7 +557,7 @@ An ASGI middleware for FastAPI applications that automatically pushes the correc
 
 A set of pre-built exception handlers (`register_exception_handlers`) that map Protean domain exceptions to standard HTTP responses. `ValidationError` and `InvalidDataError` become 400, `ObjectNotFoundError` becomes 404, `InvalidStateError` becomes 409, and `InvalidOperationError` becomes 422.
 
-[Learn more →](guides/fastapi/index.md#map-domain-exceptions-to-http-responses) | **See also**: [DomainContextMiddleware](#domaincontextmiddleware)
+[Learn more →](guides/fastapi/index.md#exception-handlers) | **See also**: [DomainContextMiddleware](#domaincontextmiddleware)
 
 ---
 

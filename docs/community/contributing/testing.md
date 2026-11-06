@@ -54,7 +54,7 @@ protean test -c DATABASE
 `protean test -c DATABASE` runs the database tests against multiple adapters
 (MEMORY, POSTGRESQL, SQLITE).
 
-### How tests run in parallel
+### Parallel runs
 
 `CORE` runs on [pytest-xdist](https://pytest-xdist.readthedocs.io/) with `--dist loadfile`, so all the tests in one file run on the same worker. `PR` runs its core suite the same way.
 
@@ -80,14 +80,14 @@ process, for example to rule out ordering, run:
 protean test --workers 0
 ```
 
-## Test on several Python versions with Nox
+## Multi-Version Testing with Nox
 
 Protean supports Python 3.11, 3.12, 3.13, and 3.14. Protean also tests against
 the 3.15 prerelease. To run tests across all supported versions locally,
 Protean uses [Nox](https://nox.thea.codes/) with a `noxfile.py` at the
 repository root.
 
-### Install the Python versions
+### Prerequisites
 
 Install the four stable Python versions with
 [pyenv](https://github.com/pyenv/pyenv). List them in `.python-version`, so
@@ -100,7 +100,7 @@ pyenv install 3.11 3.12 3.13 3.14
 
 Nox also has a `3.15` session. It runs only if a `python3.15` is on your `$PATH`, and Nox skips it otherwise. To exercise it locally, install the current 3.15 prerelease as well (for example `pyenv install 3.15.0rc1`).
 
-### Run the test matrix
+### Running
 
 ```shell
 make test-matrix            # Core tests across all Python versions
@@ -116,14 +116,14 @@ uv run nox -s full-3.12     # Full suite on 3.12 only
 
 Nox runs sessions **serially** (not in parallel) because the full suite shares database services started by `make up`.
 
-### Which Nox sessions are available?
+### Available Nox Sessions
 
 | Session | Description |
 |---------|-------------|
 | `tests-3.X` | Core tests (memory adapters) on Python 3.X |
 | `full-3.X` | Full test suite (all adapters) on Python 3.X |
 
-## Run the services in Docker containers
+## Docker Containers
 
 Protean uses Docker Compose to provide a consistent development and testing environment. The included `docker-compose.yml` file defines services for all supported adapters:
 
@@ -181,7 +181,7 @@ Refer to `Makefile` for a full list of supported `make` commands.
 
 These containers are also used in CI pipelines to ensure consistent testing across environments.
 
-### Pull service images from the GHCR mirror
+### Service image mirror (GHCR)
 
 CI does not pull these images from Docker Hub. Instead it pulls them from a
 public mirror in this org's GitHub Container Registry (GHCR), at
@@ -213,7 +213,7 @@ When you override an image, use these exact refs:
 | `MYSQL_IMAGE` | `ghcr.io/proteanhq/mirror/mysql:8.4` |
 | `MARIADB_IMAGE` | `ghcr.io/proteanhq/mirror/mariadb:11.4` |
 
-## How the tests are organized
+## Tests Organization
 
 Protean follows a systematic approach to test organization and naming:
 
@@ -222,7 +222,7 @@ Protean follows a systematic approach to test organization and naming:
 - Test classes should be named with `Test` prefix followed by the name of the component being tested (e.g., `TestDomain`).
 - The test organization mirrors the package structure, with each core component having its own test directory.
 
-### Configure the test domain {#configuration}
+### Configuration
 
 Protean uses `domain.toml` configuration files to define test domains. The main `tests/domain.toml` provides default settings (sample below):
 
@@ -288,7 +288,7 @@ For example, in the `tests/domain/` directory, different aspects of domain funct
 - `test_domain_traversal.py`
 - `test_domain_shell_context.py`
 
-### Override fixtures in a local `conftest.py`
+### Local Fixtures
 
 For specialized test requirements, you can create local `conftest.py` files within test subdirectories. These local configurations:
 
@@ -518,7 +518,7 @@ This test stores the invoice in the in-memory database, patches only the call to
 --8<-- "community/contributing/testing/007.py:mock_the_gateway"
 ```
 
-### Read the recorded time instead of waiting with a sleep {#read-the-recorded-time-instead-of-racing-a-sleep}
+### Read the recorded time instead of racing a sleep
 
 When a test sleeps and then asserts, its result depends on the machine's load.
 A long sleep makes the test slow. A short sleep makes it flaky. When code
@@ -582,7 +582,7 @@ When a changed line is not covered, do one of these:
 A `pragma` with no reason leaves the next reader to guess why the line is
 excluded.
 
-### Delete a test when coverage and mutation runs show it adds nothing
+### Delete a test when the evidence says it adds nothing
 
 When the code no longer has the covered behaviour, you may delete the test or
 merge it into another. Otherwise, both of these checks must pass:
@@ -654,7 +654,7 @@ for every field type, with strategies shared from
 `tests/serialization/strategies.py`. Keep examples for cases a property does
 not describe, such as one known boundary or a fixed bug.
 
-## Use the shared test fixtures
+## Important Fixtures
 
 Protean provides several important fixtures to simplify test setup and make tests more consistent:
 
@@ -728,7 +728,7 @@ based on command-line options:
 - Used to dynamically select the event store to test against
 - Reads the `--store` option, which specifies the store type
 
-## Write code that runs on documentation pages {#code-on-documentation-pages}
+## Code on documentation pages
 
 `tests/docs/test_doc_pages_run.py` runs every `python` (or `py`) block on every
 page under `docs/`, except the pages in `docs/adr/` and `docs/api/`. The blocks
@@ -804,7 +804,7 @@ page passes, the test fails, and you remove the page's entry to make it pass.
 Two checks have no allowlist. Every block that is not a fragment must parse.
 Every `--8<--` include must point at an existing file and section.
 
-## Measure code coverage
+## Code Coverage
 
 Protean uses Coverage.py to track test coverage. `coverage` configuration is maintained in `pyproject.toml`.
 
@@ -891,7 +891,7 @@ such as the one `protean verify` runs in a temporary project. That run keeps
 the usual order too, because `tests/conftest.py` sets `PYTEST_ADDOPTS=-p
 no:randomly` for each test.
 
-## How CI runs on GitHub Actions
+## Github Actions
 
 Protean's CI runs in three lanes, so a pull request's cost follows the size of the change rather than the number of adapters:
 

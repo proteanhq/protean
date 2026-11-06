@@ -1,4 +1,4 @@
-# How Protean keeps domain objects always valid
+# The Always-Valid Domain
 
 What if your domain objects could never be invalid?
 
@@ -22,7 +22,7 @@ rules, and Protean enforces them continuously.
 
 ---
 
-## Protean validates in four layers
+## Four layers of protection
 
 Protean organizes validation into four distinct layers, each catching a
 different category of error at a different point in the processing pipeline.
@@ -45,7 +45,7 @@ Let's build up an Order domain step by step to see each layer in action.
 
 ---
 
-## Layer 1: Declare constraints on fields
+## Layer 1: Field constraints
 
 The simplest layer. Declare types, ranges, required-ness, and allowed values
 directly on the field. Protean enforces them on construction and on every
@@ -72,7 +72,7 @@ cross-field validation.
 
 ---
 
-## Layer 2: Give value objects their own invariants
+## Layer 2: Value object invariants
 
 Some concepts need their own validation. An email address isn't just a string.
 It has structure. A monetary amount isn't just a float. It has a currency and
@@ -111,7 +111,7 @@ money).
 
 ---
 
-## Layer 3: Enforce business rules with aggregate invariants
+## Layer 3: Aggregate invariants
 
 Business rules that span multiple fields or entities within the aggregate.
 These rules define what makes an Order _valid_ as a business concept. They
@@ -150,7 +150,7 @@ context-dependent rules.
 
 ---
 
-## Layer 4: Guard requests in handlers and services
+## Layer 4: Handler and service guards
 
 Some rules depend on context: who is making the request, what time it is, what
 state other aggregates are in. You write these rules in command handlers,
@@ -169,7 +169,7 @@ path, not just the handler.
 
 ---
 
-## How does Protean enforce validity?
+## How it works
 
 Protean enforces the always-valid guarantee by intercepting every field
 assignment.
@@ -234,7 +234,7 @@ domain code differently:
 
 ---
 
-## Read more about validation
+## Further reading
 
 - [Validation Layering](../../patterns/validation-layering.md): Detailed
   pattern guide with anti-patterns and decision table for which layer to use.

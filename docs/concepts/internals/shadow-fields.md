@@ -42,7 +42,7 @@ If the target aggregate uses a custom identifier (e.g., `email` with
 
 ---
 
-## How Protean names shadow fields
+## Naming convention
 
 | Field type | Shadow field name | Example |
 |---|---|---|
@@ -76,7 +76,7 @@ the shadow fields become `addr_street` and `addr_city`.
 
 ---
 
-## Where does Protean store shadow fields?
+## Where shadow fields live
 
 Shadow fields are stored in the Python instance's `__dict__`, **not** as Pydantic
 model fields. This means:
@@ -94,9 +94,9 @@ concern. In the domain model, you access `customer.billing_address` (an
 
 ---
 
-## How Protean sets shadow fields
+## Lifecycle
 
-### What happens when you create an entity
+### Initialization
 
 When you create an entity, Protean sets its shadow fields in three stages:
 
@@ -120,7 +120,7 @@ explicitly provided, Protean reconstructs it from the shadow values:
 --8<-- "concepts/internals/shadow-fields/001.py:equivalent"
 ```
 
-### What happens when you assign a field
+### Assignment
 
 When you assign to a ValueObject or Reference field, the descriptor
 automatically updates the shadow fields:
@@ -131,7 +131,7 @@ automatically updates the shadow fields:
 
 Setting a field to `None` clears the shadow fields.
 
-### Read and write shadow fields directly
+### Direct access
 
 Shadow fields can be read and written directly:
 
@@ -141,12 +141,12 @@ Shadow fields can be read and written directly:
 
 ---
 
-## How database adapters persist shadow fields
+## Shadow fields and persistence
 
 Shadow fields are the mechanism that lets database adapters store
 Value Objects and References as flat columns.
 
-### How adapters generate table columns
+### Schema generation
 
 The `attributes()` reflection function (used by database adapters) returns
 shadow fields instead of the parent VO/Reference:
@@ -179,7 +179,7 @@ shadow values.
 
 ---
 
-## Which serialization methods include shadow fields?
+## Serialization behavior
 
 | Method | Shadow fields in output? | What appears instead |
 |---|---|---|

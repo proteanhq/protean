@@ -27,7 +27,7 @@ one level carry forward to the next:
     Decision](../../concepts/architecture/architecture-decision.md) guide for a
     systematic framework.
 
-## What does a pathway give you?
+## What a pathway gives you
 
 Each pathway page gives you:
 

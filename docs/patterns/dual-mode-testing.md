@@ -1,4 +1,4 @@
-# Test in two modes with memory and real adapters
+# Dual-Mode Testing with Memory and Real Adapters
 
 !!! tip "Quick Start"
     Already familiar with the concept? Add a `[memory]` section to your
@@ -235,7 +235,7 @@ any adapter-specific issues.
 
 ---
 
-## Use dual-mode testing in multi-domain applications
+## Multi-Domain Applications
 
 You can use dual-mode testing in applications with multiple bounded contexts
 (each with its own `domain.toml`). Each domain gets the same `[memory]`
@@ -257,7 +257,7 @@ switching logic is needed.
 
 ---
 
-## Which features work identically in both modes?
+## What Works Identically in Both Modes
 
 Protean's memory adapters are complete implementations, not mocks. The
 following all work identically in memory and real mode:

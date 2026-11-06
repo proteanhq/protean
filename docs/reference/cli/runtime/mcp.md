@@ -14,7 +14,7 @@ The server exposes five tools:
 - `explain`: what a diagnostic code means and how to fix it.
 - `scaffold`: preview a new element slice, and write it only on consent.
 
-## Install the `mcp` extra
+## Installation
 
 The server needs the optional `mcp` extra:
 
@@ -25,13 +25,13 @@ pip install "protean[mcp]"
 Running `protean mcp` without the extra prints an install hint and exits, the
 same way the other optional commands do. `import protean` never needs the extra.
 
-## Run the command
+## Usage
 
 ```shell
 protean mcp [OPTIONS]
 ```
 
-## Which options does `protean mcp` take?
+## Options
 
 | Option        | Description                          | Default     |
 |---------------|--------------------------------------|-------------|
@@ -40,7 +40,7 @@ protean mcp [OPTIONS]
 | `--port`      | Port to bind for `--http`.           | `8000`      |
 | `--help`      | Show the help message and exit.      |             |
 
-## Choose a transport
+## Transports
 
 The server runs on stdio by default, so an MCP client can launch it directly as
 a subprocess. Pass `--http` to serve over streamable HTTP instead:
@@ -71,7 +71,7 @@ stays as you configured it. You can also create the file by hand as shown, or
 point your client at the `.mcp.json` shipped at the root of the Protean
 repository. That `.mcp.json` carries the same entry.
 
-## What does each tool do?
+## The tools
 
 ### `validate`
 

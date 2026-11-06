@@ -85,7 +85,7 @@ handle the same event:
 --8<-- "guides/consume-state/projectors/001.py:projectors"
 ```
 
-## Combine events from several aggregates in one projection
+## Cross-Aggregate Projections
 
 Projectors can listen to events from multiple aggregates to create
 comprehensive views:
@@ -110,7 +110,7 @@ instead of aggregates. A stream category is qualified with the domain name
 --8<-- "guides/consume-state/projectors/002.py:stream_categories"
 ```
 
-## Make projectors idempotent { #idempotency }
+## Idempotency
 
 Projectors should be idempotent to handle duplicate events gracefully:
 
@@ -124,7 +124,7 @@ Projectors should be idempotent to handle duplicate events gracefully:
 --8<-- "guides/consume-state/projectors/003.py:projector"
 ```
 
-### Expect each event to arrive at least once
+### At-least-once delivery
 
 Event delivery to projectors is at-least-once. The outbox republishes a message
 after a publish-then-crash, and a broker can redeliver a message whose
@@ -179,7 +179,7 @@ Keep three boundaries in mind:
   Renaming a projector method changes its `handler` identity, orphaning its old
   markers, which the same cleanup eventually removes.
 
-## Retry a handler after a transient failure
+## Transient-failure retries
 
 When a handler method fails with a transient exception, a projector can retry
 it *in place*. The retry runs before the message is ever re-delivered or routed
@@ -243,7 +243,7 @@ projector over two aggregates can therefore still apply a `Customer` event and
 an `Order` event for the same customer at the same time. See [Sequential
 processing](../../reference/server/sequential-by.md).
 
-## Catch expected errors and re-raise the rest
+## Error Handling
 
 A projector should catch the errors it expects, such as `ObjectNotFoundError`,
 and log and re-raise any other error:
@@ -258,7 +258,7 @@ and log and re-raise any other error:
 --8<-- "guides/consume-state/projectors/007.py:projector"
 ```
 
-## Delete projection records
+## Handling Deletions
 
 When an event means a projection record should be removed, call `delete()` on a
 repository query filtered to that record. `delete()` returns the number of
@@ -278,7 +278,7 @@ records it removed:
 the projection's `limit` (100 by default). When a filter can match more records
 than that, call `.limit(None)` before `delete()`.
 
-## Build several read models from one aggregate
+## Complete Example
 
 In the example below, two projectors maintain two read models from a single
 aggregate:
@@ -297,9 +297,9 @@ This example demonstrates:
 - **Projections update in real time**: Projections are automatically updated
   when domain events occur
 
-## Test projectors
+## Testing Projectors
 
-### Test projector methods in isolation
+### Unit Testing
 
 Test individual projector methods by creating events and calling the methods
 directly:
@@ -308,7 +308,7 @@ directly:
 --8<-- "guides/consume-state/projectors/009.py:unit"
 ```
 
-### Test the full flow from aggregate to projection
+### Integration Testing
 
 Test the complete flow by raising events from aggregates:
 

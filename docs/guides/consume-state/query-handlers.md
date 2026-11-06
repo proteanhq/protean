@@ -25,7 +25,7 @@ construction raises `IncorrectUsageError`. Fields support the same validation co
 other domain elements (`required`, `max_length`, `min_value`, `max_value`, `choices`). Invalid inputs raise `ValidationError` at
 construction time, before the query reaches the handler.
 
-### How to name queries
+### Query Naming Conventions
 
 Name queries with the intent they represent, typically starting with `Get`,
 `Find`, `List`, or `Search`:
@@ -37,7 +37,7 @@ Name queries with the intent they represent, typically starting with `Get`,
 | `List<Entity>` | `ListActiveProducts` | Listing with optional filters |
 | `Search<Entity>` | `SearchOrders` | Full-text or complex multi-field search |
 
-### Which options does the decorator accept?
+### Decorator Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -108,7 +108,7 @@ dispatch, [ADR-0043](../../adr/0043-typed-query-dispatch.md).
 | Async | Supported | No (synchronous only) |
 | Idempotency | Supported | Not needed |
 
-## How a query moves through the domain
+## Workflow
 
 ```mermaid
 sequenceDiagram
@@ -131,7 +131,7 @@ sequenceDiagram
 4. **Results returned**: The handler returns results, which pass through
    `domain.dispatch()` back to the caller.
 
-## Choose one of three levels of read access
+## Three Levels of Read Access
 
 Protean provides three levels of read access to projections:
 
@@ -151,7 +151,7 @@ technology-specific queries, use `domain.connection_for(Projection)` (Level 3).
 To *write* to a projection (inside a projector), use
 `domain.repository_for(Projection)`. That is the write path, not a read level.
 
-## Which errors do dispatch and query handlers raise?
+## Error Handling
 
 `domain.dispatch()` raises `IncorrectUsageError` when:
 

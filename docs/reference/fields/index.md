@@ -26,7 +26,7 @@ fully supported and can be mixed within a single class.
 
 Read more in [Defining fields](./defining-fields.md).
 
-## Configure a field with arguments
+## Field arguments
 
 Protean fields come with various options to model real-world scenarios effectively.
 These include `required`, `default`, `choices`, and `unique`, among others,
@@ -34,7 +34,7 @@ which let you describe each field precisely in the domain model.
 
 Read more in [Arguments](./arguments.md) section.
 
-## Choose a type of field
+## Types of fields
 
 ### Simple fields
 

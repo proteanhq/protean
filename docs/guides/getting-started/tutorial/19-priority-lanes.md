@@ -1,4 +1,4 @@
-# Chapter 19: Import a large catalog on priority lanes
+# Chapter 19: The Great Catalog Import, Run on Priority Lanes
 
 Bookshelf has acquired the catalog of **Vintage Press**, 50,000 books that need
 to be imported. If you send 50,000 `AddBook` commands through the normal
@@ -6,7 +6,7 @@ pipeline, they fill the Redis streams with a backlog. Real-time orders and
 browsing then wait behind that backlog. We need a way to run the import without
 delaying production traffic.
 
-## What are priority lanes?
+## Priority Lanes
 
 Protean supports **priority lanes**, two separate processing streams:
 
@@ -19,7 +19,7 @@ The server always drains the primary lane first. Backfill messages are
 only processed when the primary lane is empty. This guarantees that
 production traffic is never delayed by bulk operations.
 
-## Enable priority lanes
+## Configuration
 
 Enable priority lanes in `domain.toml`:
 
@@ -28,7 +28,7 @@ Enable priority lanes in `domain.toml`:
 enabled = true
 ```
 
-## Write the import script
+## The Import Script
 
 ```python
 # fragment
@@ -80,7 +80,7 @@ BookCatalogProjector      bookshelf::book           0              28,109
 The primary lane stays at zero lag. Production traffic is unaffected. The
 backfill lane processes the import at its own pace.
 
-## Which priority levels can you use?
+## Priority Levels
 
 | Level | Value | Use Case |
 |-------|-------|----------|
@@ -102,7 +102,7 @@ That completes Part IV. The bookstore now has full production operations:
 message tracing, dead-letter queue management, monitoring, and bulk import
 support. The next chapter starts the advanced patterns with process managers.
 
-## Read the full source
+## Full Source
 
 ??? example "ch19.py, 88 lines"
 
@@ -110,6 +110,6 @@ support. The next chapter starts the advanced patterns with process managers.
     --8<-- "guides/getting-started/tutorial/ch19.py:full"
     ```
 
-## Go to the next chapter
+## Next
 
 [Chapter 20: Orchestrating Multi-Step Workflows with Process Managers →](20-process-managers.md)

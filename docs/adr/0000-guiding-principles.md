@@ -1,4 +1,4 @@
-# ADR-0000: Seven principles guide every Protean design decision
+# ADR-0000: Guiding Principles
 
 **Status:** Accepted
 
@@ -37,7 +37,7 @@ context boundaries. Rather than scanning handler bodies for external API calls,
 we added the `published` option to `@domain.event(published=True)`. The
 developer declares intent; the framework acts on it.
 
-## 3. Prefer explicit registration to automatic discovery
+## 3. Explicit over automatic
 
 Protean favors explicit registration and wiring over hidden auto-discovery.
 Every domain element is registered through a decorator (`@domain.aggregate`,
@@ -95,7 +95,7 @@ aggregate. They coordinate across aggregate boundaries and belong to no single
 cluster. This grouping follows DDD's distinction between aggregate internals
 and cross-aggregate coordination.
 
-## 7. Make the code structure show the business domain (screaming architecture)
+## 7. Screaming architecture
 
 Name folders, modules and classes after business concepts. Do not name them
 after technical categories. When a developer opens the codebase, they should

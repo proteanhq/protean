@@ -26,7 +26,7 @@ protean verify --json
 protean verify --env memory
 ```
 
-## Which options does `verify` accept?
+## Options
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
@@ -54,7 +54,7 @@ takes precedence over a `--protean-env` option in the project's pytest
 `PROTEAN_ENV` itself, for example in a `conftest.py` or a pytest-env `env`
 setting. A value set there changes the tests stage only.
 
-## What does each exit code mean?
+## Exit codes
 
 `verify` follows the [CLI-wide exit-code convention](conventions.md) and gives
 its stage classes codes above the shared `0`/`2`. The code is a stable
@@ -89,9 +89,9 @@ An empty test directory (`pytest` collects nothing and returns `5`) is treated
 as a **pass** for the tests stage. The returncode is preserved in the envelope
 so "no tests" is distinguishable from "tests passed".
 
-## What does `--json` print?
+## JSON envelope
 
-`--json` prints a single [result envelope](conventions.md#what-does-the-result-envelope-contain)
+`--json` prints a single [result envelope](conventions.md#the-result-envelope)
 on stdout: a coarse `status`, the verdict and stage tree under `data`, and the
 check-stage diagnostics at the top level.
 
@@ -135,7 +135,7 @@ top-level `status`/`data.verdict` first). The domain-not-found and init-failure
 cases carry their message under `data.stages.init.error` instead of
 `data.error`, since those are tied to the init stage.
 
-## Read about the related commands
+## Related
 
 - [`protean check`](check.md): The domain validation step, run on its own.
 - [`protean new`](project/new.md): Scaffold a project, then `protean verify` it.

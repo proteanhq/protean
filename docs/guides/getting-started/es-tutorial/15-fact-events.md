@@ -1,4 +1,4 @@
-# Chapter 15: Report the current account state with fact events
+# Chapter 15: Fact Events and the Reporting Pipeline
 
 The finance team needs a flat reporting database showing the current state of
 every account for regulatory filings. They do not want to process individual
@@ -7,7 +7,7 @@ contains the **complete, current account state**.
 
 This is what **fact events** provide.
 
-## How do delta events differ from fact events?
+## Delta Events vs. Fact Events
 
 | | Delta Events | Fact Events |
 |---|-------------|------------|
@@ -81,7 +81,7 @@ Do **not** use fact events for:
 In the next chapter, an auditor asks to trace the complete chain of
 events triggered by a suspicious deposit.
 
-## Read the full source
+## Full Source
 
 ??? example "ch15.py, 275 lines"
 
@@ -89,6 +89,6 @@ events triggered by a suspicious deposit.
     --8<-- "guides/getting-started/es-tutorial/ch15.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 16: Following the Trail with Message Tracing →](16-message-tracing.md)

@@ -1,11 +1,11 @@
-# Process messages asynchronously
+# Async Message Processing
 
 The Protean Server is an asynchronous message processing engine that handles
 events, commands, and external messages in your domain. It provides reliable,
 scalable message consumption with support for multiple subscription types,
 configuration profiles, and the transactional outbox pattern.
 
-## What does the Protean server do?
+## Overview
 
 When you run `protean server`, Protean starts the **Engine**, an async runtime
 that:
@@ -42,7 +42,7 @@ graph TB
     BS --> SUB
 ```
 
-## Configure your domain to use the server
+## Configuration to Use the Server
 
 Three processing flags control how Protean dispatches and processes work:
 
@@ -55,7 +55,7 @@ respective tasks asynchronously using the server. When you set a flag to
 `"async"`, the Protean server runs the corresponding background workers. These
 workers process the tasks outside of the main request flow.
 
-### See an example configuration
+### Example Configuration
 
 ```toml
 # domain.toml
@@ -73,7 +73,7 @@ URI = "redis://localhost:6379/0"
 
 With this configuration, events, commands, and broker messages are all processed asynchronously by the server, enabling scalable, out-of-band handling of all message types.
 
-## Start the server
+## Quick Start
 
 ```bash
 # Start the server with your domain
@@ -86,9 +86,9 @@ protean --log-level DEBUG server --domain=your_domain
 protean server --domain=your_domain --test-mode
 ```
 
-## Learn the key concepts
+## Key Concepts
 
-### How do subscriptions connect handlers to messages?
+### Subscriptions
 
 Subscriptions use the Observer pattern to connect your handlers (observers) to message sources (subjects or publishers). This allows your handlers to automatically receive and react to new messages as they arrive. Protean supports two
 subscription types:
@@ -100,7 +100,7 @@ subscription types:
 
 Learn more in [Subscription Types](../../reference/server/subscription-types.md).
 
-### Pick a configuration profile
+### Configuration Profiles
 
 Profiles provide pre-configured settings optimized for common use cases:
 
@@ -114,7 +114,7 @@ Profiles provide pre-configured settings optimized for common use cases:
 
 Learn more in [Configuration](../../reference/server/configuration.md).
 
-### How does the outbox pattern deliver messages reliably?
+### Outbox Pattern
 
 With the outbox pattern, Protean delivers messages reliably by:
 
@@ -124,7 +124,7 @@ With the outbox pattern, Protean delivers messages reliably by:
 
 Learn more in [Outbox Pattern](outbox.md).
 
-### Dispatch events to external brokers
+### External Event Dispatch
 
 Protean can deliver events marked `published=True` to external brokers for
 cross-bounded-context communication. The outbox creates additional rows for
@@ -132,7 +132,7 @@ each external broker, processed independently with stripped metadata envelopes.
 
 Learn more in [External Event Dispatch](../../guides/server/external-event-dispatch.md).
 
-## Read the other pages in this section
+## Pages in this section
 
 - [Engine Architecture](engine.md): How the engine creates subscriptions and
   starts, runs and shuts down its components

@@ -9,9 +9,9 @@ allowed to change, and what the rest of the system hears about it afterwards.
 For the conceptual foundation, see
 [Building Blocks](../../concepts/building-blocks/index.md).
 
-## Pick a guide for the rule you need to add
+## Guides in this section
 
-### Validate field data
+### Validations
 
 Validations check data against basic requirements before Protean processes it.
 You can constrain a field's type, mark it required, or make it unique. Protean
@@ -20,7 +20,7 @@ write your own.
 
 [Learn more about validations →](validations.md)
 
-### Enforce invariants
+### Invariants
 
 An invariant is a business rule that must hold true at all times. Invariants
 keep your domain objects consistent. Invariants come from business rules and
@@ -29,7 +29,7 @@ initialization and on every state change.
 
 [Learn more about invariants →](invariants.md)
 
-### Control status transitions
+### Status Transitions
 
 Most aggregates are state machines. The `Status` field lets you declare the
 allowed state-to-state moves right in the field declaration. Protean raises
@@ -39,7 +39,7 @@ without raising.
 
 [Learn more about status transitions →](status-transitions.md)
 
-### Change aggregate state
+### Aggregate Mutation
 
 Aggregates hold the state and behaviour of your domain. You implement a
 business operation by mutating that state. Write each operation as a named
@@ -57,7 +57,7 @@ publish them by hand.
 
 [Learn more about raising events →](raising-events.md)
 
-### Trace and enrich messages
+### Message Tracing & Enrichment
 
 Protean tracks causal chains across commands and events, propagating
 correlation and causation IDs through each command-to-event chain. You can walk
@@ -68,7 +68,7 @@ this metadata in a `metadata.extensions` dict.
 
 [Learn more about message tracing →](message-tracing.md) &nbsp;|&nbsp; [Learn more about message enrichment →](message-enrichment.md)
 
-### Put cross-aggregate logic in domain services
+### Domain Services
 
 Some business logic does not belong to any single aggregate. A domain service
 contains that logic: stateless operations and workflows across several
@@ -76,7 +76,7 @@ aggregates, and rules about more than one object.
 
 [Learn more about domain services →](domain-services.md)
 
-### Raise and handle domain exceptions
+### Error Handling
 
 Raise, propagate, and handle domain exceptions, from aggregate invariants
 through command handlers to HTTP responses.

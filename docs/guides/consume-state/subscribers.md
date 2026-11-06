@@ -40,7 +40,7 @@ Subscribers are defined with the `Domain.subscriber` decorator:
 3. The subscriber loads the relevant aggregate from the repository, applies
    business logic, and persists the changes.
 
-## How a subscriber processes a message
+## Subscriber Workflow
 
 ```mermaid
 sequenceDiagram
@@ -85,7 +85,7 @@ sequenceDiagram
    broker. On failure, the engine negatively acknowledges the message, so the
    broker can reprocess it.
 
-## Configure a subscriber
+## Configuration Options
 
 ### `stream` (required)
 
@@ -115,9 +115,9 @@ configures an `analytics` broker next to the default one:
     See [Brokers](../../reference/adapters/broker/index.md) for details on configuring
     brokers.
 
-## Choose a processing mode
+## Processing Modes
 
-### Process messages synchronously
+### Synchronous Processing
 
 When `message_processing` is set to `"sync"`, subscribers are invoked
 immediately within the `publish()` call. This is useful for development,
@@ -132,7 +132,7 @@ In sync mode, when a message is published to a broker stream, the broker looks
 up all subscribers registered for that stream and invokes them inline before
 returning.
 
-### Process messages asynchronously
+### Asynchronous Processing
 
 When `message_processing` is set to `"async"` (the default), messages are
 stored in the broker and processed later by the Protean Engine. This is the
@@ -155,7 +155,7 @@ managing consumer groups, message batching, and acknowledgment automatically.
 Learn more in [Server](../../concepts/async-processing/index.md) and
 [Subscriptions](../../concepts/async-processing/subscriptions.md).
 
-## Handle errors in a subscriber
+## Error Handling
 
 Subscribers support custom error handling through the optional `handle_error`
 method. The Protean Engine calls this method when an exception occurs during
@@ -183,7 +183,7 @@ exceptions:
 5. The engine negatively acknowledges the failed message, so the broker can
    reprocess it.
 
-### What happens when the error handler fails?
+### Error Handler Failures
 
 If an exception occurs within the `handle_error` method itself, the Protean
 Engine will catch and log that exception as well. The message processing
@@ -203,7 +203,7 @@ def handle_error(cls, exc: Exception, message: dict) -> None:
         # Processing continues regardless
 ```
 
-### Follow these practices for error handlers
+### Best Practices
 
 1. Keep error handlers simple, and avoid logic that might itself fail.
 2. Use error handlers for logging, notification, and simple recovery.
@@ -211,9 +211,9 @@ def handle_error(cls, exc: Exception, message: dict) -> None:
 4. Consider implementing retry logic or dead-letter patterns for persistent
    failures.
 
-## Apply common subscriber patterns
+## Patterns
 
-### Validate the payload
+### Payload Validation
 
 Subscribers receive raw dicts from external systems. Validate shape and types
 before trusting the data:
@@ -254,7 +254,7 @@ and clears it afterward, even if the subscriber raises an exception.
 
 For a complete guide on how correlation and causation IDs flow across service
 boundaries, see
-[Correlation and Causation IDs](../observability/correlation-and-causation.md#keep-the-correlation-chain-across-service-boundaries).
+[Correlation and Causation IDs](../observability/correlation-and-causation.md#service-boundary-handling).
 
 ## Subscribers vs. Event Handlers
 
@@ -272,7 +272,7 @@ When you need to react to events raised by aggregates within your domain, use
 **event handlers**. When an external system publishes messages to a broker, use
 **subscribers** to integrate with it.
 
-## Process webhooks from two external systems
+## Complete Example
 
 Below is a comprehensive example showing two subscribers processing webhooks
 from different external systems, a payment gateway and a shipping provider:

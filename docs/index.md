@@ -114,7 +114,7 @@ for, and it lists the kinds of systems Protean is not built for.
 
 ---
 
-## How does Protean stay reliable?
+## Built to last
 
 <div class="grid cards" markdown>
 

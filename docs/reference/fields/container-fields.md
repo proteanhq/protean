@@ -1,4 +1,4 @@
-# Hold lists, dicts and value objects in container fields
+# Container Fields
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 

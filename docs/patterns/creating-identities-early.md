@@ -72,7 +72,7 @@ followed from one point in time to the next. Nothing can address the aggregate,
 and no command or event can reference it. It also cannot enforce any rule that
 depends on its identity.
 
-### Commands, events and repositories are keyed on identity
+### Everything else is keyed on it
 
 An aggregate is the boundary that holds your invariants. Commands target one
 instance by identity. Events say which aggregate changed by identity.
@@ -160,7 +160,7 @@ pass it straight through:
 `Auto` takes an explicit value and uses it as given. Leave it out and you get a
 generated one. The same aggregate definition covers both.
 
-### Configure the identity strategy and type
+### Strategies and types
 
 You configure identity in two places: a default for the domain, and an override
 per field.
@@ -199,9 +199,9 @@ handler passes it from the command to the aggregate.
 
 ---
 
-## Applying the pattern
+## Putting it to work
 
-### Generate the identity at the API boundary
+### At the API boundary
 
 The API layer is the usual place. When a creation request arrives, take the
 identity from the client or make one. Then build the command:
@@ -214,7 +214,7 @@ You return the `order_id` right away. If the command runs asynchronously the
 client already knows the identity and can poll on it, navigate to it, or send
 follow-up commands with it.
 
-### Generate the identity at the client
+### At the client
 
 Earlier still: let the client make the ID.
 
@@ -235,7 +235,7 @@ The client shows the new order without waiting for the server to confirm it.
 The UUID is unique whoever makes it, so the client and the server do not have
 to coordinate.
 
-### Pass the identity in every command after creation
+### Creation, then everything after
 
 Generating the identity early applies to the **creation** command, the one that
 brings the aggregate into existence. Every later command carries the identity
@@ -257,7 +257,7 @@ The caller never holds a reference that it cannot use.
 
 ---
 
-## Make creation idempotent
+## Idempotent creation
 
 An early identity gives the handler a stable key for spotting duplicates.
 Without it the handler has no aggregate ID to look up, so a repeat has to be

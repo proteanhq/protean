@@ -7,7 +7,7 @@ reactive layer carries changes across aggregates, updates read-optimized views,
 coordinates multi-step processes, and connects to external systems. None of
 this work couples back to the code that produced the original change.
 
-## What can react to a change?
+## Core Concepts
 
 ### Event Handlers
 
@@ -52,7 +52,7 @@ Subscribers consume messages from external message brokers and other systems out
 
 [Learn more about subscribers →](./subscribers.md)
 
-### Exchange events with other systems through CloudEvents <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
+### CloudEvents Interoperability <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 Some events cross system boundaries to external APIs, Kafka topics, webhooks,
 or other Protean domains. For those events, CloudEvents serialization
@@ -61,7 +61,7 @@ is a compliant CloudEvents v1.0 producer and consumer.
 
 [Learn more about CloudEvents interoperability →](./cloudevents.md)
 
-### Upcast old events to the current schema <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
+### Event Upcasting <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 When event schemas evolve, upcasters transform old event versions to match the current schema during replay. This is essential for long-lived event-sourced systems.
 

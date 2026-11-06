@@ -1,4 +1,4 @@
-# How `protean check` analyzes method bodies
+# Behavioral analysis
 
 `protean check` reasons about a domain in two ways. Most rules read the
 **Intermediate Representation** (IR), the structural model of aggregates,
@@ -15,7 +15,7 @@ source.
     how the diagnostic rules use the substrate. Do not build your own code on
     the substrate's interface.
 
-## What each layer answers
+## The layers
 
 Each layer builds on the one below it, and every layer **fails open**: a class
 with no source, or a body it cannot analyze, yields an empty result rather than
@@ -29,7 +29,7 @@ raising, so one unreadable module never aborts a diagnostics pass.
 | `FactCatalog` | What does one method body do; its calls, attribute reads/writes, and constructions? |
 | `DataflowAnalyzer` | How do names and blocks flow inside one body, def-use, ordering, `with`/loop coverage? |
 
-## How the view combines the layers
+## The view
 
 A rule rarely wants a single layer. To flag an unindexed filter it needs the
 element's methods (index), each method's facts (catalog) and, sometimes, the
@@ -47,7 +47,7 @@ Each `IRBuilder` builds a single view once, and the view shares that build's
 one `SourceProvider` and `ElementIndex`. A module that one rule already read is
 not parsed again for its facts or its dataflow. One parse per run.
 
-## How a rule queries the view
+## A rule reading the view
 
 A diagnostic rule receives the view the way it receives the IR: as `self.view`,
 a lazily-built property on the builder. Every rule is a `_diagnose_*(self, ir)`

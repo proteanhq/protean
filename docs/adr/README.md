@@ -1,4 +1,4 @@
-# How Protean records architecture decisions
+# Architecture Decision Records
 
 This directory contains Architecture Decision Records (ADRs) for the Protean framework.
 
@@ -21,7 +21,7 @@ decisions so that contributors do not reopen questions we have already settled.
 New contributors read the records to learn the reasons behind the framework's
 design.
 
-## How to name an ADR
+## Naming convention
 
 ADRs are numbered sequentially with four-digit zero-padded prefixes and kebab-case titles:
 
@@ -37,7 +37,7 @@ Examples:
 ADR-0000 is reserved for the guiding principles document. It is not a decision record itself
 but a meta-document that captures the principles governing all Protean architectural decisions.
 
-## How an ADR's status changes
+## Status lifecycle
 
 Each ADR has one of the following statuses:
 
@@ -108,11 +108,11 @@ Implement event upcaster chain (ADR-0001)
 
 In other ADRs, reference by number: "as established in ADR-0003."
 
-## Where to find the template
+## Template
 
 See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 
-## Which ADRs are current
+## Current ADRs
 
 | # | Title |
 |---|-------|

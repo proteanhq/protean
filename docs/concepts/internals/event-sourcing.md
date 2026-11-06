@@ -1,4 +1,4 @@
-# How event sourcing works inside Protean
+# Event Sourcing Internals
 
 An event-sourced aggregate keeps no stored state of its own. It records what
 happened as events. It derives its state by replaying those events. Protean
@@ -6,7 +6,7 @@ uses three mechanisms for this: `raise_()` triggers the `@apply` handlers,
 reconstruction replays a stream to rebuild an instance, and version tracking
 keeps the aggregate's version matched to its stream.
 
-## Change aggregate state only in `@apply` handlers
+## The Single Source of Truth
 
 The central design principle is this: **`@apply` handlers are the only place
 where event-sourced aggregate state is mutated.** The live path (processing
@@ -113,7 +113,7 @@ child entities from that call. `get_one_from_<name>` and `filter_<name>` still
 raise. The live `raise_()` path calls `_apply_handler()` directly and never
 sets the flag, so a live write or helper call on a removed field still raises.
 
-## How Protean constructs an aggregate
+## Aggregate Construction
 
 ### `_create_for_reconstitution()`
 
@@ -177,7 +177,7 @@ def from_events(cls, events):
 The first event's `@apply` handler must set **all** fields including identity.
 There is no special treatment of the first event.
 
-## How Protean tracks the version
+## Version Tracking
 
 Protean splits version management between the live path and the replay path to
 avoid double-incrementing:
@@ -190,7 +190,7 @@ avoid double-incrementing:
 With this split, Protean increments the version exactly once for each event, on
 either path.
 
-## When does Protean check invariants?
+## Invariant Checking
 
 During live operations, `raise_()` wraps the `@apply` call in
 `atomic_change()`. This context manager:
@@ -204,7 +204,7 @@ During replay, invariant checks are disabled entirely
 violate invariants that are only satisfied after all events are applied.
 Checks are re-enabled when `from_events()` completes.
 
-## How ES aggregates read associated entities
+## Association Handling for ES Aggregates
 
 Event-sourced aggregates don't have traditional database tables for child
 entities. When a `HasMany` field's cache misses during a `__get__` call
@@ -223,7 +223,7 @@ if getattr(getattr(root, "meta_", None), "is_event_sourced", False):
 In ES aggregates, `@apply` handlers set all state for associated entities in
 response to events, through the `add_*` pseudo-methods.
 
-## How Protean upcasts older events
+## Event Upcasting
 
 The event store may contain events from older schema versions. The upcasting
 system transparently transforms those events to the current schema before they
@@ -233,9 +233,9 @@ which is called by `load_aggregate()` for every event in the stream.
 See [Event Upcasting Internals](./event-upcasting.md) for the full
 architecture, chain building algorithm, and integration details.
 
-## How Protean uses snapshots
+## Snapshots
 
-### When does Protean write a snapshot automatically?
+### Automatic Snapshots
 
 During `load_aggregate()`, Protean counts the events since the last snapshot,
 or all events if no snapshot exists. It then checks whether that count exceeds
@@ -247,7 +247,7 @@ with type `"SNAPSHOT"`. To load an aggregate, the event store first checks for
 a snapshot and initializes the aggregate from it. The event store then replays
 only the events that occurred after the snapshot.
 
-### Create a snapshot manually
+### Manual Snapshots
 
 Manual snapshot creation bypasses the threshold and always produces a fresh
 snapshot by replaying the entire event stream:
@@ -275,7 +275,7 @@ protean snapshot create --domain=my_domain
 
 See [CLI Snapshot Commands](../../reference/cli/data/snapshot.md) for full documentation.
 
-## Load an aggregate as it was at a past point
+## Temporal queries
 
 Because all state changes are stored as events, event-sourced aggregates can
 be reconstituted at any historical point. The repository's `get()` method
@@ -297,7 +297,7 @@ historical accuracy.
 See [Temporal Queries](../../guides/change-state/temporal-queries.md) for the
 practical guide with examples.
 
-## Trace the causation chain
+## Causation chain traversal
 
 Every message in the event store carries a `correlation_id` (shared across the
 full causal chain) and a `causation_id` (the `headers.id` of the immediate
@@ -351,14 +351,14 @@ practical guide with code examples, and
 [`protean events trace`](../../reference/cli/data/events.md#protean-events-trace)
 for the CLI command.
 
-## Rebuild a projection
+## Projection rebuilding
 
 Projections are read-optimized views maintained by projectors in response to
 domain events. When a projector has a bug, or when you add a new projection to
 an existing system, you must rebuild the projection data from scratch. The
 rebuild replays all historical events through the projector handlers.
 
-### What does a rebuild do?
+### Rebuild process
 
 The rebuild performs three steps:
 
@@ -383,7 +383,7 @@ Because of this sort, the rebuild processes a `Registered` event from the
 `user` category before a subsequent `Transacted` event from the `transaction`
 category.
 
-### How does replay respond to errors?
+### Error handling during replay
 
 - **When an event type has no handler**: Events whose type has no `@on` handler
   in the projector are silently skipped (the `_handlers` defaultdict returns an
@@ -396,7 +396,7 @@ category.
   exceptions during handler execution. It then continues with the remaining
   events.
 
-### Call the rebuild from code
+### Programmatic API
 
 ??? example "The domain this example uses"
 

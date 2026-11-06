@@ -104,7 +104,7 @@ place. Consumers import `Currency`, not `MasterData WHERE category='CURRENCY'`.
 
 ## How Protean Supports This
 
-### Constrain closed codes with field-level choices
+### Field-level choices for closed codes
 
 When a value is just a constrained string, `choices` makes invalid values
 unrepresentable at the field level, with no extra type:
@@ -113,26 +113,26 @@ unrepresentable at the field level, with no extra type:
 --8<-- "patterns/model-reference-data/001.py:choices"
 ```
 
-### Use enumeration value objects for richer closed sets
+### Enumeration value objects for richer closed sets
 
 When a closed value needs a label, a symbol, or behavior, model it as a value
 object with a frozen registry. It is immutable, equality-by-value, and carries
 no identity, exactly what reference data is.
 
-### Key aggregates by a natural code
+### Aggregates keyed by a natural code
 
 A Protean aggregate takes a single surrogate identity. That identity can be the
 natural `code` itself, via `String(identifier=True)`. Editable reference data
 becomes an ordinary aggregate with an ordinary repository, with no special
 machinery.
 
-### Query "all of a kind" through a custom repository
+### Custom repositories for "all of a kind"
 
 A `@domain.repository` method expresses the "give me the whole set" and "give me
 the `code → value` map" queries once, in one place, instead of scattering
 `filter(...)` calls across consumers.
 
-### Serve app-wide reads from cache-backed projections
+### Cache-backed projections for app-wide reads
 
 Reference data is read constantly and written rarely, which makes it an ideal
 projection. A cache-backed projection (`@domain.projection(cache="redis")`)
@@ -143,7 +143,7 @@ projector when the underlying aggregate changes.
 
 ## Applying the Pattern
 
-### Model a closed set as an enumeration value object
+### Closed set: enumeration value object
 
 Order statuses are known at design time. They never get added by an operator.
 Model them as a value object with a registry, so the type system defines the
@@ -174,7 +174,7 @@ Protean now checks an order status when it constructs the value object, as part
 of the *always-valid* guarantee. The database no longer has to catch an invalid
 status later through a foreign-key check.
 
-### Model editable reference data as an aggregate keyed by code
+### Editable reference: aggregate keyed by code
 
 Currencies are administered at runtime: a back-office user adds a new one,
 deactivates an obsolete one, or fixes a symbol. That lifecycle makes it an
@@ -193,7 +193,7 @@ and load one entry with ordinary repository calls:
 --8<-- "patterns/model-reference-data/003.py:load_one"
 ```
 
-### List a kind as a `code → value` map
+### A list of a kind: the `code → value` map
 
 The recurring need is rarely a single entry; it is "give me all active
 currencies" or "give me the `code → Currency` map for a dropdown." Express it
@@ -209,7 +209,7 @@ Consumers get a typed list or a typed map, never raw rows:
 --8<-- "patterns/model-reference-data/003.py:consumer"
 ```
 
-### Give the whole application read access through a cache-backed catalog projection
+### App-wide read access: a cache-backed catalog projection
 
 Reference data is read on nearly every request and written a handful of times a
 month. If the application loads it from the write aggregate on every call, it
@@ -287,7 +287,7 @@ This is the One True Lookup Table, declared as an aggregate with
 `@domain.aggregate`. `MasterData` is not a concept anyone in the business talks
 about; `Currency` and `Country` are. Model the concepts, not the table.
 
-### Putting the discriminator in a domain field
+### The discriminator as a domain field
 
 ```python
 # fragment
@@ -318,7 +318,7 @@ This duplicates the query, the caching, and the "is it valid?" logic in every
 module that touches currencies. Centralize it behind a named type and a
 repository method (`CurrencyRepository.as_map()`), written once.
 
-### Pointing foreign keys at the surrogate id
+### Foreign keys to the surrogate id
 
 ```python
 # fragment

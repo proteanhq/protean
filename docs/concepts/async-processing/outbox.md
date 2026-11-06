@@ -88,7 +88,7 @@ See the [Outbox Guide](../../guides/server/outbox.md) for enabling the
 outbox, creating the table, configuring retries and cleanup, and
 investigating abandoned messages.
 
-### Protean writes to the event store first
+### The event store is the durable anchor
 
 Step 1 has one more ordering detail. A unit of work makes two durable writes to
 two independent datastores (the event store and the relational database) and no
@@ -114,7 +114,7 @@ commit, is in the decision record on appending to the event store first
 operational walkthrough is in [Recover from a
 crash](../../guides/server/outbox.md#recover-from-a-crash-reconciliation).
 
-## How published events reach external brokers
+## External Dispatch for Published Events
 
 Events marked with `published=True` can be delivered to external brokers, other bounded
 contexts, partner systems, or analytics pipelines. When `external_brokers` is configured, the
@@ -149,7 +149,7 @@ Each row is processed independently. If the external broker is down, the
 internal row still publishes normally. The external row retries on its own
 schedule.
 
-### What the external envelope keeps and removes
+### External Envelope
 
 External messages use a stripped envelope that removes internal-only fields
 (`expected_version`, `asynchronous`, `priority`, event store positions,
@@ -163,7 +163,7 @@ For architectural trade-offs, see
 
 ---
 
-## How an outbox message moves through its states
+## Outbox Message Lifecycle
 
 Messages in the outbox go through several states:
 
@@ -188,7 +188,7 @@ Cleanup removes an abandoned row only when it has no partition key. An
 abandoned row with a partition key stays in the outbox until an operator
 retries or discards it with `protean outbox retry` or `protean outbox discard`.
 
-### What each message state means
+### Message States
 
 | State | Description |
 |-------|-------------|
@@ -199,7 +199,7 @@ retries or discards it with `protean outbox retry` or `protean outbox discard`.
 | `ABANDONED` | Max retries exceeded, given up |
 | `DISCARDED` | Skipped by an operator, never published, kept for audit |
 
-## How Protean retries failed messages
+## Retry Mechanism
 
 Failed messages are retried with exponential backoff:
 
@@ -223,7 +223,7 @@ abandoned row with a partition key; see [Message Cleanup](#message-cleanup).
 For tuning retry attempts, backoff, and jitter, see the
 [Outbox Guide](../../guides/server/outbox.md#configure-retries).
 
-## How Protean cleans up old messages { #message-cleanup }
+## Message Cleanup
 
 `PUBLISHED`, `ABANDONED` and `DISCARDED` rows are purged on a schedule so the
 outbox table doesn't grow unbounded. Published rows are kept long enough to
@@ -234,13 +234,13 @@ can configure the retention windows for published rows and for abandoned and
 discarded rows separately. See [Outbox Guide: Configure
 cleanup](../../guides/server/outbox.md#configure-cleanup).
 
-## How several workers share one outbox { #multi-worker-support }
+## Multi-Worker Support
 
 When running with `--workers N` (see [Multi-Worker Mode](../../reference/server/supervisor.md)), each
 worker runs its own `OutboxProcessor`. Messages are claimed atomically at the
 database level to prevent duplicate publishing.
 
-### How workers claim messages at the database level
+### Database-Level Locking
 
 The processor uses an atomic `UPDATE...WHERE` to claim messages. Under READ
 COMMITTED isolation (PostgreSQL, MSSQL), concurrent updates on the same row
@@ -254,7 +254,7 @@ re-evaluates the WHERE clause, and only one worker succeeds:
 This prevents the TOCTOU (Time-Of-Check-Time-Of-Use) race condition where two
 workers could both read a message as `PENDING` and both attempt to publish it.
 
-### Which fields record the lock
+### Lock Fields
 
 Each outbox message carries lock metadata:
 
@@ -264,7 +264,7 @@ Each outbox message carries lock metadata:
 | `locked_until` | When the lock expires (default 5 minutes) |
 | `status` | Current processing state (`PROCESSING` while locked) |
 
-### How a worker takes and uses a lock
+### Lock Lifecycle
 
 1. The worker calls `claim_batch()`, which selects and claims eligible
    messages in one step. A message is eligible under the rules in the `claim`
@@ -279,7 +279,7 @@ Each outbox message carries lock metadata:
    transaction. It then records the result in a short `UnitOfWork`: `PUBLISHED`
    on success, or `FAILED` for retry when publishing failed.
 
-### How Protean recovers a message under a stale lock
+### Stale Lock Recovery
 
 Suppose a worker crashes while it holds a lock. The lock then expires after the
 configured duration (default 5 minutes). The message remains in `PROCESSING`
@@ -302,7 +302,7 @@ Runtime visibility is available via Observatory's `/api/outbox`
 endpoint and via direct queries on the outbox repository. See
 [Outbox Guide: Investigate abandoned messages](../../guides/server/outbox.md#investigate-abandoned-messages).
 
-## Read the related guides and references
+## Related
 
 - [Using the Outbox](../../guides/server/outbox.md): Enable the outbox, create the table, configure retries and cleanup, investigate abandoned messages.
 - [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md): Routing events to partner systems.

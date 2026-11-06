@@ -1,9 +1,9 @@
-# Build a custom database adapter
+# Custom Database Adapters
 
 Build a custom database adapter so that Protean can store data in any
 persistence technology.
 
-## What can a custom adapter do?
+## Overview
 
 Custom database adapters allow you to:
 
@@ -11,7 +11,7 @@ Custom database adapters allow you to:
 - Add company-specific storage systems
 - Create specialized adapters for testing or development
 
-## What parts make up an adapter?
+## Architecture
 
 All database adapters are built from five components that work together:
 
@@ -107,7 +107,7 @@ def from_entity(cls, entity):
 
 Lookups translate filter criteria into adapter-native comparison expressions.
 Every adapter must register
-[12 required lookups](./index.md#which-lookups-must-every-provider-register), including `isnull`
+[12 required lookups](./index.md#required-lookups), including `isnull`
 (`Q(field__isnull=True/False)`), which core framework machinery such as the
 outbox poll path relies on. Register them with the
 `@YourProvider.register_lookup` decorator:
@@ -122,7 +122,7 @@ class Exact(BaseLookup):
         return self.process_source() == self.process_target()
 ```
 
-### 5. Write a registration function
+### 5. Registration Function
 
 A `register()` function that registers the provider class with Protean's
 `ProviderRegistry`. Wrap dependency imports in `try/except`. Protean then skips
@@ -141,7 +141,7 @@ def register():
         pass  # DynamoDB SDK not installed, skip registration
 ```
 
-## Build a provider that delegates to `MemoryProvider`
+## Example: A Delegating Provider
 
 The provider below implements every abstract method by handing it to the
 in-memory `MemoryProvider`, and copies its lookups. Replace those calls with
@@ -157,12 +157,12 @@ Once registered, the provider is configured by its name like any other:
 --8<-- "adapters/database/custom-databases/delegating_provider/__init__.py:usage"
 ```
 
-## Build a DynamoDB adapter
+## Example: DynamoDB Adapter
 
 Here is a complete example of creating a DynamoDB adapter as an external
 package.
 
-### Lay out the package
+### Project Structure
 
 ```
 protean-dynamodb/
@@ -195,7 +195,7 @@ dependencies = [
 dynamodb = "protean_dynamodb:register"
 ```
 
-### Write the registration function
+### Registration Function
 
 ```python
 # fragment
@@ -216,7 +216,7 @@ def register():
         pass
 ```
 
-### Implement the provider
+### Provider Implementation
 
 ```python
 # fragment
@@ -320,7 +320,7 @@ class DynamoDBProvider(BaseProvider):
         ...
 ```
 
-### Install and configure the adapter
+### Installation and Usage
 
 Users install your adapter package:
 
@@ -338,7 +338,7 @@ database_uri = "http://localhost:8000"
 region = "us-east-1"
 ```
 
-## What must a session object support?
+## Session Protocol
 
 The objects returned by `get_session()` and `get_connection()` must support
 three methods:
@@ -351,7 +351,7 @@ three methods:
 Unit of Work. Adapters without real transactions (like the DynamoDB example
 above) should provide a session object with no-op implementations.
 
-## How does Protean call the adapter components?
+## Call Flow
 
 Protean passes data through the adapter components in these orders:
 
@@ -409,7 +409,7 @@ dao.query.filter(...).count()
     # Returns an int
 ```
 
-## Declare your adapter's capabilities
+## Declaring Capabilities
 
 Choose the `DatabaseCapabilities` flags that match your adapter's supported
 features exactly. Each capability is independent of the others, so you can
@@ -436,9 +436,9 @@ def capabilities(self) -> DatabaseCapabilities:
     suite will verify that your adapter correctly supports every declared
     capability.
 
-## Test your adapter
+## Testing Your Adapter
 
-### Run the conformance test suite
+### Conformance Testing
 
 Use Protean's built-in conformance test suite to validate your adapter:
 
@@ -450,7 +450,7 @@ The `protean test test-adapter` command runs the generic test suite against
 your provider and picks the tests from your declared capabilities. See [Adapter
 Conformance Testing](../../testing/conformance.md) for the full reference.
 
-### Use the pytest plugin directly
+### Using the Pytest Plugin Directly
 
 For more control, use the conformance pytest plugin in your own test suite:
 
@@ -487,7 +487,7 @@ pytest --db-provider=dynamodb --db-uri="http://localhost:8000" \
 
 - Review [existing adapter implementations](https://github.com/proteanhq/protean/tree/main/src/protean/adapters/repository)
   for reference
-- Understand [database capabilities](./index.md#how-providers-declare-capabilities) in
+- Understand [database capabilities](./index.md#database-capabilities) in
   detail
 - Run the [conformance test suite](../../testing/conformance.md)
 - Share your adapter with the

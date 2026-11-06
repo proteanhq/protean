@@ -1,4 +1,4 @@
-# Version and evolve events
+# Event Versioning and Evolution
 
 ## The Problem
 
@@ -69,11 +69,11 @@ Follow these rules:
 
 ---
 
-## Which changes stay backward-compatible?
+## Backward-Compatible Changes
 
 These changes are safe and require no versioning strategy:
 
-### Add optional fields with defaults
+### Adding Optional Fields with Defaults
 
 The most common evolution. Add a new field with a default value. The default
 keeps the old behavior for events written before the field existed:
@@ -94,7 +94,7 @@ consumer treats `None` / `"web"` as the legacy case.
 - Document when the field was added (useful for consumers that reason about
   event history)
 
-### Add new event types
+### Adding New Event Types
 
 When a new business operation is introduced, create a new event type:
 
@@ -105,7 +105,7 @@ When a new business operation is introduced, create a new event type:
 Existing consumers keep working when you add a new event type. Consumers that
 don't handle `OrderGiftWrapped` ignore it.
 
-### Widen field types
+### Widening Field Types
 
 You can safely change a field's type to accept a broader range of values if the
 serialization format is compatible:
@@ -122,7 +122,7 @@ status = String(choices=["pending", "shipped", "returned", "refunded"])
 Old events still match. New events use the expanded set of choices. Consumers
 should already process unknown values without failing.
 
-### Rename a field
+### Renaming a Field
 
 When you rename a field, you normally make a breaking change. The old key
 disappears and a new key takes its place, so stored payloads no longer match.
@@ -153,11 +153,11 @@ changed or removed.
 
 ---
 
-## Choose a strategy for breaking changes
+## Strategies for Breaking Changes
 
 When backward-compatible evolution isn't possible, use one of these strategies:
 
-### Strategy 1: Create a new event type
+### Strategy 1: New Event Type
 
 The cleanest approach for significant schema changes. Create a new event type.
 Keep the old one for historical events:
@@ -205,7 +205,7 @@ now flags any continued use of the old class in two places:
 string, and Protean never resolves it to a link. You can point it at an event
 in another bounded context.
 
-### Strategy 2: Upcast events on read
+### Strategy 2: Upcasting on Read
 
 Transform old events to the new schema during the read from the event store,
 before they reach the handler. This keeps handlers simple. They only see the
@@ -238,7 +238,7 @@ next.
 See the [Event Upcasting guide](../guides/consume-state/event-upcasting.md) for a complete
 walkthrough with real-world examples.
 
-### Strategy 3: Make consumers tolerant readers
+### Strategy 3: Tolerant Reader
 
 Design consumers to be tolerant of fields an event may not carry:
 
@@ -254,7 +254,7 @@ logic.
 logging, monitoring). Not suitable for consumers that need precise data
 (financial calculations, projections).
 
-### Read legacy payloads with lenient deserialization
+### Lenient Deserialization (read-path escape hatch)
 
 Some genuinely legacy payloads still carry fields the current event no longer
 declares. When you must read them, opt into **lenient deserialization**. Set
@@ -271,7 +271,7 @@ Not a substitute for upcasting when a value needs transforming.
 
 ---
 
-## Evolve schemas when you use fact events
+## Fact Events and Schema Evolution
 
 Protean's `fact_events=True` auto-generates events from the aggregate's
 current schema. When the aggregate changes, fact events automatically reflect
@@ -305,7 +305,7 @@ This simplifies some evolution scenarios but creates others:
 
 ---
 
-## Name versioned events clearly
+## Naming Conventions for Versioned Events
 
 When creating new event versions, use clear naming:
 
@@ -321,7 +321,7 @@ unambiguous. Avoid descriptive names for minor changes. They become unwieldy
 
 ---
 
-## How does the event store behave as schemas change?
+## Event Store Considerations
 
 ### Never Modify Stored Events
 
@@ -336,7 +336,7 @@ stream. Even then, the operator never edits a single stored event in place.
 --8<-- "patterns/event-versioning-and-evolution/011.py:correcting_event"
 ```
 
-### Expect mixed schemas in a stream after a change
+### Stream Position After Schema Changes
 
 When you deploy a schema change, existing events in the stream remain
 unchanged. New events use the new schema. The stream contains a mix of old and
@@ -345,14 +345,14 @@ a deployment. A deliberate operator migration (see [Migration
 Strategies](#migration-strategies)) is the one thing that rewrites existing
 events.
 
-### What happens to snapshots when a schema changes?
+### Snapshots and Schema Changes
 
 Snapshots do not go through the upcaster path. A snapshot holds aggregate
 state, so a change to an event's schema does not invalidate it on its own. When
 the aggregate's own fields change and the stored snapshot no longer constructs,
 Protean discards it on load and rebuilds the aggregate by replaying its event
 stream. See [Snapshots and schema
-changes](../guides/change-state/snapshots.md#what-happens-to-a-snapshot-when-the-schema-changes) for
+changes](../guides/change-state/snapshots.md#snapshots-and-schema-changes) for
 the full mechanism.
 
 ### Replaying from the Beginning
@@ -388,7 +388,7 @@ strategies. The copy-transform pattern and in-place transformation both rewrite
 the contents of an event store. That is migration work, so Protean leaves both
 to operators and does not build them into core.
 
-### Copy events into a new stream with the copy-transform pattern
+### The Copy-Transform Pattern
 
 For large schema changes, create a new stream with transformed events:
 
@@ -401,7 +401,7 @@ For large schema changes, create a new stream with transformed events:
 Copy-transform rewrites every event in the stream, so it is costly. The new
 stream then holds no events in historical schemas.
 
-### Rewrite events in place
+### In-Place Transformation
 
 In-place transformation rewrites the events in the existing stream to the
 current schema. It also retags them with the current type and version, so a
@@ -410,7 +410,7 @@ name and skips the consumer cutover that copy-transform needs. It loses the
 original payloads unless you archive them first. When the old schema has no
 audit value and the stream name must stay stable, use in-place transformation.
 
-### Raise both events during a dual-write transition
+### The Dual-Write Transition
 
 During a migration period, produce both old and new event types:
 
@@ -496,7 +496,7 @@ Consumers that expect `customer_name` will crash. Even if no current consumer
 needs it, historical events in the store still carry the field. Keep the field.
 Mark it deprecated in the documentation.
 
-### Don't add required fields to existing events
+### Required Fields on Existing Events
 
 ```python
 # fragment
@@ -513,7 +513,7 @@ routes.
 
 ---
 
-## Choose a strategy with the decision guide
+## Decision Guide
 
 This diagram shows the schema-evolution ladder, the ordered list of evolution
 strategies:

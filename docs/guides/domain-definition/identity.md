@@ -1,4 +1,4 @@
-# Give aggregates and entities an identity
+# Identity
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
@@ -106,7 +106,7 @@ When UUIDs don't fit. If you need epoch-millisecond IDs, snowflake IDs, a
 prefixed business key, or anything else, switch the strategy to `function`.
 Then supply a callable.
 
-### Set a function for the whole domain
+### At the domain level
 
 Set the strategy in config. Then pass `identity_function=` when you construct
 the domain. Every aggregate in the domain will use this function:
@@ -126,7 +126,7 @@ Protean does not check the function's return value against `identity_type`.
 Make the function return the type you configured: a function that returns a
 string while `identity_type="integer"` gives the aggregate a string `id`.
 
-### Set a function for one aggregate
+### Per aggregate
 
 To override the default for one aggregate (for example, to create a prefixed
 key), set the strategy and function directly on the field:
@@ -208,7 +208,7 @@ generation to the database.
 
 ---
 
-## Which errors does Protean raise?
+## Common errors
 
 | Exception | When it occurs |
 |---|---|

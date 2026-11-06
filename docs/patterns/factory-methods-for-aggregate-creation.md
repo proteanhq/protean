@@ -1,4 +1,4 @@
-# Create aggregates through factory methods
+# Factory Methods for Aggregate Creation
 
 ## The problem
 
@@ -110,7 +110,7 @@ section on this page says when that happens.
 
 ## Applying the pattern
 
-### Before: each handler constructs the Order
+### Before: construction in handlers
 
 ```python
 # fragment
@@ -167,7 +167,7 @@ reuses the previous order's prices when it should look up current ones. When
 each handler does its own assembly, you have to read every handler to find a
 bug like this.
 
-### After: factory classmethods on the aggregate build the Order
+### After: factory classmethods on the aggregate
 
 ```python
 --8<-- "patterns/factory-methods-for-aggregate-creation/001.py:elements"
@@ -269,7 +269,7 @@ creation this is.
 Classmethods on the aggregate cover most cases. Sometimes the assembly work does
 not belong on the aggregate at all.
 
-### When do you need a standalone factory?
+### Signs you need one
 
 1. **It needs a repository.** An aggregate should know nothing about
    repositories. When building one means loading others first, say an Invoice
@@ -284,7 +284,7 @@ not belong on the aggregate at all.
    aggregate should never contain that knowledge. A standalone factory is the
    anti-corruption layer.
 
-### Write a standalone factory as a plain class
+### A standalone factory as a plain class
 
 A standalone factory is just a class in the domain layer. It needs no framework
 registration; it is plain Python:
@@ -354,7 +354,7 @@ Customer. Those tests have to persist that data first.
 
 ---
 
-## How do factories differ from domain services?
+## Factories and domain services
 
 Factories and domain services do different jobs:
 

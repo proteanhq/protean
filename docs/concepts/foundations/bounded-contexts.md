@@ -1,4 +1,4 @@
-# What is a bounded context?
+# Bounded Contexts
 
 A bounded context is a boundary within which a particular domain model is
 defined and applicable. Each bounded context has its own [ubiquitous
@@ -26,7 +26,7 @@ Bounded contexts let each part of the system model its own part of the business
 without serving the needs of other parts. Each context captures exactly the
 concepts and rules it needs, nothing more, nothing less.
 
-## What properties does a bounded context have?
+## Characteristics of a Bounded Context
 
 A well-defined bounded context has several distinguishing properties:
 
@@ -40,7 +40,7 @@ A well-defined bounded context has several distinguishing properties:
   never through direct access to another context's internals.
 - **Independent evolution**: Changes inside one context do not break others. Teams can develop, deploy, and scale contexts independently.
 
-## How do you map the relationships between contexts?
+## Context Mapping
 
 When two bounded contexts need to communicate, the relationship between them
 must be explicit. Common patterns for defining these relationships include:
@@ -66,7 +66,7 @@ improves with practice. Three clues help you find a boundary:
 - **Parts change at different rates**: Parts of the system that change for
   different reasons and at different rates belong in different contexts.
 
-## How does Protean model bounded contexts?
+## Bounded Contexts and Protean
 
 Each `Domain` instance in Protean can represent a bounded context. Each
 domain maintains its own configuration, adapters, and domain elements
@@ -86,7 +86,7 @@ depending on the relationship between contexts:
   insulated from upstream schema changes.
 
 For practical guidance on choosing between these paths, see
-[Multi-Domain Applications](../../guides/multi-domain-applications.md#communicate-across-domains).
+[Multi-Domain Applications](../../guides/multi-domain-applications.md#cross-domain-communication).
 For design patterns, see
 [Connecting Concepts Across Bounded Contexts](../../patterns/connect-concepts-across-domains.md)
 and [Consuming Events from Other Domains](../../patterns/consuming-events-from-other-domains.md).

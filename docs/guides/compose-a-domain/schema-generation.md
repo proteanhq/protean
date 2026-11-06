@@ -1,4 +1,4 @@
-# Generate schemas from your domain
+# Schema Generation
 
 Protean can generate standard [JSON Schema (Draft 2020-12)](https://json-schema.org/draft/2020-12)
 documents for all data-carrying domain elements: aggregates, entities, value
@@ -21,7 +21,7 @@ Generated schemas are useful for:
 Use the `protean schema generate` command to produce JSON Schema files for
 every data-carrying element in your domain.
 
-### Generate from a live domain
+### From a live domain
 
 ```bash
 protean schema generate --domain=my_app.domain
@@ -30,7 +30,7 @@ protean schema generate --domain=my_app.domain
 `protean schema generate` loads the domain, builds the IR, and writes schemas
 to `.protean/schemas/`.
 
-### Generate from an IR file
+### From an IR file
 
 ```bash
 protean schema generate --ir=domain-ir.json
@@ -39,13 +39,13 @@ protean schema generate --ir=domain-ir.json
 If you already have a serialized IR (from `protean ir show`), you can generate
 schemas directly from it.
 
-### Write schemas to a custom output directory
+### Custom output directory
 
 ```bash
 protean schema generate --domain=my_app.domain --output=build
 ```
 
-### Emit other output formats
+### Other output formats
 
 By default `protean schema generate` emits JSON Schema. Pass `--format` to emit
 other contract formats, `json`, `avro`, `protobuf`, or `all` (which writes JSON Schema, Avro,
@@ -84,7 +84,7 @@ FQNs and asks you to disambiguate.
 
 ---
 
-## Where do the generated schemas go?
+## Output structure
 
 Schemas are organized by aggregate cluster:
 
@@ -112,7 +112,7 @@ commands.  Other element types default to `v1`.
 
 ---
 
-## What does a generated schema contain?
+## Schema structure
 
 Each generated schema is a standard JSON Schema object with Protean-specific
 metadata in `x-protean-*` extension fields:
@@ -136,7 +136,7 @@ metadata in `x-protean-*` extension fields:
 }
 ```
 
-### What do the extension fields mean?
+### Extension fields
 
 | Field | Description |
 |-------|-------------|
@@ -151,7 +151,7 @@ metadata in `x-protean-*` extension fields:
 | `x-protean-identity-field` | Identity field name (aggregates only) |
 | `x-protean-is-event-sourced` | `true` if the aggregate uses event sourcing |
 
-### How are nested structures written?
+### Nested structures
 
 Protean writes each value object or entity that an aggregate references as a
 `$defs` entry with a `$ref` pointer. Protean does the same for each value
@@ -194,7 +194,7 @@ record. Protobuf writes the field as a `map` whose value type is the `Address`
 message. An untyped `Dict()` stays a map of untyped values: `{"type":
 "object"}`, `{"type": "map", "values": "string"}` and `map<string, string>`.
 
-### How are optional fields written?
+### Optional fields
 
 Optional fields use the `anyOf` pattern with `null`:
 
@@ -263,7 +263,7 @@ Python's `jsonschema` library:
 
 ---
 
-## Why does Protean generate schemas this way?
+## Design decisions
 
 - **Build schemas from the IR**: Protean builds schemas from IR field metadata
   and does not use Pydantic's `model_json_schema()`.  See the decision record

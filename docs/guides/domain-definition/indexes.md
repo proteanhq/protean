@@ -30,7 +30,7 @@ lookup index. For most aggregates, these two forms are all you need.
 
 ---
 
-## Declare composite and descending indexes
+## Composite and descending indexes
 
 List several fields to build a composite index. The order matters. It should
 match how you filter and sort. Use `desc=` for the fields that are read in
@@ -46,7 +46,7 @@ sort.
 
 ---
 
-## Declare partial indexes
+## Partial indexes
 
 A partial index covers only the rows matching a predicate. When the rows you
 query are a small slice of the table, this keeps the index tiny. Pass a
@@ -63,7 +63,7 @@ index instead, so your declaration stays portable.
 
 ---
 
-## Declare covering indexes
+## Covering indexes
 
 `include=` adds non-key columns to the index so a query can be answered from
 the index alone, without reading the row:
@@ -77,7 +77,7 @@ Protean drops them with a warning.
 
 ---
 
-## Declare indexes on entities
+## Indexes on entities
 
 Entities accept the same `indexes=` option as aggregates:
 
@@ -87,7 +87,7 @@ Entities accept the same `indexes=` option as aggregates:
 
 ---
 
-## Declare indexes on projections
+## Indexes on projections
 
 Projections are read-optimized query models, so they are often the most
 important place to declare indexes. They accept the same `indexes=` option:
@@ -110,7 +110,7 @@ This is useful for a shared convention or to keep a long decorator readable:
 
 ---
 
-## Declare dialect-specific indexes
+## Dialect-specific indexes
 
 For an index the portable API cannot express (a GIN index on a JSON column, an
 expression index, a dialect-only option), write raw DDL with `Index.from_sql`.

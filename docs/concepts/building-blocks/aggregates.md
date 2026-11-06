@@ -42,7 +42,7 @@ raises `ExpectedVersionError`. In async handlers (`@handle`), the framework
 retries this error automatically with exponential backoff. Each retry creates a
 fresh Unit of Work that re-reads the aggregate at the latest version. See
 [Version conflict
-auto-retry](../../guides/server/error-handling.md#retry-version-conflicts-automatically)
+auto-retry](../../guides/server/error-handling.md#version-conflict-auto-retry)
 to configure the retries, and [Optimistic Concurrency as a Design
 Tool](../../patterns/optimistic-concurrency-as-design-tool.md) to resolve each
 of the different conflict categories.
@@ -53,7 +53,7 @@ Aggregates contain invariants that should always be satisfied. Protean enforces
 an **always-valid guarantee**: invariants are checked automatically before and
 after every field change, not just at persistence time. This means an aggregate
 cluster can never exist in an invalid state once constraints and invariants have
-been defined. See [Invariants](../foundations/invariants.md#how-does-protean-keep-an-aggregate-always-valid)
+been defined. See [Invariants](../foundations/invariants.md#the-always-valid-guarantee)
 for the full explanation.
 
 Invariants can be specified at the level of an aggregate's fields, the entire
@@ -71,7 +71,7 @@ definition. See [Declaring Indexes](../../guides/domain-definition/indexes.md)
 and the [Index Aggregates for Query
 Paths](../../patterns/index-aggregates-for-query-paths.md) pattern.
 
-## What can an aggregate contain?
+## Object Graphs
 
 Aggregates compose a graph of enclosed elements. The enclosed objects can nest
 other objects to any depth. Protean recommends at most 2 levels of nesting.
@@ -85,7 +85,7 @@ their identity.
 Entities within aggregates are loaded and accessible only through the
 aggregate. Make every change to an entity through its aggregate.
 
-## How are aggregates persisted?
+## Persistence
 
 Protean always saves and loads data one aggregate at a time. They internally
 load and manage the objects within their cluster.
@@ -116,7 +116,7 @@ remove the cap entirely.
 
 ---
 
-## Learn more about aggregates
+## Next steps
 
 For practical details on defining and using aggregates in Protean, see the guide:
 

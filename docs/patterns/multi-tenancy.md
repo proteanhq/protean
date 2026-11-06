@@ -208,7 +208,7 @@ to inspect the full set of enriched metadata.
 
 ---
 
-## Follow one order from request to handler
+## End-to-End Flow
 
 Here is the complete lifecycle for a multi-tenant order placement:
 
@@ -246,7 +246,7 @@ Here is the complete lifecycle for a multi-tenant order placement:
 
 ---
 
-## Test code that uses tenant context
+## Testing
 
 Enrichers read the tenant from `g`. A test that needs tenant context must set
 `g.tenant_id` first. A test that checks only business logic can ignore tenants.
@@ -327,7 +327,7 @@ calling aggregate methods. The aggregate trusts that it was loaded correctly.
 
 ---
 
-## Go beyond row-level with schema-per-tenant { #beyond-row-level-schema-per-tenant }
+## Beyond Row-Level: Schema-Per-Tenant
 
 !!! note "Future Direction"
     Schema-per-tenant requires adapter-level features that are not yet built in
@@ -340,7 +340,7 @@ but each tenant's tables live in a separate schema. This provides stronger
 isolation than row-level. A misconfigured query cannot accidentally read
 another tenant's data because the schemas are physically separate.
 
-### How does schema-per-tenant work?
+### How It Works
 
 PostgreSQL schemas are namespaces within a database. By setting
 `search_path` on a connection, all queries automatically target the correct
@@ -379,7 +379,7 @@ To support schema-per-tenant, Protean would need:
 3. **Schema lifecycle management** that creates schemas for new tenants, runs
    migrations per schema, and cleans up deprovisioned tenants.
 
-### What could the configuration look like?
+### Conceptual Configuration
 
 ```toml
 [databases.default]
@@ -400,7 +400,7 @@ schema_prefix = "tenant_"  # tenant_acme, tenant_globex, etc.
 
 ---
 
-## Go beyond row-level with database-per-tenant
+## Beyond Row-Level: Database-Per-Tenant
 
 !!! note "Future Direction"
     Database-per-tenant requires adapter-level features that are not yet built
@@ -412,7 +412,7 @@ In database-per-tenant isolation, each tenant gets their own database instance
 (or at least their own logical database). This provides the strongest isolation
 -- separate connections, separate credentials, separate backup schedules.
 
-### How does database-per-tenant work?
+### How It Works
 
 Each tenant maps to a different connection URI. The application must route
 requests to the correct database based on the tenant:
@@ -438,7 +438,7 @@ support this strategy, Protean would need:
 3. **A tenant database resolver**: A callable that maps `g.tenant_id` to a
    connection URI. This is always application-specific.
 
-### What could the configuration look like?
+### Conceptual Configuration
 
 ```toml
 [databases.default]

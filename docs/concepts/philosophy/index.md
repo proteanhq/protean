@@ -1,4 +1,4 @@
-# What principles guide Protean's design?
+# Philosophy & Design Principles
 
 Protean starts from one idea: **your domain logic should decide your
 architecture.** Protean follows Domain-Driven Design, stays pragmatic about
@@ -13,7 +13,7 @@ its classes. Your directory tree should name the parts of the business. A
 newcomer to your project can then find the code for a feature from the
 feature's name.
 
-### Name business concepts in your classes
+### In Classes
 
 Protean's domain elements (aggregates, entities, value objects, commands,
 events) map directly to DDD tactical patterns, so business requirements
@@ -25,7 +25,7 @@ conversation about what the system does. There is no ORM inheritance to
 decipher, no framework-specific base classes to learn. A `Post` aggregate
 with a `publish()` method reads exactly like what it is.
 
-### Name business concepts in your folders
+### In Folder Structure
 
 The same principle extends to how you organize files. **Your folders name the
 "what" (domain concepts). The framework records the "which kind" (layer, side,
@@ -82,7 +82,7 @@ domain logic, tests, and business rules remain untouched. Protean initializes
 and injects infrastructure elements at runtime. Your core logic therefore stays
 the same across local development, CI/CD, and production.
 
-## Choose the pattern that fits each aggregate
+## Pragmatism over Purity
 
 Real-world applications rarely fit a single architectural pattern perfectly. If
 you force CQRS on every component, you over-engineer some components and
@@ -202,7 +202,7 @@ the framework at all.
 
 ---
 
-## Read more about Protean's principles
+## Further reading
 
 - [The Always-Valid Domain](always-valid.md): How Protean checks domain objects
   at four validation layers so that no domain object is ever invalid.

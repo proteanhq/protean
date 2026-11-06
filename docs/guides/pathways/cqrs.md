@@ -1,11 +1,11 @@
-# Build with CQRS in Protean
+# CQRS with Protean
 
 !!! info "Builds on DDD"
     This approach extends the [DDD foundation](./ddd.md) with Commands, Command
     Handlers, and Projections. If you haven't read the DDD pathway yet, start
     there. CQRS extends the concepts in the DDD pathway.
 
-## How CQRS splits your application
+## Overview
 
 CQRS (Command Query Responsibility Segregation) separates your application into
 a **write side** and a **read side**. On the write side, explicit Commands
@@ -19,7 +19,7 @@ calling methods directly, the API layer submits Commands via
 framework delivers events to Projectors, which maintain read models optimized
 for each query need.
 
-## What happens when you submit a command
+## Request Flow
 
 ```mermaid
 sequenceDiagram
@@ -65,7 +65,7 @@ sequenceDiagram
 | Events + Event Handlers | Same as DDD, but now also feed projectors |
 | Repositories | Same as DDD |
 
-## Which elements you'll use
+## Elements You'll Use
 
 Everything from the [DDD pathway](./ddd.md), **plus**:
 
@@ -78,7 +78,7 @@ Everything from the [DDD pathway](./ddd.md), **plus**:
 | [Subscribers](../consume-state/subscribers.md) | Consume messages from external message brokers |
 | [Server](../../concepts/async-processing/index.md) | Async processing engine for events and commands |
 
-## Read the guides in this order
+## Guided Reading Order
 
 If you've already read the DDD pathway, start at step 4. Otherwise, start from
 the beginning:
@@ -125,7 +125,7 @@ infrastructure:
 | 12 | [Configuration](../../reference/configuration/index.md) | Configure databases, brokers, and event stores |
 | 13 | [Testing](../testing/index.md) | Test commands, handlers, and projections |
 
-## Which patterns help with CQRS
+## Relevant Patterns
 
 These patterns complement the CQRS approach. The first group applies to any DDD
 project. The second group solves problems specific to CQRS:

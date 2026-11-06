@@ -1,4 +1,4 @@
-# Run Protean commands from the command line
+# CLI
 
 When you install Protean, you also get the `protean` script, a command line
 interface, in your virtualenv. Driven by [Typer](https://typer.tiangolo.com),

@@ -1,11 +1,11 @@
-# Build with Domain-Driven Design in Protean
+# Domain-Driven Design with Protean
 
 !!! info "The Foundation"
     Pure DDD is the simplest way to use Protean and the foundation for the
     other two approaches. If you're new to Protean or building a
     straightforward application, start here.
 
-## How does the DDD approach work?
+## Overview
 
 In the pure DDD approach, you model your domain with aggregates, entities, and
 value objects, then use **application services** to orchestrate use cases.
@@ -16,7 +16,7 @@ This approach follows the patterns from Eric Evans' *Domain-Driven Design* (the
 "Blue Book"). There are no commands or command handlers. Application services
 receive requests directly and coordinate the domain logic.
 
-## How does a request flow through the domain?
+## Request Flow
 
 ```mermaid
 sequenceDiagram
@@ -47,7 +47,7 @@ sequenceDiagram
 6. Protean dispatches the domain events to **Event Handlers** for side effects
 7. The result is returned **synchronously** to the caller
 
-## Which elements will you use?
+## Elements You'll Use
 
 | Element | Purpose |
 |---------|---------|
@@ -62,7 +62,7 @@ sequenceDiagram
 | [Subscribers](../consume-state/subscribers.md) | Consume messages from external message brokers |
 | [Domain Services](../domain-behavior/domain-services.md) | Coordinate logic spanning multiple aggregates |
 
-## Read the guides in this order
+## Guided Reading Order
 
 Work through these guides in order to build a complete understanding of the
 DDD approach:
@@ -111,7 +111,7 @@ To handle side effects and coordinate across aggregates:
 | 15 | [Domain Services](../domain-behavior/domain-services.md) | Coordinate cross-aggregate logic |
 | 16 | [Testing](../testing/index.md) | Test your domain model and application layer |
 
-## Which patterns support the DDD approach?
+## Relevant Patterns
 
 These patterns complement the DDD approach:
 

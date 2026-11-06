@@ -160,7 +160,7 @@ memory, so it is easy to unit test. The happy-path test also checks that the
 service does not change the inventory. The stock is still 10 after the order is
 confirmed.
 
-## What did we build?
+## What We Built
 
 - An **`OrderFulfillmentService`** domain service that validates
   inventory across aggregates before confirming an order.
@@ -176,7 +176,7 @@ confirmed.
 In the next chapter, we will integrate with an external book supplier
 using a subscriber.
 
-## See the full source
+## Full Source
 
 ??? example "ch13.py, 253 lines"
 
@@ -184,6 +184,6 @@ using a subscriber.
     --8<-- "guides/getting-started/tutorial/ch13.py:full"
     ```
 
-## Read the next chapter
+## Next
 
 [Chapter 14: Connecting to the Outside World with Subscribers →](14-subscribers.md)

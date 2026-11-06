@@ -1,4 +1,4 @@
-# How the system changes state
+# Changing State
 
 In DDD, you change the state of the system through a carefully controlled and
 structured path, because each change is a critical operation. This section
@@ -26,7 +26,7 @@ controlled and follows the defined business rules.
 *In Protean, these "interfaces" are aggregate methods named in line with the
 ubiquitous language.*
 
-## Only the application layer calls the domain model
+## Only the Application Layer talks to the Domain Model
 
 The application layer acts as the intermediary between the domain model and the
 rest of the system. It is the only layer that can directly invoke changes on
@@ -38,7 +38,7 @@ keeping the two apart makes your application easier to maintain and more
 flexible. You can also test the domain model in isolation. You can refactor the
 domain logic and evolve it independently from other system concerns.
 
-## The API layer invokes actions in the application layer
+## Application Layer encloses actions
 
 The API layer often serves as the entry point for external requests. The API
 layer captures user inputs or requests and invokes the appropriate actions

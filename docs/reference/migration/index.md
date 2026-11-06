@@ -1,4 +1,4 @@
-# Upgrade between Protean versions
+# Migration Guides
 
 Guides for upgrading between Protean versions.
 

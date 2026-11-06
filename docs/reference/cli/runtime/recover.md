@@ -24,7 +24,7 @@ nothing, and retries it on every pass without ever resolving it.
 `--verify-checkpoints` also reports those stale entries. `--reset-beyond-head`
 clears them.
 
-## Check or reset the subscriptions
+## Commands
 
 ### `protean recover --verify-checkpoints`
 
@@ -166,7 +166,7 @@ back can make a subscription re-process messages. Run it against a stopped
 engine, so a running subscription does not write its stale position back over the
 reset.
 
-### Which options does the command take?
+### Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -175,7 +175,7 @@ reset.
 | `--domain` | Domain module path | `.` (current directory) |
 | `--json` | Output raw JSON instead of a table | `False` |
 
-### Read the exit codes
+### Exit codes
 
 | Code | Meaning |
 |------|---------|
@@ -191,7 +191,7 @@ could not write some checkpoints or recovery entries, the run exits `2`.
 A domain that cannot be loaded exits `2` under `--json` (with the error
 envelope). On the default human path the same failure aborts with exit `1`.
 
-### Get JSON output
+### JSON output
 
 Use `--json` for machine-readable output:
 

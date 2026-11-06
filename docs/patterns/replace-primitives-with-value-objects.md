@@ -81,7 +81,7 @@ Apply these tests to identify primitives that should be value objects:
 
 ## Applying the Pattern
 
-### Turn an email string into an `Email` value object
+### Email: Validated String
 
 The simplest case, a string with format rules.
 
@@ -109,7 +109,7 @@ invariant. Any aggregate that uses `Email` gets validation automatically.
 --8<-- "patterns/replace-primitives-with-value-objects/003.py:usage"
 ```
 
-### Group an amount and a currency into `Money`
+### Money: Compound Value
 
 Two fields that are meaningless apart.
 
@@ -138,7 +138,7 @@ rejects currency mismatches:
 --8<-- "patterns/replace-primitives-with-value-objects/005.py:usage"
 ```
 
-### Group five address fields into `Address`
+### Address: Multi-Field Group
 
 Five fields that form a single concept.
 
@@ -229,7 +229,7 @@ By rejecting identifier fields, Protean keeps entities and value objects
 distinct. Entities have identity, and value objects are defined by their
 attributes.
 
-### Compare value objects by their attributes
+### Equality by Value
 
 Two value objects with the same attributes are equal:
 
@@ -239,7 +239,7 @@ Two value objects with the same attributes are equal:
 
 This is automatic in Protean. You don't need to implement `__eq__`.
 
-### Add invariants to value objects
+### Invariants on Value Objects
 
 Value objects support `@invariant.post`, just like aggregates:
 
@@ -251,7 +251,7 @@ The invariant fires at construction time. An invalid `Percentage` cannot exist.
 
 ---
 
-## Move validation from the aggregate to the value objects
+## The Validation Shift
 
 When you introduce value objects, you move the format validation from the
 aggregate to the value object:
@@ -274,7 +274,7 @@ the value object's responsibility.
 
 ---
 
-## Nest value objects inside other value objects
+## Nested Value Objects
 
 Value objects can contain other value objects:
 
@@ -287,9 +287,9 @@ both are immutable, and both validate themselves.
 
 ---
 
-## Which value objects are common in each domain?
+## Common Value Objects by Domain
 
-### Which value objects appear in nearly every domain?
+### Universal Value Objects
 
 These appear in nearly every domain:
 
@@ -303,7 +303,7 @@ These appear in nearly every domain:
 | `Percentage` | value | Between 0 and 100 |
 | `URL` | value | Valid URL format |
 
-### Which value objects belong to one domain?
+### Domain-Specific Value Objects
 
 These emerge from your specific domain:
 
@@ -320,14 +320,14 @@ These emerge from your specific domain:
 
 ## When Not to Use Value Objects
 
-### Keep simple strings as primitives
+### Truly Simple Strings
 
 Not every string needs to be a value object. A `name` field with no format
 rules, no operations, and no composition is fine as a `String`. Apply the
 extraction tests from the beginning of this pattern, if none apply, keep the
 primitive.
 
-### Measure the overhead on performance-critical paths
+### Performance-Critical Paths
 
 Value objects add a small overhead: object construction, invariant checking,
 and the wrapper object itself. In hot paths processing millions of records per
@@ -335,7 +335,7 @@ second, this overhead might matter. Profile before optimizing. In most
 applications, the overhead is negligible compared to database and network
 latency.
 
-### Keep independent fields separate
+### Fields That Are Truly Independent
 
 If two fields happen to appear together but don't have a conceptual
 relationship, don't force them into a value object. `created_at` and
@@ -361,7 +361,7 @@ This adds complexity without benefit. A plain `String` field is simpler and
 equally correct. A value object is worth adding when it provides validation,
 operations, or composition.
 
-### Do not change a value object through its internal data
+### Mutable State Through Backdoors
 
 ```python
 # fragment
@@ -373,7 +373,7 @@ email._value_object_data["address"] = "new@example.com"  # Don't do this
 Protean enforces immutability through `__setattr__`. Bypassing it breaks the
 value object's guarantees. Replace the entire value object instead.
 
-### Do not give a value object an identity
+### Value Objects with Identity
 
 A concept has identity when two instances with the same attributes can be
 different. Model such a concept as an entity instead of a value object. A

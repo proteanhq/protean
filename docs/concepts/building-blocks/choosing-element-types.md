@@ -35,7 +35,7 @@ concept as an **Aggregate**, an **Entity**, or a **Value Object**.
 - **Access**: Embedded within entities or aggregates
 - **Lifecycle**: Created and replaced through their containing entity/aggregate
 
-## Check which element type fits a concept
+## Decision Checklists
 
 ### Choose an Aggregate when:
 
@@ -68,9 +68,9 @@ concept as an **Aggregate**, an **Entity**, or a **Value Object**.
 - **It represents a atomic concept**: The concept is meaningful only when all its attributes are considered together
 - **It simplifies the domain model**: Using this concept as a value object reduces complexity
 
-## See the element types in worked examples
+## Practical Examples
 
-### Model an e-commerce domain
+### E-commerce Domain Examples
 
 #### Order (Aggregate)
 ```python
@@ -109,7 +109,7 @@ concept as an **Aggregate**, an **Entity**, or a **Value Object**.
 - ✅ Frequently shared across entities
 - ✅ Atomic concept (amount + currency together)
 
-### Model a blog domain
+### Blog Domain Examples
 
 #### Post (Aggregate)
 ```python
@@ -126,9 +126,9 @@ concept as an **Aggregate**, an **Entity**, or a **Value Object**.
 --8<-- "concepts/building-blocks/choosing-element-types/002.py:email"
 ```
 
-## Spot common code smells and anti-patterns
+## Common Code Smells and Anti-Patterns
 
-### 🚩 Spot mistakes in aggregates
+### 🚩 Aggregate Red Flags
 
 **Making too many aggregates**
 ```python
@@ -153,7 +153,7 @@ class Order:
 --8<-- "concepts/building-blocks/choosing-element-types/005.py:missing_aggregate"
 ```
 
-### 🚩 Spot mistakes in entities
+### 🚩 Entity Red Flags
 
 **Entity as Value Object**
 ```python
@@ -168,7 +168,7 @@ item = repository.get_order_item(item_id)  # Wrong!
 # Should be: order.get_item(item_id)
 ```
 
-### 🚩 Spot mistakes in value objects
+### 🚩 Value Object Red Flags
 
 **Making a value object mutable**
 ```python
@@ -187,11 +187,11 @@ item = repository.get_order_item(item_id)  # Wrong!
 --8<-- "concepts/building-blocks/choosing-element-types/004.py:primitive_obsession"
 ```
 
-## Decide on element types as a team
+## Team Decision Flow
 
 Use this lightweight process for team discussions about domain element choices:
 
-### Decide quickly with the flowchart
+### Quick Reference
 
 For rapid decisions, use this simplified flowchart:
 
@@ -214,9 +214,9 @@ flowchart TD
     class C valueObject
 ```
 
-### Decide step by step
+### Step-by-Step Process
 
-#### Step 1: Check for identity
+#### Step 1: Identity Check
 
 Does this concept have a unique identity that matters to the business?
 
@@ -224,7 +224,7 @@ Does this concept have a unique identity that matters to the business?
 
 *If yes → Continue to Step 2*
 
-#### Step 2: Check the aggregate boundary
+#### Step 2: Aggregate Boundary Check
 
 Does this concept need to be accessed directly from outside the domain?
 
@@ -232,7 +232,7 @@ Does this concept need to be accessed directly from outside the domain?
 
 *If no → Consider Entity (go to Step 5)*
 
-#### Step 3: Confirm the aggregate
+#### Step 3: Aggregate Validation
 
 - Is this a core business concept?
 - Does it need to control a consistency boundary?
@@ -241,7 +241,7 @@ Does this concept need to be accessed directly from outside the domain?
 
 *If 3+ yes → Aggregate. Otherwise, reconsider Entity.*
 
-#### Step 4: Confirm the value object
+#### Step 4: Value Object Validation
 
 - Can this be immutable?
 - Is identity truly irrelevant?
@@ -250,7 +250,7 @@ Does this concept need to be accessed directly from outside the domain?
 
 *If 3+ yes → Value Object. Otherwise, reconsider Entity.*
 
-#### Step 5: Confirm the entity
+#### Step 5: Entity Validation
 
 - Does it belong to a clear aggregate?
 - Does it need to change over time?
@@ -261,7 +261,7 @@ Does this concept need to be accessed directly from outside the domain?
 
 ## When in Doubt
 
-### Follow these defaults
+### Default Guidelines
 
 1. **Start with Value Object**: If you're unsure, try modeling as a value object first. It's easier to promote to entity/aggregate later than to demote.
 

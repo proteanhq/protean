@@ -7,7 +7,7 @@ Protean supports three ways to define fields on domain elements. Protean fully
 supports all three. You can mix them freely within a single class. Choose the
 style that reads best for each situation.
 
-## Declare fields as annotations (recommended)
+## Annotation style (recommended)
 
 Fields are declared as type annotations using Protean's field functions:
 
@@ -24,7 +24,7 @@ structured data (dataclasses, Pydantic, attrs). Documentation generators,
 schema exporters, and IDE inspectors read annotations, so they can discover
 fields declared this way.
 
-## Assign fields as class variables
+## Assignment style
 
 Fields are assigned as class variables, using the same field functions:
 
@@ -37,7 +37,7 @@ Protean. It reads as "name equals a String with max_length 100." The semantics
 are identical to annotation style. Both produce the same runtime behavior,
 validation, and persistence.
 
-## Use raw Pydantic annotations
+## Raw Pydantic style
 
 Protean domain elements are Pydantic models internally, so you can use
 standard Python type annotations and Pydantic's `Field()` directly:
@@ -83,7 +83,7 @@ don't expose directly, use raw Pydantic.
 
 ---
 
-## Annotation style does not work with `from __future__ import annotations`
+## Known limitation: `from __future__ import annotations`
 
 Annotation-style field definitions are **incompatible** with PEP 563 deferred
 evaluation (`from __future__ import annotations`). When this import is active,

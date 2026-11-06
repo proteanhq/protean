@@ -1,4 +1,4 @@
-# Decide which runtime dependencies stay in core and which move to feature extras (ADR-0029)
+# ADR-0029: Runtime Dependency Boundary and Feature Extras
 
 **Status:** Accepted
 

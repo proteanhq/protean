@@ -93,7 +93,7 @@ We adopt **partition-per-key sequential processing** with the contract below.
 You declare `sequential_by` on a handler. The runtime keeps the guarantee
 through partition ownership.
 
-### 1. Give each partition key its own dynamic stream
+### 1. Partition per key, dynamic streams
 
 Each distinct partition-key value gets its own Redis stream,
 `{stream_category}:{key}` (for example `order:client-123`). There is no fixed
@@ -196,7 +196,7 @@ and these rules never reject them. The rejection guards a corner case and adds
 no cost on the common path. It is the same fail-loud stance the framework takes
 for a missing key.
 
-### 4. Keep stream names flat and reject keys that would collide
+### 4. Flat stream names, collisions handled by rejection
 
 Partition streams stay flat: `{stream_category}:{key}`. Because Protean rejects
 colons and reserved tokens in keys (decision 3), partition streams cannot
@@ -224,7 +224,7 @@ only adds a segment to the name. Both schemes need key validation, so the infix
 adds no collision protection beyond the reject rule. Both schemes also carry
 the same parser cost, and the flat name is the more readable of the two.
 
-### 5. Give each partition one active consumer through ownership and a fencing token
+### 5. Single active consumer per partition, by ownership with a fencing token
 
 The guarantee is enforced by **partition ownership**, not by a per-message lock
 and not by "each instance reads all partitions." Only the partition owner reads
@@ -323,7 +323,7 @@ consumer never does this silently. The halt is a behavior change from the
 shared `process_batch` loop, which continues past failures: the partitioned
 consumer breaks that loop on an unresolved head failure instead.
 
-### 7. Discover partitions from a maintained index
+### 7. Partition discovery by a maintained index
 
 The consumer enumerates live partitions from a **maintained index**, not a
 keyspace scan. On publish to `{stream_category}:{key}`, the publisher records
@@ -350,7 +350,7 @@ the epic's stream-retention work. The unbounded partition set is inherent to
 partition-per-key and would exist under a scan too, so it is not a reason to
 prefer scanning.
 
-### 8. Gate the feature on a broker capability
+### 8. Capability gating
 
 Partition-per-key routing is gated behind the broker's `STREAM_PARTITIONING`
 capability (a flag that exists but is advertised by no broker today). A broker
@@ -466,7 +466,7 @@ collapsing every key onto a single worker.
 
 ## Consequences
 
-### What the design gains
+### Positive
 
 - The per-key ordering guarantee holds under horizontal scaling as well as on a
   single instance. Ownership serializes each partition, which a shared group
@@ -482,7 +482,7 @@ collapsing every key onto a single worker.
   a ratified contract to cite for their partition scheme, key handling, and
   ordering guarantee. Both issues can now proceed.
 
-### What the design costs
+### Negative
 
 - This is the most infrastructure of the options considered: a lease with
   heartbeats, a fencing token, and `XCLAIM`-based reclaim added to the broker.

@@ -8,7 +8,7 @@ A `Domain` in protean is always associated with a domain context, which can be
 used to bind an domain object implicitly to the current thread or greenlet. We
 refer to the act of binding the domain object as **activating the domain**.
 
-## What is a domain context?
+## Domain Context
 
 A Protean Domain object has attributes, such as config, that are useful to
 access within domain elements. However, importing the domain instance within
@@ -24,7 +24,7 @@ thread's execution. The domain context tracks the domain-level data during the
 lifetime of a domain object. Protean uses the domain context while it processes
 handlers, CLI commands, or other activities.
 
-## Activate the domain context
+## Activating the Domain Context
 
 You activate a Protean domain close to the application's entrypoint, like an
 API request. In many other cases, Protean automatically activates a domain
@@ -33,7 +33,7 @@ commands and events, and the CLI accessing the domain.
 
 You activate a domain by pushing up its context to the top of the domain stack:
 
-### Activate with a context manager
+### With Context Manager
 Protean provides a context manager. You run the domain operations inside its
 block.
 
@@ -49,7 +49,7 @@ This is a convenient pattern to use with most API frameworks. You push the
 domain’s context at the beginning of a request and pop it once the request is
 processed.
 
-### Activate manually
+### Manually
 
 You can also activate the context manually by using the `push` and `pop`
 methods of the domain context:
@@ -75,7 +75,7 @@ domain context is active and `False` otherwise. It never emits a warning:
 `bool(current_domain)` gives the same answer, but outside a domain context it
 also emits a "Working outside of domain context" warning.
 
-## Store data on the domain context
+## Storing Data
 
 The domain context also provides a `g` object for storing data. It is a simple
 namespace object that has the same lifetime as an domain context.

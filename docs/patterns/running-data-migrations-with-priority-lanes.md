@@ -71,7 +71,7 @@ priority. The framework handles the rest.
 
 Protean supports priority lanes through three mechanisms:
 
-### 1. Tag commands with a processing priority
+### 1. Processing Priority Context
 
 The `processing_priority()` context manager tags all commands processed within
 a block with a specific priority. Events produced by those commands inherit the
@@ -109,7 +109,7 @@ For the full configuration and priority level reference, see
 
 ## Applying the Pattern
 
-### Write a complete migration script
+### A Complete Migration Script
 
 The script works on this `Customer` aggregate. Priority lanes are switched on
 in the domain's configuration:
@@ -142,7 +142,7 @@ Then run the migration while production is running:
 python migrate_loyalty_tiers.py
 ```
 
-### What each part does during the migration
+### Key Points
 
 1. **`processing_priority(Priority.LOW)`** wraps all `domain.process()` calls.
    Every event produced inside the block is tagged with `priority=-50` in the

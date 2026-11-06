@@ -2,7 +2,7 @@
 
 The Redis PubSub broker uses Redis Lists for simple queuing with consumer groups. Despite its name, it doesn't use Redis's native Pub/Sub mechanism but implements a queue-based messaging system.
 
-## How the broker uses Redis lists
+## Overview
 
 This broker uses Redis Lists as queues where:
 
@@ -11,7 +11,7 @@ This broker uses Redis Lists as queues where:
 - **Messages are persisted** in Redis lists until Redis is flushed
 - **Consumer groups** track their position in each list independently
 
-## Install the redis package
+## Installation
 
 The Redis PubSub broker requires the `redis` Python package:
 
@@ -23,7 +23,7 @@ pip install "protean[redis]"
 pip install "redis>=8.0.0,<8.2.0"
 ```
 
-## Configure the broker
+## Configuration
 
 ```toml
 [brokers.notifications]
@@ -31,14 +31,14 @@ provider = "redis_pubsub"
 URI = "redis://localhost:6379/0"
 ```
 
-### What each option sets
+### Configuration Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `provider` | Required | Must be `"redis_pubsub"` for Redis PubSub broker |
 | `URI` | Required | Redis connection string |
 
-## What the broker supports
+## Capabilities
 
 The Redis PubSub broker provides simple queuing capabilities:
 
@@ -48,12 +48,12 @@ The Redis PubSub broker provides simple queuing capabilities:
 - ❌ **ORDERED_MESSAGING** - No ordering guarantees
 - ❌ **ENTERPRISE_STREAMING** - Not supported
 
-## Use the broker
+## Usage Examples
 
 The examples on this page need a running Redis server. They build on one
 another.
 
-### Publish a message
+### Basic Publishing
 
 Configure the broker first. Then publish to a stream. Each stream is a Redis
 list with the same name:
@@ -64,7 +64,7 @@ list with the same name:
 --8<-- "adapters/broker/redis-pubsub/001.py:publish"
 ```
 
-### Subscribe to a stream
+### Subscribing to Streams
 
 A subscriber is a class with a `__call__` method that receives each message as
 a dict. Name the broker with `broker=`. Before you initialize the domain,
@@ -82,7 +82,7 @@ subscriber runs as soon as the message is published. Here `pushed` becomes
 A subscriber reads one stream by its exact name. Stream names are not
 patterns, so `stream="chat:*"` reads a list literally named `chat:*`.
 
-### Read one stream with two consumer groups
+### Consumer Groups
 
 Each consumer group keeps its own position in the list, in a Redis key named
 `position:<stream>:<group>`. Two groups read the same messages:
@@ -95,7 +95,7 @@ Each consumer group keeps its own position in the list, in a Redis key named
 The broker does not track whether a message was processed. `ack` and `nack`
 log a warning and return `False`.
 
-## Know what the broker does not do
+## Limitations and Considerations
 
 ### Limited Persistence
 
@@ -104,37 +104,37 @@ persistence (RDB snapshots or AOF) turned on, the messages are lost. For
 durable messaging, use the [Redis Streams broker](./redis.md) with persistence
 turned on.
 
-### The broker does not acknowledge messages
+### No Acknowledgment Support
 
 `publish` returns a message identifier, but there is no delivery confirmation.
 A consumer group moves its position forward as soon as it reads a message. The
 group does this whether or not a subscriber handled the message.
 
-### Group positions reset when their keys are deleted
+### Position Tracking
 
 The group positions are Redis keys. If they are deleted (for example by
 `FLUSHDB`), every group reads its streams from the start again.
 
 ## Performance Considerations
 
-### Keep messages small
+### Message Size
 
 Keep messages small. Put large payloads in a store such as S3. Publish a
 reference to them (a URL and a size) instead of the payload.
 
-### Name streams in a hierarchy
+### Stream Naming
 
 Use hierarchical names such as `user:123:notifications` or
 `system:alerts:critical`, so `redis-cli --scan --pattern` can find related
 streams.
 
-### How each consumer group processes messages
+### Message Processing
 
 Messages are processed sequentially per consumer group. Each group maintains its own position counter in Redis.
 
-## Inspect and debug the broker
+## Monitoring and Debugging
 
-### Inspect the lists with Redis CLI commands
+### Redis CLI Commands
 
 The broker stores messages in lists, so the list commands show its state:
 
@@ -152,12 +152,12 @@ redis-cli LRANGE user:notifications 0 9
 redis-cli GET position:user:notifications:billing
 ```
 
-### Turn on debug logging
+### Logging
 
 The broker logs through the `protean.adapters.broker.redis_pubsub` logger. When
 you troubleshoot, set it to `DEBUG` with the standard `logging` module.
 
-### Check the broker's health
+### Health Checks
 
 `health_stats()` returns the common health dict. The Redis details, such as
 `connected_clients` and `used_memory_human`, are under `details`:
@@ -167,9 +167,9 @@ you troubleshoot, set it to `DEBUG` with the standard `logging` module.
 --8<-- "adapters/broker/redis-pubsub/001.py:health"
 ```
 
-## Migrate to another broker
+## Migration Strategies
 
-### Migrate to Redis Streams
+### To Redis Streams
 
 When you need persistence and reliability, change the provider:
 
@@ -193,7 +193,7 @@ Subscribers stay the same. Two things change:
    for its group.
 2. `publish` returns a Redis Streams entry id such as `1700000000000-0`.
 
-## Decide when to use Redis PubSub
+## Working with Redis PubSub
 
 ### Use for Simple Queuing
 
@@ -211,7 +211,7 @@ Not suitable for:
 - Scenarios requiring message replay
 - High-throughput production systems
 
-## How Redis PubSub compares with other brokers
+## Comparison with Other Brokers
 
 | Feature | Redis PubSub | Redis Streams | Inline |
 |---------|--------------|---------------|--------|
@@ -223,8 +223,8 @@ Not suitable for:
 | Performance | High | High | Very High |
 | Use Case | Simple Queuing | Event Streaming | Development |
 
-## Where to read next
+## Related pages
 
 - Learn about [Redis Streams broker](./redis.md) for reliable messaging
-- Understand [broker capabilities](./index.md#what-can-each-broker-do) in detail
+- Understand [broker capabilities](./index.md#broker-capabilities) in detail
 - Explore [custom broker development](./custom-brokers.md)

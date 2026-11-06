@@ -64,7 +64,7 @@ can additionally be invoked asynchronously. Application services remain the
 right choice for simpler DDD architectures that do not need the command/query
 separation.
 
-## Follow these practices
+## Best Practices
 
 ### Keep application services thin. { data-toc-label="Keep Thin" }
 
@@ -72,7 +72,7 @@ If an application service method grows beyond loading, calling, and
 persisting, it is likely absorbing domain logic. Extract that logic into the
 aggregate or a domain service.
 
-### Give each method one use-case. { data-toc-label="One Use-Case" }
+### One use-case per method. { data-toc-label="One Use-Case" }
 
 Each method should represent a single, cohesive business operation. Combining
 multiple use-cases into one method makes error handling ambiguous and
@@ -86,7 +86,7 @@ state.
 
 ---
 
-## Where to read next
+## Next steps
 
 For practical details on defining and using application services in Protean, see the guide:
 

@@ -1,4 +1,4 @@
-# Declare aggregate metadata with decorator parameters instead of a `Meta` class (ADR-0014)
+# ADR-0014: Aggregate metadata via decorator parameters, not a `Meta` class
 
 **Status:** Accepted
 

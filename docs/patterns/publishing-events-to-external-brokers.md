@@ -68,7 +68,7 @@ The producing bounded context's responsibility ends at broker push. It does not
 track whether external consumers have read the message. From that point, the
 external broker provides the delivery semantics to its consumers.
 
-### What does the pattern guarantee?
+### Core Principles
 
 1. **All outbox rows commit together**: Protean writes internal and external
    outbox rows in the same database transaction as the aggregate mutation. An
@@ -92,7 +92,7 @@ external broker provides the delivery semantics to its consumers.
 
 ## How Protean Supports It
 
-### Configure the outbox for external brokers
+### Configuration
 
 Turn on the outbox. Then add the external broker(s) to its configuration:
 
@@ -142,7 +142,7 @@ This is what happens when a Unit of Work commits an aggregate with a
 
 For a non-published event, only the internal row (Row 1) is created.
 
-### Each broker gets its own outbox processor
+### Outbox Processing
 
 The Engine creates separate `OutboxProcessor` instances for each broker:
 
@@ -159,7 +159,7 @@ Trace event: outbox.published        Trace event: outbox.external_published
 Each processor runs independently. If the external broker is down, the external
 row retries on its own schedule. Internal processing continues uninterrupted.
 
-### What does the external message envelope keep?
+### External Message Envelope
 
 The external `OutboxProcessor` strips internal-only fields from the envelope.
 The processor keeps every field an external consumer needs:
@@ -254,7 +254,7 @@ producing domain's internal event classes.
 
 ## Anti-Patterns
 
-### Relaying events through manual handlers
+### Manual relay handlers
 
 ```python
 # fragment
@@ -323,7 +323,7 @@ consumers need in the event `data` and `extensions`.
 
 ---
 
-## What are the trade-offs?
+## Trade-offs
 
 | Dimension | Impact |
 |-----------|--------|

@@ -1,15 +1,15 @@
-# Send messages between systems with brokers
+# Brokers
 
 Brokers enable asynchronous message passing between different parts of your system and external services. They decouple message producers from consumers, allowing for scalable, resilient architectures.
 
-## What does the broker port provide?
+## Overview
 
 The Broker port in Protean provides a unified interface for different message broker implementations. Each broker adapter implements this interface while providing access to the unique features of the underlying technology.
 
 !!!note
     Protean internally uses an Event Store for domain events and commands within a bounded context. Brokers are primarily used for integration between different systems and for publishing messages to external consumers.
 
-## Which brokers does Protean include?
+## Available Brokers
 
 Protean includes several broker adapters:
 
@@ -37,7 +37,7 @@ The `redis_pubsub` broker uses Redis Lists for simple queuing with basic consume
 - **It supports** simple queuing with position tracking.
 - **Requires**: Redis 2.0+
 
-## Declare brokers in your domain configuration
+## Configuration
 
 Brokers are configured in your domain configuration file (`domain.toml` or `.domain.toml`):
 
@@ -64,11 +64,11 @@ Each broker configuration must specify:
 !!!important
     You must define a `default` broker in your configuration. This broker will be used unless a specific broker is requested.
 
-## What can each broker do?
+## Broker Capabilities
 
 Brokers in Protean declare their capabilities through a capability-based system. This allows you to understand what features each broker supports and write code that adapts to available capabilities.
 
-### How are capabilities grouped into tiers?
+### Capability Tiers
 
 Brokers are organized into capability tiers, each building upon the previous:
 
@@ -78,7 +78,7 @@ Brokers are organized into capability tiers, each building upon the previous:
 4. **ORDERED_MESSAGING**: Reliable messaging + message ordering
 5. **ENTERPRISE_STREAMING**: Full features including DLQ, replay, partitioning
 
-### Check a broker's capabilities at runtime
+### Checking Capabilities
 
 You can check broker capabilities at runtime:
 
@@ -86,9 +86,9 @@ You can check broker capabilities at runtime:
 --8<-- "adapters/broker/index/001.py:full"
 ```
 
-## Consume and publish messages
+## Basic Usage
 
-### Consume messages with subscribers
+### Consuming Messages
 
 Messages are typically consumed through Subscribers. A subscriber is a class
 with a `__call__` method that receives the message as a dict. Register
@@ -103,7 +103,7 @@ page use that setting:
 --8<-- "adapters/broker/index/002.py:subscriber"
 ```
 
-### Publish a message
+### Publishing Messages
 
 ```python
 --8<-- "adapters/broker/index/002.py:publish"
@@ -112,7 +112,7 @@ page use that setting:
 After the first publish, the subscriber above has recorded
 `user@example.com`.
 
-## Run the message processing engine
+## Message Processing Engine
 
 Protean includes a built-in message processing engine that consumes messages
 from brokers:
@@ -133,7 +133,7 @@ The engine automatically:
 - Implements retry logic based on broker capabilities
 - Provides graceful shutdown
 
-## What happens when a broker call fails?
+## Error Handling
 
 `publish` rejects an empty message with a `ValidationError` before it reaches
 the broker:
@@ -155,7 +155,7 @@ adapter can catch errors itself: the Redis broker's `get_next`, `ack` and
 `publish` does not contact the broker at all. `publish` records the message.
 The Unit of Work sends the message when it commits.
 
-## Check broker health
+## Health Checks
 
 Monitor broker health and connectivity. `health_stats()` returns a dict with
 `status` (`"healthy"`, `"degraded"` or `"unhealthy"`), `connected`,
@@ -210,7 +210,7 @@ External packages can register their own brokers the same way. See
 [Custom Brokers](./custom-brokers.md) for a complete guide including a Kafka
 example.
 
-## See also
+## Related pages
 
 - [Configure specific brokers](./inline.md) for your use case
 - [Create custom broker adapters](./custom-brokers.md) for other technologies

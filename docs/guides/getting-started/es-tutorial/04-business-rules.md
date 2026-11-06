@@ -1,4 +1,4 @@
-# Chapter 4: Make business rules that never break
+# Chapter 4: Business Rules That Never Break
 
 A tester discovers a problem: a withdrawal of $200 from an account with $100
 succeeds. The validation in `withdraw()` checks the balance *before* the
@@ -8,7 +8,7 @@ You fix this problem with **invariants**. An invariant is a rule that Protean
 checks *after* every state mutation. Invariants keep the aggregate **always
 valid**, whichever path changed its state.
 
-## What goes wrong with method-level validation?
+## The Problem with Method-Level Validation
 
 In Chapter 2, our `withdraw()` method checked `if amount > self.balance`. This
 works for the simple case. The check has a subtle issue, though: it runs before
@@ -18,7 +18,7 @@ balance between the check and the event, the validation could be bypassed.
 Invariants solve this by validating the aggregate's state **after**
 the `@apply` handler has already mutated it.
 
-## Add post-invariants to the aggregate
+## Post-Invariants
 
 Add two invariants to the `Account` aggregate:
 
@@ -47,7 +47,7 @@ Here is how they work:
    enforce with method-level checks alone because it spans two fields
    (`status` and `balance`).
 
-## Close an account
+## Closing an Account
 
 We also add an `AccountClosed` event and a `close()` method:
 
@@ -68,7 +68,7 @@ And the corresponding `@apply` handler:
 --8<-- "guides/getting-started/es-tutorial/ch04.py:apply_account_closed"
 ```
 
-## See the invariants reject invalid changes
+## Invariants in Action
 
 Let's exercise both invariants:
 
@@ -130,7 +130,7 @@ Invariants have important advantages over method-level checks:
 
 Chapter 5 adds automated tests written with Protean's fluent testing DSL.
 
-## Read the full source
+## Full Source
 
 ??? example "ch04.py, 246 lines"
 
@@ -138,6 +138,6 @@ Chapter 5 adds automated tests written with Protean's fluent testing DSL.
     --8<-- "guides/getting-started/es-tutorial/ch04.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 5: Testing the Ledger →](05-testing-the-ledger.md)

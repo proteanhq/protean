@@ -1,4 +1,4 @@
-# What is a ubiquitous language?
+# Ubiquitous Language
 
 A ubiquitous language is a shared vocabulary developed collaboratively by
 domain experts and developers, used consistently in code, conversations,
@@ -14,7 +14,7 @@ disappears.
 
 The language is not invented by developers. It is discovered through conversation with domain experts and refined through modeling.
 
-## Use the language in your code
+## The Language Lives in Code
 
 Class names, method names, field names, event names, and command names should
 all use terms from the ubiquitous language. If a domain expert says "the order
@@ -58,7 +58,7 @@ the [analysis model](./analysis-model.md) aligned with the domain. Stale names
 in code are more than technical debt. They cause miscommunication that keeps
 growing over time.
 
-## Read next
+## Further Reading
 
 - [Bounded Contexts](./bounded-contexts.md): How language scope is defined
 - [Analysis Model](./analysis-model.md): How the language becomes a model

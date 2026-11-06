@@ -96,7 +96,7 @@ Protean provides a `@domain.process_manager` element with:
 
 ## Applying the Pattern
 
-### Define the aggregates
+### The Aggregates
 
 Four aggregates participate in order fulfillment, `Order`, `Payment`,
 `Inventory`, and `Shipping`. Each one publishes events that the PM reacts to.
@@ -107,7 +107,7 @@ Each one also accepts commands that the PM issues:
 --8<-- "patterns/coordinating-long-running-processes/001.py:messages"
 ```
 
-### Define the process manager
+### The Process Manager
 
 A production-ready PM is built around five principles: design it as a state
 machine, make every handler idempotent, handle out-of-order events, design
@@ -121,7 +121,7 @@ compensation explicitly, and handle timeouts.
 
 ## What Happens at Runtime
 
-### What happens when every step succeeds
+### The happy path
 
 The PM acts as a state machine that advances one step per event:
 
@@ -148,7 +148,7 @@ States:     new ──► awaiting_inventory ──► awaiting_payment ──�
    `mark_as_complete()` called. Protean skips future events for this
    `order_id`.
 
-### What happens when payment fails
+### A failure path
 
 If `PaymentFailed` arrives instead of `PaymentConfirmed`:
 
@@ -195,7 +195,7 @@ before dispatching subsequent events. Late events are silently skipped.
 
 ---
 
-## Follow these design principles
+## Design Principles
 
 ### 1. Design as a state machine
 
@@ -276,7 +276,7 @@ its own repository.
 
 ## Anti-Patterns
 
-### Writing handlers that are not idempotent
+### Non-idempotent handlers
 
 ```python
 # fragment
@@ -291,7 +291,7 @@ If delivered twice, `CreateShipment` is issued twice, a duplicate shipment.
 **Fix:** guard every handler with a status check so the second delivery is a
 no-op.
 
-### Putting business logic in the process manager
+### Business logic in the process manager
 
 ```python
 # fragment
@@ -341,7 +341,7 @@ The PM is logically finished but Protean does not know that. Future events for
 this `order_id` are still dispatched, potentially causing unexpected behavior.
 **To fix it,** always call `self.mark_as_complete()` or use `end=True`.
 
-### Leaving out failure handlers
+### Missing failure handlers
 
 ```python
 # fragment
@@ -366,7 +366,7 @@ for its failure event that compensates and transitions to a terminal state.
 | Compensation | Scattered across handlers | Centralized in PM handlers |
 | Multi-stream | Multiple independent handlers | Single PM subscribes to all |
 
-### Check your design against this list
+### Design checklist
 
 | Principle | Question | What to check |
 |---|---|---|

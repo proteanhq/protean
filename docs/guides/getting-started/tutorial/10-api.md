@@ -30,7 +30,7 @@ domain context. `register_exception_handlers()` maps domain exceptions
 (like `ObjectNotFoundError`, `ValidationError`) to standard HTTP error
 responses (404, 400, etc.).
 
-## Send commands from write endpoints
+## Write Endpoints: Commands
 
 Each write endpoint translates an HTTP request into a command and
 dispatches it:
@@ -108,7 +108,7 @@ documentation that FastAPI generates automatically.
 Chapter 11 adds tests for everything built so far: the domain logic, the
 command flows and the API endpoints.
 
-## Read the full source
+## Full Source
 
 ??? example "api.py, 116 lines"
 
@@ -116,6 +116,6 @@ command flows and the API endpoints.
     --8<-- "guides/getting-started/tutorial/bookshelf/api.py:full"
     ```
 
-## Continue to the next chapter
+## Next
 
 [Chapter 11: Testing Your Domain →](11-testing.md)

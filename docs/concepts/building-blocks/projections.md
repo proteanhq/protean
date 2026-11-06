@@ -86,7 +86,7 @@ suit the specific query use-case the projection serves.
 
 ---
 
-## Read more about projections
+## Next steps
 
 For practical details on defining and using projections in Protean, see the guide:
 

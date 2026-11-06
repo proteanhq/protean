@@ -1,4 +1,4 @@
-# Run several Engine workers at once
+# Multi-Worker Mode
 
 Protean can run multiple Engine worker processes from a single CLI invocation
 using the `--workers` flag. The **Supervisor** spawns N independent processes,
@@ -52,7 +52,7 @@ protean --log-level DEBUG server --domain=my_domain --workers 4
 protean server --domain=my_domain --workers 4 --test-mode
 ```
 
-## How does the Supervisor run its workers?
+## How It Works
 
 The multi-worker architecture follows the **prefork model**:
 
@@ -86,15 +86,15 @@ graph TD
 
 4. The Supervisor monitors workers and handles shutdown signals.
 
-## How do workers avoid processing the same message twice?
+## Worker Coordination
 
-### Redis splits stream messages across workers
+### Stream Messages
 
 Redis consumer groups distribute messages across workers automatically. When
 multiple workers subscribe to the same stream, Redis assigns each message to
 one consumer. No application-level coordination is needed.
 
-### Row locks stop two workers publishing the same outbox message
+### Outbox Processing
 
 Each worker runs its own OutboxProcessor. To prevent multiple workers from
 publishing the same outbox message, the processor uses database-level row
@@ -105,7 +105,7 @@ same message, the operation fails and that worker skips to the next message.
 See [Outbox Pattern](../../concepts/async-processing/outbox.md#multi-worker-support) for details on the locking
 mechanism.
 
-## How does the Supervisor shut workers down on a signal?
+## Signal Handling
 
 The Supervisor installs handlers for `SIGINT`, `SIGTERM`, and `SIGHUP` (where
 available). When a signal is received:
@@ -149,7 +149,7 @@ The Supervisor continuously monitors worker processes:
     automatic restarts, use a process manager (systemd, Docker, Kubernetes) to
     restart the entire `protean server` command.
 
-## What exit codes does the Supervisor return?
+## Exit Codes
 
 | Code | Meaning |
 |------|---------|
@@ -157,7 +157,7 @@ The Supervisor continuously monitors worker processes:
 | 1 | One or more workers crashed |
 | Non-zero (from CLI) | Propagated from the Supervisor to the CLI |
 
-## Run the Supervisor from Python code
+## Programmatic Usage
 
 You can use the Supervisor directly in Python code:
 
@@ -197,7 +197,7 @@ The `debug` argument is deprecated and is removed in 0.20.0. Pass
 `log_level="DEBUG"` instead. `Reloader` takes the same arguments and has the
 same deprecation.
 
-## Deploy multiple workers in production
+## Production Deployment
 
 ### systemd
 

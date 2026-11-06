@@ -12,7 +12,7 @@ release a partition key that an abandoned row has halted.
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Which commands does the group have?
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -163,7 +163,7 @@ protean outbox halted --json --domain=my_domain
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
 | `--provider` | Provider whose outbox to inspect | `default` |
-| `--json` | Print the [result envelope](../conventions.md#what-does-the-result-envelope-contain) as JSON | off |
+| `--json` | Print the [result envelope](../conventions.md#the-result-envelope) as JSON | off |
 
 **Output**
 
@@ -267,7 +267,7 @@ protean outbox discard 6f1c2a9e-... --reason "payload rejected by the broker" --
 Outbox row 6f1c2a9e-... is discarded and will not be published.
 ```
 
-## Reconcile automatically when the server starts {#automatic-startup-sweep}
+## Automatic startup sweep
 
 The server runs the same reconciliation once when it boots. On restart, the
 sweep rebuilds any event-sourced aggregate's outbox row that a crash lost
@@ -286,7 +286,7 @@ covers only the
 `default` provider. Run `protean outbox reconcile --provider=<name>` for
 aggregates on other providers.
 
-## What does each command do on an error?
+## Error Handling
 
 | Condition | Behavior |
 |-----------|----------|
@@ -317,7 +317,7 @@ Anchor](../../../adr/0015-event-store-append-as-durable-anchor.md).
 See the [Outbox Guide](../../../guides/server/outbox.md#recover-from-a-crash-reconciliation)
 for the operational walkthrough.
 
-## How do the commands find the domain?
+## Domain Discovery
 
 The `protean outbox` commands use the same domain discovery mechanism as
 other CLI commands. See [Domain Discovery](../project/discovery.md) for the

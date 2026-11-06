@@ -1,4 +1,4 @@
-# Observe the async message pipeline
+# Observability
 
 Protean provides built-in observability for the async message processing
 pipeline. Two components work together to give you real-time visibility into
@@ -43,7 +43,7 @@ The TraceEmitter writes to two Redis channels:
   old entries automatically with Redis `MINID`, based on the configured
   retention period.
 
-## What a trace event records
+## Trace events
 
 The TraceEmitter publishes structured `MessageTrace` events at key points in
 the message processing pipeline. Each trace event captures:
@@ -65,7 +65,7 @@ the message processing pipeline. Each trace event captures:
 | `worker_id` | Subscription instance that processed this message |
 | `timestamp` | ISO 8601 UTC timestamp |
 
-### Which stages emit a trace event
+### Event types
 
 | Event | Emitted by | When |
 |-------|-----------|------|
@@ -83,13 +83,13 @@ operation with the `correlation_id` and `causation_id` fields. For a complete
 guide on how these IDs propagate through the system, see [Correlation and
 Causation IDs](../../guides/observability/correlation-and-causation.md).
 
-## How long the TraceEmitter keeps trace events
+## Trace persistence and retention
 
 By default, the TraceEmitter persists trace events to a Redis Stream
 (`protean:traces`) for 7 days. This allows the dashboard and REST API to serve
 historical data even after SSE clients disconnect.
 
-### Set the retention period
+### Configuration
 
 Set `trace_retention_days` in your domain configuration:
 
@@ -104,7 +104,7 @@ return empty results.
 Old entries are automatically trimmed using Redis `MINID`-based trimming on
 every write, so no separate cleanup process is needed.
 
-## How the TraceEmitter avoids overhead
+## Zero-overhead design
 
 The TraceEmitter is designed to add no measurable overhead when nobody is
 listening and persistence is disabled:
@@ -153,7 +153,7 @@ For deployment with uvicorn directly:
 --8<-- "reference/server/observability/001.py:app"
 ```
 
-### Which endpoints the Observatory exposes
+### Endpoints
 
 #### Dashboard: `GET /`
 
@@ -507,7 +507,7 @@ protean_projection_staleness_seconds{domain="identity",projection="UserDirectory
 The endpoint emits these gauges unless OpenTelemetry is on and the
 `opentelemetry-exporter-prometheus` package is installed. In that case it
 returns the OpenTelemetry metrics instead; see
-[OpenTelemetry integration](#integrate-with-opentelemetry).
+[OpenTelemetry integration](#opentelemetry-integration).
 
 | Metric | Type | Description |
 |--------|------|-------------|
@@ -534,7 +534,7 @@ returns the OpenTelemetry metrics instead; see
 | `protean_db_pool_overflow` | gauge | Overflow database connections |
 | `protean_broker_pool_active_connections` | gauge | Active broker pool connections |
 
-### Configure Prometheus to scrape the Observatory
+### Prometheus scrape configuration
 
 ```yaml
 # prometheus.yml
@@ -545,7 +545,7 @@ scrape_configs:
       - targets: ['localhost:9000']
 ```
 
-### Configure CORS for browser dashboards
+### CORS configuration
 
 The Observatory enables CORS by default to allow browser-based dashboards. You
 can customize the allowed origins:
@@ -554,7 +554,7 @@ can customize the allowed origins:
 --8<-- "reference/server/observability/002.py:cors"
 ```
 
-## What you need before you start
+## Prerequisites
 
 The observability system produces traces only when **Redis** is the message
 broker. The TraceEmitter uses Redis Pub/Sub (channel `protean:trace`) as the
@@ -568,7 +568,7 @@ The Observatory server requires the `fastapi` and `uvicorn` packages:
 pip install fastapi uvicorn
 ```
 
-## Integrate with OpenTelemetry
+## OpenTelemetry integration
 
 For production APM environments, Protean supports native OpenTelemetry
 distributed tracing and metrics alongside the Observatory. When OTel is
@@ -580,7 +580,7 @@ See [OpenTelemetry Integration](../../guides/server/opentelemetry.md) for
 configuration, span and metric catalogs, APM setup guides, and TraceParent
 propagation details.
 
-## What to read next
+## Next steps
 
 - [OpenTelemetry Integration](../../guides/server/opentelemetry.md): Distributed
   tracing, metrics, APM setup, and TraceParent propagation with OpenTelemetry

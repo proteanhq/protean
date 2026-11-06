@@ -228,7 +228,7 @@ protean outbox discard 6f1c2a9e-... --reason "payload rejected by the broker" --
 
 **Observatory**, the `/api/outbox` endpoint reports per-domain outbox status including
 counts by state. See [Observatory
-Dashboard](../../reference/cli/runtime/observatory.md#which-endpoints-does-the-observatory-serve).
+Dashboard](../../reference/cli/runtime/observatory.md#endpoints).
 
 **A shell session**, query the outbox repository directly. Each database
 provider has its own outbox repository, looked up by the provider's name.
@@ -417,7 +417,7 @@ Brokers](./external-event-dispatch.md).
 
 ---
 
-## Fix common errors
+## Common errors
 
 | Condition | Behavior |
 |---|---|

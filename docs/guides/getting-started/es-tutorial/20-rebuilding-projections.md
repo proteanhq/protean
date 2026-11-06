@@ -1,4 +1,4 @@
-# Chapter 20: Rebuild a projection from its events
+# Chapter 20: Rebuilding the World
 
 The finance team changes their regulatory reporting requirements. The
 `AccountSummary` projection needs new fields and different aggregation logic.
@@ -15,7 +15,7 @@ updated projector, which fills the new projection automatically.
 4. **Dispatch** each event through the projector handlers
 5. **Report** the result: events processed, events skipped, errors
 
-## Rebuild a projection from code
+## Rebuilding Programmatically
 
 ```python
 # fragment
@@ -29,7 +29,7 @@ The `RebuildResult` contains:
 - `events_skipped`: Events whose type could not be resolved
 - `errors`: Any exceptions during processing
 
-## Rebuild a projection from the CLI
+## Rebuilding via CLI
 
 ```shell
 # Rebuild a specific projection
@@ -56,7 +56,7 @@ upcaster chain runs inside `to_domain_object()`, so the projector
 always receives the current event version. Your projectors only need
 to handle the latest schema.
 
-## Why are some events skipped?
+## Skipped Events
 
 The rebuild skips an event whose type it cannot resolve (a deprecated event
 with no upcaster chain) and logs a warning instead of failing. As a result, a
@@ -77,7 +77,7 @@ single deprecated event type does not block the entire rebuild.
     conflicts with concurrent event processing. After the rebuild,
     restart the server. It will resume from the current stream position.
 
-## Why is a rebuild safe to run twice?
+## Idempotent Rebuilds
 
 Rebuilds are idempotent. The process truncates the projection table
 first, then replays from scratch. Running it twice produces the same
@@ -96,7 +96,7 @@ This is a fundamental advantage of Event Sourcing: the event store is
 the source of truth, and all read models can be rebuilt from it at any
 time.
 
-## Read the full source
+## Full Source
 
 ??? example "ch20.py, 285 lines"
 
@@ -104,6 +104,6 @@ time.
     --8<-- "guides/getting-started/es-tutorial/ch20.py:full"
     ```
 
-## What comes next?
+## Next
 
 [Chapter 21: The Event Store as a Database →](21-event-store-database.md)

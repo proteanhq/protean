@@ -30,7 +30,7 @@ Read more about
 [`Domain.aggregate`](../../reference/domain-elements/element-decorators.md#domainaggregate)
 in [element decorators](../../reference/domain-elements/element-decorators.md).
 
-## Declare fields on an aggregate
+## Fields
 
 Aggregates enclose a number of fields and associate behaviors with them to
 represent a domain concept.
@@ -52,7 +52,7 @@ column name in `referenced_as`.
 The [Data Fields](../../reference/fields/index.md) section lists every field
 Protean offers, with its options.
 
-## Initialize an aggregate
+## Initialization
 
 An aggregate can be initialized by passing field values as key-value pairs:
 
@@ -79,7 +79,7 @@ deeply in the [identity](../../reference/domain-elements/identity.md) section.
     When you use the [Event Sourcing](../pathways/event-sourcing.md) pathway,
     read this section to initialize event-sourced aggregates.
 
-### Initialize an event-sourced aggregate
+### Event-Sourced Aggregates
 
 For **event-sourced aggregates**, the standard constructor is typically not
 used in business methods. Instead, factory methods use `_create_new()` to
@@ -96,7 +96,7 @@ state. The same handler runs during both live creation and event replay. See
 the [Event Sourcing pathway](../pathways/event-sourcing.md) for a complete
 walkthrough.
 
-## Share fields through a base aggregate
+## Inheritance
 
 Often, you may want to have common attributes across aggregates in your domain.
 `created_at` and `updated_at` are great examples. You can declare these common
@@ -129,7 +129,7 @@ class:
 ---
 
 
-## Configure an aggregate
+## Configuration
 
 An aggregate's behavior can be customized by passing options to its decorator.
 Here are the most commonly used options, see [element
@@ -182,7 +182,7 @@ deltas.
 --8<-- "guides/domain-definition/aggregates/003.py:aggregate"
 ```
 
-See [Fact Events](../domain-behavior/raising-events.md#how-protean-generates-fact-events) and
+See [Fact Events](../domain-behavior/raising-events.md#fact-events) and
 the [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md)
 pattern for details.
 
@@ -244,7 +244,7 @@ When an attribute's default depends on other attribute values, override the
 set but before invariants are checked. Aggregates, entities, and value
 objects all support this hook.
 
-## Associate entities with an aggregate
+## Associations
 
 Protean provides multiple options for linking an Aggregate to the Entities it
 encloses. Associations define relationships between the aggregate and its child
@@ -304,7 +304,7 @@ Out[7]:
  '_version': 0}
 ```
 
-### Navigate associations in both directions
+### Bidirectional Relationships
 
 Associations automatically create bidirectional relationships. Child entities get `Reference` fields that point back to their parent aggregate, enabling navigation in both directions:
 
@@ -327,7 +327,7 @@ Out[12]: 'e288ee30-e1d5-4fb3-94d8-d8083a6dc9db'
 The `Reference` field (`comment.post`) provides access to the full parent
 object. The shadow field (`comment.post_id`) contains the foreign key value.
 
-## Which errors can an aggregate raise?
+## Common Errors
 
 | Exception | When it occurs |
 |---|---|

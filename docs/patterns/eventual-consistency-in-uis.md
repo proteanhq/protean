@@ -1,4 +1,4 @@
-# Keep User Interfaces Correct Under Eventual Consistency
+# Bridge the Eventual Consistency Gap in User Interfaces
 
 ## The Problem
 
@@ -36,7 +36,7 @@ data they just submitted to appear immediately. When the team ignores the gap,
 users file support tickets, submit duplicate orders, and stop trusting the
 application.
 
-### Adding `time.sleep()` calls to wait for the projector
+### Adding `time.sleep()` hacks
 
 ```python
 # fragment
@@ -79,7 +79,7 @@ periodically refreshing dashboard tolerates seconds of staleness; an order
 confirmation page does not. Three strategies, each at a different level, show
 the user the right data during the gap:
 
-### 1. Show the expected state in the frontend (optimistic UI)
+### 1. Optimistic UI (frontend strategy)
 
 The frontend immediately displays the expected state after a successful
 command, without waiting for the read side. The next time the frontend
@@ -106,7 +106,7 @@ The API response after the write can carry the data those views need.
 **Not suitable for:** list views or dashboards that aggregate data across
 multiple entities. The write side returns one aggregate; the list needs many.
 
-### 3. Poll the read side for the written version (version polling)
+### 3. Version polling (coordination strategy)
 
 The write endpoint returns the aggregate's version alongside the entity data.
 The frontend passes this version to the read endpoint. The read endpoint polls
@@ -142,7 +142,7 @@ elements that all three strategies build on:
 
 ---
 
-### Strategy 1: Show the expected state at once with optimistic UI
+### Strategy 1: Optimistic UI
 
 The application service returns the aggregate after the write. The API
 forwards enough data for the frontend to display optimistically.
@@ -211,7 +211,7 @@ aggregate. The API layer passes that aggregate through to the response.
 
 ---
 
-### Strategy 3: Poll the read side for the written version
+### Strategy 3: Version polling
 
 For critical transitions, the user must see confirmed read-side state. Return
 the aggregate's version from the write endpoint, and have the frontend poll the
@@ -247,7 +247,7 @@ endpoint with `?min_version=N`. On each poll:
 
 ---
 
-### Remove the gap in development and testing with synchronous mode
+### Development and testing: synchronous mode
 
 During development and testing, the eventual consistency gap is a nuisance
 that slows feedback cycles. Protean supports synchronous event processing
@@ -350,7 +350,7 @@ The gap exists by design. If the application ignores the gap, the user sees
 missing data and gets no explanation for it. During deployment, load spikes, or
 projector errors the delay will be noticeable. Plan for it.
 
-### Querying the write database directly to read your writes
+### Read-your-writes via direct database queries
 
 ```python
 # fragment
