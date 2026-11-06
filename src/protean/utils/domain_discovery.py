@@ -163,8 +163,9 @@ def prepare_import(path: str) -> str:
     module: a `domain` package or `domain.py`, then a `subdomain` package or
     `subdomain.py`, in the directory, else the single `src/*/domain.py` or
     `src/*/subdomain.py`. A package counts only when it has an
-    `__init__.py`. Raises `NoDomainException` when more than one file
-    matches under `src/`.
+    `__init__.py`. Raises `NoDomainException` when more than one
+    `src/*/domain.py` matches, or, with no `src/*/domain.py`, more than one
+    `src/*/subdomain.py`.
     """
     path = os.path.realpath(path)
 
@@ -239,8 +240,9 @@ def derive_domain(domain_path: str | None = None) -> Domain | None:
     With no path, and with the path ".", the domain is looked up in this
     order: a `domain` package or `domain.py`, then a `subdomain` package or
     `subdomain.py`, in the current folder, then `src/*/domain.py`, then
-    `src/*/subdomain.py`. More than one match under
-    `src/` raises `NoDomainException`. With no path and no match, returns
+    `src/*/subdomain.py`. More than one `src/*/domain.py`, or, with no
+    `src/*/domain.py`, more than one `src/*/subdomain.py`, raises
+    `NoDomainException`. With no path and no match, returns
     None.
     """
     domain_import_path = os.environ.get("PROTEAN_DOMAIN") or domain_path

@@ -22,7 +22,9 @@ A folder counts as a package only when it has an `__init__.py`.
 When it finds a file under `src/` in a package folder that has an
 `__init__.py`, as `protean new` creates it, the command adds `src` to the
 import path and imports the file under its package name, such as
-`demo.domain`. When more than one file matches under `src/`, the command
+`demo.domain`. A `domain.py` under `src/` wins over a `subdomain.py` under
+`src/`. When more than one `src/*/domain.py` matches, or more than one
+`src/*/subdomain.py` matches and there is no `src/*/domain.py`, the command
 stops with an error that lists every match. Pass `--domain` to choose one.
 `--domain .` uses the same order.
 
