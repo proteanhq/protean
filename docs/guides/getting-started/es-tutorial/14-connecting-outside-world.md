@@ -4,9 +4,9 @@ Fidelis integrates with "PayFlow," an external payment gateway that sends
 webhook notifications when payments are processed. These external messages are
 raw JSON payloads, not typed domain events.
 
-In this chapter we will build a **subscriber** that acts as an
-anti-corruption layer, and add **enrichers** to attach cross-cutting
-metadata to every message flowing through the system.
+Now we build a **subscriber** that acts as an anti-corruption layer, and add
+**enrichers** to attach cross-cutting metadata to every message flowing through
+the system.
 
 ## Subscribers: The Anti-Corruption Layer
 

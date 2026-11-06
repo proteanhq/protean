@@ -2,9 +2,8 @@
 
 We have been working with events through aggregates, projections, and
 handlers for the entire tutorial. But we have never looked at the event
-store directly. In this chapter we will explore it as a database, reading raw
-events, viewing statistics, searching by type, and understanding the stream
-naming conventions.
+store directly. Now we explore it as a database, reading raw events, viewing
+statistics, searching by type, and understanding the stream naming conventions.
 
 ## Reading Events from a Stream
 

@@ -5,9 +5,8 @@ and the withdrawal succeeds, because the validation in `withdraw()` checks the b
 *before* the `@apply` handler runs. What if the validation and the state mutation
 disagree?
 
-In this chapter we will add **invariants**. Rules that are checked
-*after* every state mutation, guaranteeing the aggregate is **always
-valid** regardless of how it got there.
+Now we add **invariants**, rules that are checked *after* every state mutation,
+guaranteeing the aggregate is **always valid** regardless of how it got there.
 
 ## The Problem with Method-Level Validation
 

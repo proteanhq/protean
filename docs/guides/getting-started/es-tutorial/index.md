@@ -1,10 +1,9 @@
 # Tutorial: Building Fidelis
 
-In this tutorial we will build **Fidelis**, a digital banking ledger
-platform with Protean's Event Sourcing capabilities. By the end, we will
-have a system with immutable audit trails, temporal
-queries, schema evolution, cross-domain integrations, and full operational
-tooling.
+We build **Fidelis**, a digital banking ledger platform, with Protean's Event
+Sourcing capabilities. By the end, we will have a system with immutable audit
+trails, temporal queries, schema evolution, cross-domain integrations, and full
+operational tooling.
 
 ## Why Event Sourcing for Banking?
 

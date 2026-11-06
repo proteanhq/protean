@@ -2,9 +2,9 @@
 
 Processing everything synchronously was fine for development. But in
 production, a slow compliance check should not block the deposit
-response. In this chapter we will configure Redis as the message broker,
-enable the outbox pattern for reliable delivery, and start the Protean
-server for asynchronous event processing.
+response. Now we configure Redis as the message broker, enable the outbox
+pattern for reliable delivery, and start the Protean server for asynchronous
+event processing.
 
 ## The Outbox Pattern
 

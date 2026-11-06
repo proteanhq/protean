@@ -1,9 +1,9 @@
 # Chapter 1: The Faithful Ledger
 
-In this chapter we will create the foundation of our digital banking
-platform, **Fidelis**. By the end, we will have an event-sourced
-`Account` aggregate that records every state change as an immutable event
-and reconstructs its balance by replaying those events.
+We create the foundation of our digital banking platform, **Fidelis**. By the
+end, we will have an event-sourced `Account` aggregate that records every state
+change as an immutable event and reconstructs its balance by replaying those
+events.
 
 A bank cannot store the current balance and overwrite it on every transaction.
 Every deposit, every withdrawal is a **fact** that happened, and facts cannot

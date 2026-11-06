@@ -1,9 +1,9 @@
 # Chapter 10: Entities Inside Aggregates
 
 Business accounts can have multiple authorized signatories. People who are
-allowed to operate the account. Each signatory has a name, role, and email. In
-this chapter we will add an **entity** inside the Account aggregate and learn
-how event-sourced aggregates handle child entities through events.
+allowed to operate the account. Each signatory has a name, role, and email. Now
+we add an **entity** inside the Account aggregate and learn how event-sourced
+aggregates handle child entities through events.
 
 ## Defining the Entity
 

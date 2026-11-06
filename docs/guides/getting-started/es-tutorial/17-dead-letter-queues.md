@@ -6,8 +6,8 @@ case. The handler exhausts its retry attempts and messages pile up in the
 **dead-letter queue**.
 
 When a handler keeps failing, the message ends up in a dead letter queue.
-This chapter walks the workflow around that: finding those messages,
-working out what went wrong, and getting them processed.
+Now we walk through the workflow around that: finding those messages, working
+out what went wrong, and getting them processed.
 
 ## How DLQ Works
 

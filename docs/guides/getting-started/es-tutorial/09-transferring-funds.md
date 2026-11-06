@@ -5,9 +5,8 @@ single-aggregate operation. It involves debiting one account and crediting
 another. If the debit succeeds but the credit fails, we have inconsistent
 state.
 
-In this chapter we will introduce a **process manager**, a stateful coordinator
-that orchestrates multi-step workflows across aggregates using events and
-commands.
+Now we introduce a **process manager**, a stateful coordinator that
+orchestrates multi-step workflows across aggregates using events and commands.
 
 ## Why Not a Single Transaction?
 
