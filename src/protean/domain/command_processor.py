@@ -164,9 +164,10 @@ def _command_identifier(command: BaseCommand) -> Any:
 def _inherit_lineage(
     correlation_id: str | None, deadline: datetime | None
 ) -> _CommandLineage:
-    """Take the origin stream, correlation ID, causation ID and deadline from
-    the message in context. A caller-provided ``correlation_id`` and
-    ``deadline`` take precedence over the inherited ones."""
+    """Take the correlation ID, causation ID and deadline from the message in
+    context, and the origin stream when that message is an event. A
+    caller-provided ``correlation_id`` and ``deadline`` take precedence over
+    the inherited ones."""
     origin_stream = None
     inherited_correlation_id = correlation_id  # Caller-provided takes precedence
     causation_id = None
@@ -218,7 +219,8 @@ def _apply_command_enrichers(
     metadata: Metadata,
 ) -> Metadata:
     """Return ``metadata`` with the enrichers' output merged into its
-    extensions, or ``metadata`` itself when they add nothing."""
+    extensions, or ``metadata`` itself when the merged extensions are
+    empty."""
     extensions = dict(metadata.extensions)
     for enricher in enrichers:
         result = enricher(command)

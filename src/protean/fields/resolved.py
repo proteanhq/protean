@@ -199,7 +199,7 @@ class ResolvedField:
 
 
 # ---------------------------------------------------------------------------
-# Pydantic error conversion helper
+# FieldInfo metadata helpers
 # ---------------------------------------------------------------------------
 def _schema_extra(field_info: Any) -> dict[str, Any]:
     """Return the field's ``json_schema_extra`` dict, or an empty dict when
@@ -227,6 +227,9 @@ def _read_constraint_metadata(field: "ResolvedField", metadata: list[Any]) -> No
             field.max_value = m.lt
 
 
+# ---------------------------------------------------------------------------
+# Pydantic error conversion helper
+# ---------------------------------------------------------------------------
 def convert_pydantic_errors(exc: PydanticValidationError) -> dict[str, list[str]]:
     """Convert Pydantic's ValidationError to Protean's {field: [messages]} format."""
     errors: dict[str, list[str]] = defaultdict(list)

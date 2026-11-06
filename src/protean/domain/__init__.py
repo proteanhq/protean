@@ -2862,9 +2862,9 @@ def _record_pending_meta_resolutions(
 
 
 def _directories_to_traverse(root_dir: Path) -> list[str]:
-    """Return ``root_dir`` and each subdirectory that is not a separate domain
-    (one holding its own ``domain.toml``, ``.domain.toml`` or
-    ``pyproject.toml``)."""
+    """Return ``root_dir`` and each immediate subdirectory except
+    ``__pycache__`` and any separate domain (one holding its own
+    ``domain.toml``, ``.domain.toml`` or ``pyproject.toml``)."""
     # Identify subdirectories
     # Sorted so modules load, and enrichers register, in the same order
     # on every filesystem. `os.listdir` returns entries in arbitrary order.
@@ -2892,8 +2892,9 @@ def _directories_to_traverse(root_dir: Path) -> list[str]:
 
 
 def _load_domain_module(directory: str, filename: str, module_name: str) -> None:
-    """Import ``filename`` from ``directory`` as a submodule of ``module_name``,
-    unless a module of that name is already loaded."""
+    """Import ``filename`` from ``directory`` as a submodule of ``module_name``
+    (as ``module_name`` itself for ``__init__.py``), unless a module of that
+    name is already loaded."""
     # Construct the module path to import from
     if filename != "__init__.py":
         sub_module_name = os.path.splitext(filename)[0]

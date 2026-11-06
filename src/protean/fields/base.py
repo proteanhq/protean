@@ -347,8 +347,8 @@ def _check_choices(
     value: Any,
 ) -> Any:
     """Fail unless ``value`` (or each item of a list/tuple value) is one of
-    ``allowed``, and return the value with an Enum member replaced by its
-    ``.value``."""
+    ``allowed``, and return the value. When ``allowed`` is an Enum class, a
+    member of it is replaced by its ``.value``."""
     choices: list[Any] | tuple[Any, ...]
     # A list/tuple of choices is used as-is; otherwise it is an Enum class
     if isinstance(allowed, (list, tuple)):
