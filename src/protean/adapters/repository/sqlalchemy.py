@@ -2614,6 +2614,65 @@ class SAProvider(BaseProvider):
         """SQLAlchemy providers support full relational capabilities."""
         return DatabaseCapabilities.RELATIONAL
 
+    @property
+    def metadata(self) -> MetaData:
+        """The SQLAlchemy ``MetaData`` holding every table this provider owns.
+
+        It holds the table of every aggregate, entity and projection this
+        provider owns, including Protean's ``outbox`` and ``processed_message``
+        tables when the domain registers them for this provider. It holds no
+        table for an event-sourced aggregate or its entities, a cache-backed
+        projection, an abstract element, or an element assigned to another
+        provider.
+
+        Reading it builds the table definitions without connecting to the
+        database, so it is safe to call before any table exists and after
+        ``domain.drop_database()``. Call it after ``domain.init()``.
+
+        The returned object is the provider's own ``MetaData``, the one the
+        model classes are bound to. Callers must not add or remove tables.
+        """
+        for cls in self._owned_element_classes():
+            self._register_table(cls)
+        return self._metadata
+
+    def _owned_element_classes(self) -> list[type]:
+        """Every aggregate, entity and projection this provider owns.
+
+        Reads the registry's raw element map, so Protean's internal aggregates
+        (the per-provider outbox and ``processed_message``) are included.
+        Abstract elements are left out: they are base classes and have no table.
+        """
+        elements = self.domain.registry._elements
+        return [
+            record.cls
+            for element_type in ("AGGREGATE", "ENTITY", "PROJECTION")
+            for record in elements.get(element_type, {}).values()
+            if not record.cls.meta_.abstract and self.owns(record.cls)
+        ]
+
+    def _register_table(self, element_cls: type) -> None:
+        """Make sure the table of ``element_cls`` is in ``self._metadata``."""
+        # Reading ``_dao`` builds the model class, whose table joins
+        # ``self._metadata`` on first construction.
+        dao = self.domain.repository_for(element_cls)._dao
+        table = getattr(dao.database_model_cls, "__table__", None)
+        # The element's repository can resolve to a different provider instance
+        # (one built outside ``domain.providers``) whose models carry no table
+        # or are bound to another ``MetaData``; those tables are not this
+        # provider's to list.
+        if not isinstance(table, Table) or table.metadata is not self._metadata:
+            return
+        if table.key in self._metadata.tables:
+            return
+        # A drop clears the metadata while the cached model classes stay bound
+        # to their tables, so the next read must put each table back. The same
+        # ``Table`` object goes back, not a copy: the models, and Alembic's
+        # comparison, use that object. ``MetaData.clear()`` also empties the
+        # foreign-key and sequence registries, which ``_add_table`` leaves
+        # empty; Protean's model tables declare neither.
+        self._metadata._add_table(table.name, table.schema, table)
+
     class databases(Enum):
         postgresql = "postgresql"
         sqlite = "sqlite"
@@ -2853,34 +2912,13 @@ class SAProvider(BaseProvider):
             self._engine.dispose()
 
     def _create_database_artifacts(self) -> None:
-        # Create tables for all registered aggregates, entities, and projections
-
-        # Loop through self.domain.registry._elements and extract the classes under
-        #   the keys 'AGGREGATE', 'ENTITY', and 'PROJECTION'
-        #   We don't use properties because we want to access even the internal elements
-        elements: dict[str, typing.Any] = {}
-
-        for element_type in ["AGGREGATE", "ENTITY", "PROJECTION"]:
-            if element_type in self.domain.registry._elements:
-                elements.update(self.domain.registry._elements[element_type])
-
-        for element_record in elements.values():
-            cls = element_record.cls
-            # Skip elements this provider does not materialize as a SQL table
-            # (event-sourced aggregates/entities, cache-backed projections, and
-            # elements owned by another provider). See BaseProvider.owns().
-            if not self.owns(cls):
-                continue
-            # Access ``_dao`` for its side effect: it constructs the DAO and
-            # registers the model's table with ``self._metadata`` before
-            # ``create_all`` below.
-            self.domain.repository_for(cls)._dao  # noqa: B018
+        metadata = self.metadata
 
         # Create all tables in a single transaction
         conn = self._engine.connect()
         try:
             transaction = conn.begin()
-            self._metadata.create_all(conn)
+            metadata.create_all(conn)
             transaction.commit()
         finally:
             conn.close()

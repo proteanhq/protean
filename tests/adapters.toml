@@ -122,6 +122,8 @@ paths = [
     "tests/upgrade/test_upgrade_checks.py",
     "docs_src/adapters/database/sqlite/",
     "tests/docs/reference/adapters/database/test_sqlite.py",
+    "docs_src/adapters/database/index/002.py",
+    "tests/docs/reference/adapters/database/test_index.py",
 ]
 markers = ["sqlite"]
 databases = ["SQLITE"]
