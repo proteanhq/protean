@@ -2,9 +2,10 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Repositories are how aggregates reach the database. Here is how to save one,
-what a transaction does around it, how events are published on the way out,
-and how updates differ from inserts.
+Repositories are how aggregates reach the database. The repository's `add`
+method saves an aggregate inside a transaction and publishes its events after
+the save. You call the same `add` method to update an aggregate that already
+exists.
 
 Aggregates are saved into the configured database using `add` method of the
 repository.
@@ -38,16 +39,16 @@ The following calls are equivalent in behavior:
 --8<-- "guides/change-state/persist-aggregates/001.py:version_2"
 ```
 
-This means changes across the aggregate cluster are committed as a single
-transaction (assuming the underlying database supports transactions, of course).
+Changes across the aggregate cluster are therefore committed as a single
+transaction, when the underlying database supports transactions.
 
 ```python hl_lines="22-30 33"
 --8<-- "guides/change-state/002.py:full"
 ```
 
 !!!note
-    This is especially handy in ***Relational databases*** because each entity is a
-    separate table.
+    A single transaction is especially useful in ***Relational databases***
+    because each entity is a separate table.
 
 ## Events
 
@@ -86,8 +87,8 @@ Out[6]: []
 
 ## Updates
 
-Recall that Protean repositories behave like a `set` collection. Updating is
-as simple as mutating an aggregate and persisting it with `add` again.
+Recall that Protean repositories behave like a `set` collection. To update an
+aggregate, you mutate it and persist it with `add` again.
 
 ```shell hl_lines="15 21 23 26 28"
 In [1]: post = Post(

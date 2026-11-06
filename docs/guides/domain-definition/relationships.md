@@ -103,9 +103,9 @@ The `referenced_as` parameter in Reference fields allows you to specify a custom
 --8<-- "guides/domain-definition/relationships/005.py:entity"
 ```
 
-When using both `via` and `referenced_as`, they must agree: the `via`
-value on the `HasOne`/`HasMany` side should match the `referenced_as`
-value on the `Reference` side so both ends resolve to the same field.
+When you use both `via` and `referenced_as`, they must agree. The `via` value
+on the `HasOne`/`HasMany` side should match the `referenced_as` value on the
+`Reference` side, so both ends resolve to the same field.
 
 ## Auto-Generated Helper Methods
 
@@ -214,8 +214,8 @@ loaded from a database:
 - Entity collections (`HasMany`, `HasOne`) start empty after event replay
   begins and are populated only by `@apply` handlers that process the
   relevant events.
-- There are no database-level foreign keys or joins, the aggregate's entire
-   state (including its entities) is rebuilt from its event stream.
+- There are no database-level foreign keys or joins. Protean rebuilds the
+   aggregate's entire state (including its entities) from its event stream.
 - Cross-aggregate references by identity work the same way as in standard
   aggregates.
 

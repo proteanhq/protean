@@ -74,9 +74,9 @@ protean db truncate --domain=my_domain --yes
 
 ## `protean db setup-outbox`
 
-Creates only the outbox tables. This is useful when migrating an existing domain
-from event-store subscriptions to stream subscriptions, where the main database
-tables already exist but the outbox table does not.
+Creates only the outbox tables. Use this command when you migrate an existing
+domain from event-store subscriptions to stream subscriptions. In that case the
+main database tables already exist, but the outbox table does not.
 
 ```bash
 protean db setup-outbox --domain=my_domain

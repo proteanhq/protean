@@ -60,8 +60,8 @@ All methods can be chained:
 --8<-- "guides/getting-started/tutorial/ch21.py:read_only"
 ```
 
-This enforces the CQRS principle: read models are read-only. Changes
-flow through commands on the write side.
+This enforces the CQRS principle: read models are read-only. You change data by
+sending commands to the write side.
 
 ## Cross-Aggregate Projections
 

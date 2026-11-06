@@ -111,9 +111,10 @@ The `ReadView` returned by `domain.view_for()` exposes these methods:
     matching specific criteria, use the query builder:
     `view.query.filter(status="active").all().total`.
 
-The `query` property returns a `ReadOnlyQuerySet` that supports all read
-operations, `filter()`, `exclude()`, `order_by()`, `limit()`, `offset()`, and `all()`, but blocks mutations (`update`, `delete`)
-to enforce CQRS read/write separation.
+The `query` property returns a `ReadOnlyQuerySet`. The `ReadOnlyQuerySet`
+supports all read operations: `filter()`, `exclude()`, `order_by()`, `limit()`,
+`offset()`, and `all()`. It blocks mutations (`update`, `delete`) to enforce
+CQRS read/write separation.
 
 ### Pagination
 
@@ -155,18 +156,18 @@ Protean provides three levels of read access to projections:
 | **Facade** | `domain.view_for(Projection)` | Read-only projection access without handler ceremony |
 | **Raw** | `domain.connection_for(Projection)` | Technology-specific queries (SQL, Elasticsearch DSL, Redis) |
 
-`domain.view_for(Projection)` returns a `ReadView` (the default, read-only by
-design) and `domain.connection_for(Projection)` returns the raw DB or cache
-connection as an escape hatch.
+`domain.view_for(Projection)` returns a `ReadView`, the default and read-only
+by design. `domain.connection_for(Projection)` returns the raw DB or cache
+connection, for queries the `ReadView` cannot run.
 
 To *write* to a projection (inside a projector), use
 `domain.repository_for(Projection)`. That is the write path, not a read level.
 
 ### Raw connection access
 
-When you need to run technology-specific queries that cannot be expressed
-through `QuerySet` (such as SQL aggregations, Elasticsearch DSL, or Redis
-`SCAN` commands) use `domain.connection_for()`:
+To run technology-specific queries that `QuerySet` cannot express, such as SQL
+aggregations, Elasticsearch DSL, or Redis `SCAN` commands, use
+`domain.connection_for()`:
 
 ```python
 --8<-- "guides/consume-state/projections/001.py:connection"

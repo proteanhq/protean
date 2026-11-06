@@ -45,8 +45,8 @@ Map aggregate fields to adapter-specific types:
 
 ### Partial field mapping
 
-A model can map fewer fields than the aggregate. Unmapped fields are
-handled by auto-generation:
+A model can map fewer fields than the aggregate. Protean auto-generates the
+mapping for each field the model leaves out:
 
 ```python
 --8<-- "guides/change-state/database-models/003.py:partial"
@@ -79,8 +79,8 @@ different database type:
 
 An aggregate is stored in one provider, set with its `provider` option. Its
 repository uses the model whose `database` matches that provider's database
-type, so `Customer` above uses `CustomerSearchModel` on Elasticsearch and
-`CustomerWriteModel` on PostgreSQL. The aggregate is not written to both.
+type. For example, `Customer` above uses `CustomerSearchModel` on Elasticsearch
+and `CustomerWriteModel` on PostgreSQL. The aggregate is not written to both.
 
 ---
 

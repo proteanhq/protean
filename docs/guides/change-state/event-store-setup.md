@@ -25,8 +25,8 @@ regardless of provider.
 
 ### In-memory (default)
 
-No configuration needed. This is the default when no `[event_store]`
-section is present:
+No configuration needed. The in-memory event store is the default when no
+`[event_store]` section is present:
 
 ```toml
 [event_store]
@@ -100,9 +100,10 @@ protean events search --type=Deposited --domain=myapp
 --8<-- "guides/change-state/event-store-setup/001.py:read"
 ```
 
-Both `read` and `read_all` return events and commands only. A read whose scope
-spans snapshot streams (`$all`, or a `:snapshot-` stream) skips the snapshot
-rows, so you never get a snapshot back where an event is expected.
+Both `read` and `read_all` return events and commands only. When a read spans
+snapshot streams (`$all`, or a `:snapshot-` stream), the event store skips the
+snapshot rows. As a result, you never get a snapshot back where you expect an
+event.
 
 ---
 

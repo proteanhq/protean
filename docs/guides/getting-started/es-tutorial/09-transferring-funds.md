@@ -15,7 +15,7 @@ two aggregates in the same transaction. A funds transfer must:
 
 1. Debit the source account
 2. Credit the destination account
-3. Handle failures (reverse the debit if the credit fails)
+3. Reverse the debit if the credit fails
 
 A process manager coordinates these steps through events and commands,
 maintaining eventual consistency.

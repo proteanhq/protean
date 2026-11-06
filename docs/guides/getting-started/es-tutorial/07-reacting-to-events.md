@@ -86,7 +86,7 @@ def on_large_deposit(self, event: DepositMade):
         )
 ```
 
-This is how **cross-aggregate coordination** works without coupling, the
+This is how **cross-aggregate coordination** works without coupling. The
 Account aggregate knows nothing about the Compliance aggregate. The event
 handler bridges them.
 

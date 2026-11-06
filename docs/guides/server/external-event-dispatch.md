@@ -1,7 +1,7 @@
 # Dispatching Published Events to External Brokers
 
-Here is how to deliver `published=True` domain events to external message
-brokers, so other bounded contexts and partner systems can consume them.
+Protean can deliver `published=True` domain events to external message brokers,
+so other bounded contexts and partner systems can consume them.
 
 For the architectural rationale and trade-off analysis, see
 [Publishing Events to External Brokers](../../patterns/publishing-events-to-external-brokers.md).

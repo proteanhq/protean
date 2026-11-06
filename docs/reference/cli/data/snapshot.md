@@ -1,13 +1,13 @@
 # `protean snapshot`
 
-The `protean snapshot` command group manages snapshots for event-sourced
-aggregates. Snapshots capture aggregate state at a point in time to optimize
-hydration performance, instead of replaying the entire event history, the
-aggregate is loaded from the latest snapshot and only subsequent events are
-replayed.
+The `protean snapshot` command group creates snapshots for event-sourced
+aggregates. A snapshot captures aggregate state at a point in time to make
+hydration faster. Instead of replaying the entire event history, Protean loads
+the aggregate from the latest snapshot and replays only the events that follow
+it.
 
-While Protean auto-creates snapshots when the event count exceeds the
-`snapshot_threshold` (default 10), manual snapshot creation is useful for:
+Protean auto-creates snapshots when the event count exceeds the
+`snapshot_threshold` (default 10). You can also create snapshots by hand for:
 
 - **Admin maintenance**: Force snapshot creation after data migrations or bulk
   event imports
@@ -105,8 +105,9 @@ See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 
 ## Programmatic API
 
-The same functionality is available as Domain methods for use in scripts or
-the `protean shell`:
+You can create the same snapshots from scripts or the `protean shell` with the
+Domain methods `create_snapshot`, `create_snapshots` and
+`create_all_snapshots`:
 
 ??? example "The domain this example uses"
 

@@ -2,9 +2,8 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Here is how to structure `domain.toml` for more than one environment, switch
-between in-memory and real adapters, and keep secrets in environment
-variables.
+You can structure `domain.toml` for more than one environment, switch between
+in-memory and real adapters, and keep secrets in environment variables.
 
 ---
 

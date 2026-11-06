@@ -1,8 +1,8 @@
 # Chapter 22: The Full Picture
 
-We have built a complete online bookstore from scratch. Let's step back
-and see the full architecture, review what we built, and look at where
-to go from here.
+We have built a complete online bookstore, starting from an empty project.
+Let's step back and see the full architecture, review what we built, and look
+at where to go from here.
 
 ## Architecture Overview
 
@@ -191,9 +191,9 @@ temporal queries, snapshots, event upcasting, and more.
 This tutorial used **Commands and Command Handlers** (the CQRS approach). In
 the **pure DDD** approach, **Application Services** fill the same role. They
 receive requests directly and coordinate the domain logic, without the explicit
-command objects. See [Application
-Services](../../change-state/application-services.md) and the [DDD
-Pathway](../../pathways/ddd.md) for that reading order.
+command objects. To build with application services in place of commands, read
+[Application Services](../../change-state/application-services.md) and then the
+[DDD Pathway](../../pathways/ddd.md).
 
 ---
 

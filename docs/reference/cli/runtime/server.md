@@ -34,13 +34,14 @@ stream subscriptions (`subscription_type = "stream"`), or passing
 `--allow-event-store-multiworker` to override (accepting that events will be
 double-processed).
 
-The guard is **per-process**: it only sees the workers within a single `protean
-server` invocation. It cannot detect a second `protean server` (another
-container, host, or Kubernetes replica) running against the same event store, so
-multiple single-worker processes still double-process event-store subscriptions.
+The check behind this refusal is **per-process**: it only sees the workers
+within a single `protean server` invocation. It cannot detect a second
+`protean server` (another container, host, or Kubernetes replica) running
+against the same event store, so multiple single-worker processes still
+double-process event-store subscriptions.
 A domain with any event-store subscription must therefore run as exactly one
-process cluster-wide until database-backed cluster ownership is available; use
-stream subscriptions to scale horizontally.
+process cluster-wide until database-backed cluster ownership is available. To
+scale horizontally, use stream subscriptions.
 
 ## Starting the Server
 
@@ -58,11 +59,11 @@ To run the server within a specific domain context, use the `--domain` option fo
 protean server --domain auth
 ```
 
-This command will initiate the server in the context of the `auth` domain. Read [Domain Discovery](../project/discovery.md) for options to specify the domain.
+This command starts the server in the context of the `auth` domain. Read [Domain Discovery](../project/discovery.md) for options to specify the domain.
 
 ### Test Mode
 
-To run the server in test mode, which may alter certain behaviors to facilitate testing:
+To run the server in test mode, which may change some behaviors to make testing easier:
 
 ```shell
 protean server --test-mode

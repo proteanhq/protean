@@ -83,10 +83,11 @@ per-subscription list under `data.subscriptions`:
 stdout carries exactly this one object; logs go to stderr, so a `| jq` pipe
 stays parseable.
 
-For an event-store subscription, `position_stream` is the checkpoint stream
-(`position-{subscriber_name}-{category}`) the position is read from and the
-stream [`protean recover --reset-beyond-head`](recover.md) writes to. The
-`recovery_checkpoint_stream` (`recovery-checkpoint-{subscriber_name}-{category}`)
+For an event-store subscription, `position_stream` names the checkpoint stream
+(`position-{subscriber_name}-{category}`). Protean reads the subscription's
+position from this stream, and [`protean recover --reset-beyond-head`](recover.md)
+writes to it. The `recovery_checkpoint_stream`
+(`recovery-checkpoint-{subscriber_name}-{category}`)
 and `failed_positions_stream` (`failed-{subscriber_name}-{category}`) are the
 recovery-pass streams the same command scans and clears. All three are `null` for
 broker, stream, and outbox subscriptions, which do not track event-store
@@ -122,7 +123,7 @@ infrastructure directly:
    discovered from `domain.registry`
 2. The `ConfigResolver` determines each handler's subscription type
 3. For event store subscriptions, position streams and `stream_head_position()`
-   are queried, and `dlq_depth` counts the positions whose latest record in the
+   are queried. `dlq_depth` counts the positions whose latest record in the
    subscription's `failed-*` stream is `Exhausted`
 4. For stream subscriptions, Redis `XINFO GROUPS` and `XLEN` are queried
 5. For outbox processors, `count_by_status()` is queried

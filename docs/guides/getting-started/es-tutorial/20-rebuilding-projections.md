@@ -59,10 +59,9 @@ to handle the latest schema.
 
 ## Skipped Events
 
-Events whose type cannot be resolved (deprecated events with no
-upcaster chain) are skipped with a warning, not crashed on. This
-ensures a single deprecated event type does not block the entire
-rebuild.
+The rebuild skips an event whose type it cannot resolve (a deprecated event
+with no upcaster chain) and logs a warning instead of failing. As a result, a
+single deprecated event type does not block the entire rebuild.
 
 ## When to Rebuild
 

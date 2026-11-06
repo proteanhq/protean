@@ -12,8 +12,8 @@ with our Book aggregate through events.
 ## Why Projections?
 
 Our aggregates enforce business rules, but for listing books in a catalog we
-want flat, fast data, no nested value objects, no business logic. Projections
-give us that.
+want flat, fast data with no nested value objects and no business logic.
+Projections give us that.
 
 ## Defining a Projection
 
@@ -82,8 +82,8 @@ Updated: The Great Gatsby — $15.99
 All checks passed!
 ```
 
-Notice that we never updated the projection directly, the projector reacted to
-events and kept it in sync automatically. The catalog always reflects the
+We never updated the projection directly. The projector reacted to events and
+kept the projection in sync automatically. The catalog always reflects the
 latest state of the Book aggregate.
 
 ## What We Built

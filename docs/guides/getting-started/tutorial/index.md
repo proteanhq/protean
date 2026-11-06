@@ -43,10 +43,10 @@ previous one, growing the Bookshelf application step by step.
 !!! info "Which pathway does this tutorial follow?"
     This tutorial covers **DDD foundations** (Chapters 1–4) that apply
     regardless of your chosen architecture, then introduces **CQRS patterns**
-    (Chapters 5–7) with Commands, Command Handlers, and Projections. If
-    you're using the pure **DDD** approach with Application Services instead,
-    the domain modeling chapters (1–4) still apply directly, see the [DDD
-    Pathway](../../pathways/ddd.md) for that reading order.
+    (Chapters 5–7) with Commands, Command Handlers, and Projections. The domain
+    modeling chapters (1–4) still apply directly if you use the pure **DDD**
+    approach with Application Services instead. For that reading order, see the
+    [DDD Pathway](../../pathways/ddd.md).
 
 ## Prerequisites
 

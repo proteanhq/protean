@@ -3,8 +3,9 @@
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 A domain exception starts at an aggregate invariant and ends as an API
-response. Here is how to raise one, how it propagates, and where to handle it
-along the way.
+response. You raise the exception in the aggregate. Protean passes it up
+through each layer to the endpoint, where an exception handler maps it to an
+HTTP status code.
 
 ---
 
