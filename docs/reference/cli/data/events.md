@@ -241,8 +241,8 @@ type, time, correlation ID, and causation ID columns:
 Found 3 event(s) for correlation ID 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
 ```
 
-The tree view is most useful for debugging because it shows every causal
-relationship in one view. The flat view is useful when you need to see exact
+The tree view is most useful for debugging because it shows causal
+relationships in one view. The flat view is useful when you need to see exact
 positions and timestamps for every message.
 
 See [Message Tracing](../../../guides/domain-behavior/message-tracing.md) for
