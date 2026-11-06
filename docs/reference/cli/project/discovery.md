@@ -16,8 +16,10 @@ The command looks for the domain in this order:
 2. `src/*/domain.py`, the layout that `protean new` creates.
 3. `src/*/subdomain.py`.
 
-When it finds a file under `src/`, it adds `src` to the import path and
-imports the file under its package name, such as `demo.domain`. When more
+When it finds a file under `src/` in a package folder that has an
+`__init__.py`, as `protean new` creates it, the command adds `src` to the
+import path and imports the file under its package name, such as
+`demo.domain`. When more
 than one file matches under `src/`, the command stops with an error that
 lists every match. Pass `--domain` to choose one. `--domain .` uses the same
 order.

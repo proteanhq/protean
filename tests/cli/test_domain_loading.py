@@ -183,13 +183,15 @@ class TestDeriveDomainWithoutPath:
     @pytest.fixture(autouse=True)
     def project_dir(self, tmp_path, monkeypatch):
         """Run each test in an empty folder with no `PROTEAN_DOMAIN` set, and
-        forget any `domain` module the test imports."""
+        forget any `domain` or `subdomain` module the test imports."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
         monkeypatch.setattr(sys, "path", [*sys.path])
-        monkeypatch.delitem(sys.modules, "domain", raising=False)
+        for module_name in ("domain", "subdomain"):
+            monkeypatch.delitem(sys.modules, module_name, raising=False)
         yield tmp_path
-        sys.modules.pop("domain", None)
+        for module_name in ("domain", "subdomain"):
+            sys.modules.pop(module_name, None)
 
     def test_returns_domain_defined_in_domain_py(self, project_dir):
         """With no path and no `PROTEAN_DOMAIN`, `derive_domain` loads the
@@ -202,6 +204,18 @@ class TestDeriveDomainWithoutPath:
 
         assert isinstance(domain, Domain)
         assert domain.name == "Fallback"
+
+    def test_returns_domain_defined_in_subdomain_py(self, project_dir):
+        """With no path and only `subdomain.py` in the current folder,
+        `derive_domain` loads the domain from `subdomain.py`."""
+        (project_dir / "subdomain.py").write_text(
+            "from protean import Domain\nsubdomain = Domain(name='Sub')\n"
+        )
+
+        domain = derive_domain(None)
+
+        assert isinstance(domain, Domain)
+        assert domain.name == "Sub"
 
     def test_returns_none_when_no_domain_py_exists(self):
         """With no path, no `PROTEAN_DOMAIN` and no `domain.py`, `derive_domain`

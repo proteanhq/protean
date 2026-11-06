@@ -258,15 +258,12 @@ def _derive_default_domain() -> Domain | None:
     Returns None when the folder has no `domain` or `subdomain` module and
     nothing matches under `src/`.
     """
-    # A `domain` or `subdomain` module in the current folder, as a file or a
-    # package, keeps loading the way it did before the `src/` lookup existed.
-    has_local_module = any(
-        os.path.exists(name)
-        for name in ("domain.py", "subdomain.py", "domain", "subdomain")
-    )
-    src_file = None if has_local_module else _find_src_domain_file(".")
-    if src_file is not None:
-        return locate_domain(prepare_import(src_file), None)
+    # A `domain` or `subdomain` package in the current folder keeps loading
+    # the way it did before the file and `src/` lookup existed.
+    has_local_package = os.path.isdir("domain") or os.path.isdir("subdomain")
+    domain_file = None if has_local_package else _find_domain_file(".")
+    if domain_file is not None:
+        return locate_domain(prepare_import(domain_file), None)
 
     import_name = prepare_import("domain.py")
     return locate_domain(import_name, None, raise_if_not_found=False)
