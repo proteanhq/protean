@@ -1,25 +1,27 @@
-# Architecture Decision Records
+# How Protean records architecture decisions
 
 This directory contains Architecture Decision Records (ADRs) for the Protean framework.
 
 ## What are ADRs?
 
-An Architecture Decision Record captures a single architectural decision along with its context
-and consequences. ADRs are short documents that record why we made
-a particular choice at a particular time, so that future contributors can understand not just
-what the system does, but why it does it that way.
+An Architecture Decision Record captures a single architectural decision along
+with its context and consequences. ADRs are short documents that record why we
+made a particular choice at a particular time. Future contributors read them to
+learn why the system works the way it does, in addition to what it does.
 
 The practice was introduced by Michael Nygard in his blog post
 [Documenting Architecture Decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions).
 
 ## Why Protean uses ADRs
 
-Protean is an opinionated DDD framework with a growing IR-based "domain compiler" architecture.
-Many of our decisions involve trade-offs between DDD purity, developer ergonomics, and tooling
-extensibility. Recording these decisions prevents re-litigating settled questions and helps new
-contributors understand the reasoning behind the framework's design.
+Protean is an opinionated DDD framework with a growing IR-based "domain
+compiler" architecture. Many of our decisions trade DDD purity, developer
+ergonomics, and tooling extensibility against one another. We record these
+decisions so that contributors do not reopen questions we have already settled.
+New contributors read the records to learn the reasons behind the framework's
+design.
 
-## Naming convention
+## How to name an ADR
 
 ADRs are numbered sequentially with four-digit zero-padded prefixes and kebab-case titles:
 
@@ -35,7 +37,7 @@ Examples:
 ADR-0000 is reserved for the guiding principles document. It is not a decision record itself
 but a meta-document that captures the principles governing all Protean architectural decisions.
 
-## Status lifecycle
+## How an ADR's status changes
 
 Each ADR has one of the following statuses:
 
@@ -51,13 +53,14 @@ it remains as historical context.
 
 An ADR follows `TEMPLATE.md`.
 
-- It records one decision, or a few decisions that stand or fall together. A
-  decision that someone could reopen on its own gets its own ADR.
+- It records one decision, or a few decisions that are accepted or replaced
+  together. When someone could reopen a decision on its own, that decision gets
+  its own ADR.
 - The title and every decision heading are full sentences that state the
   decision, such as "Provider `sql` serves SQLite and PostgreSQL".
 - Each decision is a short statement or a few bullets, followed by one or two
-  sentences of reason. A reader who missed the discussion follows it on one
-  read. Terms the reader already knows get no explanation.
+  sentences of reason. A reader can follow the decision on one read, even after
+  missing the discussion. Terms the reader already knows get no explanation.
 - Context states the problem and the facts that shaped the decision. The state
   before the decision reads "Before this decision, ...".
 - Consequences has two lists, **Positive:** and **Negative:**. The Negative list
@@ -75,13 +78,13 @@ sentence in it holds. So an ADR leaves out:
 - Time words: "today", "currently", "already", "for now", "for this release",
   "once X lands", "later". A future change is written as a rule that always
   holds, such as "any replacement must pass the same conformance suite".
-- Open questions and open work. Questions go to issues, and an ADR is Accepted
-  only after they are answered.
+- Open questions and open work. Questions go to issues. An ADR is Accepted only
+  after those questions are answered.
 - Plans: which issue or pull request does what, in what order, or what holds
   during a migration. Plans belong in issues.
-- Issues and epics as the source of a decision. The ADR makes the decision and
-  gives its reason. An issue link can serve as evidence, such as a bug report
-  that shows the problem.
+- Issues and epics as the source of a decision. The ADR itself states the
+  decision and its reason. An issue link can serve as evidence, such as a bug
+  report that shows the problem.
 - Lists of names: method signatures, record fields, module lists and file
   trees. Names belong in docstrings and reference pages. A name appears in an
   ADR when the decision is about that name.
@@ -105,11 +108,11 @@ Implement event upcaster chain (ADR-0001)
 
 In other ADRs, reference by number: "as established in ADR-0003."
 
-## Template
+## Where to find the template
 
 See `TEMPLATE.md` in the `adr/` directory for the ADR template.
 
-## Current ADRs
+## Which ADRs are current
 
 | # | Title |
 |---|-------|

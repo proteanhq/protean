@@ -1,4 +1,4 @@
-# ADR-0006: Standard JSON Schema with x-protean Extensions
+# Use standard JSON Schema with x-protean extensions (ADR-0006)
 
 **Status:** Accepted
 
@@ -51,9 +51,10 @@ specifications for vendor extensions.
   Registry, AWS Glue), and OpenAPI 3.1 (which uses JSON Schema Draft 2020-12
   natively).
 - **Tooling compatibility**: Editors, linters, and documentation generators
-  that understand JSON Schema work out of the box.
+  that understand JSON Schema work with the schemas without extra
+  configuration.
 - **No custom parsing**: Consumers that only need validation can ignore the
-  `x-protean-*` fields entirely; consumers that need metadata can read them
+  `x-protean-*` fields entirely. Consumers that need metadata can read them
   without understanding a custom envelope format.
 - **Standards compliance**: Every generated schema validates against the Draft
   2020-12 meta-schema.
@@ -70,8 +71,8 @@ specifications for vendor extensions.
 
 **Custom envelope format**, rejected because it breaks compatibility with
 standard JSON Schema validators and registries. Consumers would need
-Protean-specific tooling to validate payloads, and OpenAPI 3.1 integration
-would require schema extraction from the envelope.
+Protean-specific tooling to validate payloads. OpenAPI 3.1 integration would
+also require extracting the schema from the envelope.
 
 **JSON-LD / `@context`**, rejected as over-engineered for this use case. JSON-LD adds
 complexity without meaningful benefit since the metadata is framework-specific,

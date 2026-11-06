@@ -30,11 +30,11 @@ implement or check. Then one or two sentences of reason.
 
 ## Alternatives Considered
 
-*(Optional, include when more than one option was weighed.)*
+*(Optional. When more than one option was weighed, include this section.)*
 
 - **The option, stated as a sentence.** Rejected: the reason.
 
 ## Dependencies
 
-*(Optional, include when the decision needs a capability that does not exist
-yet. Name the capability.)*
+*(Optional. When the decision needs a capability not yet in place, include this
+section. Name the capability.)*

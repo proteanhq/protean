@@ -1,4 +1,4 @@
-# ADR-0005: IR-First Schema Generation
+# ADR-0005: Protean generates JSON Schemas from the IR
 
 **Status:** Accepted
 
@@ -60,8 +60,8 @@ mode.
 - Single code path for both `--domain` and `--ir` CLI modes.
 - Pure functions with no side effects, easy to test and compose.
 - No dependency on Pydantic internals or `model_json_schema()` behavior.
-- IR provides a stable, versioned contract that insulates the generator from
-  changes in field implementation details.
+- IR provides a stable, versioned contract, so changes in field implementation
+  details do not require changes to the generator.
 
 **Negative:**
 
@@ -74,9 +74,10 @@ mode.
 
 ## Alternatives Considered
 
-**Pydantic's `model_json_schema()`**, rejected because it excludes association descriptors (`ignored_types`),
-only works with live Pydantic models (not serialized IR), and would require
-reimplementing descriptor semantics to patch the output.
+**Pydantic's `model_json_schema()`**, rejected because it excludes association
+descriptors (`ignored_types`) and only works with live Pydantic models (not
+serialized IR). Patching its output would require reimplementing descriptor
+semantics.
 
 **Hybrid approach** (use Pydantic for standard fields, custom logic for
 associations), rejected because it introduces two code paths and makes it

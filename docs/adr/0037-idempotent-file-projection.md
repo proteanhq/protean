@@ -6,36 +6,38 @@
 
 ## Context
 
-`protean dx install` writes agent-facing files into a user's project: an `AGENTS.md`
-block, an `.mcp.json` server entry, and more later. Those files are co-owned. The
-framework writes part of each one, the user owns the rest, and both sides keep
-editing after the first write. Running `install` again must refresh the framework's
-part and leave the user's part exactly as it was.
+`protean dx install` writes agent-facing files into a user's project: an
+`AGENTS.md` block, an `.mcp.json` server entry, and more later. Those files are
+co-owned. The framework writes part of each file and the user owns the rest.
+Both sides keep editing after the first write. Running `install` again must
+refresh the framework's part and leave the user's part exactly as it was.
 
 Nothing in the codebase does this. `docs.py:_write_output` and
-`scaffold/manifest.py:write_manifest` are plain overwrites. `scaffold/apply.py:apply_plan`
-is create-only: it refuses to touch a file that already exists, and it rejects edit
-and config operations. So the create case is solved and the re-write case is not.
+`scaffold/manifest.py:write_manifest` are plain overwrites.
+`scaffold/apply.py:apply_plan` is create-only: it refuses to touch a file that
+already exists. It also rejects edit and config operations. So the create case
+is solved and the re-write case is not.
 
 Re-writing safely needs one thing the create case never needs: a way to tell a
-version change apart from a user edit. If the file on disk differs from what the
-framework would write, that could mean the framework's own content moved on, or it
-could mean the user edited the framework's block by hand. Those need opposite
-answers. The first is a routine update. The second must stop and say so, because
-overwriting it destroys work the user did.
+version change apart from a user edit. Suppose the file on disk differs from
+the framework's new render. Either the framework's own content changed in a new
+version, or the user edited the framework's block by hand. Those need opposite
+answers. The first is a routine update. The second must stop and say so,
+because overwriting it destroys work the user did.
 
-The file's own bytes cannot answer that question. The writer has to remember what it
-last wrote.
+The writer cannot tell a version change from a user edit by reading the file's
+own bytes. The writer has to remember what it last wrote.
 
 ## Decision
 
 We add `protean.dx.managed_files`, a managed-file writer that takes a rendered
-artifact, a target path, and a merge mode, and applies it idempotently. It is the
-update-and-merge path `apply_plan` defers, and it calls `apply_plan` for the create
-case so pre-flight and rollback are not re-derived.
+artifact, a target path, and a merge mode, and applies it idempotently. The
+writer is the update-and-merge path that `apply_plan` defers. For the create
+case it calls `apply_plan`, so it does not re-derive pre-flight and rollback.
 
-**Three merge modes, matching the file shapes `dx` ships.** The first two shipped
-with this ADR; the whole-file mode was added for the per-editor renderers (#1474).
+**`dx` ships three file shapes, so the writer has three merge modes.** The
+first two modes shipped with this ADR. The whole-file mode was added for the
+per-editor renderers (#1474).
 
 - *Managed block*, for co-owned text. The framework's block sits between two
   sentinel comment lines, `PROTEAN:BEGIN <block-id>` and `PROTEAN:END <block-id>`.
@@ -48,103 +50,116 @@ with this ADR; the whole-file mode was added for the per-editor renderers (#1474
   nested object: `.mcp.json` manages only the `mcpServers.protean` key-path, so an
   existing file keeps the user's other servers (the key-path merge landed in #1475).
 - *Whole file*, for a dx-owned text file with no user-owned region. The framework
-  owns the entire file, so the render is the whole content and the managed slice is
-  the whole file. A hand edit anywhere in it reads as a conflict. This is for a file
-  whose format leaves no room for a marker line above its first byte, such as
-  Cursor's `.mdc` rule file, whose YAML frontmatter must start at line 1 (#1474).
+  owns the entire file, so the render is the whole content and the managed
+  slice is the whole file. A hand edit anywhere in it reads as a conflict. The
+  whole-file mode is for a file format that cannot take a marker line before
+  its first byte. Cursor's `.mdc` rule file is one example, because its YAML
+  frontmatter must start at line 1 (#1474).
 
-**A state file at `.protean/dx-state.json` remembers what was written.** It sits
-beside `project.json` (ADR-0034) and `ir.json`. Per target path it records the pack
-version stamp and two hashes: the hash of the whole file the writer last wrote, and
-the hash of the managed slice it last wrote.
+**A state file at `.protean/dx-state.json` records what the writer last
+wrote.** The state file is in the same folder as `project.json` (ADR-0034) and
+`ir.json`. Per target path it records the pack version stamp and two hashes:
+the hash of the whole file the writer last wrote, and the hash of the managed
+slice it last wrote.
 
-**The slice hash alone decides what happens.** Comparing three values, the slice on
-disk, the slice the state file last recorded, and the slice just rendered, gives four
-outcomes:
+**The writer picks the outcome from the slice hash and the version stamp.** The
+writer compares three values (the slice on disk, the slice the state file last
+recorded, and the slice just rendered) and gets one of four outcomes:
 
 - **create**: the target is absent.
 - **no change**: the on-disk slice equals the new slice and the version stamp
   matches. Nothing is written and the state file is left alone.
-- **update**: a safe write. Either the user left the block alone (the on-disk slice
-  equals what the state file recorded), or the on-disk slice already equals the new
-  content while the version advanced.
+- **update**: a safe write. In one case the user left the block alone, so the
+  on-disk slice equals what the state file recorded. In the other, the version
+  advanced and the on-disk slice already equals the new content.
 - **conflict**: the on-disk slice matches neither the state file nor the render, so
   the user edited inside the framework's block. The writer writes nothing and raises.
 
-The whole-file hash does not feed that decision. It feeds one informational flag,
-`outside_modified`, which says the file drifted while the managed slice stayed
-identical. A `check` or `diff` verb can report that the user edited around the block.
-It never blocks a write, because editing outside the block is the whole point of a
-co-owned file.
+The writer does not use the whole-file hash to pick among the four outcomes.
+The whole-file hash sets one informational flag, `outside_modified`. The flag
+says the file changed outside the managed slice and the slice stayed identical.
+A `check` or `diff` verb can report that the user edited around the block. The
+`outside_modified` flag never blocks a write, because the user is meant to edit
+a co-owned file outside the block.
 
 **The diff path mutates nothing.** `diff_managed_file` recomputes from disk, compares,
 and returns the status plus the content it would write. `apply_managed_file` runs it
 first and then acts. This is the derive-and-compare shape of
 `scaffold/manifest.py:check_manifest_drift`.
 
-**Hashes are taken over LF-normalized utf-8 text.** A target is read in text mode,
-so a CRLF file and an LF file with the same content hash the same and a platform
-newline difference never reads as a phantom conflict. A write goes back out in
-whatever line ending the file already uses, so an update never rewrites them.
+**Hashes are taken over LF-normalized utf-8 text.** The writer reads a target
+in text mode, so a CRLF file and an LF file with the same content get the same
+hash. A platform newline difference therefore never shows up as a false
+conflict. The writer keeps the file's existing line endings when it writes, so
+an update never changes those line endings.
 
 **A symlink target is refused.** `diff_managed_file` raises before it reads. An update
 writes through `os.replace`, which would swap the link for a regular file and leave
 the link's target holding the old content. `apply_plan` already refuses to create
 over a symlink, dangling ones included, so both paths say the same thing.
 
-**One pair per block id, in v1.** A file carries exactly one
-`PROTEAN:BEGIN/END` pair for the requested block id; other tools' blocks, with
-different ids, may coexist in the same file and are left untouched. A missing,
-duplicated, or reversed marker for the requested id raises instead of falling
-back to overwriting the file. Marker matching is line-anchored, so a block id
-that is a prefix of another id does not false-match.
-A block whose body contains a line identical to a marker is rejected at
-construction, because writing it would frame a phantom block and poison every later
-apply.
+**In v1, a file holds one marker pair per block id.** A file carries exactly
+one `PROTEAN:BEGIN/END` pair for the requested block id. Other tools' blocks,
+with different ids, may share the same file, and the writer leaves them
+untouched. When a marker for the requested id is missing, duplicated, or
+reversed, the writer raises an error and does not overwrite the file. Marker
+matching is line-anchored, so a block id that is a prefix of another id does
+not false-match. The writer rejects a block at construction when the block's
+body contains a line identical to a marker. Writing that block would add a
+stray marker line to the file and break every later apply.
 
-**Serialization follows the house style** of ADR-0033: a frozen dataclass, an explicit
-`to_dict`/`from_dict` JSON dump with sorted keys and a trailing newline, and a
-`state_version` marker that `from_dict` rejects loudly when it does not recognize it.
+**Serialization follows the house style of the versioned ChangePlan contract
+(ADR-0033)**: a frozen dataclass, an explicit `to_dict`/`from_dict` JSON dump
+with sorted keys and a trailing newline, and a `state_version` marker.
+`from_dict` rejects an unrecognized `state_version` loudly.
 
-Writes are atomic, through a sibling temp file and an `os.replace`. The target file is
-written before the state file, so a failed write leaves the state on the prior stamp and
-the next run re-derives rather than trusting a stamp for content that never landed.
+Writes are atomic, through a sibling temp file and an `os.replace`. The writer
+writes the target file before the state file, so a failed write leaves the
+prior stamp in the state file. The next run then re-derives the outcome and
+does not trust a stamp for content that was never written.
 
 ## Consequences
 
-- Re-running `dx install` is safe by default. The common cases, nothing changed and
-  the user edited around the block, both do the right thing with no prompt.
-- A user edit inside the framework's block is never silently destroyed. The cost is
-  that resolving it is manual: the writer reports the conflict and stops, and there is
-  no merge-conflict-marker mode or `--force` in v1.
+- Re-running `dx install` is safe by default. In the two common cases, the
+  writer does the right thing with no prompt: nothing changed, or the user
+  edited around the block.
+- A user edit inside the framework's block is never silently destroyed. The
+  cost is manual resolution: the writer reports the conflict and stops. In v1
+  there is no merge-conflict-marker mode and no `--force`.
 - The state file is a new file in the user's repo. It has to be committed for the
-  conflict check to work across machines. Delete it and the writer loses the record
-  of what it last wrote: a file whose block still matches the new render is still a
-  safe update, but a block the user edited now reads as a conflict, since an
-  unrecorded slice matches no recorded state.
-- Managed-block files carry visible marker comments. That is a small cost in the
-  file's readability, and it buys a boundary the user can see and work around.
+  conflict check to work across machines. If you delete the state file, the
+  writer loses its record of past writes and can compare each block only with
+  the new render. A block that matches the new render is still a safe update,
+  and a block the user edited becomes a conflict.
+- Managed-block files carry visible marker comments. The marker comments make
+  the file a little harder to read. In return, the user can see the boundary of
+  the framework's block and edit around it.
 - The JSON merge takes an optional key-path so it can manage a nested key on its
-  own: managing `mcpServers.protean` sets only that entry and keeps every sibling
-  server. With no key-path it stays the shallow top-level merge. `.mcp.json` asked
-  for the nested form (#1475), so it is built; other targets still use the shallow one.
+  own: managing `mcpServers.protean` sets only that entry and keeps every
+  sibling server. With no key-path it stays the shallow top-level merge. The
+  writer has the nested form because `.mcp.json` needs it (#1475). Other
+  targets still use the shallow merge.
 - `state_version` means an old build meeting a newer state file fails loudly instead of
   misreading it. The cost is one more version marker to bump when the shape changes.
 
 ## Alternatives Considered
 
 - **Compare the whole file instead of the managed slice, for co-owned files.**
-  Rejected: any user edit anywhere in a co-owned file would then read as a conflict,
-  which is exactly the case the writer exists to allow. The whole-file hash is kept,
-  but only as the informational `outside_modified` signal. (The whole-file mode added
-  in #1474 is the opposite case: a file dx owns outright, with no user region, where
-  a whole-file conflict is the intended behavior.)
+  Rejected: the writer would then treat any user edit anywhere in a co-owned
+  file as a conflict. The writer exists to allow exactly those edits. The
+  whole-file hash is kept, but only as the informational `outside_modified`
+  signal. (The whole-file mode added in #1474 covers the opposite case: dx owns
+  the file outright and the file has no user region. For that file, a
+  whole-file conflict is the intended behavior.)
 - **A three-way merge with conflict markers in the file.** Rejected for v1: it writes
-  a broken file into the user's project and leaves them to repair it. Refusing to
-  write and naming the conflict is a smaller promise the writer can keep.
+  a broken file into the user's project and leaves them to repair it. The
+  writer can guarantee a smaller behavior: it refuses to write and names the
+  conflict.
 - **No state file, deciding from markers and content alone.** Rejected: without a record
-  of what was last written, a version change and a user edit look identical, and the
-  writer has to guess. Guessing wrong in one direction destroys user work.
-- **Store the framework's last-written content, not a hash.** Rejected: it bloats a
-  committed file with a second copy of every managed block, and the decision only ever
-  needs equality, which a hash answers.
+  of what was last written, a version change and a user edit look identical,
+  and the writer has to guess. If the writer guesses wrong in one direction, it
+  destroys user work.
+- **Store the framework's last-written content in place of a hash.** Rejected:
+  the state file is committed, and storing content would add a second copy of
+  every managed block to it. The writer only needs to test equality, and a hash
+  can do that.

@@ -6,77 +6,85 @@
 
 ## Context
 
-An event is immutable once stored (only a deliberate operator migration rewrites
-it), but the code that reads it keeps changing. A field gets renamed, a new one
-is added, an old one is dropped. Months later a
-handler still has to decode a payload written by last year's schema. Protean has
-three mechanisms for surviving that drift, and until now no written rule for
-which one to reach for.
+Once stored, an event is immutable, and only a deliberate operator migration
+rewrites it. The code that reads the event keeps changing. A field gets
+renamed, a new one is added, an old one is dropped. Months later a handler
+still has to decode a payload written by last year's schema. Protean has three
+mechanisms that let current code read a payload written under an older schema.
+Until this ADR, no written rule said which mechanism to use.
 
 - `renamed_from` on a field: Maps an old payload key onto its current field. It
   is defined in `fields/base.py` and applied on read by `Message._resolve_field_aliases`.
 - Lenient deserialization: Drops payload keys the current class no longer
-  declares, recording them under `_dropped_fields` in the message metadata. It
-  is the per-class `lenient` meta option or the `lenient_deserialization` config
-  key, read by `Message._is_lenient`, and it is off by default.
+  declares, recording them under `_dropped_fields` in the message metadata. You
+  turn it on with the per-class `lenient` meta option or the
+  `lenient_deserialization` config key, which `Message._is_lenient` reads. It
+  is off by default.
 - Upcasters (`@domain.upcaster`): Transform a stored payload on read, in memory,
   from one version to the next. `Message.to_domain_object` walks the chain when a
   stored type string names a version older than the current class. The stored
   event is left unchanged.
 
-ADR-0001 settled how events are versioned: monotonic integers, with the version
-in the `__type__` string. It also said compatibility semantics "are handled by
-the upcaster chain, not by the version number itself." Read on its own, that
-line implies upcasting is the only path. Both `renamed_from` and lenient mode
-were added afterwards and neither is covered by an ADR, so an adopter renaming a
-field cannot tell whether to declare `renamed_from`, bump `__version__` and write
-an upcaster, or do both.
+Events are versioned with monotonic integers, with the version in the
+`__type__` string, as decided in the event-versioning ADR (ADR-0001). It also
+said compatibility semantics "are handled by the upcaster chain, not by the
+version number itself." Read on its own, that line implies upcasting is the
+only path. Both `renamed_from` and lenient deserialization were added later,
+and no ADR covers either one. An adopter who renames a field cannot tell which
+to do: declare `renamed_from`, bump `__version__` and write an upcaster, or do
+both.
 
-Collapsing to one mechanism is the wrong instinct, and prior art confirms it.
-Axon, which ADR-0001 already cites, uses payload conversion (added fields with
-defaults, removed fields, renames via Jackson's `@JsonAlias`, type changes via
-converters) for most versioning and reserves upcasters for the cases conversion
-cannot express. Marten splits the same way. The empirical survey of
-event-sourced systems by [Overeem et al.](https://www.sciencedirect.com/science/article/pii/S0164121221000674)
-names five tactics: versioned events, weak schema, upcasting, in-place
-transformation, and copy-and-transform. It finds that systems start with
-versioned events and weak schema and grow into the heavier tactics as chains get
-long. Protean has the first three. It lacks the two heavy ones.
+Protean should not collapse to one mechanism. Other event-sourcing frameworks
+and a published survey keep the same split. Axon, which ADR-0001 already cites,
+uses payload conversion for most versioning: added fields with defaults,
+removed fields, renames via Jackson's `@JsonAlias`, and type changes via
+converters. Axon reserves upcasters for the cases conversion cannot express.
+Marten splits the same way. In their empirical survey of event-sourced systems,
+[Overeem et
+al.](https://www.sciencedirect.com/science/article/pii/S0164121221000674) name
+five tactics: versioned events, weak schema, upcasting, in-place
+transformation, and copy-and-transform. The survey finds that systems start
+with versioned events and weak schema. Systems move to the heavier tactics once
+their upcaster chains get long. Protean has the first three tactics: versioned
+events, weak schema, and upcasting. Protean lacks the two heavy tactics,
+in-place transformation and copy-and-transform.
 
 ## Decision
 
-Protean's schema evolution is a ladder. Each rung handles a class of change, and
-you climb only as far as the change forces you to.
+Protean's schema evolution is a ladder: an ordered set of mechanisms, from the
+lightest to the heaviest. Each rung covers one class of change. You use the
+lightest rung that covers your change.
 
 --8<-- "diagrams/schema-evolution-ladder.md"
 
-### Rung 1: weak schema, for additive and rename changes
+### Rung 1: use weak schema for additive and rename changes
 
-A field added with a default, or a field renamed, needs no version bump. Add the
-field with a default and old payloads decode with the default filling the gap.
-Rename a field by declaring `renamed_from` and Protean resolves the old key onto
-the new field on read, and emits an Avro `aliases` entry so an external consumer
-resolves it on the wire too. Lenient mode is the tolerant-reader half of this
-rung: turn it on to read a legacy payload that still carries a since-removed
-field.
+You need no version bump when you add a field with a default or rename a field.
+When you add the field with a default, Protean decodes old payloads and sets
+the field to its default. When you rename a field and declare `renamed_from`,
+Protean resolves the old key onto the new field on read. Protean also emits an
+Avro `aliases` entry, so an external consumer resolves the old key on the wire
+too. Lenient mode is the tolerant-reader half of this rung: turn it on to read
+a legacy payload that still carries a since-removed field.
 
-### Rung 2: versioning plus an upcaster, for structural changes
+### Rung 2: bump the version and write an upcaster for structural changes
 
-A change weak schema cannot express (a newly required field, a type change, a
-field split or merge) needs the version bumped and an upcaster for each hop. The
-upcaster transforms the payload on read, in memory, from one version to the next,
-leaving the stored event unchanged; Protean chains them so a `v1` payload is
-walked up to the current version before a handler sees it. This is a read-time
-transform, distinct from the Rung 3 migrations that rewrite the store. Use this
-rung whenever a stored value has to be transformed, which weak schema cannot do.
-An upcaster works only when it can supply the new value from the old payload. A
-newly required field with no computable value has no upcaster to write; replace
-the event with a new type in that case.
+When weak schema cannot express a change (a newly required field, a type
+change, a field split or merge), you bump the version and write an upcaster for
+each hop. The upcaster transforms the payload on read, in memory, from one
+version to the next, and leaves the stored event unchanged. Protean runs the
+upcasters in sequence and converts a `v1` payload to the current version before
+a handler sees it. This is a read-time transform, distinct from the Rung 3
+migrations that rewrite the store. Weak schema cannot transform a stored value.
+When a stored value has to be transformed, use this rung, with the one
+exception below. An upcaster works only when it can supply the new value from
+the old payload. A newly required field with no computable value has no
+upcaster to write; replace the event with a new type in that case.
 
-### Rung 3: an operator-level migration, for a chain grown past usefulness
+### Rung 3: run an operator-level migration when an upcaster chain costs more than it saves
 
-When an upcaster chain has grown long enough that maintaining it costs more than
-it saves, the answer is to rewrite the stored events. Two tactics apply.
+When maintaining a long upcaster chain costs more than it saves, rewrite the
+stored events. Two tactics apply.
 
 - In-place transformation: Rewrites the events in the existing stream to the
   current schema and retags them with the current type and version, so a rewritten
@@ -84,101 +92,111 @@ it saves, the answer is to rewrite the stored events. Two tactics apply.
 - Copy-and-transform: Reads the old stream, transforms each event, and writes a
   new stream, keeping the old one for audit.
 
-Both rewrite the contents of an event store, which is migration work. Protean
-treats migration as an adapter and operator concern, the same stance `upgrade.py`
-already takes, so core does not build these tactics. The ladder names them and
-documents copy-and-transform as an operator-level migration in the
-[event-versioning pattern](../patterns/event-versioning-and-evolution.md). A
-port-level rewrite contract can come later if real demand appears.
+In-place transformation and copy-and-transform both rewrite the contents of an
+event store, which is migration work. Protean treats migration as an adapter
+and operator concern, the same stance `upgrade.py` already takes, so core does
+not build these tactics. This ADR names both tactics as rung 3, and the
+[event-versioning pattern](../patterns/event-versioning-and-evolution.md)
+describes copy-and-transform as an operator-level migration. A port-level
+rewrite contract can come later if real demand appears.
 
 ### Lenient mode
 
 Lenient mode is a permanent, supported mode, the weak-schema rung's tolerant
 reader. It stays off by default. When on, it drops any payload key the current
-schema does not declare and records the dropped names under `_dropped_fields` in
-the message metadata. A removed field's data is then not delivered to the domain
-object, though it remains intact in the store. Use lenient mode when you can
-tolerate an old field's absence; use an upcaster when the old data has to be
-transformed into a value the current schema needs.
+schema does not declare and records the dropped names under `_dropped_fields`
+in the message metadata. A removed field's data is then not delivered to the
+domain object, though it remains intact in the store. When you can tolerate an
+old field's absence, use lenient mode. When the current schema needs a value
+transformed from the old data, use an upcaster.
 
-### The correction to ADR-0001
+### What this ADR corrects in the event-versioning ADR (ADR-0001)
 
-ADR-0001's versioning decision stands: monotonic integers, version in the
-`__type__` string. This ADR corrects one line. Compatibility across a schema
-change is handled by the whole ladder: weak schema for additive and rename
-changes, versioning plus an upcaster for structural ones. ADR-0001's status line
-now points here for compatibility semantics.
+The versioning decision in the event-versioning ADR (ADR-0001) stands:
+monotonic integers, version in the `__type__` string. This ADR corrects one
+line. Protean keeps old payloads readable across a schema change with the whole
+ladder this ADR defines: weak schema for additive and rename changes,
+versioning plus an upcaster for structural ones. The status line of the
+event-versioning ADR (ADR-0001) now links to this ADR for compatibility
+semantics.
 
 ### What this means for snapshots
 
-An event-sourced aggregate snapshot gets none of these three mechanisms. A
-snapshot is written (for example by `create_snapshot` in `port/event_store.py`)
-with the fixed type `SNAPSHOT` and no metadata. An aggregate carries a `_version`
-(its event position, used for optimistic concurrency), but no schema version to
-upcast from, and `renamed_from`, lenient mode, and upcasters are all consumed by
-`Message.to_domain_object`, which a snapshot never reaches. So an adopter who declares `renamed_from`, enables
-lenient mode, and registers upcasters still has unloadable snapshots after a
-snapshot-breaking change: a field renamed or removed, or a required field added.
-(A field added with a default still constructs, since the default fills the gap.) The ladder settles what "the same treatment events get" means, so
-the snapshot fix (#1362) can align a snapshot with the rung that matches its
+An event-sourced aggregate snapshot gets none of the three mechanisms:
+`renamed_from`, lenient mode, and upcasters. A snapshot is written (for example
+by `create_snapshot` in `port/event_store.py`) with the fixed type `SNAPSHOT`
+and no metadata. An aggregate carries a `_version` (its event position, used
+for optimistic concurrency), but no schema version to upcast from.
+`renamed_from`, lenient mode, and upcasters are all consumed by
+`Message.to_domain_object`, which a snapshot never reaches. Take an adopter who
+declares `renamed_from`, enables lenient mode, and registers upcasters. After a
+snapshot-breaking change (a field renamed or removed, or a required field
+added), that adopter still has unloadable snapshots. (A field added with a
+default still constructs, since the default fills the gap.) With the ladder
+defined, the phrase "the same treatment events get" has a fixed meaning. The
+snapshot fix (#1362) can then apply to a snapshot the rung that matches its
 change.
 
-### Reserved names on an event-sourced aggregate
+### Reserve removed names on an event-sourced aggregate
 
 Removing a field from an event-sourced aggregate is its own rung. The three
 mechanisms above act on a payload as it is decoded; this one acts on the
 aggregate as its stream replays. An event-sourced aggregate's authoritative
-state is its event stream, and a retained `@apply` handler for a retired event
-can still assign a field that has since been removed. That assignment would raise
-under `extra="forbid"` and stop the rebuild.
+state is its event stream. During replay, a retained `@apply` handler for a
+retired event can still assign a field that has since been removed. That
+assignment would raise under `extra="forbid"` and stop the rebuild.
 
-Declaring the removed name in `reserved` on the aggregate settles it. During
-replay only, an assignment to a reserved name is dropped instead of raising, so
-the aggregate rebuilds without the removed field. The live `raise_` path never
-takes this relaxation, so a write to a removed field on a new event still raises.
-This is the same shape as `renamed_from`: a declaration the author adds that
-carries a runtime effect, and like `deprecated` it also earns a safe rating from
-the checker. The downgrade is earned by that declaration, never applied
-automatically. Reusing a reserved name for a live field raises at
-registration, and the compatibility checker downgrades the field removal to safe
-only when the aggregate declares the name.
+You prevent that error by declaring the removed name in `reserved` on the
+aggregate. During replay only, an assignment to a reserved name is dropped
+instead of raising, so the aggregate rebuilds without the removed field. The
+live `raise_` path never takes this relaxation, so a write to a removed field
+on a new event still raises. `reserved` works like `renamed_from`: the author
+adds a declaration, and the declaration changes runtime behaviour. Like
+`deprecated`, a `reserved` declaration also gets a safe rating from the
+checker. The checker downgrades the change to safe only because of that
+declaration, never automatically. Protean raises an error at registration when
+a live field reuses a reserved name. The compatibility checker downgrades the
+field removal to safe only when the aggregate declares the name.
 
 `reserved` covers a field removal, nothing wider. A type change or a newly
-required field on an event-sourced aggregate stays breaking, and the replay
-hazards (a moved stream category, a moved identity, a dropped handler whose event
-survives) stay their own breaking changes.
+required field on an event-sourced aggregate stays breaking. The replay hazards
+(a moved stream category, a moved identity, a dropped handler whose event
+survives) also stay their own breaking changes.
 
-The declaration has to stay for as long as the events do. Taking a name back out
-of `reserved` is a replay hazard in its own right, reported as
-`reservation_removed`: replay stops dropping the assignment, so the handler that
-the reservation kept working raises again.
+The declaration has to stay for as long as the events do. When you take a name
+back out of `reserved`, you create a replay hazard in its own right, reported
+as `reservation_removed`. Replay then stops dropping the assignment, and the
+handler that the reservation kept working raises again.
 
 ## Consequences
 
 An adopter facing a schema change now has one place that says which mechanism
-applies. The three existing mechanisms are unchanged, and the two heavy tactics
-are documented as operator migrations outside core.
+applies. The three existing mechanisms are unchanged. The two heavy tactics are
+documented as operator migrations outside core.
 
 Each rung carries a cost. Weak schema is cheap and needs no version bump. It
-cannot transform a value, so a type change or a newly required field still forces
-rung 2. Lenient mode reads old payloads without raising, and it drops any data
-the current schema does not declare, so it tolerates a missing field without
-recovering it. Rung 3 rewrites a store and belongs to operators, so a long chain
-becomes a migration project.
+cannot transform a value, so a type change or a newly required field still
+forces rung 2. Lenient mode reads old payloads without raising and drops any
+data the current schema does not declare. Lenient mode therefore tolerates a
+missing field without recovering it. Rung 3 rewrites a store and belongs to
+operators, so a long chain becomes a migration project.
 
-The snapshot gap is not fixed here. #1362 tracks that work.
+This ADR does not fix the snapshot gap. The snapshot fix issue (#1362) tracks
+that work.
 
 ## Alternatives Considered
 
 **Collapse to a single mechanism.** Route every change through upcasters, or
-through weak schema alone. Rejected because neither covers the other's cases:
-weak schema cannot transform a stored value, and an upcaster is heavy machinery
-for a rename that an alias handles declaratively. The prior art (Axon, Marten,
-the Overeem survey) keeps the split for the same reason.
+through weak schema alone. Rejected because neither mechanism covers the
+other's cases. Weak schema cannot transform a stored value. An upcaster is more
+code than a rename needs, because an alias covers a rename by declaration
+alone. The prior art (Axon, Marten, the Overeem survey) keeps the split for the
+same reason.
 
 **Build in-place transformation and copy-and-transform into core.** Rejected
-because both rewrite the contents of an event store, which is a migration and an
-operator concern. Building a stream-rewrite engine into core would move
-infrastructure responsibility across the port boundary, and `upgrade.py` already
-states that migrations are an adapter and operator concern. The ADR documents the
-tactics and leaves a port-level rewrite contract for later, gated on real demand.
+because both tactics rewrite the contents of an event store. Rewriting an event
+store is a migration and an operator concern. If core built a stream-rewrite
+engine, infrastructure responsibility would move across the port boundary.
+`upgrade.py` already states that migrations are an adapter and operator
+concern. This ADR describes the tactics. A port-level rewrite contract can come
+later, when real demand appears.
