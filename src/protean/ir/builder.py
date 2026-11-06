@@ -409,7 +409,7 @@ class _DeprecatedImportScan:
     @staticmethod
     def _field_import_aliases(tree: ast.Module) -> dict[str, str]:
         """Return local name -> canonical name of module-level Method/Nested imports."""
-        # Module-level names bound to protean.fields' Method/Nested.
+        # Module-level names bound to Method/Nested from either field module.
         field_aliases: dict[str, str] = {}  # local name -> canonical
         for stmt in tree.body:
             if isinstance(stmt, ast.ImportFrom) and stmt.module in _FIELD_MODULES:
@@ -439,7 +439,8 @@ class _DeprecatedImportScan:
                 if self._dotted(node.value) == "protean.utils":
                     self._found.add(("util", f"protean.utils.{node.attr}"))
             # ``Method(...)`` / ``Nested(...)`` call bound to a module import, or
-            # a ``protean.fields.Method(...)`` attribute call.
+            # a ``protean.fields.Method(...)`` or ``protean.fields.basic.Method(...)``
+            # attribute call.
             elif isinstance(node, ast.Call):
                 self._visit_call(node)
         return sorted(self._found)
@@ -451,7 +452,7 @@ class _DeprecatedImportScan:
                 self._found.add(("util", f"protean.utils.{alias.name}"))
 
     def _visit_call(self, node: ast.Call) -> None:
-        """Record a ``Method``/``Nested`` call reached through ``protean.fields``."""
+        """Record a ``Method``/``Nested`` call reached through a field module."""
         func = node.func
         if isinstance(func, ast.Name) and func.id in self._field_aliases:
             self._found.add(("field", self._field_aliases[func.id]))
@@ -4356,8 +4357,9 @@ class IRBuilder:
         deprecated import surface used in ``tree``.
 
         - ``"field"``: a ``Method`` or ``Nested`` call through a name bound by
-          a module-level ``from protean.fields import ...``, or through
-          ``protean.fields``. A name imported inside a function is not matched,
+          a module-level ``from protean.fields import ...`` or
+          ``from protean.fields.basic import ...``, or through either module
+          as an attribute. A name imported inside a function is not matched,
           and an import with no call is not matched.
         - ``"util"``: a deprecated ``protean.utils`` name, imported by name or
           reached as an attribute, at any scope.
