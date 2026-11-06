@@ -1095,8 +1095,9 @@ def _simple_field_init_type(
 ) -> Type | None:
     """Return the __init__ parameter type for a simple field typed *type_fqn*.
 
-    The type is ``X | None`` unless the field is required, an identifier, or has a
-    default, and ``None`` when mypy cannot build the type.
+    List and dict fields get ``list[Any]`` and ``dict[str, Any]``. Any other field
+    gets ``X | None`` when ``_field_may_be_none`` says so, and ``X`` otherwise.
+    Returns ``None`` when mypy cannot build the type.
     """
     # Special-case container fields for proper type parameters
     any_type = AnyType(TypeOfAny.special_form)
@@ -1123,7 +1124,10 @@ def _simple_field_init_type(
 
 
 def _field_may_be_none(callee_fullname: str, rvalue: CallExpr) -> bool:
-    """Return whether the field is not required, not an identifier, and has no default."""
+    """Return whether the field is optional and has neither an explicit nor an implicit default.
+
+    A field is optional when it is neither required nor an identifier.
+    """
     # Check if the field is required/identifier/has default
     is_required = _get_call_kwarg_bool(rvalue, "required", default=False)
     is_identifier = _get_call_kwarg_bool(rvalue, "identifier", default=False)
