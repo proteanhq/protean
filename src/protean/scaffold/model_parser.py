@@ -817,11 +817,10 @@ def _emit_read_side(
         )
     # ``stream_categories`` decides which streams the projector reads. Unset, it
     # derives from ``aggregates``, which ``_resolve_read_side`` has already pinned
-    # to this aggregate. A
-    # projector that binds by category names its streams directly, and they have to
-    # be this aggregate's default category and nothing else: promotion re-derives
-    # exactly that from the single-aggregate wiring, so any other value would emit a
-    # model that reads different streams.
+    # to this aggregate. A projector that binds by category names its streams
+    # directly, and they have to be this aggregate's default category and nothing
+    # else: promotion re-derives exactly that from the single-aggregate wiring, so
+    # any other value would emit a model that reads different streams.
     expected_categories = [
         _option_defaults("aggregate", aggregate["name"], domain_name)["stream_category"]
     ]
@@ -991,7 +990,7 @@ def _resolve_read_side(
     # ``aggregates`` or by setting ``stream_categories`` directly. A non-empty
     # ``aggregates`` list that names anything other than this aggregate spans a wider
     # slice than the grammar covers. An empty list means the binding is by category,
-    # which the caller checks against this aggregate's default.
+    # which ``_emit_read_side`` checks against this aggregate's default.
     aggregates = projector.get("aggregates", [])
     if aggregates not in ([], [cluster_fqn]):
         raise ModelEmitError(

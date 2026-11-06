@@ -144,14 +144,14 @@ def _make_room_at_target(
     Raises :exc:`FileExistsError` when the target is a non-empty directory or a
     non-directory and *force* is false.
     """
-    # Something already at the target that copier cannot render
-    # into is cleared with force, or refused without it. Two shapes count: a
-    # non-empty directory, and a non-directory left at the path (a file, a
-    # symlink to a file, or a broken symlink). copier renders into a directory,
-    # so a non-directory target would otherwise fail deep inside copier with a
-    # confusing NotADirectoryError instead of the documented FileExistsError,
-    # and force would crash instead of making room. os.path.lexists catches the
-    # broken symlink that os.path.exists misses.
+    # Something already at the target that copier cannot render into is cleared
+    # with force, or refused without it. Two shapes count: a non-empty directory,
+    # and a non-directory left at the path (a file, a symlink to a file, or a
+    # broken symlink). copier renders into a directory, so a non-directory target
+    # would otherwise fail deep inside copier with a confusing NotADirectoryError
+    # instead of the documented FileExistsError, and force would crash instead of
+    # making room. os.path.lexists catches the broken symlink that os.path.exists
+    # misses.
     target_is_nonempty_dir = os.path.isdir(project_directory) and os.listdir(
         project_directory
     )

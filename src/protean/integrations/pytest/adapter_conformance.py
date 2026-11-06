@@ -213,7 +213,11 @@ def _needs_db(item: pytest.Item, capability_markers: list[str]) -> bool:
 
 
 def _annotate_required_capability(item: pytest.Item) -> None:
-    """Record the first capability marker on the item and the capabilities it needs."""
+    """Record the item's capability marker and the capabilities it needs.
+
+    When the item carries several, the one listed first in
+    ``MARKER_TO_CAPABILITY`` is recorded.
+    """
     for marker_name, required_caps in MARKER_TO_CAPABILITY.items():
         if item.get_closest_marker(marker_name) is not None:
             # ``_database_required_capability`` is a dynamic attribute read

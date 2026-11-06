@@ -873,8 +873,14 @@ class Order:
     first, second = String(), String()
 """
 
-    def _statements(self) -> dict[str, object]:
-        return _class_body_statements(self._SOURCE)
+    _HAS_MANY_SOURCE = """
+class Order:
+    left = right = HasMany(Item)
+    first, second = HasMany(Item)
+"""
+
+    def _statements(self, source: str = _SOURCE) -> dict[str, object]:
+        return _class_body_statements(source)
 
     def test_chained_assignment_is_not_a_factory_field(self):
         from protean.ext.mypy_plugin import _factory_field
@@ -889,19 +895,25 @@ class Order:
     def test_chained_assignment_is_not_a_has_many_field(self):
         from protean.ext.mypy_plugin import _has_many_field_name
 
-        assert _has_many_field_name(self._statements()["left"]) is None
+        assert (
+            _has_many_field_name(self._statements(self._HAS_MANY_SOURCE)["left"])
+            is None
+        )
 
     def test_tuple_assignment_is_not_a_has_many_field(self):
         from protean.ext.mypy_plugin import _has_many_field_name
 
-        assert _has_many_field_name(self._statements()["tuple"]) is None
+        assert (
+            _has_many_field_name(self._statements(self._HAS_MANY_SOURCE)["tuple"])
+            is None
+        )
 
     def test_factory_whose_type_is_unavailable_is_not_a_field(self):
         from protean.ext.mypy_plugin import _factory_field
 
         statements = _class_body_statements("class Order:\n    name = String()\n")
         ctx = MagicMock()
-        ctx.api.named_type.side_effect = KeyError
+        ctx.api.named_type.side_effect = AssertionError
         assert _factory_field(ctx, statements["name"]) is None
 
     def test_debug_mode_reports_each_examined_call(self, monkeypatch, capsys):
@@ -967,10 +979,10 @@ class TestSimpleFieldInitTypeUnavailable:
         return _simple_field_init_type(ctx, "protean.fields.String", call, type_fqn)
 
     def test_list_type_unavailable(self):
-        assert self._resolve("builtins.list", KeyError) is None
+        assert self._resolve("builtins.list", AssertionError) is None
 
     def test_dict_type_unavailable(self):
         assert self._resolve("builtins.dict", AssertionError) is None
 
     def test_plain_type_unavailable(self):
-        assert self._resolve("builtins.str", KeyError) is None
+        assert self._resolve("builtins.str", AssertionError) is None

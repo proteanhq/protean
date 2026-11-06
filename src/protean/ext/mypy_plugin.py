@@ -805,8 +805,8 @@ def _synthesize_init(ctx: ClassDefContext, decorator_name: str) -> None:
 
 def _declares_own_init(ctx: ClassDefContext, info: TypeInfo) -> bool:
     """Return whether the class itself, not a parent, defines ``__init__``."""
-    # Don't override an explicitly declared __init__. The class body is not
-    # analyzed yet when this hook runs, so check its statements too.
+    # The class body is not analyzed yet when this hook runs, so an ``__init__``
+    # written in it shows up only as a statement, not in ``info.names``.
     if any(
         isinstance(stmt, FuncDef) and stmt.name == "__init__"
         for stmt in ctx.cls.defs.body
@@ -814,7 +814,7 @@ def _declares_own_init(ctx: ClassDefContext, info: TypeInfo) -> bool:
         return True
     if "__init__" in info.names:
         existing = info.names["__init__"]
-        # Only skip if it's defined in this class, not inherited
+        # An ``__init__`` inherited from a parent is recorded on the parent's info.
         if existing.node and getattr(existing.node, "info", None) is info:
             return True
     return False
@@ -888,7 +888,10 @@ def _field_factory_fullname(callee: Expression) -> str | None:
 def _add_annotation_only_fields(
     ctx: ClassDefContext, fields: list[tuple[str, Type]]
 ) -> None:
-    """Append annotation-only fields not already in *fields*, typed ``Any``."""
+    """Append annotation-only fields to *fields*, typed ``Any``.
+
+    Skips a name that starts with ``_`` or is already in *fields*.
+    """
     # Annotation-only fields (``name: String(required=True)``). mypy rejected
     # the call in the annotation at parse time and kept no Python type, so the
     # keyword is typed ``Any``.
@@ -913,7 +916,11 @@ def _add_annotation_only_fields(
 def _add_plain_annotation_fields(
     ctx: ClassDefContext, fields: list[tuple[str, Type]]
 ) -> None:
-    """Append plain-annotation fields not already in *fields*, typed ``Any``."""
+    """Append plain-annotation fields to *fields*, typed ``Any``.
+
+    Skips a name that starts with ``_`` or is already in *fields*, and a
+    ``ClassVar`` annotation.
+    """
     # Plain annotations (``note: str`` or ``note: str = "x"``) are pydantic
     # fields at runtime. Their types are not analyzed yet when this hook runs,
     # so they are typed Any. ``unanalyzed_type`` is the annotation as written:

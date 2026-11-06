@@ -1267,7 +1267,10 @@ def _validate_import_collisions(modules: tuple[_GeneratedModule, ...]) -> None:
 
 
 def _validate_local_collisions(fragment: SliceFragment, slug: str) -> None:
-    """Reject a class named like a local the generated method that reads it binds."""
+    """Reject an aggregate, projection or event named like a local.
+
+    The local is one that the generated method reading the class binds.
+    """
     if fragment.aggregate.name in _HANDLER_LOCALS:
         raise SliceGeneratorError(
             f"The slice's aggregate is named {fragment.aggregate.name!r}, which the "
