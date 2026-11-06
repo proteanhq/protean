@@ -60,8 +60,8 @@ mode.
 - Single code path for both `--domain` and `--ir` CLI modes.
 - Pure functions with no side effects, easy to test and compose.
 - No dependency on Pydantic internals or `model_json_schema()` behavior.
-- IR provides a stable, versioned contract that insulates the generator from
-  changes in field implementation details.
+- IR provides a stable, versioned contract, so changes in field implementation
+  details do not require changes to the generator.
 
 **Negative:**
 

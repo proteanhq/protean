@@ -34,8 +34,9 @@ Learn more:
 ## Broker
 
 The [Broker port](./broker/index.md) defines the interface for message brokers
-and pub/sub systems. It enables communication between different parts of the
-ecosystem via messages, facilitating asynchronous processing and decoupling.
+and pub/sub systems. It carries messages between different parts of the
+ecosystem, so those parts can process messages asynchronously and stay
+decoupled from each other.
 
 !!!note
     Protean internally uses an Event Store that acts both as an event
@@ -57,9 +58,8 @@ Learn more:
 ## Cache
 
 The [Cache port](./cache/index.md) defines the interface for interacting with
-caching systems. It exposes APIs to temporarily store and retrieve projection
-data, improving application performance by reducing the need for repeated
-database access.
+caching systems. It exposes APIs that store projection data temporarily and
+read it back, so the application reads the database less often and runs faster.
 
 Current Implementations:
 
@@ -69,10 +69,10 @@ Current Implementations:
 ## Event Store
 
 The [Event Store](./eventstore/index.md) port defines the interface for event
-sourcing and event store systems. It handles the storage and retrieval of
-events, which are the fundamental units of change in event-driven
-architectures. This port ensures that all state changes are recorded as a
-sequence of events, providing a complete audit trail and enabling features like
+sourcing and event store systems. It stores and reads back events, which are
+the fundamental units of change in event-driven architectures. This port
+ensures that all state changes are recorded as a sequence of events, providing
+a complete audit trail and enabling features like
 event replay and temporal queries.
 
 Current Implementations:
@@ -84,7 +84,6 @@ Current Implementations:
 
 !!!tip "Build your own"
     All adapter types support third-party extensions via Python entry points.
-    See [Building Adapters](./building-adapters.md) for an
-    overview, or jump directly to
+    See [Building Adapters](./building-adapters.md) for an overview, or read
     [Custom Database Adapters](./database/custom-databases.md) or
     [Custom Brokers](./broker/custom-brokers.md) for detailed guides.

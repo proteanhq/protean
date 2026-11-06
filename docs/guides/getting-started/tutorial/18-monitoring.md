@@ -95,8 +95,8 @@ groups:
 - A **Prometheus metrics endpoint** for production alerting.
 - Understanding of key metrics: lag, pending, DLQ depth.
 
-In the next chapter, we will tackle a bulk import scenario that requires
-priority lanes to avoid starving production traffic.
+In the next chapter, we run a bulk import that needs priority lanes so that it
+does not starve production traffic.
 
 ## Next
 

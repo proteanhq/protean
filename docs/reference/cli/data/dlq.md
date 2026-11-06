@@ -1,8 +1,8 @@
 # `protean dlq`
 
 The `protean dlq` command group provides tools for managing dead letter
-queues (DLQs). When messages fail processing after exhausting retries,
-they are moved to DLQ streams. These commands let you list, inspect,
+queues (DLQs). When messages fail processing after exhausting retries, the
+subscription moves them to DLQ streams. These commands let you list, inspect,
 replay, and purge those failed messages, both from the terminal and via the
 [Observatory dashboard](../runtime/observatory.md).
 
@@ -76,7 +76,7 @@ protean dlq inspect "1708768400000-0" --domain=my_domain
 
 Replays a single DLQ message back to its original stream for
 reprocessing. The message is removed from the DLQ and published as a new
-message on the target stream.
+message on its original stream.
 
 ```bash
 protean dlq replay "1708768400000-0" --domain=my_domain

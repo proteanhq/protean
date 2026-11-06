@@ -1,7 +1,7 @@
 # Chapter 3: Entities and Associations
 
-In this chapter we will build the `Order` aggregate with child entities
-and associations, giving our bookstore the ability to take orders.
+We build the `Order` aggregate with child entities and associations, so the
+bookstore can take orders.
 
 ## The Order Aggregate
 

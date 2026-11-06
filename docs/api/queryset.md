@@ -30,9 +30,9 @@ domain entity: it has no behavior, runs no invariants, and cannot be persisted.
 
 A reference to another column of the same row, for use as the right-hand side
 of a lookup inside `filter()`/`Q` (e.g. `filter(retry_count__lt=F("max_retries"))`).
-Resolved natively by the in-memory and SQLAlchemy adapters; the Elasticsearch
-adapter raises `NotImplementedError` for `F`-bearing predicates. See the
-[Retrieve Aggregates guide](../guides/change-state/retrieve-aggregates.md#comparing-two-fields-with-f)
+The in-memory and SQLAlchemy adapters resolve `F` natively, but the
+Elasticsearch adapter raises `NotImplementedError` for `F`-bearing predicates.
+See the [Retrieve Aggregates guide](../guides/change-state/retrieve-aggregates.md#comparing-two-fields-with-f)
 for usage.
 
 ::: protean.utils.query.F
@@ -59,11 +59,11 @@ a top-level export: `from protean import Q`.
 
 ## Cross-adapter conformance
 
-Every built-in adapter is held to the same behaviour for these query-API
-primitives through the [conformance test suite](../reference/testing/conformance.md).
-Each primitive is gated by a capability tier: an adapter that declares a
-capability must pass every conformance test tagged with it. See
-[ADR-0023](../adr/0023-query-api-conformance-contract-and-capability-tiers.md)
+The [conformance test suite](../reference/testing/conformance.md) holds every
+built-in adapter to the same behaviour for each of these query-API primitives
+that its capability tier covers. Each primitive is gated by a capability tier:
+an adapter that declares a capability must pass every conformance test tagged
+with it. See [ADR-0023](../adr/0023-query-api-conformance-contract-and-capability-tiers.md)
 for the rationale.
 
 | Primitive | Capability tier | Adapters that must pass |
