@@ -115,9 +115,9 @@ needs conditional guards.
   (typically via `current_domain` context or direct reference) to obtain
   a tracer or meter.
 - Some third-party OTEL auto-instrumentation libraries expect global providers
-  (e.g., `opentelemetry-instrumentation-requests`). These libraries will not
-  automatically participate in Protean's domain-scoped traces. You would need
-  to bridge these libraries to the domain's providers manually.
+  (e.g., `opentelemetry-instrumentation-requests`). They will not automatically
+  participate in Protean's domain-scoped traces. An application has to bridge
+  them to the domain's providers manually.
 
 ## Alternatives Considered
 
@@ -128,8 +128,7 @@ unlikely to change upstream.
 
 **Per-thread providers.** Would solve test isolation for single-threaded
 test runners but not for async or multi-domain production scenarios.
-Per-thread providers also add complexity and do not solve the configuration
-problem.
+Also adds complexity and does not solve the configuration problem.
 
 **Monkey-patching OTEL globals per test.** Fragile, requires careful
 teardown ordering, and breaks if any library caches a reference to the
