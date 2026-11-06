@@ -181,7 +181,7 @@ deltas.
 --8<-- "guides/domain-definition/aggregates/003.py:aggregate"
 ```
 
-See [Fact Events](../domain-behavior/raising-events.md#how-protean-generates-fact-events) and
+See [Fact Events](../domain-behavior/raising-events.md#fact-events) and
 the [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md)
 pattern for details.
 

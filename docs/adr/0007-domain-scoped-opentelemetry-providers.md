@@ -1,4 +1,4 @@
-# ADR-0007: Each domain owns its OpenTelemetry providers
+# ADR-0007: Domain-Scoped OpenTelemetry Providers
 
 | Field | Value |
 |-------|-------|

@@ -79,7 +79,7 @@ more manageable aggregates.
 
 ---
 
-## What to read next
+## Next steps
 
 For practical details on defining and using entities in Protean, see the guide:
 
