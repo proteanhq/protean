@@ -473,48 +473,60 @@ def _parse_constraints(
     for part in constraints.split(","):
         token = part.strip()
         if token == "key":
-            if "key" in seen:
-                raise ModelParseError("duplicate 'key' constraint", lineno)
-            seen.add("key")
-            if ftype != "identifier" or keyword != "projection":
-                raise ModelParseError(
-                    "'key' is valid only on an identifier field of a projection",
-                    lineno,
-                )
+            _check_key_constraint(seen, ftype, keyword, lineno)
             is_key = True
         elif token.startswith("max_length"):
-            length_match = _MAX_LENGTH_RE.match(token)
-            if length_match is None:
-                raise ModelParseError(f"malformed constraint {token!r}", lineno)
-            if "max_length" in seen:
-                raise ModelParseError("duplicate 'max_length' constraint", lineno)
-            seen.add("max_length")
-            value = length_match.group(1)
-            # ``isdecimal`` and not ``isdigit``: a Unicode numeric like the
-            # superscript two satisfies ``isdigit`` but ``int()`` then raises a
-            # ValueError, and every violation here reports as a ModelParseError.
-            if not value.isdecimal():
-                raise ModelParseError("max_length must be a positive integer", lineno)
-            try:
-                length = int(value)
-            except ValueError as exc:
-                # A decimal token past CPython's int-from-string digit limit. Still a
-                # grammar violation, so it reports as one.
-                raise ModelParseError(
-                    f"max_length has {len(value)} digits, which is too long to read",
-                    lineno,
-                ) from exc
-            if length <= 0:
-                raise ModelParseError("max_length must be a positive integer", lineno)
-            if ftype not in ("string", "text"):
-                raise ModelParseError(
-                    "max_length is valid only on string and text fields", lineno
-                )
-            max_length = length
+            max_length = _parse_max_length(token, seen, ftype, lineno)
         else:
             raise ModelParseError(f"unknown constraint {token!r}", lineno)
 
     return max_length, is_key
+
+
+def _check_key_constraint(
+    seen: set[str], ftype: str, keyword: str, lineno: int
+) -> None:
+    """Record a ``key`` constraint in *seen*, refusing a repeat or a wrong field."""
+    if "key" in seen:
+        raise ModelParseError("duplicate 'key' constraint", lineno)
+    seen.add("key")
+    if ftype != "identifier" or keyword != "projection":
+        raise ModelParseError(
+            "'key' is valid only on an identifier field of a projection",
+            lineno,
+        )
+
+
+def _parse_max_length(token: str, seen: set[str], ftype: str, lineno: int) -> int:
+    """Return the length a ``max_length=N`` token sets, recording it in *seen*."""
+    length_match = _MAX_LENGTH_RE.match(token)
+    if length_match is None:
+        raise ModelParseError(f"malformed constraint {token!r}", lineno)
+    if "max_length" in seen:
+        raise ModelParseError("duplicate 'max_length' constraint", lineno)
+    seen.add("max_length")
+    value = length_match.group(1)
+    # ``isdecimal`` and not ``isdigit``: a Unicode numeric like the
+    # superscript two satisfies ``isdigit`` but ``int()`` then raises a
+    # ValueError, and every violation here reports as a ModelParseError.
+    if not value.isdecimal():
+        raise ModelParseError("max_length must be a positive integer", lineno)
+    try:
+        length = int(value)
+    except ValueError as exc:
+        # A decimal token past CPython's int-from-string digit limit. Still a
+        # grammar violation, so it reports as one.
+        raise ModelParseError(
+            f"max_length has {len(value)} digits, which is too long to read",
+            lineno,
+        ) from exc
+    if length <= 0:
+        raise ModelParseError("max_length must be a positive integer", lineno)
+    if ftype not in ("string", "text"):
+        raise ModelParseError(
+            "max_length is valid only on string and text fields", lineno
+        )
+    return length
 
 
 def _parse_projector_line(block: _Block, stripped: str, lineno: int) -> None:
@@ -642,6 +654,15 @@ def _validate_read_side(
     projector: _Block,
     surfaced_id: str,
 ) -> None:
+    _validate_projector_targets(event, projection, projector)
+    key_name = _projection_key(projection, surfaced_id)
+    _validate_projection_fields(event, projection, key_name)
+
+
+def _validate_projector_targets(
+    event: _Block, projection: _Block, projector: _Block
+) -> None:
+    """Check the projector's ``for`` and ``consumes`` lines name the model's blocks."""
     if projector.for_target is None:
         raise ModelParseError(
             "projector needs a 'for <Projection>' line", projector.header_line
@@ -663,6 +684,9 @@ def _validate_read_side(
             projector.consumes_line or projector.header_line,
         )
 
+
+def _projection_key(projection: _Block, surfaced_id: str) -> str:
+    """Return the projection's single ``key`` field, which must be *surfaced_id*."""
     key_names = [
         name for name, entry in projection.fields.items() if entry.get("identifier")
     ]
@@ -683,7 +707,13 @@ def _validate_read_side(
             f"id), not {key_name!r}",
             projection.field_lines[key_name],
         )
+    return key_name
 
+
+def _validate_projection_fields(
+    event: _Block, projection: _Block, key_name: str
+) -> None:
+    """Check every non-key projection field is on the event with the same shape."""
     # The key's shape is not compared against the event's. ``_validate_surfaced_id``
     # has already checked the event carries it as a string or an identifier, while
     # the projection's key takes the framework identity default.
@@ -735,6 +765,82 @@ def _slug(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _single_command(cluster: dict[str, Any], cluster_fqn: str) -> dict[str, Any]:
+    """Return the cluster's one command, refusing a cluster with any other count."""
+    commands = cluster.get("commands", {})
+    if len(commands) != 1:
+        raise ModelEmitError(
+            f"cluster {cluster_fqn!r} has {len(commands)} commands; the grammar "
+            "covers exactly one command"
+        )
+    command: dict[str, Any] = next(iter(commands.values()))
+    return command
+
+
+def _single_authored_event(cluster: dict[str, Any], cluster_fqn: str) -> dict[str, Any]:
+    """Return the cluster's one authored (non-fact, non-generated) event."""
+    events = cluster.get("events", {})
+    authored_events = {
+        fqn: entry
+        for fqn, entry in events.items()
+        if not entry.get("is_fact_event") and not entry.get("auto_generated")
+    }
+    if len(authored_events) != 1:
+        raise ModelEmitError(
+            f"cluster {cluster_fqn!r} has {len(authored_events)} authored events; "
+            "the grammar covers exactly one non-fact event"
+        )
+    event: dict[str, Any] = next(iter(authored_events.values()))
+    return event
+
+
+def _emit_read_side(
+    cluster_fqn: str,
+    aggregate: dict[str, Any],
+    event: dict[str, Any],
+    projection: dict[str, Any],
+    projector: dict[str, Any],
+    domain_name: str,
+) -> list[str]:
+    """Return the projection and projector blocks after checking the grammar fits.
+
+    Raises :class:`ModelEmitError` when either participant, the projector's
+    subscription or its stream categories fall outside the grammar.
+    """
+    _check_participant(cluster_fqn, "projection", projection, domain_name)
+    _check_participant(cluster_fqn, "projector", projector, domain_name)
+    subscription = projector.get("subscription")
+    if subscription is not None and subscription != _DEFAULT_SUBSCRIPTION:
+        raise ModelEmitError(
+            f"projector {projector['name']!r} sets a non-default subscription "
+            f"({subscription}), which the grammar cannot express"
+        )
+    # ``stream_categories`` decides which streams the projector reads. Unset, it
+    # derives from ``aggregates``, which ``_resolve_read_side`` has already pinned
+    # to this aggregate. A
+    # projector that binds by category names its streams directly, and they have to
+    # be this aggregate's default category and nothing else: promotion re-derives
+    # exactly that from the single-aggregate wiring, so any other value would emit a
+    # model that reads different streams.
+    expected_categories = [
+        _option_defaults("aggregate", aggregate["name"], domain_name)["stream_category"]
+    ]
+    categories = projector.get("stream_categories")
+    if categories is None:
+        categories = expected_categories if projector.get("aggregates") else []
+    if categories != expected_categories:
+        raise ModelEmitError(
+            f"projector {projector['name']!r} subscribes to {categories} rather "
+            f"than {expected_categories}, which the grammar cannot express"
+        )
+    return [
+        _emit_block(
+            "projection", projection["name"], projection.get("fields", {}), True
+        ),
+        _emit_projector(projector["name"], projection["name"], event["name"]),
+    ]
+
+
 def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
     """Emit grammar text for the covered subset of one IR cluster.
 
@@ -773,26 +879,8 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
 
     aggregate = cluster["aggregate"]
 
-    commands = cluster.get("commands", {})
-    if len(commands) != 1:
-        raise ModelEmitError(
-            f"cluster {cluster_fqn!r} has {len(commands)} commands; the grammar "
-            "covers exactly one command"
-        )
-    command = next(iter(commands.values()))
-
-    events = cluster.get("events", {})
-    authored_events = {
-        fqn: entry
-        for fqn, entry in events.items()
-        if not entry.get("is_fact_event") and not entry.get("auto_generated")
-    }
-    if len(authored_events) != 1:
-        raise ModelEmitError(
-            f"cluster {cluster_fqn!r} has {len(authored_events)} authored events; "
-            "the grammar covers exactly one non-fact event"
-        )
-    event = next(iter(authored_events.values()))
+    command = _single_command(cluster, cluster_fqn)
+    event = _single_authored_event(cluster, cluster_fqn)
 
     domain = ir.get("domain") or {}
     _check_identity(cluster_fqn, domain)
@@ -810,40 +898,10 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
     ]
     if read_side is not None:
         projection, projector = read_side
-        _check_participant(cluster_fqn, "projection", projection, domain_name)
-        _check_participant(cluster_fqn, "projector", projector, domain_name)
-        subscription = projector.get("subscription")
-        if subscription is not None and subscription != _DEFAULT_SUBSCRIPTION:
-            raise ModelEmitError(
-                f"projector {projector['name']!r} sets a non-default subscription "
-                f"({subscription}), which the grammar cannot express"
+        blocks.extend(
+            _emit_read_side(
+                cluster_fqn, aggregate, event, projection, projector, domain_name
             )
-        # ``stream_categories`` decides which streams the projector reads. Unset, it
-        # derives from ``aggregates``, already pinned to this aggregate above. A
-        # projector that binds by category names its streams directly, and they have to
-        # be this aggregate's default category and nothing else: promotion re-derives
-        # exactly that from the single-aggregate wiring, so any other value would emit a
-        # model that reads different streams.
-        expected_categories = [
-            _option_defaults("aggregate", aggregate["name"], domain_name)[
-                "stream_category"
-            ]
-        ]
-        categories = projector.get("stream_categories")
-        if categories is None:
-            categories = expected_categories if projector.get("aggregates") else []
-        if categories != expected_categories:
-            raise ModelEmitError(
-                f"projector {projector['name']!r} subscribes to {categories} rather "
-                f"than {expected_categories}, which the grammar cannot express"
-            )
-        blocks.append(
-            _emit_block(
-                "projection", projection["name"], projection.get("fields", {}), True
-            )
-        )
-        blocks.append(
-            _emit_projector(projector["name"], projection["name"], event["name"])
         )
 
     text = "\n\n".join(blocks) + "\n"
@@ -1036,20 +1094,7 @@ def _check_participant(
         _check_message_version(keyword, element)
 
     if keyword in _DEFAULT_OPTIONS:
-        defaults = _option_defaults(keyword, name, domain_name)
-        options = element.get("options") or {}
-        for key, value in sorted(options.items()):
-            if key not in defaults:
-                raise ModelEmitError(
-                    f"cluster {cluster_fqn!r} sets the {keyword} option {key!r}, "
-                    "which the grammar does not carry"
-                )
-            if value != defaults[key]:
-                raise ModelEmitError(
-                    f"cluster {cluster_fqn!r} sets the {keyword} option "
-                    f"{key}={value!r} rather than {defaults[key]!r}, which the "
-                    "grammar cannot express"
-                )
+        _check_default_options(cluster_fqn, keyword, element, domain_name)
 
     # The catch-all, so it reports last and the checks above give their own reasons.
     extra = set(element) - _EXPRESSIBLE_PARTICIPANT_KEYS[keyword]
@@ -1058,6 +1103,26 @@ def _check_participant(
             f"the {keyword} {name!r} carries {sorted(extra)}, which the grammar "
             "cannot express"
         )
+
+
+def _check_default_options(
+    cluster_fqn: str, keyword: str, element: dict[str, Any], domain_name: str
+) -> None:
+    """Refuse an element option the grammar does not carry or set off its default."""
+    defaults = _option_defaults(keyword, element["name"], domain_name)
+    options = element.get("options") or {}
+    for key, value in sorted(options.items()):
+        if key not in defaults:
+            raise ModelEmitError(
+                f"cluster {cluster_fqn!r} sets the {keyword} option {key!r}, "
+                "which the grammar does not carry"
+            )
+        if value != defaults[key]:
+            raise ModelEmitError(
+                f"cluster {cluster_fqn!r} sets the {keyword} option "
+                f"{key}={value!r} rather than {defaults[key]!r}, which the "
+                "grammar cannot express"
+            )
 
 
 def _emit_block(

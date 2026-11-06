@@ -105,6 +105,76 @@ def _relative_file_paths(root: str) -> list[str]:
     )
 
 
+def _validated_target(project_name: str, output_folder: str) -> str:
+    """Return the project directory path after checking the name and folder.
+
+    Raises :exc:`ValueError` for an invalid name or a target that resolves
+    outside *output_folder*, and :exc:`FileNotFoundError` when *output_folder*
+    does not exist.
+    """
+    if not _is_valid_project_name(project_name):
+        raise ValueError("Invalid project name")
+
+    if not os.path.isdir(output_folder):
+        raise FileNotFoundError(f'Output folder "{output_folder}" does not exist')
+
+    project_directory = os.path.join(output_folder, project_name)
+
+    # An accepted name is a single segment, so the target sits directly inside
+    # the output folder, unless something already at that path is a symlink.
+    # ``os.path``, ``shutil``, and copier all follow symlinks, so a symlink left
+    # there by an earlier run or by someone else would let the force clear
+    # delete, and the render write, wherever it points. Refuse a target whose
+    # resolved path is not directly inside the resolved output folder, before
+    # anything is cleared or written.
+    if Path(project_directory).resolve().parent != Path(output_folder).resolve():
+        raise ValueError(
+            f'Target "{project_directory}" resolves outside output folder '
+            f'"{output_folder}"'
+        )
+
+    return project_directory
+
+
+def _make_room_at_target(
+    project_directory: str, project_name: str, force: bool
+) -> None:
+    """Clear what sits at the target with *force*, or refuse it without.
+
+    Raises :exc:`FileExistsError` when the target is a non-empty directory or a
+    non-directory and *force* is false.
+    """
+    # Something already at the target that copier cannot render
+    # into is cleared with force, or refused without it. Two shapes count: a
+    # non-empty directory, and a non-directory left at the path (a file, a
+    # symlink to a file, or a broken symlink). copier renders into a directory,
+    # so a non-directory target would otherwise fail deep inside copier with a
+    # confusing NotADirectoryError instead of the documented FileExistsError,
+    # and force would crash instead of making room. os.path.lexists catches the
+    # broken symlink that os.path.exists misses.
+    target_is_nonempty_dir = os.path.isdir(project_directory) and os.listdir(
+        project_directory
+    )
+    target_is_non_directory = os.path.lexists(project_directory) and not os.path.isdir(
+        project_directory
+    )
+    if target_is_nonempty_dir:
+        if not force:
+            raise FileExistsError(
+                f'Folder "{project_name}" is not empty. Use --force to overwrite.'
+            )
+        _clear_directory_contents(project_directory)
+    elif target_is_non_directory:
+        if not force:
+            raise FileExistsError(
+                f'Target "{project_name}" already exists and is not a directory. '
+                "Use --force to overwrite."
+            )
+        # Unlink the file or symlink itself. For a symlink this removes the
+        # link, never the file it points at.
+        os.unlink(project_directory)
+
+
 def create_project(
     project_name: str,
     output_folder: str = ".",
@@ -173,26 +243,7 @@ def create_project(
     from protean.dx.pack import PACK_VERSION  # noqa: PLC0415
     from protean.dx.renderers import baseline_managed_files  # noqa: PLC0415
 
-    if not _is_valid_project_name(project_name):
-        raise ValueError("Invalid project name")
-
-    if not os.path.isdir(output_folder):
-        raise FileNotFoundError(f'Output folder "{output_folder}" does not exist')
-
-    project_directory = os.path.join(output_folder, project_name)
-
-    # An accepted name is a single segment, so the target sits directly inside
-    # the output folder, unless something already at that path is a symlink.
-    # ``os.path``, ``shutil``, and copier all follow symlinks, so a symlink left
-    # there by an earlier run or by someone else would let the force clear
-    # delete, and the render write, wherever it points. Refuse a target whose
-    # resolved path is not directly inside the resolved output folder, before
-    # anything is cleared or written.
-    if Path(project_directory).resolve().parent != Path(output_folder).resolve():
-        raise ValueError(
-            f'Target "{project_directory}" resolves outside output folder '
-            f'"{output_folder}"'
-        )
+    project_directory = _validated_target(project_name, output_folder)
 
     # The core injects the project name into the template answers, so callers
     # that already carry answers do not have to remember to add it.
@@ -251,35 +302,7 @@ def create_project(
         with tempfile.TemporaryDirectory() as temp_dir:
             return render_into(temp_dir, quiet=True)
 
-    # Apply only. Something already at the target that copier cannot render
-    # into is cleared with force, or refused without it. Two shapes count: a
-    # non-empty directory, and a non-directory left at the path (a file, a
-    # symlink to a file, or a broken symlink). copier renders into a directory,
-    # so a non-directory target would otherwise fail deep inside copier with a
-    # confusing NotADirectoryError instead of the documented FileExistsError,
-    # and force would crash instead of making room. os.path.lexists catches the
-    # broken symlink that os.path.exists misses. This runs after the dry_run
-    # branch so a preview touches nothing.
-    target_is_nonempty_dir = os.path.isdir(project_directory) and os.listdir(
-        project_directory
-    )
-    target_is_non_directory = os.path.lexists(project_directory) and not os.path.isdir(
-        project_directory
-    )
-    if target_is_nonempty_dir:
-        if not force:
-            raise FileExistsError(
-                f'Folder "{project_name}" is not empty. Use --force to overwrite.'
-            )
-        _clear_directory_contents(project_directory)
-    elif target_is_non_directory:
-        if not force:
-            raise FileExistsError(
-                f'Target "{project_name}" already exists and is not a directory. '
-                "Use --force to overwrite."
-            )
-        # Unlink the file or symlink itself. For a symlink this removes the
-        # link, never the file it points at.
-        os.unlink(project_directory)
-
+    # Apply only. This runs after the dry_run branch so a preview touches
+    # nothing.
+    _make_room_at_target(project_directory, project_name, force)
     return render_into(project_directory)

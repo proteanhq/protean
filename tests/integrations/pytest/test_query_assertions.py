@@ -161,6 +161,11 @@ class TestLimitValueResolution:
         assert list(_limit_values("SELECT id FROM t LIMIT %(p)s", {})) == []
         assert list(_limit_values("SELECT id FROM t LIMIT ?", ("x",))) == []
 
+    def test_parameter_without_a_bound_value_is_skipped(self):
+        # A placeholder with no parameters, or past the end of them, is skipped.
+        assert list(_limit_values("SELECT id FROM t LIMIT :lim", None)) == []
+        assert list(_limit_values("SELECT id FROM t LIMIT ?", ())) == []
+
 
 @pytest.mark.no_test_domain
 class TestNoOpOnMemoryBackend:
