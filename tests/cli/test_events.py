@@ -21,7 +21,10 @@ from protean.cli.events import (
     _truncate_id,
 )
 from protean.cli.result import EXIT_USAGE
+from protean.core.aggregate import BaseAggregate, apply
+from protean.core.event import BaseEvent
 from protean.exceptions import NoDomainException
+from protean.fields import Identifier, String
 from tests.cli._envelope import assert_envelope
 from tests.shared import change_working_directory_to
 
@@ -1026,6 +1029,46 @@ class TestEventsSearchTrace:
             # Rich may truncate column headers; check for partial match
             assert "Correlat" in result.output or "Correl" in result.output
             assert "Causat" in result.output or "Causa" in result.output
+
+
+class AccountRenamed(BaseEvent):
+    id = Identifier(required=True)
+    name = String(required=True, max_length=50)
+
+
+class Account(BaseAggregate):
+    name = String(max_length=50)
+
+    def rename(self, name):
+        self.raise_(AccountRenamed(id=self.id, name=name))
+
+    @apply
+    def on_renamed(self, event: AccountRenamed):
+        self.name = event.name
+
+
+@pytest.mark.eventstore
+def test_history_reads_the_whole_stream_past_one_read_page(
+    test_domain, small_read_page
+):
+    test_domain.register(Account, event_sourced=True)
+    test_domain.register(AccountRenamed, part_of=Account)
+    test_domain.init(traverse=False)
+
+    events = 2 * small_read_page + 5
+    account = Account(id="acc-1", name="Start")
+    for i in range(events):
+        account.rename(name=f"Name {i}")
+        test_domain.event_store.store.append(account._events[-1])
+
+    with patch("protean.cli.events.load_domain", return_value=test_domain):
+        result = runner.invoke(
+            app,
+            ["events", "history", "--aggregate", "Account", "--id", "acc-1"],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert f"{events} event(s), current version: {events - 1}" in result.output
 
 
 # ---------------------------------------------------------------------------

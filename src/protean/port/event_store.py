@@ -468,7 +468,12 @@ class BaseEventStore(metaclass=ABCMeta):
         )
 
     def _read_stream_fully(
-        self, stream: str, start_position: int = 0, max_rows: int | None = None
+        self,
+        stream: str,
+        start_position: int = 0,
+        max_rows: int | None = None,
+        *,
+        page_size: int = 1000,
     ) -> deque[dict[str, Any]]:
         """Read the rows of ``stream``, paging past the per-read page size.
 
@@ -478,12 +483,12 @@ class BaseEventStore(metaclass=ABCMeta):
         rebuilds an incomplete aggregate. ``start_position`` begins the read past
         a snapshot's version to pick up only later events; ``max_rows`` bounds the
         read to a prefix, which a temporal query uses to stop at the requested
-        version; ``None`` reads to the end. A continuation shorter than one page
-        still costs a single read. Reads are inclusive, so each page resumes one
+        version; ``None`` reads to the end. ``page_size`` is the number of rows
+        per ``_read``. A continuation shorter than one page still costs a single
+        read. Reads are inclusive, so each page resumes one
         position past the last row seen.
         """
         rows: deque[dict[str, Any]] = deque()
-        page_size = 1000  # the default page size of ``_read``
         position = start_position
         while max_rows is None or len(rows) < max_rows:
             batch = (

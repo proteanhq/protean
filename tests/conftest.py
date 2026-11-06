@@ -362,9 +362,11 @@ def small_read_page(monkeypatch, test_domain):
     """Make one event store read page ``SMALL_READ_PAGE`` rows instead of 1,000.
 
     Lowers the page-size default of ``BaseEventStore.read``,
-    ``BaseEventStore.read_all`` and the configured store's ``_read`` together,
+    ``BaseEventStore.read_all``, ``BaseEventStore._read_all_raw``,
+    ``BaseEventStore._read_stream_fully`` and the configured store's ``_read``,
     so a test can write a stream longer than one page in a few rows. Writing
-    1,000 rows to the memory store takes minutes.
+    1,000 rows to the memory store takes minutes. A caller that passes its own
+    page size, such as ``no_of_messages=1_000_000``, keeps it.
     """
     store_read = type(test_domain.event_store.store)._read
     for func in (BaseEventStore.read, store_read):
@@ -372,9 +374,14 @@ def small_read_page(monkeypatch, test_domain):
         assert defaults is not None and defaults[-1] == 1000
         monkeypatch.setattr(func, "__defaults__", (*defaults[:-1], SMALL_READ_PAGE))
 
-    read_all_kwdefaults = BaseEventStore.read_all.__kwdefaults__
-    assert read_all_kwdefaults is not None and read_all_kwdefaults["page_size"] == 1000
-    monkeypatch.setitem(read_all_kwdefaults, "page_size", SMALL_READ_PAGE)
+    for func in (
+        BaseEventStore.read_all,
+        BaseEventStore._read_all_raw,
+        BaseEventStore._read_stream_fully,
+    ):
+        kwdefaults = func.__kwdefaults__
+        assert kwdefaults is not None and kwdefaults["page_size"] == 1000
+        monkeypatch.setitem(kwdefaults, "page_size", SMALL_READ_PAGE)
     return SMALL_READ_PAGE
 
 

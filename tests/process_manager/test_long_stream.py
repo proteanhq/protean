@@ -21,9 +21,6 @@ from .elements import (
     Shipping,
 )
 
-# Two full pages and part of a third.
-TRANSITIONS = 2 * SMALL_READ_PAGE + 5
-
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
@@ -41,13 +38,20 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
+# Two full pages, which ends the load on an empty read, and two full pages
+# plus part of a third.
+@pytest.fixture(params=[2 * SMALL_READ_PAGE, 2 * SMALL_READ_PAGE + 5])
+def transitions(request):
+    return request.param
+
+
 @pytest.fixture
-def order_id(small_read_page):
-    """Write ``TRANSITIONS`` transitions to one PM's stream and return its id.
+def order_id(small_read_page, transitions):
+    """Write ``transitions`` transitions to one PM's stream and return its id.
 
     The first transition comes from a real start event; the rest are written
     straight to the stream, each with a new ``payment_id``, so the last one
-    sets ``payment_id`` to ``pay-<TRANSITIONS - 2>``.
+    sets ``payment_id`` to ``pay-<transitions - 2>``.
     """
     order_id = str(uuid4())
     OrderFulfillmentPM._handle(
@@ -56,14 +60,11 @@ def order_id(small_read_page):
 
     pm = OrderFulfillmentPM._load_or_create(order_id, is_start=False)
     pm.status = "awaiting_shipment"
-    for i in range(TRANSITIONS - 1):
+    for i in range(transitions - 1):
         pm.payment_id = f"pay-{i}"
         OrderFulfillmentPM._persist_transition(pm, "on_payment_confirmed")
 
     return order_id
-
-
-LAST_PAYMENT_ID = f"pay-{TRANSITIONS - 2}"
 
 
 def _stream(order_id):
@@ -71,26 +72,27 @@ def _stream(order_id):
 
 
 @pytest.mark.eventstore
-def test_load_applies_the_last_transition(test_domain, order_id):
+def test_load_applies_the_last_transition(test_domain, order_id, transitions):
     assert len(list(test_domain.event_store.store.read_all(_stream(order_id)))) == (
-        TRANSITIONS
+        transitions
     )
 
     pm = OrderFulfillmentPM._load_or_create(order_id, is_start=False)
 
-    assert pm.payment_id == LAST_PAYMENT_ID
+    assert pm.payment_id == f"pay-{transitions - 2}"
     assert pm.status == "awaiting_shipment"
-    assert pm._version == TRANSITIONS - 1
+    assert pm._version == transitions - 1
 
 
 @pytest.mark.eventstore
-def test_next_transition_persists_past_one_page(test_domain, order_id):
+def test_next_transition_persists_past_one_page(test_domain, order_id, transitions):
     OrderFulfillmentPM._handle(ShipmentDelivered(order_id=order_id))
 
     messages = list(test_domain.event_store.store.read_all(_stream(order_id)))
-    assert len(messages) == TRANSITIONS + 1
+    assert len(messages) == transitions + 1
+    assert messages[-1].metadata.event_store.position == transitions
 
     pm = OrderFulfillmentPM._load_or_create(order_id, is_start=False)
     assert pm.status == "completed"
-    assert pm.payment_id == LAST_PAYMENT_ID
+    assert pm.payment_id == f"pay-{transitions - 2}"
     assert pm._is_complete
