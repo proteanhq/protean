@@ -10,8 +10,17 @@ the below typical values cover most use cases:
 
 **(nothing)**
 
-A "domain" or "subdomain" is imported (as a ".py" file, or package),
-automatically detecting a domain (``domain`` or ``subdomain``).
+The command looks for the domain in this order:
+
+1. `domain.py` or `subdomain.py` in the current directory.
+2. `src/*/domain.py`, the layout that `protean new` creates.
+3. `src/*/subdomain.py`.
+
+When it finds a file under `src/`, it adds `src` to the import path and
+imports the file under its package name, such as `demo.domain`. When more
+than one file matches under `src/`, the command stops with an error that
+lists every match. Pass `--domain` to choose one. `--domain .` uses the same
+order.
 
 **`--domain auth`**
 
@@ -20,21 +29,23 @@ The given name is imported, automatically detecting a domain (``domain`` or
 
 !!! note
 
-    ``--domain`` has three parts: an optional path that sets the current working
-    directory, a Python file or dotted import path, and an optional variable
-    name of the instance. The following values demonstrate these
+    ``--domain`` has three parts: an optional folder, a Python file or dotted
+    import path, and an optional variable name of the instance. The command
+    adds the folder to the import path. The following values demonstrate these
     parts:
 
-    - ``--app src/auth``
-        Sets the current working directory to ``src`` then imports ``hello``.
+    - ``--domain src/auth``
+        Adds ``src`` to the import path and imports ``auth``.
 
-    - ``--app auth.domain``
-        Imports the path ``auth.domain``.
+    - ``--domain auth.domain``
+        Adds the current directory to the import path and imports
+        ``auth.domain``.
 
-    - ``--app auth:sso``
+    - ``--domain auth:sso``
         Uses the ``sso`` Protean instance in ``auth``.
 
-    If ``--domain`` is not set, the command will try to import "domain" or
-    "subdomain" (as a ".py" file, or package) and try to detect an Protean
-    instance. Within the given import, the command looks for an domain instance
-    named ``domain`` or ``subdomain``, then any domain instance.
+    If ``--domain`` is not set, the command looks for ``domain.py`` or
+    ``subdomain.py`` in the current directory, then for ``src/*/domain.py``,
+    then for ``src/*/subdomain.py``, as listed above. Within the module it
+    imports, the command looks for a domain instance named ``domain`` or
+    ``subdomain``, then for any domain instance.

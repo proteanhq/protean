@@ -1,4 +1,5 @@
 import ast
+import glob
 import logging
 import os
 import re
@@ -115,18 +116,55 @@ def find_domain_by_string(module: ModuleType, domain_name: str) -> Domain:
     return domain
 
 
+_DOMAIN_FILENAMES = ("domain.py", "subdomain.py")
+
+
+def _find_src_domain_file(directory: str) -> str | None:
+    """Return the one `src/*/domain.py` or `src/*/subdomain.py` under *directory*.
+
+    `domain.py` files are searched first; `subdomain.py` files only when
+    there is no `domain.py`. Returns None when nothing matches. Raises
+    `NoDomainException` listing every match when more than one file of the
+    same name matches.
+    """
+    for filename in _DOMAIN_FILENAMES:
+        matches = sorted(
+            glob.glob(os.path.join(glob.escape(directory), "src", "*", filename))
+        )
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            listed = ", ".join(os.path.relpath(match, directory) for match in matches)
+            raise NoDomainException(
+                f"Found more than one domain under 'src': {listed}."
+                " Pass --domain to choose one."
+            )
+    return None
+
+
+def _find_domain_file(directory: str) -> str | None:
+    """Return the domain file for *directory*: `domain.py` or `subdomain.py`
+    in *directory* itself, else the one found under `src/`, else None."""
+    for filename in _DOMAIN_FILENAMES:
+        candidate = os.path.join(directory, filename)
+        if os.path.exists(candidate):
+            return candidate
+    return _find_src_domain_file(directory)
+
+
 def prepare_import(path: str) -> str:
     """Given a filename this will try to calculate the python path, add it
     to the search path and return the actual module name that is expected.
+
+    A path that resolves to the current directory is replaced by its domain
+    file: `domain.py` or `subdomain.py` in the directory, else the single
+    `src/*/domain.py` or `src/*/subdomain.py`. Raises `NoDomainException`
+    when more than one file matches under `src/`.
     """
     path = os.path.realpath(path)
 
-    # If the path is ".", look for domain.py or subdomain.py in the current directory
     if path == os.path.realpath("."):
-        if os.path.exists(os.path.join(path, "domain.py")):
-            path = os.path.join(path, "domain.py")
-        elif os.path.exists(os.path.join(path, "subdomain.py")):
-            path = os.path.join(path, "subdomain.py")
+        path = _find_domain_file(path) or path
 
     filename, ext = os.path.splitext(path)
     if ext == ".py":
@@ -192,6 +230,12 @@ def derive_domain(domain_path: str | None = None) -> Domain | None:
     - A module in a sub folder ("src/hello")
     - A module string ("hello.web")
     - An instance ("hello:app2")
+
+    With no path, and with the path ".", the domain is looked up in this
+    order: `domain.py` or `subdomain.py` in the current folder, then
+    `src/*/domain.py`, then `src/*/subdomain.py`. More than one match under
+    `src/` raises `NoDomainException`. With no path and no match, returns
+    None.
     """
     domain_import_path = os.environ.get("PROTEAN_DOMAIN") or domain_path
 
@@ -203,7 +247,26 @@ def derive_domain(domain_path: str | None = None) -> Domain | None:
         import_name = prepare_import(path)
         domain = locate_domain(import_name, name)
     else:
-        import_name = prepare_import("domain.py")
-        domain = locate_domain(import_name, None, raise_if_not_found=False)
+        domain = _derive_default_domain()
 
     return domain
+
+
+def _derive_default_domain() -> Domain | None:
+    """Load the domain for the current folder when no path is given.
+
+    Returns None when the folder has no `domain` or `subdomain` module and
+    nothing matches under `src/`.
+    """
+    # A `domain` or `subdomain` module in the current folder, as a file or a
+    # package, keeps loading the way it did before the `src/` lookup existed.
+    has_local_module = any(
+        os.path.exists(name)
+        for name in ("domain.py", "subdomain.py", "domain", "subdomain")
+    )
+    src_file = None if has_local_module else _find_src_domain_file(".")
+    if src_file is not None:
+        return locate_domain(prepare_import(src_file), None)
+
+    import_name = prepare_import("domain.py")
+    return locate_domain(import_name, None, raise_if_not_found=False)

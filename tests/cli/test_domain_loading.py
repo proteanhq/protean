@@ -207,3 +207,113 @@ class TestDeriveDomainWithoutPath:
         """With no path, no `PROTEAN_DOMAIN` and no `domain.py`, `derive_domain`
         returns None."""
         assert derive_domain(None) is None
+
+
+_DOMAIN_SOURCE = "from protean import Domain\ndomain = Domain(name={name!r})\n"
+
+
+class TestDeriveDomainFromSrcLayout:
+    """With no path, or the path ".", discovery falls back to `src/*/`."""
+
+    @pytest.fixture(autouse=True)
+    def project_dir(self, tmp_path, monkeypatch):
+        """Run each test in an empty folder with no `PROTEAN_DOMAIN` set, and
+        forget every module the test imports."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
+        monkeypatch.setattr(sys, "path", [*sys.path])
+        yield tmp_path
+        for module_name in list(sys.modules):
+            if module_name.split(".")[0] in {
+                "srcdemo",
+                "srca",
+                "srcb",
+                "domain",
+                "subdomain",
+            }:
+                sys.modules.pop(module_name)
+
+    @staticmethod
+    def _write_package(root: Path, package: str, filename: str, name: str) -> None:
+        package_dir = root / "src" / package
+        package_dir.mkdir(parents=True)
+        (package_dir / "__init__.py").write_text("")
+        (package_dir / filename).write_text(_DOMAIN_SOURCE.format(name=name))
+
+    @pytest.mark.parametrize("domain_path", [".", None], ids=["dot", "no path"])
+    def test_loads_the_one_domain_under_src(self, project_dir, domain_path):
+        self._write_package(project_dir, "srcdemo", "domain.py", "Src")
+
+        domain = derive_domain(domain_path)
+
+        assert isinstance(domain, Domain)
+        assert domain.name == "Src"
+        assert sys.modules["srcdemo.domain"].domain is domain
+
+    @pytest.mark.parametrize("domain_path", [".", None], ids=["dot", "no path"])
+    def test_more_than_one_domain_under_src_is_an_error(self, project_dir, domain_path):
+        self._write_package(project_dir, "srca", "domain.py", "A")
+        self._write_package(project_dir, "srcb", "domain.py", "B")
+
+        with pytest.raises(NoDomainException) as exc_info:
+            derive_domain(domain_path)
+
+        message = str(exc_info.value)
+        assert os.path.join("src", "srca", "domain.py") in message
+        assert os.path.join("src", "srcb", "domain.py") in message
+        assert "--domain" in message
+
+    def test_top_level_domain_wins_over_src(self, project_dir):
+        (project_dir / "domain.py").write_text(_DOMAIN_SOURCE.format(name="Top"))
+        self._write_package(project_dir, "srcdemo", "domain.py", "Src")
+
+        domain = derive_domain(".")
+
+        assert domain is not None
+        assert domain.name == "Top"
+
+    def test_loads_a_subdomain_under_src(self, project_dir):
+        self._write_package(project_dir, "srcdemo", "subdomain.py", "Sub")
+
+        domain = derive_domain(".")
+
+        assert domain is not None
+        assert domain.name == "Sub"
+
+    def test_domain_under_src_wins_over_subdomain_under_src(self, project_dir):
+        self._write_package(project_dir, "srca", "domain.py", "A")
+        self._write_package(project_dir, "srcb", "subdomain.py", "B")
+
+        domain = derive_domain(".")
+
+        assert domain is not None
+        assert domain.name == "A"
+
+    def test_explicit_path_is_not_redirected_to_src(self, project_dir):
+        self._write_package(project_dir, "srcdemo", "domain.py", "Src")
+
+        with pytest.raises(NoDomainException, match="Could not import 'missing_pkg'"):
+            derive_domain("missing_pkg")
+
+    def test_empty_src_with_no_path_returns_none(self, project_dir):
+        (project_dir / "src").mkdir()
+
+        assert derive_domain(None) is None
+
+    def test_prepare_import_puts_src_on_the_path(self, project_dir):
+        self._write_package(project_dir, "srcdemo", "domain.py", "Src")
+
+        assert prepare_import(".") == "srcdemo.domain"
+        assert sys.path[0] == os.path.realpath(project_dir / "src")
+
+    def test_top_level_domain_package_wins_over_src_with_no_path(self, project_dir):
+        (project_dir / "domain").mkdir()
+        (project_dir / "domain" / "__init__.py").write_text(
+            _DOMAIN_SOURCE.format(name="Package")
+        )
+        self._write_package(project_dir, "srcdemo", "domain.py", "Src")
+
+        domain = derive_domain(None)
+
+        assert domain is not None
+        assert domain.name == "Package"
