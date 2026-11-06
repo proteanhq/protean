@@ -141,7 +141,8 @@ def _validated_creates(
     """Return the plan's create operations after checking every one.
 
     Raises :class:`ApplyError` on the first operation that is not a create, is
-    badly typed, points outside the project root, or repeats an earlier target.
+    badly typed, has an absolute path, points outside the project root, or
+    repeats an earlier target.
     """
     creates: list[CreateFileOperation] = []
     seen_targets: set[str] = set()
