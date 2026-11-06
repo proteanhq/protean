@@ -344,7 +344,7 @@ def get_pm_instances(
         stream_name = f"{stream_category}-{instance_id}"
         try:
             with domain.domain_context():
-                messages = store.read(stream_name)
+                messages = list(store.read_all(stream_name))
         except Exception:  # skip one unreadable stream, list the rest; logged
             logger.debug("Failed to read stream %s", stream_name, exc_info=True)
             continue

@@ -419,7 +419,7 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         store = current_domain.event_store.store
         if store is None:
             raise ConfigurationError("Event store is not configured")
-        messages = store.read(stream_name)
+        messages = list(store.read_all(stream_name))
 
         if messages:
             return cls._from_transitions(messages, correlation_value)

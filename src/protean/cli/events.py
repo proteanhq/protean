@@ -414,7 +414,7 @@ def history(
         stream_category = aggregate_cls.meta_.stream_category
         stream_name = f"{stream_category}-{identifier}"
 
-        messages = store._read(stream_name)
+        messages = list(store._read_stream_fully(stream_name))
 
         if not messages:
             print(f"No events found for {aggregate} with identifier '{identifier}'")
