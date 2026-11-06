@@ -347,7 +347,7 @@ class FactCatalog:
         )
         try:
             for statement in method.body:
-                walker.visit(statement, False)
+                walker._visit(statement, False)
         except RecursionError:
             # A method that parses but nests expressions deeper than the
             # interpreter's stack (a pathological attribute or operator chain)
@@ -535,7 +535,7 @@ class _FactWalker:
         self._attribute_fact = attribute_fact
         self._attributes = attributes
 
-    def visit(self, node: ast.AST, is_callee: bool) -> None:
+    def _visit(self, node: ast.AST, is_callee: bool) -> None:
         if isinstance(node, NESTED_SCOPES):
             # A fact inside a nested function/lambda/class belongs to it,
             # not to the method being cataloged.
@@ -544,19 +544,19 @@ class _FactWalker:
             self._record_call(node)
             # The callee names the method, not a data access; its receiver
             # and the argument expressions still carry facts of their own.
-            self.visit(node.func, True)
+            self._visit(node.func, True)
             for arg in node.args:
-                self.visit(arg, False)
+                self._visit(arg, False)
             for keyword in node.keywords:
-                self.visit(keyword.value, False)
+                self._visit(keyword.value, False)
             return
         if isinstance(node, ast.Attribute):
             if not is_callee:
                 self._attributes.append(self._attribute_fact(node))
-            self.visit(node.value, False)
+            self._visit(node.value, False)
             return
         for child in ast.iter_child_nodes(node):
-            self.visit(child, False)
+            self._visit(child, False)
 
 
 # ----------------------------------------------------------------------

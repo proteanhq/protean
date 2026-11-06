@@ -268,10 +268,10 @@ def generate_proto_schema(
 
     referenced: set[str] = set()
     main_block = _message_body(
-        name, element.get("fields", {}), types.resolve, referenced
+        name, element.get("fields", {}), types._resolve, referenced
     )
     ref_blocks = _referenced_blocks(
-        referenced, name, flat, types.resolve, types.local_name
+        referenced, name, flat, types._resolve, types._local_name
     )
 
     if nested and ref_blocks:
@@ -314,11 +314,11 @@ class _TypeNames:
         self._import_path = import_path
         self.imports: set[str] = set()
 
-    def local_name(self, ref_name: str) -> str:
+    def _local_name(self, ref_name: str) -> str:
         """The name a target defined in this file is declared under."""
         return _declared_name(ref_name, self._name, self._entry_names, self._taken)
 
-    def resolve(self, target_fqn: str, referenced: set[str]) -> str:
+    def _resolve(self, target_fqn: str, referenced: set[str]) -> str:
         """The proto type that names ``target_fqn`` in this file.
 
         A target defined in this file is added to ``referenced``; a target
@@ -338,7 +338,7 @@ class _TypeNames:
         if not path:
             referenced.add(target_fqn)
             return _local_type_name(
-                self.local_name(ref_name),
+                self._local_name(ref_name),
                 self._namespace,
                 self._name,
                 nested=self._import_path is not None,
