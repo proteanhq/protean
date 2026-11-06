@@ -1,8 +1,8 @@
 # Chapter 2: Rich Fields and Value Objects
 
-In this chapter we will enrich our `Book` aggregate with more field types
-and replace the plain `Float` price with a `Money` value object that
-captures both amount and currency.
+We enrich our `Book` aggregate with more field types and replace the plain
+`Float` price with a `Money` value object that captures both amount and
+currency.
 
 ## Enriching the Book Aggregate
 

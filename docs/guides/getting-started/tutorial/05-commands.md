@@ -1,8 +1,7 @@
 # Chapter 5: Commands and Handlers
 
-In this chapter we will add an `AddBook` command and a handler that
-processes it, so books are added through a formal command interface
-instead of direct aggregate creation.
+We add an `AddBook` command and a handler that processes it, so books are added
+through a formal command interface instead of direct aggregate creation.
 
 !!! note "DDD Alternative: Application Services"
     From here the tutorial takes the **CQRS** approach to handling state

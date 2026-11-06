@@ -1,8 +1,8 @@
 # Chapter 10: Exposing the Domain Through an API
 
 Our domain logic works and the project is organized, but nobody can use the
-bookstore yet. In this chapter we will build a FastAPI web layer that
-translates HTTP requests into domain commands and projection queries.
+bookstore yet. Now we build a FastAPI web layer that translates HTTP requests
+into domain commands and projection queries.
 
 !!! note "Thin Endpoints"
     API endpoints are **thin adapters** at the boundary of the domain.

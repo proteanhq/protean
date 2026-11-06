@@ -1,7 +1,7 @@
 # Chapter 7: Projections and Projectors
 
-In this chapter we will create a `BookCatalog` projection. A read-optimized
-view that stays in sync with our Book aggregate through events.
+We create a `BookCatalog` projection, a read-optimized view that stays in sync
+with our Book aggregate through events.
 
 !!! note "CQRS Concept"
     Projections are a **CQRS-specific** pattern. They separate your read model

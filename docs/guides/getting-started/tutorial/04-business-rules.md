@@ -1,7 +1,7 @@
 # Chapter 4: Business Rules and Invariants
 
-In this chapter we will add invariants to our Order aggregate so that
-orders cannot be empty, and shipped orders cannot be modified.
+We add invariants to our Order aggregate so that orders cannot be empty, and
+shipped orders cannot be modified.
 
 ## Post-Invariants: Validating State
 

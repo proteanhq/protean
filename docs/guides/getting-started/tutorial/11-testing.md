@@ -1,8 +1,7 @@
 # Chapter 11: Testing Your Domain
 
-In this chapter we will set up pytest for Bookshelf and write tests that
-verify our business logic, commands, events, invariants, projections, and API
-endpoints.
+We set up pytest for Bookshelf and write tests that verify our business logic,
+commands, events, invariants, projections, and API endpoints.
 
 !!! tip "Focus on business logic"
     Protean handles field validation, immutability, and wiring automatically.

@@ -1,9 +1,8 @@
 # Chapter 1: Your First Aggregate
 
-In this chapter we will create the foundation of our online bookstore,
-**Bookshelf**. By the end, we will have a working `Book` aggregate that
-we can create, persist, and retrieve, all running in-memory with zero
-infrastructure setup.
+We create the foundation of our online bookstore, **Bookshelf**. By the end, we
+will have a working `Book` aggregate that we can create, persist, and retrieve,
+all running in-memory with zero infrastructure setup.
 
 Over the course of this tutorial we will build a complete bookstore that
 manages books, orders, and inventory. We start with just a `Book`.

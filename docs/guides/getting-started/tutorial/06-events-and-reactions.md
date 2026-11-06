@@ -1,9 +1,9 @@
 # Chapter 6: Events and Reactions
 
-In this chapter we will define domain events, raise them from aggregates,
-and build event handlers that react automatically, creating Inventory records
-whenever a book is added to the catalog. We will wire everything through the
-command pipeline introduced in Chapter 5.
+We define domain events, raise them from aggregates, and build event handlers
+that react automatically, creating Inventory records whenever a book is added
+to the catalog. We wire everything through the command pipeline introduced in
+Chapter 5.
 
 !!! note "Events in DDD and CQRS"
     Domain events and event handlers are used in **both** the DDD and CQRS
