@@ -152,6 +152,19 @@ class TestGetNextBatchAsync:
         assert args[0][0] == subscription.store.read
 
     @pytest.mark.asyncio
+    async def test_get_next_batch_for_all_uses_to_thread(self, subscription):
+        """A ``$all`` read, which also reports snapshot positions, runs in
+        asyncio.to_thread() too."""
+        subscription.stream_category = "$all"
+
+        with patch("asyncio.to_thread", wraps=asyncio.to_thread) as mock_to_thread:
+            await subscription.get_next_batch_of_messages()
+
+        mock_to_thread.assert_called_once()
+        args = mock_to_thread.call_args
+        assert args[0][0] == subscription.store._read_with_snapshot_positions
+
+    @pytest.mark.asyncio
     async def test_get_next_batch_returns_empty_when_no_messages(self, subscription):
         """With an empty store, get_next_batch_of_messages() returns an empty list."""
         messages = await subscription.get_next_batch_of_messages()

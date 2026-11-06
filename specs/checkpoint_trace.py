@@ -22,7 +22,7 @@ The log schema is one object per ``_gap_safe_batch`` call, in call order::
     {"cursor": <int>, "present": [<int>...], "abandoned": [<int>...], "safe": <int>}
 
 ``cursor`` is the watermark the batch started from; ``present`` is the positions it
-saw; ``abandoned`` is the holes it stepped over; ``safe`` is the watermark it
+saw, snapshot rows included; ``abandoned`` is the holes it stepped over; ``safe`` is the watermark it
 settled on. ``to-tla`` expands each batch into the atomic transitions the model
 replays: a ``commit`` the first time a position is seen present, an ``abandon`` the
 first time a hole is stepped over, and an ``advance`` for each real cursor move

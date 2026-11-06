@@ -194,6 +194,24 @@ class BaseEventStore(metaclass=ABCMeta):
         position: int = 0,
         no_of_messages: int = 1000,
     ) -> list[Message]:
+        messages, _ = self._read_with_snapshot_positions(
+            stream, sql=sql, position=position, no_of_messages=no_of_messages
+        )
+        return messages
+
+    def _read_with_snapshot_positions(
+        self,
+        stream: str,
+        sql: str | None = None,
+        position: int = 0,
+        no_of_messages: int = 1000,
+    ) -> tuple[list[Message], list[int]]:
+        """Read like ``read``, and also return where the skipped snapshot rows sat.
+
+        Returns the deserialized messages in store order, and the
+        ``global_position`` of every snapshot row the read skipped. A snapshot
+        row with no ``global_position`` is left out of the position list.
+        """
         raw_messages = self._read(
             stream, sql=sql, position=position, no_of_messages=no_of_messages
         )
@@ -202,11 +220,16 @@ class BaseEventStore(metaclass=ABCMeta):
         # so they are neither events nor commands and would raise on deserialize.
         # A scope that spans snapshot streams (``$all``, a ``:snapshot-`` stream)
         # would otherwise fail the whole read.
-        return [
-            Message.deserialize(raw_message)
-            for raw_message in raw_messages
-            if not self._is_snapshot_row(raw_message)
-        ]
+        messages: list[Message] = []
+        snapshot_positions: list[int] = []
+        for raw_message in raw_messages:
+            if self._is_snapshot_row(raw_message):
+                global_position = raw_message.get("global_position")
+                if global_position is not None:
+                    snapshot_positions.append(global_position)
+            else:
+                messages.append(Message.deserialize(raw_message))
+        return messages, snapshot_positions
 
     def read_all(
         self, stream: str = "$all", *, page_size: int = 1000

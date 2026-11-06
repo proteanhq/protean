@@ -15,6 +15,7 @@ out-of-order commit that produces a gap is a property of a concurrent Postgres
 here by controlling the read; that store behaviour was confirmed separately.
 """
 
+import logging
 import time
 from types import SimpleNamespace
 
@@ -206,6 +207,114 @@ class TestGapSafeBatch:
         assert all_subscription.gap_timeout_seconds == 5
 
 
+def _abandon_warnings(caplog):
+    return [r for r in caplog.records if "Abandoning gap" in r.getMessage()]
+
+
+class TestGapSafeBatchWithSnapshots:
+    """A snapshot row takes a ``global_position`` but the read drops it, so the
+    gap walk is told where the snapshots sat and counts those positions as
+    present. Without that, a ``$all`` subscription waits ``gap_timeout_seconds``
+    at every snapshot and then logs it as an abandoned gap."""
+
+    def test_snapshot_inside_the_batch_is_not_a_gap(self, all_subscription, caplog):
+        sub = all_subscription
+        sub.current_position = 0
+
+        with caplog.at_level(logging.WARNING):
+            out = sub._gap_safe_batch([_msg(1), _msg(3)], snapshot_positions=[2])
+
+        assert _positions(out) == [1, 3]
+        assert sub._gap_watermark == 3
+        assert sub._gap_first_seen == {}
+        assert _abandon_warnings(caplog) == []
+
+    def test_snapshot_only_batch_moves_the_watermark_past_the_snapshots(
+        self, all_subscription
+    ):
+        sub = all_subscription
+        sub.current_position = 1
+
+        out = sub._gap_safe_batch([], snapshot_positions=[2, 3])
+
+        assert out == []
+        assert sub._gap_watermark == 3
+        assert sub._gap_first_seen == {}
+
+    def test_snapshot_only_batch_above_a_hole_holds_at_the_hole(self, all_subscription):
+        sub = all_subscription
+        sub.current_position = 0
+
+        out = sub._gap_safe_batch([], snapshot_positions=[3])
+
+        # 1 and 2 are not committed yet: the snapshot at 3 must not carry the
+        # cursor past them.
+        assert out == []
+        assert sub._gap_watermark == 0
+        assert list(sub._gap_first_seen) == [1]
+
+    def test_held_gap_that_turns_out_to_be_a_snapshot_clears_its_timer(
+        self, all_subscription
+    ):
+        sub = all_subscription
+        sub.current_position = 0
+        sub._gap_first_seen = {2: time.monotonic()}  # 2 held on an earlier tick
+
+        out = sub._gap_safe_batch([_msg(1), _msg(3)], snapshot_positions=[2])
+
+        assert _positions(out) == [1, 3]
+        assert sub._gap_first_seen == {}
+
+    def test_trailing_snapshot_moves_the_watermark_past_itself(self, all_subscription):
+        sub = all_subscription
+        sub.current_position = 0
+
+        out = sub._gap_safe_batch([_msg(1)], snapshot_positions=[2])
+
+        assert _positions(out) == [1]
+        assert sub._gap_watermark == 2
+
+    def test_snapshot_does_not_mask_a_real_gap_next_to_it(self, all_subscription):
+        sub = all_subscription
+        sub.current_position = 0
+
+        out = sub._gap_safe_batch([_msg(1), _msg(4)], snapshot_positions=[2])
+
+        # 2 is a snapshot, 3 is missing: hold at 3 with 4 behind it.
+        assert _positions(out) == [1]
+        assert sub._gap_watermark == 2
+        assert 3 in sub._gap_first_seen
+
+    def test_real_gap_next_to_a_snapshot_is_abandoned_after_the_timeout(
+        self, all_subscription, caplog
+    ):
+        sub = all_subscription
+        sub.current_position = 0
+        sub.gap_timeout_seconds = 5
+        sub._gap_first_seen = {3: time.monotonic() - 10}  # hole 3 timed out
+
+        with caplog.at_level(logging.WARNING):
+            out = sub._gap_safe_batch([_msg(1), _msg(4)], snapshot_positions=[2])
+
+        assert _positions(out) == [1, 4]
+        assert sub._gap_watermark == 4
+        warnings = _abandon_warnings(caplog)
+        assert len(warnings) == 1
+        assert "global_position 3" in warnings[0].getMessage()
+
+    def test_trace_reports_snapshot_positions_as_present(self, all_subscription):
+        sub = all_subscription
+        sub.current_position = 0
+
+        with checkpoint_trace.capture() as events:
+            sub._gap_safe_batch([_msg(1), _msg(3)], snapshot_positions=[2])
+
+        assert len(events) == 1
+        assert sorted(events[0]["present"]) == [1, 2, 3]
+        assert events[0]["abandoned"] == []
+        assert events[0]["safe"] == 3
+
+
 class TestGapSafeBatchTracing:
     """``_gap_safe_batch`` emits its raw observed advance to the checkpoint trace
     recorder when a capture is active (for spec-conformance checking, #1384), and
@@ -318,9 +427,9 @@ async def test_get_next_batch_applies_gap_safety_for_all(all_subscription, monke
 
     def fake_read(stream_name, position, no_of_messages):
         assert stream_name == "$all"
-        return [_msg(1), _msg(3)]  # 2 is missing
+        return [_msg(1), _msg(3)], []  # 2 is missing
 
-    monkeypatch.setattr(sub.store, "read", fake_read)
+    monkeypatch.setattr(sub.store, "_read_with_snapshot_positions", fake_read)
 
     batch = await sub.get_next_batch_of_messages()
 
@@ -363,7 +472,7 @@ async def test_tick_holds_at_gap_then_resumes_in_order(
     to the gap and holds; once the gap commits it processes the rest in order,
     never skipping the late-committing lower position.
 
-    The gap is simulated by controlling what ``store.read`` returns (the memory
+    The gap is simulated by controlling what the store read returns (the memory
     store assigns global_position contiguously, so it cannot produce a real
     cross-category gap — that behaviour is a property of a concurrent Postgres
     ``bigserial`` store, confirmed separately). The events themselves are real.
@@ -390,14 +499,22 @@ async def test_tick_holds_at_gap_then_resumes_in_order(
     monkeypatch.setattr(sub, "update_read_position", record)
 
     # Tick 1: position 2 has not committed yet — read returns [1, 3].
-    monkeypatch.setattr(sub.store, "read", lambda *a, **k: [events[0], events[2]])
+    monkeypatch.setattr(
+        sub.store,
+        "_read_with_snapshot_positions",
+        lambda *a, **k: ([events[0], events[2]], []),
+    )
     await sub.tick()
 
     assert consumed == [1]  # held behind the gap at 2; 3 not consumed
     assert sub.current_position == 1
 
     # Tick 2: position 2 has now committed — read returns [2, 3].
-    monkeypatch.setattr(sub.store, "read", lambda *a, **k: [events[1], events[2]])
+    monkeypatch.setattr(
+        sub.store,
+        "_read_with_snapshot_positions",
+        lambda *a, **k: ([events[1], events[2]], []),
+    )
     await sub.tick()
 
     assert consumed == [1, 2, 3]  # resumes in order, nothing skipped
@@ -420,7 +537,11 @@ async def test_durable_position_is_not_written_past_a_gap(
     events = test_domain.event_store.store.read("$all")
 
     # Position 2 is missing — the subscription processes 1 and holds.
-    monkeypatch.setattr(sub.store, "read", lambda *a, **k: [events[0], events[2]])
+    monkeypatch.setattr(
+        sub.store,
+        "_read_with_snapshot_positions",
+        lambda *a, **k: ([events[0], events[2]], []),
+    )
     await sub.tick()
 
     # Durable position is 1 (before the gap), not 3.
@@ -439,7 +560,9 @@ async def test_tick_steps_over_an_abandoned_gap_with_no_message(
     sub.gap_timeout_seconds = 5
     sub._gap_first_seen = {2: time.monotonic() - 10}  # hole 2 timed out
     # Read exposes only position 4: hole 2 (timed out) and hole 3 (still held).
-    monkeypatch.setattr(sub.store, "read", lambda *a, **k: [_msg(4)])
+    monkeypatch.setattr(
+        sub.store, "_read_with_snapshot_positions", lambda *a, **k: ([_msg(4)], [])
+    )
 
     await sub.tick()
 
@@ -462,7 +585,9 @@ async def test_tick_does_not_advance_past_unprocessed_messages_on_interruption(
         test_domain.event_store.store.append(thing._events[-1])
     events = test_domain.event_store.store.read("$all")  # positions 1, 2, 3
 
-    monkeypatch.setattr(sub.store, "read", lambda *a, **k: list(events))
+    monkeypatch.setattr(
+        sub.store, "_read_with_snapshot_positions", lambda *a, **k: (list(events), [])
+    )
 
     # Fail the second position update, simulating a transient write/Redis error
     # partway through the batch.
@@ -483,3 +608,119 @@ async def test_tick_does_not_advance_past_unprocessed_messages_on_interruption(
     # Only position 1 was fully processed; the cursor did not jump to the
     # watermark (3), so positions 2 and 3 will be re-read on the next tick.
     assert sub.current_position == 1
+
+
+@pytest.mark.asyncio
+async def test_tick_steps_over_a_real_snapshot_without_waiting(
+    all_subscription, test_domain, caplog, monkeypatch
+):
+    """End-to-end on the memory store with no read patched: a snapshot row
+    written between two events takes a ``global_position`` in ``$all``. One
+    ``tick`` consumes both events and moves past the snapshot, with no hold and
+    no "Abandoning gap" warning."""
+    sub = all_subscription
+    store = test_domain.event_store.store
+
+    consumed: list[int] = []
+    original_update = sub.update_read_position
+
+    async def record(position):
+        consumed.append(position)
+        return await original_update(position)
+
+    monkeypatch.setattr(sub, "update_read_position", record)
+
+    thing = Thing(id="t1", name="thing")
+    thing.raise_(Pinged(id="t1"))
+    store.append(thing._events[-1])
+    store.create_snapshot(Thing, "t1")
+    thing.raise_(Pinged(id="t1"))
+    store.append(thing._events[-1])
+
+    raw = store._read("$all")
+    snapshot_rows = [row for row in raw if row["type"] == "SNAPSHOT"]
+    assert len(snapshot_rows) == 1
+    event_positions = [
+        row["global_position"] for row in raw if row["type"] != "SNAPSHOT"
+    ]
+    snapshot_position = snapshot_rows[0]["global_position"]
+    assert event_positions[0] < snapshot_position < event_positions[1]
+
+    with caplog.at_level(logging.WARNING):
+        had_work = await sub.tick()
+
+    assert had_work is True
+    # Each event was processed and carried the cursor forward in turn.
+    assert consumed == event_positions
+    assert sub.current_position == max(row["global_position"] for row in raw)
+    assert sub._gap_first_seen == {}
+    assert _abandon_warnings(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_tick_past_only_snapshot_rows_counts_as_activity(
+    all_subscription, test_domain
+):
+    """A read that holds nothing but snapshot rows moves the cursor. The tick
+    reports work and resets the idle wait, so the subscription reads the rows
+    after them at once instead of backing off."""
+    sub = all_subscription
+    sub.messages_per_tick = 2
+    store = test_domain.event_store.store
+    for identifier in ("t1", "t2"):
+        thing = Thing(id=identifier, name="thing")
+        thing.raise_(Pinged(id=identifier))
+        store.append(thing._events[-1])
+    store.create_snapshot(Thing, "t1")
+    store.create_snapshot(Thing, "t2")
+
+    await sub.tick()  # the two events
+    backoff = sub._synced_backoff()
+    backoff.on_idle()
+    assert backoff.current > 0
+
+    had_work = await sub.tick()  # only the two snapshot rows
+
+    assert had_work is True
+    assert sub.current_position == 4
+    assert backoff.current == sub.tick_interval
+
+
+@pytest.mark.asyncio
+async def test_tick_held_at_a_gap_counts_as_idle(all_subscription, monkeypatch):
+    """A read held at a gap does not move the cursor, so the tick is idle."""
+    sub = all_subscription
+    sub.current_position = 0
+    monkeypatch.setattr(
+        sub.store, "_read_with_snapshot_positions", lambda *a, **k: ([_msg(2)], [3])
+    )
+
+    had_work = await sub.tick()
+
+    assert had_work is False
+    assert sub.current_position == 0
+    assert sub._synced_backoff().current > 0
+
+
+@pytest.mark.asyncio
+async def test_tick_past_messages_the_origin_filter_drops_counts_as_activity(
+    all_subscription, test_domain
+):
+    """On ``$all``, the cursor moves past messages the ``origin_stream`` filter
+    drops, so the tick reports work and resets the idle wait."""
+    sub = all_subscription
+    sub.origin_stream = "no-such-stream"
+    store = test_domain.event_store.store
+    for identifier in ("t1", "t2"):
+        thing = Thing(id=identifier, name="thing")
+        thing.raise_(Pinged(id=identifier))
+        store.append(thing._events[-1])
+    backoff = sub._synced_backoff()
+    backoff.on_idle()
+    assert backoff.current > 0
+
+    had_work = await sub.tick()
+
+    assert had_work is True
+    assert sub.current_position == 2
+    assert backoff.current == sub.tick_interval

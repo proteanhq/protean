@@ -12,7 +12,7 @@
 (* order the code produced them:                                             *)
 (*                                                                          *)
 (*   - a "commit" entry: a `global_position` the batch first saw present      *)
-(*     (its transaction became visible);                                     *)
+(*     (its transaction became visible), a snapshot row's position included; *)
 (*   - an "abandon" entry: a hole the batch stepped over after its gap timer  *)
 (*     elapsed (a rolled-back append);                                       *)
 (*   - an "advance" entry: the watermark the cursor actually moved to.        *)
