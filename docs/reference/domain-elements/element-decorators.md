@@ -1,4 +1,4 @@
-# Decorators
+# Register domain elements with decorators
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -16,12 +16,13 @@ All options are accessible at runtime via `element.meta_`.
 
 ---
 
-## Options every element accepts
+## What options does every element accept?
 
 ### `suppress_checks`
 
-Silences named [fitness-function](../../guides/architecture-fitness-functions.md)
-diagnostics for one element. Every decorator on this page accepts it; the
+Silences named
+[fitness-function](../../guides/architecture-fitness-functions.md) diagnostics
+for one element. Every decorator on this page accepts `suppress_checks`. Its
 default is `()`.
 
 | Option | Default | Description |
@@ -32,18 +33,19 @@ default is `()`.
 --8<-- "reference/domain-elements/element-decorators/002.py:suppress_checks"
 ```
 
-Suppress the narrowest thing that works: one code on one element. It applies to
-that element only, so it cannot quietly disable a rule across the domain the way
-a config-level suppression can. Reach for it when a rule is wrong about *this*
-element, not when a rule is inconvenient; `protean check` reports what is
-suppressed, so a suppression is a claim you are making in public.
+Suppress the narrowest thing that works: one code on one element.
+`suppress_checks` applies to that element only. Unlike a config-level
+suppression, it cannot quietly disable a rule across the domain. When a rule is
+wrong about *this* element, suppress it; when a rule is only inconvenient,
+leave it on. `protean check` reports what is suppressed, so anyone who reads
+its report sees each suppression you add.
 
-Config-wide suppressions live under `[lint].suppressions` in
+You set config-wide suppressions with the `[lint].suppressions` key in
 [configuration](../configuration/index.md).
 
 ---
 
-## Domain Model
+## Model the domain
 
 ### `Domain.aggregate`
 
@@ -67,17 +69,18 @@ Boolean element options are bare predicates (`event_sourced`, `fact_events`,
 `abstract`), not `is_`-prefixed.
 
 !!! warning "Deprecated: `is_event_sourced`"
-    `is_event_sourced` is a deprecated alias for `event_sourced`. It still works
-    but emits a `RemovedInProtean019Warning` and is reported as a
-    `DEPRECATED_OPTION` diagnostic by `protean check`; it will be removed in
-    v0.19.0. If both are supplied, `event_sourced` wins.
+    `is_event_sourced` is a deprecated alias for `event_sourced`.
+    `is_event_sourced` still works, but it emits a `RemovedInProtean019Warning`
+    and `protean check` reports it as a `DEPRECATED_OPTION` diagnostic. Protean
+    will remove `is_event_sourced` in v0.19.0. If you pass both, Protean uses
+    `event_sourced` and ignores `is_event_sourced`.
 
 Guide: [Aggregates](../../guides/domain-definition/aggregates.md) ·
 [Declaring Indexes](../../guides/domain-definition/indexes.md)
 
 ### `Domain.entity`
 
-An object with identity that lives inside an aggregate. Entities are always
+An object with identity that is part of an aggregate. Entities are always
 accessed through their parent aggregate and cannot exist independently.
 
 | Option | Default | Description |
@@ -107,7 +110,7 @@ Guide: [Value Objects](../../guides/domain-definition/value-objects.md)
 ### `Domain.domain_service`
 
 Stateless business logic that spans multiple aggregates. Domain services
-encapsulate cross-aggregate rules and run invariants for validation.
+encapsulate cross-aggregate rules. They also run invariants for validation.
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -117,7 +120,7 @@ Guide: [Domain Services](../../guides/domain-behavior/domain-services.md)
 
 ---
 
-## Messages
+## Define messages
 
 ### `Domain.command`
 
@@ -160,9 +163,10 @@ option **or** with a `__version__` class attribute (both default to `1`):
 --8<-- "reference/domain-elements/element-decorators/003.py:version"
 ```
 
-The two forms are equivalent, both drive the `vN` suffix of the event's type
-string (`Ordering.OrderPlaced.v2` in a domain named `Ordering`). Declaring the
-version **both** ways on the same class raises an `IncorrectUsageError`. The same option is available on `@domain.command`.
+The two forms are equivalent: both set the `vN` suffix of the event's type
+string (`Ordering.OrderPlaced.v2` in a domain named `Ordering`). If you declare
+the version **both** ways on the same class, Protean raises an
+`IncorrectUsageError`. `@domain.command` accepts the same `version` option.
 
 Guide: [Events](../../guides/domain-definition/events.md) ·
 Reference: [Compatibility](../compatibility/index.md)
@@ -182,7 +186,7 @@ Query](../../guides/consume-state/projections.md#querying-projections)
 
 ---
 
-## Handlers
+## Define handlers
 
 ### `Domain.command_handler`
 
@@ -227,8 +231,8 @@ both synchronous and asynchronous processing.
 | `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this handler |
 
 `sequential_by` is a no-op on the inline broker, so a domain that declares it
-still runs there in tests, without the ordering guarantee. Any other broker
-that does not advertise `STREAM_PARTITIONING` is rejected at `domain.init()`. See the
+still runs there in tests, without the ordering guarantee. `domain.init()`
+rejects any other broker that does not advertise `STREAM_PARTITIONING`. See the
 [broker partitioning contract](../adapters/broker/partitioning.md).
 
 Guide: [Event Handlers](../../guides/consume-state/event-handlers.md) ·
@@ -259,7 +263,7 @@ Guide: [Application Services](../../guides/change-state/application-services.md)
 
 ---
 
-## Read Models
+## Build read models
 
 ### `Domain.projection`
 
@@ -302,8 +306,8 @@ explicitly target a projection and can listen to multiple stream categories.
 | `retry_exceptions` | `None` | Exception types treated as transient, as classes or dotted paths. `None` uses the domain setting |
 | `suppress_checks` | `()` | Diagnostic codes `protean check` should not report for this projector |
 
-`sequential_by` is a no-op on the inline broker. Any other broker that does not
-advertise `STREAM_PARTITIONING` is rejected at `domain.init()`, the same as for
+`sequential_by` is a no-op on the inline broker. `domain.init()` rejects any
+other broker that does not advertise `STREAM_PARTITIONING`, the same as for
 event handlers.
 
 Guide: [Projectors](../../guides/consume-state/projectors.md) ·
@@ -330,7 +334,7 @@ Guide: [Process Managers](../../guides/consume-state/process-managers.md)
 
 ---
 
-## External Integration
+## Integrate external systems
 
 ### `Domain.subscriber`
 
@@ -346,12 +350,12 @@ Guide: [Subscribers](../../guides/consume-state/subscribers.md)
 
 ---
 
-## Persistence
+## Persist domain elements
 
 ### `Domain.repository`
 
-Persistence abstraction for aggregates. Protean provides a default
-repository automatically; custom repositories add domain-specific queries.
+Persistence abstraction for aggregates. Protean provides a default repository
+automatically. A custom repository adds domain-specific queries.
 
 | Option | Default | Description |
 |--------|---------|-------------|

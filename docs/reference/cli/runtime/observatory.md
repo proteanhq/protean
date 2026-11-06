@@ -12,13 +12,13 @@ The Observatory provides:
 - REST API endpoints for health, outbox status, stream info, and throughput stats
 - A Prometheus-compatible metrics endpoint
 
-## Usage
+## Run the command
 
 ```shell
 protean observatory [OPTIONS]
 ```
 
-## Options
+## Which options does the command take?
 
 | Option      | Description                          | Default                |
 |-------------|--------------------------------------|------------------------|
@@ -30,7 +30,7 @@ protean observatory [OPTIONS]
 
 ## Starting the Observatory
 
-### Single domain
+### Monitor a single domain
 
 To launch the observatory for a single domain:
 
@@ -39,9 +39,10 @@ protean observatory --domain auth
 ```
 
 This will start the dashboard on `http://127.0.0.1:9000` (loopback only). Read
-[Domain Discovery](../project/discovery.md) for options to specify the domain.
+[Domain Discovery](../project/discovery.md) to learn the ways you can specify
+the domain.
 
-### Multiple domains
+### Monitor several domains
 
 To monitor several domains at once (e.g. in a multi-domain application):
 
@@ -52,7 +53,7 @@ protean observatory --domain identity --domain catalogue
 Each `--domain` value is resolved and initialized independently. The dashboard
 shows combined data from all monitored domains.
 
-### Custom host and port
+### Set the host and port
 
 To reach the Observatory from another machine you must bind a non-loopback
 address explicitly. Do this only on a trusted network; see [Security](#security).
@@ -61,13 +62,13 @@ address explicitly. Do this only on a trusted network; see [Security](#security)
 protean observatory --domain auth --host 0.0.0.0 --port 8080
 ```
 
-### Custom title
+### Set the dashboard title
 
 ```shell
 protean observatory --domain auth --title "My App Observatory"
 ```
 
-### Verbose logging
+### Turn on verbose logging
 
 To raise the log verbosity, pass the global `--log-level DEBUG` flag before the
 subcommand:
@@ -89,9 +90,9 @@ so the other domains' `[logging]` sections are not applied. `--log-level` and
 `PROTEAN_NO_AUTO_LOGGING` skip the section. See [Logging](../../logging.md#cli-flags) for the precedence
 rules.
 
-## Endpoints
+## Which endpoints does the Observatory serve?
 
-### Pages
+### Open the HTML pages
 
 HTML views rendered by the dashboard. See
 [Explore your domain in the Observatory](../../../guides/observability/exploring-your-domain.md)
@@ -108,7 +109,7 @@ for how to use them.
 | `GET /infrastructure` | Infrastructure status view                            |
 | `GET /stream`       | SSE real-time trace events                              |
 
-### API
+### Call the JSON API
 
 JSON endpoints, all mounted under `/api`.
 
@@ -128,7 +129,7 @@ JSON endpoints, all mounted under `/api`.
 | `GET /api/timeline/traces/search`                    | Search chains by aggregate / event / command / stream |
 | `GET /metrics`                                       | Prometheus text exposition metrics           |
 
-## Security
+## Keep the Observatory on a trusted network { #security }
 
 The Observatory has **no authentication**. It exposes the domain's internal
 structure (aggregates, events, handlers, process managers), the full event

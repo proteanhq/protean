@@ -1,16 +1,16 @@
 # PostgreSQL
 
-The PostgreSQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) under
-the covers as the ORM to communicate with the database. It is the recommended
-provider for production deployments.
+The PostgreSQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) as its
+ORM to communicate with the database. It is the recommended provider for
+production deployments.
 
-## Overview
+## What does the PostgreSQL provider offer?
 
 PostgreSQL is a relational provider that supports the full
 range of database capabilities, including native JSON and array columns. It
 provides real ACID transactions, connection pooling, and schema management.
 
-## Installation
+## Install the provider
 
 ```bash
 pip install "protean[postgresql]"
@@ -37,7 +37,7 @@ This installs `psycopg2-binary`. Install `psycopg2` in its place to build from
 source. Both provide the same `psycopg2` module, so install only one. See the
 [psycopg2 installation guide](https://www.psycopg.org/docs/install.html).
 
-## Configuration
+## Configure the provider
 
 ```toml
 [databases.default]
@@ -45,7 +45,7 @@ provider = "postgresql"
 database_uri = "postgresql://postgres:postgres@localhost:5432/postgres"
 ```
 
-### Configuration Options
+### Which options can you set?
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -55,7 +55,7 @@ database_uri = "postgresql://postgres:postgres@localhost:5432/postgres"
 | `pool_size` | `5` | Number of connections in the SQLAlchemy connection pool |
 | `max_overflow` | `10` | Additional connections allowed beyond `pool_size` |
 
-### Connection String Format
+### Write the connection string
 
 ```
 postgresql[+driver]://[username]:[password]@[host]:[port]/[database]
@@ -81,12 +81,12 @@ Protean resolves the plain `postgresql://` form itself, so it means the same
 driver on SQLAlchemy 2.0 and 2.1. The provider logs the driver it chose as
 `repository.postgresql.driver_selected` at `INFO`.
 
-If the driver a URL needs cannot be imported, `domain.init()` raises a
-`ConfigurationError` that names the extra to install. A URL that names a
-psycopg2 driver does not fall back to psycopg 3. Write the driver into the URL
-when you want to control which one runs.
+If Protean cannot import the URL's driver, `domain.init()` raises a
+`ConfigurationError`. The error names the extra to install. When a URL names a
+psycopg2 driver, the provider does not fall back to psycopg 3. To choose the
+driver yourself, write it into the URL.
 
-## Capabilities
+## Which capabilities does the provider support?
 
 The PostgreSQL provider supports the following capabilities:
 
@@ -102,15 +102,15 @@ The PostgreSQL provider supports the following capabilities:
 - :white_check_mark: **NATIVE_JSON**: PostgreSQL `JSONB` column type
 - :white_check_mark: **NATIVE_ARRAY**: PostgreSQL `ARRAY` column type
 
-PostgreSQL is the only built-in provider that supports **all 12 capability
-flags** (excluding `SIMULATED_TRANSACTIONS`, which is specific to the Memory
-provider).
+Of the built-in providers, only PostgreSQL supports **all 12 capability
+flags**. The 12 exclude `SIMULATED_TRANSACTIONS`, a flag specific to the Memory
+provider.
 
-## Indexes
+## Declare indexes
 
-PostgreSQL honors the full [`Index`](../../domain-elements/indexes.md) surface.
-Declarations on an aggregate or entity are emitted as `CREATE INDEX` statements
-during `protean db setup`:
+PostgreSQL supports every option of
+[`Index`](../../domain-elements/indexes.md). Declarations on an aggregate or
+entity are emitted as `CREATE INDEX` statements during `protean db setup`:
 
 - Composite, descending (`desc=`), and unique (`unique=`) indexes.
 - Partial indexes (`where=Q(...)`) via `CREATE INDEX … WHERE …`.
@@ -132,7 +132,7 @@ generates internally, allowing you full customization.
     The column names specified in the model should exactly match the attribute
     names of the Aggregate or Entity it represents.
 
-## Raw Queries
+## Run raw queries
 
 Use the `raw()` method to execute SQL directly:
 
@@ -148,11 +148,11 @@ Use the `raw()` method to execute SQL directly:
 Raw queries execute immediately in their own transaction context. Results are
 returned as-is from the database without entity conversion.
 
-## Slow Query Detection
+## Detect slow queries
 
 Protean installs SQLAlchemy ``before_cursor_execute`` /
-``after_cursor_execute`` listeners on the engine at provider construction
-time and emits two structured log events per query:
+``after_cursor_execute`` listeners on the engine when it constructs the
+provider. The listeners emit two structured log events per query:
 
 - ``protean.adapters.repository.sqlalchemy.query`` at **DEBUG** for every
   query (opt-in via normal level configuration).
@@ -173,21 +173,21 @@ slow_query_truncate_chars = 500  # max statement length in log events
 ```
 
 Set ``slow_query_threshold_ms = 0`` to WARN on every query (useful during
-performance investigations). Correlation context (``correlation_id``,
-``causation_id``) flows onto every record automatically via the
-``ProteanCorrelationFilter`` on the root logger's handlers.
+performance investigations). The ``ProteanCorrelationFilter`` on the root
+logger's handlers adds the correlation context (``correlation_id``,
+``causation_id``) to every record automatically.
 
-## Limitations
+## What are the provider's limitations?
 
 - **Requires Running Server**: PostgreSQL must be installed and running as a
   separate service. Use `make up` to start Protean's Docker-based development
   services.
-- **Connection Overhead**: Each connection consumes server resources. Tune
-  `pool_size` and `max_overflow` for your workload.
+- **Limit the connection overhead**: Each connection consumes server resources.
+  Tune `pool_size` and `max_overflow` for your workload.
 
-## Related pages
+## See also
 
-- Learn about [database capabilities](./index.md#database-capabilities) in
+- Learn about [database capabilities](./index.md#how-providers-declare-capabilities) in
   detail
 - Explore [Elasticsearch](./elasticsearch.md) for search-oriented storage
 - See [Building Custom Database Adapters](./custom-databases.md) to support

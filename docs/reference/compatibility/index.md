@@ -10,7 +10,7 @@ and CI integration, see
 
 ---
 
-## Breaking change rules
+## How Protean classifies each change
 
 Protean classifies changes to persisted domain elements using these rules:
 
@@ -76,11 +76,11 @@ two different verdicts: the report calls it breaking, and the Avro verdict is
 ### Dict and List value types
 
 A `Dict` or `List` field that stays `Dict` or `List` is compared on its value
-type, which the IR records as `content_type`. Any difference in that name
-breaks. Adding or changing a value type means rows stored before the change
-can fail to load. Removing one means a reader still on the old code can reject
-rows written after it. Either way, old and new code no longer accept the same
-rows.
+type, which the IR records as `content_type`. The check reports a breaking
+change when that name differs. When you add or change a value type, rows stored
+before the change can fail to load. Removing one means a reader still on the
+old code can reject rows written after it. Either way, old and new code no
+longer accept the same rows.
 
 | From | To | Classification |
 |------|----|----------------|
@@ -91,12 +91,12 @@ rows.
 
 The message names both value types: "Field 'tier_prices' value type changed
 from 'unset' to 'TierPrice'". An untyped `Dict()` records no value type and
-shows as `unset`. An untyped `List()` records `Any` and shows as `Any`. A
-field renamed with `renamed_from` whose value type also changes reports
-`field_type_changed` in place of `field_renamed`.
+shows as `unset`. An untyped `List()` records `Any` and shows as `Any`. When
+you rename a field with `renamed_from` and also change its value type, the
+check reports `field_type_changed` in place of `field_renamed`.
 
-The check compares only the value type's name, so a change that keeps the name
-is not reported. These changes give no entry:
+The check compares only the value type's name. It does not report a change that
+keeps the name. These changes give no entry:
 
 - A value object swapped for another value object with the same class name
   from a different module.
@@ -107,21 +107,21 @@ is not reported. These changes give no entry:
 
 `Optional` and `Union` are different names, so a change between them is
 breaking. Before Python 3.14, `Optional[int]` records `Optional` and
-`Union[int, str]` records `Union`, and a list that took `None` no longer does.
-Python 3.14 records `Optional[int]` itself as `Union`, so an IR pair built on
-3.13 and 3.14 also reports the unchanged field. Build both IRs on the same
+`Union[int, str]` records `Union`. A change from the first to the second means
+a list that took `None` no longer does. Python 3.14 records `Optional[int]`
+itself as `Union`. So the check also reports the unchanged field when you diff
+an IR built on 3.13 against one built on 3.14. Build both IRs on the same
 Python version to avoid it.
 
-### Published event contracts
+### How Protean checks published event contracts { #published-event-contracts }
 
 `diff_ir()` also checks every published event in its `contracts` section and
-lists the breaks in `contracts.breaking_changes`. `summary.has_breaking_changes`
-is read from that list. The published-contract check applies the same field
-rules as the compatibility report: a field type change, a `Dict` or `List`
-value type change, a breaking `Decimal` precision or scale change, and a
-required field added without a default. So
-for a published event's fields, the two lists flag the same breaks, with these
-exceptions:
+lists the breaks in `contracts.breaking_changes`. `diff_ir()` sets
+`summary.has_breaking_changes` from that list. The published-contract check
+applies the same field rules as the compatibility report: a field type change,
+a `Dict` or `List` value type change, a breaking `Decimal` precision or scale
+change, and a required field added without a default. So for a published
+event's fields, the two lists flag the same breaks, with these exceptions:
 
 - An event version bump covered by an upcaster: the report marks those field
   changes as mitigated, and the contract check does not.
@@ -131,11 +131,11 @@ exceptions:
 - A field inside a value object the event holds: the report flags it on the
   value object, and the contract check compares only the event's own fields.
 - `exclude` in `.protean/config.toml` filters the compatibility report only. A
-  contract break on an excluded published event still counts as breaking, and
+  contract break on an excluded published event still counts as breaking.
   `protean ir diff` and the `protean-check-compat` hook still print it.
 
-The contract check writes these field entries. The list column names the key
-under `contracts` that holds the entry:
+The contract check writes the field entries in the table below. In the table,
+the List column names the key under `contracts` that holds each entry:
 
 | Entry `type` | List | When | Keys |
 |--------------|------|------|------|
@@ -146,30 +146,33 @@ under `contracts` that holds the entry:
 | `contract_field_renamed` | `renamed_fields` | A plain rename: a field with `renamed_from` and no type change, value type change or breaking `Decimal` shape change. This is not a break. | `fqn`, `field`, `renamed_to`, `message` |
 
 `protean ir diff` prints the report's breaking changes and
-`contracts.breaking_changes` under "Breaking Changes". A break that both report,
-on the same event, the same field and the same kind of change, is printed once,
-with the contract message.
+`contracts.breaking_changes` under "Breaking Changes". When the report and
+`contracts.breaking_changes` hold the same break (the same event, the same
+field and the same kind of change), `protean ir diff` prints it once, with the
+contract message.
 
-### Replay hazards on an event-sourced aggregate
+### What stops an event-sourced aggregate from rebuilding { #replay-hazards-on-an-event-sourced-aggregate }
 
 An event-sourced aggregate's authoritative state is a stream of events, rebuilt
-by reading that stream and applying the events in it. A snapshot may be stored
-alongside it, holding serialized aggregate state, and that snapshot is a
-rebuildable cache: Protean discards one that no longer constructs and replays
-the stream instead. So the checker reports the changes that stop that rebuild,
-whether or not the aggregate's fields moved.
+by reading that stream and applying the events in it. Protean may store a
+snapshot of serialized aggregate state alongside the stream. The snapshot is a
+rebuildable cache: when a snapshot no longer constructs, Protean discards it
+and replays the stream instead. So the checker reports the changes that stop
+Protean from rebuilding the aggregate from its stream, even when the
+aggregate's fields stay the same.
 
 The stream an aggregate reads is named `f"{stream_category}-{identifier}"`, so
-moving the stream category leaves the whole history under the old name, and
-pointing the identity at another field asks for a stream keyed by a value no
-writer ever used. Either way a load of an existing aggregate finds nothing.
-Turning event sourcing on or off changes where state lives, and the old state
-cannot be read the new way. Dropping an `@apply` handler while its event survives leaves
-historical events of that type with nothing to apply them, and the rebuild
-raises. Dropping a name from `reserved` takes back the field removal that
-declaration earned: replay stops dropping an assignment to the name and a call
-to its `add_<name>` or `remove_<name>` helper, so a retained handler that still
-makes either raises again.
+moving the stream category leaves the whole history under the old name.
+Pointing the identity at another field makes the aggregate read a stream keyed
+by a value no writer ever used. Either way a load of an existing aggregate
+finds nothing. Turning event sourcing on or off changes how Protean stores the
+aggregate's state, and Protean cannot read state stored the old way. Dropping
+an `@apply` handler while its event survives leaves historical events of that
+type with nothing to apply them, and the rebuild raises. Dropping a name from
+`reserved` makes the earlier removal of that field breaking again. Replay then
+stops dropping an assignment to the name and a call to its `add_<name>` or
+`remove_<name>` helper, so a retained handler that still makes either call
+raises again.
 
 Some related cases are already covered by the general rules above and are not
 reported again here: a change to the identity field's *type* is a
@@ -177,75 +180,81 @@ reported again here: a change to the identity field's *type* is a
 `element_removed` on that event. Deleting an event class and its `@apply`
 method together is one act, so it reports once, as the removal.
 
-### Evolution-aware classification
+### How reserved names, deprecation and upcasters make a change safe
 
 The checker understands three evolution mechanisms:
 
-- **Reserved field on an event-sourced aggregate**: Removing a field from an
-  event-sourced aggregate is safe only when the aggregate declares the field name
-  in `reserved`. The declaration does the migration: during replay an assignment
-  to a reserved name (from a retained `@apply` handler for a retired event) is
-  dropped instead of raising, so the aggregate still rebuilds. A call to the
-  `add_<name>` or `remove_<name>` helper of a removed association is dropped
-  too, so the child entities it would have added are not rebuilt.
-  `get_one_from_<name>` and `filter_<name>` still raise. The safe rating
-  assumes the retained handlers only write the removed name: a handler that
-  reads the removed collection still breaks replay, and a handler that builds a
-  child entity needs that entity class to stay in the domain. Only the
-  aggregate's own field removal is earned this way, and only when the aggregate is
-  event-sourced on both sides. A type change or a newly required field stays
-  breaking (a stored snapshot can survive a type change and skip replay, and
-  replay runs no required-field check), and the [replay hazards](#replay-hazards-on-an-event-sourced-aggregate)
-  above still report on their own. Reusing a reserved name for a live field raises
-  at registration.
-- **Deprecation grace**: A field marked `deprecated` and removed at or past its
-  `removal` version is an *expected removal* (safe), not a breaking one. This
-  applies to every persisted element, including internal and event-sourced
-  events (not only published event contracts). It compares against the release
-  version; the `protean ir diff` CLI does not yet supply one, so this downgrade
-  applies when the diff is run with an explicit current version. Write the
-  `removal` version as a string, such as `"0.20"`, because a number loses its
-  trailing zeros. `deprecated=` refuses a number when the element or field is
-  declared. The diff checks every `deprecated` block in both IR files before
-  comparing them. A malformed block in a hand-written file, such as a version
-  written as a number, makes it raise `ConfigurationError` naming the element
-  or field, and `protean ir diff` prints the error on stderr and exits 2.
-- **Upcaster mitigation**: When an event's `__version__` bumps and a registered
+- **Reserve a removed field on an event-sourced aggregate**: Removing a field
+  from an event-sourced aggregate is safe only when the aggregate declares the
+  field name in `reserved`. The `reserved` declaration is the whole migration.
+  During replay, Protean drops an assignment to a reserved name (from a
+  retained `@apply` handler for a retired event) instead of raising, so the
+  aggregate still rebuilds. Protean also drops a call to the `add_<name>` or
+  `remove_<name>` helper of a removed association. The child entities that call
+  would have added are not rebuilt. `get_one_from_<name>` and `filter_<name>`
+  still raise. The checker rates the removal safe on the assumption that the
+  retained handlers only write the removed name. A handler that reads the
+  removed collection still breaks replay, and a handler that builds a child
+  entity needs that entity class to stay in the domain. The checker rates only
+  the aggregate's own field removal safe this way, and only when the aggregate
+  is event-sourced on both sides of the diff. A type change or a newly required
+  field stays breaking, because a stored snapshot can survive a type change and
+  skip replay, and replay runs no required-field check. The checker still
+  reports the [replay hazards](#replay-hazards-on-an-event-sourced-aggregate)
+  above on their own. Reusing a reserved name for a live field raises at
+  registration.
+- **Remove a deprecated field after its removal version**: The checker
+  classifies a field marked `deprecated` and removed at or past its `removal`
+  version as an *expected removal*, which is safe. This applies to every
+  persisted element, including internal and event-sourced events (not only
+  published event contracts). The checker compares the `removal` version
+  against the release version. The `protean ir diff` CLI does not yet supply a
+  release version, so this downgrade applies when you run the diff with an
+  explicit current version. Write the `removal` version as a string, such as
+  `"0.20"`, because a number loses its trailing zeros. `deprecated=` refuses a
+  number when the element or field is declared. The diff checks every
+  `deprecated` block in both IR files before comparing them. When a
+  hand-written file holds a malformed block, such as a version written as a
+  number, the diff raises `ConfigurationError` naming the element or field.
+  `protean ir diff` then prints the error on stderr and exits 2.
+- **Cover a version bump with an upcaster**: When an event's `__version__`
+  bumps and a registered
   [upcaster](../../patterns/event-versioning-and-evolution.md) chain covers the
-  old→new version path, the schema-transformation changes that make up that
-  bump, field removals, type changes, required-field additions, and the `__type__`
-  version-string change, are downgraded from breaking to safe, each citing the
-  mitigating upcaster. An orthogonal change riding along with the bump (for
-  example a public→internal visibility flip) stays breaking, and a version bump
-  with an upcaster *gap* (a prior version with no path to the new one) stays
-  breaking.
+  old→new version path, the checker downgrades the bump's schema-transformation
+  changes from breaking to safe and cites the mitigating upcaster on each.
+  These changes are field removals, type changes, required-field additions, and
+  the `__type__` version-string change. Two cases stay breaking: an unrelated
+  change made in the same bump (for example a public→internal visibility flip),
+  and a version bump with an upcaster *gap* (a prior version with no path to
+  the new one).
 
 ---
 
-## Three-tier breaking change taxonomy
+## How Protean sorts breaking changes into three tiers
 
 Protean follows a tiered approach to breaking changes (see
 [ADR-0004](../../adr/0004-release-workflow-and-breaking-change-policy.md)
 for the full rationale):
 
-### Tier 1: Surface breaks
+### Tier 1: How Protean deprecates a surface break
 
 Renamed classes, moved imports, changed signatures.
 
 **Mitigation:** Introduce the new API alongside the old. The old API emits
-`DeprecationWarning` with a specific removal version and delegates to the
-new implementation. Minimum survival: **2 minor versions**.
+`DeprecationWarning` with a specific removal version. It delegates to the new
+implementation. Keep the old API for at least **2 minor versions**.
 
 ```python
 --8<-- "reference/compatibility/001.py:old_method"
 ```
 
-### Tier 2: Behavioral breaks
+### Tier 2: How Protean phases in a behavioral break
 
 Same signature, different behavior.
 
-**Mitigation:** Introduce new behavior behind a configuration flag,
-defaulting to old behavior. Minimum survival: **3 minor versions**.
+**Mitigation:** Introduce new behavior behind a configuration flag, defaulting
+to old behavior. Keep the old behavior available for at least **3 minor
+versions**.
 
 Transition timeline:
 
@@ -255,7 +264,7 @@ Transition timeline:
 | v0.N+1 | Warning emitted if flag is unset |
 | v0.N+2 | Default flips to new behavior |
 
-### Tier 3: Structural breaks
+### Tier 3: How Protean versions a structural break
 
 Persistence format, event schema, serialization changes.
 
@@ -268,7 +277,7 @@ structural changes.
 
 ---
 
-## Deprecation lifecycle
+## How to deprecate and remove an element or field
 
 When deprecating a domain element or field:
 
@@ -278,12 +287,12 @@ When deprecating a domain element or field:
    for the deprecation pattern).
 2. **Keep the deprecated API** for at least `min_versions_before_removal`
    minor versions (default: 3, configurable in `.protean/config.toml`).
-3. **Add to `exclude`** in `.protean/config.toml` if the element should
-   not trigger breaking change alerts during its deprecation period. On a
+3. If the element should not trigger breaking change alerts during its
+   deprecation period, **add it to `exclude`** in `.protean/config.toml`. On a
    published event, `exclude` does not cover the contract breaks; see
    [Published event contracts](#published-event-contracts).
-4. **Remove** in a later release, once the declared removal version has
-   arrived and has been announced.
+4. Once the declared removal version has arrived and has been announced,
+   **remove** the element or field in a later release.
 
 The `protean ir diff` command distinguishes expected removals (deprecated
 elements past their removal version) from unexpected removals.
@@ -296,13 +305,13 @@ Event class or a name string):
 --8<-- "reference/compatibility/002.py:superseded_by"
 ```
 
-The successor is surfaced two ways: raising a deprecated event emits a
-`ProteanDeprecationWarning` (once per event type) that names it, and the
-`DEPRECATED_ELEMENT` diagnostic appends `superseded by \`<name>\``. The
-warning names an Event class by its class name (`OrderPlacedV2`). The diagnostic
-names it by its fully qualified name (`ordering.events.OrderPlacedV2` for a class
-defined in `ordering/events.py`). The successor is for documentation only and
-is never resolved to a link.
+Protean surfaces the successor two ways. Raising a deprecated event emits a
+`ProteanDeprecationWarning` (once per event type) that names the successor, and
+the `DEPRECATED_ELEMENT` diagnostic appends `superseded by \`<name>\``. The
+warning names an Event class by its class name (`OrderPlacedV2`). The
+diagnostic names it by its fully qualified name
+(`ordering.events.OrderPlacedV2` for a class defined in `ordering/events.py`).
+The successor is for documentation only and is never resolved to a link.
 
 ---
 

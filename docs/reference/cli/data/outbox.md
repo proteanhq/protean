@@ -1,18 +1,18 @@
 # `protean outbox`
 
-The `protean outbox` command group manages the transactional
-[outbox](../../../guides/server/outbox.md). `reconcile` repairs the crash
-window described in
-[ADR-0015](../../../adr/0015-event-store-append-as-durable-anchor.md) for
+The `protean outbox` command group rebuilds missing rows in the transactional
+[outbox](../../../guides/server/outbox.md), lists halted partition keys, and
+retries or discards stuck rows. `reconcile` repairs the crash window described
+in [ADR-0015](../../../adr/0015-event-store-append-as-durable-anchor.md) for
 event-sourced aggregates: an event that reached the event store (the durable
 anchor of the commit) but whose relational outbox row never committed, leaving
-the event durable yet unpublished. `halted`, `retry` and `discard` find and release a partition key
-that an abandoned row has halted.
+the event durable yet unpublished. `halted`, `retry` and `discard` find and
+release a partition key that an abandoned row has halted.
 
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Commands
+## Which commands does the group have?
 
 | Command | Description |
 |---------|-------------|
@@ -29,22 +29,22 @@ rows. It repairs every such event in the scan window that is inside the
 cleanup retention, including one whose row was lost in a crash after which
 another process committed its own events.
 
-Only events raised by this domain's event-sourced aggregates on the given
-provider are repaired. For a state-based aggregate the relational row is the
+The command repairs only events from this domain's event-sourced aggregates on
+the given provider. For a state-based aggregate the relational row is the
 state, and on a transactional provider that row commits or rolls back together
-with its outbox rows. A state-based aggregate's event with no outbox row has no
-saved change behind it, so it is skipped whether or not the aggregate row
-exists. On a provider that keeps writes without a transaction, such as
-Elasticsearch, the aggregate row can be saved while its outbox row is lost.
-That change did happen, and its event stays unpublished.
+with its outbox rows. If a state-based aggregate's event has no outbox row, its
+change was never saved. The command skips that event whether or not the
+aggregate row exists. Some providers, such as Elasticsearch, keep writes
+without a transaction. On such a provider the aggregate row can be saved while
+its outbox row is lost. That change did happen, and its event stays
+unpublished.
 
-Another domain's events in a shared store, commands, process manager transition
-events, and events of aggregates on other providers never get outbox rows in
-this provider, so they are skipped as well. A rebuilt row carries the same
-`partition_key` the original commit would have set. This is
-the manual counterpart to the [automatic startup
-sweep](#automatic-startup-sweep), run it on demand after a suspected crash, or
-from a cron job as a periodic safety net.
+The command also skips messages that never get outbox rows in this provider:
+another domain's events in a shared store, commands, process manager transition
+events, and events of aggregates on other providers. A rebuilt row carries the
+same `partition_key` the original commit would have set. `reconcile` is the
+manual form of the [automatic startup sweep](#automatic-startup-sweep). Run it
+after a suspected crash, or from a cron job as a periodic check.
 
 ```bash
 # Reconcile the default provider's outbox
@@ -78,8 +78,8 @@ Nothing to reconcile: no event in the scanned window is missing its outbox row.
 The command reads nothing when no event-sourced aggregate is on the provider.
 Otherwise every run reads the `--limit` window and looks up the outbox rows of
 every event-sourced aggregate's event in it. It repairs each of those events
-that has no internal-broker row and is inside the cleanup retention, wherever
-the event sits in the window.
+that has no internal-broker row and is inside the cleanup retention. The
+event's position in the window does not matter.
 
 A rebuilt row is created when the run saves it, with priority 0. For a
 [`sequential_by`](../../server/sequential-by.md) key, the processor publishes
@@ -89,13 +89,13 @@ the same key when both rows are in the same lane. When the later row is in the
 other lane, either one can be delivered first.
 
 Reconciliation is idempotent. A run skips a row whose (`message_id`,
-`target_broker`) pair is already saved, so running it repeatedly never
-duplicates a row. The count that `reconcile` prints covers only the rows this
-run wrote.
+`target_broker`) pair is already saved. Running `reconcile` repeatedly
+therefore never duplicates a row. The printed count from `reconcile` covers
+only the rows written by this run.
 
 A run is also safe at the same time as the startup sweep or while commands are
-committing. When two writers try to save the same row, whichever saves it
-first keeps it and the other skips its copy, and a committing command still
+committing. When two writers try to save the same row, the first writer keeps
+its copy and the other writer skips its own. A committing command still
 commits. The exceptions depend on the provider:
 
 - On SQLite, one transaction writes at a time. A run that waits for a
@@ -110,45 +110,47 @@ priority, not the priority of the command's request.
 A `published` event also gets back one row per broker in
 `[outbox].external_brokers`, with the same `partition_key` as its internal row.
 Reconciliation reads the event's current `published` flag and the current
-`external_brokers` list, because neither is stored with the event. An event
-counts as missing only when its internal-broker row is missing, since all of an
-event's rows are saved in one commit. So a broker added to `external_brokers`
-later is not back-filled for events that still have their internal row. The
-count in the output includes the external rows.
+`external_brokers` list, because neither is stored with the event. All of an
+event's rows are saved in one commit. Reconciliation therefore treats an event
+as missing only when its internal-broker row is missing. So a broker added to
+`external_brokers` later is not back-filled for events that still have their
+internal row. The count in the output includes the external rows.
 
-Events older than the shorter of `[outbox.cleanup].published_retention_hours`
-(default 168) and `[outbox.cleanup].abandoned_retention_hours` (default 720)
-are skipped. Cleanup deletes rows older than these retentions (it keeps
-abandoned rows that have a partition key), and a deleted row looks the same as
-one lost in a crash, so rebuilding it would send the event again. An event lost in a crash and left unrepaired for longer than that
-retention is not repaired. An event with no stored time is also skipped,
-because its age is unknown.
+Reconciliation skips events older than the shorter of
+`[outbox.cleanup].published_retention_hours` (default 168) and
+`[outbox.cleanup].abandoned_retention_hours` (default 720). Cleanup deletes
+rows older than these retentions, except abandoned rows that have a partition
+key. A deleted row looks the same as one lost in a crash, so rebuilding a
+deleted row would send its event again. Reconciliation does not repair an event
+lost in a crash if the event stayed unrepaired for longer than that retention.
+An event with no stored time is also skipped, because its age is unknown.
 
 The cutoff uses the retentions configured when the run starts. Cleanup deleted
-rows under the retentions configured when it ran. If you raise the shorter
-retention after cleanup ran with a lower value, the next run rebuilds the rows cleanup
-deleted in between, and those events are published again.
+rows under the retentions configured when it ran. Suppose you raise the shorter
+retention after cleanup ran with a lower value. The next run then rebuilds the
+rows cleanup deleted in between, and the processor publishes those events
+again.
 
-A row the reconciler abandons records `last_processed_at`, so
-`cleanup_old_abandoned()` removes it once `abandoned_retention_hours` has
-passed. A row abandoned because its partition key is invalid carries
-`last_error["reason"]` of "Invalid partition key".
+The reconciler records `last_processed_at` on each row it abandons.
+`cleanup_old_abandoned()` then removes that row once
+`abandoned_retention_hours` has passed. The reconciler sets
+`last_error["reason"]` to "Invalid partition key" on a row it abandons for an
+invalid partition key.
 
 ## `protean outbox halted`
 
-Lists the partition keys whose earliest row that still holds the key is
-`abandoned`. Rows that are `pending`, `processing`, `failed` or `abandoned`
-hold the key. `published` and `discarded` rows do not, so they are skipped. A
-partition key is the value set by a handler's
-[`sequential_by`](../../server/sequential-by.md), and the processor publishes a
-key's rows in commit order. Rows are grouped by target broker, stream
-category, partition key and [priority lane](../../../guides/server/using-priority-lanes.md),
-the same groups the processor uses, so a key is listed exactly when its
-earliest holding row is abandoned. The listing includes a key with no rows
-behind it yet, because the processor will hold any later row. A key whose earliest
-holding row is `pending`, `processing` or `failed` also has its later rows
-held, but it is not listed, because the processor will still publish or retry
-that row.
+Lists each partition key whose earliest holding row is `abandoned`. Rows that
+are `pending`, `processing`, `failed` or `abandoned` hold the key. `published`
+and `discarded` rows do not, so they are skipped. A partition key is the value
+that a handler's [`sequential_by`](../../server/sequential-by.md) sets. The
+processor publishes a key's rows in commit order. Rows are grouped by target
+broker, stream category, partition key and [priority
+lane](../../../guides/server/using-priority-lanes.md), the same groups the
+processor uses, so a key is listed exactly when its earliest holding row is
+abandoned. The listing includes a key with no rows behind it yet, because the
+processor will hold any later row. A key whose earliest holding row is
+`pending`, `processing` or `failed` also has its later rows held, but it is not
+listed, because the processor will still publish or retry that row.
 
 ```bash
 protean outbox halted --domain=my_domain
@@ -161,7 +163,7 @@ protean outbox halted --json --domain=my_domain
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
 | `--provider` | Provider whose outbox to inspect | `default` |
-| `--json` | Print the [result envelope](../conventions.md#the-result-envelope) as JSON | off |
+| `--json` | Print the [result envelope](../conventions.md#what-does-the-result-envelope-contain) as JSON | off |
 
 **Output**
 
@@ -172,16 +174,16 @@ protean outbox halted --json --domain=my_domain
 
 Each line names the target broker, the stream category, the partition key and
 the lane, then the abandoned row at the head of the key, the message from its
-`last_error`, and how many later rows of the key are waiting. There is one
-line per group, so a key with rows for two brokers or in both lanes appears
-once for each. With no halted key it prints `No partition key is halted.` and
-exits 0. The scan reads the abandoned rows a page at a time, so a row whose
-status changes while it runs can be missed or listed twice.
+`last_error`, and how many later rows of the key are waiting. There is one line
+per group, so a key with rows for two brokers or in both lanes appears once for
+each. With no halted key it prints `No partition key is halted.` and exits 0.
+The scan reads the abandoned rows one page at a time. A row whose status
+changes during the scan can be missed or listed twice.
 
 Under `--json`, `data.halted` holds one object per halted group. The
-`last_error` below is shortened. A real one also holds the `traceback`,
-`failed_at` and `retry_count` of the last failure, and prints across several
-lines:
+`last_error` below is shortened. A real `last_error` also holds the
+`traceback`, `failed_at` and `retry_count` of the last failure. It prints
+across several lines:
 
 ```json
 {
@@ -215,10 +217,9 @@ lines:
 
 Sends a `failed` or `abandoned` row back to `pending` with its retry count at
 zero and no retry delay, so it gets the full number of attempts again. A row
-whose `max_retries` is 0 gets one attempt. The processor can then claim the
-row, in the same priority and commit order as any other row, and still only
-after the earlier rows of its key. The later rows of its key publish after
-it.
+whose `max_retries` is 0 gets one attempt. The processor can then claim the row
+in the same priority and commit order as any other row. It claims the row only
+after the earlier rows of its key. The later rows of its key publish after it.
 
 ```bash
 protean outbox retry 6f1c2a9e-... --domain=my_domain
@@ -240,10 +241,10 @@ Outbox row 6f1c2a9e-... is pending and will be published again.
 
 ## `protean outbox discard`
 
-Skips a `failed` or `abandoned` row for good. The row is never published, so
-its event is dropped for that broker, and the later rows of its key publish
-without it. The row stays in the outbox with the `discarded` status. Its
-`last_error` keeps the original error and gains `discarded_at` and
+Skips a `failed` or `abandoned` row permanently. The processor never publishes
+the row, so that broker never receives its event. The later rows of its key
+publish without it. The row stays in the outbox with the `discarded` status.
+Its `last_error` keeps the original error and gains `discarded_at` and
 `discard_reason`. Cleanup deletes it `abandoned_retention_hours` after it was
 discarded. The reason cannot be empty.
 
@@ -266,11 +267,11 @@ protean outbox discard 6f1c2a9e-... --reason "payload rejected by the broker" --
 Outbox row 6f1c2a9e-... is discarded and will not be published.
 ```
 
-## Automatic startup sweep
+## Reconcile automatically when the server starts {#automatic-startup-sweep}
 
-The same reconciliation runs once automatically when the server boots, so an
-event-sourced aggregate's event whose outbox row was lost in a crash before the
-relational commit gets its row back on restart without operator action:
+The server runs the same reconciliation once when it boots. On restart, the
+sweep rebuilds any event-sourced aggregate's outbox row that a crash lost
+before the relational commit, with no operator action:
 
 ```bash
 protean server --domain=my_domain
@@ -285,7 +286,7 @@ covers only the
 `default` provider. Run `protean outbox reconcile --provider=<name>` for
 aggregates on other providers.
 
-## Error Handling
+## What does each command do on an error?
 
 | Condition | Behavior |
 |-----------|----------|
@@ -308,14 +309,15 @@ event store is the durable anchor. A crash in the window between the two leaves
 events stored but their outbox rows uncommitted. Reconciliation reads those
 events back from the store and re-derives the missing rows of event-sourced
 aggregates' events. It skips state-based aggregates' events, for the reason
-given under [`protean outbox reconcile`](#protean-outbox-reconcile). The full rationale,
-including why this ordering was chosen over two-phase commit, is in
-[ADR-0015: Event-Store Append as the Durable Anchor](../../../adr/0015-event-store-append-as-durable-anchor.md).
+given under [`protean outbox reconcile`](#protean-outbox-reconcile). You can
+read the full rationale, including why Protean chose this ordering over
+two-phase commit, in [ADR-0015: Event-Store Append as the Durable
+Anchor](../../../adr/0015-event-store-append-as-durable-anchor.md).
 
 See the [Outbox Guide](../../../guides/server/outbox.md#recover-from-a-crash-reconciliation)
 for the operational walkthrough.
 
-## Domain Discovery
+## How do the commands find the domain?
 
 The `protean outbox` commands use the same domain discovery mechanism as
 other CLI commands. See [Domain Discovery](../project/discovery.md) for the

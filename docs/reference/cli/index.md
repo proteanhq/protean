@@ -1,15 +1,20 @@
-# CLI
+# Run Protean commands from the command line
 
-When you install Protean, you also get a handy command line interface - the `protean` script - in your virtualenv. Driven by [Typer](https://typer.tiangolo.com), the script gives access to commands that can help you scaffold projects, generate new code, and run background servers. The `--help` option will give more information about any commands and options.
+When you install Protean, you also get the `protean` script, a command line
+interface, in your virtualenv. Driven by [Typer](https://typer.tiangolo.com),
+the script gives access to commands that can help you scaffold projects,
+generate new code, and run background servers. The `--help` option will give
+more information about any commands and options.
 
-Most commands accept a domain instance to load and initialize, prepping it for
-shell access. The [`--domain`](project/discovery.md) option is used to specify how to
-load the domain.
+Most commands accept a domain instance. The command loads and initializes the
+domain so that it is ready for shell access. The
+[`--domain`](project/discovery.md) option is used to specify how to load the
+domain.
 
-`check` and `verify` emit one shared
-[result envelope and exit-code convention](conventions.md), so a script or an
-agent can consume them uniformly. Other commands that print JSON are being
-converged onto it; see that page for what is standardized today.
+`check` and `verify` emit one shared [result envelope and exit-code
+convention](conventions.md), so a script or an agent can consume them
+uniformly. Protean is moving its other JSON-printing commands onto the same
+envelope. The conventions page lists which commands follow the standard today.
 
 | Command                        |                                    |
 | :----------------------------- | :----------------------------------|
@@ -45,7 +50,7 @@ converged onto it; see that page for what is standardized today.
     **Developing Protean:** These commands are for contributors working on
     Protean itself, not for end-user application projects. `protean test` and
     `protean test test-adapter` drive the framework's own pytest suite and
-    hardcode framework-repo paths; their `--help` output is labelled
+    hardcode framework-repo paths. Their `--help` output is labelled
     `[Framework development]`.
 
     | Command                        |                                    |

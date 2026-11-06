@@ -1,17 +1,17 @@
 # `protean shell`
 
 The `shell` command starts an interactive shell with your Protean application
-pre-loaded. On the underside, the console command uses `ipython`, so if you've
-ever used it, you'll be right at home. This is useful for testing out quick
-ideas with code and changing data server-side without using an interface.
+pre-loaded. The `shell` command runs on `ipython`. If you have used `ipython`
+before, the shell works the way you expect. This is useful for testing out
+quick ideas with code and changing data server-side without using an interface.
 
-## Usage
+## Run the command
 
 ```shell
 protean shell [OPTIONS]
 ```
 
-## Options
+## Choose the options
 
 | Option        | Description                               | Default |
 |---------------|-------------------------------------------|---------|
@@ -36,14 +36,14 @@ followed by the domain name:
 protean shell --domain auth
 ```
 
-This command will initiate the shell in the context of `auth` domain, allowing
-you to perform domain-specific operations more conveniently. Read [Domain
+This command starts the shell in the context of the `auth` domain, so you can
+run domain-specific operations more easily. Read [Domain
 Discovery](discovery.md) for options to specify the domain.
 
 ### Traversing subdirectories
 
-By default, only the domain and elments in the specified module will be loaded
-into the shell context. If you want traverse files in the folder and its
+By default, the shell loads only the domain and the elements in the specified
+module into the shell context. If you want traverse files in the folder and its
 subdirectories, you can specify the `--traverse` option.
 
 ```shell

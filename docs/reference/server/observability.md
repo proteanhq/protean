@@ -1,11 +1,11 @@
-# Observability
+# Observe the async message pipeline
 
 Protean provides built-in observability for the async message processing
 pipeline. Two components work together to give you real-time visibility into
 how messages flow through the engine:
 
-- **TraceEmitter**: Lightweight instrumentation embedded in the engine that
-  emits structured trace events as messages are processed.
+- **TraceEmitter**: Lightweight instrumentation embedded in the engine. It
+  emits structured trace events as the engine processes messages.
 - **Protean Observatory**: A standalone monitoring server that subscribes to
   those trace events and exposes them through a dashboard, SSE stream, REST
   API, and Prometheus metrics endpoint.
@@ -36,13 +36,14 @@ graph LR
 The TraceEmitter writes to two Redis channels:
 
 - **Pub/Sub** (`protean:trace`). Real-time fan-out for live SSE clients. The
-  emitter checks `PUBSUB NUMSUB` and skips publishing when nobody is listening.
+  emitter checks `PUBSUB NUMSUB` and skips publishing when no client is
+  subscribed to the channel.
 - **Stream** (`protean:traces`), Time-bounded history for the dashboard and REST API.
-  Always writes when persistence is enabled (the default). Old entries are
-  automatically trimmed using Redis `MINID` based on the configured retention
-  period.
+  Always writes when persistence is enabled (the default). The emitter trims
+  old entries automatically with Redis `MINID`, based on the configured
+  retention period.
 
-## Trace events
+## What a trace event records
 
 The TraceEmitter publishes structured `MessageTrace` events at key points in
 the message processing pipeline. Each trace event captures:
@@ -64,7 +65,7 @@ the message processing pipeline. Each trace event captures:
 | `worker_id` | Subscription instance that processed this message |
 | `timestamp` | ISO 8601 UTC timestamp |
 
-### Event types
+### Which stages emit a trace event
 
 | Event | Emitted by | When |
 |-------|-----------|------|
@@ -77,18 +78,18 @@ the message processing pipeline. Each trace event captures:
 | `outbox.published` | OutboxProcessor | After a message is published to the broker |
 | `outbox.failed` | OutboxProcessor | When outbox publishing fails |
 
-The `correlation_id` and `causation_id` fields enable grouping and filtering
-trace events by business operation in the Observatory dashboard. For a
-complete guide on how these IDs propagate through the system, see
-[Correlation and Causation IDs](../../guides/observability/correlation-and-causation.md).
+In the Observatory dashboard, you can group and filter trace events by business
+operation with the `correlation_id` and `causation_id` fields. For a complete
+guide on how these IDs propagate through the system, see [Correlation and
+Causation IDs](../../guides/observability/correlation-and-causation.md).
 
-## Trace persistence and retention
+## How long the TraceEmitter keeps trace events
 
 By default, the TraceEmitter persists trace events to a Redis Stream
 (`protean:traces`) for 7 days. This allows the dashboard and REST API to serve
 historical data even after SSE clients disconnect.
 
-### Configuration
+### Set the retention period
 
 Set `trace_retention_days` in your domain configuration:
 
@@ -103,31 +104,31 @@ return empty results.
 Old entries are automatically trimmed using Redis `MINID`-based trimming on
 every write, so no separate cleanup process is needed.
 
-## Zero-overhead design
+## How the TraceEmitter avoids overhead
 
 The TraceEmitter is designed to add no measurable overhead when nobody is
 listening and persistence is disabled:
 
-1. **Lazy initialization**: The Redis connection is not established until the
+1. **Connect lazily**: The emitter does not open the Redis connection until the
    first emit call.
-2. **Subscriber check**: Before serializing any trace, the emitter runs
-   `PUBSUB NUMSUB` to check if anyone is subscribed to the trace channel. This
-   result is cached for 2 seconds.
-3. **Short-circuit**: If no Pub/Sub subscribers are found *and* persistence is
+2. **Check for subscribers**: Before serializing any trace, the emitter runs
+   `PUBSUB NUMSUB` to check whether any client is subscribed to the trace
+   channel. This result is cached for 2 seconds.
+3. **Return early**: If no Pub/Sub subscribers are found *and* persistence is
    disabled (`trace_retention_days = 0`), `emit()` returns immediately without
    constructing or serializing the `MessageTrace`.
-4. **Silent failure**: If Redis is unavailable or publishing fails, the error
-   is logged at DEBUG level and swallowed. Tracing never affects message
-   processing.
+4. **Fail silently**: If Redis is unavailable or publishing fails, the emitter
+   logs the error at DEBUG level and swallows it. A tracing failure never
+   interrupts message processing.
 
-When persistence is enabled (the default), the Stream write always occurs
-regardless of whether any SSE clients are connected. The Pub/Sub broadcast
+When persistence is enabled (the default), the emitter always writes to the
+Stream. It writes even when no SSE clients are connected. The Pub/Sub broadcast
 is still conditional on subscriber count.
 
 ## Protean Observatory
 
-The Observatory is a standalone FastAPI server that subscribes to trace events
-and provides multiple monitoring interfaces. It runs on its own port (default
+The Observatory is a standalone FastAPI server that subscribes to trace events.
+It provides multiple monitoring interfaces. It runs on its own port (default
 9000), separate from your application.
 
 ### Starting the Observatory
@@ -152,7 +153,7 @@ For deployment with uvicorn directly:
 --8<-- "reference/server/observability/001.py:app"
 ```
 
-### Endpoints
+### Which endpoints the Observatory exposes
 
 #### Dashboard: `GET /`
 
@@ -160,10 +161,10 @@ An embedded HTML dashboard that connects to the SSE stream and displays
 real-time message flow. Open `http://localhost:9000` in your browser.
 
 The dashboard includes a **DLQ tab** alongside Messages, Events, and Errors.
-The DLQ tab provides a filterable list of failed messages with buttons to
-inspect, replay, or purge entries, the same operations available through the
-[`protean dlq`](../cli/data/dlq.md) CLI commands and the `/api/dlq/*` REST endpoints documented
-below.
+The DLQ tab provides a filterable list of failed messages, with buttons to
+inspect, replay, or purge entries. These are the same operations available
+through the [`protean dlq`](../cli/data/dlq.md) CLI commands and the
+`/api/dlq/*` REST endpoints documented below.
 
 #### SSE stream: `GET /stream`
 
@@ -330,9 +331,9 @@ The `error_rate` is the percentage of trace events that are error types
 
 #### Subscriptions: `GET /api/subscriptions`
 
-Subscription lag status for all domains. Returns per-subscription lag,
-pending count, DLQ depth, and summary aggregation. Works without the engine
-running, queries infrastructure directly.
+Subscription lag status for all domains. Returns per-subscription lag, pending
+count, DLQ depth, and summary aggregation. The endpoint queries infrastructure
+directly, so it works without the engine running.
 
 ```bash
 curl http://localhost:9000/api/subscriptions
@@ -506,7 +507,7 @@ protean_projection_staleness_seconds{domain="identity",projection="UserDirectory
 The endpoint emits these gauges unless OpenTelemetry is on and the
 `opentelemetry-exporter-prometheus` package is installed. In that case it
 returns the OpenTelemetry metrics instead; see
-[OpenTelemetry integration](#opentelemetry-integration).
+[OpenTelemetry integration](#integrate-with-opentelemetry).
 
 | Metric | Type | Description |
 |--------|------|-------------|
@@ -533,7 +534,7 @@ returns the OpenTelemetry metrics instead; see
 | `protean_db_pool_overflow` | gauge | Overflow database connections |
 | `protean_broker_pool_active_connections` | gauge | Active broker pool connections |
 
-### Prometheus scrape configuration
+### Configure Prometheus to scrape the Observatory
 
 ```yaml
 # prometheus.yml
@@ -544,7 +545,7 @@ scrape_configs:
       - targets: ['localhost:9000']
 ```
 
-### CORS configuration
+### Configure CORS for browser dashboards
 
 The Observatory enables CORS by default to allow browser-based dashboards. You
 can customize the allowed origins:
@@ -553,13 +554,13 @@ can customize the allowed origins:
 --8<-- "reference/server/observability/002.py:cors"
 ```
 
-## Prerequisites
+## What you need before you start
 
-The observability system requires **Redis** as the message broker. The
-TraceEmitter uses Redis Pub/Sub (channel `protean:trace`) as the transport
-between the engine and the Observatory. When using the `InlineBroker` (the
-default for development), the TraceEmitter gracefully no-ops, no errors, no
-overhead.
+The observability system produces traces only when **Redis** is the message
+broker. The TraceEmitter uses Redis Pub/Sub (channel `protean:trace`) as the
+transport between the engine and the Observatory. When you use the
+`InlineBroker` (the default for development), the TraceEmitter does nothing. It
+raises no errors and adds no overhead.
 
 The Observatory server requires the `fastapi` and `uvicorn` packages:
 
@@ -567,26 +568,26 @@ The Observatory server requires the `fastapi` and `uvicorn` packages:
 pip install fastapi uvicorn
 ```
 
-## OpenTelemetry integration
+## Integrate with OpenTelemetry
 
 For production APM environments, Protean supports native OpenTelemetry
 distributed tracing and metrics alongside the Observatory. When OTel is
 enabled, spans cover every layer of the stack (commands, handlers, UoW,
-repositories, event store, server, outbox) and the `/metrics` endpoint
-automatically converges on OTel-powered Prometheus exposition.
+repositories, event store, server, outbox). The `/metrics` endpoint then
+switches automatically to OTel-powered Prometheus exposition.
 
 See [OpenTelemetry Integration](../../guides/server/opentelemetry.md) for
 configuration, span and metric catalogs, APM setup guides, and TraceParent
 propagation details.
 
-## Next steps
+## What to read next
 
 - [OpenTelemetry Integration](../../guides/server/opentelemetry.md): Distributed
   tracing, metrics, APM setup, and TraceParent propagation with OpenTelemetry
 - [Message Tracing](../../guides/domain-behavior/message-tracing.md): Correlation
   and causation IDs for end-to-end traceability across commands and events
-- [Engine Architecture](../../concepts/async-processing/engine.md): How the engine manages subscriptions
-  and lifecycle
+- [Engine Architecture](../../concepts/async-processing/engine.md): How the
+  engine runs subscriptions and its own start-up and shutdown
 - [Running the Server](../../guides/server/index.md): CLI options, deployment, and monitoring
 - [Subscription Types](subscription-types.md): StreamSubscription vs
   EventStoreSubscription

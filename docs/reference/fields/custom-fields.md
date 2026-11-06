@@ -2,20 +2,20 @@
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
-`Custom` builds a field over a Python type Protean has no built-in factory for,
-when the type still needs Protean's field machinery: `required`, a default,
-constraints, or adapter mapping. You supply the type and the Pydantic objects
-that parse a raw value into it and render it back; Protean wires them into the
-same field pipeline every built-in field uses.
+`Custom` builds a field over a Python type that Protean has no built-in factory
+for. Use it when the type still needs Protean's field support: `required`, a
+default, constraints, or adapter mapping. You supply the type and the Pydantic
+objects that parse a raw value into it and render it back. Protean then adds
+those objects to the field pipeline that every built-in field uses.
 
 If the type needs none of that, you do not need `Custom`. Declare it as a raw
 `Annotated[YourType, Field(...)]` and Pydantic handles it directly. See the
-[raw Pydantic style](defining-fields.md#raw-pydantic-style) in the defining-fields
-guide. Reach for `Custom` when you want the field to be `required`, carry a
-default, or reflect through `ResolvedField` to an adapter the way the built-in
-fields do.
+[raw Pydantic style](defining-fields.md#use-raw-pydantic-annotations) in the
+defining-fields guide. Use `Custom` when you want the field to be `required`,
+carry a default, or reflect through `ResolvedField` to an adapter the way the
+built-in fields do.
 
-## Signature
+## What does `Custom` accept?
 
 ```python
 # fragment
@@ -33,11 +33,11 @@ Custom(python_type, *, validators=(), serializers=(), **constraints)
   `unique`, `description`, `min_value`/`max_value`, and so on), passed straight to
   the field.
 
-## A worked example
+## Build a field for a color type
 
-A `Color` type stored as a `#RRGGBB` hex string. It parses a raw string into a
-`Color`, and implements `to_dict()` so it round-trips through persistence and
-events:
+A `Color` type stored as a `#RRGGBB` hex string. A parser turns a raw string
+into a `Color`. The `Color` type also implements `to_dict()`, so a `Color`
+round-trips through persistence and events:
 
 ```python
 --8<-- "guides/domain-definition/fields/custom-fields/001.py:type"
@@ -65,41 +65,44 @@ A field runs its checks in a fixed order, and `Custom` inherits it unchanged:
 3. **validators**: post-cast checks run on the parsed value. For `Custom`, these
    are any `AfterValidator` objects you passed in `validators`.
 
-So an `AfterValidator` always sees a parsed instance, never a raw value, and a
+So an `AfterValidator` always sees a parsed instance and never a raw value. A
 missing optional value never reaches your parser.
 
 !!! warning "`Custom` rejects `choices`"
 
     Passing `choices` to `Custom` raises `IncorrectUsageError` at declaration.
     A choice set makes Protean replace the field's type with a `Literal` of the
-    choice values, which would discard your custom type: the field would store
-    the raw primitive and your parser would never run. `Custom` is for a type
-    that parses and validates, not for a closed vocabulary of primitive values.
-    For that, use `String(choices=...)` or `Status`.
+    choice values. That replacement would discard your custom type, so the
+    field would store the raw primitive and your parser would never run.
+    `Custom` is for a type that parses and validates, not for a closed
+    vocabulary of primitive values. For that, use `String(choices=...)` or
+    `Status`.
 
-## The serialization boundary adapters read
+## Implement `to_dict()` so adapters can serialize your type
 
-Adapters and the persistence and event paths do not read your Pydantic serializer.
-They read `ResolvedField.as_dict`, which turns a stored value into a JSON-compatible
-form. `as_dict` calls a value's `to_dict()` when it has one, so **implement
-`to_dict()` on your type** and the field round-trips through save, reload, and
-event replay. The `serializers` you pass to `Custom` cover Pydantic's own
-`model_dump`; `to_dict()` covers Protean's persistence.
+Adapters and the persistence and event paths do not read your Pydantic
+serializer. They read `ResolvedField.as_dict`, which turns a stored value into
+a JSON-compatible form. `as_dict` calls a value's `to_dict()` when the value
+has one. So **implement `to_dict()` on your type**, and the field round-trips
+through save, reload, and event replay. The `serializers` you pass to `Custom`
+cover Pydantic's own `model_dump`. Your type's `to_dict()` covers Protean's
+persistence.
 
 The value your `to_dict()` returns must be something your parser accepts back. In
 the example, `to_dict()` returns the hex string and `parse_color` accepts a hex
 string, so a `Color` saved as `"#3366FF"` reloads as the same `Color`.
 
-That serialized form is what the store holds, so it is also what a query compares
-against. Protean serializes a custom value in a filter the same way, so both
-`filter(brand=Color("#3366FF"))` and `filter(brand="#3366FF")` find the record,
-and `unique=True` catches a duplicate.
+The store holds that serialized form, so a query also compares against that
+form. Protean serializes a custom value in a filter the same way, so both
+`filter(brand=Color("#3366FF"))` and `filter(brand="#3366FF")` find the record.
+For the same reason, `unique=True` catches a duplicate.
 
-The generated schemas (JSON Schema, Avro, Protobuf) read the field's Python type.
-A custom field over a primitive is typed as that primitive: `Custom(int, ...)` is
-an integer. A custom field over a class of your own is typed as a string, because
-Protean cannot know what your `to_dict()` returns. So if you publish schemas, have
-`to_dict()` return a string, as the `Color` example does.
+The generated schemas (JSON Schema, Avro, Protobuf) read the field's Python
+type. A custom field over a primitive is typed as that primitive: `Custom(int,
+...)` is an integer. A custom field over a class of your own is typed as a
+string, because Protean cannot know what your `to_dict()` returns. If you
+publish schemas, have `to_dict()` return a string. The `Color` example does
+this.
 
 ## Prove your field with the conformance suite
 

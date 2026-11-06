@@ -8,8 +8,9 @@ composes the steps you would otherwise run by hand:
    engine behind [`protean check`](check.md).
 3. **Tests**: Run the project's own `pytest` suite in the project directory.
 
-It is the fastest way to confirm a freshly scaffolded project actually works,
-and a single gate to run in CI.
+Running `verify` is the fastest way to confirm that a freshly scaffolded
+project works. In CI, you can run it as the one check that passes or fails the
+build.
 
 ```bash
 # Verify the project discovered from the current directory
@@ -25,7 +26,7 @@ protean verify --json
 protean verify --env memory
 ```
 
-## Options
+## Which options does `verify` accept?
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
@@ -35,29 +36,29 @@ protean verify --env memory
 | `--json` | | `false` | Emit a JSON envelope on stdout instead of the human table. |
 
 `verify` runs `pytest` in a child process using the same interpreter that runs
-Protean (`sys.executable -m pytest`). If the project directory has a `src/`
-folder (the src-layout a scaffolded project uses), that folder is put on the
-child's `PYTHONPATH` so the project's own tests can import the package even
+Protean (`sys.executable -m pytest`). When the project directory has a `src/`
+folder (the src-layout a scaffolded project uses), `verify` puts that folder on
+the child's `PYTHONPATH`. The project's own tests can then import the package
 before it is installed.
 
-All three stages run under the environment `--env` names. `verify` sets
-`PROTEAN_ENV` to that value before it imports the domain, so init and check load
-the matching [config overlay](../configuration/index.md#multiple-environments), and it
-passes the same value to the `pytest` child. A `PROTEAN_ENV` exported in your
-shell does not change the config any stage loads, and `PROTEAN_DEBUG` and
-`VIRTUAL_ENV` are removed from the child's environment. The shell's value still
-picks the default log level and format, because `verify` sets up logging before
-the stages run. The child's `PROTEAN_ENV` also takes precedence over a
-`--protean-env` option in the project's pytest `addopts` or in
-`PYTEST_ADDOPTS`. Project test code that sets `PROTEAN_ENV` itself, such as a
-`conftest.py` or a pytest-env `env` setting, still changes the tests stage
-only.
+All three stages run under the environment `--env` names. Before it imports the
+domain, `verify` sets `PROTEAN_ENV` to that value. Init and check then load the
+matching [config overlay](../configuration/index.md#multiple-environments).
+`verify` also passes the same value to the `pytest` child. A `PROTEAN_ENV`
+exported in your shell does not change the config any stage loads. `verify`
+removes `PROTEAN_DEBUG` and `VIRTUAL_ENV` from the child's environment.
+`verify` sets up logging before the stages run. The shell's value therefore
+still picks the default log level and format. The child's `PROTEAN_ENV` also
+takes precedence over a `--protean-env` option in the project's pytest
+`addopts` or in `PYTEST_ADDOPTS`. Your project's test code can still set
+`PROTEAN_ENV` itself, for example in a `conftest.py` or a pytest-env `env`
+setting. A value set there changes the tests stage only.
 
-## Exit codes
+## What does each exit code mean?
 
-`verify` follows the [CLI-wide exit-code convention](conventions.md), with its
-stage classes pinned above the shared `0`/`2`. The code is a stable contract,
-ordered by precedence (init before check before tests):
+`verify` follows the [CLI-wide exit-code convention](conventions.md) and gives
+its stage classes codes above the shared `0`/`2`. The code is a stable
+contract, ordered by precedence (init before check before tests):
 
 | Exit code | Meaning |
 |-----------|---------|
@@ -75,21 +76,22 @@ once `verify` itself starts running.
 (These codes shifted up by one from an earlier unreleased set so that `2` is
 reserved for usage; see the [v0.18 migration note](../migration/v0-18.md#check-and-verify-machine-output-changed-shape-and-exit-codes).)
 
-The check stage honours `[lint].level` (default `"warn"`), the **same** severity
-floor [`protean check`](check.md) uses: `"error"` gates on errors only, `"warn"`
-also gates on warnings, `"info"` gates on any finding. A malformed `[lint]` block
-(a bad `suppressions` count, a non-table `[lint]`, an invalid `level`) gates as a
-check failure too, `verify` validates it the way `check` does. Check and tests both run
-even when check fails (so the `--json` envelope carries every stage's result); the
-exit code follows the precedence above.
+The check stage honours `[lint].level` (default `"warn"`), the **same**
+severity floor [`protean check`](check.md) uses: `"error"` gates on errors
+only, `"warn"` also gates on warnings, `"info"` gates on any finding. A
+malformed `[lint]` block (a bad `suppressions` count, a non-table `[lint]`, an
+invalid `level`) gates as a check failure too. `verify` validates the `[lint]`
+block the way `check` does. Check and tests both run even when check fails. The
+`--json` envelope therefore carries every stage's result. The exit code follows
+the precedence above.
 
 An empty test directory (`pytest` collects nothing and returns `5`) is treated
 as a **pass** for the tests stage. The returncode is preserved in the envelope
 so "no tests" is distinguishable from "tests passed".
 
-## JSON envelope
+## What does `--json` print?
 
-`--json` prints a single [result envelope](conventions.md#the-result-envelope)
+`--json` prints a single [result envelope](conventions.md#what-does-the-result-envelope-contain)
 on stdout: a coarse `status`, the verdict and stage tree under `data`, and the
 check-stage diagnostics at the top level.
 
@@ -124,16 +126,16 @@ check-stage diagnostics at the top level.
 | `data.error` | Present only for a usage error caught before any stage ran, for example when `--path` is not a directory or `--env` is blank. It carries the same human-facing message that goes to stderr in the non-`--json` case. |
 | `diagnostics` | The check-stage diagnostics, surfaced at the top level (empty when check never ran). |
 
-When `verify` aborts early (the domain is not found, exit 2; `--path` is not a
-directory, exit 2; `--env` is blank, exit 2; or init fails, exit 3), the stages
-that never ran are reported as a bare `{ "status": "skipped" }` **without**
-their other sub-keys. A consumer that reads, say, `data.stages.check.counts`
-must guard for the skipped shape (or check the top-level `status`/`data.verdict`
-first). The domain-not-found and init-failure cases carry their message under
-`data.stages.init.error` instead of `data.error`, since those are tied to the
-init stage.
+`verify` aborts early when the domain is not found (exit 2), `--path` is not a
+directory (exit 2), `--env` is blank (exit 2), or init fails (exit 3). In each
+case, `verify` reports the stages that never ran as a bare `{ "status":
+"skipped" }` **without** their other sub-keys. A consumer that reads, say,
+`data.stages.check.counts` must guard for the skipped shape (or check the
+top-level `status`/`data.verdict` first). The domain-not-found and init-failure
+cases carry their message under `data.stages.init.error` instead of
+`data.error`, since those are tied to the init stage.
 
-## Related
+## Read about the related commands
 
 - [`protean check`](check.md): The domain validation step, run on its own.
 - [`protean new`](project/new.md): Scaffold a project, then `protean verify` it.

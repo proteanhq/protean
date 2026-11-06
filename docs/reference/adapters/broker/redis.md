@@ -2,9 +2,10 @@
 
 The Redis Stream broker uses Redis Streams to provide durable, ordered message streaming with consumer group support. It's ideal for production environments requiring reliable message delivery.
 
-## Overview
+## What does the Redis Stream broker offer?
 
-Redis Streams, introduced in Redis 5.0, provide a log-like data structure perfect for message streaming. The Redis broker uses these features to offer:
+Redis 5.0 added Redis Streams, an append-only log data structure built for
+message streaming. The Redis broker uses these features to offer:
 
 - **Persistent message storage** with configurable retention
 - **Consumer groups** for distributed processing
@@ -12,7 +13,7 @@ Redis Streams, introduced in Redis 5.0, provide a log-like data structure perfec
 - **Ordered message processing** within streams
 - **Automatic reconnection** and connection pooling
 
-## Installation
+## Install the Redis broker
 
 The Redis broker requires the `redis` Python package:
 
@@ -24,7 +25,7 @@ pip install "protean[redis]"
 pip install "redis>=8.0.0,<8.2.0"
 ```
 
-## Configuration
+## Configure the Redis broker
 
 ```toml
 [brokers.default]
@@ -36,7 +37,7 @@ max_connections = 10
 socket_timeout = 5
 ```
 
-### Configuration Options
+### Which options does the Redis broker take?
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -47,8 +48,10 @@ socket_timeout = 5
 | `socket_connect_timeout` | `None` | Seconds to wait when connecting to Redis |
 | `retry_on_timeout` | `false` | Retry a command when it times out |
 
-The four pool settings are passed to the Redis client's connection pool as
-they are. Leave a setting out to use the Redis client's default.
+The broker passes the four pool settings, `max_connections`, `socket_timeout`,
+`socket_connect_timeout` and `retry_on_timeout`, to the Redis client's
+connection pool unchanged. Leave a setting out to use the Redis client's
+default.
 
 ### Connection String Format
 
@@ -61,7 +64,7 @@ redis://:password@redis.example.com:6379/1  # With password
 redis://username:password@redis.example.com:6379  # With username and password
 ```
 
-## Usage
+## Publish, read and acknowledge a message
 
 The broker maps each operation to a Redis Streams command. This example needs
 a running Redis server:
@@ -73,7 +76,7 @@ a running Redis server:
 
 `ack` returns `True`, and the next `get_next` for the group returns `None`.
 
-## Capabilities
+## Which capabilities does the Redis Stream broker provide?
 
 The Redis Stream broker provides the following capabilities:
 
@@ -90,8 +93,8 @@ This includes:
 - **Message acknowledgment** (ACK/NACK) for reliable delivery
 - **At-least-once delivery** guarantees
 - **Message ordering** preservation within streams
-- **Dead letter queue management**: List, inspect, replay, and purge failed messages via
-  [`protean dlq`](../../cli/data/dlq.md) CLI or the
+- **Manage the dead letter queue**: List, inspect, replay, and purge failed
+  messages with the [`protean dlq`](../../cli/data/dlq.md) CLI or the
   [Observatory dashboard](../../server/observability.md)
 - **Stream retention (XTRIM)**: When a subscription sets
   [`retention_maxlen`](../../server/subscription-types.md#stream-retention), the
@@ -104,9 +107,9 @@ This includes:
   [Stream retention](../../server/subscription-types.md#stream-retention) for the
   full caveats.
 
-## Monitoring and Debugging
+## Monitor and debug the Redis broker
 
-### Redis CLI Commands
+### Inspect streams with the Redis CLI
 
 Useful Redis commands for debugging:
 
@@ -130,14 +133,14 @@ redis-cli XRANGE user-events - + COUNT 10
 redis-cli MONITOR
 ```
 
-### Logging
+### Which loggers does the Redis broker write to?
 
-The broker logs through the `protean.adapters.broker.redis` logger, and the
-Redis client logs through the `redis` logger. Set either to `DEBUG` with the
-standard `logging` module when you troubleshoot.
+The broker logs through the `protean.adapters.broker.redis` logger. The Redis
+client logs through the `redis` logger. When you troubleshoot, set either
+logger to `DEBUG` with the standard `logging` module.
 
-## Related pages
+## Where do you go next?
 
 - Explore [Redis PubSub broker](./redis-pubsub.md) for simpler use cases
-- Learn about [broker capabilities](./index.md#broker-capabilities) in detail
+- Learn about [broker capabilities](./index.md#what-can-each-broker-do) in detail
 - Understand [custom broker development](./custom-brokers.md)

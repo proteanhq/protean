@@ -3,24 +3,24 @@
 
 The `protean new` command initializes a new project with a given name.
 
-## Usage
+## Run the command
 
 ```shell
 protean new [OPTIONS] PROJECT_NAME
 ```
 
-## Arguments
+## Pass the project name
 
 | Argument       | Description             | Default | Required |
 |----------------|-------------------------|---------|----------|
 | `PROJECT_NAME` | Name of the new project | None    | Yes      |
 
-The project name doubles as the name of the directory that gets created, so it
-has to be a single directory segment: not empty, not `.` or `..`, and without
-`<>:"/\|?*` or whitespace. Anything else is rejected before a single file is
-touched.
+The project name is also the name of the directory the command creates. So the
+name has to be a single directory segment: not empty, not `.` or `..`, and
+without `<>:"/\|?*` or whitespace. The command rejects any other name before it
+writes any file.
 
-## Options
+## Choose options for the new project
 
 - `--output-dir`, `-o`: Specifies the directory where the project should be
 created. If not provided, the current directory is used.
@@ -41,39 +41,38 @@ the project's configuration. Available configuration options include:
 - `--defaults`: Use default values for all prompts without interaction
 - `--skip-setup`: Skip running setup commands (useful for testing)
 - `--from-model`: Path to a text event-model file. Builds the whole project from
-the model and verifies it in one step (see
-[Building from a model](#building-from-a-model) below). This is its own
-pipeline: it ignores `--data`, `--dry-run`, and `--skip-setup`, and always
-creates the project with the example slice off. It does honour `--force`, which
-clears an existing target the same way a plain `protean new` does.
+the model and verifies it in one step (see [Building from a
+model](#building-from-a-model) below). This option runs its own pipeline and
+ignores `--data`, `--dry-run`, and `--skip-setup`. It always creates the
+project with the example slice off. It does honour `--force`, which clears an
+existing target the same way a plain `protean new` does.
 - `--help`: Shows the help message and exits.
 
-### Behavior Modifiers
+### Preview or overwrite the output
 
 - `--dry-run`: Prints the project-relative path of every file the command
 would create, one per line, and writes nothing. The target directory is left
 alone whether or not it already has files in it, and `--force` does not clear
 it under a dry run.
 - `--force`, `-f`: Forces the command to run even if it would overwrite
-existing files. The target directory has to sit inside the output directory:
-if `<output-dir>/<name>` is a symlink pointing somewhere else, the command
-refuses to run, so the clear never reaches outside the output directory.
+existing files. The target directory has to be inside the output directory. If
+`<output-dir>/<name>` is a symlink to another location, the command refuses to
+run and so never clears files outside the output directory.
 
-## Generated Project Structure
+## What does the command generate?
 
 The command creates a complete project structure with the following components:
 
-### Root Files
+### Which files does the command write to the project root?
 
 - `pyproject.toml`: Python project configuration with uv
 - `README.md`: Project documentation
 - `AGENTS.md`: Guidance for an agent working on the project, inside a managed
-  block. This is the dx-managed form, the same file `protean dx install` writes,
-  which composes the packaged pack guidance with the error-level Protean
-  diagnostic rules. It is written and maintained by
-  [`protean dx`](dx.md); refresh it with `protean dx refresh` after upgrading
-  Protean.
-- `CLAUDE.md`: A one-line bridge (`@AGENTS.md`) that points Claude at the
+  block. This is the dx-managed form, the same file `protean dx install`
+  writes. It composes the packaged pack guidance with the error-level Protean
+  diagnostic rules. [`protean dx`](dx.md) writes and maintains `AGENTS.md`.
+  After you upgrade Protean, refresh it with `protean dx refresh`.
+- `CLAUDE.md`: A one-line file (`@AGENTS.md`) that tells Claude to read the
   `AGENTS.md` guidance. Also maintained by `protean dx`.
 - `Makefile`: Common development tasks
 - `.gitignore`: Git ignore patterns
@@ -81,10 +80,10 @@ The command creates a complete project structure with the following components:
 - `.env.example`: Environment variables template
 - `.dockerignore`: Docker ignore patterns
 - `.protean/dx-state.json`: Records the managed files `protean dx` wrote
-  (`AGENTS.md`, `CLAUDE.md`) and the pack version, so `protean dx check` and
-  `refresh` can verify and update them.
+  (`AGENTS.md`, `CLAUDE.md`) and the pack version. `protean dx check` and
+  `refresh` read this record to verify and update those files.
 
-### Docker Configuration
+### Which Docker files does the command write?
 
 - `Dockerfile`: Production Docker image
 - `Dockerfile.dev`: Development Docker image
@@ -93,7 +92,7 @@ The command creates a complete project structure with the following components:
 - `docker-compose.prod.yml`: Production configuration
 - `nginx.conf`: Nginx configuration for production
 
-### Activation Scripts
+### Activate the virtual environment in your shell
 
 The `scripts/` directory contains virtual environment activation scripts for different shells:
 
@@ -101,7 +100,7 @@ The `scripts/` directory contains virtual environment activation scripts for dif
 - `scripts/activate.fish`: Fish shell activation
 - `scripts/activate.bat`: Windows batch activation
 
-### Source Code Structure
+### How is the source code organized?
 
 The generated structure follows the
 [Organize by Domain Concept](../../../patterns/organize-by-domain-concept.md)
@@ -131,24 +130,24 @@ src/
         └── projectors.py      # Builds ExampleSummary from ExampleCreated
 ```
 
-The example is a minimal walking skeleton: one command creates the aggregate,
-which raises one event, which a projector turns into one read model. It shows
-the write path and the read path end to end with nothing to trim before you
-start. Delete the `example/` folder (or pass `--data include_example=false`)
-once you have your own aggregates.
+The example is a minimal walking skeleton. One command creates the aggregate,
+the aggregate raises one event, and a projector turns that event into one read
+model. It shows the write path and the read path end to end with nothing to
+trim before you start. Once you have your own aggregates, delete the `example/`
+folder (or pass `--data include_example=false`).
 
 Key structural decisions:
 
 - **Aggregates are top-level folders**: Each aggregate (`example/`) is a
   name someone in the business would recognize.
-- **Projections live with the aggregate that sources them**: `projection.py`
-  (the read model) and `projectors.py` (the code that keeps it current) sit
-  inside `example/`. As projections grow to span aggregates, lift them into a
-  domain-level `projections/` folder.
+- **Projections are kept in the folder of the aggregate that sources them**:
+  `projection.py` (the read model) and `projectors.py` (the code that keeps it
+  current) are in `example/`. As projections grow to span aggregates, lift them
+  into a domain-level `projections/` folder.
 - **Shared vocabulary has its own folder**: Cross-aggregate value objects
   and utilities live in `shared/`.
-- **`domain.py` and `domain.toml` are front matter**: A newcomer sees
-  what this bounded context is and how it's configured immediately.
+- **Open `domain.py` and `domain.toml` first**: `domain.py` shows what this
+  bounded context is, and `domain.toml` shows its configuration.
 
 As your domain grows, add new aggregates as peer folders alongside
 `example/`. See the
@@ -156,7 +155,7 @@ As your domain grows, add new aggregates as peer folders alongside
 pattern for guidance on evolving this structure, including colocating
 commands with their handlers in capability files.
 
-### Test Structure
+### How are the tests organized?
 
 ```
 tests/
@@ -173,18 +172,18 @@ tests/
         └── __init__.py
 ```
 
-Every project gets `test_smoke.py`, which just asserts the domain boots, so
-`pytest` collects and passes at least one test even when you opt out of the
-example. With the example included, two more tests ship: one drives the
-command/event write path, the other asserts the projection reflects the
-created aggregate. `pytest` runs green on a fresh project, so you have a
-working test to copy from on day one.
+Every project gets `test_smoke.py`, which asserts the domain boots. With this
+test, `pytest` collects and passes at least one test even when you opt out of
+the example. With the example included, two more tests ship: one drives the
+command/event write path, the other asserts the projection reflects the created
+aggregate. `pytest` passes on a fresh project, so you start with a working test
+to copy.
 
-### CI/CD Configuration
+### Which CI pipeline does the command write?
 
 - `.github/workflows/ci.yml`: GitHub Actions CI pipeline
 
-## Generated Modules
+## What do the generated modules provide?
 
 ### Logging Module (`shared/logging.py`)
 
@@ -225,7 +224,7 @@ Domain-specific exception hierarchy:
 - `DuplicateException`: Duplicate resource creation attempt
 - `ValidationException`: Domain validation failure
 
-## Examples
+## See example commands
 
 ### Creating a New Project
 
@@ -265,7 +264,7 @@ protean new authentication \
   --defaults
 ```
 
-### Quick Setup with Defaults
+### Set up a project quickly with defaults
 
 To quickly create a project with default options:
 
@@ -300,21 +299,22 @@ protean new inventory --from-model model.txt
 ```
 
 The command parses the model, creates the project (with the example slice off),
-writes the slice the model describes, then runs the same checks as
+and writes the slice the model describes. It then runs the same checks as
 [`protean verify`](../verify.md) (init, check, and the project's tests) and
-reports the verdict. It parses the model first, so an invalid model exits with
-the parser's error (and its line number) before any directory is created. If the
-model parses but the slice cannot be generated or applied, the command prints the
-error, leaves the created project directory in place, and exits non-zero.
+reports the verdict. The command parses the model first. If the model is
+invalid, the command exits with the parser's error (and its line number) and
+creates no directory. If the model parses but the slice cannot be generated or
+applied, the command prints the error, leaves the created project directory in
+place, and exits non-zero.
 
-Verification imports the new project's package into the running process, so the
-project name cannot be one Protean itself already imports (`protean`, or a
-standard-library name like `json`). Such a name would import the existing module
-instead of the new code, so the command refuses to report a verdict and asks for
-a different name.
+Verification imports the new project's package into the running process. So the
+project name cannot be a module Protean itself already imports (`protean`, or a
+standard-library name like `json`). Such a name would import the existing
+module instead of the new code, so the command refuses to report a verdict and
+asks for a different name.
 
 Unlike a plain `protean new`, this path does not run the post-generation setup
 (`uv sync`, git init, pre-commit). It composes create, generate, apply, and
-verify only. See
-[ADR-0041](../../../adr/0041-textual-event-model-grammar-over-ir.md) for the
+verify only. See the decision record on the textual event model grammar
+([ADR-0041](../../../adr/0041-textual-event-model-grammar-over-ir.md)) for the
 model grammar.

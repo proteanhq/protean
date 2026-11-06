@@ -1,4 +1,4 @@
-# Object Model
+# What do all domain elements share?
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -6,7 +6,7 @@
 Domain elements in Protean have a common structure and share a few behavioral
 traits.
 
-## Meta Options
+## Configure an element with meta options
 
 Protean elements have a `meta_` attribute that holds the configuration options
 specified for the element.
@@ -43,7 +43,7 @@ that is marked abstract cannot be instantiated.
 !!!note
     Field orders are preserved in container elements.
 
-## Reflection
+## Inspect an element with reflection methods
 
 Protean provides reflection methods to explore container elements. Each of the
 below methods accept a element or an instance of one.

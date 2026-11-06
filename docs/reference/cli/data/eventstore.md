@@ -6,7 +6,7 @@ Its first command, `verify`, runs a read-only integrity check.
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Commands
+## Which commands does the group have?
 
 | Command | Description |
 |---------|-------------|
@@ -25,9 +25,9 @@ protean eventstore verify --domain=my_domain
 It checks these invariants:
 
 - **Rows are well-formed.** Every message carries its `id`, `stream_name`, and
-  `position`. Every message outside a `:snapshot-` stream also has a body that
-  is a JSON object: Message DB allows a NULL `data` column, or one holding an
-  array, string or number, and `verify` reports such a row as
+  `position`. Every message outside a `:snapshot-` stream also has a JSON
+  object as its body. When Message DB stores a NULL `data` column, or one
+  holding an array, string or number, `verify` reports the row as
   `malformed_message`. An empty object is a valid body.
 - **Position is gapless.** Each stream's `position` runs from 0 without gaps.
 - **Global position is strictly increasing.** `global_position` increases
@@ -47,7 +47,7 @@ body or a malformed snapshot becomes a violation rather than a silent pass.
 | `--domain` | Domain module path | `.` (current directory) |
 | `--json` | Emit the result as the shared CLI envelope | Off |
 
-## Output
+## What does the command print?
 
 A clean store prints a one-line summary and exits 0:
 
@@ -55,7 +55,8 @@ A clean store prints a one-line summary and exits 0:
 Event store is consistent: 42 message(s) across 7 stream(s), 0 violations.
 ```
 
-When a violation is found, it prints a table naming each one and exits 1:
+When `verify` finds a violation, it prints a table naming each violation and
+exits 1:
 
 ```
        Event store integrity violations
@@ -70,7 +71,7 @@ When a violation is found, it prints a table naming each one and exits 1:
 1 violation(s) across 2 message(s) and 1 stream(s).
 ```
 
-## JSON output
+## What does `--json` print?
 
 With `--json`, the command emits the shared CLI result envelope. The report is
 under `data`, with the violation list under `data.violations`:
@@ -97,7 +98,7 @@ Each violation carries a stable `kind` (`malformed_message`,
 `position` it was found at (either may be `null`), and a human-readable
 `detail`.
 
-## Exit codes
+## Which exit codes does `verify` return?
 
 | Code | Meaning |
 |------|---------|
@@ -106,16 +107,16 @@ Each violation carries a stable `kind` (`malformed_message`,
 | 2 | Usage or environment error: no or unloadable domain (under `--json` only), or an event store the command cannot connect to (with or without `--json`). |
 
 Without `--json`, a domain that fails to load aborts with exit 1, the same as
-every other `protean` command, so exit 1 in human mode covers both a real
-violation and a domain load error. Use `--json` when a script needs to tell the
-two apart.
+every other `protean` command. In human mode, exit 1 therefore covers both a
+real violation and a domain load error. When a script needs to tell the two
+apart, use `--json`.
 
-An event store the command cannot connect to exits 2 in both modes. Under `--json`,
-stdout holds one envelope with `status` set to `error` and the connection error
-under `data.error`. Without `--json`, the command prints the connection error as
-one line on stderr.
+When the command cannot connect to the event store, it exits 2 in both modes.
+Under `--json`, stdout holds one envelope with `status` set to `error` and the
+connection error under `data.error`. Without `--json`, the command prints the
+connection error as one line on stderr.
 
-## Backup and restore
+## How do you back up and restore the event store?
 
 `verify` checks the store's *internal* consistency. Physical backup and restore
 stay with the database and its own tooling. For MessageDB, that means the
@@ -123,7 +124,7 @@ PostgreSQL tooling (`pg_dump`, `pg_restore`, and point-in-time recovery). Run
 `protean eventstore verify` after a restore to confirm the recovered store is
 internally consistent.
 
-## Domain discovery
+## How do the commands find the domain?
 
 The `protean eventstore` commands use the same domain discovery mechanism as
 `protean server`. See [Domain Discovery](../project/discovery.md) for the full

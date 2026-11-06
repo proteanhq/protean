@@ -1,12 +1,15 @@
 # Inline Broker
 
-The Inline broker is an in-memory message broker that keeps messages within the same process. With `message_processing = "sync"`, it delivers each message to its subscribers as soon as it is published. It's the default broker in Protean and requires no external dependencies.
+The Inline broker is an in-memory message broker that keeps messages within the
+same process. With `message_processing = "sync"`, it delivers each message to
+its subscribers as soon as it is published. It is the default broker in
+Protean. It requires no external dependencies.
 
 ## Overview
 
 The Inline broker is designed for:
 
-- **Development environments** where simplicity is key
+- **Development environments** where a simple setup matters most
 - **Testing scenarios** where deterministic behavior is required
 - **Small applications** that don't need distributed messaging
 - **Prototyping** when you want to defer technology decisions
@@ -17,7 +20,7 @@ The Inline broker maintains messages in memory using Python data structures:
 - Consumer groups track message processing state
 - All data is lost when the process terminates
 
-## Configuration
+## Configure the Inline broker
 
 ```toml
 [brokers.default]
@@ -31,7 +34,7 @@ message_timeout = 300.0  # Message timeout in seconds (5 minutes default)
 enable_dlq = true  # Enable dead letter queue for failed messages
 ```
 
-### Configuration Options
+### Which options can you set?
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -42,7 +45,7 @@ enable_dlq = true  # Enable dead letter queue for failed messages
 | `message_timeout` | `300.0` | Timeout for message processing (seconds) |
 | `enable_dlq` | `true` | Enable dead letter queue |
 
-## Capabilities
+## Which capabilities does the Inline broker support?
 
 The Inline broker supports the following capabilities:
 
@@ -53,9 +56,9 @@ The Inline broker supports the following capabilities:
 - ❌ **ORDERED_MESSAGING** - Not supported
 - ❌ **ENTERPRISE_STREAMING** - Not supported
 
-## Usage Examples
+## How do you use the Inline broker?
 
-### Basic Publishing and Subscribing
+### Publish and subscribe to messages
 
 A subscriber is a class with a `__call__` method that receives each message as
 a dict:
@@ -66,24 +69,26 @@ a dict:
 
 The subscriber prints `User created: John Doe`.
 
-### Testing with Inline Broker
+### Test with the Inline broker
 
-The Inline broker is ideal for testing as it provides deterministic, synchronous behavior. Use Protean's `DomainFixture` to manage the domain lifecycle:
+The Inline broker is ideal for testing as it provides deterministic,
+synchronous behavior. Use Protean's `DomainFixture` to set up and tear down the
+domain in your tests:
 
 ```python
 --8<-- "adapters/broker/inline/002.py:full"
 ```
 
-### Consumer Groups
+### How do consumer groups receive messages?
 
-Consumer groups read a stream independently. Each group receives every
-message, and within a group each message is handed out once:
+Consumer groups read a stream independently. Each group receives every message.
+Within a group, the broker hands out each message once:
 
 ```python
 --8<-- "adapters/broker/inline/001.py:consumer_groups"
 ```
 
-## Limitations
+## What are the Inline broker's limits?
 
 - **No Persistence**
     - Messages are lost on process restart
@@ -93,18 +98,18 @@ message, and within a group each message is handed out once:
     - Cannot scale across multiple processes
     - All processing happens in the same Python process
     - Not suitable for high-throughput scenarios
-- **No Ordering Guarantees**
+- **Does not guarantee message order**
     - Messages may be processed out of order
     - No support for partitioned delivery
     - Cannot ensure strict message sequencing
-- **Limited Error Recovery**
+- **Offers only basic error recovery**
     - Basic retry support with configurable max retries
     - Dead letter queue stores failed messages in memory (lost on restart)
     - DLQ messages can be listed, inspected, replayed, and purged via
       [`protean dlq`](../../cli/data/dlq.md) CLI or the
       [Observatory dashboard](../../server/observability.md)
 
-## Migration Path
+## Move to a production broker
 
 The Inline broker is designed to be easily replaced with production-ready brokers:
 
@@ -122,11 +127,11 @@ URI = "redis://localhost:6379/0"
 Your application code remains unchanged when switching brokers, as long as you:
 
 1. Only use capabilities supported by both brokers
-2. Handle broker-specific errors appropriately
+2. Catch the errors that each broker raises in your code
 3. Test with the production broker before deployment
 
-## Related pages
+## Where can you learn more?
 
 - Learn about [Redis broker](./redis.md) for production use
-- Understand [broker capabilities](./index.md#broker-capabilities) in detail
+- Understand [broker capabilities](./index.md#what-can-each-broker-do) in detail
 - Explore [custom broker development](./custom-brokers.md)

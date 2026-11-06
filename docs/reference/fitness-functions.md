@@ -9,13 +9,14 @@ guide](../guides/architecture-fitness-functions.md). For the JSON/SARIF shape
 of a finding and the CLI flags, see the [`protean check`
 reference](cli/check.md).
 
-Each diagnostic carries a stable **code** (e.g. `AGGREGATE_TOO_LARGE`). A code is
-a public identifier you can rely on in CI gates, suppression lists, and SARIF
-consumers: renaming or removing one is a breaking change. Every code and its
-metadata live in one place, `protean.ir.diagnostics`, so what you match on here
-is what the tool emits.
+Each diagnostic carries a stable **code** (e.g. `AGGREGATE_TOO_LARGE`). A code
+is a public identifier you can rely on in CI gates, suppression lists, and
+SARIF consumers: renaming or removing one is a breaking change.
+`protean.ir.diagnostics` defines every code and its metadata in one module. The
+tool emits the codes from that module, so the codes on this page match its
+output.
 
-## Severity levels
+## How severe is a finding?
 
 | Level | Meaning |
 |-------|---------|
@@ -25,9 +26,9 @@ is what the tool emits.
 Validator **errors** (malformed domains that cannot build an IR) are a
 separate, always-fatal class and are not listed here. They always exit `1`.
 
-The coded exceptions raised at init and by runtime accessors (the `kind =
-"raise"` codes) are catalogued separately in
-[Init-time and Runtime Diagnostics](init-diagnostics.md).
+Init and the runtime accessors raise coded exceptions (the `kind = "raise"`
+codes). [Init-time and Runtime Diagnostics](init-diagnostics.md) lists them
+separately.
 
 ---
 
@@ -45,13 +46,13 @@ immutable.
 
 **Why.** Aggregates coordinate other aggregates by identity, not by object
 reference (Vernon's Rule 3). A `Reference` to another aggregate's root couples
-the two into one object graph and invites a single transaction to span both
+the two into one object graph. A single transaction can then span both
 clusters.
 
 **Fix.** Hold the other aggregate by its identifier instead of a `Reference`.
 Replace `Reference(<Other>)` with an `Identifier` field (for example
-`<other>_id: Identifier()`) and load the other aggregate through its own
-repository when needed.
+`<other>_id: Identifier()`). When you need the other aggregate, load it through
+its own repository.
 
 ### ES_AGGREGATE_NO_EVENTS { #es-aggregate-no-events }
 
@@ -64,9 +65,9 @@ repository when needed.
 events. With no events registered it can record no state changes and cannot be
 rebuilt from its stream.
 
-**Fix.** Declare at least one domain event with `part_of=<Aggregate>` and raise
-it from the aggregate's behaviour, or drop `event_sourced=True` if the aggregate
-is not meant to be event-sourced.
+**Fix.** If the aggregate is meant to be event-sourced, declare at least one
+domain event with `part_of=<Aggregate>`, raised from the aggregate's behaviour.
+Otherwise, drop `event_sourced=True`.
 
 ### VALUE_OBJECT_MUTABLE_FIELD { #value-object-mutable-field }
 
@@ -76,8 +77,8 @@ is not meant to be event-sourced.
 | **Level** | `warning` |
 
 **Why.** Value objects are compared by value and must be immutable. A `List` or
-`Dict` field gives the value object mutable internal state, so two instances that
-should be equal can diverge and value equality no longer holds.
+`Dict` field gives the value object mutable internal state. Two instances that
+should be equal can then diverge, and value equality no longer holds.
 
 **Fix.** Replace the mutable collection with an immutable representation, or move
 the collection onto the containing entity or aggregate. If the values form a
@@ -94,8 +95,8 @@ aggregate instead.
 **Why.** A large aggregate is a consistency boundary and contention hotspot;
 oversized clusters are hard to keep transactionally consistent.
 
-**Fix.** Split the aggregate into smaller aggregates, or raise
-`[lint] aggregate_size_limit` (default `5` entities) if the size is intentional.
+**Fix.** If the size is intentional, raise `[lint] aggregate_size_limit`
+(default `5` entities). Otherwise, split the aggregate into smaller aggregates.
 
 ### HANDLER_TOO_BROAD { #handler-too-broad }
 
@@ -104,12 +105,12 @@ oversized clusters are hard to keep transactionally consistent.
 | **Category** | `aggregate_design` |
 | **Level** | `info` |
 
-**Why.** A handler that handles many message types accretes unrelated
-responsibilities and becomes hard to reason about.
+**Why.** A handler for many message types collects unrelated responsibilities
+and becomes hard to follow.
 
-**Fix.** Split the handler into focused handlers, or raise
-`[lint] handler_breadth_limit` (default `5` message types) if the breadth is
-intentional.
+**Fix.** If the breadth is intentional, raise `[lint] handler_breadth_limit`
+(default `5` message types). Otherwise, split the handler into focused
+handlers.
 
 ### EVENT_WITHOUT_DATA { #event-without-data }
 
@@ -135,9 +136,9 @@ intentionally a bare signal.
 it enforces no business rules and is usually an anemic data holder rather than a
 true aggregate.
 
-**Fix.** Add one or more `@invariant.pre` or `@invariant.post` methods expressing
-the business rules the aggregate must always satisfy, or reconsider whether this
-concept is an aggregate at all.
+**Fix.** Add one or more `@invariant.pre` or `@invariant.post` methods for the
+business rules the aggregate must always satisfy. Otherwise, reconsider whether
+this concept is an aggregate at all.
 
 ---
 
@@ -153,8 +154,9 @@ boundary.
 | **Category** | `bounded_context` |
 | **Level** | `warning` |
 
-**Why.** Circular identity references between aggregate clusters prevent
-independent decomposition, deployment, and event sourcing of the aggregates.
+**Why.** When aggregate clusters hold circular identity references to each
+other, you cannot decompose, deploy, or event-source the aggregates
+independently.
 
 **Fix.** Break the cycle by replacing one direction of the reference with a
 domain event or a process manager that coordinates the two aggregates
@@ -186,13 +188,14 @@ provider configuration instead.
 | **Level** | `warning` (opt-in) |
 
 Off by default. Enable with `[lint].check_adapter_calls = true`. It is gated
-separately from `check_infra_imports`, so the two rules switch independently:
-this one reads method bodies rather than the module's import list, and catches a
-call whose import was aliased or made locally.
+separately from `check_infra_imports`, so you can switch the two rules on
+independently. This rule reads method bodies instead of the module's import
+list. It catches a call whose import was aliased or made locally.
 
 **Why.** Domain elements must not depend on concrete infrastructure adapters.
-Calling into `protean.adapters` from a domain method couples the domain layer to
-a specific adapter at runtime and breaks the ports-and-adapters boundary.
+Calling into `protean.adapters` from a domain method couples the domain layer
+to a specific adapter at runtime. That call breaks the ports-and-adapters
+boundary.
 
 **Fix.** Remove the `protean.adapters` call from the domain method. Depend on
 domain-layer abstractions and let the adapter be wired through the domain's
@@ -217,8 +220,9 @@ Rules that flag missing or misplaced write, read, and reaction paths.
 **Why.** An event with no registered handler is published but never consumed, so
 a state change goes unobserved.
 
-**Fix.** Register an event handler, projector, or process manager for this event,
-or mark it `published=True` if it is intentionally external.
+**Fix.** If the event is intentionally external, mark it `published=True`.
+Otherwise, register an event handler, projector, or process manager for this
+event.
 
 ### UNRAISED_EVENT { #unraised-event }
 
@@ -227,19 +231,19 @@ or mark it `published=True` if it is intentionally external.
 | **Category** | `handler_completeness` |
 | **Level** | `info` |
 
-**Why.** An event that no aggregate or entity method raises is declared and
-wired but produced by none of them. The check reads only aggregate and entity
-method bodies, so an event raised from a command handler, subscriber, or
-module-level factory is outside its scope and still shows here.
+**Why.** The domain declares and wires the event, but no aggregate or entity
+method raises it. The `UNRAISED_EVENT` check reads only aggregate and entity
+method bodies. An event raised from a command handler, subscriber, or
+module-level factory is outside that scope and still shows here.
 
-**Fix.** Raise the event from the aggregate or entity method that makes the
-change it records, or remove the event if nothing produces it.
+**Fix.** If nothing produces the event, remove it. Otherwise, raise the event
+from the aggregate or entity method that makes the recorded change.
 
-This is an advisory. It correlates a raise to a construction inside one method,
-so an event raised through a helper (`self._emit(Placed(...))` calling
-`self.raise_(e)`) or from caller code such as a command handler or subscriber is
-still reported. Suppress the code where a documented pattern raises the event
-outside an aggregate or entity method.
+`UNRAISED_EVENT` is an advisory. The check correlates a raise to a construction
+inside one method. It still reports an event raised through a helper
+(`self._emit(Placed(...))` calling `self.raise_(e)`) or from caller code such
+as a command handler or subscriber. Suppress the code where a documented
+pattern raises the event outside an aggregate or entity method.
 
 ### UNUSED_COMMAND { #unused-command }
 
@@ -248,11 +252,11 @@ outside an aggregate or entity method.
 | **Category** | `handler_completeness` |
 | **Level** | `warning` |
 
-**Why.** A command with no handler cannot be processed, so the intent it
-represents can never be fulfilled.
+**Why.** A command with no handler cannot be processed. The intent behind the
+command can never be fulfilled.
 
-**Fix.** Add a command handler method for this command, or remove the command if
-it is unused.
+**Fix.** If the command is unused, remove it. Otherwise, add a command handler
+method for this command.
 
 ### ES_EVENT_MISSING_APPLY { #es-event-missing-apply }
 
@@ -277,8 +281,8 @@ raises `IncorrectUsageError` at runtime.
 **Why.** Events marked `published` are meant to leave the bounded context, but
 with no external broker configured they are only dispatched internally.
 
-**Fix.** Configure `outbox.external_brokers`, or remove `published=True` if the
-events are internal.
+**Fix.** If the events are internal, remove `published=True`. Otherwise,
+configure `outbox.external_brokers`.
 
 ### AGGREGATE_WITHOUT_COMMAND_HANDLER { #aggregate-without-command-handler }
 
@@ -290,8 +294,8 @@ events are internal.
 **Why.** An aggregate with no command handler has no write path, so nothing
 can change its state.
 
-**Fix.** Add a command handler for the aggregate, or model it as a read-only
-projection if no writes are expected.
+**Fix.** If no writes are expected, model the aggregate as a read-only
+projection. Otherwise, add a command handler for the aggregate.
 
 ### PROJECTION_WITHOUT_PROJECTOR { #projection-without-projector }
 
@@ -303,8 +307,8 @@ projection if no writes are expected.
 **Why.** A projection with no projector is never populated, so queries against it
 will always return empty.
 
-**Fix.** Add a projector for the projection, or set `externally_populated=True`
-if it is filled by a subscriber.
+**Fix.** If a subscriber fills the projection, set `externally_populated=True`.
+Otherwise, add a projector for the projection.
 
 ### UNSOURCED_PROJECTION_FIELD { #unsourced-projection-field }
 
@@ -313,27 +317,27 @@ if it is filled by a subscriber.
 | **Category** | `handler_completeness` |
 | **Level** | `info` |
 
-**Why.** A projection field that no projector method writes is a dead column: it
-renders in the read model and carries a type, but nothing ever fills it. The
-check reads what a projection's projector methods write, either constructing the
-projection with the field as a keyword or writing it as an attribute. It stays
-conservative: a construction whose field set it cannot read disables the check
-for the whole projection (a `**kwargs` splat, or a template mapping passed
-positionally as in `Projection(data, key=...)`), a projection with no observed
-write at all is skipped whole, and the `identity_field` is exempt because the
-framework fills it on write. These attribute writes are not counted as filling a
-field: a `del record.field`, which unbinds rather than fills; a write on one of
-an `@on` handler's own parameters (`self.field = ...`, `event.field = ...`),
-which is not a write to the record; a write on the receiver of any other
-projector method (`self.field = ...` in a helper), which is the projector rather
-than the record; and a write whose name is not a field of this projection. The
-level is `info` because the check works from observed writes: when the
-projector writes some fields, a sibling field filled only through a path it
-cannot follow (a helper, a dict splat, a bulk `update(...)`) can still be
-flagged.
+**Why.** No projector method writes this projection field. The field renders in
+the read model and carries a type, but nothing fills it. The check reads what a
+projection's projector methods write, either constructing the projection with
+the field as a keyword or writing it as an attribute. The check stays
+conservative in three ways. A construction whose field set it cannot read (a
+`**kwargs` splat, or a template mapping passed positionally as in
+`Projection(data, key=...)`) disables the check for the whole projection. The
+check skips a projection with no observed write at all. The `identity_field` is
+exempt, because the framework fills it on write. The check does not count four
+kinds of attribute write as filling a field. They are a `del record.field` (it
+unbinds the field), a write on one of an `@on` handler's own parameters
+(`self.field = ...`, `event.field = ...`; it does not write the record), a
+write on the receiver of any other projector method (`self.field = ...` in a
+helper; that receiver is the projector), and a write whose name is not a field
+of this projection. The level is `info` because the check works from observed
+writes. A projector may write some fields and fill a sibling field only through
+a helper, a dict splat, or a bulk `update(...)`. The check cannot follow those
+paths and can still flag that sibling field.
 
-**Fix.** Write the field from the projector method that handles the event
-carrying it, or drop the field from the projection if nothing sources it.
+**Fix.** If nothing sources the field, drop it from the projection. Otherwise,
+write the field from the projector method for the event carrying it.
 
 ### QUERY_HANDLER_WITHOUT_QUERY { #query-handler-without-query }
 
@@ -343,10 +347,10 @@ carrying it, or drop the field from the projection if nothing sources it.
 | **Level** | `warning` |
 
 **Why.** A projection with a query handler but no query has a read path that
-nothing can invoke, because no query is registered for the handler to serve.
+nothing can invoke. No query is registered for the handler to serve.
 
-**Fix.** Register a `Query(part_of=<projection>)` for the handler to serve, or
-remove the query handler if the projection needs no read path.
+**Fix.** If the projection needs no read path, remove the query handler.
+Otherwise, register a `Query(part_of=<projection>)` for the handler to serve.
 
 ### PROJECTOR_HANDLES_ORPHANED_EVENT { #projector-handles-orphaned-event }
 
@@ -355,9 +359,9 @@ remove the query handler if the projection needs no read path.
 | **Category** | `handler_completeness` |
 | **Level** | `warning` |
 
-**Why.** A projector handling an event the domain does not register is wired to a
-type that can never be dispatched. It is usually a stale reference after a rename
-or removal.
+**Why.** The projector handles an event type that the domain does not register.
+The domain can never dispatch that type. It is usually a stale reference after
+a rename or removal.
 
 **Fix.** Register the event, or remove the handler for the orphaned type from the
 projector.
@@ -369,8 +373,8 @@ projector.
 | **Category** | `handler_completeness` |
 | **Level** | `warning` |
 
-**Why.** A command handler that processes another cluster's command puts that
-aggregate's write path outside its consistency boundary.
+**Why.** When a command handler processes another cluster's command, it puts
+that aggregate's write path outside its consistency boundary.
 
 **Fix.** Move the command handler into the owning cluster, or model the
 interaction as an event reaction across the boundary.
@@ -383,8 +387,9 @@ interaction as an event reaction across the boundary.
 | **Level** | `warning` |
 
 **Why.** An event handler should react to events of its own aggregate cluster.
-Handling another cluster's event couples two aggregates through the handler and
-is often better expressed as a Process Manager coordinating the two.
+Handling another cluster's event couples two aggregates through the handler. A
+Process Manager coordinating the two aggregates often expresses that
+interaction better.
 
 **Fix.** Move the handler into the owning cluster, or introduce a
 `ProcessManager` that reacts to the source event and issues a command into this
@@ -429,8 +434,8 @@ language. All are `info`-level.
 | **Category** | `naming_conventions` |
 | **Level** | `info` |
 
-**Why.** A domain event records a fact that has already happened, so a past-tense
-name (`OrderPlaced`) reads truthfully; a gerund (`OrderPlacing`) describes an
+**Why.** A domain event records a past fact, so a past-tense name
+(`OrderPlaced`) reads truthfully. A gerund (`OrderPlacing`) describes an
 in-flight action and reads like a command.
 
 **Fix.** Rename the event to the past tense (e.g. `OrderPlaced`).
@@ -446,10 +451,10 @@ in-flight action and reads like a command.
 (`PlaceOrder`) reads truthfully; a noun-like name (`OrderCreation`) obscures the
 intent.
 
-**Fix.** Rename the command to a verb-first imperative phrase (e.g. `PlaceOrder`).
-If the name already starts with a verb Protean does not know (`AdjustStock`),
-add the verb to [`[lint].command_verbs`](configuration/index.md#lint) in
-`domain.toml`.
+**Fix.** Rename the command to a verb-first imperative phrase (e.g.
+`PlaceOrder`). A name may already start with a verb Protean does not know
+(`AdjustStock`). In that case, add the verb to
+[`[lint].command_verbs`](configuration/index.md#lint) in `domain.toml`.
 
 ### AGGREGATE_NOT_NOUN { #aggregate-not-noun }
 
@@ -459,8 +464,8 @@ add the verb to [`[lint].command_verbs`](configuration/index.md#lint) in
 | **Level** | `info` |
 
 **Why.** An aggregate models a thing in the domain, so a noun name (`Order`)
-reads truthfully; a gerund, verb, or adjective (`OrderProcessing`) reads like a
-process or capability rather than an entity.
+reads truthfully. A gerund, verb, or adjective (`OrderProcessing`) reads like a
+process or capability instead of an entity.
 
 **Fix.** Rename the aggregate to the domain-concept noun it represents (e.g.
 `Order` rather than `OrderProcessing`).
@@ -477,43 +482,45 @@ process or capability rather than an entity.
 | **Level** | `info` |
 
 **Why.** A handler method runs inside a Unit of Work, and the transaction opens
-at its first repository access. An external call after that point holds row locks
-and a pooled connection for as long as the call takes, and a retry re-runs the
-whole method and re-issues the call.
+at its first repository access. An external call after that point holds row
+locks and a pooled connection for as long as the call takes. A retry re-runs
+the whole method and re-issues the call.
 
-**Fix.** Split the method: one that persists, and one that calls out. A method
-that touches no repository runs no transaction, so the call costs only
-wall-clock time. When the call must follow the write, have the persisting method
-raise an event and handle that.
+**Fix.** Split the method in two: one that persists, and one that makes the
+external call. A method that touches no repository runs no transaction, so the
+call costs only wall-clock time. When the call must follow the write, have the
+persisting method raise an event. A handler for that event then makes the call.
 
-This one is advisory rather than a warning, because a handler that needs the
-call's result to compute its write is expected to do both in one method. Pass
-the remote system's idempotency key so a retry does not duplicate the effect,
-and silence the check on that handler with `suppress_checks`.
+`HANDLER_PERSISTS_AND_CALLS_OUT` is an advisory instead of a warning. A handler
+may need the call's result to compute its write, and that handler is expected
+to do both in one method. In that handler, pass the remote system's idempotency
+key so a retry does not duplicate the effect. Then silence the check on that
+handler with `suppress_checks`.
 
 Process managers are covered too: their dispatch loop wraps each method in its
 own Unit of Work, so the hazard is the same. The remedy differs, though. Every
-process-manager method drives a state transition, and the transition is persisted
-after each one, so splitting a method in two records two transitions where you
-wanted one. Have the process manager raise an event and let a plain handler make
-the call instead.
+process-manager method drives a state transition. The transition is persisted
+after each method. So splitting a method in two records two transitions where
+you wanted one. Have the process manager raise an event instead. A plain
+handler for that event then makes the call.
 
-The rule is import-driven: it fires only when both signals resolve, a
-`repository_for(...)` call and a call into a known I/O library, with the call
-after the first `repository_for` in the same method. The `repo.get(...)` and
-`repo.add(...)` that follow a `repository_for` do not resolve and are never
-guessed at.
+The rule is import-driven. It fires only when two signals resolve in the same
+method: a `repository_for(...)` call, and a call into a known I/O library after
+the first `repository_for`. The rule does not resolve the `repo.get(...)` and
+`repo.add(...)` calls that follow a `repository_for`, and never guesses at
+them.
 
-It reads one method body at a time and reports nothing it cannot see
-statically, so it trades completeness for no false positives. A persist
-delegated to a helper the method calls, a repository held on `self`, a persist
-through the event store rather than `repository_for`, an I/O client reached
-through a local variable or a subscript, or a port or adapter held on `self`
-are not flagged. A port held on `self` is missed whatever its method is called.
-A port imported at module level or inside the method counts only when its
-method is named `publish`, `send_email`, `sendmail`, `send_message` or `urlopen`, so
-`gateway.charge()` is not seen. A clean report is not proof; when in
-doubt, keep the external call out of any method that also persists. See
+The rule reads one method body at a time and reports only what it can see
+statically. It trades completeness for no false positives. The rule does not
+flag a persist delegated to a helper the method calls, a repository held on
+`self`, a persist through the event store instead of `repository_for`, an I/O
+client reached through a local variable or a subscript, or a port or adapter
+held on `self`. A port held on `self` is missed whatever its method is called.
+The rule counts a port imported at module level or inside the method only when
+the port's method is named `publish`, `send_email`, `sendmail`, `send_message`
+or `urlopen`. So it does not see `gateway.charge()`. A clean report is not
+proof. When in doubt, keep the external call out of any method that also
+persists. For why a handler should either persist or call out, see
 [ADR-0031](https://github.com/proteanhq/protean/blob/main/docs/adr/0031-handlers-persist-or-call-out.md).
 
 ### UNBOUNDED_INDEXED_STRING { #unbounded-indexed-string }
@@ -523,13 +530,15 @@ doubt, keep the external call out of any method that also persists. See
 | **Category** | `persistence` |
 | **Level** | `warning` |
 
-**Why.** An index over an unbounded string field is unportable: the DDL fails on
-SQL Server, needs a prefix length on MySQL and MariaDB, and is inefficient on
-PostgreSQL. The SQL Server and MySQL providers raise `IncorrectUsageError` when
-they hit one, so this rule is the build-time warning for the same mismatch.
+**Why.** An index over an unbounded string field is unportable: the DDL fails
+on SQL Server, needs a prefix length on MySQL and MariaDB, and is inefficient
+on PostgreSQL. The SQL Server and MySQL providers raise `IncorrectUsageError`
+when they hit such an index. This rule reports the same mismatch as a warning
+at build time.
 
-**Fix.** Give the field a bounded length (`String(max_length=N)`) sized to its
-domain, or remove it from the index if it does not need to be indexed.
+**Fix.** If the field does not need to be indexed, remove it from the index.
+Otherwise, give the field a bounded length (`String(max_length=N)`) sized to
+its domain.
 
 See the [UNBOUNDED_INDEXED_STRING reference](../concepts/protean-check/rules/unbounded-indexed-string.md)
 for the exact scope, limits, and per-engine behaviour.
@@ -541,19 +550,19 @@ for the exact scope, limits, and per-engine behaviour.
 | **Category** | `persistence` |
 | **Level** | `warning` |
 
-**Why.** A repository filter on a field with no covering index forces a full
-table scan on a relational backend. The cost is invisible on small development
-data and grows with the production table.
+**Why.** When a repository filters on a field with no covering index, a
+relational backend runs a full table scan. You do not see the cost on small
+development data. The cost grows with the production table.
 
-**Fix.** Add an index led by this field to the aggregate
-(`indexes=[Index("field")]`), or suppress the check when the table is small or
-the query is a one-off, such as admin or reporting access.
+**Fix.** When the table is small or the query is a one-off, such as admin or
+reporting access, suppress the check. Otherwise, add an index led by this field
+to the aggregate (`indexes=[Index("field")]`).
 
 A field counts as covered when it is the aggregate's identifier, carries a
 single-column `unique` constraint, or leads a declared index. Target resolution
-is conservative: a receiver the builder cannot resolve to an aggregate is
-skipped rather than guessed, so an unresolved query is a silent miss instead of
-a false positive.
+is conservative: the builder skips a receiver it cannot resolve to an aggregate
+and does not guess. An unresolved query is therefore a silent miss instead of a
+false positive.
 
 See the [UNINDEXED_FILTER_PATH reference](../concepts/protean-check/rules/unindexed-filter-path.md)
 for the recognized query surfaces and the resolution rules.
@@ -569,9 +578,9 @@ Fires when a database provider declares `pool_size` below `5`. The `memory`
 provider is skipped, since it holds no connections. `Domain.init()` logs this
 warning at startup. `protean check` does not report it.
 
-**Why.** A connection pool smaller than the production default starves
-concurrent requests under load, so operations queue or fail while waiting for a
-free connection.
+**Why.** Under load, concurrent requests use every connection in a pool smaller
+than the production default. Operations then queue or fail while they wait for
+a free connection.
 
 **Fix.** Raise the provider's `pool_size` to at least `5` for production
 workloads.
@@ -587,8 +596,8 @@ workloads.
 | **Category** | `versioning` |
 | **Level** | `warning` |
 
-**Why.** Stored payloads at older versions with no upcaster path to the current
-version fail to deserialize at read time.
+**Why.** When a stored payload is at an older version with no upcaster path to
+the current version, Protean cannot deserialize it at read time.
 
 **Fix.** Add upcasters covering the missing source versions. See
 [Evolving Events Over Time](../guides/evolving-events.md).
@@ -597,26 +606,27 @@ version fail to deserialize at read time.
 
 ## Deprecation
 
-Rules that surface elements, fields, and options scheduled for removal. See the
+Rules that report elements, fields, and options scheduled for removal. See the
 [v0.17 migration guide](migration/v0-17.md) for the deprecation timeline.
 
 !!! note "Deprecation coverage is a release gate"
 
     Every active framework-API deprecation is recorded in the declarative
-    registry in `protean._deprecation` (`DEPRECATIONS`). Each framework-API warn
-    site routes through `warn_from_registry` / `deprecated_from_registry`, which
-    read the removal version and replacement advice from the entry. So a
-    framework deprecation cannot warn without being registered, and a
-    source-scan test fails if any module reaches for the low-level
-    `warn_deprecated` / `@deprecated` primitives directly (the one exception is
-    a user-declared deprecated *event*, whose removal comes from the user's
-    event meta, not the registry). A deprecation may not ship unless it is both
-    registered **and** covered by its detection mechanism: either a `protean
-    check` rule that fires on it (`detection="check"`, with a `detection_hint`
-    token that proves the rule fired), or, for an imperative call with no
-    static site, its per-version `DeprecationWarning` plus a recorded `reason`
-    for why `check` cannot see it (`detection="runtime"`). The audit in
-    `tests/ir/test_deprecation_coverage_audit.py` enforces both arms.
+    registry in `protean._deprecation` (`DEPRECATIONS`). Each framework-API
+    warn site routes through `warn_from_registry` / `deprecated_from_registry`,
+    which read the removal version and replacement advice from the entry. So a
+    framework deprecation cannot warn without being registered. A source-scan
+    test fails if any module calls the low-level `warn_deprecated` /
+    `@deprecated` primitives directly. The one exception is a user-declared
+    deprecated *event*, whose removal comes from the user's event meta instead
+    of the registry. A deprecation may not ship unless it is both registered
+    **and** covered by its detection mechanism. One mechanism is a `protean
+    check` rule that fires on the deprecation (`detection="check"`, with a
+    `detection_hint` token that proves the rule fired). For an imperative call
+    with no static site, the other is its per-version `DeprecationWarning` plus
+    a recorded `reason` for why `check` cannot see it (`detection="runtime"`).
+    The audit in `tests/ir/test_deprecation_coverage_audit.py` enforces both
+    requirements.
 
 ### DEPRECATED_ELEMENT { #deprecated-element }
 
@@ -663,17 +673,18 @@ Emitted at `warning` level for a deprecated option alias (for example the
 | **Category** | `deprecation` |
 | **Level** | `info` |
 
-Detected by an on-disk scan of each registered element's source module: a
-`Method` / `Nested` serializer-field call site, or a deprecated `protean.utils.*`
-plumbing name (imported by name or reached through a `protean.utils` attribute
-access). All are scheduled for removal in v0.19.0. The diagnostic is attributed to
-the module and emitted once per deprecated symbol, not once per element in it.
+The check scans each registered element's source module on disk. It detects a
+`Method` / `Nested` serializer-field call site, or a deprecated
+`protean.utils.*` plumbing name (imported by name or reached through a
+`protean.utils` attribute access). All are scheduled for removal in v0.19.0.
+The diagnostic is attributed to the module and emitted once per deprecated
+symbol, not once per element in it.
 
 **Scope.** The scan only reads modules that host a registered element (the same
-element-oriented boundary as the infra-import scan). A deprecated use in a
-plain helper module or the domain composition root (one with no registered
-class) is not seen; the per-declaration `DeprecationWarning` still fires there
-at runtime.
+element-oriented boundary as the infra-import scan). The scan does not see a
+deprecated use in a plain helper module or the domain composition root (one
+with no registered class). The per-declaration `DeprecationWarning` still fires
+there at runtime.
 
 **Why.** A deprecated import surface is scheduled for removal; code using it will
 break at the removal version.
@@ -683,7 +694,7 @@ break at the removal version.
 
 ---
 
-## Custom rules
+## How do custom rules report findings?
 
 Rules loaded through `[lint].rules` emit findings under the `custom` category by
 default. See

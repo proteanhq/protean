@@ -1,11 +1,11 @@
 # MSSQL
 
 The MSSQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) with
-[pyodbc](https://github.com/mkleehammer/pyodbc) to talk to Microsoft SQL Server.
-It carries the same capability set as the PostgreSQL provider and is exercised
-by the same conformance tests.
+[pyodbc](https://github.com/mkleehammer/pyodbc) to talk to Microsoft SQL
+Server. It carries the same capability set as the PostgreSQL provider. The same
+conformance tests exercise both providers.
 
-## Installation
+## Install the provider
 
 The provider needs SQLAlchemy, pyodbc, and a Microsoft ODBC driver installed on
 the machine:
@@ -18,16 +18,16 @@ pyodbc is a binding, not a driver. Install
 [Microsoft ODBC Driver 18 for SQL Server](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server)
 separately through your operating system's package manager.
 
-If pyodbc cannot be imported, `domain.init()` raises a `ConfigurationError`
-that names the extra to install. This covers a `database_uri` that names pyodbc
-(`mssql+pyodbc://`) and one that names no driver (`mssql://`). pyodbc
-installed without the unixODBC system library fails to import, so it fails the
-same way. A `database_uri` that names another driver, such as
-`mssql+pymssql://`, goes to SQLAlchemy as written.
-So does a database config with a `module` key, which hands SQLAlchemy
+When Python cannot import pyodbc, `domain.init()` raises a
+`ConfigurationError`. The error names the extra to install. This covers a
+`database_uri` with pyodbc as its driver (`mssql+pyodbc://`) and one with no
+driver (`mssql://`). pyodbc installed without the unixODBC system library also
+fails to import, and `domain.init()` raises the same error. A `database_uri`
+that names another driver, such as `mssql+pymssql://`, goes to SQLAlchemy as
+written. So does a database config with a `module` key, which hands SQLAlchemy
 the DBAPI module to use in place of the URL's driver.
 
-## Configuration
+## Configure the connection
 
 ```toml
 [databases.default]
@@ -45,11 +45,11 @@ database_uri = "mssql+pyodbc://sa:${MSSQL_PASSWORD}@localhost:1433/appdb?driver=
 
 The `driver` query parameter is required: pyodbc has no default driver, and
 omitting it fails at connection time rather than at `domain.init()`.
-`MARS_Connection=yes` lets one connection hold several active result sets,
-which the provider relies on when a repository iterates one query while issuing
-another.
+`MARS_Connection=yes` lets one connection hold several active result sets. The
+provider needs them when a repository issues one query in the middle of
+iterating another.
 
-## Capabilities
+## Which capabilities does the provider support?
 
 - :white_check_mark: **CRUD**: Create, read, update, delete single records.
 - :white_check_mark: **FILTER**: Query and filter records with lookup criteria.
@@ -64,33 +64,34 @@ another.
   fields are queryable. SQL Server has no `JSON` column type, so the provider
   stores them through a JSON type backed by `NVARCHAR`.
 
-## Indexes
+## Which index options does MSSQL support?
 
-MSSQL honors part of the [`Index`](../../domain-elements/indexes.md) surface,
-emitted during `protean db setup`:
+MSSQL supports some of the [`Index`](../../domain-elements/indexes.md) options,
+and `protean db setup` creates the indexes:
 
 - Composite, descending (`desc=`), and unique (`unique=`) indexes.
 - Covering columns (`include=`), which map to SQL Server's `INCLUDE` clause.
 - Partial indexes (`where=Q(...)`) are **not** supported. The index is created
   without the predicate and a warning is logged.
 
-## String columns used as keys
+## Set a length on string key columns
 
 SQL Server rejects an unbounded `VARCHAR` in a primary key or a unique
-constraint. Protean catches this at schema-generation time and raises
-`IncorrectUsageError` naming the field, instead of letting the database fail
-with its own message about a column being invalid as a key:
+constraint. Protean catches this when it generates the schema and raises
+`IncorrectUsageError` with the field's name. Without this check, the database
+fails with its own message about a column being invalid as a key:
 
 ```python
 --8<-- "adapters/database/mssql/002.py:key_columns"
 ```
 
-`String()` has a default `max_length` of 255, so it is a valid key column. The
-error comes from a column with no length, such as `max_length=None`. A column
-with no length is fine on MSSQL as an ordinary column. Protean raises only when
-that column is a primary key or is `unique=True`.
+`String()` has a default `max_length` of 255, so it is a valid key column.
+Protean raises `IncorrectUsageError` for a column with no length, such as
+`max_length=None`. A column with no length is fine on MSSQL as an ordinary
+column. Protean raises only when that column is a primary key or is
+`unique=True`.
 
-## Date and time columns
+## Which column types do date and time fields use?
 
 | Field      | Column      |
 |------------|-------------|
@@ -100,7 +101,7 @@ that column is a primary key or is `unique=True`.
 SQL Server's `DATETIME` rounds to increments of about 3 milliseconds: the last
 digit of the milliseconds becomes 0, 3 or 7, so `.125` is stored as `.127`.
 Protean writes microsecond-precision timestamps, so two values written less
-than 3 ms apart could read back equal, and a value read back could differ from
+than 3 ms apart could read back equal. A value read back could also differ from
 the one written. `DATETIME2` keeps 100-nanosecond steps, so every `DateTime`
 column Protean generates uses it.
 
@@ -109,19 +110,19 @@ not change an existing table. See
 [SQL Server stores `DateTime` as `DATETIME2`](../../migration/v0-19.md#sql-server-stores-datetime-as-datetime2)
 for the statements that convert them.
 
-A `DATETIME2` column holds no UTC offset, so Protean converts each value to
-UTC before it writes it or compares it in a filter, and reads a naive value as
-UTC. A load returns a UTC-aware `datetime`. A filter value in any offset then
+Because a `DATETIME2` column holds no UTC offset, Protean converts each value
+to UTC on write and in filter comparisons. Protean reads a naive value as UTC.
+A load returns a UTC-aware `datetime`. A filter value in any offset then
 matches the same instant. Rows written before 0.18.1 hold the wall-clock time
-they were saved with; see
-[Datetimes are compared and stored as UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc)
-to convert them.
+they were saved with; see [Datetimes are compared and stored as
+UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc) to
+convert them.
 
-## SQLAlchemy model
+## Supply your own SQLAlchemy model
 
-You can supply a custom SQLAlchemy model in place of the one Protean generates,
-which gives you control over column types and constraints. The pattern is the
-same as for [PostgreSQL](./postgresql.md#sqlalchemy-model).
+You can supply a custom SQLAlchemy model in place of the one Protean generates.
+A custom model gives you control over column types and constraints. The pattern
+is the same as for [PostgreSQL](./postgresql.md#sqlalchemy-model).
 
 ```python
 # fragment
@@ -136,17 +137,17 @@ A column you declare in the model keeps the type you give it. Declare a
 timestamp column as `DATETIME2` (`sqlalchemy.dialects.mssql.DATETIME2`) to keep
 microseconds.
 
-## Slow query detection
+## Detect slow queries
 
 The provider emits the same structured
 `protean.adapters.repository.sqlalchemy.slow_query` WARNING and
 `protean.adapters.repository.sqlalchemy.query` DEBUG events as the
-[PostgreSQL provider](./postgresql.md#slow-query-detection). Set the threshold
+[PostgreSQL provider](./postgresql.md#detect-slow-queries). Set the threshold
 with `[logging].slow_query_threshold_ms` in `domain.toml`.
 
-## Related pages
+## What to read next
 
 - [PostgreSQL](./postgresql.md): The other full-capability relational provider.
-- [Database capabilities](./index.md#database-capabilities): What each
+- [Database capabilities](./index.md#how-providers-declare-capabilities): What each
   capability flag means.
 - [Indexes](../../domain-elements/indexes.md): Declaring indexes on an aggregate.

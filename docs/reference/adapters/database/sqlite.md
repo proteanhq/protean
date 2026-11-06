@@ -67,21 +67,21 @@ The SQLite provider supports the following capabilities:
 - :x: **NATIVE_JSON**: No native JSON column type (stored as text)
 - :x: **NATIVE_ARRAY**: No native array column type (stored as text)
 
-## Timestamps
+## How SQLite stores timestamps
 
-A `DateTime` field maps to a `DATETIME` column, which SQLite stores as text.
-A `DateTime` column holds no UTC offset, so Protean converts each value to
-UTC before it writes it or compares it in a filter, and reads a naive value as
-UTC. A load returns a UTC-aware `datetime`. A filter value in any offset then
-matches the same instant. Rows written before 0.18.1 hold the wall-clock time
-they were saved with; see
-[Datetimes are compared and stored as UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc)
-to convert them.
+A `DateTime` field maps to a `DATETIME` column, which SQLite stores as text. A
+`DateTime` column holds no UTC offset, so Protean converts each value to UTC
+for writes and filter comparisons. Protean reads a naive value as UTC. A load
+returns a UTC-aware `datetime`. A filter value in any offset then matches the
+same instant. Rows written before 0.18.1 hold the wall-clock time they were
+saved with; see [Datetimes are compared and stored as
+UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc) to
+convert them.
 
-## Indexes
+## Which index options does SQLite support?
 
-SQLite honors most of the [`Index`](../../domain-elements/indexes.md) surface,
-emitted during `protean db setup`:
+`protean db setup` creates SQLite indexes with most of the
+[`Index`](../../domain-elements/indexes.md) options:
 
 - Composite, descending (`desc=`), and unique (`unique=`) indexes.
 - Partial indexes (`where=Q(...)`).
@@ -90,10 +90,10 @@ emitted during `protean db setup`:
 
 ## SQLAlchemy Model
 
-You can supply a custom SQLAlchemy Model in place of the one that Protean
-generates internally, allowing full customization of column types and
-constraints. The pattern is identical to
-[PostgreSQL models](./postgresql.md#sqlalchemy-model).
+You can supply a custom SQLAlchemy Model to replace the one Protean generates
+internally. A custom model gives you full control of column types and
+constraints. The pattern is identical to [PostgreSQL
+models](./postgresql.md#sqlalchemy-model).
 
 ```python
 # fragment
@@ -104,28 +104,29 @@ constraints. The pattern is identical to
     The column names specified in the model should exactly match the attribute
     names of the Aggregate or Entity it represents.
 
-## Slow Query Detection
+## Detect slow queries
 
-The SQLAlchemy-based SQLite provider emits the same structured
-``protean.adapters.repository.sqlalchemy.slow_query`` WARNING and
-``protean.adapters.repository.sqlalchemy.query`` DEBUG events as the
-[PostgreSQL provider](./postgresql.md#slow-query-detection). Configure the
+The SQLite provider is built on SQLAlchemy, so it emits the same structured
+log events as the [PostgreSQL provider](./postgresql.md#detect-slow-queries).
+These are the ``protean.adapters.repository.sqlalchemy.slow_query`` WARNING and
+the ``protean.adapters.repository.sqlalchemy.query`` DEBUG events. Configure the
 threshold via ``[logging].slow_query_threshold_ms`` in ``domain.toml``.
 
-## Limitations
+## What are SQLite's limitations?
 
-- **Single-Writer Concurrency**: SQLite supports only one writer at a time.
-  Concurrent writes from multiple processes will block or fail.
-- **No Native JSON/Array**: Complex fields (JSON, arrays) are stored as
-  serialized text. Queries cannot filter on nested JSON properties.
+- **SQLite supports only one writer at a time.** Concurrent writes from
+  multiple processes will block or fail.
+- **SQLite has no native JSON or array type**: Protean stores complex fields
+  (JSON, arrays) as serialized text. Queries cannot filter on nested JSON
+  properties.
 - **Not Suitable for Multi-Process Production**: SQLite is designed for
   single-process use. Use PostgreSQL for production deployments.
 - **File Locking**: The database file must be on a local filesystem. Network
   filesystems (NFS, SMB) are not reliable with SQLite.
 
-## Related pages
+## See also
 
 - Learn about [PostgreSQL](./postgresql.md) for production environments
-- Understand [database capabilities](./index.md#database-capabilities) in
+- Understand [database capabilities](./index.md#how-providers-declare-capabilities) in
   detail
 - Learn about [custom SQLAlchemy models](./postgresql.md#sqlalchemy-model)

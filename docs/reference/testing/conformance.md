@@ -1,21 +1,22 @@
-# Adapter Conformance Testing
+# Test an adapter for conformance
 
 Protean provides a generic test suite and tooling to verify that any database
-provider correctly implements its declared capabilities. This is essential for
-third-party adapter authors and useful for validating built-in adapters across
-environments.
+provider correctly implements its declared capabilities. Third-party adapter
+authors need this suite. You can also use it to validate built-in adapters
+across environments.
 
-## Overview
+## What does conformance testing check?
 
-Conformance testing ensures that a provider:
+The conformance tests check that a provider:
 
 - Correctly implements all operations it claims to support
-- Handles edge cases consistently (nulls, duplicates, concurrency)
-- Works with Protean's Unit of Work, QuerySet, and repository patterns
+- Gives consistent results on edge cases (nulls, duplicates, concurrency)
+- Runs correctly under Protean's Unit of Work, QuerySet, and repository
+  patterns
 - Passes the same tests that Protean's built-in adapters pass
 
-The generic test suite lives in `tests/adapters/repository/generic/` and
-covers CRUD, filtering, ordering, transactions, raw queries, schema management,
+The generic test suite is in `tests/adapters/repository/generic/` and covers
+CRUD, filtering, ordering, transactions, raw queries, schema management,
 optimistic locking, value objects, associations, and more.
 
 ## CLI: `protean test test-adapter`
@@ -26,7 +27,7 @@ The quickest way to test any provider is the `test-adapter` CLI command:
 protean test test-adapter --provider=memory
 ```
 
-### Options
+### Which options does the command take?
 
 | Option | Required | Description |
 |--------|:--------:|-------------|
@@ -36,7 +37,7 @@ protean test test-adapter --provider=memory
 | `--verbose` / `-v` | No | Show detailed test output |
 | `--test-dir` | No | Path to a custom test directory (default: built-in generic tests) |
 
-### Examples
+### Run the command for common cases
 
 ```bash
 # Test the memory provider (no external services needed)
@@ -55,7 +56,7 @@ protean test test-adapter --provider=postgresql \
     --uri="postgresql://localhost/test" -v
 ```
 
-### Sample Output
+### What does the report look like?
 
 ```
 Running conformance tests for provider 'memory' (MemoryProvider)...
@@ -78,7 +79,7 @@ native_array             SKIP       (not declared)
 Total: 62 passed, 0 failed, 0 errors, 4 capabilities skipped
 ```
 
-## Capability Markers
+## Match tests to capabilities with markers
 
 Tests in the generic suite are marked with pytest markers that map to
 `DatabaseCapabilities` flags. Only tests matching a provider's declared
@@ -104,7 +105,7 @@ capabilities are executed; the rest are automatically skipped.
 For more control, use the conformance testing pytest plugin directly in your
 test suite.
 
-### Loading the Plugin
+### Load the plugin
 
 The conformance plugin is **not auto-registered**. Load it explicitly in your
 `conftest.py`:
@@ -122,7 +123,7 @@ adapter under test, `memory` unless you pass `--db`:
 --8<-- "reference/testing/conformance/opt_in/test_default_adapter.py:test"
 ```
 
-### CLI Options
+### Which CLI options does the plugin add?
 
 The plugin registers these pytest CLI options:
 
@@ -133,7 +134,7 @@ The plugin registers these pytest CLI options:
 | `--db-uri` | —  | Database connection URI for custom adapters |
 | `--db-extra` | —  | JSON string of extra provider config (e.g. `'{"pool_size": 5}'`) |
 
-### Fixtures
+### Which fixtures does the plugin provide?
 
 The plugin provides these fixtures:
 
@@ -146,7 +147,7 @@ The plugin provides these fixtures:
 | `db` | function | Creates/drops database artifacts around each test |
 | `run_around_tests` | function, autouse | Resets data after each test |
 
-### Auto-Skip Behavior
+### How does the plugin skip tests automatically?
 
 Tests are automatically skipped when the provider lacks a required capability.
 No manual skip markers or conditionals are needed:
@@ -177,7 +178,7 @@ def db_config():
     }
 ```
 
-## Generic Test Suite
+## What does the generic test suite cover?
 
 The generic test suite covers these areas:
 
@@ -203,12 +204,13 @@ The generic test suite covers these areas:
 | `test_native_json.py` | `native_json` | Native JSON column support |
 | `test_native_array.py` | `native_array` | Native array column support |
 
-### Query API primitive coverage
+### Which query API primitives must each adapter pass?
 
-The query and persistence-path primitives are gated by capability tier: an
+Each query and persistence-path primitive belongs to a capability tier: an
 adapter that declares a capability must pass every conformance test tagged with
-it. See
-[ADR-0023](../../adr/0023-query-api-conformance-contract-and-capability-tiers.md)
+it. See the decision record on the query API conformance contract and
+capability tiers
+([ADR-0023](../../adr/0023-query-api-conformance-contract-and-capability-tiers.md))
 for the rationale.
 
 | Primitive | Capability tier | Adapters that must pass |
@@ -222,13 +224,13 @@ for the rationale.
 | `_claim` correctness | `transactional` | in-memory + SQL |
 | `_claim` no-double-claim (concurrent) | `atomic_transactions` | SQL only |
 
-`F()` and `_claim` are gated above `basic_storage` because Elasticsearch does not
-support them: it raises `NotImplementedError` for `F`-bearing predicates, and its
-document-versioning makes it unsuitable as a concurrent claim store. A provider
-that declares only `basic_storage` (like Elasticsearch) is therefore never asked
-to pass them.
+`F()` and `_claim` are gated above `basic_storage` because Elasticsearch does
+not support them: it raises `NotImplementedError` for `F`-bearing predicates,
+and its document-versioning makes it unsuitable as a concurrent claim store.
+The conformance suite therefore never runs the `F()` and `_claim` tests against
+a provider that declares only `basic_storage` (like Elasticsearch).
 
-## For External Adapter Authors
+## Validate your own adapter
 
 Follow these steps to validate your custom adapter:
 
@@ -274,13 +276,14 @@ protean test test-adapter --provider=your-provider-name --uri="your://connection
 ### 4. Read the Report
 
 Review which capabilities pass and which fail. Fix failures in your adapter
-implementation and re-run until all declared capabilities pass.
+implementation. Re-run the suite until all declared capabilities pass.
 
-## Custom Field Conformance
+## Check a custom field for conformance
 
-The same idea applies to custom fields built with
-[`Custom`](../fields/custom-fields.md). Protean ships a reusable check a `Custom`
-field runs against itself, so you can prove your field before you depend on it.
+Conformance testing also applies to custom fields built with
+[`Custom`](../fields/custom-fields.md). Protean ships a reusable check that
+runs a `Custom` field against itself. Run it to prove your field before you
+depend on it.
 
 ```python
 # fragment
@@ -294,14 +297,15 @@ domain, declares a throwaway aggregate carrying the field, and asserts the whole
 custom-field contract:
 
 - **The outcome of each validation stage.** A required field rejects a missing
-  value; an optional one resolves it to its default, or to `None`; the cast parses
-  a raw value into the type and rejects one it cannot parse.
-- **The `ResolvedField` reflection.** The field surfaces as a `ResolvedField` with
-  the declared `required`, and its `as_dict` output is JSON-serializable.
+  value, and an optional one resolves it to its default or to `None`. The cast
+  parses a raw value into the type and rejects one it cannot parse.
+- **The `ResolvedField` reflection.** The field appears as a `ResolvedField`
+  with the declared `required`. Its `as_dict` output is JSON-serializable.
 - **A serialize, persist, reload, and event-replay round-trip.** The value saves,
   reloads equal, and replays equal from the aggregate's fact event.
 
-It raises `AssertionError` on any violation, so drop it straight into a test:
+`run_custom_field_conformance` raises `AssertionError` on any violation, so you
+can call it directly inside a test:
 
 ```python
 # fragment
@@ -315,11 +319,12 @@ It raises `AssertionError` on any violation, so drop it straight into a test:
     --8<-- "guides/domain-definition/fields/custom-fields/001.py:type"
     ```
 
-The custom type needs a meaningful `__eq__` (the harness compares with `==`) and a
-`to_dict()` that returns a value your parser accepts back, so the round-trip holds.
+The custom type needs a meaningful `__eq__`, because the harness compares with
+`==`. For the round-trip to hold, it also needs a `to_dict()` that returns a
+value your parser accepts back.
 
-## Related pages
+## See also
 
-- Learn about [database capabilities](../adapters/database/index.md#database-capabilities)
+- Learn about [database capabilities](../adapters/database/index.md#how-providers-declare-capabilities)
 - Build a [custom database adapter](../adapters/database/custom-databases.md)
 - Understand the [pytest plugin](./pytest-plugin.md) for application testing

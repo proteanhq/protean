@@ -1,21 +1,21 @@
-# Type Checking
+# Check Protean code with mypy
 
-Protean ships a **mypy plugin** that teaches static type checkers about
-the framework's runtime transformations, field factories that resolve to native
-Python types and decorators that inject base classes. Without the plugin, mypy
-reports false errors on perfectly correct Protean code.
+Protean ships a **mypy plugin** that tells static type checkers what the
+framework changes at runtime. The plugin resolves field factories to native
+Python types and adds the base classes that decorators inject. Without the
+plugin, mypy reports false errors on perfectly correct Protean code.
 
-The plugin handles two patterns:
+With the plugin, mypy reads two runtime patterns correctly:
 
 1. **Field factories**: `String()`, `Integer()`, and peers return
    `FieldSpec` at the class level but resolve to `str`, `int`, etc. at
    runtime. The plugin maps each factory to its Python type.
-2. **Decorator-based registration**: `@domain.aggregate`,
-   `@domain.entity`, and the other element decorators make the class a
-   subclass of its Protean base at runtime. The plugin adds the same base
-   during type analysis, so methods like `raise_()` and `to_dict()`, the
-   injected `id`, and a keyword `__init__` are visible to mypy, and the
-   decorated class is accepted wherever a signature names its base class.
+2. **Registering with a decorator**: `@domain.aggregate`, `@domain.entity`, and
+   the other element decorators make the class a subclass of its Protean base
+   at runtime. The plugin adds the same base during type analysis, so mypy sees
+   methods like `raise_()` and `to_dict()`, the injected `id`, and a keyword
+   `__init__`. mypy also accepts the decorated class wherever a signature names
+   its base class.
 
 For the background on why this is needed, see
 [Field System Internals](../../concepts/internals/field-system.md).
@@ -30,13 +30,13 @@ Add the plugin to `[tool.mypy]` in `pyproject.toml` (or an equivalent
 plugins = ["protean.ext.mypy_plugin"]
 ```
 
-Field type resolution and decorator base class injection are both enabled by
-this single entry. There are no further flags.
+With this single entry, the plugin runs both field type resolution and
+decorator base class injection. There are no further flags.
 
 Debug mode: set `PROTEAN_MYPY_DEBUG=1` to print plugin diagnostic
 traces to stderr while mypy runs.
 
-## Field Type Resolution
+## How field factories resolve to Python types
 
 Field factories resolve to their Python types:
 
@@ -61,19 +61,19 @@ Field factories resolve to their Python types:
 | `HasOne(Shipment)` | <code>Shipment &#124; None</code> |
 | `HasMany(LineItem)` | `list[LineItem]` |
 
-Fields are `Optional` (union with `None`) unless they are `required=True`,
-have a `default` other than `None`, or are `identifier=True`. Container fields (`List`, `Dict`)
-always have an implicit default and are never `Optional`. A `default` does not
-make `ValueObject` or `Reference` non-optional: a value object or reference
-left out at construction reads as `None`. `HasOne` is always
-`Optional`, because an association cannot be required at runtime. A target
-named by string, such as `Reference("Order")`, resolves to `Any`, so the
-annotation on the field states the type.
+Fields are `Optional` (union with `None`) unless they are `required=True`, have
+a `default` other than `None`, or are `identifier=True`. Container fields
+(`List`, `Dict`) always have an implicit default and are never `Optional`. A
+`default` does not make `ValueObject` or `Reference` non-optional: a value
+object or reference left out at construction reads as `None`. `HasOne` is
+always `Optional`, because an association cannot be required at runtime. When
+you name the target by string, as in `Reference("Order")`, the plugin resolves
+the field to `Any`. The annotation on the field then states the type.
 
 ## Declaring fields for `mypy --strict`
 
-The typed-annotation form gives every field its real type. The annotation
-and the field call check each other, so a mismatch is a mypy error:
+The typed-annotation form gives every field its real type. mypy checks the
+annotation against the field call and reports a mismatch as an error:
 
 ```python
 from protean import Domain
@@ -108,26 +108,26 @@ count: int = String(required=True)  # error: str is not int
 name: str = String()                # error: the field is optional
 ```
 
-The assignment form (`customer = String(required=True)`) type-checks the
-same way. See
-[ADR-0038](../../adr/0038-canonical-field-style-for-mypy-strict.md)
-for why the typed-annotation form is the canonical one.
+The assignment form (`customer = String(required=True)`) type-checks the same
+way. See the decision record on the canonical field style for `mypy --strict`
+([ADR-0038](../../adr/0038-canonical-field-style-for-mypy-strict.md)) for why
+the typed-annotation form is the canonical one.
 
-The annotation-only form (`customer: String(required=True)`) also passes
-`mypy --strict`, in a decorated element and in a class that inherits a
-Protean base. mypy rejects a call in an annotation and keeps no type for it,
-so the plugin replaces the annotation with `Any` and accepts the field as an
-optional keyword argument. Construction by keyword and use of the field are
-clean, but mypy does not check the field's type, and returning it from a
-function declared to return `str` reports `no-any-return`. Move a field to
-the typed-annotation form to get its real type.
+The annotation-only form (`customer: String(required=True)`) also passes `mypy
+--strict`, in a decorated element and in a class that inherits a Protean base.
+mypy rejects a call in an annotation and keeps no type for it, so the plugin
+replaces the annotation with `Any` and accepts the field as an optional keyword
+argument. mypy reports no error when you construct the element by keyword or
+use the field, but it does not check the field's type. When a function declared
+to return `str` returns the field, mypy reports `no-any-return`. Move a field
+to the typed-annotation form to get its real type.
 
-mypy's note for a call with keyword arguments does not name the function, so
-the plugin accepts any such call in an annotation as a field. A call without
-keyword arguments counts only when it names a Protean field factory:
-`label: str()` still reports `valid-type`.
+For a call with keyword arguments in an annotation, mypy writes a note without
+the function's name. The plugin therefore accepts any such call in an
+annotation as a field. A call without keyword arguments counts only when it
+names a Protean field factory: `label: str()` still reports `valid-type`.
 
-## Decorator Base Class Injection
+## How decorators add base classes
 
 A class decorated with `@domain.aggregate` (or another element decorator)
 is a subclass of the matching base class for mypy, as it is at runtime. For
@@ -139,18 +139,17 @@ aggregates, this exposes:
 - `.state_` and the other properties
 - All other `BaseAggregate` methods and attributes
 
-Because the class is a real subtype, it can be passed wherever the framework
-asks for the base: `domain.cache_for(Leaderboard)`,
-`cache.add(Leaderboard(...))`, `x: BaseValueObject = Money(...)`, and
-`isinstance(aggregate, Auditable)` all type-check, and `super().__init__(...)`
-in a decorated domain service reaches `BaseDomainService.__init__`.
-Aggregates, entities, value objects, commands, events, projections and queries
-also get a keyword `__init__` built from their Protean field declarations
-and their plain annotations. A plain annotation such as `note: str` or
-`note: str = ""` is a pydantic field at runtime, and it is accepted as a
-keyword typed `Any`. A class that defines its own `__init__` keeps it, and so
-does a decorated class that extends it, since that `__init__` is the one that
-runs.
+As a real subtype, the class is accepted wherever the framework asks for the
+base: `domain.cache_for(Leaderboard)`, `cache.add(Leaderboard(...))`, `x:
+BaseValueObject = Money(...)`, and `isinstance(aggregate, Auditable)` all
+type-check. In a decorated domain service, `super().__init__(...)` reaches
+`BaseDomainService.__init__`. Aggregates, entities, value objects, commands,
+events, projections and queries also get a keyword `__init__` built from their
+Protean field declarations and their plain annotations. A plain annotation such
+as `note: str` or `note: str = ""` is a pydantic field at runtime, and it is
+accepted as a keyword typed `Any`. A class with its own `__init__` keeps it,
+because that `__init__` is the one that runs. A decorated subclass of such a
+class keeps the same `__init__`.
 
 Supported decorators: `aggregate`, `entity`, `value_object`, `command`,
 `event`, `domain_service`, `command_handler`, `event_handler`,
@@ -158,16 +157,17 @@ Supported decorators: `aggregate`, `entity`, `value_object`, `command`,
 `query_handler`, `process_manager`, `repository`, `database_model`, `email`,
 `upcaster`.
 
-Both `@domain.aggregate` (bare) and `@domain.aggregate()` (called) forms
-are detected. The decorator rebuilds the class on its Protean base alone, so
-a mixin listed as a base is dropped at runtime, and the plugin drops it too.
-A class that extends a decorated element, such as an aggregate extending a
-decorated abstract aggregate, keeps its parent, and its `__init__` takes the
-parent's fields. See
-[ADR-0047](../../adr/0047-mypy-plugin-subclasses-decorated-elements.md)
-for how the base is added.
+Both `@domain.aggregate` (bare) and `@domain.aggregate()` (called) forms are
+detected. The decorator rebuilds the class on its Protean base alone, so the
+class loses any mixin listed as a base at runtime. The plugin drops the mixin
+too. When a class extends a decorated element, such as an aggregate extending a
+decorated abstract aggregate, the class keeps its parent. Its `__init__` takes
+the parent's fields. See the decision record on how the mypy plugin subclasses
+decorated elements
+([ADR-0047](../../adr/0047-mypy-plugin-subclasses-decorated-elements.md)) for
+how the base is added.
 
-## Typed framework entry points
+## Which framework entry points return precise types
 
 - `domain.view_for(Projection)` returns `ReadView[Projection]`, so `.get()`
   and `.find_by()` return the projection class. Without the plugin, a
@@ -180,8 +180,8 @@ for how the base is added.
 - `cls._create_new()` and `cls.from_events(...)` on an event-sourced
   aggregate return that aggregate's class.
 - `@handle` takes an event or command class, an event type string such as
-  `"Customers.CustomerFact.v1"`, or the `"$any"` wildcard, and the decorated
-  method keeps its message and result types. The framework calls a handler
+  `"Customers.CustomerFact.v1"`, or the `"$any"` wildcard. The decorated method
+  keeps its message and result types. The framework calls a handler
   positionally with the message, so passing the message by keyword is a
   `call-arg` error. A redelivery that consume-side idempotency skips returns
   `None`.
@@ -190,9 +190,9 @@ for how the base is added.
 
 ## VS Code
 
-When running mypy through the VS Code **Mypy Type Checker** extension
-(`ms-python.mypy-type-checker`), Pylance's strict checker has to be
-disabled because it cannot read the plugin. The settings combination:
+Pylance's strict checker cannot read the plugin. When you run mypy through the
+VS Code **Mypy Type Checker** extension (`ms-python.mypy-type-checker`), turn
+off Pylance's strict checker. The settings combination:
 
 ```json
 {
@@ -205,16 +205,16 @@ disabled because it cannot read the plugin. The settings combination:
 Protean's own repository ships this configuration in its
 `.vscode/settings.json` for reference.
 
-## Known Limitations
+## What the plugin does not cover
 
 - **`auto_add_id_field=False`**: The plugin does not inspect decorator
   arguments. If you pass `auto_add_id_field=False` to `@domain.aggregate`,
   the plugin still injects `id`. Use `# type: ignore[attr-defined]` if needed.
 
-- **Autocomplete for injected methods**: The base class is added for mypy
-  only. IDE engines that do not run the plugin, such as Pylance, may not
-  show the base's methods in suggestions.
+- **Autocomplete may miss injected methods**: The plugin adds the base class
+  for mypy only. An IDE engine such as Pylance does not run the plugin, so it
+  may not show the base's methods in suggestions.
 
-- **Explicit inheritance**: If you already inherit from a base class
-  (e.g. `class Order(BaseAggregate):`), the plugin detects this and skips
+- **Inheriting from a base class yourself**: If you already inherit from a base
+  class (e.g. `class Order(BaseAggregate):`), the plugin detects this and skips
   injection to avoid duplicates.

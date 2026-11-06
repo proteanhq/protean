@@ -1,4 +1,4 @@
-# Simple Fields
+# Define simple fields
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -22,34 +22,37 @@ Defaults to `None` (no minimum).
 value. Default is `False`: the stored value is the raw input.
 
 !!! warning "Sanitization is opt-in, and off by default"
-    Sanitization is a display-layer concern: escaping on write bakes one
-    encoding (HTML) into stored data and corrupts the value anywhere it is
-    rendered in another context (a plain-text email, a JSON API, a CSV export).
-    The real control is encoding output where it is rendered. So `sanitize` is
-    `False` by default, and you should pass `sanitize=True` only for a value
+    Sanitization belongs at the display layer. Escaping on write stores the
+    value in one encoding (HTML), and that encoding corrupts the value in any
+    other context that renders it (a plain-text email, a JSON API, a CSV
+    export). The real control is encoding output where it is rendered. So
+    `sanitize` is `False` by default. Pass `sanitize=True` only for a value
     that is rendered as HTML without output encoding. To set the default for a
-    whole domain, use the [`[field_defaults] sanitize`](../configuration/index.md#field_defaults)
-    config key; precedence is field kwarg > domain default > framework default.
+    whole domain, use the [`[field_defaults]
+    sanitize`](../configuration/index.md#field_defaults) config key. Precedence
+    is field kwarg > domain default > framework default.
 
 !!! note "Length bounds apply to the sanitized value"
     When `sanitize=True`, sanitization changes the length of a value:
-    HTML-escaping grows it (`&` → `&amp;`) and stripping HTML comments/attributes
-    shrinks it. So `min_length`/`max_length` are checked against **both** the raw
-    input and the **stored** (sanitized) form. Because the stored form is
-    bounded, a value that is accepted always round-trips through serialization
-    and event-sourced replay. An input is rejected on write if *either* form is
-    out of bounds (so a raw length that looks fine can still be rejected once
-    sanitized, and vice versa); widen the bound or pass `sanitize=False` if you
-    need the raw form. Pass it explicitly rather than leaving `sanitize` unset:
-    an unset field follows the domain's `[field_defaults] sanitize` default,
-    which a domain can set to `true`. A `choices` field is **never** sanitized, even with
-    `sanitize=True`: its value must match a declared choice exactly. See
-    [ADR-0026](../../adr/0026-max-length-bounds-the-sanitized-value.md).
+    HTML-escaping grows it (`&` → `&amp;`) and stripping HTML
+    comments/attributes shrinks it. So `min_length`/`max_length` are checked
+    against **both** the raw input and the **stored** (sanitized) form. The
+    stored form is bounded, so every accepted value round-trips through
+    serialization and event-sourced replay. If *either* form is out of bounds,
+    the input is rejected on write. So a raw length that looks fine can still
+    be rejected once sanitized, and vice versa. If you need the raw form, widen
+    the bound or pass `sanitize=False`. Pass it explicitly rather than leaving
+    `sanitize` unset: an unset field follows the domain's `[field_defaults]
+    sanitize` default, which a domain can set to `true`. A `choices` field is
+    **never** sanitized, even with `sanitize=True`: its value must match a
+    declared choice exactly. See the decision that max length bounds the
+    sanitized value
+    ([ADR-0026](../../adr/0026-max-length-bounds-the-sanitized-value.md)).
 
 ## Text
 
-A large text field, to hold large amounts of text. Text fields do not have
-size constraints.
+A text field for large amounts of text. Text fields do not have size
+constraints.
 
 ```python hl_lines="10"
 --8<-- "guides/domain-definition/fields/simple-fields/002.py:full"
@@ -58,7 +61,7 @@ size constraints.
 **Optional Arguments**
 
 - **`sanitize`**: Opt in to HTML sanitization (`bleach.clean()`) of the stored
-value. Default is `False`; see [String](#string) for when to opt in and the
+value. Default is `False`. See [String](#string) for when to opt in and the
 precedence rules.
 
 ## Integer
@@ -98,9 +101,9 @@ without them it is arbitrary-precision where the backend supports it.
 --8<-- "guides/domain-definition/fields/simple-fields/009.py:decimal"
 ```
 
-On SQL providers the field maps to `NUMERIC(precision, scale)`; values are
+On SQL providers the field maps to `NUMERIC(precision, scale)`. Values are
 string-encoded in JSON and event payloads, so they never round-trip through a
-binary float and lose precision.
+binary float and never lose precision.
 
 **Optional Arguments**
 
@@ -190,12 +193,12 @@ value is stamped at save time, not at construction: on the `repository.add()` �
 save path and on each row a `query.update()` saves. Pass
 `apply_hooks=False` to skip the stamp.
 
-The stamp does not run the aggregate's `@invariant.pre` checks, so an aggregate
-whose pre-invariant rejects changes once it is closed can still be saved after
-`close()`. The `@invariant.post` checks run once after the stamp. If one fails,
-the save is aborted with a `ValidationError` whose `location` names the
-stamping and the fields, for example
-`auto_now stamping of updated_at on Account`.
+The stamp does not run the aggregate's `@invariant.pre` checks. So you can
+still save an aggregate after `close()`, even when its pre-invariant rejects
+changes to a closed aggregate. The `@invariant.post` checks run once after the
+stamp. If one fails, the save is aborted with a `ValidationError`. The error's
+`location` names the stamping and the fields, for example `auto_now stamping of
+updated_at on Account`.
 
 See [Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md) for
 the full recipe (abstract base + timestamps + `created_by`/`updated_by`).
@@ -238,8 +241,8 @@ value is expected to be generated by the database at the time of persistence.
     Cross-check with the specific adapter's documentation and your database
     to confirm if the database supports this functionality.
 
-- **`identity_strategy`**: The strategy to use to generate an identity value.
-If not provided, the strategy defined at the domain level is used.
+- **`identity_strategy`**: The strategy that generates the identity value. If
+not provided, the strategy defined at the domain level is used.
 
 - **`identity_function`**: A function that is used to generate the identity
 value. If not provided, the function defined at the domain level is used.
@@ -247,8 +250,8 @@ value. If not provided, the function defined at the domain level is used.
 - **`identity_type`**: The type of the identity value. If not provided, the
 type defined at the domain level is used.
 
-The identity params are useful when constructing an entity whose identity
-schema differs from the default.
+Use the identity params for an entity whose identity schema differs from the
+default.
 
 By default, all entities and aggregates create an `Auto` field named `id`
 that represents their unique identifier.
@@ -278,11 +281,11 @@ The [Identity](../domain-elements/identity.md) section covers identities in Prot
 ## Identifier
 
 An Identifier. It always holds its value as a string. The `identity_type`
-configuration attribute does not change that, and `Identifier` takes no
+configuration attribute does not change that. `Identifier` also takes no
 `identity_type` argument. On a SQL provider the column type does follow the
-domain's `identity_type`, so on an `integer` domain the string is stored in
-an integer column. An `Identifier` with no default then gets a 128-bit
-integer under the `uuid` strategy, which `Domain.init()` refuses (see
+domain's `identity_type`, so on an `integer` domain the string is stored in an
+integer column. An `Identifier` with no default then gets a 128-bit integer
+under the `uuid` strategy, which `Domain.init()` refuses (see
 [`identity_type`](../configuration/index.md#identity_type)).
 
 ```python hl_lines="13"
@@ -320,8 +323,8 @@ Pass a `transitions` dict mapping each state to its allowed next states:
 --8<-- "guides/domain-definition/fields/simple-fields/012.py:transitions"
 ```
 
-States not appearing as keys in the transitions dict are **terminal states**,
-no outgoing transitions are allowed from them.
+A state that does not appear as a key in the transitions dict is a **terminal
+state**. The field allows no outgoing transitions from a terminal state.
 
 Same-value assignments are also validated against the map. To make a state
 **idempotent** (self-transition allowed), include it in its own target list:
@@ -340,7 +343,7 @@ In [3]: order.status = "SHIPPED"
 ValidationError: {'status': ["Invalid status transition from 'PLACED' to 'SHIPPED'. Allowed transitions: CONFIRMED, CANCELLED"]}
 ```
 
-### Programmatic checking
+### Check a transition in code
 
 Use `can_transition_to()` to check whether a transition is valid without raising:
 

@@ -1,8 +1,8 @@
-# Logging
+# Look up Protean's logging settings, functions and loggers
 
 Factual reference for Protean's structured logging system. For task-oriented
-instructions see the [Logging guide](../guides/server/logging.md); for design
-rationale see the [Logging concepts](../concepts/observability/logging.md)
+instructions, see the [Logging guide](../guides/server/logging.md). For design
+rationale, see the [Logging concepts](../concepts/observability/logging.md)
 page.
 
 ---
@@ -30,17 +30,17 @@ page.
 | `per_logger` | table | `{}` | Map of logger name → level. Applied after the global setup so individual loggers can be tuned. |
 
 !!! note "Console logs go to stderr"
-    The console handler writes to **stderr**, not stdout. This keeps stdout
-    clean for the machine-readable output that CLI commands emit there (for
-    example the JSON from `protean ir show` and `protean schema show --raw`), so
-    that output stays safe to pipe. Container runtimes capture stderr alongside
-    stdout, so server log collection is unaffected.
+    The console handler writes to **stderr**, not stdout. Protean keeps stdout
+    for the machine-readable output of CLI commands, for example the JSON from
+    `protean ir show` and `protean schema show --raw`. You can pipe that output
+    safely. Container runtimes capture stderr alongside stdout, so server log
+    collection is unaffected.
 
 ### `[logging.sampling]`
 
 Opt-in tail sampling for `protean.access` wide events. Disabled by default;
-every handled message produces one wide event. Enable when wide-event volume
-becomes a cost concern at scale.
+every handled message produces one wide event. When wide-event volume becomes a
+cost concern at scale, enable sampling.
 
 ```toml
 --8<-- "reference/logging/sampling.toml"
@@ -71,8 +71,8 @@ compute accurate throughput, `actual_count = sampled_count / sampling_rate`:
 | `sampling_rule` | `str` | `"error"`, `"slow"`, `"critical_stream"`, or `"random"`. |
 | `sampling_rate` | `float` | `1.0` for always-kept rules; `default_rate` for `"random"`. |
 
-Sampling only affects the `protean.access` logger (and its nested loggers
-like `protean.access.http`). No other logger is filtered.
+Sampling filters only the `protean.access` logger (and its nested loggers like
+`protean.access.http`). No other logger is filtered.
 
 See [Logging concepts → Tail sampling](../concepts/observability/logging.md#tail-sampling-keep-what-matters-at-scale)
 for the design rationale.
@@ -80,9 +80,9 @@ for the design rationale.
 ### `[logging.http]`
 
 Controls HTTP-layer wide event emission by
-[`DomainContextMiddleware`](../guides/fastapi/http-wide-events.md). Enabled by
-default; one wide event per HTTP request lands on the `protean.access.http`
-logger.
+[`DomainContextMiddleware`](../guides/fastapi/http-wide-events.md). HTTP wide
+events are enabled by default. The middleware writes one wide event per HTTP
+request to the `protean.access.http` logger.
 
 ```toml
 --8<-- "reference/logging/http.toml"
@@ -99,7 +99,7 @@ Explicit keyword arguments to the `DomainContextMiddleware` constructor
 (`emit_http_wide_event=`, `exclude_paths=`, `log_request_headers=`,
 `log_response_headers=`) override these values for that middleware instance.
 
-### Precedence
+### Which setting wins?
 
 Effective values are resolved in this order (first match wins):
 
@@ -109,7 +109,7 @@ Effective values are resolved in this order (first match wins):
 3. `domain.toml [logging]` section
 4. Environment-based defaults (see below)
 
-### Environment defaults
+### How the environment sets the defaults
 
 When `level` is empty and `PROTEAN_LOG_LEVEL` is unset, Protean picks a
 default from `PROTEAN_ENV` (falling back to `ENV` / `ENVIRONMENT`):
@@ -147,34 +147,35 @@ v0.17.0. Use the global `--log-level DEBUG` flag instead (for example,
 
 `protean server` and `protean observatory` call `Domain.configure_logging()`
 once the domain loads. `--log-level` and `--log-format` are passed to it as
-overrides, so the rest of `[logging]` (`redact`, `per_logger`, sampling, and the
-correlation and OpenTelemetry processors) still applies. With `--log-config`,
-or with `PROTEAN_NO_AUTO_LOGGING` set, the two commands skip that call.
-`Domain.init()` still auto-configures from `[logging]` when the root logger has
-no handlers, so a `dictConfig` that leaves the root logger without handlers
-gets the `[logging]` setup on top.
+overrides, so the rest of `[logging]` (`redact`, `per_logger`, sampling, and
+the correlation and OpenTelemetry processors) still applies. With
+`--log-config`, or with `PROTEAN_NO_AUTO_LOGGING` set, the two commands skip
+the `Domain.configure_logging()` call. `Domain.init()` still auto-configures
+from `[logging]` when the root logger has no handlers. So if your `dictConfig`
+leaves the root logger without handlers, `Domain.init()` also applies the
+`[logging]` setup.
 
 Other commands, such as `protean shell`, do not call
-`Domain.configure_logging()`. When one of these flags is used, the root logger
-has handlers, so `Domain.init()` skips its auto-configuration and `[logging]` is
-not applied.
+`Domain.configure_logging()`. When you pass `--log-level`, `--log-format` or
+`--log-config` to such a command, the root logger has handlers. `Domain.init()`
+then skips its auto-configuration and does not apply `[logging]`.
 
-In multi-worker (`--workers N`) and `--reload` runs, the three flags also reach
-every worker process. Each worker applies them the same way the parent does:
-`--log-level` and `--log-format` override the level and the format of
-`[logging]`, and `--log-config` replaces `[logging]`. A worker started after a
-reload gets the same flags.
+In multi-worker (`--workers N`) and `--reload` runs, `--log-level`,
+`--log-format` and `--log-config` also reach every worker process. Each worker
+applies these flags the same way the parent does. `--log-level` and
+`--log-format` override the level and the format of `[logging]`. `--log-config`
+replaces `[logging]`. A worker started after a reload gets the same flags.
 
 With `--workers N`, each worker sends the records that reach its root logger to
-the supervisor, which writes them with its own handlers. A `dictConfig` that
-puts handlers on a named logger is different: every worker opens those handlers
+the supervisor. The supervisor writes them with its own handlers. When a
+`dictConfig` puts handlers on a named logger, every worker opens those handlers
 itself. Do not put a file handler on a named logger in a multi-worker run,
 because every worker then writes to and rotates the same file. Put file
 handlers on the root logger.
 
 ---
 
-## Environment variables
+## Set logging through environment variables
 
 | Variable | Purpose | Accepted values |
 |----------|---------|-----------------|
@@ -184,7 +185,7 @@ handlers on the root logger.
 
 ---
 
-## Public API
+## Call the public logging functions
 
 ### `configure_logging`
 
@@ -192,9 +193,9 @@ handlers on the root logger.
 --8<-- "reference/logging/001.py:configure-logging"
 ```
 
-Installs handlers, configures structlog, and wires the `ProcessorFormatter`
-bridge so stdlib `logging.getLogger()` records flow through the same
-processor chain as `get_logger()` events.
+Installs handlers and configures structlog. It also wires the
+`ProcessorFormatter` bridge, so stdlib `logging.getLogger()` records pass
+through the same processor chain as `get_logger()` events.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -215,15 +216,16 @@ processor chain as `get_logger()` events.
 --8<-- "reference/logging/002.py:domain-configure-logging"
 ```
 
-Merges `domain.toml [logging]` with explicit kwargs, calls
-`configure_logging()`, and installs:
+Merges `domain.toml [logging]` with explicit kwargs and calls
+`configure_logging()`. It then installs:
 
 - `ProteanCorrelationFilter` on the root stdlib logger and on each of its handlers
 - `protean_correlation_processor` on the structlog pipeline
 - `OTelTraceContextFilter` + `protean_otel_processor` when
   `telemetry.enabled = true`
 
-Idempotent, calling it again replaces handlers and de-duplicates filters.
+`Domain.configure_logging()` is idempotent. Calling it again replaces handlers
+and de-duplicates filters.
 
 ### `get_logger`
 
@@ -240,14 +242,14 @@ given name.
 --8<-- "reference/logging/003.py:bind-event-context"
 ```
 
-Adds or removes business-specific fields on the **current wide event**.
-Uses `structlog.contextvars`, which is async-safe and thread-local, each coroutine or thread sees
-its own bindings.
+Adds or removes business-specific fields on the **current wide event**. Uses
+`structlog.contextvars`, which is async-safe and thread-local. Each coroutine
+or thread sees its own bindings.
 
-The `access_log_handler` context manager snapshots outer bindings at
-handler entry, clears them for a clean handler scope, and restores them
-on exit. Fields that collide with framework-reserved names or stdlib
-`LogRecord` attributes are stripped before emission to protect the
+The `access_log_handler` context manager snapshots outer bindings at handler
+entry, clears them for a clean handler scope, and restores them on exit. Before
+it emits the wide event, `access_log_handler` strips fields that collide with
+framework-reserved names or stdlib `LogRecord` attributes, to protect the
 logging contract.
 
 Framework-reserved names that cannot be overwritten by application context:
@@ -285,12 +287,13 @@ pass through the configured redaction filter.
 --8<-- "reference/logging/005.py:configure-for-testing"
 ```
 
-Sets the root logger to WARNING and removes any `FileHandler` attached to
-the root logger. Use in `conftest.py` to minimize test noise.
+Sets the root logger to WARNING. It also removes any `FileHandler` attached to
+the root logger. Call it in `conftest.py` to keep INFO and DEBUG log lines out
+of your test output.
 
 ---
 
-## Framework logger catalog
+## Which loggers does the framework write to?
 
 Every logger below is a stdlib `logging.Logger`. Events flow through the
 same `ProcessorFormatter` pipeline as `get_logger()` calls, so JSON output
@@ -339,7 +342,7 @@ Same fields as `access.handler_completed`, plus:
 | `error_type` | `str` | Exception class name. |
 | `error_message` | `str` | `str(exc)` truncated to 256 characters. |
 
-#### Sample rendered output
+#### What a rendered wide event looks like
 
 A successful `PlaceOrder` command under `PROTEAN_ENV=production` (JSON
 renderer):
@@ -371,9 +374,9 @@ renderer):
 }
 ```
 
-`user_tier` and `order_total` come from a `bind_event_context()` call
-inside the handler. A failed handler raises the level to `error`, sets
-`status="failed"`, populates `error_type` / `error_message`, and inlines
+`user_tier` and `order_total` come from a `bind_event_context()` call inside
+the handler. A failed handler raises the level to `error` and sets
+`status="failed"`. It also populates `error_type` / `error_message` and inlines
 the exception traceback under the `exception` key.
 
 ---
@@ -408,16 +411,16 @@ Emitted on responses with status `< 500`.
 | `user_agent` | `str` | `User-Agent` header, truncated to 256 characters. |
 | `http_request_headers` | <code>dict[str, str] &#124; None</code> | Present only when `[logging.http].log_request_headers = true`. |
 | `http_response_headers` | <code>dict[str, str] &#124; None</code> | Present only when `[logging.http].log_response_headers = true`. |
-| **Application fields** | any | Everything bound via `bind_event_context()` inside the endpoint; see [Two layers of wide events](../concepts/observability/logging.md#two-layers-of-wide-events). |
+| **Application fields** | any | Everything bound via `bind_event_context()` inside the endpoint; see [Two layers of wide events](../concepts/observability/logging.md#protean-emits-wide-events-at-two-layers). |
 
 #### `access.http_failed`
 
 Emitted on responses with status `>= 500` and on unhandled endpoint exceptions.
 Same fields as `access.http_completed`, plus `error_type` and `error_message`
 when an exception was raised (and `exc_info` carrying the traceback). The
-middleware always echoes `X-Request-ID` on the response (including on
-synthesised 500s) so operators can pivot from an HTTP failure back into the log
-aggregator.
+middleware always returns `X-Request-ID` on the response (including on
+synthesised 500s), so operators can use it to find the records of a failed HTTP
+request in the log aggregator.
 
 When no `access.http_failed` event records an unhandled exception, the
 middleware logs `Unhandled error in <METHOD> <path>` at ERROR level, with the
@@ -443,8 +446,9 @@ Same field set as the wide event.
 
 Level: WARNING. A dedicated channel for invariant, validation, and
 authorization failures that cross a domain boundary. Route this logger to a
-SIEM or alerting pipeline without sampling or format changes interfering. It is
-deliberately narrow so operators can trust that every entry merits attention.
+SIEM or alerting pipeline without sampling or format changes interfering.
+Protean keeps `protean.security` to these failures only, so every entry on it
+needs an operator's attention.
 
 #### `log_security_event`
 
@@ -452,14 +456,13 @@ deliberately narrow so operators can trust that every entry merits attention.
 --8<-- "reference/logging/006.py:log-security-event"
 ```
 
-Signature: `log_security_event(event_type: str, **fields: Any) -> None`.
-Emits a WARNING on `protean.security`. The framework fills in
-`correlation_id` and `causation_id` from the active domain context; the
-caller supplies domain-specific fields. Keys that collide with stdlib
-`LogRecord` attributes are silently dropped.
+Signature: `log_security_event(event_type: str, **fields: Any) -> None`. Emits
+a WARNING on `protean.security`. The framework fills in `correlation_id` and
+`causation_id` from the active domain context. The caller supplies
+domain-specific fields. `log_security_event` silently drops keys that collide with stdlib `LogRecord` attributes.
 
-The four event-type constants are exposed so call sites never drift
-typographically from operator queries:
+Protean exports the four event-type constants, so call sites and operator
+queries use the same spelling:
 
 ```python
 --8<-- "reference/logging/006.py:security-constants"
@@ -472,7 +475,7 @@ typographically from operator queries:
 | `invalid_operation` | `InvalidOperationError` raised from a domain method. |
 | `invalid_state` | `InvalidStateError` raised from a domain method. |
 
-Common fields on every emission:
+Every emission carries these common fields:
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -489,15 +492,16 @@ stdlib `LogRecord` attributes which are silently dropped.
 
 ### `protean.snapshot`
 
-Level: WARNING. A dedicated channel for snapshot lifecycle signals an operator
-may want to act on, such as a snapshot discarded because it predates the current
-aggregate schema.
+Level: WARNING. A dedicated channel for snapshot lifecycle signals that an
+operator may want to act on. One example is a snapshot discarded because it
+predates the current aggregate schema.
 
 #### `snapshot_discarded`
 
 Emitted when a stored snapshot no longer constructs against the current
-aggregate schema, so the load path rebuilds the aggregate from its event stream.
-The warning marks snapshots to rebuild with `protean snapshot create`.
+aggregate schema. The load path then rebuilds the aggregate from its event
+stream. Rebuild the snapshots that this warning names with `protean snapshot
+create`.
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -515,15 +519,14 @@ The warning marks snapshots to rebuild with `protean snapshot create`.
 
 Signature: `log_snapshot_event(event_type: str, **fields: Any) -> None`. Emits a
 WARNING on `protean.snapshot`, filling `correlation_id` and `causation_id` from
-the active domain context. Keys that collide with stdlib `LogRecord` attributes
-are silently dropped.
+the active domain context. `log_snapshot_event` silently drops keys that collide with stdlib `LogRecord` attributes.
 
 ---
 
 ### `protean.server.engine`
 
-Engine lifecycle events. DEBUG-level events are only visible when the root
-logger is set to DEBUG; everything else is audible at INFO.
+Engine lifecycle events. DEBUG-level events appear only when the root logger is
+set to DEBUG. The other events appear at INFO.
 
 | Event | Level | Fields |
 |-------|-------|--------|
@@ -557,8 +560,9 @@ Lifecycle and error events for the per-subscriber processing loop.
 | `subscription.shutdown` | INFO | `subscriber` |
 | `subscription.error` | ERROR (exc) | `subscriber`, `attempt` |
 
-Per-message handler timing and completion flow through the dedicated
-`protean.access` logger (see above), not through this logger.
+The dedicated `protean.access` logger (see above) records per-message handler
+timing and completion. The `protean.server.subscription` logger does not record
+them.
 
 ---
 
@@ -608,8 +612,8 @@ failures use `logger.exception(...)` so stack traces are preserved.
 ### `protean.adapters.broker.redis`
 
 Failures on the Redis broker adapter. Most events are emitted via
-`logger.exception(...)` so the traceback is preserved; the structured
-event name doubles as the query key.
+`logger.exception(...)` so the traceback is preserved. The structured event
+name also serves as the query key.
 
 | Event | Level |
 |-------|-------|
@@ -626,8 +630,8 @@ event name doubles as the query key.
 | `broker.redis.info_failed` | ERROR (exc) |
 | `broker.redis.data_reset_failed` | ERROR (exc) |
 
-`broker.redis.connection_exhausted` carries `max_attempts`; the other
-events rely on the traceback rather than per-record `extra` fields.
+`broker.redis.connection_exhausted` carries `max_attempts`. The other events
+carry no per-record `extra` fields and rely on the traceback.
 
 ### `protean.adapters.broker.inline`
 
@@ -666,9 +670,10 @@ logger whenever a query's duration exceeds `slow_query_threshold_ms`.
 
 #### `repository.sqlalchemy.query`
 
-Emitted on the sibling `protean.adapters.repository.sqlalchemy.query`
-logger at DEBUG for every query. Off by default, enable by setting its level to
-`DEBUG` in `[logging.per_logger]`.
+When its level is set to DEBUG, the sibling
+`protean.adapters.repository.sqlalchemy.query` logger emits this event at DEBUG
+for every query. Off by default, enable by setting its level to `DEBUG` in
+`[logging.per_logger]`.
 
 Same field set as `slow_query`, minus `threshold_ms`.
 
@@ -681,7 +686,7 @@ Level: WARNING. Index lifecycle and query failures. Event names follow
 
 ---
 
-## Trace-context fields
+## Which trace-context fields does each record carry?
 
 When `telemetry.enabled = true` in `domain.toml`,
 `Domain.configure_logging()` attaches `OTelTraceContextFilter` to the root stdlib logger and to each of its handlers.
@@ -700,7 +705,7 @@ per-record cost.
 
 ---
 
-## Correlation fields
+## Which correlation fields does each record carry?
 
 Always present on every record when auto-configuration is active:
 
@@ -717,12 +722,12 @@ commands.
 
 ## Redaction
 
-Values whose keys match the configured list are replaced with the literal
-string `[REDACTED]`. Matching is case-insensitive. Nested `dict`, `list`,
-and `tuple` values are scanned up to **5 levels deep**; deeper nesting is
-left untouched.
+Protean replaces the value of every key that matches the configured list with
+the literal string `[REDACTED]`. Protean matches keys case-insensitively.
+Nested `dict`, `list`, and `tuple` values are scanned up to **5 levels deep**;
+deeper nesting is left untouched.
 
-### Default redact keys
+### Which keys are redacted by default?
 
 ```
 password, token, secret, api_key, authorization, cookie, session, csrf
@@ -743,7 +748,11 @@ their own list.
 - **structlog pipeline:** the processor returned by
   `make_redaction_processor()` is appended to `extra_processors` so it
   runs **last**, after every caller-supplied processor.
-- **stdlib pipeline:** when a redact list is configured, `ProteanRedactionFilter` is attached to the root logger and to each of its handlers. It runs after Protean's correlation and trace-context filters, so `correlation_id`, `causation_id`, `trace_id` and `span_id` are masked when the redact list names them.
+- **stdlib pipeline:** when a redact list is configured,
+  `ProteanRedactionFilter` is attached to the root logger and to each of its
+  handlers. `ProteanRedactionFilter` runs after Protean's correlation and
+  trace-context filters. So when the redact list names `correlation_id`,
+  `causation_id`, `trace_id` or `span_id`, the filter masks them.
 - **`log_method_call`:** inherits redaction transparently because it
   routes through the same pipeline.
 
@@ -755,15 +764,16 @@ for why redaction runs as a pipeline stage rather than at call sites.
 ## Multi-worker logging
 
 `protean server --workers N` (with `N > 1`) installs a
-`logging.handlers.QueueHandler` as the sole root handler for each worker
-and a `logging.handlers.QueueListener` on the supervisor that drains the
+`logging.handlers.QueueHandler` as the sole root handler for each worker. On
+the supervisor, it installs a `logging.handlers.QueueListener` that drains the
 queue and forwards records to the supervisor's configured handlers.
 
-The listener is stopped in a `finally` block on shutdown so buffered records
-are flushed before the supervisor exits. Single-worker mode is unchanged, no
-queue overhead.
+On shutdown, the supervisor stops the listener in a `finally` block. The
+listener flushes buffered records as it stops, before the supervisor exits.
+Single-worker mode is unchanged. It runs without the queue, so it has no queue
+overhead.
 
 See [`protean.server.supervisor`](server/supervisor.md) for supervisor
 configuration, and the
-[concept page](../concepts/observability/logging.md#multi-worker-hygiene)
+[concept page](../concepts/observability/logging.md#keep-log-records-whole-across-multiple-workers)
 for the rationale.

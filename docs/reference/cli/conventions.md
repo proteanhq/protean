@@ -1,4 +1,4 @@
-# CLI conventions: the result envelope and exit codes
+# How do CLI commands report results and exit codes?
 
 Protean is standardizing two contracts so that a script or an agent can consume a
 command's output uniformly: one **result envelope** for machine-readable output,
@@ -7,24 +7,25 @@ the shape a new command that emits `--json` output should follow.
 
 `check` and `verify` follow these contracts on every output format. `events
 catalog`, `subscriptions status`, `projection status`, and `outbox halted`
-follow them for their
-`--json` machine output: a successful run and any usage or load error are the
-envelope, with the exit codes below. Their human (non-`--json`) output keeps its
-historical shape, so a load failure there still exits `1`. `eventstore verify`
-follows the same `--json` contracts, and in both modes it exits `2` when it
-cannot connect to the event store. `ir diff` follows the exit-code convention:
-`2` for a usage, load or config error, printed on stderr, and `3` for its own
-"non-breaking changes only" result. Its `--format json` output keeps its own
-shape and does not use the envelope. `upgrade-check` follows the exit-code
-convention too: `1` for warning findings and `2` for a usage or environment
-error, printed on stderr. Its `--format json` output is still a plain list of
-findings, without the envelope. `ir check` predates the contracts and is **not
-yet converged**: its exit codes and output shape still differ.
+follow them for their `--json` machine output: a successful run and any usage
+or load error are the envelope, with the exit codes below. Their human
+(non-`--json`) output keeps its historical shape, so a load failure there still
+exits `1`. `eventstore verify` follows the same `--json` contracts. In both
+modes, `eventstore verify` exits `2` when it cannot connect to the event store.
+`ir diff` follows the exit-code convention: `2` for a usage, load or config
+error, printed on stderr, and `3` for its own "non-breaking changes only"
+result. Its `--format json` output keeps its own shape and does not use the
+envelope. `upgrade-check` follows the exit-code convention too: `1` for warning
+findings and `2` for a usage or environment error, printed on stderr. Its
+`--format json` output is still a plain list of findings, without the envelope.
+`ir check` predates the contracts and is **not yet converged**: its exit codes
+and output shape still differ.
 
-## The result envelope
+## What does the result envelope contain?
 
-Every command that emits machine-readable output (under `--json`, or
-`--format json` for `check`) wraps its result in one stable JSON object:
+Each command listed above as following the envelope wraps its machine-readable
+output (under `--json`, or `--format json` for `check`) in one stable JSON
+object:
 
 ```json
 {
@@ -48,27 +49,29 @@ Every command that emits machine-readable output (under `--json`, or
 - `fail`: The command ran and found a failure it is designed to detect (a
   gating diagnostic, a failed stage). The fine-grained severity is in `data` and
   `diagnostics`, not the status.
-- `error`: A usage or environment error it could not run past (a bad option, no
-  or unloadable domain, malformed config, IO). Maps to the usage class (exit `2`).
+- `error`: A usage or environment error that stopped the command from running
+  (a bad option, no or unloadable domain, malformed config, IO). Maps to the
+  usage class (exit `2`).
 
 The envelope ships a pinned, versioned JSON Schema at
 `src/protean/cli/schema/v0.1.0/envelope.schema.json` (mirroring the IR schema
-precedent). Conformance tests validate each converged command's `--json` output
-against it, so the shape is enforced, not just documented.
+precedent). Conformance tests check the `--json` output of each command that
+follows the envelope against this schema, so a change that breaks the shape
+fails the tests.
 
 `data` and `diagnostics` split the payload deliberately, so a consumer should
-read **both**: `diagnostics` carries the lint findings (the recoverable,
-per-element diagnostics), while `data` carries the command's own detail and its
+read **both**. `diagnostics` carries the lint findings (the recoverable,
+per-element diagnostics). `data` carries the command's own detail and its
 *fatal* errors: a domain that would not load, a malformed `[lint]` config, a
-failed init stage. Those fatal errors live under `data` (e.g. `data.error`, or
-`data.stages.init.error` for `verify`), not in `diagnostics`. A diagnostics-only
-consumer will miss them.
+failed init stage. The command reports those fatal errors in `data` (e.g.
+`data.error`, or `data.stages.init.error` for `verify`). It does not report
+them in `diagnostics`. A diagnostics-only consumer will miss them.
 
 SARIF and GitHub-annotations output (`check --format sarif` /
 `--format github-annotations`) are **not** wrapped: they are external standard
 schemas consumed by other tools, and stay as-is.
 
-## The exit-code convention
+## Which exit code does a command return?
 
 | Exit code | Meaning |
 |-----------|---------|
@@ -77,10 +80,10 @@ schemas consumed by other tools, and stay as-is.
 | `2` | A usage or environment error it could not run past: a bad option or argument (Click's own default), no or unloadable domain, malformed config, IO. |
 | `>=3` | Command-specific failure classes, documented per command. |
 
-Because `2 = usage` is Click's own default for a malformed command line, a
-command that sets no explicit exit code already conforms.
+Click exits `2` by default for a malformed command line, which matches `2 =
+usage`. A command that sets no explicit exit code therefore already conforms.
 
-### Per-command codes
+### Which codes does each command use?
 
 **`protean check`**
 
@@ -90,7 +93,8 @@ command that sets no explicit exit code already conforms.
 | `1` | A findings failure: validator errors, an IR-build error, or a warning/info at or above the floor. |
 | `2` | Usage/environment: a bad `--domain`, `--level`, or `--format`; a domain that will not load; a malformed `[lint]` config. |
 
-**`protean verify`** (the stage classes are pinned above the shared `0`/`2`):
+**`protean verify`** (it gives each stage a fixed code from `3` up, in addition
+to the shared `0`/`2`):
 
 | Exit code | Meaning |
 |-----------|---------|
@@ -121,14 +125,14 @@ See [`protean ir diff`](ir.md#protean-ir-diff) for the details.
 
 See [`protean upgrade-check`](upgrade-check.md#exit-codes) for the details.
 
-## Clean stdout
+## What does stdout carry under machine-readable output?
 
 Under machine-readable output, stdout carries **only** the envelope: exactly
 one JSON object and nothing else. Every log line, warning, and human error
 message goes to stderr, so `protean check --format json | jq` (or
 `protean verify --json | jq`) stays parseable.
 
-## Related
+## See also
 
 - [`protean check`](check.md): The exemplar command.
 - [`protean verify`](verify.md): Init, check, and tests in one verdict.

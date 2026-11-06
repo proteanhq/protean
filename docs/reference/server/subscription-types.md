@@ -1,10 +1,10 @@
-# Subscription Types
+# Choose a subscription type for your handlers
 
 Protean provides two subscription types for connecting handlers to message
-sources. Each is optimized for different use cases and provides different
+sources. Each type suits different use cases. The two types also give different
 guarantees.
 
-## Overview
+## Compare the two types
 
 | Feature | StreamSubscription | EventStoreSubscription |
 | ------- | ------------------ | ---------------------- |
@@ -25,9 +25,10 @@ production workloads**.
 
 !!! note
     Setting `default_subscription_type = "stream"` in your domain configuration
-    automatically enables the [transactional outbox](../../concepts/async-processing/outbox.md). The outbox is
-    required so that domain events committed to your database are reliably
-    published to Redis Streams.
+    automatically enables the [transactional
+    outbox](../../concepts/async-processing/outbox.md). Protean needs the
+    outbox so that the outbox processor reliably publishes the domain events
+    committed to your database to Redis Streams.
 
 ### How It Works {#stream-how-it-works}
 
@@ -52,9 +53,9 @@ sequenceDiagram
     SS->>RS: XACK (acknowledge)
 ```
 
-### Key Features {#stream-key-features}
+### What StreamSubscription offers {#stream-key-features}
 
-#### Consumer Groups
+#### Scale out with consumer groups
 
 Multiple instances of your application can process messages in parallel:
 
@@ -69,7 +70,7 @@ Stream: orders
 Each message is delivered to exactly one consumer in the group, enabling
 horizontal scaling.
 
-#### Blocking Reads
+#### Wait for messages with blocking reads
 
 StreamSubscription uses Redis's `XREADGROUP` with blocking, which means:
 
@@ -90,7 +91,7 @@ messages = broker.read_blocking(
 )
 ```
 
-#### Dead Letter Queue
+#### Move failed messages to a dead letter queue
 
 Failed messages are moved to a DLQ after exhausting retries:
 
@@ -118,7 +119,7 @@ debugging. `consumer_group` holds the handler's fully qualified name:
 }
 ```
 
-##### Managing DLQ Messages
+##### Inspect, replay or purge DLQ messages
 
 Protean provides built-in tools to inspect and act on DLQ messages without
 writing custom scripts:
@@ -128,10 +129,10 @@ writing custom scripts:
 - **Observatory**: The [DLQ tab](observability.md) in the Observatory dashboard
   provides a web UI and REST API (`/api/dlq/*`) for the same operations.
 
-See [Dead Letter Queue Management](../../concepts/async-processing/subscriptions.md#dead-letter-queue-management)
+See [Dead Letter Queue Management](../../concepts/async-processing/subscriptions.md#inspect-replay-and-purge-messages-in-the-dead-letter-queue)
 for usage examples.
 
-#### Automatic Retries
+#### Retry failed messages automatically
 
 Failed messages are automatically retried with configurable delays:
 
@@ -151,29 +152,30 @@ Failed messages are automatically retried with configurable delays:
 | `enable_dlq` | true | Whether to use dead letter queue |
 | `retention_maxlen` | none | Cap the stream at this many entries (see [Stream retention](#stream-retention)) |
 
-#### Stream retention {#stream-retention}
+#### Set stream retention {#stream-retention}
 
 By default a StreamSubscription never trims its broker stream: processed
 messages stay in Redis forever, so the stream grows without bound. Set
-`retention_maxlen` to cap it. After each batch, the subscription trims the
-stream it just read from.
+`retention_maxlen` to cap it. With `retention_maxlen` set, the subscription
+trims the stream it just read from after each batch.
 
 How the trim behaves depends on the consumer topology:
 
 - **More than one consumer group** (for example a projector plus an event
   handler): Protean trims by `MINID` at the slowest group's last-delivered
-  position, so nothing a slow group has not yet read is ever removed.
-  `retention_maxlen` is ignored here, consumer progress bounds the stream. Note the flip side:
-  a group parked at `0-0` (a dead consumer, or a handler you removed without
-  deleting its group) holds the floor down, so the stream keeps growing until
-  you delete that group. Retention is progress-bounded, not size-bounded,
-  whenever multiple groups exist.
-- **At most one consumer group:** Protean caps the stream at `retention_maxlen`
-  with a plain `MAXLEN` trim. This is a fixed-size cap, not a progress-safe one:
-  if the single handler falls more than `retention_maxlen` behind (catch-up on a
-  pre-existing stream, an outage, or a slow handler under a fast producer),
-  `MAXLEN` drops the oldest *unread* entries. Size `retention_maxlen` above your
-  largest expected backlog.
+  position. Protean never removes an entry that a slow group has not yet read.
+  `retention_maxlen` is ignored here, consumer progress bounds the stream. A
+  group whose position stays at `0-0` (a dead consumer, or a handler you
+  removed without deleting its group) stops all trimming. The stream then keeps
+  growing until you delete that group. Retention is progress-bounded, not
+  size-bounded, whenever multiple groups exist.
+- **With at most one consumer group**, Protean caps the stream at
+  `retention_maxlen` with a plain `MAXLEN` trim. This cap has a fixed size and
+  ignores how far the handler has read. If the single handler falls more than
+  `retention_maxlen` entries behind, `MAXLEN` drops the oldest *unread*
+  entries. The handler can fall behind during catch-up on a pre-existing
+  stream, during an outage, or when a slow handler runs under a fast producer.
+  Size `retention_maxlen` above your largest expected backlog.
 
 Trimming is approximate (Redis's `~`): the stream is trimmed a whole node at a
 time, so it may settle slightly above `retention_maxlen`, never below it. This
@@ -182,7 +184,7 @@ is size-based retention only; there is no time-based TTL.
 Each built-in profile carries a default cap (see
 [Stream retention defaults](configuration.md#stream-retention-defaults)).
 
-### When to Use {#stream-when-to-use}
+### When should you use StreamSubscription? {#stream-when-to-use}
 
 Use StreamSubscription when you need:
 
@@ -196,7 +198,7 @@ Use StreamSubscription when you need:
 `EventStoreSubscription` reads messages directly from the event store. It's
 designed for scenarios where you need direct access to the event stream.
 
-### How It Works {#eventstore-how-it-works}
+### How does EventStoreSubscription work? {#eventstore-how-it-works}
 
 ```mermaid
 sequenceDiagram
@@ -218,9 +220,9 @@ sequenceDiagram
     end
 ```
 
-### Key Features {#eventstore-key-features}
+### What EventStoreSubscription offers {#eventstore-key-features}
 
-#### Direct Event Store Access
+#### Read events straight from the event store
 
 Reads events directly from the event store, preserving the complete event
 history:
@@ -234,7 +236,7 @@ messages = event_store.read(
 )
 ```
 
-#### Position Tracking
+#### Track the read position in the event store
 
 Position is stored in the event store itself as a special message type:
 
@@ -254,10 +256,10 @@ f"position-{subscriber_name}-{stream_category}"
 }
 ```
 
-#### Origin Stream Filtering
+#### Filter messages by origin stream
 
-Filter messages based on their origin stream - useful when handling events
-that were generated in response to specific commands:
+Filter messages by their origin stream. Use this filter when your handler
+processes events raised in response to specific commands:
 
 ```python
 --8<-- "reference/server/subscription-types/001.py:origin_filter"
@@ -274,14 +276,14 @@ that were generated in response to specific commands:
 
 ### When to Use {#eventstore-when-to-use}
 
-Use EventStoreSubscription when you need:
+When you need any of the following, use EventStoreSubscription:
 
 - **Projections**: Building read models from event history
 - **Event replay**: Reprocessing historical events
 - **Debugging**: Inspecting event flow in development
 - **Single-worker scenarios**: When horizontal scaling isn't needed
 
-### Production Warning
+### Expect a warning in production
 
 When using EventStoreSubscription in production, Protean logs a warning:
 
@@ -295,7 +297,7 @@ dead letter queue, and horizontal scaling with consumer groups.
 This warning appears when `PROTEAN_ENV`, `PYTHON_ENV`, `ENV`, or `ENVIRONMENT`
 is set to `production`, `prod`, or `prd`.
 
-## Recommendation Summary
+## Which type should you use for each scenario?
 
 | Scenario | Recommended Type |
 | -------- | ---------------- |
@@ -307,10 +309,12 @@ is set to `production`, `prod`, or `prd`.
 | High-throughput processing | StreamSubscription |
 | Single-server deployment | Either |
 
-## Configuration Examples
+## Configure each subscription type
 
 !!!note
-    If you do not explicitly specify a `subscription_type` or `subscription_profile`, the defaults will be picked up from your domain configuration.
+    If you do not explicitly specify a `subscription_type` or
+    `subscription_profile`, Protean uses the defaults from your domain
+    configuration.
 
 ### StreamSubscription Configuration
 
@@ -336,7 +340,7 @@ Or using a profile:
 --8<-- "reference/server/subscription-types/001.py:projection_profile"
 ```
 
-## Monitoring lag
+## Monitor subscription lag
 
 Both subscription types support lag monitoring through the CLI, Observatory
 API, and Prometheus metrics. Lag is computed differently for each type:
@@ -361,7 +365,7 @@ curl http://localhost:9000/api/subscriptions
 See [`protean subscriptions`](../cli/runtime/subscriptions.md) for full CLI
 documentation and [Observability](observability.md) for the Observatory API.
 
-## Related pages
+## See also
 
 - [Configuration](configuration.md): Learn about configuration profiles and
   the priority hierarchy

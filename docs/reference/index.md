@@ -1,16 +1,16 @@
-# Reference
+# Look up Protean's options and APIs
 
-The reference section provides factual, lookup-oriented documentation for
-Protean's machinery. Use it to find specific configuration options, field
+The reference section is factual documentation of Protean's components,
+arranged for lookup. Use it to find specific configuration options, field
 types, CLI commands, adapter settings, and API details.
 
-For understanding *why* things work as they do, see
-[Concepts](../concepts/index.md).
-For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
+For an explanation of *why* Protean works as it does, see
+[Concepts](../concepts/index.md). For step-by-step *how-to* instructions, see
+[Guides](../guides/index.md).
 
 <div class="grid cards" markdown>
 
--   **:material-code-tags: Domain Elements**
+-   **:material-code-tags: Configure domain elements**
 
     ---
 
@@ -21,7 +21,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
     [:material-arrow-right-box: Object Model](domain-elements/object-model.md)
     [:material-arrow-right-box: Identity](domain-elements/identity.md)
 
--   **:material-form-textbox: Fields**
+-   **:material-form-textbox: Choose a field type**
 
     ---
 
@@ -29,7 +29,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Fields](fields/index.md)
 
--   **:material-cog: Configuration**
+-   **:material-cog: Configure a domain**
 
     ---
 
@@ -37,7 +37,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Configuration](configuration/index.md)
 
--   **:material-file-document-outline: Logging**
+-   **:material-file-document-outline: Configure logging**
 
     ---
 
@@ -46,7 +46,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Logging](logging.md)
 
--   **:material-console: CLI**
+-   **:material-console: Run CLI commands**
 
     ---
 
@@ -54,7 +54,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: CLI Commands](cli/index.md)
 
--   **:material-server: Server**
+-   **:material-server: Run the server**
 
     ---
 
@@ -65,7 +65,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
     [:material-arrow-right-box: Multi-Worker](server/supervisor.md)
     [:material-arrow-right-box: Observability](server/observability.md)
 
--   **:material-puzzle: Adapters**
+-   **:material-puzzle: Configure adapters**
 
     ---
 
@@ -73,7 +73,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Adapters](adapters/index.md)
 
--   **:material-language-python: Type Checking**
+-   **:material-language-python: Set up type checking**
 
     ---
 
@@ -81,7 +81,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Type Checking](type-checking/index.md)
 
--   **:material-test-tube: Testing**
+-   **:material-test-tube: Test with pytest**
 
     ---
 
@@ -89,7 +89,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Pytest Plugin](testing/pytest-plugin.md)
 
--   **:material-swap-horizontal: Migration**
+-   **:material-swap-horizontal: Migrate between versions**
 
     ---
 
@@ -97,7 +97,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Migration guides](migration/index.md)
 
--   **:material-api: Python API Reference**
+-   **:material-api: Look up the Python API**
 
     ---
 
@@ -106,16 +106,16 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: API Reference](../api/index.md)
 
--   **:material-map-marker-check: Applicability Charter**
+-   **:material-map-marker-check: Check where Protean fits**
 
     ---
 
-    What Protean is a good fit for, and the shapes of systems it is not, with
-    the reason in each case.
+    Which systems Protean fits and which it does not. Each case states the
+    reason.
 
     [:material-arrow-right-box: Applicability Charter](applicability.md)
 
--   **:material-shield-check: Guarantees**
+-   **:material-shield-check: Check what each port and adapter guarantees**
 
     ---
 
@@ -124,15 +124,16 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Guarantees](guarantees.md)
 
--   **:material-tag-outline: Versioning Policy**
+-   **:material-tag-outline: Read the versioning policy**
 
     ---
 
-    What a version number promises, and how to enforce it in your own CI.
+    What Protean promises with each version number. How to enforce that promise
+    in your own CI.
 
     [:material-arrow-right-box: Versioning Policy](versioning-policy.md)
 
--   **:material-format-list-checks: Stable Surface**
+-   **:material-format-list-checks: Find which names are stable**
 
     ---
 
@@ -141,7 +142,7 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     [:material-arrow-right-box: Stable Surface](stable-surface.md)
 
--   **:material-security: Security Considerations**
+-   **:material-security: Review security considerations**
 
     ---
 

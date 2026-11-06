@@ -1,10 +1,10 @@
 # `protean mcp`
 
-The `mcp` command runs a [Model Context Protocol](https://modelcontextprotocol.io)
-server that exposes Protean's framework operations as tools a coding agent can
-call. Every tool answers from the installed framework, so an agent always reasons
-about the version of Protean the project actually runs, not a stale copy of the
-docs.
+The `mcp` command runs a [Model Context
+Protocol](https://modelcontextprotocol.io) server. The server exposes Protean's
+framework operations as tools a coding agent can call. Every tool answers from
+the installed framework. An agent therefore always reasons about the version of
+Protean the project actually runs, and never about a stale copy of the docs.
 
 The server exposes five tools:
 
@@ -14,9 +14,9 @@ The server exposes five tools:
 - `explain`: what a diagnostic code means and how to fix it.
 - `scaffold`: preview a new element slice, and write it only on consent.
 
-## Installation
+## Install the `mcp` extra
 
-The server rides on the optional `mcp` extra:
+The server needs the optional `mcp` extra:
 
 ```shell
 pip install "protean[mcp]"
@@ -25,13 +25,13 @@ pip install "protean[mcp]"
 Running `protean mcp` without the extra prints an install hint and exits, the
 same way the other optional commands do. `import protean` never needs the extra.
 
-## Usage
+## Run the command
 
 ```shell
 protean mcp [OPTIONS]
 ```
 
-## Options
+## Which options does `protean mcp` take?
 
 | Option        | Description                          | Default     |
 |---------------|--------------------------------------|-------------|
@@ -40,7 +40,7 @@ protean mcp [OPTIONS]
 | `--port`      | Port to bind for `--http`.           | `8000`      |
 | `--help`      | Show the help message and exit.      |             |
 
-## Transports
+## Choose a transport
 
 The server runs on stdio by default, so an MCP client can launch it directly as
 a subprocess. Pass `--http` to serve over streamable HTTP instead:
@@ -64,13 +64,14 @@ An MCP client discovers the server from a `.mcp.json` file in the project:
 }
 ```
 
-Run [`protean dx install`](../project/dx.md) to write that entry for you. It
-manages only the `mcpServers.protean` key-path, so an existing `.mcp.json` keeps
-every other server you configured. You can also create the file by hand as shown,
-or point your client at the `.mcp.json` shipped at the root of the Protean
-repository, which carries the same entry.
+Run [`protean dx install`](../project/dx.md) to write the `mcpServers.protean`
+entry above into `.mcp.json` for you. `protean dx install` writes only the
+`mcpServers.protean` key-path, so every other server in an existing `.mcp.json`
+stays as you configured it. You can also create the file by hand as shown, or
+point your client at the `.mcp.json` shipped at the root of the Protean
+repository. That `.mcp.json` carries the same entry.
 
-## The tools
+## What does each tool do?
 
 ### `validate`
 
@@ -116,18 +117,19 @@ Plans a new element slice, and writes it only on consent.
   element name, e.g. `Order`), `project` (optional project root, defaulting to
   the working directory), and `apply` (defaults to `false`).
 - **Output**: always `applied`, `element`, and `name`. With `apply=false` (the
-  default), also the rendered `preview`, the structured `plan`, and the list of
-  `files` that would be created, touching nothing. With `apply=true`, the same
-  plus `written`, the paths it created.
+  default), the output also holds the rendered `preview`, the structured
+  `plan`, and the list of `files` that would be created. In this mode the tool
+  touches nothing. With `apply=true`, the same plus `written`, the paths it
+  created.
 
 The write only happens when the tool is called with `apply=true`. MCP clients
-typically surface a tool call's arguments for you to approve before it runs, so
-that flag is your explicit consent to write.
+typically show you a tool call's arguments to approve before the call runs.
+Your approval of `apply=true` is therefore your explicit consent to write.
 
 ## Security
 
 The `scaffold` tool can write files into your project when called with
-`apply=true`. Approve those calls the way your MCP client presents them, and keep
-the server on stdio (or loopback for `--http`) unless you have a specific reason
-to expose it. The `--http` transport is unauthenticated, so bind a non-loopback
-address only on a trusted network behind an authenticating proxy.
+`apply=true`. Approve those calls the way your MCP client presents them. Keep
+the server on stdio (or loopback for `--http`) unless you have a specific
+reason to expose it. The `--http` transport is unauthenticated, so bind a
+non-loopback address only on a trusted network behind an authenticating proxy.

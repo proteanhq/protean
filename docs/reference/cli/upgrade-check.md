@@ -11,7 +11,7 @@ protean upgrade-check --domain=my_app
 protean upgrade-check --domain=my_app --format=json
 ```
 
-## Options
+## What options does the command take?
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -33,9 +33,9 @@ source, so the mode runs with the databases and brokers down.
 | `2` | A usage or environment error: a bad `--format`, a bad or misplaced `--pinned-version`, an unknown option, a domain that does not load, an error while the domain initializes, or an error outside a single check. A check that fails on its own reports `CHECK_FAILED` and exits `1`. The message goes to stderr, and stdout stays empty, including under `--format json`. |
 
 `--format json` prints the findings as a plain JSON list. It does not use the
-[result envelope](conventions.md#the-result-envelope).
+[result envelope](conventions.md#what-does-the-result-envelope-contain).
 
-## Checks
+## Which changes does the command check?
 
 | Code | Level | Surface | What it reports |
 |------|-------|---------|-----------------|
@@ -52,25 +52,26 @@ source, so the mode runs with the databases and brokers down.
 
 ### What the source checks cover
 
-`NESTED_UNIT_OF_WORK`, `UNIT_OF_WORK_NESTING_REVIEW` and `IO_INSIDE_UNIT_OF_WORK`
-read `with UnitOfWork():` and `async with UnitOfWork():` blocks, where the
-statement calls `UnitOfWork` by that name. A Unit of Work opened any other way
-is not seen: through an alias (`from protean import UnitOfWork as U`), through a
-variable (`uow = UnitOfWork()` and then `with uow:`), or with `uow.start()`. The
-scan reads modules in the domain's own directory and its direct subdirectories.
-Modules nested deeper are not read.
+`NESTED_UNIT_OF_WORK`, `UNIT_OF_WORK_NESTING_REVIEW` and
+`IO_INSIDE_UNIT_OF_WORK` read `with UnitOfWork():` and `async with
+UnitOfWork():` blocks, where the statement calls `UnitOfWork` by that name. The
+scan does not see a Unit of Work opened any other way: through an alias (`from
+protean import UnitOfWork as U`), through a variable (`uow = UnitOfWork()` and
+then `with uow:`), or with `uow.start()`. The scan reads modules in the
+domain's own directory and its direct subdirectories. Modules nested deeper are
+not read.
 
-A clean report leaves three gaps:
+A clean report can still miss three cases:
 
-- **The Unit of Work the framework opens for you.** A `@handle` method (event
-  handlers, command handlers, projectors and process managers) and a
-  `@use_case` method run inside a Unit of Work that no `with` statement shows.
-  The scan cannot see it. An explicit `with UnitOfWork()` block inside one of
-  these methods is still scanned, and I/O inside it is reported. The block is
-  nested inside the framework's Unit of Work, though, and `NESTED_UNIT_OF_WORK`
-  does not report that. `protean check` has no nesting rule, so neither tool
-  reports this case. Search your handler and `@use_case` methods for
-  `UnitOfWork` by hand.
+- **The Unit of Work the framework opens for you.** The framework runs every
+  `@handle` method (event handlers, command handlers, projectors and process
+  managers) and every `@use_case` method inside a Unit of Work that no `with`
+  statement shows. The scan cannot see it. An explicit `with UnitOfWork()`
+  block inside one of these methods is still scanned, and I/O inside it is
+  reported. The block is nested inside the framework's Unit of Work, though,
+  and `NESTED_UNIT_OF_WORK` does not report that. `protean check` has no
+  nesting rule, so neither tool reports this case. Search your handler and
+  `@use_case` methods for `UnitOfWork` by hand.
 - **I/O in a method body with no explicit block.** For `@handle` methods, run
   `protean check`. It reports a method that calls out after its first
   `repository_for(...)` as
@@ -78,18 +79,19 @@ A clean report leaves three gaps:
   at `info` level. An `info` finding does not change the exit code unless you
   set `[lint].level = "info"` (see [`protean check`](check.md#exit-codes)).
   `protean check` does not read `@use_case` methods, so review those by hand.
-- **I/O the rules do not recognise.** Both tools count a call as I/O in two
-  cases. An HTTP verb (`get`, `post`, `send` and the like) counts when it is
-  called on `httpx`, `requests`, `urllib`, `urllib3`, `aiohttp` or `smtplib`, or
-  on a name imported from one of them. A call named `publish`, `send_email`,
-  `sendmail`, `send_message` or `urlopen` also counts. `upgrade-check` counts it
-  on any receiver. `protean check` counts it only when the call resolves to an
-  imported name, so it misses one held on `self` or on a local. A method with
-  another name on an injected port or adapter (`self.gateway.charge()`) is not
-  flagged, and neither is a call into a client library outside that list, such
-  as `stripe` or `boto3`.
+- **I/O the rules do not recognise.** `upgrade-check` and `protean check` count
+  a call as I/O in two cases. An HTTP verb (`get`, `post`, `send` and the like)
+  counts when it is called on `httpx`, `requests`, `urllib`, `urllib3`,
+  `aiohttp` or `smtplib`, or on a name imported from one of them. A call named
+  `publish`, `send_email`, `sendmail`, `send_message` or `urlopen` also counts.
+  `upgrade-check` counts it on any receiver. `protean check` counts it only
+  when the call resolves to an imported name. It therefore misses a call on an
+  object held on `self` or in a local variable. Neither tool flags a method
+  with another name on an injected port or adapter (`self.gateway.charge()`).
+  Neither tool flags a call into a client library outside that list either,
+  such as `stripe` or `boto3`.
 
-## Generated SQL
+## Review the SQL the command generates
 
 For `OUTBOX_NEEDS_ALTER`, the command introspects the live table and emits the
 `ALTER` tailored to the connected database, for example on PostgreSQL:
@@ -101,9 +103,11 @@ ALTER TABLE outbox
   ...
 ```
 
-Review the output, confirm no existing value exceeds the new bounds, then run it.
-Protean never applies the migration for you: schema changes are an
-adapter/operator concern (see [ADR-0004](../../adr/0004-release-workflow-and-breaking-change-policy.md)).
+Review the output to confirm that no existing value exceeds the new bounds.
+Then run the `ALTER`. Protean never applies the migration for you: schema
+changes are an adapter/operator concern, as the release workflow and
+breaking-change policy states
+([ADR-0004](../../adr/0004-release-workflow-and-breaking-change-policy.md)).
 
 See the [v0.16 migration guide](../migration/v0-16.md) for the full upgrade notes.
 
@@ -113,8 +117,9 @@ The checks above report what needs attention when you move *up* a release.
 `--opportunities` reports the other direction: capability the framework has
 already shipped that your domain still appears to hand-roll. A codebase written
 against an older Protean keeps its hand-rolled queue table, its custom
-middleware, its raw SQL, long after the framework caught up, because nobody goes
-back to re-check. This mode names those spots.
+middleware and its raw SQL long after the framework added the same capability.
+The code stays because nobody goes back to re-check it. The `--opportunities`
+mode lists each of those places in your code.
 
 ```bash
 protean upgrade-check --opportunities --domain=my_app
@@ -122,33 +127,33 @@ protean upgrade-check --opportunities --domain=my_app --pinned-version=0.15
 protean upgrade-check --opportunities --domain=my_app --format=json
 ```
 
-Every detector is **deterministic**: it reads your source and matches on
-structure, its imports, call shapes, and the literal choices in a field, so it
-gives the same findings every run. The raw-SQL detector is import-gated: `text`
-is matched only when it comes from `sqlalchemy`. The middleware detector matches
-a `BaseHTTPMiddleware` subclass or a `dispatch` method, and an `add_middleware`
-call that names something outside the framework's own middlewares and the
-standard Starlette and FastAPI ones. The queue-status detector reads a `status`
-or `state` field and needs at least two queue-vocabulary choices before it fires.
-Detector findings are advisory (`info`) and do not
-change the exit code. The one exception is `CHECK_FAILED`: if a detector cannot
-complete, that is a `warning`, and any warning exits `1`.
+Every detector is **deterministic**, so it gives the same findings every run.
+It reads your source and matches on its structure: imports, call shapes, and
+the literal choices in a field. The raw-SQL detector is import-gated: `text` is
+matched only when it comes from `sqlalchemy`. The middleware detector matches a
+`BaseHTTPMiddleware` subclass or a `dispatch` method. It also matches an
+`add_middleware` call that names something outside the framework's own
+middlewares and the standard Starlette and FastAPI ones. The queue-status
+detector reads a `status` or `state` field and needs at least two
+queue-vocabulary choices before it fires. Detector findings are advisory
+(`info`) and do not change the exit code. The one exception is `CHECK_FAILED`:
+if a detector cannot complete, that is a `warning`, and any warning exits `1`.
 
-### The pinned version
+### How does the pinned version filter findings?
 
 Each detector declares the release its capability arrived in. A finding is
 reported only when that release is at or below the *pinned* version, i.e. you
-already have the capability installed but still hand-roll it. The pinned version
-defaults to the installed Protean. `--pinned-version` overrides it, so you can
-ask "what has arrived since the release this code was written against". Pinning
-below a capability's release suppresses that capability's finding, because you do
-not own it yet.
+already have the capability installed but still hand-roll it. The pinned
+version defaults to the installed Protean. `--pinned-version` overrides the
+default. With it, you can ask "what has arrived since the release this code was
+written against". Pinning below a capability's release suppresses that
+capability's finding, because you do not own it yet.
 
 `--pinned-version` takes `MAJOR.MINOR` with an optional patch and an optional
 release tag: `0.16`, `0.16.3`, `0.16.0rc1`, `0.16.0.dev1`. Anything else exits
 `2`, so a typo does not silently read as some other version.
 
-### Detectors
+### Which hand-rolled code does each detector find?
 
 | Code | Level | Capability (release) | What it finds |
 |------|-------|----------------------|---------------|
@@ -158,24 +163,28 @@ release tag: `0.16`, `0.16.3`, `0.16.0rc1`, `0.16.0.dev1`. Anything else exits
 | `SANITIZE_DEFAULT_CHANGED` | info | Sanitize default flip (0.18.0) | A `String`/`Text` field that leaves `sanitize` unset, either by not passing it or by passing `None`, and therefore relied on the pre-0.18 default of `sanitize=True`. Every site is listed by `module:line` so the finding works as a migration checklist. Not flagged: a field that declares `sanitize` by keyword or positionally (`Text(True)`), a field with a real `choices=` value (never sanitized), a container content spec (`List(String(...))`, never sanitized), a `String`/`Text` that is not Protean's, and a field whose arguments hide behind a splat (`String(**opts)`). The whole finding is suppressed when the domain sets `[field_defaults] sanitize = true`, which opts every unset field back into the old behaviour. See [the migration guide](../migration/v0-18.md#string-and-text-no-longer-sanitize-by-default). |
 | `CHECK_FAILED` | warning | n/a | A detector could not complete; the report may be incomplete for that area. |
 
-### Where the line is
+### Which advice does this mode leave out?
 
-This mode ships only deterministic detectors, so the report gives the same
-verdict every run. Most of them report a capability the domain hand-rolls that
-the framework now ships. `SANITIZE_DEFAULT_CHANGED` is the exception: it reports
-a behaviour change, the 0.18.0 sanitize-default flip, whose effect is silent at
-runtime. It works the same way, a deterministic source scan gated on the
-release. Judgment-heavy advice ("this orchestration is really a process
-manager") stays out of OSS; that is the commercial Domain Assessment surface, on
-the non-deterministic side of the open-core boundary.
+`--opportunities` ships only deterministic detectors, so the report gives the
+same verdict every run. Most of the detectors report a capability that the
+framework now ships and the domain still writes by hand.
+`SANITIZE_DEFAULT_CHANGED` is the exception: it reports a behaviour change, the
+0.18.0 sanitize-default flip, whose effect is silent at runtime. It works the
+same way, a deterministic source scan gated on the release. Protean's
+open-source release does not give advice that needs judgment ("this
+orchestration is really a process manager"). Under the open-core model, the
+commercial Domain Assessment gives that advice, because its findings are not
+deterministic.
 
 !!! warning "A warning exit is easier to hit from 0.17"
 
-    `NESTED_UNIT_OF_WORK` and `IO_INSIDE_UNIT_OF_WORK` are both warnings, and
-    both read your source rather than your config. A domain that exited `0` on
-    0.16 can exit non-zero on 0.17 with nothing changed. On 0.17 and 0.18 a
-    warning exits `2`. From 0.19 it exits `1`, and `2` means the run itself
-    failed; see
-    [`upgrade-check` exits 1 for warnings and 2 for errors](../migration/v0-19.md#upgrade-check-exits-1-for-warnings-and-2-for-errors).
-    See [the 0.17 migration guide](../migration/v0-17.md#the-unit-of-work-is-a-real-transaction)
-    for what the two findings mean.
+    `NESTED_UNIT_OF_WORK` and `IO_INSIDE_UNIT_OF_WORK` are both warnings. Both
+    checks read your source code and ignore your config. If you change nothing,
+    `upgrade-check` can exit `0` on 0.16 and non-zero on 0.17 for the same
+    domain. On 0.17 and 0.18 a warning exits `2`. From 0.19 a warning exits `1`
+    and a failed run exits `2`. See [`upgrade-check` exits 1 for warnings and 2
+    for
+    errors](../migration/v0-19.md#upgrade-check-exits-1-for-warnings-and-2-for-errors).
+    See [the 0.17 migration
+    guide](../migration/v0-17.md#the-unit-of-work-is-a-real-transaction) for
+    what `NESTED_UNIT_OF_WORK` and `IO_INSIDE_UNIT_OF_WORK` mean.

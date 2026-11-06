@@ -1,9 +1,9 @@
-# Custom Database Adapters
+# Build a custom database adapter
 
-Learn how to create custom database adapters for Protean to integrate with any
+Build a custom database adapter so that Protean can store data in any
 persistence technology.
 
-## Overview
+## What can a custom adapter do?
 
 Custom database adapters allow you to:
 
@@ -11,7 +11,7 @@ Custom database adapters allow you to:
 - Add company-specific storage systems
 - Create specialized adapters for testing or development
 
-## Architecture
+## What parts make up an adapter?
 
 All database adapters are built from five components that work together:
 
@@ -19,9 +19,10 @@ All database adapters are built from five components that work together:
 
 **Extends**: `protean.port.provider.BaseProvider`
 
-The Provider is the central coordinator. It manages connections, sessions, and
-the database lifecycle. You implement the abstract methods and the `capabilities`
-property in this table.
+The Provider is the central coordinator. It opens and closes connections,
+returns sessions, and creates and drops the database's storage structures. You
+implement the abstract methods and the `capabilities` property listed in the
+table below.
 
 The provider class also sets a `__database__` attribute to the database's
 name. Protean reads it when it picks a custom repository or database model
@@ -49,7 +50,7 @@ repository fails with an `AttributeError`.
 
 The DAO encapsulates data access operations. `BaseDAO` provides lifecycle
 wrappers (`get`, `save`, `create`, `update`, `delete`). You implement the
-underscored internals:
+underscored `BaseDAO` methods listed in the table below:
 
 | Method | Purpose |
 |--------|---------|
@@ -66,13 +67,14 @@ underscored internals:
 `BaseDAO` also provides `save_if_absent(entity, apply_hooks=True)`. It saves
 the entity unless another row already holds its unique key, and returns `None`
 in that case. The unique key is the fields of each `Index` declared with
-`unique=True` and no `where` predicate. The outbox writes its rows through this
-method. The default checks with `_count`, then saves. Two writers that check at
-the same moment can both pass the check. If your store has a unique index on
-the key, it rejects the second write with its own error. If it has none, both
-rows are kept. Override `save_if_absent` so that a lost race also returns
-`None`, for example with a conditional insert, or by catching the store's
-unique-index error and checking for the key again.
+`unique=True` and no `where` predicate. The outbox writes its rows through
+`save_if_absent`. The default `save_if_absent` checks for the unique key with
+`_count`, then saves. Two writers that check at the same moment can both pass
+the check. If your store has a unique index on the key, it rejects the second
+write with its own error. If it has none, both rows are kept. Override
+`save_if_absent` so that a lost race also returns `None`, for example with a
+conditional insert, or by catching the store's unique-index error and checking
+for the key again.
 
 ### 3. DatabaseModel
 
@@ -87,8 +89,8 @@ abstract methods:
 | `to_entity(item)` | Convert a database record to a domain entity |
 
 Use the `_entity_to_dict()` helper to extract attribute values from an entity
-into a flat dictionary. This helper handles value objects, shadow fields, and
-nested associations consistently across all adapters:
+into a flat dictionary. The `_entity_to_dict()` helper converts value objects,
+shadow fields, and nested associations the same way in every adapter:
 
 ```python
 # fragment
@@ -105,7 +107,7 @@ def from_entity(cls, entity):
 
 Lookups translate filter criteria into adapter-native comparison expressions.
 Every adapter must register
-[12 required lookups](./index.md#required-lookups), including `isnull`
+[12 required lookups](./index.md#which-lookups-must-every-provider-register), including `isnull`
 (`Q(field__isnull=True/False)`), which core framework machinery such as the
 outbox poll path relies on. Register them with the
 `@YourProvider.register_lookup` decorator:
@@ -120,11 +122,11 @@ class Exact(BaseLookup):
         return self.process_source() == self.process_target()
 ```
 
-### 5. Registration Function
+### 5. Write a registration function
 
 A `register()` function that registers the provider class with Protean's
-`ProviderRegistry`. Wrap dependency imports in `try/except` so the adapter is
-silently skipped if dependencies are not installed:
+`ProviderRegistry`. Wrap dependency imports in `try/except`. Protean then skips
+the adapter silently when its dependencies are not installed:
 
 ```python
 # fragment
@@ -139,7 +141,7 @@ def register():
         pass  # DynamoDB SDK not installed, skip registration
 ```
 
-## Example: A Delegating Provider
+## Build a provider that delegates to `MemoryProvider`
 
 The provider below implements every abstract method by handing it to the
 in-memory `MemoryProvider`, and copies its lookups. Replace those calls with
@@ -155,12 +157,12 @@ Once registered, the provider is configured by its name like any other:
 --8<-- "adapters/database/custom-databases/delegating_provider/__init__.py:usage"
 ```
 
-## Example: DynamoDB Adapter
+## Build a DynamoDB adapter
 
 Here is a complete example of creating a DynamoDB adapter as an external
 package.
 
-### Project Structure
+### Lay out the package
 
 ```
 protean-dynamodb/
@@ -193,7 +195,7 @@ dependencies = [
 dynamodb = "protean_dynamodb:register"
 ```
 
-### Registration Function
+### Write the registration function
 
 ```python
 # fragment
@@ -214,7 +216,7 @@ def register():
         pass
 ```
 
-### Provider Implementation
+### Implement the provider
 
 ```python
 # fragment
@@ -318,7 +320,7 @@ class DynamoDBProvider(BaseProvider):
         ...
 ```
 
-### Installation and Usage
+### Install and configure the adapter
 
 Users install your adapter package:
 
@@ -336,7 +338,7 @@ database_uri = "http://localhost:8000"
 region = "us-east-1"
 ```
 
-## Session Protocol
+## What must a session object support?
 
 The objects returned by `get_session()` and `get_connection()` must support
 three methods:
@@ -349,9 +351,9 @@ three methods:
 Unit of Work. Adapters without real transactions (like the DynamoDB example
 above) should provide a session object with no-op implementations.
 
-## Call Flow
+## How does Protean call the adapter components?
 
-Understanding how Protean routes data through the adapter components:
+Protean passes data through the adapter components in these orders:
 
 **Initialization:**
 
@@ -407,10 +409,11 @@ dao.query.filter(...).count()
     # Returns an int
 ```
 
-## Declaring Capabilities
+## Declare your adapter's capabilities
 
-Choose the `DatabaseCapabilities` flags that accurately represent what your
-adapter supports. Capabilities are orthogonal, combine them freely:
+Choose the `DatabaseCapabilities` flags that match your adapter's supported
+features exactly. Each capability is independent of the others, so you can
+combine them freely:
 
 ```python
 # fragment
@@ -433,9 +436,9 @@ def capabilities(self) -> DatabaseCapabilities:
     suite will verify that your adapter correctly supports every declared
     capability.
 
-## Testing Your Adapter
+## Test your adapter
 
-### Conformance Testing
+### Run the conformance test suite
 
 Use Protean's built-in conformance test suite to validate your adapter:
 
@@ -443,12 +446,11 @@ Use Protean's built-in conformance test suite to validate your adapter:
 protean test test-adapter --provider=dynamodb --uri="http://localhost:8000"
 ```
 
-This runs the generic test suite against your provider, automatically selecting
-tests based on your declared capabilities. See
-[Adapter Conformance Testing](../../testing/conformance.md) for the full
-reference.
+The `protean test test-adapter` command runs the generic test suite against
+your provider and picks the tests from your declared capabilities. See [Adapter
+Conformance Testing](../../testing/conformance.md) for the full reference.
 
-### Using the Pytest Plugin Directly
+### Use the pytest plugin directly
 
 For more control, use the conformance pytest plugin in your own test suite:
 
@@ -467,13 +469,13 @@ pytest --db-provider=dynamodb --db-uri="http://localhost:8000" \
 
 ## Guidance for adapter authors
 
-1. **Handle Connection Failures**: Implement reconnection logic and return
-   meaningful results from `is_alive()`.
+1. **Recover from connection failures**: Implement reconnection logic. Make
+   `is_alive()` return `True` only when the database is reachable.
 2. **Declare Accurate Capabilities**: Only declare capabilities you actually
    support. Use the conformance test suite to verify.
 3. **Use `_entity_to_dict()`**: Avoid duplicating entity-to-dict conversion
-   logic. The helper handles value objects, shadow fields, and associations
-   consistently.
+   logic. The helper converts value objects, shadow fields, and associations
+   the same way in every adapter.
 4. **Register All Required Lookups**: Protean validates that all 12 standard
    lookups are registered. Missing lookups produce warnings at domain init.
 5. **Provide No-Op Sessions**: If your database does not support transactions,
@@ -485,7 +487,7 @@ pytest --db-provider=dynamodb --db-uri="http://localhost:8000" \
 
 - Review [existing adapter implementations](https://github.com/proteanhq/protean/tree/main/src/protean/adapters/repository)
   for reference
-- Understand [database capabilities](./index.md#database-capabilities) in
+- Understand [database capabilities](./index.md#how-providers-declare-capabilities) in
   detail
 - Run the [conformance test suite](../../testing/conformance.md)
 - Share your adapter with the

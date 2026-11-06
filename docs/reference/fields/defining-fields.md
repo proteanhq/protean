@@ -3,11 +3,11 @@
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
-Protean supports three ways to define fields on domain elements. All three
-are fully supported and can be mixed freely within a single class. Choose the
+Protean supports three ways to define fields on domain elements. Protean fully
+supports all three. You can mix them freely within a single class. Choose the
 style that reads best for each situation.
 
-## Annotation style (recommended)
+## Declare fields as annotations (recommended)
 
 Fields are declared as type annotations using Protean's field functions:
 
@@ -16,15 +16,15 @@ Fields are declared as type annotations using Protean's field functions:
 ```
 
 This is the recommended style. It reads as a declaration ("description IS a
-String") which aligns naturally with domain modeling, where you are stating
-what something **is**, not assigning it a value.
+String"). This style fits domain modeling, where you state what something
+**is** instead of assigning it a value.
 
 The annotation style also aligns with how modern Python libraries declare
-structured data (dataclasses, Pydantic, attrs). Tools that process annotations
-(documentation generators, schema exporters, and IDE inspectors) can discover
+structured data (dataclasses, Pydantic, attrs). Documentation generators,
+schema exporters, and IDE inspectors read annotations, so they can discover
 fields declared this way.
 
-## Assignment style
+## Assign fields as class variables
 
 Fields are assigned as class variables, using the same field functions:
 
@@ -37,7 +37,7 @@ Protean. It reads as "name equals a String with max_length 100." The semantics
 are identical to annotation style. Both produce the same runtime behavior,
 validation, and persistence.
 
-## Raw Pydantic style
+## Use raw Pydantic annotations
 
 Protean domain elements are Pydantic models internally, so you can use
 standard Python type annotations and Pydantic's `Field()` directly:
@@ -46,8 +46,8 @@ standard Python type annotations and Pydantic's `Field()` directly:
 --8<-- "guides/domain-definition/fields/defining-fields/003.py:full"
 ```
 
-This is useful as an escape hatch when you need full control over Pydantic's
-configuration, for example, custom `default_factory` callables, complex `Annotated` metadata, or
+Use this style when you need full control over Pydantic's configuration, for
+example, custom `default_factory` callables, complex `Annotated` metadata, or
 plain Python types with no constraints.
 
 Any annotation that is not a Protean `FieldSpec` is passed through to
@@ -75,21 +75,21 @@ is purely about readability and preference.
 | **Assignment** | Teams familiar with Django-style models | `name = String(max_length=100)` |
 | **Raw Pydantic** | Advanced cases needing direct Pydantic control | `metadata: Annotated[dict, Field(...)]` |
 
-**Recommendation:** Use annotation style as your default. It reads as a
-declaration, works well with tooling, and is the style used throughout
-Protean's documentation and examples. Reach for assignment style when it
-feels more natural for a specific field, and raw Pydantic when you need
-capabilities that Protean's field functions don't expose directly.
+Use annotation style as your default. It reads as a declaration, works well
+with tooling, and is the style used throughout Protean's documentation and
+examples. When a specific field reads more naturally as an assignment, use
+assignment style. When you need capabilities that Protean's field functions
+don't expose directly, use raw Pydantic.
 
 ---
 
-## Known limitation: `from __future__ import annotations`
+## Annotation style does not work with `from __future__ import annotations`
 
 Annotation-style field definitions are **incompatible** with PEP 563 deferred
 evaluation (`from __future__ import annotations`). When this import is active,
-Python converts all annotations to strings at definition time. This means
+Python converts all annotations to strings at definition time. As a result,
 `String(max_length=50)` becomes the string `"String(max_length=50)"` before
-Protean's metaclass can process it, and the FieldSpec is never resolved.
+Protean's metaclass can process it. The metaclass never resolves the FieldSpec.
 
 **If your project uses `from __future__ import annotations`**, use the
 assignment style instead:
@@ -99,24 +99,24 @@ assignment style instead:
 ```
 
 Assignment style places the FieldSpec in the class namespace (not in
-`__annotations__`), so deferred evaluation does not affect it. Raw Pydantic
-style also works because Pydantic handles string annotations natively.
+`__annotations__`), so deferred evaluation does not convert it to a string. Raw
+Pydantic style also works because Pydantic handles string annotations natively.
 
 !!! warning
-    This limitation only affects annotation style. Assignment and raw Pydantic
-    styles are fully compatible with `from __future__ import annotations`.
+    This limitation breaks only annotation-style fields. Assignment and raw
+    Pydantic styles are fully compatible with `from __future__ import
+    annotations`.
 
 ---
 
 ## How it works
 
-Regardless of which style you use, Protean normalizes every field into the
-same internal representation before the class is finalized. Protean's field
-functions (`String`, `Integer`, `Float`, etc.) each return a `FieldSpec`
-object that carries the base Python type, constraints, and metadata. During
-class creation, the metaclass resolves every `FieldSpec` into standard
-Pydantic type annotations. By the time validation runs, all three styles
-are identical.
+Protean normalizes every field into the same internal representation before it
+finalizes the class. The style you use makes no difference. Protean's field
+functions (`String`, `Integer`, `Float`, etc.) each return a `FieldSpec` object
+that carries the base Python type, constraints, and metadata. During class
+creation, the metaclass resolves every `FieldSpec` into standard Pydantic type
+annotations. By the time validation runs, all three styles are identical.
 
 This means:
 

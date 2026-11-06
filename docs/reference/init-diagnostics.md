@@ -1,20 +1,20 @@
-# Init-time and Runtime Diagnostics
+# Diagnose init-time and runtime failures by code
 
 Some failures cannot be caught by static analysis: they depend on what you pass
-to a runtime accessor, or on calling one before `domain.init()` has run. Protean
-raises these as exceptions, and each one carries a stable **code** alongside its
-prose message, so an operator or an agent catching the exception gets the same
-machine-readable rationale and fix that a `protean check` finding carries.
+to a runtime accessor, or on calling one before `domain.init()` has run.
+Protean raises these failures as exceptions, each with a stable **code**
+alongside its prose message. An operator or an agent that catches one gets the
+same machine-readable rationale and fix as a `protean check` finding.
 
-These are the `kind = "raise"` codes. They are distinct from the
-[Fitness Function Catalog](fitness-functions.md), which lists the
-`kind = "lint"` codes that `protean check` reports at design time. Both sets
-live in one registry, `protean.ir.diagnostics`, so a code is a public identifier
-you can rely on: renaming or removing one is a breaking change.
+These are the `kind = "raise"` codes. They are distinct from the `kind =
+"lint"` codes that `protean check` reports at design time. The [Fitness
+Function Catalog](fitness-functions.md) lists those lint codes. Protean keeps
+both sets in one registry, `protean.ir.diagnostics`. Each code is a public
+identifier you can rely on: renaming or removing one is a breaking change.
 
-A few of these failures *are* statically detectable (a duplicate database model,
-two elements sharing a name). They stay `raise`-only for now; the shared
-registry keeps the door open for a future `protean check` rule to surface them at
+A few of these failures *are* statically detectable (a duplicate database
+model, two elements sharing a name). They stay `raise`-only for now. Because
+both sets share one registry, a future `protean check` rule can report them at
 design time under the same code.
 
 ## Reading a coded exception
@@ -31,18 +31,18 @@ A coded exception exposes these attributes:
 --8<-- "reference/init-diagnostics/001.py:coded_exception"
 ```
 
-`code`, `codes`, and `location` survive a pickle round-trip, so the code is
-intact when an exception crosses the outbox or broker boundary. An exception
-raised without a code leaves `code`, `location`, `rationale`, and `fix` as
-`None` and `codes` empty, so existing `raise` sites are unaffected.
+`code`, `codes`, and `location` survive a pickle round-trip. The code therefore
+stays intact when an exception crosses the outbox or broker boundary. An
+exception raised without a code leaves `code`, `location`, `rationale`, and
+`fix` as `None` and `codes` empty, so existing `raise` sites are unaffected.
 
 One raise can carry more than one code. When several invariants fail together,
 the single `ValidationError` lists each distinct code once in `codes`. If the
-failures carry different codes, `code` is `None` because no single one names the
+failures carry different codes, `code` is `None`. No single code names the
 failure. With exactly one distinct code, `code` holds it and `rationale`/`fix`
 resolve from it, even when several invariants failed with that same code.
 
-## Severity levels
+## What severity does each code carry?
 
 Every code here is an `error`: the operation cannot proceed. (Advisory
 `warning`/`info` levels belong to the lint codes in the fitness-function
@@ -63,8 +63,9 @@ Failures resolving configuration or looking up a registered element by name.
 | **Exception** | `ConfigurationError` |
 | **Raised by** | `Domain._get_element_by_name` |
 
-**Why.** A short element name that matches more than one registered element cannot be
-resolved to a single element, so the lookup is ambiguous.
+**Why.** A short element name can match more than one registered element. The
+domain then cannot resolve the name to a single element, so the lookup is
+ambiguous.
 
 **Fix.** Look the element up by its fully qualified name to disambiguate, or rename one
 of the colliding elements.
@@ -78,11 +79,11 @@ of the colliding elements.
 | **Exception** | `ConfigurationError` |
 | **Raised by** | `Domain._get_element_by_name`, `Domain._get_element_by_fully_qualified_name` |
 
-**Why.** Resolving an element by name requires it to be registered with the domain; an
+**Why.** The domain resolves a name only to an element registered with it. An
 unregistered name has nothing to resolve to.
 
-**Fix.** Register the element with the domain before it is looked up, or correct the
-name to one that is registered.
+**Fix.** Register the element with the domain before you look it up, or correct
+the name to a registered one.
 
 ### CONFIG_EVENT_STORE_NOT_INITIALIZED { #config-event-store-not-initialized }
 
@@ -107,13 +108,15 @@ the store unset.
 | **Exception** | `ConfigurationError` |
 | **Raised by** | `Config2._validate_field_defaults` |
 
-**Why.** `field_defaults.sanitize` decides whether String and Text fields that leave
-`sanitize` unset are cleaned. Reading a malformed value as `false` would turn a typo
-into a silent fail-open, so the value is rejected at load time instead.
+**Why.** `field_defaults.sanitize` sets whether Protean cleans String and Text
+fields with `sanitize` left unset. If Protean read a malformed value as
+`false`, a typo would become a silent fail-open. Protean rejects the value at
+load time instead.
 
-**Fix.** Write `[field_defaults]` as a table and give `sanitize` a boolean, or one of
-the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`, or the empty string, which
-reads as false and is what `${VAR|}` resolves to when the variable is unset.
+**Fix.** Write `[field_defaults]` as a table and give `sanitize` a boolean, one
+of the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`, or the empty
+string. The empty string reads as false, and `${VAR|}` resolves to it when the
+variable is unset.
 
 ### CONFIG_UNRESOLVED_ENV_VAR { #config-unresolved-env-var }
 
@@ -148,8 +151,8 @@ instead of the class, or an unregistered element.
 **Why.** A cache-backed projection is served from a cache, not a provider, so it has no
 repository.
 
-**Fix.** Use `cache_for()` to write and `view_for()` to read a cache-backed projection;
-`repository_for()` is for provider-backed elements.
+**Fix.** Use `cache_for()` to write a cache-backed projection and `view_for()`
+to read it. Keep `repository_for()` for provider-backed elements.
 
 ### USAGE_DUPLICATE_DATABASE_MODEL { #usage-duplicate-database-model }
 
@@ -160,8 +163,9 @@ repository.
 | **Exception** | `IncorrectUsageError` |
 | **Raised by** | `Domain._register_element` |
 
-**Why.** An aggregate maps to one database model per database; registering a second
-model for the same aggregate and database makes the mapping ambiguous.
+**Why.** An aggregate maps to one database model per database. If you register
+a second model for the same aggregate and database, the mapping becomes
+ambiguous.
 
 **Fix.** Register one database model per aggregate per database, or target a different
 database on the duplicate model.
@@ -175,12 +179,12 @@ database on the duplicate model.
 | **Exception** | `IncorrectUsageError` |
 | **Raised by** | `Domain.repository_for`, `Domain.view_for`, `Domain.connection_for`, `Domain.create_snapshot`, `Domain.create_snapshots` |
 
-**Why.** A runtime accessor resolves the element it is given against the registry; an
-unregistered element, or a name string instead of the class, has no entry to
-resolve.
+**Why.** A runtime accessor resolves the element you pass against the registry.
+The registry has no entry for an unregistered element, or for a name string
+passed instead of the class.
 
-**Fix.** Pass a registered element class to the accessor, and register the element with
-the domain first.
+**Fix.** Register the element with the domain first. Then pass the registered
+element class to the accessor.
 
 ### USAGE_ENRICHER_NOT_CALLABLE { #usage-enricher-not-callable }
 
@@ -227,7 +231,7 @@ outside that set has no factory to build it.
 
 ## Unsupported
 
-An operation the framework does not support for the element it was given.
+An operation the framework does not support for the given element.
 
 ### UNSUPPORTED_ELEMENT_CLASS { #unsupported-element-class }
 
@@ -246,10 +250,10 @@ registering it, or register a valid element class.
 
 ## Invariants
 
-A business rule declared with `@invariant.pre` or `@invariant.post` did not hold
-at runtime. The `ValidationError` still carries its errors dict; it also carries
-the code below, or the code you passed as `@invariant.post(code=...)`. When
-several invariants fail together, `codes` lists each distinct code once.
+A business rule declared with `@invariant.pre` or `@invariant.post` did not
+hold at runtime. The `ValidationError` still carries its errors dict. It also
+carries the code below, or the code you passed as `@invariant.post(code=...)`.
+When several invariants fail together, `codes` lists each distinct code once.
 
 ### INVARIANT_PRE_FAILED { #invariant-pre-failed }
 
@@ -260,9 +264,9 @@ several invariants fail together, `codes` lists each distinct code once.
 | **Exception** | `ValidationError` |
 | **Raised by** | an aggregate, entity, or domain service `@invariant.pre` check |
 
-**Why.** An `@invariant.pre` guards the state required before an aggregate, entity,
-or domain service is changed or run; the change was attempted while that guard did
-not hold.
+**Why.** An `@invariant.pre` guards the required state before an aggregate,
+entity, or domain service is changed or run. Your code attempted the change
+while that guard did not hold.
 
 **Fix.** Satisfy the pre-condition first, or catch the `ValidationError` and correct
 the input. The error messages name what failed.
@@ -276,8 +280,8 @@ the input. The error messages name what failed.
 | **Exception** | `ValidationError` |
 | **Raised by** | an aggregate, entity, or domain service `@invariant.post` check |
 
-**Why.** An `@invariant.post` states a condition that must hold once an aggregate,
-entity, or domain service is built, changed, or run; the resulting state broke that
+**Why.** An `@invariant.post` condition must hold once an aggregate, entity, or
+domain service is built, changed, or run. The resulting state broke that
 condition.
 
 **Fix.** Correct the state so the post-condition holds, or catch the

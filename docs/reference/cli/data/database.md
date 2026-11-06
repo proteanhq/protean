@@ -1,10 +1,10 @@
 # `protean db`
 
-The `protean db` command group manages database schema and data for a Protean
-domain. All commands accept a `--domain` option to specify the domain module
-path (defaults to the current directory).
+The `protean db` command group creates and drops the database schema for a
+Protean domain, and deletes its data. All commands accept a `--domain` option
+to specify the domain module path (defaults to the current directory).
 
-## Commands
+## Which commands does `protean db` provide?
 
 | Command | Description | Confirmation |
 |---------|-------------|-------------|
@@ -23,8 +23,8 @@ and outbox (if enabled).
 protean db setup --domain=my_domain
 ```
 
-Run this before starting the server for the first time, or after modifying your
-domain model.
+Before you start the server for the first time, or after you change your domain
+model, run this command.
 
 **Options**
 
@@ -53,9 +53,9 @@ protean db drop --domain=my_domain --yes
 
 ## `protean db truncate`
 
-Deletes all rows from every table while preserving the schema. This is faster
-than dropping and recreating tables, and is useful for resetting data between
-test runs or during development.
+Deletes all rows from every table while preserving the schema. `protean db
+truncate` is faster than dropping and recreating tables. Use it to reset data
+between test runs or during development.
 
 ```bash
 # Interactive — prompts for confirmation
@@ -74,9 +74,9 @@ protean db truncate --domain=my_domain --yes
 
 ## `protean db setup-outbox`
 
-Creates only the outbox tables. This is useful when migrating an existing domain
-from event-store subscriptions to stream subscriptions, where the main database
-tables already exist but the outbox table does not.
+Creates only the outbox tables. Use this command when you migrate an existing
+domain from event-store subscriptions to stream subscriptions. In that case the
+main database tables already exist, but the outbox table does not.
 
 ```bash
 protean db setup-outbox --domain=my_domain
@@ -92,7 +92,7 @@ command exits with an error.
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
 
-## Domain Discovery
+## How do `protean db` commands find the domain?
 
 All `protean db` commands use the same domain discovery mechanism as
 `protean server`. The `--domain` option accepts:
@@ -104,9 +104,9 @@ All `protean db` commands use the same domain discovery mechanism as
 
 See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 
-## Examples
+## Use `protean db` for common tasks
 
-### Initial Setup
+### Set up the tables for a new project
 
 ```bash
 # Create all tables for a new project
@@ -131,7 +131,7 @@ protean db truncate --domain=my_package.domain --yes
 protean db setup-outbox --domain=my_package.domain
 ```
 
-### Full Reset
+### Drop and recreate all tables
 
 ```bash
 # Drop everything and start fresh

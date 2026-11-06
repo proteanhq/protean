@@ -1,15 +1,15 @@
-# Brokers
+# Send messages between systems with brokers
 
 Brokers enable asynchronous message passing between different parts of your system and external services. They decouple message producers from consumers, allowing for scalable, resilient architectures.
 
-## Overview
+## What does the broker port provide?
 
 The Broker port in Protean provides a unified interface for different message broker implementations. Each broker adapter implements this interface while providing access to the unique features of the underlying technology.
 
 !!!note
     Protean internally uses an Event Store for domain events and commands within a bounded context. Brokers are primarily used for integration between different systems and for publishing messages to external consumers.
 
-## Available Brokers
+## Which brokers does Protean include?
 
 Protean includes several broker adapters:
 
@@ -17,27 +17,27 @@ Protean includes several broker adapters:
 
 The `inline` broker processes messages synchronously within the same process. It's ideal for development, testing, and simple applications that don't require distributed messaging.
 
-- **Use cases**: Development, testing, small applications
-- **Capabilities**: Basic pub/sub, simple queuing, reliable messaging
+- **Use it for** development, testing and small applications.
+- **It supports** basic pub/sub, simple queuing and reliable messaging.
 - **No external dependencies required**
 
 ### Redis Stream Broker
 
 The `redis` broker uses Redis Streams for durable message streaming with consumer groups support.
 
-- **Use cases**: Production environments requiring reliable message delivery
-- **Capabilities**: Consumer groups, message acknowledgment, ordered delivery
+- **Use it in** production environments that require reliable message delivery.
+- **It supports** consumer groups, message acknowledgment and ordered delivery.
 - **Requires**: Redis 5.0+
 
 ### Redis PubSub Broker
 
 The `redis_pubsub` broker uses Redis Lists for simple queuing with basic consumer group support.
 
-- **Use cases**: Simple message distribution, development environments
-- **Capabilities**: Simple queuing with position tracking
+- **Use it for** simple message distribution and development environments.
+- **It supports** simple queuing with position tracking.
 - **Requires**: Redis 2.0+
 
-## Configuration
+## Declare brokers in your domain configuration
 
 Brokers are configured in your domain configuration file (`domain.toml` or `.domain.toml`):
 
@@ -64,11 +64,11 @@ Each broker configuration must specify:
 !!!important
     You must define a `default` broker in your configuration. This broker will be used unless a specific broker is requested.
 
-## Broker Capabilities
+## What can each broker do?
 
 Brokers in Protean declare their capabilities through a capability-based system. This allows you to understand what features each broker supports and write code that adapts to available capabilities.
 
-### Capability Tiers
+### How are capabilities grouped into tiers?
 
 Brokers are organized into capability tiers, each building upon the previous:
 
@@ -78,7 +78,7 @@ Brokers are organized into capability tiers, each building upon the previous:
 4. **ORDERED_MESSAGING**: Reliable messaging + message ordering
 5. **ENTERPRISE_STREAMING**: Full features including DLQ, replay, partitioning
 
-### Checking Capabilities
+### Check a broker's capabilities at runtime
 
 You can check broker capabilities at runtime:
 
@@ -86,9 +86,9 @@ You can check broker capabilities at runtime:
 --8<-- "adapters/broker/index/001.py:full"
 ```
 
-## Basic Usage
+## Consume and publish messages
 
-### Consuming Messages
+### Consume messages with subscribers
 
 Messages are typically consumed through Subscribers. A subscriber is a class
 with a `__call__` method that receives the message as a dict. Register
@@ -103,7 +103,7 @@ page use that setting:
 --8<-- "adapters/broker/index/002.py:subscriber"
 ```
 
-### Publishing Messages
+### Publish a message
 
 ```python
 --8<-- "adapters/broker/index/002.py:publish"
@@ -112,9 +112,10 @@ page use that setting:
 After the first publish, the subscriber above has recorded
 `user@example.com`.
 
-## Message Processing Engine
+## Run the message processing engine
 
-Protean includes a built-in message processing engine that handles message consumption from brokers:
+Protean includes a built-in message processing engine that consumes messages
+from brokers:
 
 ```bash
 # Start the message processing engine
@@ -132,7 +133,7 @@ The engine automatically:
 - Implements retry logic based on broker capabilities
 - Provides graceful shutdown
 
-## Error Handling
+## What happens when a broker call fails?
 
 `publish` rejects an empty message with a `ValidationError` before it reaches
 the broker:
@@ -144,17 +145,17 @@ the broker:
 Here `error` is `{"message": ["Message cannot be empty"]}`.
 
 When the broker's client library raises a connection error, Protean tries to
-reconnect. If it reconnects, it retries the operation once. If it cannot
-reconnect, or the retry fails, the client library's error is raised (for
+reconnect. If it reconnects, it retries the operation once. If Protean cannot
+reconnect, or the retry fails, Protean raises the client library's error (for
 Redis, a `redis.exceptions.ConnectionError`).
 
-This covers only the errors that reach Protean. An adapter can handle errors
-itself: the Redis broker's `get_next`, `ack` and `nack` log any error and
-return `None` or `False`. Inside a Unit of Work, `publish` does not contact the
-broker at all. It records the message, which is sent when the Unit of Work
-commits.
+The reconnect and retry behaviour covers only the errors that reach Protean. An
+adapter can catch errors itself: the Redis broker's `get_next`, `ack` and
+`nack` log any error and return `None` or `False`. Inside a Unit of Work,
+`publish` does not contact the broker at all. `publish` records the message.
+The Unit of Work sends the message when it commits.
 
-## Health Checks
+## Check broker health
 
 Monitor broker health and connectivity. `health_stats()` returns a dict with
 `status` (`"healthy"`, `"degraded"` or `"unhealthy"`), `connected`,
@@ -170,7 +171,8 @@ Monitor broker health and connectivity. `health_stats()` returns a dict with
 
 2. **Check capabilities before using features**: Not all brokers support all features
 
-3. **Handle broker failures gracefully**: Implement retry logic and circuit breakers
+3. **Recover from broker failures**: Add retry logic and circuit breakers to
+   the code that calls the broker
 
 4. **Use appropriate brokers for different concerns**:
 
@@ -198,16 +200,17 @@ redis = "protean.adapters.broker.redis:register"
 redis_pubsub = "protean.adapters.broker.redis_pubsub:register"
 ```
 
-Each entry point maps a broker name to a `register()` function. The function
-is called on first access and registers the broker class path with the
-`BrokerRegistry`. Dependencies are wrapped in `try/except` so that brokers
-with uninstalled optional dependencies are silently skipped.
+Each entry point maps a broker name to a `register()` function. The function is
+called on first access and registers the broker class path with the
+`BrokerRegistry`. Each `register()` function wraps its dependency imports in
+`try/except`, so Protean silently skips brokers with uninstalled optional
+dependencies.
 
 External packages can register their own brokers the same way. See
 [Custom Brokers](./custom-brokers.md) for a complete guide including a Kafka
 example.
 
-## Related pages
+## See also
 
 - [Configure specific brokers](./inline.md) for your use case
 - [Create custom broker adapters](./custom-brokers.md) for other technologies

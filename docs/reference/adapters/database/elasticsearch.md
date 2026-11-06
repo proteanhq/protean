@@ -5,7 +5,7 @@ The Elasticsearch provider uses the
 ships with the `elasticsearch` client (`elasticsearch.dsl`) for document store
 operations, making it suitable for search and analytics workloads.
 
-## Overview
+## What is the Elasticsearch provider for?
 
 Elasticsearch is a document-oriented provider designed for:
 
@@ -14,11 +14,11 @@ Elasticsearch is a document-oriented provider designed for:
 - **Read-optimized views** when combined with projections
 
 Unlike relational providers, Elasticsearch does not support real transactions
-or raw queries. It is best used for read-heavy workloads where eventual
-consistency is acceptable, or alongside a relational provider for write
-operations.
+or raw queries. Elasticsearch is best used for read-heavy workloads where
+eventual consistency is acceptable. You can also use it alongside a relational
+provider for write operations.
 
-## Installation
+## Install the provider
 
 ```bash
 pip install "protean[elasticsearch]"
@@ -27,7 +27,7 @@ pip install "protean[elasticsearch]"
 pip install "elasticsearch>=8.18.0,<9.0.0"
 ```
 
-## Configuration
+## Configure the provider
 
 ```toml
 --8<-- "adapters/database/elasticsearch/domain.toml"
@@ -40,7 +40,7 @@ environment variable, and uses the value after `|` when it is not set.
 The provider reads `NAMESPACE_PREFIX`, `NAMESPACE_SEPARATOR` and `SETTINGS` in
 upper case only. In lower case they are ignored.
 
-### Configuration Options
+### Set the configuration options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -50,7 +50,7 @@ upper case only. In lower case they are ignored.
 | `NAMESPACE_SEPARATOR` | `"_"` | Character joining prefix and index name |
 | `SETTINGS` | `None` | Index settings passed as-is to Elasticsearch |
 
-### Namespace Prefixing
+### Prefix index names with a namespace
 
 Index names are derived from aggregate class names. When `NAMESPACE_PREFIX` is
 set, it is prepended to every index name:
@@ -65,7 +65,7 @@ Using `NAMESPACE_PREFIX = "${PROTEAN_ENV}"` lets you share a single
 Elasticsearch cluster across environments by giving each environment a distinct
 prefix.
 
-## Capabilities
+## What does the provider support?
 
 The Elasticsearch provider supports the following capabilities:
 
@@ -85,15 +85,15 @@ The Elasticsearch provider supports the following capabilities:
   refers to SQL-style JSON columns
 - :x: **NATIVE_ARRAY**: No SQL-style array columns
 
-## Indexes
+## How does the provider treat indexes?
 
 Elasticsearch does not use relational indexes, so portable
-[`Index`](../../domain-elements/indexes.md) declarations are not translated into
-DDL here. Configure search behavior through the Elasticsearch field mapping
-(below) instead. Index declarations on an aggregate remain valid (they are
-honored by SQL providers); they are not applied by this adapter.
+[`Index`](../../domain-elements/indexes.md) declarations are not translated
+into DDL here. Configure search behavior through the Elasticsearch field
+mapping (below) instead. Index declarations on an aggregate remain valid,
+because SQL providers honor them. This adapter does not apply them.
 
-## Field Mapping
+## How are fields mapped?
 
 Protean auto-generates an explicit Elasticsearch mapping for every
 aggregate. Each Protean field type is mapped to an appropriate
@@ -118,10 +118,11 @@ Elasticsearch Model (see below).
 
 ## Custom Elasticsearch Model
 
-Supply a custom `@domain.database_model` when you need ES-specific field tuning
-(analyzers, multi-fields, normalizers, etc.). User-defined fields take
-precedence; unmapped attributes are filled in automatically from the aggregate.
-This example needs a running Elasticsearch server:
+When you need ES-specific field tuning (analyzers, multi-fields, normalizers,
+etc.), supply a custom `@domain.database_model`. Fields you define on the
+custom model take precedence. Protean fills in unmapped attributes
+automatically from the aggregate. This example needs a running Elasticsearch
+server:
 
 ```python
 # fragment
@@ -132,32 +133,32 @@ The index is named `articles`, from the aggregate's `schema_name` option.
 `title` and `body` are mapped as `text`, and `category` as `keyword`.
 
 !!! note
-    Index settings come from the `SETTINGS` configuration option. For a
-    custom model written as a plain class, as above, Protean builds the
-    model's `Index` inner class itself, so `settings` declared on that class
-    are not used. A custom model that already subclasses Protean's
-    `ElasticsearchModel` keeps its own `Index` class.
+    Index settings come from the `SETTINGS` configuration option. For a custom
+    model written as a plain class, as above, Protean builds the model's
+    `Index` inner class itself, so `settings` declared on that class are not
+    used. When a custom model already subclasses Protean's
+    `ElasticsearchModel`, Protean keeps the model's own `Index` class.
 
 !!! note
     When a custom model defines `Text`-type fields, lookups like `exact`,
     `in`, `contains`, `startswith`, and `endswith` on those fields
     automatically use the `.keyword` subfield for exact matching.
 
-## Limitations
+## What are the provider's limitations?
 
-- **No Real Transactions**: Elasticsearch does not support ACID transactions.
-  The session object provides no-op `commit()` and `rollback()` methods. Data
-  is indexed immediately on write.
+- **Transactions are not supported**: Elasticsearch does not support ACID
+  transactions. The session object provides no-op `commit()` and `rollback()`
+  methods. Data is indexed immediately on write.
 - **Eventual Consistency**: Newly indexed documents may not be immediately
   searchable. Elasticsearch refreshes indices periodically (default: 1 second).
-- **No Raw Queries**: The `raw()` method is not supported. Use the
-  Elasticsearch DSL directly if you need advanced query features.
-- **Requires Running Service**: Elasticsearch must be installed and running.
+- **Raw queries are not supported**: The `raw()` method is not supported. If
+  you need advanced query features, use the Elasticsearch DSL directly.
+- **The service must be running**: Elasticsearch must be installed and running.
   Use `make up` to start Protean's Docker-based development services.
 
-## Related pages
+## Read related pages
 
-- Learn about [database capabilities](./index.md#database-capabilities) in
+- Learn about [database capabilities](./index.md#how-providers-declare-capabilities) in
   detail
 - Explore [PostgreSQL](./postgresql.md) for transactional workloads
 - Understand the

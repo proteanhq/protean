@@ -1,12 +1,12 @@
 # Message DB
 
-Message DB is a PostgreSQL-based event store that provides durable,
-durable event storage. It is built on the
-[Message DB](https://github.com/message-db/message-db) project and accessed
+Message DB is a PostgreSQL-based event store that provides durable, durable
+event storage. It is built on the [Message
+DB](https://github.com/message-db/message-db) project. Protean accesses it
 through the [message-db-py](https://pypi.org/project/message-db-py/) Python
 client.
 
-## Overview
+## When should you use Message DB?
 
 Message DB is designed for:
 
@@ -18,7 +18,7 @@ Message DB is designed for:
 It stores events in a PostgreSQL database using a dedicated schema optimized
 for append-only stream operations.
 
-## Installation
+## Install Message DB
 
 ```bash
 pip install message-db-py
@@ -38,7 +38,7 @@ docker run -d \
   ethangarofolo/message-db:1.3.1
 ```
 
-## Configuration
+## Configure the event store
 
 ```toml
 [event_store]
@@ -46,14 +46,14 @@ provider = "message_db"
 database_uri = "postgresql://postgres:postgres@localhost:5433/message_store"
 ```
 
-### Configuration Options
+### Which options can you set?
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `provider` | Required | Must be `"message_db"` for Message DB |
 | `database_uri` | Required | PostgreSQL connection string for the Message DB database |
 
-### Connection String Format
+### Format the connection string
 
 ```
 postgresql://[username]:[password]@[host]:[port]/[database]
@@ -67,7 +67,7 @@ postgresql://postgres:postgres@localhost:5433/message_store
     standard PostgreSQL instance on port 5432. Check your Docker Compose
     configuration for the correct port.
 
-## Operations
+## Which operations does Message DB support?
 
 Message DB supports all `BaseEventStore` operations:
 
@@ -81,7 +81,7 @@ Message DB supports all `BaseEventStore` operations:
 | Causation tracing | :white_check_mark: | Full causal chain traversal |
 | Data reset | :white_check_mark: | Truncate all messages (testing) |
 
-## Monitoring
+## Inspect the event store from the CLI
 
 Inspect event store contents using the CLI:
 
@@ -101,16 +101,16 @@ protean events stats
 
 See [`protean events`](../../cli/data/events.md) for the full CLI reference.
 
-## Limitations
+## What are the limits of Message DB?
 
 - **Requires PostgreSQL**: Message DB is built on PostgreSQL and requires a
   running instance with the Message DB extension installed.
-- **Separate Database**: Message DB uses its own PostgreSQL database
+- **Needs a separate database**: Message DB uses its own PostgreSQL database
   (`message_store`), separate from your application database.
-- **Docker Dependency**: The recommended setup uses Docker. Installing
-  Message DB directly on a PostgreSQL instance requires additional setup.
+- **Expects Docker**: The recommended setup uses Docker. If you install Message
+  DB directly on a PostgreSQL instance, you need additional setup.
 
-## Related pages
+## See also
 
 - Learn about [temporal queries](../../../guides/change-state/temporal-queries.md)
 - Explore [event sourcing architecture](../../../concepts/architecture/event-sourcing.md)

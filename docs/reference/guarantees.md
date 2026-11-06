@@ -1,18 +1,18 @@
-# Consistency and delivery guarantees
+# What Protean guarantees for consistency and delivery
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
-This page states what Protean promises for each port and adapter: the order in
-which writes and messages arrive, how many times they take effect, when a write
+For each port and adapter, Protean promises four things: the arrival order of
+writes and messages, the number of times each takes effect, the moment a write
 becomes visible, and the isolation each promise needs. Conformance and property
 tests cite a row here as their expected behavior.
 
-A guarantee is only what this page lists. Where an adapter happens to be
-stronger than its port requires (for example, one backend returning rows in a
-stable order without an explicit `order_by`), the page says so, and that extra
-behavior can change in any release.
+A guarantee is only what this page lists. Some adapters are stronger than their
+port requires (for example, one backend returns rows in a stable order without
+an explicit `order_by`). The page marks each such case as extra behavior that
+can change in any release.
 
-## Summary
+## What each part promises
 
 | Part | Ordering | Delivery and atomicity | Consistency | Concurrency |
 |---|---|---|---|---|
@@ -40,13 +40,13 @@ behavior can change in any release.
 
 ---
 
-## Aggregate persistence
+## How aggregates are persisted {#aggregate-persistence}
 
 A repository saves an aggregate through a Unit of Work. The aggregate root is
 the concurrency boundary
 ([ADR-0013](../adr/0013-optimistic-concurrency-and-claim-contract.md)), so OCC
 checks the root's `_version` on both write paths: `repository.add` and the
-DAO's `update()`, which both persist through `save()`.
+DAO's `update()`. Both paths persist through `save()`.
 
 | Adapter | Ordering without `order_by` | Atomicity | OCC check | Isolation |
 |---|---|---|---|---|
@@ -55,15 +55,16 @@ DAO's `update()`, which both persist through `save()`.
 | **SQLite** | None | Autoflushed session | Conditional `UPDATE`, as above | Writers serialized |
 | **Elasticsearch** | None | None: each write lands at once | `if_seq_no` / `if_primary_term` | None |
 
-### Read-your-writes
+### A Unit of Work reads its own writes {#read-your-writes}
 
-Within a Unit of Work, every repository on one provider shares a session, and
-a read sees the Unit of Work's own uncommitted writes. On the relational
-adapters this covers `filter`, `count`, `exists` and `get`, and uniqueness
-validation inside the Unit of Work. A rollback discards all of it. Across Units
-of Work, the relational adapters show only committed state.
+Within a Unit of Work, every repository on one provider shares a session, and a
+read sees the Unit of Work's own uncommitted writes. On the relational adapters
+this covers `filter`, `count`, `exists` and `get`, and uniqueness validation
+inside the Unit of Work. A rollback discards the Unit of Work's uncommitted
+writes. Across Units of Work, the relational adapters show only committed
+state.
 
-### No lost update
+### Two concurrent updates cannot both succeed {#no-lost-update}
 
 Two concurrent updates to one aggregate cannot both succeed. On the relational
 adapters the version check and the write are one conditional `UPDATE`, which is
@@ -75,51 +76,54 @@ writers, and a contended write raises `SQLITE_BUSY`. On Memory, commit
 re-checks each aggregate's version against the live store under the provider
 lock, so aggregate-level concurrency tests can run against it.
 
-### No double claim
+### Each row is claimed once {#no-double-claim}
 
-For queue-style claiming, such as the outbox, the `_claim` contract (ADR-0013)
-claims each row once. PostgreSQL uses `SELECT … FOR UPDATE SKIP LOCKED`. Every
-other backend uses a guarded read-then-update, which gives the same guarantee
-but blocks where PostgreSQL skips.
+For queue-style claiming, such as the outbox, each backend's `_claim`
+implementation claims each row once, as the `_claim` contract (ADR-0013)
+requires. PostgreSQL uses `SELECT … FOR UPDATE SKIP LOCKED`. Every other
+backend uses a guarded read-then-update. It gives the same guarantee, but it
+blocks where PostgreSQL skips.
 
-### Known exceptions {#persistence-exceptions}
+### Where the persistence guarantees do not hold {#persistence-exceptions}
 
 - **Child entities**: A change to a child entity is caught by OCC only if it
   also advances the root's `_version`. Children are not versioned on their own.
-- **Elasticsearch**: Has no transactions. Writes land immediately and are not
-  rolled back, so a rolled-back Unit of Work's writes stay visible to others. A
-  lost claim race surfaces as a version conflict, so Elasticsearch is not
-  recommended as a claim store.
+- **Elasticsearch**: Has no transactions. Each write takes effect at once and
+  is not rolled back, so other readers still see the writes of a rolled-back
+  Unit of Work. A lost claim race surfaces as a version conflict, so
+  Elasticsearch is not recommended as a claim store.
 - **Memory**: A single-process test and development store, with no
   cross-process coordination.
 - **Nested Units of Work**: A Unit of Work started inside another joins the
   outer transaction. There are no savepoints, so a nested rollback rolls back
   the whole transaction. This holds on every adapter.
-- **Ordering**: SQLAlchemy appends `ORDER BY <pk> ASC` and Memory keeps
-  insertion order. Neither is part of the contract. Pass `order_by`.
+- **Ordering**: SQLAlchemy appends `ORDER BY <pk> ASC`. Memory keeps insertion
+  order. Neither is part of the contract. Pass `order_by`.
 
 ??? note "How this holds"
     On PostgreSQL, MSSQL, MySQL and MariaDB each Unit of Work is one database
-    transaction ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)),
-    with `autoflush=True`. A childless aggregate, a parent with its children,
-    and several aggregates all commit or roll back as a unit, and a rollback
-    leaves no orphaned parent. The outbox row is saved on the same session and
-    committed by the same `session.commit()` as the domain write. For an
-    event-sourced aggregate the event-store append is written before the
-    relational commit, outside this transaction (ADR-0015).
+    transaction
+    ([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)), with
+    `autoflush=True`. A childless aggregate, a parent with its children, and
+    several aggregates all commit or roll back as a unit. A rollback leaves no
+    orphaned parent. The outbox row is saved on the same session and committed
+    by the same `session.commit()` as the domain write. For an event-sourced
+    aggregate the event-store append is written before the relational commit,
+    outside this transaction (ADR-0015).
     `tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
-    and its MSSQL mirror pin these guarantees.
+    and its MSSQL mirror pin the atomicity and read-your-writes guarantees
+    above.
 
     On Memory each session works on a deep copy. At commit, under the
     per-provider lock, `MemorySession.commit` compares each aggregate's
     `_version` with the live store and merges only the records the session
     changed. The second of two overlapping sessions raises
-    `ExpectedVersionError`, and sessions that write different records do not
+    `ExpectedVersionError`. Sessions that write different records do not
     overwrite each other.
 
 ---
 
-## Event store
+## How the event store orders and appends events {#event-store}
 
 The event store is the source of truth for event-sourced aggregates. Reads
 follow the read-position contract
@@ -132,30 +136,34 @@ by its per-stream `position`, and a category or `$all` read pages by
 | **Memory** | Gapless `position` | `global_position`, no gaps | Atomic under a class lock, single-threaded use only | Read-your-writes, in process |
 | **MessageDB** | Gapless `position` | `global_position`, gap-free within a category | `write_message` stored procedure with `expected_version` | Read-your-writes once `append` returns |
 
-### Known exceptions {#event-store-exceptions}
+### Where the event-store guarantees do not hold {#event-store-exceptions}
 
 - **Append is per message**: A Unit of Work that raises several events makes
   one OCC-checked append per event. They are not one atomic batch.
-- **MessageDB global gaps**: A rolled-back append uses up its
+- **MessageDB can leave global gaps**: A rolled-back append uses up its
   `global_position`, so positions across categories can have gaps. Within one
-  category there are none, because MessageDB holds a per-category advisory
-  lock until commit.
-- **Memory with concurrent writers**: An append deferred into an enclosing
-  Unit of Work publishes after the class lock is released, so overlapping Units
-  of Work on one stream are not serialized. Use it with one writer.
+  category there are none, because MessageDB holds a per-category advisory lock
+  until commit.
+- **Memory does not serialize concurrent writers**: When an enclosing Unit of
+  Work defers an append, the append publishes after the class lock is released.
+  Memory therefore does not serialize overlapping Units of Work on one stream.
+  Use it with one writer.
 
 !!! warning "Interim: not yet a stable contract"
     The event-store append is written first, and the relational and outbox
-    commit follows it without a shared transaction. The window between them is
-    closed by a reconciliation sweep at startup for event-sourced aggregates.
-    The sweep rebuilds the rows of every recent event-sourced aggregate's event
-    that has lost its internal outbox row, including the external-broker rows
-    of a `published` event. It skips events older than the cleanup retention. A state-based aggregate's event with no outbox row is not rebuilt.
-    On a transactional provider its aggregate row commits or rolls back
-    together with its outbox rows. On a provider without transactions, such as
+    commit follows it without a shared transaction. For event-sourced
+    aggregates, a reconciliation sweep at startup recovers from a crash between
+    the two writes. The sweep checks each recent event of an event-sourced
+    aggregate. When the event has lost its internal outbox row, the sweep
+    rebuilds its rows, including the external-broker rows of a `published`
+    event. It skips events older than the cleanup retention. The sweep does not
+    rebuild a missing outbox row for a state-based aggregate's event. On a
+    transactional provider its aggregate row commits or rolls back together
+    with its outbox rows. On a provider without transactions, such as
     Elasticsearch, the row can be saved while its outbox row is lost, and that
-    event stays unpublished.
-    [ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md) is still
+    event stays unpublished. The decision to make the event-store append the
+    durable anchor
+    ([ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md)) is still
     *Proposed*, and this behavior can change.
 
 ---
@@ -179,27 +187,28 @@ The defaults below (`position_update_interval` 10, `max_retries` 3,
 `recovery_interval_seconds` 30, `gap_timeout_seconds` 5) belong to the base
 profile. Server profiles can override them.
 
-### Synchronous handlers
+### How a synchronous handler runs {#synchronous-handlers}
 
 A synchronous handler runs once, after the aggregate write has committed. Its
 failure does not roll back that write. The error reaches the caller as
 `TransactionError`, or as `ExpectedVersionError` for a version conflict.
 
-### Asynchronous delivery
+### How a subscription delivers messages asynchronously {#asynchronous-delivery}
 
 The read cursor advances after each message, including a failed one, whose
 failure is first recorded to the recovery stream. The cursor is saved every
 `position_update_interval` messages, so a crash re-delivers up to that many.
 Handlers have to tolerate duplicates. Read models update through the
-event-store subscription; the outbox only publishes to external brokers.
+event-store subscription. The outbox only publishes to external brokers.
 
-### Failure handling
+### What happens when a handler fails {#failure-handling}
 
 A failed message is retried up to `max_retries` times, every
-`recovery_interval_seconds`. After the last retry its position is marked
-`Exhausted`, dropped from tracking, and a `handler.failed` event is emitted.
-The `Exhausted` record is written to the subscription's `failed-*` stream, and
-the position stays exhausted until a replay or purge writes a later record for it. [`protean eventstore dlq`](cli/data/eventstore-dlq.md)
+`recovery_interval_seconds`. After the last retry the subscription marks the
+position `Exhausted` and drops it from tracking. The subscription then emits a
+`handler.failed` event. The `Exhausted` record is written to the subscription's
+`failed-*` stream. The position stays exhausted until a replay or purge writes
+a later record for it. [`protean eventstore dlq`](cli/data/eventstore-dlq.md)
 lists, inspects, replays and purges these positions. The subscription status
 counts them as `dlq_depth`. Broker and stream subscriptions use dead-letter
 queue streams instead; see [Dead-letter queues](#dead-letter-queues).
@@ -213,19 +222,19 @@ tracking and no retry.
 
 ??? note "How this holds"
     The failure record is written per message, and the cursor is saved in
-    batches, so the record is always durable before the saved cursor passes
-    the message. Two failure cases follow:
+    batches. As a result, the record is always durable before the saved cursor
+    passes the message. Two failure cases follow:
 
     - **The record write fails**: It raises before the cursor advances, and the
       next poll reads and retries the message.
-    - **The process crashes after the record is written**: The saved cursor is
-      either behind the message, which is then read again, or past it, and then
-      the recovery pass finds the record.
+    - **The process crashes after the record is written**: If the saved cursor
+      is behind the message, the message is read again. If the saved cursor is
+      past it, the recovery pass finds the record.
 
     `specs/Recovery.tla` model-checks this protocol. See
     [How the guarantees are checked](#how-the-guarantees-are-checked).
 
-### Exactly-once effect
+### How to get an exactly-once effect {#exactly-once-effect}
 
 You can opt in at two places:
 
@@ -233,44 +242,44 @@ You can opt in at two places:
   provider records `(message_id, handler)` in the same transaction as the
   read-model write, so a redelivered message has no effect
   ([ADR-0017](../adr/0017-consume-side-idempotency-for-projectors.md)). On the
-  in-memory provider it deduplicates by the last processed message id. It
-  covers redelivery one after another and does not cover concurrent delivery.
-  Markers are pruned after a retention window (7 days by default), and a
-  redelivery after that is applied again.
+  in-memory provider it deduplicates by the last processed message id. The
+  in-memory deduplication covers redelivery one after another. It does not
+  cover concurrent delivery. Markers are pruned after a retention window (7
+  days by default), and a redelivery after that is applied again.
 - **Commands**: A command with an `idempotency_key` is deduplicated against
   the idempotency store, and only when that store is active. Successful entries
-  expire after 24 hours and failed ones after 60 seconds, so a failed command
-  can be retried sooner.
+  expire after 24 hours. Failed entries expire after 60 seconds, so a failed
+  command can be retried sooner.
 
-### Subscription ordering
+### What order a subscription delivers in {#subscription-ordering}
 
 A category subscription delivers in ascending, contiguous `global_position`
 order, which keeps each stream in order. A `$all` subscription delivers in
 ascending `global_position` order. That is the order positions were assigned.
 Commit order and causal order across categories are not preserved.
 
-### No silent skip for `$all`
+### A `$all` subscription logs every event it skips {#no-silent-skip-for-all}
 
 No committed `$all` event is skipped without a log entry. Across categories a
-lower `global_position` can commit after a higher one, so a `$all`
-subscription processes only the contiguous run from its cursor and holds at
-the first gap ([ADR-0025](../adr/0025-all-subscription-gap-safety.md)). A gap
-that stays open for `gap_timeout_seconds` is treated as a rollback: the
-subscription logs it and moves on. A commit slower than that timeout is
-therefore logged and dropped. Single-category subscriptions have no gaps and
-skip this check.
+lower `global_position` can commit after a higher one. A `$all` subscription
+therefore processes only the contiguous run from its cursor and holds at the
+first gap ([ADR-0025](../adr/0025-all-subscription-gap-safety.md)). When a gap
+stays open for `gap_timeout_seconds`, the subscription treats it as a rollback,
+logs it and continues past it. A commit slower than that timeout is therefore
+logged and dropped. Single-category subscriptions have no gaps and skip this
+check.
 
-### Single writer
+### One worker runs each event-store subscription {#single-writer}
 
-Event-store subscriptions have no cluster-wide owner, so Protean refuses to
-start a second worker while one is registered. The operator can override this
-with `acknowledge_event_store_risk`. If the domain cannot be classified at
+Event-store subscriptions have no cluster-wide owner. Protean therefore refuses
+to start a second worker while one is registered. The operator can override
+this with `acknowledge_event_store_risk`. If the domain cannot be classified at
 startup, the check lets the workers start. To scale a handler across workers,
 use a stream subscription with Redis consumer groups.
 
 ---
 
-## Outbox
+## How the outbox publishes messages {#outbox}
 
 When a Unit of Work commits, its published messages are written to the outbox
 in the same transaction. An outbox processor then claims them and publishes
@@ -285,58 +294,57 @@ up.
 | **Terminal state** | `abandoned` after `max_retries` (default 3) with exponential backoff |
 | **Crash recovery** | A startup sweep rebuilds missing internal rows of event-sourced aggregates' events from the event store |
 
-### Outbox ordering
+### What order the outbox publishes in {#outbox-ordering}
 
 Rows are claimed by priority first, so a later message with a higher priority
 can overtake an earlier one. Within a priority, rows are claimed by
 `created_at` (when the Unit of Work built the row, just before the commit) and
-then by the event's position in its commit. One aggregate's events therefore
-go out in commit order.
+then by the event's position in its commit. One aggregate's events are
+therefore published in commit order.
 
-A retried row, a second worker, host clocks that disagree or step back, and
-the `DATETIME` rounding (about 3 ms) of a SQL Server outbox table created
-before 0.19 and [not converted](migration/v0-19.md#sql-server-stores-datetime-as-datetime2)
-can still publish events out of that order, so end-to-end FIFO through the
-outbox is not promised.
+Four things can still publish events out of that order: a retried row, a second
+worker, host clocks that disagree or step back, and the `DATETIME` rounding
+(about 3 ms) of a SQL Server outbox table created before 0.19 and [not
+converted](migration/v0-19.md#sql-server-stores-datetime-as-datetime2).
+End-to-end FIFO through the outbox is therefore not promised.
 
 A category partitioned with
 [`sequential_by`](server/sequential-by.md#how-the-outbox-keeps-a-key-in-order)
 keeps a key's rows in write order for each target broker and priority lane.
 That is commit order for one aggregate instance, but not always across several
 instances that share a key. A later row is claimed only when every earlier row
-of its key is published, discarded, or claimed in the same call. An earlier row that is in
-flight or failed holds the key, and an abandoned row halts it until an
-operator retries or discards the row (`protean outbox retry` or
-`protean outbox discard`).
+of its key is published, discarded, or claimed in the same call. An earlier row
+that is in flight or failed holds the key. An abandoned row halts the key until
+an operator retries or discards the row (`protean outbox retry` or `protean
+outbox discard`).
 
-### Known exceptions {#outbox-exceptions}
+### Where the outbox guarantees do not hold {#outbox-exceptions}
 
-- **Redelivery**: A crash after `broker.publish` and before the row is marked
-  published delivers the message again.
+- **Redelivery**: After a crash between `broker.publish` and marking the row
+  published, the outbox processor delivers the message again.
 - **Abandoned rows**: An `abandoned` row (`OutboxStatus.ABANDONED`) is not
-  delivered. It is kept for inspection and cleaned up after a retention
-  period, except a row with a partition key, which stays because it halts its
+  delivered. It is kept for inspection and cleaned up after a retention period.
+  A row with a partition key is the exception: it stays, because it halts its
   key. An operator can send an abandoned row again with `protean outbox retry`,
   or skip it with `protean outbox discard`.
 - **Discarded rows**: A discarded row (`OutboxStatus.DISCARDED`) is never
   delivered. It is cleaned up after the abandoned retention period.
 - **Crash recovery limits**: The sweep rebuilds one row per configured
   external broker for a `published` event, but only when the event's internal
-  row is also missing. External rows lost on their own are not rebuilt, and
-  events older than the outbox cleanup retention are skipped (ADR-0015).
-  State-based aggregates' events are never rebuilt. On a provider that keeps
-  writes without a transaction, such as Elasticsearch, a state-based
-  aggregate's row can be saved while its outbox row is lost, and that event
-  stays unpublished.
+  row is also missing. External rows lost on their own are not rebuilt. Events
+  older than the outbox cleanup retention are skipped (ADR-0015). State-based
+  aggregates' events are never rebuilt. Elasticsearch and other providers that
+  keep writes without a transaction can save a state-based aggregate's row and
+  lose its outbox row. That event then stays unpublished.
 
 ---
 
-## Broker
+## How brokers deliver messages {#broker}
 
 Brokers carry messages to external subscribers. Inside a Unit of Work,
 `publish` waits until after the database commit. Each broker declares a
 capability tier (Inline is `reliable_messaging`, Redis PubSub is
-`simple_queuing`, Redis Streams is `ordered_messaging`), and a broker without a
+`simple_queuing`, Redis Streams is `ordered_messaging`). A broker without a
 capability returns empty or warns.
 
 | Adapter | Ordering | Delivery | Durability |
@@ -345,52 +353,54 @@ capability returns empty or warns.
 | **Redis PubSub** | Per-stream FIFO in practice, not promised | At-most-once | Lost messages cannot be recovered |
 | **Redis Streams** | Per-stream FIFO, promised (`MESSAGE_ORDERING`) | At-least-once, through the `XREADGROUP` pending list and `XACK` | Durable in Redis |
 
-### Broker ordering
+### What order a broker keeps {#broker-ordering}
 
 Ordering is part of the contract only where the adapter advertises
-`MESSAGE_ORDERING`, which today is Redis Streams. Code meant to run on any
-broker cannot depend on Inline or PubSub order. For `published` domain events
-the outbox sets the end-to-end order (see [Outbox ordering](#outbox-ordering)),
-and the broker keeps the order the outbox published in.
+`MESSAGE_ORDERING`. Today only Redis Streams advertises it. Code meant to run
+on any broker cannot depend on Inline or PubSub order. For `published` domain
+events the outbox sets the end-to-end order (see [Outbox
+ordering](#outbox-ordering)). The broker keeps the order the outbox published
+in.
 
-### Known exceptions {#broker-exceptions}
+### Where the broker guarantees do not hold {#broker-exceptions}
 
-- **Redis PubSub batch loss**: The consumer position advances across a whole
-  batch before any message in it is processed, so a crash loses every
-  unprocessed message in the batch (up to `messages_per_tick`). Concurrent
-  consumers in one group can also duplicate one message and skip another.
-- **Inline durability**: Messages live in the process and are lost when it
-  exits.
+- **Redis PubSub can lose a batch**: The consumer position advances across a
+  whole batch before any message in it is processed. A crash therefore loses
+  every unprocessed message in the batch (up to `messages_per_tick`).
+  Concurrent consumers in one group can also duplicate one message and skip
+  another.
+- **Inline keeps messages only in the process**: Messages are held in the
+  process and are lost when the process exits.
 
-### Dead-letter queues
+### Where each adapter puts failed messages {#dead-letter-queues}
 
 The subscription owns retry and dead-lettering for the stream it consumes
 ([ADR-0042](../adr/0042-subscription-owns-retry-and-dead-lettering.md)). For a
-subscription-consumed stream the dead-letter destination is the
-`{stream}:dlq` stream the subscription publishes, and the Inline broker
-redelivers a nacked message with no retry limit of its own.
+subscription-consumed stream the dead-letter destination is the `{stream}:dlq`
+stream the subscription publishes. The Inline broker redelivers a nacked
+message with no retry limit of its own.
 
 The adapters differ when a stream is consumed straight off the broker, with no
-subscription. The Inline broker moves a message to its own dead-letter queue
-on exhausted retries and on in-flight timeout. Redis Streams can inspect and
-replay `:dlq` streams that something else fills, and leaves a nacked message
-pending.
+subscription. The Inline broker moves a message to its own dead-letter queue on
+exhausted retries and on in-flight timeout. Redis Streams can inspect and
+replay `:dlq` streams, but it does not fill them itself. Redis Streams leaves a
+nacked message pending.
 
-Moving a message to the dead-letter queue does not lose it when that publish
-fails. On both Redis Streams and Inline the source is acknowledged only after
-the dead-letter publish succeeds. Until then the message is nacked after
-`retry_delay_seconds`, keeps its retry count, and the move is retried at the
-retry cadence. With `enable_dlq=False`, an exhausted message is acknowledged
-and discarded.
+A failed publish to the dead-letter queue does not lose the message. On both
+Redis Streams and Inline the source is acknowledged only after the dead-letter
+publish succeeds. Until then the message is nacked after `retry_delay_seconds`
+and keeps its retry count. The move to the dead-letter queue is retried at the
+same interval as other retries. With `enable_dlq=False`, an exhausted message
+is acknowledged and discarded.
 
 ---
 
-## Cache
+## What the cache promises {#cache}
 
 The cache holds projections keyed by id, with pattern queries. It is
 best-effort and not durable, with a per-key TTL (300 seconds by default). It
 promises no ordering, no transactions and no atomic multi-key operations. The
-Memory cache lives in the process and is lost on exit. The Redis cache is as
+Memory cache is held in the process and is lost on exit. The Redis cache is as
 durable as the Redis deployment is configured to be.
 
 ---
@@ -403,36 +413,38 @@ behavior.
 Four protocols have model-checked TLA+ specifications under
 [`specs/`](https://github.com/proteanhq/protean/tree/main/specs): the `$all`
 checkpoint advance, the outbox publish, the aggregate OCC commit, and failure
-recovery. The TLC model checker explores every interleaving of out-of-order
-commits, lock expiry, redelivery, crashes, concurrent writers and handler
-failures, up to a bound, and checks the invariants that state these
-guarantees. `specs/README.md` maps each invariant to its guarantee here. Each
-spec has a revert test that puts the original bug back and confirms the model
+recovery. Up to a bound, the TLC model checker explores every interleaving of
+out-of-order commits, lock expiry, redelivery, crashes, concurrent writers and
+handler failures. It then checks the invariants that state these guarantees.
+`specs/README.md` maps each invariant to its guarantee here. Each spec has a
+revert test. The revert test puts the original bug back and confirms the model
 catches it.
 
-The specs check the design. They are re-run when a protocol changes, and are
-not part of CI.
+The specs check the design. Maintainers re-run the specs when a protocol
+changes. CI does not run them.
 
 ---
 
-## Out of scope
+## What these guarantees do not cover {#out-of-scope}
 
-- **Delivery of `published` events across bounded contexts**: Whether a
-  `published=True` event carries a delivery guarantee to external subscribers
-  is not settled yet
+- **Delivery of `published` events across bounded contexts is undecided**:
+  Protean has not yet settled whether a `published=True` event carries a
+  delivery guarantee to external subscribers
   ([ADR-0002](../adr/0002-event-publication-visibility.md), *Proposed*).
 - **Nested Units of Work**: An inner Unit of Work has no commit of its own; see
   [Known exceptions](#persistence-exceptions) under Aggregate persistence.
-- **Email adapters**: The shipped email adapters send and forget. They have no
-  delivery guarantee, no retry and no outbox integration.
+- **Email adapters give no delivery guarantee**: The shipped email adapters
+  send and forget. They have no delivery guarantee, no retry and no outbox
+  integration.
 
 ---
 
-## Related reading
+## See also
 
 - [Applicability charter](applicability.md): Whether Protean fits your system at
   all, before you weigh this contract.
 - [Versioning policy](versioning-policy.md): A weakened guarantee here is a
-  breaking change; this is how such changes are handled.
+  breaking change. The versioning policy says how Protean releases a breaking
+  change.
 - [Stable surface](stable-surface.md): What the compatibility contract covers,
   tier by tier.

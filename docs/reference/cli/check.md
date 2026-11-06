@@ -3,8 +3,9 @@
 Validate a Protean domain and report errors, warnings, and diagnostics. Unlike
 `protean server` or `protean shell`, `check` does **not** initialize adapters.
 It resolves references, wires handlers, runs every validation check, and builds
-the IR to collect [architecture fitness function](../fitness-functions.md)
-diagnostics. It is designed to run in CI and pre-commit hooks.
+the IR (the intermediate representation of the domain) to collect [architecture
+fitness function](../fitness-functions.md) diagnostics. It is designed to run
+in CI and pre-commit hooks.
 
 ```bash
 # Check the domain discovered from the current directory
@@ -18,19 +19,19 @@ protean check --format=json
 protean check --format=sarif > protean.sarif
 ```
 
-When `--domain` names a file, `check` imports it and walks the directory that
-holds it, the same way `Domain.init()` does. A domain declared as
+When `--domain` names a file, `check` imports the file and walks its directory.
+`Domain.init()` walks the directory in the same way. A domain declared as
 `Domain(__name__)` has a module name as its root path, which names no
 directory. `check` then checks the domain without walking any directory and
-logs a warning. If another module in that directory raises when it is
-imported, `check` exits `2` with one line that names the `--domain` value and
-the error.
+logs a warning. If another module in the domain file's directory raises an
+error on import, `check` exits `2`. `check` prints one line with the `--domain`
+value and the error.
 
 If the IR cannot be built, `check` reports the failure as one error, with
 `element` set to `to_ir` and the exception class name as its `code`, and
 exits `1`.
 
-## Options
+## Which options does `check` take?
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
@@ -39,7 +40,7 @@ exits `1`.
 | `--level` | `-l` | `info` | Minimum severity to **display**: `error`, `warning`, or `info`. Filters the `rich`/`--quiet` human output only. It never changes the exit code, and it never filters the machine formats (`json`, `sarif`, `github-annotations`). |
 | `--quiet` | `-q` | `false` | Show only a one-line count summary and set the exit code. |
 
-## Output formats
+## Choose an output format
 
 | Format | Description |
 |--------|-------------|
@@ -49,11 +50,11 @@ exits `1`.
 | `github-annotations` | GitHub Actions `::error`/`::warning`/`::notice` workflow commands. |
 
 The `json`, `sarif`, and `github-annotations` formats always emit the
-**unfiltered** set of findings regardless of `--level`, because they feed
+**unfiltered** set of findings regardless of `--level`. These formats feed
 machines (an agent consuming the envelope, a Code Scanning upload, CI
-annotations) where a display filter must not silently drop findings. So a
+annotations), and a display filter must not silently drop findings there. So a
 `json` envelope with `status="fail"` always carries the diagnostics and counts
-that caused it. Filter with `jq` if you want a subset.
+that caused it. If you want a subset, filter with `jq`.
 
 ## Exit codes
 
@@ -68,7 +69,7 @@ driven by the **unfiltered** counts and gated by the `[lint].level` config key
 | `2` | A usage or environment error: a bad `--domain`, `--level`, or `--format`; a domain that will not load; or a malformed `[lint]` config. |
 
 The single findings-failure code (`1`) replaced an earlier split (errors `1`,
-warnings `2`); the severity now lives in the envelope. Load and config errors,
+warnings `2`). The envelope now carries the severity. Load and config errors,
 previously `1`, are usage errors (`2`).
 
 `[lint].level` maps as follows (default `warn`):
@@ -85,7 +86,7 @@ the full set of config keys.
 ## Result envelope
 
 The `--format=json` output is the shared CLI
-[result envelope](conventions.md#the-result-envelope): a coarse `status`, the
+[result envelope](conventions.md#what-does-the-result-envelope-contain): a coarse `status`, the
 check report under `data`, and the diagnostics list at the top level.
 
 ```json
@@ -151,7 +152,7 @@ On a usage/environment error (`status: "error"`, exit 2) `data` carries a single
 | `suggestion` | str | Remediation text. Currently equals `rule.fix`; reserved for AI-populated, context-aware text in a future release. |
 | `teaching_skills` | list | Names of the DX-pack skills that teach this code, sorted. Present only when a skill declares the code (under `metadata.diagnostic_codes` in its `SKILL.md`); omitted for a code no skill teaches, or when the pack is stripped from the install. |
 
-## CI integration
+## Run `check` in CI
 
 Emit a SARIF document for GitHub Code Scanning, or inline annotations without it:
 
@@ -161,11 +162,11 @@ protean check --domain=my_app.domain --format=github-annotations
 ```
 
 See the [Architecture Fitness Functions
-guide](../../guides/architecture-fitness-functions.md#ci-integration) for the
+guide](../../guides/architecture-fitness-functions.md#run-the-checks-in-ci) for the
 full CI walkthrough: the GitHub Actions workflow, SARIF upload, and how to
 choose the gating floor.
 
-## Related
+## See also
 
 - [Architecture Fitness Functions guide](../../guides/architecture-fitness-functions.md): Running, suppressing, and extending the checks.
 - [Fitness Function Catalog](../fitness-functions.md): Every rule, its rationale, and its fix.

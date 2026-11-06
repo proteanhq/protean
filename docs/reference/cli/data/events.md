@@ -8,7 +8,7 @@ event history of an aggregate instance, all without writing custom scripts.
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Commands
+## Which commands does the group provide?
 
 | Command | Description |
 |---------|-------------|
@@ -133,7 +133,7 @@ protean events search --type=UserRegistered --trace --domain=my_domain
 | `--data/--no-data` | Show full event data payloads | `--no-data` |
 | `--trace/--no-trace` | Show correlation and causation ID columns | `--no-trace` |
 
-**Type matching rules:**
+**How `search` matches event types:**
 
 - If the search term contains dots (e.g., `App.UserRegistered.v1`), an
   **exact match** is performed against the event type.
@@ -208,7 +208,7 @@ protean events trace "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6" --data --domain=my_domai
 | `--data/--no-data` | Show full event data payloads | `--no-data` |
 | `--flat/--tree` | Show flat table instead of causation tree | `--tree` |
 
-**Tree output** (default)
+**Read the tree output** (default)
 
 The tree view uses `build_causation_tree()` to reconstruct the parent-child
 relationships between commands and events. Each node shows a `CMD` or `EVT`
@@ -241,9 +241,9 @@ type, time, correlation ID, and causation ID columns:
 Found 3 event(s) for correlation ID 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
 ```
 
-The tree view is most useful for debugging because it shows causal relationships
-at a glance. The flat view is useful when you need to see exact positions and
-timestamps for every message.
+The tree view is most useful for debugging because it shows every causal
+relationship in one view. The flat view is useful when you need to see exact
+positions and timestamps for every message.
 
 See [Message Tracing](../../../guides/domain-behavior/message-tracing.md) for
 details on how correlation and causation IDs work, including the programmatic
@@ -254,14 +254,15 @@ causation chain API.
 Lists every concrete event in the domain with its **evolution status**:
 version, deprecation and supersession markers, upcaster chain, and the
 consumers (event handlers, projectors, and process managers) that subscribe to
-it. Unlike the other `events` commands, `catalog` is sourced from the domain
-**IR** (the contract), not the event store, so it works from a live domain
-(`--domain`)
-**or** a serialized IR file (`--ir`), and does not need a running event store.
+it. Unlike the other `events` commands, `catalog` reads the domain **IR** (the
+contract) instead of the event store, so it does not need a running event
+store. You can point it at a live domain (`--domain`) **or** a serialized IR
+file (`--ir`).
 
 The catalog covers events that belong to an aggregate cluster (every event you
-raise). Abstract events and events on internal aggregates are not listed, and
-broker **subscribers** are not counted among an event's consumers.
+raise). The catalog leaves out abstract events and events on internal
+aggregates. It also does not count broker **subscribers** among an event's
+consumers.
 
 ```bash
 # From a live domain
@@ -317,11 +318,11 @@ event's `fqn`, owning `aggregate`, `published`/`is_fact_event` flags, and full
 }
 ```
 
-Under `--json`, any usage or load error (neither `--domain` nor `--ir`, both at
-once, an unloadable domain, or a missing/unreadable/non-object `--ir` file) is
-the error envelope (`status="error"`, the message under `data.error`) on stdout
-and exits `2`, so stdout stays exactly one object and a `| jq` pipe stays
-parseable.
+Under `--json`, the command reports any usage or load error (neither `--domain`
+nor `--ir`, both at once, an unloadable domain, or a
+missing/unreadable/non-object `--ir` file) as the error envelope
+(`status="error"`, the message under `data.error`) on stdout and exits `2`.
+Stdout then holds exactly one object, so a `| jq` pipe can still parse it.
 
 Without `--json` the two error kinds differ, as they did before this change. A
 usage error (neither `--domain` nor `--ir`, or both) prints to stderr and exits
@@ -333,7 +334,7 @@ and Protobuf) the catalog forms a **local schema-registry on-ramp**: exactly
 what an external registry (Confluent, Apicurio) would publish, without
 integrating the service. See [`protean schema`](../schema.md).
 
-## Error Handling
+## What happens when a command fails?
 
 | Condition | Behavior |
 |-----------|----------|
@@ -345,7 +346,7 @@ integrating the service. See [`protean schema`](../schema.md).
 | No aggregates in domain (`stats`) | Prints "No aggregates registered" |
 | No events for correlation ID (`trace`) | Prints "No events found for correlation ID" |
 
-## Domain Discovery
+## How do the commands find your domain?
 
 The `protean events` commands use the same domain discovery mechanism as
 other CLI commands. The `--domain` option accepts:

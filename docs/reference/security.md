@@ -1,4 +1,4 @@
-# Security considerations
+# What Protean secures and what it leaves to you
 
 Read this before you run Protean in production. It covers what the framework
 does about security, what it leaves to you, and the settings that affect it.
@@ -6,32 +6,33 @@ does about security, what it leaves to you, and the settings that affect it.
 The project's `SECURITY.md` covers how to report a vulnerability and which
 release lines get security patches.
 
-Protean applies a few safe defaults. It validates the structure of every field
-value, and the bundled adapters build queries without concatenating your field
-values into the query text. It does not handle authentication, transport
+Protean applies a few safe defaults. Protean validates the structure of every
+field value. The bundled adapters build queries without concatenating your
+field values into the query text. It does not provide authentication, transport
 security, or output escaping. The sections below say where each responsibility
 sits.
 
-## Input handling
+## How Protean validates input
 
 Protean validates every field value through Pydantic v2: types, `choices`,
 length and range constraints, and required or empty checks. This is structural
 validation. It keeps malformed or wrongly typed data out of your aggregates.
 
 Structural validation is not an injection boundary. A value that passes
-validation is still just a string. It may end up in HTML, in a shell command, or
-in a SQL string you built by hand. Escaping a value for the place it is used
-stays with you, at that output or sink.
+validation is still just a string. Your code may then place it in HTML, in a
+shell command, or in a SQL string you built by hand. You escape the value at
+the output or sink where your code uses it.
 
-## Field sanitization
+## How field sanitization works
 
 `String` and `Text` fields do not sanitize their input by default. The stored
-value is the raw input you gave them. This is a deliberate default: sanitizing at
-input mangles data that was never meant for HTML, and the real fix for an HTML
-sink is encoding the output where it is rendered.
+value is the raw input you gave them. Protean leaves sanitization off on
+purpose, because sanitizing at input mangles data that was never meant for
+HTML. For an HTML sink, the real fix is to encode the output where your code
+renders it.
 
-You can opt in when a field's value really is HTML that gets rendered without
-output encoding. There are two ways:
+Some field values are HTML that your code renders without output encoding. For
+such a field, you can opt in. There are two ways:
 
 - Per field, pass `sanitize=True` on the `String` or `Text` field.
 - Across the domain, set `sanitize = true` under `[field_defaults]` in
@@ -47,69 +48,71 @@ through `bleach.clean()`. This keeps a small set of safe tags and escapes the
 rest, so markup like `<script>` becomes inert text instead of active HTML.
 
 Sanitization is a convenience for text you render as HTML. It does not make
-untrusted input safe to use everywhere, and turning it on domain-wide does not
-change that.
+untrusted input safe to use everywhere. Turning it on domain-wide does not make
+untrusted input safe everywhere either.
 
-## Persistence
+## How the adapters build queries
 
 The bundled SQLAlchemy adapter builds queries through SQLAlchemy with bound
 parameters. The Elasticsearch adapter builds structured query objects. Neither
-assembles a query by concatenating your field values into a query string, so
-ordinary repository use, saving an aggregate or filtering a query, does not send
-your field values to the database as raw query text.
+adapter assembles a query by concatenating your field values into a query
+string. As a result, ordinary repository use, such as saving an aggregate or
+filtering a query, does not send your field values to the database as raw query
+text.
 
 Raw queries are the exception. A provider's `raw()` method runs a query string
 you supply. On the SQLAlchemy provider, `raw(query, data)` binds the values in
-`data` to named placeholders in the query, so pass user input through `data`
-rather than formatting it into the query string. The repository's raw query path,
+`data` to named placeholders in the query. Pass user input through `data`, and
+do not format it into the query string. The repository's raw query path,
 `QuerySet.raw(query, data)`, takes a `data` argument but the bundled adapters
 ignore it. That path runs your string as is with nothing bound, so parameterize
-on the provider path instead. Either way, if you build the query string by
-pasting user input into it, you own that boundary.
+on the provider path instead. On either raw query path, when you paste user
+input into the query string, you are responsible for preventing injection.
 
-## Secrets in configuration
+## What Protean does with secrets in configuration
 
 Protean reads broker URLs, database credentials, and similar values from your
-domain configuration and the environment. It does not encrypt them, store them in
-a vault, or manage their rotation. They live wherever you put them.
+domain configuration and the environment. It does not encrypt them, store them
+in a vault, or rotate them. You decide where they are stored.
 
 Keep secrets out of source control. Supply them through the environment or a
 secret manager and let the configuration read them from there.
 
-For logs specifically, Protean's logging can mask the values of named keys in log
-output. The default redact list covers keys such as `password`, `token`,
-`secret`, and `authorization`, and you can add to it. See
-[Redaction](logging.md#redaction) for the list and how it works. That filter acts
-on log output only. It does not protect a secret you place under an unrecognized
-key, and it does not cover secrets that reach an error message or a traceback. You
-control what your code logs and what your error output exposes.
+For logs specifically, Protean's logging can mask the values of named keys in
+log output. The default redact list includes keys such as `password`, `token`,
+`secret`, and `authorization`. You can add keys to the list. See
+[Redaction](logging.md#redaction) for the list and how it works. Redaction acts
+on log output only. Redaction does not mask a secret you place under a key
+outside the redact list. It also does not mask a secret that reaches an error
+message or a traceback. You control what your code logs and what your error
+output exposes.
 
-## Left to the operator
+## What you provide as the operator
 
 Protean leaves the following to you and the platform you run on. None of it ships
 in the framework:
 
-- **Transport security.** TLS to brokers and databases is configured in the
-  connection settings you provide. Protean does not add or require it.
-- **Authentication and authorization.** Protean ships no auth primitive. Deciding
-  who may call a command or read a projection is your application's job, at the
-  edge in front of the domain.
+- **You set up transport security.** You configure TLS to brokers and databases
+  in the connection settings you provide. Protean does not add or require it.
+- **Authentication and authorization.** Protean ships no auth primitive. Your
+  application decides who may call a command or read a projection, before the
+  request reaches the domain.
 - **Rate limiting and denial-of-service protection.** These belong at your API
   gateway, proxy, or framework layer.
 - **Output escaping.** Escaping a value for HTML, SQL, shell, or any other sink
   happens where the value is used, not where it is stored.
 
-## Network services Protean ships
+## Which Protean services listen on a port
 
 Four services can listen on a port. None of them authenticates the caller. The
-first three bind to loopback (`127.0.0.1`) by default. The docs preview binds
-every interface.
+first three bind to loopback (`127.0.0.1`) by default. The fourth, the docs
+preview, binds every interface.
 
 - **The engine health server.** It runs with the server and is on by default
   (`[server.health] enabled = true`, port 8080). It answers `GET /healthz`,
-  `GET /livez`, and `GET /readyz`. It also accepts `POST /drainz`, which flips
-  the engine to draining so it stops taking new work. That request changes
-  state, and anyone who can reach the port can send it. See
+  `GET /livez`, and `GET /readyz`. It also accepts `POST /drainz`. That request
+  switches the engine to draining, so the engine stops taking new work. That
+  request changes state, and anyone who can reach the port can send it. See
   [Server hardening](server/hardening.md).
 - **The Observatory.** `protean observatory` runs a FastAPI server that exposes
   domain internals and dead-letter-queue management endpoints. See
@@ -117,12 +120,12 @@ every interface.
 - **The MCP server over HTTP.** `protean mcp --http` serves the framework's agent
   tools over streamable HTTP on port 8000. The default stdio transport
   (`protean mcp`) opens no port. See [`protean mcp`](cli/runtime/mcp.md).
-- **The docs preview.** `protean docs preview` runs `mkdocs serve` on port 8000
-  and binds every interface (`0.0.0.0`), not loopback. It has no host option, so
-  anyone who can reach the port sees whatever your docs tree holds. Keep it to a
-  trusted network. For a loopback preview, call mkdocs yourself:
-  `mkdocs serve --dev-addr=127.0.0.1:8000`. See
-  [`protean docs preview`](cli/project/docs.md#protean-docs-preview).
+- **The docs preview.** `protean docs preview` runs `mkdocs serve` on port
+  8000. Unlike the other three services, it binds every interface (`0.0.0.0`).
+  It has no host option. Anyone who can reach the port sees the contents of
+  your docs tree. Keep it to a trusted network. For a loopback preview, call
+  mkdocs yourself: `mkdocs serve --dev-addr=127.0.0.1:8000`. See [`protean docs
+  preview`](cli/project/docs.md#protean-docs-preview).
 
-If one of these listens on anything wider than loopback, put it behind an
-authenticating reverse proxy on a trusted network.
+If one of the four services listens on anything wider than loopback, put it
+behind an authenticating reverse proxy on a trusted network.

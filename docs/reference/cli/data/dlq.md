@@ -1,15 +1,15 @@
 # `protean dlq`
 
-The `protean dlq` command group provides tools for managing dead letter
-queues (DLQs). When messages fail processing after exhausting retries,
-they are moved to DLQ streams. These commands let you list, inspect,
+The `protean dlq` command group provides tools for managing dead letter queues
+(DLQs). When messages fail processing after exhausting retries, the
+subscription moves them to DLQ streams. These commands let you list, inspect,
 replay, and purge those failed messages, both from the terminal and via the
 [Observatory dashboard](../runtime/observatory.md).
 
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Commands
+## Which commands does the group provide?
 
 | Command | Description |
 |---------|-------------|
@@ -74,9 +74,9 @@ protean dlq inspect "1708768400000-0" --domain=my_domain
 
 ## `protean dlq replay`
 
-Replays a single DLQ message back to its original stream for
-reprocessing. The message is removed from the DLQ and published as a new
-message on the target stream.
+Replays a single DLQ message back to its original stream for reprocessing. The
+message is removed from the DLQ and published as a new message on its original
+stream.
 
 ```bash
 protean dlq replay "1708768400000-0" --domain=my_domain
@@ -156,7 +156,7 @@ The Observatory exposes DLQ management endpoints for programmatic access:
 | `/api/dlq/replay-all` | POST | Replay all messages (`?subscription=...`) |
 | `/api/dlq` | DELETE | Purge all messages (`?subscription=...`) |
 
-## Error Handling
+## Which errors can the commands report?
 
 | Condition | Behavior |
 |-----------|----------|
@@ -192,7 +192,7 @@ For the full error handling guide, see
 lifecycle details, see
 [Subscriptions](../../../concepts/async-processing/subscriptions.md).
 
-## Domain Discovery
+## How do the commands find the domain?
 
 The `protean dlq` commands use the same domain discovery mechanism as
 other CLI commands. See [Domain Discovery](../project/discovery.md) for the

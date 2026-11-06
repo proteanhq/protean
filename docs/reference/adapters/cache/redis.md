@@ -3,7 +3,7 @@
 The Redis cache adapter provides persistent, distributed caching with TTL
 support. It is the recommended cache provider for production environments.
 
-## Overview
+## When should you use the Redis cache?
 
 The Redis cache is designed for:
 
@@ -12,7 +12,7 @@ The Redis cache is designed for:
 - **TTL-based expiry** with millisecond precision
 - **Pattern-based operations** for bulk retrieval and cleanup
 
-## Installation
+## Install the Redis cache
 
 ```bash
 pip install "protean[redis]"
@@ -21,7 +21,7 @@ pip install "protean[redis]"
 pip install "redis>=8.0.0,<8.2.0"
 ```
 
-## Configuration
+## Configure the Redis cache
 
 ```toml
 [caches.default]
@@ -30,7 +30,7 @@ URI = "redis://localhost:6379/2"
 TTL = 300
 ```
 
-### Configuration Options
+### Which options can you set?
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -60,7 +60,7 @@ The same rule applies wherever a TTL is passed: `cache.add(projection, ttl=...)`
 and `cache.set_ttl(key, ttl)` take the same shapes and reject the same ones.
 Omitting the TTL (or passing an empty string) uses the cache's configured `TTL`.
 
-### Connection String Format
+### Write the connection string
 
 ```
 redis://[[username]:[password]@]host[:port][/database]
@@ -79,7 +79,7 @@ redis://:password@redis.prod:6379/2  # With password, database 2
     broker's streams and consumer groups. Other databases on the server are
     not touched.
 
-## Usage
+## Use the cache from your code
 
 Projections are automatically stored in the cache when a projector writes to a
 cache-backed projection. You can also interact with the cache directly. This
@@ -96,16 +96,17 @@ Each entry's key is the projection's name in snake case, then `:::`, then its
 identifier. `get_ttl` returns the seconds left as a float, so right after
 `set_ttl(..., ttl=600)` it returns a value just under or equal to `600.0`.
 
-## Limitations
+## What are the limits of the Redis cache?
 
 - **Requires Redis Server**: Redis must be installed and running. Use
   `make up` to start Protean's Docker-based development services.
-- **Memory Bound**: Redis stores data in memory. Ensure sufficient RAM for
-  your cache working set.
-- **No Complex Queries**: The cache API supports key-based and pattern-based
-  lookups only. For complex queries, use a database-backed projection instead.
+- **The cache size is limited by memory**: Redis stores data in memory. Ensure
+  sufficient RAM for your cache working set.
+- **The cache runs no complex queries**: The cache API supports key-based and
+  pattern-based lookups only. For complex queries, use a database-backed
+  projection instead.
 
-## Related pages
+## Read related pages
 
 - Learn about [projections](../../../guides/consume-state/projections.md)
 - Understand [cache configuration](../../../reference/configuration/index.md)

@@ -1,16 +1,16 @@
-# Building Adapters
+# Build your own adapters
 
 Protean's adapter architecture is designed for extensibility. Third-party
 packages can add new database providers, message brokers, event stores, and
 cache backends without modifying Protean's source code.
 
-## How It Works
+## How does Protean find an adapter?
 
-All adapter types use Python
-[entry points](https://packaging.python.org/en/latest/specifications/entry-points/)
-for registration. When you `pip install` a package that defines the appropriate
-entry point, Protean automatically discovers and makes the adapter available
-for configuration.
+All adapter types use Python [entry
+points](https://packaging.python.org/en/latest/specifications/entry-points/)
+for registration. When you `pip install` a package with the matching entry
+point, Protean discovers the adapter automatically. Protean then makes the
+adapter available for configuration.
 
 Each adapter package provides:
 
@@ -20,10 +20,10 @@ Each adapter package provides:
 3. An **entry point** in `pyproject.toml` that points to the `register()`
    function
 
-## Database Adapters
+## Build a database adapter
 
-Database adapters implement the `BaseProvider` interface and declare their
-capabilities through the `DatabaseCapabilities` flag system.
+Database adapters implement the `BaseProvider` interface. Each database adapter
+declares its capabilities through the `DatabaseCapabilities` flag system.
 
 See [Building Custom Database Adapters](./database/custom-databases.md)
 for a complete guide with a worked DynamoDB example, including:
@@ -34,10 +34,10 @@ for a complete guide with a worked DynamoDB example, including:
 - How to declare capabilities
 - How to test with the conformance suite
 
-## Broker Adapters
+## Build a broker adapter
 
-Broker adapters implement the `BaseBroker` interface and declare their
-capabilities through the `BrokerCapabilities` tier system.
+Broker adapters implement the `BaseBroker` interface. Each broker adapter
+declares its capabilities through the `BrokerCapabilities` tier system.
 
 See [Building Custom Brokers](./broker/custom-brokers.md)
 for a complete guide with a worked Kafka example, including:
@@ -47,14 +47,14 @@ for a complete guide with a worked Kafka example, including:
 - Entry point registration
 - Testing patterns
 
-## Event Store and Cache Adapters
+## Build event store and cache adapters
 
 Event store adapters extend `BaseEventStore` and implement stream write/read
 operations. Cache adapters extend `BaseCache` and implement key-value
 operations with TTL support. These follow the same entry-point registration
 pattern as database and broker adapters.
 
-## Conformance Testing
+## Test your adapter with the conformance suite
 
 Protean provides a generic conformance test suite that validates any database
 adapter against its declared capabilities. Use it to verify your adapter
@@ -67,7 +67,7 @@ protean test test-adapter --provider=your-adapter-name
 See [Adapter Conformance Testing](../testing/conformance.md) for
 the full reference.
 
-## Getting Help
+## Where can you get help?
 
 - [GitHub Discussions](https://github.com/proteanhq/protean/discussions):
   Ask questions and share your adapter with the community.

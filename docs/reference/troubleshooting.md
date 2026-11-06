@@ -1,8 +1,8 @@
-# Troubleshooting
+# Troubleshoot common problems
 
-A cookbook of common issues and how to debug them. For error classification
-patterns in production, see
-[Classify Async Processing Errors](../patterns/classify-async-processing-errors.md).
+This page lists common problems and shows how to debug each one. For error
+classification patterns in production, see [Classify Async Processing
+Errors](../patterns/classify-async-processing-errors.md).
 
 The examples on this page use a small order domain:
 
@@ -16,7 +16,7 @@ The examples on this page use a small order domain:
 
 ## Command is accepted but nothing happens
 
-**Symptoms:** `domain.process()` returns without error, but the aggregate
+**What you see:** `domain.process()` returns without error, but the aggregate
 isn't created or updated.
 
 **Check 1: Is there a handler registered?**
@@ -25,7 +25,8 @@ isn't created or updated.
 --8<-- "reference/troubleshooting/001.py:check_handler"
 ```
 
-If this returns `None`, the handler isn't registered. Verify:
+If `domain.command_handler_for()` returns `None`, the domain has no handler
+registered for the command. Verify:
 
 - The handler is decorated with `@domain.command_handler(part_of=YourAggregate)`
 - The handler file is inside the domain's discovery path
@@ -48,13 +49,13 @@ expects immediate side effects, configure sync processing:
 --8<-- "reference/troubleshooting/001.py:sync_config"
 ```
 
-Or use the `DomainFixture` which handles this automatically.
+Or use the `DomainFixture`, which configures sync processing automatically.
 
 ---
 
 ## Event handler doesn't fire
 
-**Symptoms:** An aggregate raises an event, but the event handler's method
+**What you see:** An aggregate raises an event, but the event handler's method
 is never called.
 
 **Check 1: Is the event raised inside the aggregate?**
@@ -90,27 +91,29 @@ test mode:
 
 ## "No domain context" errors
 
-**Symptoms:** A `UserWarning` that starts with `Working outside of domain
-context.`, followed by an `AttributeError` that names a domain attribute, such
-as `AttributeError: repository_for` or `AttributeError: config`. Protean warns
-first, then the call fails because there is no current domain to read from.
+**What you see:** Protean shows a `UserWarning` that starts with `Working
+outside of domain context.`. Next comes an `AttributeError` that names a domain
+attribute, such as `AttributeError: repository_for` or `AttributeError:
+config`. Protean warns first. The call then fails because there is no current
+domain to read from.
 
-**Cause:** Protean operations require an active domain context on the current
-thread. This is usually set up by middleware (FastAPI) or fixtures (tests).
+**Why it happens:** Protean operations require an active domain context on the
+current thread. This is usually set up by middleware (FastAPI) or fixtures
+(tests).
 
-**Fix for FastAPI:**
+**Fix it in FastAPI:**
 
 ```python
 --8<-- "reference/troubleshooting/003.py:middleware"
 ```
 
-**Fix for tests:**
+**Fix it in tests:**
 
 ```python
 --8<-- "reference/troubleshooting/002.py:fixture"
 ```
 
-**Fix for scripts or CLI tools:**
+**Fix it in scripts or CLI tools:**
 
 ```python
 --8<-- "reference/troubleshooting/001.py:script"
@@ -120,7 +123,7 @@ thread. This is usually set up by middleware (FastAPI) or fixtures (tests).
 
 ## Projection is empty or stale
 
-**Symptoms:** Querying a projection returns no results or outdated data,
+**What you see:** Querying a projection returns no results or outdated data,
 even though events have been raised.
 
 **Check 1: Is the projector registered?**
@@ -154,7 +157,7 @@ Projections backed by a database need schema setup:
 
 ## Subscriber doesn't receive messages
 
-**Symptoms:** External messages are published to the broker, but the
+**What you see:** External messages are published to the broker, but the
 subscriber's `__call__` method is never invoked.
 
 **Check 1: Is the stream name correct?**
@@ -188,9 +191,9 @@ For tests, use test mode to process messages synchronously.
 
 ---
 
-## Aggregate validation errors
+## Aggregate validation fails
 
-**Symptoms:** `ValidationError` when creating or updating an aggregate.
+**What you see:** Creating or updating an aggregate raises a `ValidationError`.
 
 **Debugging approach:**
 
@@ -212,9 +215,10 @@ causes:
     handling *that* can index it safely. But `ValidationError` carries whatever
     it was raised with. An aggregate method, a domain service method or a
     handler is free to raise `ValidationError("Order is already shipped")`.
-    Then `messages` is a plain `str`, and a list raises it as a `list[str]`.
-    (An `@invariant` check is different: it must raise the dict form.) A blanket
-    `except ValidationError` that does `e.messages.items()` will fail on those.
+    Then `messages` is a plain `str`. When code raises `ValidationError` with a
+    list, `messages` is a `list[str]`. (An `@invariant` check is different: it
+    must raise the dict form.) If your blanket `except ValidationError` block
+    calls `e.messages.items()`, that call fails on a `str` or a `list[str]`.
 
     ```python
     # fragment
@@ -229,12 +233,12 @@ causes:
 
 ---
 
-## Message tracing and debugging event chains
+## Trace messages and debug event chains
 
 When a command triggers a chain of events and handlers, use Protean's
 built-in tracing to follow the full causal chain.
 
-**From the CLI:**
+**Trace from the CLI:**
 
 ```bash
 # Trace a specific correlation ID
@@ -263,7 +267,7 @@ guide.
 
 ---
 
-## Common CLI debugging commands
+## Debug with these CLI commands
 
 ```bash
 # Check subscription status and lag
@@ -292,7 +296,8 @@ protean observatory --domain .
    engine runs. Use `engine.run()` in test mode rather than `time.sleep()`.
 
 3. **Database state leakage:** Ensure each test starts clean. The
-   `DomainFixture` handles this, but custom fixtures might not.
+   `DomainFixture` gives each test a clean database, but custom fixtures might
+   not.
 
 4. **Port conflicts:** If multiple CI jobs run in parallel, broker/database
    ports may collide. Use unique port mappings per job.

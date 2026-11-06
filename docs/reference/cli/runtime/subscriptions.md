@@ -2,7 +2,7 @@
 
 Monitor subscription lag and health for all handlers in a Protean domain.
 
-## Commands
+## Check subscription health
 
 ### `protean subscriptions status`
 
@@ -27,19 +27,20 @@ protean subscriptions status --domain=my_app
 4 subscription(s), 1 ok, 3 lagging, total lag: 59
 ```
 
-`Lag (s)` is how far behind the subscription is in wall-clock seconds: `0.0`
-when caught up, the time since the last processed position when lagging. Only
-event-store subscriptions track it today, so every other type shows `-`. A `-`
-means the seconds are unavailable, which is not the same as `0.0` (caught up).
+`Lag (s)` shows how far behind the subscription is, in wall-clock seconds. A
+caught-up subscription shows `0.0`, and a lagging one shows the time since its
+last processed position. Only event-store subscriptions track it today, so
+every other type shows `-`. A `-` means the seconds are unavailable. A `0.0`
+means the subscription is caught up.
 
-### Options
+### Choose the domain and the output format
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
 | `--json` | Output raw JSON instead of a table | `False` |
 
-### JSON output
+### Get the output as JSON
 
 Use `--json` for machine-readable output suitable for scripting or
 integration with external monitoring:
@@ -83,16 +84,18 @@ per-subscription list under `data.subscriptions`:
 stdout carries exactly this one object; logs go to stderr, so a `| jq` pipe
 stays parseable.
 
-For an event-store subscription, `position_stream` is the checkpoint stream
-(`position-{subscriber_name}-{category}`) the position is read from and the
-stream [`protean recover --reset-beyond-head`](recover.md) writes to. The
-`recovery_checkpoint_stream` (`recovery-checkpoint-{subscriber_name}-{category}`)
-and `failed_positions_stream` (`failed-{subscriber_name}-{category}`) are the
-recovery-pass streams the same command scans and clears. All three are `null` for
-broker, stream, and outbox subscriptions, which do not track event-store
+For an event-store subscription, `position_stream` names the checkpoint stream
+(`position-{subscriber_name}-{category}`). The command reads the subscription's
+position from this stream, and [`protean recover
+--reset-beyond-head`](recover.md) writes to it. The
+`recovery_checkpoint_stream`
+(`recovery-checkpoint-{subscriber_name}-{category}`) and
+`failed_positions_stream` (`failed-{subscriber_name}-{category}`) are the
+recovery-pass streams the same command scans and clears. All three are `null`
+for broker, stream, and outbox subscriptions, which do not track event-store
 recovery state.
 
-## Subscription types
+## How does the command measure lag for each subscription type?
 
 The command discovers all subscriptions from the domain registry and queries
 the appropriate backend for each:
@@ -104,7 +107,7 @@ the appropriate backend for each:
 | `broker` | Broker consumer group info | Same as stream for Redis brokers |
 | `outbox` | Outbox repository | `pending + processing` count |
 
-## Status values
+## What does each status mean?
 
 | Status | Meaning |
 |--------|---------|
@@ -121,9 +124,9 @@ infrastructure directly:
 1. Event handlers, command handlers, projectors, and process managers are
    discovered from `domain.registry`
 2. The `ConfigResolver` determines each handler's subscription type
-3. For event store subscriptions, position streams and `stream_head_position()`
-   are queried, and `dlq_depth` counts the positions whose latest record in the
-   subscription's `failed-*` stream is `Exhausted`
+3. For event store subscriptions, the command queries position streams and
+   `stream_head_position()`. `dlq_depth` counts the positions whose latest
+   record in the subscription's `failed-*` stream is `Exhausted`
 4. For stream subscriptions, Redis `XINFO GROUPS` and `XLEN` are queried
 5. For outbox processors, `count_by_status()` is queried
 

@@ -6,7 +6,7 @@ initialization.
 
 All commands accept a `--domain` option to specify the domain module path.
 
-## Commands
+## What commands does `protean ir` include?
 
 | Command | Description |
 |---------|-------------|
@@ -38,18 +38,19 @@ protean ir show --domain=my_app.domain --canonical > .protean/ir.json
 | `--format`, `-f` | Output format: `json` or `summary` | `json` |
 | `--canonical` | Omit the volatile `generated_at` timestamp (json format only) | `false` |
 
-**Canonical baseline output**
+**Save a canonical baseline**
 
-By default the JSON output includes a `generated_at` materialization
-timestamp, which changes on every regeneration. When committing
-`.protean/ir.json` as a baseline for `protean ir diff`, that timestamp is
-pure noise: it produces a one-line diff on every `protean ir show` even when
+By default the JSON output includes a `generated_at` materialization timestamp,
+which changes on every regeneration. If you commit `.protean/ir.json` as a
+baseline for `protean ir diff`, that timestamp adds a change that carries no
+meaning. Every `protean ir show` then produces a one-line diff, even when
 nothing about the domain changed.
 
 Pass `--canonical` to omit `generated_at`. The `$schema`, `ir_version`,
 `checksum`, and `elements` keys are retained (they are content-derived or
 version markers, and are ignored by `ir diff`/`ir check` alike). A canonical
-baseline therefore changes **only** when the domain contract changes.
+baseline therefore changes **only** when the domain contract or the
+`ir_version` changes.
 
 `--canonical` has no effect with `--format=summary`, which never prints the
 timestamp.
@@ -115,35 +116,36 @@ protean ir diff --left baseline.json --right current.json
 **Model diff (`--format=event-model`).** The default `text` and `json` formats
 report changes in IR vocabulary: elements, fields, handlers, contracts.
 `--format=event-model` renders the same diff in EventModeling slice vocabulary
-instead, so a pull-request reviewer reads it as slices: an added command is a
-new slice, a removed projection is a removed read model, a projection that
+instead, so a pull-request reviewer reads it as slices. An added command is a
+new slice, a removed projection is a removed read model, and a projection that
 gained a field is a changed slice. It reports only the participants the event
-model draws (commands, the aggregate, non-fact events, read models and
-automations); a change confined to anything else prints `No model changes.`.
+model draws: commands, the aggregate, non-fact events, read models and
+automations. For a change confined to anything else, it prints `No model
+changes.`.
 
-Each side is judged against the snapshot it lives in. A removed event counts
-only if it was a non-fact event on the left, and a consumer (a projector, event
-handler, or process manager) counts only where its handlers match a non-fact
-event, so a handler wired to nothing or to a fact event is left out the same way
-the diagram leaves its node out. An event that gains or loses its fact flag is
-drawn on one side only, so it reads as added or removed with the reason in
-parentheses.
+The diff judges each side against its own snapshot. A removed event counts only
+if it was a non-fact event on the left. A consumer (a projector, event handler,
+or process manager) counts only where its handlers match a non-fact event. The
+diff leaves out a handler that matches no event or only a fact event, in the
+same way the diagram leaves out its node. When an event gains or loses its fact
+flag, the diagram draws it on one side only. The diff then reports the event as
+added or removed, with the reason in parentheses.
 
-A consumer's node comes and goes with the events around it. When the event a
-projector or a handler matches is removed, or turns into a fact event, that
-consumer's node goes with it, and the diff reports it as removed even though
-the consumer itself never changed. The reverse reads as added. The same rule
-runs the other way: adding or dropping a route to an event no slice draws (a
-fact event, or a type no cluster raises) leaves the diagram as it was, so it is
-not a model change.
+A consumer's node comes and goes with the events around it. When the event that
+a projector or a handler matches is removed or turns into a fact event, the
+diagram drops that consumer's node. The diff then reports the consumer as
+removed, even though the consumer itself never changed. The reverse reads as
+added. Adding or dropping a route to an event that no slice draws (a fact
+event, or a type no cluster raises) does not change the diagram. The diff
+therefore does not report it as a model change.
 
-The exit code is the same as `--format=text` for the same inputs, so a CI gate
-can switch format without changing what it blocks on. The exit code always
-reflects the full IR diff, not the slice view. A real change to an element the
-model does not draw (a contract, entity, value object, or domain setting) still
-exits 1 or 3, even though the slice view prints `No model changes.`. So `No
-model changes.` means the model view found nothing to show, not that the diff
-is empty.
+The exit code is the same as `--format=text` for the same inputs. A CI gate can
+therefore switch format without changing what it blocks on. The exit code
+always reflects the full IR diff, not the slice view. A real change to an
+element the model does not draw (a contract, entity, value object, or domain
+setting) still exits 1 or 3, even though the slice view prints `No model
+changes.`. So `No model changes.` means the model view found nothing to show,
+not that the diff is empty.
 
 ```bash
 protean ir diff --left baseline.json --right current.json --format=event-model
@@ -160,7 +162,7 @@ protean ir diff --left baseline.json --right current.json --format=event-model
 | `--dir` | Path to `.protean/` directory | `.protean` |
 | `--format`, `-f` | Output format: `text`, `json`, or `event-model` | `text` |
 
-**Exit codes (CI-friendly)**
+**Use the exit codes in CI**
 
 | Code | Meaning |
 |------|---------|
@@ -169,16 +171,17 @@ protean ir diff --left baseline.json --right current.json --format=event-model
 | 2 | Usage, load or config error: a bad option, an IR that does not load, or a malformed `.protean/config.toml`. The message goes to stderr and no diff is printed |
 | 3 | Non-breaking changes only |
 
-The command checks its options before it reads `.protean/config.toml`, and it
-loads both sides before it acts on `strictness`. So a bad command line or an IR
-file that cannot be found or parsed exits 2 under every `strictness`, including
-`"off"`. Under `"off"` the comparison does not run, so an IR whose only fault
-is one the comparison finds, such as a malformed `deprecated` block, exits 0.
+The command checks its options before it reads `.protean/config.toml`. It loads
+both sides before it acts on `strictness`. So the command exits 2 under every
+`strictness`, including `"off"`, when the command line is bad or the command
+cannot find or parse an IR file. Under `"off"` the comparison does not run. So
+the command exits 0 when the comparison is the only check that would catch the
+IR's fault, such as a malformed `deprecated` block.
 
-**Avro compatibility verdict.** Alongside the breaking/safe classification, the
-diff reports an Avro-style verdict (`BACKWARD`, `FORWARD`, `FULL`, or `NONE`)
-matching the rules a schema registry applies to the Avro that `protean schema
-generate --format avro` emits:
+**Read the Avro compatibility verdict.** Alongside the breaking/safe
+classification, the diff reports an Avro-style verdict (`BACKWARD`, `FORWARD`,
+`FULL`, or `NONE`). The verdict follows the rules a schema registry applies to
+the Avro that `protean schema generate --format avro` emits:
 
 | Verdict | Meaning |
 |---------|---------|
@@ -194,21 +197,21 @@ field is not `FORWARD`; a type change is `NONE`. A declared rename is `BACKWARD`
 optional or carried a static default. Visibility flips are payload-neutral for
 the verdict (they stay breaking).
 
-One rule is **Protean-specific**: an upcaster that covers the version bump
-makes an otherwise-incompatible change `BACKWARD`, because Protean rewrites old
-payloads to the new shape at read time. A plain schema registry has no
-knowledge of upcasters and would still report the underlying change (e.g.
-`NONE` for a type change), so this clause reflects what *Protean* can decode,
-not what a registry alone would conclude.
+One rule is **Protean-specific**: when an upcaster covers the version bump, the
+verdict for an otherwise-incompatible change is `BACKWARD`. Protean gives this
+verdict because it rewrites old payloads to the new shape at read time. A plain
+schema registry has no knowledge of upcasters and would still report the
+underlying change (e.g. `NONE` for a type change), so this clause reflects what
+*Protean* can decode, not what a registry alone would conclude.
 
 The top-level verdict is the domain-wide intersection (the conservative worst
 case). In `--format json`, the `compatibility` block also carries
 `avro_verdicts` (a per-element breakdown, since Avro compatibility is
 per-subject) and the full classified report. The verdict covers the classified
-schema changes; it is informational. The exit code is still governed by
+schema changes. It is for information only. The exit code is still governed by
 `[compatibility] strictness` and the breaking-change classification.
 
-Respects `.protean/config.toml` settings. See
+`protean ir diff` reads its settings from `.protean/config.toml`. See
 [Compatibility Checking](../../guides/compatibility-checking.md) for
 configuration details.
 
@@ -241,9 +244,9 @@ protean ir check --domain my_app.domain --format json
 A version mismatch (code 3) means the stored baseline's `ir_version` differs
 from the current schema version, so its checksum is not comparable. The `json`
 output reports `stored_version` and `current_version`. Regenerate the baseline
-against the current schema to clear it.
+against the current schema to clear the version mismatch.
 
-## Programmatic access
+## Read the IR from Python code
 
 In Python code, call `domain.to_ir()` directly:
 

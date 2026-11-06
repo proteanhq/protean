@@ -1,8 +1,9 @@
-# Custom Brokers
+# Build a custom broker
 
-Learn how to create custom broker adapters for Protean to integrate with any message broker or streaming platform.
+You can write a custom broker adapter to connect Protean to any message broker
+or streaming platform.
 
-## Overview
+## What can a custom broker do?
 
 Custom brokers allow you to:
 
@@ -10,7 +11,7 @@ Custom brokers allow you to:
 - Add company-specific messaging systems
 - Create specialized brokers for testing or development
 
-## Architecture
+## What must a broker implement?
 
 All brokers must inherit from `BaseBroker` and implement its abstract methods.
 They are these, plus the `capabilities` property:
@@ -199,7 +200,7 @@ class KafkaBroker(BaseBroker):
 
 This listing shows the core methods only. A complete Kafka broker also
 implements `_get_next`, `_ensure_group`, `_info`, `_data_reset` and the five
-`_dlq_*` methods from the [Architecture](#architecture) list. Without them,
+`_dlq_*` methods from the [Architecture](#what-must-a-broker-implement) list. Without them,
 Python refuses to create an instance of the class.
 
 ## Installation & Usage
@@ -258,21 +259,21 @@ def capabilities(self) -> BrokerCapabilities:
     return BrokerCapabilities.ENTERPRISE_STREAMING
 ```
 
-### Blocking reads
+### Support blocking reads
 
-A broker that declares `BLOCKING_READ` implements `_read_blocking`. The
+If your broker declares `BLOCKING_READ`, it implements `_read_blocking`. The
 public `read_blocking` method calls it, and falls back to `_read` on brokers
 without the capability.
 
 `read_blocking_streams` reads several streams in one call and returns a dict
-with one key per stream, in the order given. Stream subscriptions with
-priority lanes use it to read the primary and the backfill stream together.
-The default `_read_blocking_streams` on `BaseBroker` builds on
-`_read_blocking`. It reads every stream but the last without waiting, and
-waits on the last stream only if the others are empty. While it waits, it
-does not see the earlier streams. Override `_read_blocking_streams` if your
-backend can wait on several streams in one call, as the Redis broker does
-with one blocking `XREADGROUP`:
+with one key per stream, in the order given. Stream subscriptions with priority
+lanes use it to read the primary and the backfill stream together. The default
+`_read_blocking_streams` on `BaseBroker` builds on `_read_blocking`. It reads
+every stream but the last without waiting, and waits on the last stream only if
+the others are empty. While it waits, it does not see the earlier streams. If
+your backend can wait on several streams in one call, override
+`_read_blocking_streams`. The Redis broker does this with one blocking
+`XREADGROUP`:
 
 ```python
 # fragment
@@ -287,9 +288,9 @@ def _read_blocking_streams(
     ...
 ```
 
-## Testing Your Broker
+## Test your broker
 
-### Unit Tests
+### Write unit tests
 
 ```python
 # fragment
@@ -309,7 +310,7 @@ def test_publish():
         assert result is not None
 ```
 
-### Integration Tests
+### Write integration tests
 
 ```python
 # fragment
@@ -333,17 +334,18 @@ def test_end_to_end():
     assert len(messages) == 1
 ```
 
-## Guidance for adapter authors
+## Follow these practices when you write an adapter
 
-1. **Handle Connection Failures**: Implement reconnection logic in `_ensure_connection()`
+1. **Reconnect after a connection failure**: Implement reconnection logic in
+   `_ensure_connection()`
 2. **Declare Accurate Capabilities**: Only declare capabilities you actually implement
 3. **Follow Protean Conventions**: Use consistent naming and error handling
 4. **Provide Health Checks**: Implement meaningful `_ping()` and `_health_stats()`
 5. **Document Configuration**: Clearly document all configuration options
 
-## Common Patterns
+## Apply common patterns
 
-### Connection Pooling
+### Pool your connections
 
 ```python
 # fragment
@@ -359,7 +361,7 @@ def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
         self.pool.append(conn)
 ```
 
-### Retry Logic
+### Retry a failed publish
 
 ```python
 # fragment
@@ -377,9 +379,9 @@ def _publish(self, stream: str, message: dict) -> str:
             time.sleep(2 ** attempt)  # Exponential backoff
 ```
 
-## Related pages
+## See also
 
 - Review [existing broker implementations](https://github.com/proteanhq/protean/tree/main/src/protean/adapters/broker) for examples
-- Understand [broker capabilities](./index.md#broker-capabilities) in detail
+- Understand [broker capabilities](./index.md#what-can-each-broker-do) in detail
 - Test with the [broker test suite](https://github.com/proteanhq/protean/tree/main/tests/adapters/broker)
 - Share your broker with the [Protean community](https://github.com/proteanhq/protean/discussions)

@@ -1,6 +1,6 @@
-# Stable surface
+# What the stable surface covers
 
-The [versioning policy](versioning-policy.md) makes one promise:
+Protean makes one promise in its [versioning policy](versioning-policy.md):
 
 **Code that runs warning-free on 1.N runs unmodified on 1.N+1.**
 
@@ -9,42 +9,44 @@ This page says what that promise applies to.
 The surface is defined here rather than implied by what happens to be
 importable. How precisely depends on the area:
 
-- **The Python import surface is enumerated name by name**: Every export of
-  `protean`, `protean.fields`, and `protean.exceptions` appears in the
-  [export index](#export-index) with its tier, and a test keeps that table in
-  step with the shipped `__all__`. For these three modules, a name absent from
-  the index is not exported at all.
+- **The Python import surface is enumerated name by name**: The [export
+  index](#export-index) lists every export of `protean`, `protean.fields`, and
+  `protean.exceptions` with its tier. A test checks that the table matches the
+  shipped `__all__`. For these three modules, a name absent from the index is
+  not exported at all.
 - **The rest is defined by tier, and enumerated by its own reference page.**
   Documented `domain.toml` keys, documented CLI commands and exit codes, the
   public `protean.testing` DSL, and the public `protean.integrations.*` names
-  are Stable, but the authoritative list of each lives with its own
-  documentation, not here. "Documented" is the test: a config key or CLI flag
-  with a reference page is covered; one you found by reading the source is not.
+  are Stable. The reference page for each one holds its authoritative list, and
+  this page does not repeat those lists. "Documented" is the test: a config key
+  or CLI flag with a reference page is covered; one you found by reading the
+  source is not.
 
 So absence from the export index means "internal" only for the three modules it
 covers. Everywhere else, the tier definitions below are what to reason with.
 
 ---
 
-## The three tiers
+## What each of the three tiers promises
 
 **Stable.** The compatibility contract applies. These names, their signatures,
-and their documented behaviour only change through the deprecation process: a
-`DeprecationWarning` naming the version it will be removed in, and a
-`protean check` rule, in a release before the one that removes it. A minor may
-remove a Stable name that has been through that; it may not break code that was
-running warning-free.
+and their documented behaviour change only through the deprecation process. In
+that process, a release before the removal ships a `DeprecationWarning` that
+names the removal version, together with a `protean check` rule. A minor
+release may remove a Stable name after it has gone through that process. A
+minor release may not break code that ran warning-free.
 
 **Provisional.** Usable, documented, and supported, but may change in a minor
 release with a changelog notice and no deprecation period. These are extension
 points whose shape is still settling, mostly because the people using them
 (adapter authors, custom field authors) are few enough to coordinate with
-directly. A provisional name graduates to Stable once its contract has held
-across real third-party use.
+directly. A provisional name becomes Stable once its contract has stayed
+unchanged through real third-party use.
 
 **Internal.** No contract at all. May change or disappear in any release,
-including a patch. Reaching for these is not forbidden, but it is not
-supported, and `protean check` will not warn you before they move.
+including a patch. You may import Internal names, but Protean does not support
+that use. `protean check` will not warn you before an Internal name changes or
+disappears.
 
 | Tier | May change in a patch | May change in a minor | Warned first |
 |------|----------------------|----------------------|--------------|
@@ -74,7 +76,7 @@ supported, and `protean check` will not warn you before they move.
 - **Documented `domain.toml` keys**: A key that appears in the
   [configuration reference](configuration/index.md).
 - **Documented CLI commands and their exit codes**: Scripts may depend on the
-  exit code of `protean check` and friends.
+  exit code of `protean check` and of the other documented CLI commands.
 - **The IR schema**, versioned independently by its own `ir_version`. The
   schema evolves under that version, not under Protean's.
 
@@ -83,17 +85,18 @@ supported, and `protean check` will not warn you before they move.
 - **The port ABCs** (`BaseProvider`, `BaseBroker`, `BaseEventStore`,
   `BaseCache`) for third-party adapter authors, with the `BaseDAO` and
   `BaseLookup` classes a database provider subclasses in `protean.port.dao`.
-  These stay provisional until
-  the adapter conformance suite ships publicly and has been exercised by an
-  adapter Protean does not maintain.
+  These stay provisional until the adapter conformance suite ships publicly and
+  a third-party adapter, one outside the Protean project, has run it.
 - **`Field`** as the base class for custom field types.
 - **`FieldBase`**, the common ancestor of the field hierarchy.
 - **`ResolvedField`**, the field-reflection API adapter authors read.
-- **The broker partitioning contract** in `protean.port.broker`: the partition
-  discovery, fenced-lease and `trim` methods an adapter implements to support
-  `sequential_by`, plus the `LeaseLostError` they raise. Enumerated in
-  [Broker partitioning](adapters/broker/partitioning.md). It lives outside the
-  three modules the export index covers, so the index test does not police it.
+- **The broker partitioning contract** in `protean.port.broker`: an adapter
+  implements the partition discovery, fenced-lease and `trim` methods to
+  support `sequential_by`. The contract also includes the `LeaseLostError`
+  those methods raise. Enumerated in [Broker
+  partitioning](adapters/broker/partitioning.md). The broker partitioning
+  contract is not in the three modules the export index covers. The index test
+  therefore does not check it.
 - **Observatory HTTP and JSON endpoints**: Useful for tooling, but the
   dashboard's payloads are shaped for the dashboard.
 - **`protean.server` internals reached by operations tooling**, such as the
@@ -114,16 +117,16 @@ supported, and `protean check` will not warn you before they move.
 
 ---
 
-## Ratified conventions
+## Which surface conventions are settled
 
-These are settled decisions about the shape of the surface, recorded here so
-they are not mistaken for oversights.
+These are settled decisions about how the stable surface is organized. This
+page records them so that you do not mistake them for oversights.
 
 **Element base classes are deliberately not re-exported at the top level.**
 `protean` exports `Domain` but not `BaseAggregate`; you reach elements through
 decorators (`@domain.aggregate`), not by subclassing an imported base. The
 asymmetry is intentional. Fields and exceptions *are* imported directly,
-because you name them in your own code; element base classes are not, because
+because you name them in your own code. Element base classes are not, because
 the decorator is the supported way to declare an element.
 
 **Boolean element options are bare predicates.** An option that answers yes or
@@ -149,9 +152,9 @@ gap Protean intends to close.
 
 The normative list **for the Python import surface**. Every name exported by
 `protean`, `protean.fields`, and `protean.exceptions`, with its tier. A test
-asserts this table matches the shipped `__all__` declarations exactly, in both
-directions, so a new export cannot ship without being classified here and a row
-cannot outlive the export it describes.
+asserts that this table matches the shipped `__all__` declarations exactly, in
+both directions. As a result, a new export cannot ship until this table gives
+it a tier, and a row cannot remain once its export is gone.
 
 This index does not cover `domain.toml` keys, CLI commands, `protean.testing`,
 or `protean.integrations.*`; see their own reference pages for those.
@@ -238,7 +241,7 @@ or `protean.integrations.*`; see their own reference pages for those.
 
 ---
 
-## Related reading
+## What to read next
 
 - [Versioning policy](versioning-policy.md): What the tiers promise, and how to enforce it in CI.
 - [Consistency & delivery guarantees](guarantees.md): The behavioural contract, which is itself part of the Stable surface.

@@ -1,22 +1,23 @@
-# Domain Discovery
+# How the CLI finds your domain
 
 In most cases, you will use the `protean` script to interact with your domain
-over the CLI. The script must be told where to find your domain to load and
-initialize it, prepping it for your use. The `--domain` option is used to
-specify how to load the domain.
+over the CLI. You tell the script where to find your domain. The script then
+loads and initializes the domain so it is ready for use. The `--domain` option
+is used to specify how to load the domain.
 
 While `--domain` supports a variety of options for specifying your domain,
 the below typical values cover most use cases:
 
 **(nothing)**
 
-A "domain" or "subdomain" is imported (as a ".py" file, or package),
-automatically detecting a domain (``domain`` or ``subdomain``).
+The script imports a module named "domain" or "subdomain" (as a ".py" file, or
+package). The script then detects the domain instance in it (``domain`` or
+``subdomain``).
 
 **`--domain auth`**
 
-The given name is imported, automatically detecting a domain (``domain`` or
-``subdomain``).
+The script imports the module you name, here `auth`, and detects the domain
+instance in it (``domain`` or ``subdomain``).
 
 !!! note
 
@@ -34,7 +35,8 @@ The given name is imported, automatically detecting a domain (``domain`` or
     - ``--app auth:sso``
         Uses the ``sso`` Protean instance in ``auth``.
 
-    If ``--domain`` is not set, the command will try to import "domain" or
-    "subdomain" (as a ".py" file, or package) and try to detect an Protean
-    instance. Within the given import, the command looks for an domain instance
-    named ``domain`` or ``subdomain``, then any domain instance.
+    If ``--domain`` is not set, the command tries to import "domain" or
+    "subdomain" (as a ".py" file, or package). The command then tries to detect
+    a Protean instance in that import. Within the given import, the command
+    looks for an domain instance named ``domain`` or ``subdomain``, then any
+    domain instance.

@@ -4,17 +4,15 @@
 
 
 Fields define the structure and behavior of data within domain elements,
-Aggregates, Entities, Value Objects, Commands, and Events. They encapsulate
-data properties, enforce validation, manage defaults, and express relationships
-between domain concepts.
+Aggregates, Entities, Value Objects, Commands, and Events. Fields hold data
+values, validate them, supply default values, and declare relationships between
+domain concepts.
 
 Protean provides a set of field functions (`String`, `Integer`, `Float`,
 `Decimal`, `HasMany`, etc.) that let you declare fields using domain-friendly
-vocabulary.
-Protean uses Pydantic v2 as its validation and serialization
-engine, so domain elements benefit from Rust-core validation performance,
-JSON Schema generation, and native serialization, without requiring you to
-learn Pydantic's API.
+vocabulary. Protean uses Pydantic v2 to validate and serialize domain elements,
+which gives them Rust-core validation performance, JSON Schema generation, and
+native serialization. You get these without learning Pydantic's API.
 
 ## Defining fields
 
@@ -28,7 +26,7 @@ fully supported and can be mixed within a single class.
 
 Read more in [Defining fields](./defining-fields.md).
 
-## Field arguments
+## Configure a field with arguments
 
 Protean fields come with various options to model real-world scenarios effectively.
 These include `required`, `default`, `choices`, and `unique`, among others,
@@ -36,15 +34,16 @@ which let you describe each field precisely in the domain model.
 
 Read more in [Arguments](./arguments.md) section.
 
-## Types of fields
+## Choose a type of field
 
 ### Simple fields
 
-[Simple fields](./simple-fields.md) handle basic data types like strings, integers, and dates.
-They are the building blocks for defining straightforward data attributes in
-models. Options like `max_length` for `String` or `max_value` and `min_value` for
-numeric fields like `Integer` and `Float` allow you to specify constraints
-directly in the model's definition.
+[Simple fields](./simple-fields.md) hold one value of a basic data type, such
+as a string, an integer or a date. You use simple fields to define the
+straightforward data attributes of a model. You can specify constraints
+directly in the model's definition. For example, `max_length` limits a
+`String`, and `max_value` and `min_value` limit numeric fields like `Integer`
+and `Float`.
 
 The `Status` field is a specialized simple field for modeling aggregate lifecycle
 states with optional transition enforcement. See
@@ -52,15 +51,17 @@ states with optional transition enforcement. See
 
 ### Container fields
 
-[Container fields](./container-fields.md) are used for data types that hold multiple values, such as
-lists and dictionaries. These fields support complex structures and provide
-options such as `content_type` for `List` fields to ensure type consistency
-within the collection. Protean optimizes storage and retrieval operations for
-these fields by using database-specific features when available.
+[Container fields](./container-fields.md) are used for data types that hold
+multiple values, such as lists and dictionaries. Container fields support
+complex structures. The `content_type` option on a `List` field checks that
+every item in the collection has the same type. Protean optimizes storage and
+retrieval operations for these fields by using database-specific features when
+available.
 
 ### Association fields
 
-[Association fields](./association-fields.md) define relationships between different domain models,
-such as one-to-one, one-to-many, and many-to-many associations. These fields
-help in mapping complex domain relationships and include functionalities to
-manage related objects efficiently, preserving data integrity across the domain.
+[Association fields](./association-fields.md) define relationships between
+different domain models, such as one-to-one, one-to-many, and many-to-many
+associations. Association fields map complex domain relationships. They give
+you methods that add, remove and look up related objects efficiently, which
+preserves data integrity across the domain.

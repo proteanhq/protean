@@ -1,29 +1,29 @@
-# Caches
+# Store projections in a cache
 
 The Cache port provides a key-value interface for storing and retrieving
-projection data. Caches sit on the read side of CQRS, offering fast access to
-denormalized views built by projectors.
+projection data. Caches are part of the read side of CQRS. They give fast
+access to the denormalized views that projectors build.
 
-## Overview
+## What does a cache adapter do?
 
 Protean's cache adapters store
 [Projection](../../../guides/consume-state/projections.md) instances keyed by
 their identifier. The `BaseCache` interface provides:
 
 - **Add/Get/Remove**: Store and retrieve projections by key
-- **Pattern matching**: Retrieve or remove projections by key pattern
-- **TTL management**: Set time-to-live on cached entries
-- **Health checks**: Verify cache connectivity
-- **Bulk operations**: Flush all entries
+- **Match keys by pattern**: Retrieve or remove projections by key pattern
+- **Expire entries by TTL**: Set time-to-live on cached entries
+- **Check cache health**: Verify cache connectivity
+- **Clear the cache in bulk**: Flush all entries
 
-## Available Caches
+## Which caches can you use?
 
 ### Memory
 
 The `memory` cache is the default. It stores projections in Python dictionaries
 within the process. No external dependencies are needed.
 
-- **Use cases**: Development, testing, prototyping
+- **Use it for**: development, testing and prototyping
 - All data is lost on process restart
 - TTL is enforced lazily: every entry is written with an expiry, and an expired
   entry is dropped the next time it is read, iterated or counted. There is no
@@ -34,11 +34,11 @@ within the process. No external dependencies are needed.
 The [Redis cache](./redis.md) provides durable, distributed caching with TTL
 support.
 
-- **Use cases**: Production environments, multi-process deployments
+- **Use it for**: production environments and multi-process deployments
 - **Requires**: Redis server and the `redis` Python package
 - Full TTL support with millisecond precision
 
-## Configuration
+## Declare caches in the domain configuration
 
 Caches are configured in the `[caches]` section of your domain configuration:
 
@@ -54,7 +54,7 @@ URI = "redis://localhost:6379/2"
 TTL = 300  # Default TTL in seconds
 ```
 
-### Configuration Options
+### Which options can you set?
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -73,9 +73,9 @@ provider = "redis"
 TTL = "${CACHE_TTL|3600}"
 ```
 
-Substitution runs over already-parsed TOML strings, so a TTL sourced from the
-environment arrives as a string; that is why the string form is accepted rather
-than merely tolerated.
+Substitution runs on TOML strings after parsing, so a TTL from the environment
+arrives as a string. For this reason the cache accepts the string form by
+design, as a supported input.
 
 Anything else, including `0`, a negative, `nan` or `inf`, raises a
 `ConfigurationError` naming the cache.
@@ -87,7 +87,7 @@ Omitting the TTL (or passing an empty string) uses the cache's configured `TTL`.
 ### What `get_ttl` returns when there is nothing to count
 
 `get_ttl(key)` answers the seconds remaining before a key expires. Two states
-are not durations, and every adapter answers them the same way:
+are not durations. Every adapter answers these two states the same way:
 
 | State | Memory cache | Redis cache |
 |-------|--------------|-------------|
@@ -96,8 +96,9 @@ are not durations, and every adapter answers them the same way:
 | Key exists, no expiry set | not reachable, every entry is written with one | returns `math.inf` |
 
 An expired entry counts as absent, so `get_ttl` returns `None` for it, the same
-way `get` does. `math.inf` only ever comes from Redis: the memory cache writes
-every entry with a concrete TTL, so it has no never-expiring keys to report.
+way `get` does. `math.inf` only ever comes from Redis. The memory cache writes
+every entry with a concrete TTL, so the memory cache never holds a key without
+an expiry.
 
 So code reads the same on either adapter:
 
@@ -110,22 +111,23 @@ On the memory cache, `present` is `"60s left"` and `missing` is `"missing"`.
 ### `_get_all` is a bounded utility, not a paged read
 
 `_get_all(key_pattern)` returns the entries whose key matches `key_pattern`, in
-key order, the same on every adapter. It is private (the leading underscore) and
-deliberately unpaginated. A cache is for point reads by key; enumerating a match
-set is not what it is for. On Redis it scans the whole keyspace, so it is a
-convenience for tests and small, bounded stores, not a production read path.
-`count` has the same full-scan cost. On Redis it deduplicates its scan, so a
-key that `SCAN` returns more than once is counted once.
+key order, the same on every adapter. It is private (the leading underscore)
+and deliberately unpaginated. A cache is for point reads by key; enumerating a
+match set is not what it is for. On Redis, `_get_all` scans the whole keyspace.
+So `_get_all` is a convenience for tests and small, bounded stores, and it does
+not suit a production read path. `count` has the same full-scan cost. On Redis,
+`count` deduplicates its scan. A key that `SCAN` returns more than once is
+counted once.
 
-It returns at most 1000 entries (`GET_ALL_MAX`). Past that it truncates to the
-first 1000 in key order and logs a warning naming the pattern and the match
-count, so a store that outgrew the cache surfaces as a warning rather than a
-silent partial read.
+`_get_all` returns at most 1000 entries (`GET_ALL_MAX`). Past that limit,
+`_get_all` truncates the result to the first 1000 entries in key order and logs
+a warning with the pattern and the match count. When a store grows too large
+for the cache, you see that warning instead of getting a silent partial read.
 
 To page a large projection set, query the projection's repository
 (`repository_for(Projection).query`), which has indexes and native pagination.
 
-## Interface
+## Which methods does every cache adapter implement?
 
 All cache adapters implement these methods:
 
@@ -144,7 +146,7 @@ All cache adapters implement these methods:
 | `set_ttl(key, ttl)` | Set a TTL on a specific key. Does nothing if the key is absent, but still rejects an invalid TTL |
 | `get_ttl(key)` | Seconds remaining before a key expires; `None` if there is no such key, `math.inf` if it never expires. See below |
 
-### Key Format
+### How are cache keys formed?
 
 Cache keys follow the pattern `{projection_name}:::{identifier}`:
 
@@ -170,7 +172,7 @@ negation and escaping can differ, so keep patterns to the `name:::*` shape.
 4. **Monitor cache health**: Use `cache.ping()` in your health check
    endpoints.
 
-## Related pages
+## Read more about caches and projections
 
 - Learn about [Redis cache](./redis.md) for production use
 - Understand [projections](../../../guides/consume-state/projections.md)

@@ -2,13 +2,13 @@
 
 The `server` command runs an asynchronous background server for your Protean application. This server initializes your domain and prepares it to handle requests, running the Protean Engine with the specified configuration.
 
-## Usage
+## Call the command
 
 ```shell
 protean server [OPTIONS]
 ```
 
-## Options
+## Choose the options
 
 | Option                          | Description                                                                 | Default |
 |---------------------------------|-----------------------------------------------------------------------------|---------|
@@ -19,7 +19,7 @@ protean server [OPTIONS]
 | `--allow-event-store-multiworker`| Allow `--workers > 1` even with event-store subscriptions (see below). Also accepted as `--acknowledge-event-store-risk`.      | `False` |
 | `--help`                        | Shows the help message and exits.                                          |         |
 
-### Multiple workers and the event-store single-writer boundary
+### How do multiple workers meet the event-store single-writer boundary?
 
 `--workers N` spawns `N` independent worker processes. Stream subscriptions
 distribute messages across workers via Redis consumer groups, so they scale
@@ -34,15 +34,16 @@ stream subscriptions (`subscription_type = "stream"`), or passing
 `--allow-event-store-multiworker` to override (accepting that events will be
 double-processed).
 
-The guard is **per-process**: it only sees the workers within a single `protean
-server` invocation. It cannot detect a second `protean server` (another
-container, host, or Kubernetes replica) running against the same event store, so
-multiple single-worker processes still double-process event-store subscriptions.
-A domain with any event-store subscription must therefore run as exactly one
-process cluster-wide until database-backed cluster ownership is available; use
-stream subscriptions to scale horizontally.
+The worker-count check that refuses to start is **per-process**: it sees only
+the workers within a single `protean server` invocation. It cannot detect a
+second `protean server` (another container, host, or Kubernetes replica)
+running against the same event store, so multiple single-worker processes still
+double-process event-store subscriptions. Until database-backed cluster
+ownership is available, a domain with any event-store subscription must
+therefore run as exactly one process cluster-wide, unless you accept
+double-processed events. To scale horizontally, use stream subscriptions.
 
-## Starting the Server
+## Start the server
 
 To launch the async server with default settings:
 
@@ -50,7 +51,7 @@ To launch the async server with default settings:
 protean server
 ```
 
-### Specifying a Domain
+### Specify a domain
 
 To run the server within a specific domain context, use the `--domain` option followed by the domain path:
 
@@ -58,17 +59,19 @@ To run the server within a specific domain context, use the `--domain` option fo
 protean server --domain auth
 ```
 
-This command will initiate the server in the context of the `auth` domain. Read [Domain Discovery](../project/discovery.md) for options to specify the domain.
+This command starts the server in the context of the `auth` domain. Read
+[Domain Discovery](../project/discovery.md) for options to specify the domain.
 
-### Test Mode
+### Run in test mode
 
-To run the server in test mode, which may alter certain behaviors to facilitate testing:
+To run the server in test mode, which may change some behaviors to make testing
+easier:
 
 ```shell
 protean server --test-mode
 ```
 
-### Verbose Logging
+### Turn on verbose logging
 
 To raise the log verbosity, pass the global `--log-level DEBUG` flag before the
 subcommand:

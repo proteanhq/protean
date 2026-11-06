@@ -1,10 +1,10 @@
-# Multi-Worker Mode
+# Run several Engine workers at once
 
 Protean can run multiple Engine worker processes from a single CLI invocation
 using the `--workers` flag. The **Supervisor** spawns N independent processes,
 each running its own Engine with a dedicated event loop and domain
 initialization. Workers coordinate implicitly through Redis consumer groups and
-database-level locking, no IPC or shared memory is needed.
+database-level locking. They need no IPC or shared memory.
 
 ## When to Use Multiple Workers
 
@@ -35,8 +35,9 @@ is processed by exactly one worker.
 
 !!! note
     **EventStoreSubscription** does not distribute messages across workers.
-    Multiple workers will each process the same messages independently, which is
-    safe for idempotent projections but wasteful for side-effecting handlers.
+    Multiple workers will each process the same messages independently. This
+    duplicate processing is safe for idempotent projections but wasteful for
+    side-effecting handlers.
 
 ## Starting Multiple Workers
 
@@ -51,7 +52,7 @@ protean --log-level DEBUG server --domain=my_domain --workers 4
 protean server --domain=my_domain --workers 4 --test-mode
 ```
 
-## How It Works
+## How does the Supervisor run its workers?
 
 The multi-worker architecture follows the **prefork model**:
 
@@ -85,26 +86,26 @@ graph TD
 
 4. The Supervisor monitors workers and handles shutdown signals.
 
-## Worker Coordination
+## How do workers avoid processing the same message twice?
 
-### Stream Messages
+### Redis splits stream messages across workers
 
-Redis consumer groups handle message distribution automatically. When multiple
-workers subscribe to the same stream, Redis assigns each message to one
-consumer. No application-level coordination is needed.
+Redis consumer groups distribute messages across workers automatically. When
+multiple workers subscribe to the same stream, Redis assigns each message to
+one consumer. No application-level coordination is needed.
 
-### Outbox Processing
+### Row locks stop two workers publishing the same outbox message
 
 Each worker runs its own OutboxProcessor. To prevent multiple workers from
 publishing the same outbox message, the processor uses database-level row
 locking. A worker claims a message by transitioning it from `PENDING` to
 `PROCESSING` with an atomic operation. If another worker tries to claim the
-same message, the operation fails and that worker moves on.
+same message, the operation fails and that worker skips to the next message.
 
 See [Outbox Pattern](../../concepts/async-processing/outbox.md#multi-worker-support) for details on the locking
 mechanism.
 
-## Signal Handling
+## How does the Supervisor shut workers down on a signal?
 
 The Supervisor installs handlers for `SIGINT`, `SIGTERM`, and `SIGHUP` (where
 available). When a signal is received:
@@ -118,19 +119,21 @@ available). When a signal is received:
 4. Workers that do not stop within the timeout are forcefully killed with
    `SIGKILL`.
 
-Messages a worker read and did not handle before it stopped stay pending in
-Redis. When a worker starts, it claims the pending messages last delivered at
-least [`server.reclaim_idle_seconds`](hardening.md#serverreclaim_idle_seconds)
+A worker can stop after it reads a message and before it handles the message.
+Redis keeps that message pending. When a worker starts, it claims the pending
+messages last delivered at least
+[`server.reclaim_idle_seconds`](hardening.md#serverreclaim_idle_seconds)
 earlier, and handles them. A partitioned subscription (`sequential_by`) does
 not wait for this threshold: the partition's next owner claims its pending
 messages through the lease handover.
 
-Sending a second signal while shutdown is already in progress is ignored.
+The Supervisor ignores a second signal that arrives while shutdown is already
+in progress.
 
 `SIGTERM` to the Supervisor is the only way to quiesce every worker at once.
-`POST /drainz` drains the single worker whose health server answered it, since
-workers share no IPC. See
-[`/drainz` drains one worker](hardening.md#drainz-drains-one-worker).
+`POST /drainz` drains only the single worker whose health server answered it.
+Workers share no IPC, so the other workers keep running. See [`/drainz` drains
+one worker](hardening.md#drainz-drains-one-worker).
 
 ## Monitoring Workers
 
@@ -146,7 +149,7 @@ The Supervisor continuously monitors worker processes:
     automatic restarts, use a process manager (systemd, Docker, Kubernetes) to
     restart the entire `protean server` command.
 
-## Exit Codes
+## What exit codes does the Supervisor return?
 
 | Code | Meaning |
 |------|---------|
@@ -154,7 +157,7 @@ The Supervisor continuously monitors worker processes:
 | 1 | One or more workers crashed |
 | Non-zero (from CLI) | Propagated from the Supervisor to the CLI |
 
-## Programmatic Usage
+## Run the Supervisor from Python code
 
 You can use the Supervisor directly in Python code:
 
@@ -177,12 +180,12 @@ takes a `dictConfig` dict. `log_level` must be one of `DEBUG`, `INFO`,
 `WARNING`, `ERROR` or `CRITICAL`, and `log_format` one of `auto`, `console` or
 `json`. Any other value raises `ValueError`.
 
-The arguments do not set up logging in your own process. With more than one
-worker, every worker sends its records to the supervisor, and the supervisor
-writes them with the handlers on its root logger. Their levels and formatters
-decide what you see. With no handlers there, the supervisor writes to stdout at
-INFO, so worker DEBUG records are dropped. Set up logging before you call
-`run()`:
+The `log_level`, `log_format` and `log_config` arguments do not set up logging
+in your own process. With more than one worker, every worker sends its records
+to the supervisor, and the supervisor writes them with the handlers on its root
+logger. Their levels and formatters decide what you see. With no handlers
+there, the supervisor writes to stdout at INFO, so worker DEBUG records are
+dropped. Set up logging before you call `run()`:
 
 ```python
 --8<-- "reference/server/supervisor/002.py:debug_logging"
@@ -194,7 +197,7 @@ The `debug` argument is deprecated and is removed in 0.20.0. Pass
 `log_level="DEBUG"` instead. `Reloader` takes the same arguments and has the
 same deprecation.
 
-## Production Deployment
+## Deploy multiple workers in production
 
 ### systemd
 

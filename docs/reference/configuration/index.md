@@ -1,11 +1,11 @@
-# Configuration
+# Configure a Protean domain
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
-Protean's configuration is managed through the Domain object, which can be configured in multiple ways:
+You configure Protean through the Domain object, in multiple ways:
 
-## Direct Configuration
+## Pass configuration directly
 
 Pass a configuration dictionary when initializing the Domain object:
 
@@ -13,7 +13,7 @@ Pass a configuration dictionary when initializing the Domain object:
    --8<-- "reference/configuration/index/001.py:direct"
    ```
 
-## Configuration Files
+## Load configuration from a file
 
 Configuration can be supplied in a TOML file in your project directory or up to two levels of parent directories.
 
@@ -33,7 +33,7 @@ A sample configuration file is below:
 --8<-- "reference/configuration/index/sample.toml"
 ```
 
-## Basic Configuration Parameters
+## Set the basic parameters
 
 ### `debug`
 
@@ -46,8 +46,8 @@ Default: `False`
 ### `testing`
 
 Enable testing mode. Exceptions are propagated rather than handled by the
-domain’s error handlers. Extensions may also change their behavior to
-facilitate easier testing. You should enable this in your own tests.
+domain’s error handlers. Extensions may also change their behavior to make
+testing easier. You should enable testing mode in your own tests.
 
 Default: `False`
 
@@ -67,23 +67,23 @@ c4bf0121035265bf44657217c33a7d041fe9e505961fc7da5d976aa0eaf5cf94
 
 ### `env`
 
-Reserved for informational use. Protean does not read this key to select
-which environment overlay (`[staging]`, `[prod]`, etc.) to apply: overlay
-selection is driven entirely by the `PROTEAN_ENV` environment variable,
-described in [Multiple Environments](#multiple-environments). Setting `env`
-in `domain.toml` has no effect on Protean's own behavior.
+Reserved for informational use. Protean does not read `env` to pick the
+environment overlay (`[staging]`, `[prod]`, etc.) to apply. Only the
+`PROTEAN_ENV` environment variable picks the overlay, as described in [Multiple
+Environments](#multiple-environments). Setting `env` in `domain.toml` has no
+effect on Protean's own behavior.
 
 Default: `None`
 
 ### `identity_strategy`
 
-The default strategy to use to generate an identity value. Can be overridden
-at the [`Auto`](../fields/simple-fields.md#auto) field level.
+The default strategy Protean uses when it generates an identity value. Can be
+overridden at the [`Auto`](../fields/simple-fields.md#auto) field level.
 
 Supported options are `uuid` and `function`.
 
-If the `identity_strategy` is chosen to be a `function`, `identity_function`
-has to be mandatorily specified during domain object initialization.
+If you set `identity_strategy` to `function`, you must specify
+`identity_function` when you initialize the domain object.
 
 Default: `uuid`
 
@@ -100,14 +100,14 @@ Default: `string`
     On a SQL provider (SQLite, PostgreSQL, MySQL/MariaDB or MSSQL), an
     `integer` identity cannot use the `uuid` strategy. That strategy makes a
     128-bit integer, and the integer column an `integer` domain gets cannot
-    hold it. The rule also applies when the identifier sets
-    `identity_type="integer"` or `identity_strategy="uuid"` itself, even
-    though the column then follows the domain's `identity_type`. Use one of
-    these:
+    hold it. Protean also refuses the `uuid` strategy for an `integer` identity
+    when the identifier sets `identity_type="integer"` or
+    `identity_strategy="uuid"` itself. The column then still follows the
+    domain's `identity_type`. Use one of these:
 
     - `identity_strategy = "function"`, with an `identity_function` that
-      returns integers that fit the column. The id is set when the object
-      is created.
+      returns integers small enough for the column. The id is set when the
+      object is created.
     - [`Auto(increment=True)`](../fields/simple-fields.md#auto) on the
       identifier. The database assigns the id, so it stays unset until the
       first save.
@@ -118,11 +118,11 @@ Default: `string`
     refused too.
 
     Otherwise `Domain.init()` raises `ConfigurationError`, naming the
-    aggregate, entity or projection and its provider. An element whose
-    custom database model declares the identity column is not checked,
-    because the model sets that column's type. The memory provider
-    holds the 128-bit value. Elasticsearch stores it as a string, so it
-    loads back as a string. Neither is affected.
+    aggregate, entity or projection and its provider. `Domain.init()` skips the
+    check for an element whose custom database model declares the identity
+    column. That model sets the column's type. The memory provider holds the
+    128-bit value. Elasticsearch stores it as a string, so it loads back as a
+    string. `Domain.init()` does not check either provider.
 
 ### `command_processing`
 
@@ -134,18 +134,18 @@ Default: `async`
 
 !!! note
     The `protean new` scaffold writes an explicit `command_processing = "sync"`
-    override into the generated `domain.toml` (see the sample above), which is
-    why new projects behave synchronously by default. The framework
+    override into the generated `domain.toml` (see the sample above). New
+    projects therefore process commands synchronously by default. The framework
     default, absent any override, is `async`.
 
 ### `command_default_timeout`
 
-Default validity window, in seconds, applied to every command when no
-explicit `deadline`/`timeout` is passed to `domain.process()` and the
-handling command handler declares no `timeout` option. When the window
-elapses before a handler runs, the command is rejected (sync) or skipped
-without retry (async). See
-[Deadlines and Timeouts](../../guides/change-state/commands.md#deadlines-and-timeouts).
+Default validity window, in seconds, applied to every command. Protean applies
+it when no explicit `deadline`/`timeout` is passed to `domain.process()` and
+the handling command handler declares no `timeout` option. If no handler runs
+within the window, the command is rejected (sync) or skipped without retry
+(async). See [Deadlines and
+Timeouts](../../guides/change-state/commands.md#deadlines-and-timeouts).
 
 `None` disables the default: commands never expire unless a deadline is
 requested explicitly or through a handler's `timeout` option.
@@ -185,15 +185,15 @@ Default: `None`
 
 ### `lenient_deserialization`
 
-When `true`, deserializing a stored event or command payload drops fields that
-no longer exist on the current class (recording their names under
-`metadata.extensions["_dropped_fields"]`) instead of raising a
-`DeserializationError`. Useful when reading legacy payloads written before a
-field was removed, without an upcaster.
+When `true`, deserializing a stored event or command payload drops fields
+missing from the current class instead of raising a `DeserializationError`.
+Protean records the dropped names under
+`metadata.extensions["_dropped_fields"]`. Useful when reading legacy payloads
+written before a field was removed, without an upcaster.
 
 The dropped-field record is read-time observability on the deserialized
 message: it is not written back to the event store and, being `_`-prefixed, is
-not emitted as a CloudEvents extension. Dropping only removes unknown fields, a
+not emitted as a CloudEvents extension. Dropping only removes unknown fields. A
 payload still missing a required field raises as usual.
 
 The default is strict: an unknown field raises, so a typo or genuine schema
@@ -230,22 +230,22 @@ String/Text field across the domain instead.
 
 Precedence is field kwarg > this domain default > framework default. A field
 that passes `sanitize=True` or `sanitize=False` always wins over the domain
-default, so a domain default of `true` still lets a single field opt out with
+default. With a domain default of `true`, a single field can still opt out with
 `sanitize=False`.
 
 The value is checked when the domain loads its config. `sanitize` must be a
 boolean, or one of the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`, or
-the empty string, which reads as false. The string spellings are there because
-env-var interpolation always yields a string: `sanitize = "${SANITIZE|false}"`
-arrives as `"false"`, and `"${SANITIZE|}"` with the variable unset arrives as
-`""`. Anything else raises
+the empty string, which reads as false. Protean accepts the string spellings
+because env-var interpolation always yields a string. For example, `sanitize =
+"${SANITIZE|false}"` arrives as `"false"`, and `"${SANITIZE|}"` with the
+variable unset arrives as `""`. Anything else raises
 [`CONFIG_INVALID_FIELD_DEFAULTS`](../init-diagnostics.md#config-invalid-field-defaults).
 A typo is rejected rather than read as "do not sanitize", so it cannot quietly
 turn sanitization off.
 
 Default: `{ sanitize = false }`
 
-## Adapter Configuration
+## Configure adapters
 
 ### `databases`
 
@@ -258,15 +258,15 @@ They are defined in the `[databases]` section.
 --8<-- "reference/configuration/index/databases.toml"
 ```
 
-You can define as many databases as you need. The default database is identified
-by the `default` key, and is used when you do not specify a database name when
-accessing the domain.
+You can define as many databases as you need. The `default` key identifies the
+default database. Protean uses it when you access the domain without naming a
+database.
 
 The only other database defined by default is `memory`, which is the in-memory
 stub database provider.
 
-The persistence store defined here is then specified in the `provider` key of
-aggregates and entities to assign them a specific database.
+To assign an aggregate or entity a specific database, name the persistence
+store defined here in its `provider` key.
 
 ```python hl_lines="1"
 --8<-- "reference/configuration/index/002.py:aggregate"
@@ -289,7 +289,7 @@ warning (suppressed when `PROTEAN_ENV` is `development` or `testing`).
 `protean check` does not report it.
 
 Read more in [Adapters → Database](../adapters/database/index.md) or the
-full catalogue in [Server Hardening reference](../server/hardening.md#connection-pools).
+full catalogue in [Server Hardening reference](../server/hardening.md#tune-connection-pools).
 
 ### `caches`
 
@@ -325,8 +325,8 @@ Read more in [Adapters → Broker](../adapters/broker/index.md) section.
 
 ### `event_store`
 
-The event store that stores event and command messages is defined in this
-section.
+The `[event_store]` section defines the event store, which stores event and
+command messages.
 
 ```toml
 --8<-- "reference/configuration/index/event_store.toml"
@@ -352,12 +352,13 @@ settings.
 ```
 
 !!! warning "Known issue: per-handler DLQ overrides have no effect yet"
-    The subscription config Protean builds for a handler does not carry
+    Protean builds each handler's subscription config without
     `dlq_retention_hours` or `dlq_alert_threshold`, so the engine applies the
-    `[server.dlq]` values to every handler. The `dlq_retention_hours` and
-    `dlq_alert_threshold` keys under `OrderEventHandler` above are not read.
+    `[server.dlq]` values to every handler. The engine does not read the
+    `dlq_retention_hours` and `dlq_alert_threshold` keys under
+    `OrderEventHandler` above.
 
-#### Subscription Profiles
+#### Choose a subscription profile
 
 Pre-configured settings for common scenarios:
 
@@ -371,11 +372,11 @@ Pre-configured settings for common scenarios:
 
 Read more in [Server → Configuration](../server/configuration.md) section.
 
-#### DLQ Maintenance
+#### Trim and monitor DLQ streams
 
-The `[server.dlq]` section configures a periodic maintenance task that
-trims old DLQ entries and alerts when DLQ streams grow deep. It is
-**disabled by default**, set `enabled = true` to activate it. Requires a broker that
+The `[server.dlq]` section configures a periodic maintenance task. The task
+trims old DLQ entries and alerts when DLQ streams grow deep. It is **disabled
+by default**, set `enabled = true` to activate it. Requires a broker that
 implements the DLQ contract (currently Redis Streams).
 
 | Key | Type | Default | Description |
@@ -394,13 +395,13 @@ Per-subscription overrides are available on each handler's
 | `dlq_retention_hours` | int \| None | inherit | Override `retention_hours` for this subscription's DLQ stream only. |
 | `dlq_alert_threshold` | int \| None | inherit | Override `alert_threshold` for this subscription's DLQ stream only. |
 
-These two keys have no effect yet. See the known issue under
-[`server`](#server).
+The `dlq_retention_hours` and `dlq_alert_threshold` keys have no effect yet.
+See the known issue under [`server`](#server).
 
 For the operational workflow (discover, inspect, replay, purge) see [Dead
 Letter Queues](../../guides/server/dead-letter-queues.md).
 
-#### Health Checks
+#### Expose health checks
 
 The `[server.health]` section configures the built-in HTTP server used
 for Kubernetes liveness and readiness probes. The server is **enabled by
@@ -413,26 +414,28 @@ default** on port `8080`.
 | `port` | int | `8080` | Listen port. |
 | `port_auto_increment` | bool | `false` | When `true`, if `port` is already bound the server walks up (`8081`, `8082`, ...) until it finds a free one. Lets several engines share a host without colliding. |
 
-The server exposes `GET /healthz`, `GET /livez`, `GET /readyz`, and
-`POST /drainz`. `/drainz` asks the engine in that process to stop taking new
-work while in-flight work finishes, without shutting it down; `/readyz` then
-reports not-ready so a load balancer stops routing to the pod. Its `drained`
-field turns `true` once that engine has no batch in flight. For the probe
-response bodies, readiness semantics, draining, and FastAPI router factory, see
-[Server Hardening reference](../server/hardening.md#health-checks).
+The server exposes `GET /healthz`, `GET /livez`, `GET /readyz`, and `POST
+/drainz`. `/drainz` asks the engine in that process to stop taking new work
+while in-flight work finishes. It does not shut the engine down. After a drain,
+`/readyz` reports not-ready so a load balancer stops routing to the pod. Its
+`drained` field turns `true` once that engine has no batch in flight. For the
+probe response bodies, readiness semantics, draining, and FastAPI router
+factory, see [Server Hardening
+reference](../server/hardening.md#health-checks).
 
 #### Claiming Unhandled Messages
 
-`server.reclaim_idle_seconds` (default `120`) sets how long a Redis stream entry
-must stay unacknowledged before a starting subscription claims it. A worker
-stopped in the middle of a batch leaves its unhandled messages pending in the
-consumer group; the next start claims and handles them once they are this old.
-Keep it above `circuit_breaker_reset_seconds` and above your longest batch, so
-a start never claims the entries of a consumer that is still running. A zero,
-negative or non-numeric value falls back to `120`. See
+`server.reclaim_idle_seconds` (default `120`) sets how long a Redis stream
+entry must stay unacknowledged before a starting subscription claims it. A
+worker stopped in the middle of a batch leaves its unhandled messages pending
+in the consumer group; the next start claims and handles them once they are
+this old. Keep `server.reclaim_idle_seconds` above
+`circuit_breaker_reset_seconds` and above your longest batch. A start then
+never claims the entries of a running consumer. A zero, negative or non-numeric
+value falls back to `120`. See
 [`server.reclaim_idle_seconds`](../server/hardening.md#serverreclaim_idle_seconds).
 
-#### Priority Lanes
+#### Route messages through priority lanes
 
 The `[server.priority_lanes]` section configures two-lane event/command
 routing: production messages flow through the primary stream while
@@ -459,9 +462,9 @@ delivery. The outbox is automatically enabled when
 --8<-- "reference/configuration/index/outbox.toml"
 ```
 
-Cleanup runs as bounded `batch_size` deletes rather than one unbounded
-`DELETE`, so large backlogs are cleared without long lock holds; each batch
-commits before the next when cleanup runs standalone.
+Cleanup runs as bounded `batch_size` deletes instead of one unbounded `DELETE`,
+so large backlogs clear without long lock holds. When cleanup runs standalone,
+each batch commits before the next.
 
 Read more in [Server → Outbox Pattern](../../concepts/async-processing/outbox.md) section.
 
@@ -509,10 +512,11 @@ Read more in [Command Idempotency](../../patterns/command-idempotency.md).
 
 ### `consume_idempotency`
 
-This section configures cleanup of the consume-side idempotency markers used
-by projectors to detect and skip already-processed messages (the
-`ProcessedMessage` marker; distinct from the command idempotency store
-above). See [ADR-0017](../../adr/0017-consume-side-idempotency-for-projectors.md).
+This section configures cleanup of the consume-side idempotency markers used by
+projectors to detect and skip already-processed messages (the
+`ProcessedMessage` marker; distinct from the command idempotency store above).
+See the decision record on consume-side idempotency for projectors
+([ADR-0017](../../adr/0017-consume-side-idempotency-for-projectors.md)).
 
 ```toml
 --8<-- "reference/configuration/index/consume_idempotency.toml"
@@ -558,8 +562,9 @@ are optional.
 | `rules` | list[str] | `[]` | Dotted import paths to custom lint callables with the signature `(ir: dict) -> list[dict]`. |
 | `suppressions` | table | `{}` | A `{CODE: N}` map that grandfathers the first `N` findings of each code, in a deterministic `(code, element, field, message)` order. Findings beyond `N` are still reported. |
 
-`level` sets the CI failure floor without hiding findings; the `--level` CLI
-flag only filters what is displayed and never changes the exit code.
+`level` sets the lowest severity that fails CI, and it hides no findings. The
+`--level` CLI flag only filters what is displayed and never changes the exit
+code.
 
 A bad value in `[lint]` (for example `level = 5`, `rules = 5`,
 `command_verbs = ["void-it"]` or `aggregate_size_limit = "5"`) is an error. `protean check` exits `2` and
@@ -588,7 +593,7 @@ This section configures the Observatory's trace history.
 |-----|------|---------|-------------|
 | `trace_retention_days` | int | `7` | Days of trace events kept in the `protean:traces` Redis Stream. `0` or a negative number turns persistence off; live broadcasting still works. The value goes through Python's `int()`, so `3.9` becomes 3. An `[observatory]` that is not a table, or a value `int()` cannot convert, falls back to 7. |
 
-Read more in [Observability](../server/observability.md#trace-persistence-and-retention).
+Read more in [Observability](../server/observability.md#how-long-the-traceemitter-keeps-trace-events).
 
 ### `[server.partitioning]`
 
@@ -611,7 +616,7 @@ See [Sequential processing](../server/sequential-by.md) for the model these
 configure, and [ADR-0028](https://github.com/proteanhq/protean/blob/main/docs/adr/0028-partition-per-key-sequential-processing.md)
 for why ownership is leased and fenced.
 
-## Custom Attributes
+## Define custom attributes
 
 Custom attributes can be defined in toml under the `[custom]` section (or
 `[tool.protean.custom]` if you are using the `pyproject.toml` file).
@@ -649,18 +654,18 @@ configuration.
 --8<-- "reference/configuration/index/environments.toml"
 ```
 
-Protean has a default configuration with memory stubs that is overridden
-by configurations in the `toml` file, which can further be over-ridden by an
-environment-specific configuration, as seen above. There are two environment
-specific settings above for databases - an `sqlite` db configuration for
-`staging` and a `postgresql` db configuration for `prod`.
+Protean has a default configuration with memory stubs. Configurations in the
+`toml` file override it, and an environment-specific configuration can override
+those further, as seen above. There are two environment specific settings above
+for databases - an `sqlite` db configuration for `staging` and a `postgresql`
+db configuration for `prod`.
 
-### Testing Overlays
+### Switch overlays in tests
 
 A common use of environment overlays is **dual-mode testing**, running the same
 test suite against in-memory adapters for speed and real infrastructure for
-confidence. Define a `[test]` overlay (the default for `pytest`) and a `[memory]` overlay, then
-switch from the command line:
+confidence. Define a `[test]` overlay (the default for `pytest`) and a
+`[memory]` overlay. Then switch between them from the command line:
 
 ```toml
 --8<-- "reference/configuration/index/testing_overlays.toml"

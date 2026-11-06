@@ -1,4 +1,4 @@
-# Common Arguments
+# Which arguments do all fields accept?
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -21,7 +21,7 @@ is not allowed to be blank. Default is `False`.
 --8<-- "guides/domain-definition/fields/options/001.py:full"
 ```
 
-Leaving the field blank or not specifying a value will raise a
+When you leave the field blank or give it no value, Protean raises a
 `ValidationError`:
 
 ```shell hl_lines="3"
@@ -32,8 +32,8 @@ ValidationError: {'name': ['is required']}
 
 ## `identifier`
 
-If True, the field is an identifier for the entity (a la _primary key_
-in RDBMS).
+If True, the field is an identifier for the entity, like a _primary key_ in an
+RDBMS.
 
 ```python hl_lines="9"
 --8<-- "guides/domain-definition/fields/options/002.py:full"
@@ -55,10 +55,9 @@ ValidationError: {'email': ['is required']}
 ```
 
 Aggregates and Entities need at least one field to be marked as an identifier.
-If you don’t specify one, Protean will automatically add a field called `id`
-to act as the primary identifier. This means that you don’t need to explicitly
-set `identifier=True` on any of your fields unless you want to override the
-default behavior or the name of the field.
+If you don’t specify one, Protean will automatically add a field called `id` to
+act as the primary identifier. You need to set `identifier=True` on a field
+only when you want to override the default behavior or the name of the field.
 
 Alternatively, you can use [`Identifier`](./simple-fields.md#identifier) field type for
 primary identifier fields.
@@ -90,12 +89,13 @@ Out[2]:
  '_version': -1}
 ```
 
-### Mutable object defaults
+### How do defaults that hold mutable objects behave?
 
-Protean copies a `list` or `dict` default for each instance, so
-`default=[]` and `default={}` are safe. The copy is shallow: objects nested
-inside the list or dict are still shared between instances. When the default
-holds mutable objects, wrap it in a callable that builds a new one each time.
+Protean copies a `list` or `dict` default for each instance, so `default=[]`
+and `default={}` are safe. The copy is shallow: objects nested inside the list
+or dict are still shared between instances. When the default holds mutable
+objects, wrap it in a callable. The callable builds a new default each time
+Protean creates an instance.
 
 For example, to give a `List` field a default list of topics, use a function:
 
@@ -116,7 +116,7 @@ Out[2]:
  '_version': -1}
 ```
 
-### Lambda expressions
+### Use a lambda expression as a default
 
 You can use lambda expressions to specify an anonymous function:
 
@@ -134,7 +134,7 @@ In [3]: dice.throw()
 Out[3]: 3
 ```
 
-This is a great option when you want to pass parameters to a function.
+Use a lambda when the default needs to call a function with parameters.
 
 ## `unique`
 
@@ -145,9 +145,9 @@ this field's value is validated to be unique among all entities.
 --8<-- "guides/domain-definition/fields/options/006.py:full"
 ```
 
-Obviously, this field's integrity is enforced at the database layer when an
-entity is persisted. If an entity instance specifies a duplicate value in a
-field marked `unique`, a `ValidationError` will be raised:
+The database layer enforces this field's integrity when the repository persists
+an entity. If an entity instance specifies a duplicate value in a field marked
+`unique`, a `ValidationError` will be raised:
 
 ```shell hl_lines="11"
 In [1]: p1 = Person(name='John Doe', email='john.doe@example.com')
@@ -163,7 +163,7 @@ ERROR: Failed saving entity because {'email': ["Person with email 'john.doe@exam
 ValidationError: {'email': ["Person with email 'john.doe@example.com' is already present."]}
 ```
 
-We will explore more about persistence in Application Layer guide.
+The Application Layer guide explains persistence in more detail.
 <!-- FIXME Add link to database persistence and aggregate lifecycle -->
 
 ## `choices`
@@ -218,10 +218,10 @@ Out[3]: ['email', 'fullname', 'id', '_version']
 
 Additional validators to apply to the field value.
 
-Validators are
-[callable `Class` instances](https://docs.python.org/3/reference/datamodel.html#class-instances)
-that are invoked whenever a field's value is changed. Protean's `String` field,
-for example, has two default validators: `MinLengthValidator` and
+Validators are [callable `Class`
+instances](https://docs.python.org/3/reference/datamodel.html#class-instances).
+Protean invokes them whenever a field's value changes. Protean's `String`
+field, for example, has two default validators: `MinLengthValidator` and
 `MaxLengthValidator` classes associated with `min_length` and `max_length`
 attributes.
 
@@ -229,8 +229,8 @@ attributes.
 --8<-- "guides/domain-definition/fields/options/010.py:full"
 ```
 
-If the value fails to satisfy the validation, a `ValidationError` will be
-thrown with the custom error message.
+If the field value fails a validator, Protean raises a `ValidationError` with
+the validator's custom error message.
 
 ```shell hl_lines="8"
 In [1]: e = Employee(email="john@mydomain.com")
@@ -246,8 +246,8 @@ ValidationError: {'email': ['Email does not belong to mydomain.com']}
 ## `error_messages`
 
 A dictionary of custom error messages, keyed by error kind such as `required`,
-`invalid`, `unique`, or `invalid_choice`. The field accepts the argument and
-records it, but the simple fields in `protean.fields` do not use it yet: a
+`invalid`, `unique`, or `invalid_choice`. The field accepts and records the
+argument. The simple fields in `protean.fields` do not use it yet, so a
 validation error still reports the default message.
 
 ```python hl_lines="9-11"
@@ -272,13 +272,13 @@ renamed field without an upcaster.
 --8<-- "guides/domain-definition/fields/options/012.py:renamed_from"
 ```
 
-A stored `OrderPlaced` payload carrying the old `name` key loads into
-`customer_name`; the current name always wins if both are present, and any
-stale alias keys are dropped. The rename is also emitted into the IR, so
-`protean ir diff` reports a safe `field_renamed` change instead of a
-breaking remove + add, and the generated Avro schema carries an `aliases` entry
-so an external Avro consumer resolves the old name on the wire. See
-[Evolving Events Over Time](../../guides/evolving-events.md) for the end-to-end
-workflow and
-[Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
-for the strategies behind it.
+When a stored `OrderPlaced` payload carries the old `name` key, Protean loads
+the value into `customer_name`. If a payload carries both keys, Protean keeps
+the value under the current name and drops any stale alias keys. Protean also
+writes the rename into the IR, so `protean ir diff` reports a safe
+`field_renamed` change instead of a breaking remove + add. The generated Avro
+schema carries an `aliases` entry, so an external Avro consumer resolves the
+old name in serialized messages. See [Evolving Events Over
+Time](../../guides/evolving-events.md) for the end-to-end workflow and [Event
+Versioning and Evolution](../../patterns/event-versioning-and-evolution.md) for
+the strategies behind it.

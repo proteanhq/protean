@@ -1,13 +1,13 @@
 # `protean snapshot`
 
-The `protean snapshot` command group manages snapshots for event-sourced
-aggregates. Snapshots capture aggregate state at a point in time to optimize
-hydration performance, instead of replaying the entire event history, the
-aggregate is loaded from the latest snapshot and only subsequent events are
-replayed.
+The `protean snapshot` command group creates snapshots for event-sourced
+aggregates. A snapshot captures aggregate state at a point in time to make
+hydration faster. Instead of replaying the entire event history, Protean loads
+the aggregate from the latest snapshot and replays only the events that follow
+it.
 
-While Protean auto-creates snapshots when the event count exceeds the
-`snapshot_threshold` (default 10), manual snapshot creation is useful for:
+Protean auto-creates snapshots when the event count exceeds the
+`snapshot_threshold` (default 10). You can also create snapshots by hand for:
 
 - **Admin maintenance**: Force snapshot creation after data migrations or bulk
   event imports
@@ -19,7 +19,7 @@ While Protean auto-creates snapshots when the event count exceeds the
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
 
-## Commands
+## Which commands does the group offer?
 
 | Command | Description |
 |---------|-------------|
@@ -29,7 +29,7 @@ All commands accept a `--domain` option to specify the domain module path
 
 Creates snapshots for event-sourced aggregates. Supports three modes:
 
-### Single aggregate instance
+### Snapshot a single aggregate instance
 
 ```bash
 protean snapshot create --domain=my_domain --aggregate=User --identifier=abc-123
@@ -39,7 +39,7 @@ Creates a snapshot for one specific aggregate instance. The snapshot is
 reconstructed from the full event stream regardless of whether a snapshot
 already exists (forced refresh).
 
-### All instances of one aggregate
+### Snapshot all instances of one aggregate
 
 ```bash
 protean snapshot create --domain=my_domain --aggregate=User
@@ -48,7 +48,7 @@ protean snapshot create --domain=my_domain --aggregate=User
 Discovers all instances of the specified aggregate and creates a snapshot
 for each.
 
-### All event-sourced aggregates
+### Snapshot all event-sourced aggregates
 
 ```bash
 protean snapshot create --domain=my_domain
@@ -65,7 +65,7 @@ registered in the domain.
 | `--aggregate` | Aggregate class name (e.g. `User`) | All ES aggregates |
 | `--identifier` | Specific aggregate identifier (requires `--aggregate`) | All instances |
 
-## Output
+## What does the command print?
 
 ```
 # Single instance:
@@ -80,7 +80,7 @@ Created 42 snapshot(s) for User.
 Created 57 snapshot(s) across 2 aggregate(s).
 ```
 
-## Error Handling
+## What happens when the command fails?
 
 | Condition | Behavior |
 |-----------|----------|
@@ -91,7 +91,7 @@ Created 57 snapshot(s) across 2 aggregate(s).
 | No events for identifier | Aborts with "does not exist" |
 | No ES aggregates in domain | Prints informational message |
 
-## Domain Discovery
+## How do the commands find your domain?
 
 The `protean snapshot` commands use the same domain discovery mechanism as
 `protean server`. The `--domain` option accepts:
@@ -103,10 +103,11 @@ The `protean snapshot` commands use the same domain discovery mechanism as
 
 See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 
-## Programmatic API
+## Create snapshots from Python code
 
-The same functionality is available as Domain methods for use in scripts or
-the `protean shell`:
+You can create the same snapshots from scripts or the `protean shell` with the
+Domain methods `create_snapshot`, `create_snapshots` and
+`create_all_snapshots`:
 
 ??? example "The domain this example uses"
 

@@ -1,10 +1,10 @@
-# Subscription Configuration
+# Configure subscriptions
 
 Protean provides a flexible configuration system for subscriptions that allows
 you to configure settings at multiple levels. Configuration follows a priority
 hierarchy, with more specific settings overriding general ones.
 
-## Configuration Priority Hierarchy
+## How does Protean pick the value of a setting? {#configuration-priority-hierarchy}
 
 Configuration is resolved using this priority order (highest to lowest):
 
@@ -35,12 +35,12 @@ flowchart TD
     style G fill:#fce4ec
 ```
 
-## Configuration Profiles
+## Start from a configuration profile
 
 Profiles provide pre-configured settings optimized for common scenarios. Using
 profiles simplifies configuration while still allowing overrides.
 
-### Available Profiles
+### Which profiles come built in?
 
 | Profile | Type | Description |
 |---------|------|-------------|
@@ -50,7 +50,7 @@ profiles simplifies configuration while still allowing overrides.
 | `debug` | Stream | Development and debugging |
 | `projection` | Event Store | Building read models |
 
-### Profile Defaults
+### What does each profile set?
 
 #### `production` Profile
 
@@ -95,8 +95,9 @@ Optimized for building read models:
 ### Stream retention defaults {#stream-retention-defaults}
 
 `retention_maxlen` bounds a StreamSubscription's broker stream so processed
-messages don't accumulate forever. It is trimmed after each batch. How tight the
-bound is depends on the consumer topology, see [Stream
+messages don't accumulate forever. The StreamSubscription trims its broker
+stream after each batch. The bound is tighter or looser depending on the
+consumer topology. See [Stream
 retention](subscription-types.md#stream-retention) for the multi-group and
 single-group behavior and their caveats. Each profile carries a default cap:
 
@@ -108,9 +109,9 @@ single-group behavior and their caveats. Each profile carries a default cap:
 | `debug` | 1,000 |
 | `projection` | none (event-store, no stream to trim) |
 
-The framework-wide default (when no profile applies) is `none`, which leaves
-trimming off. Set `retention_maxlen` on a profile, a per-handler config, or a
-custom profile to enable it. This is size-based retention only. There is no
+When no profile applies, the framework-wide default is `none`. With `none`,
+trimming is off. Set `retention_maxlen` on a profile, a per-handler config, or
+a custom profile to enable it. This is size-based retention only. There is no
 time-based TTL.
 
 ### Custom Profiles
@@ -129,44 +130,47 @@ handler's Meta `subscription_profile`.
 --8<-- "reference/server/configuration/custom_profile_handler.toml"
 ```
 
-**Inheritance.** With `inherits = "<built-in>"`, the profile starts from that
-built-in's defaults and applies your overrides on top. Inheritance is a single
-level onto a built-in base only, so a custom profile cannot inherit from another
-custom profile (this also means there is no inheritance cycle to fall into).
-Without `inherits`, the profile starts from the framework's hardcoded defaults.
+**Inherit from a built-in profile.** With `inherits = "<built-in>"`, the
+profile starts from that built-in's defaults and applies your overrides on top.
+A custom profile inherits one level only, from a built-in base. A custom
+profile cannot inherit from another custom profile, so no inheritance cycle can
+occur. Without `inherits`, the profile starts from the framework's hardcoded
+defaults.
 
-**Allowed fields.** A custom profile may set `inherits` plus any of the standard
-profile fields: `subscription_type`, `messages_per_tick`, `tick_interval`,
-`blocking_timeout_ms`, `max_retries`, `retry_delay_seconds`, `enable_dlq`,
-`position_update_interval`, `origin_stream`, `retention_maxlen`,
-`circuit_breaker_threshold`, `circuit_breaker_reset_seconds`.
+**Which fields can a custom profile set?** A custom profile may set `inherits`
+plus any of the standard profile fields: `subscription_type`,
+`messages_per_tick`, `tick_interval`, `blocking_timeout_ms`, `max_retries`,
+`retry_delay_seconds`, `enable_dlq`, `position_update_interval`,
+`origin_stream`, `retention_maxlen`, `circuit_breaker_threshold`,
+`circuit_breaker_reset_seconds`.
 
-**Validation** is fail-fast, a `ConfigurationError` is raised when the profiles are first
-resolved if a custom profile:
+**Protean rejects an invalid custom profile at once.** On first resolving the
+profiles, Protean raises a `ConfigurationError` if a custom profile:
 
 - reuses a built-in name (`production`, `fast`, `batch`, `debug`, `projection` are
   reserved),
 - sets a field that isn't in the allowed list above, or
 - `inherits` from anything other than a built-in profile.
 
-**Precedence is unchanged.** A custom profile name slots into the [priority
-hierarchy](#configuration-priority-hierarchy) at whatever level named it, exactly
-like a built-in. An explicit field set alongside the profile at the same level still wins
-over the profile's default.
+**Precedence is unchanged.** A custom profile name takes the priority of the
+level that names it in the [priority
+hierarchy](#configuration-priority-hierarchy), exactly like a built-in. When
+you set a field explicitly at the same level as the profile, your value still
+overrides the profile's default.
 
-**Caveat for `default_subscription_profile`.** A profile named there resolves at
-priority 6, which is *below* the server-level defaults at priority 5
+**Caveat for `default_subscription_profile`.** A profile named there resolves
+at priority 6, which is *below* the server-level defaults at priority 5
 (`default_subscription_type`, `messages_per_tick`, `tick_interval`, and the
 `[server.stream_subscription]` / `[server.event_store_subscription]` blocks).
 When a server-level default sets a field, it overwrites the profile's value.
 Protean's built-in configuration sets most of these fields even when
-`domain.toml` does not, so `default_subscription_profile` only governs the
-fields the server-level defaults leave unset, such as `retention_maxlen`. To
-apply a whole profile, name it at a higher level: a per-handler `profile`
+`domain.toml` does not. As a result, `default_subscription_profile` sets only
+the fields the server-level defaults leave unset, such as `retention_maxlen`.
+To apply a whole profile, name it at a higher level: a per-handler `profile`
 (priority 4) or a handler's Meta `subscription_profile` (priority 3). Built-in
 and custom profiles behave the same way here.
 
-## Configuration Options Reference
+## What options can you set?
 
 Each default below is the value a handler gets in a domain with no `[server]`
 settings and no profile. One exception: `enable_dlq` defaults to true, but such
@@ -196,14 +200,14 @@ a domain resolves to the `event_store` subscription type, and the engine turns
 | `retention_maxlen` | int | none | Cap the stream at this many entries ([stream retention](subscription-types.md#stream-retention)) |
 
 !!! warning "Known issue: per-handler DLQ overrides have no effect yet"
-    The subscription config Protean builds for a handler does not carry
-    `dlq_retention_hours` or `dlq_alert_threshold`, so the engine applies the
-    `[server.dlq]` values to every handler.
+    Protean builds the subscription config for a handler without
+    `dlq_retention_hours` or `dlq_alert_threshold`. The engine therefore
+    applies the `[server.dlq]` values to every handler.
 
-See [Server Hardening → Circuit breaker](./hardening.md#circuit-breaker) for
-the state machine, the metric, and the trace events, and
+See [Server Hardening → Circuit breaker](./hardening.md#pause-reads-with-the-circuit-breaker) for
+the state machine, the metric, and the trace events. See
 [Tuning subscriptions](../../guides/server/tuning-subscriptions.md) for how to
-choose between these options.
+choose between the StreamSubscription options in the table above.
 
 ### EventStoreSubscription Options
 
@@ -212,9 +216,9 @@ choose between these options.
 | `position_update_interval` | int | 10 | Messages between position writes |
 | `origin_stream` | string | None | Filter by origin stream category |
 
-## Configuration Methods
+## Where can you set configuration?
 
-### 1. Handler Decorator Options
+### 1. Set options on the handler decorator
 
 The examples on this page use this model:
 
@@ -235,7 +239,7 @@ The options combine with priority:
    another type
 3. `subscription_profile` provides base defaults
 
-### 2. Domain Configuration File
+### 2. Set options in the domain configuration file
 
 Configure in `domain.toml`:
 
@@ -243,7 +247,7 @@ Configure in `domain.toml`:
 --8<-- "reference/server/configuration/server.toml"
 ```
 
-### 3. Environment-Specific Configuration
+### 3. Set options per environment
 
 Use environment sections for different deployment environments. Protean picks
 the section that matches `PROTEAN_ENV` and merges it into the base `[server]`
@@ -255,12 +259,12 @@ settings:
 
 To use a different profile per environment, name it per handler under
 `[server.subscriptions.<Handler>]` in the environment section.
-`default_subscription_profile` sits below the server-level defaults, so it
-sets few fields (see the [caveat](#custom-profiles)).
+`default_subscription_profile` has a lower priority than the server-level
+defaults, so it sets few fields (see the [caveat](#custom-profiles)).
 
 ## Configuration Examples
 
-### Example 1: Production Event Handler
+### Example 1: Configure a production event handler
 
 A handler with production settings and custom batch size:
 
@@ -273,7 +277,7 @@ Resolved configuration:
 --8<-- "reference/server/configuration/003.py:production_resolved"
 ```
 
-### Example 2: Low-Latency Handler
+### Example 2: Configure a low-latency handler
 
 A handler optimized for fast processing:
 
@@ -286,7 +290,7 @@ Resolved configuration:
 --8<-- "reference/server/configuration/003.py:fast_resolved"
 ```
 
-### Example 3: Projection Handler
+### Example 3: Configure a projection handler
 
 A projector using EventStoreSubscription:
 
@@ -299,11 +303,11 @@ Resolved configuration:
 --8<-- "reference/server/configuration/003.py:projector_resolved"
 ```
 
-### Example 4: Mixed Configuration
+### Example 4: Combine domain config with handler config
 
 Combining domain config with handler config. The handler's server config names
-the profile, so the profile sits above the server-level defaults (see the
-[caveat](#custom-profiles) on `default_subscription_profile`):
+the profile, so the profile takes priority over the server-level defaults (see
+the [caveat](#custom-profiles) on `default_subscription_profile`):
 
 ```toml
 --8<-- "reference/server/configuration/mixed.toml"
@@ -318,7 +322,7 @@ Resolved configuration:
 --8<-- "reference/server/configuration/004.py:special_resolved"
 ```
 
-### Example 5: Origin Stream Filtering
+### Example 5: Filter events by origin stream
 
 Filter events by their origin stream:
 
@@ -326,11 +330,11 @@ Filter events by their origin stream:
 --8<-- "reference/server/configuration/003.py:origin_stream"
 ```
 
-## Configuration Validation
+## How does Protean report configuration errors?
 
 Protean validates configuration and provides helpful error messages:
 
-### Outbox / Subscription Type Conflict
+### The outbox conflicts with the event store subscription type
 
 Setting `enable_outbox = true` with `default_subscription_type = "event_store"`
 is a configuration error.  The outbox publishes events to Redis Streams, but
@@ -347,7 +351,7 @@ or remove enable_outbox.
 Setting `default_subscription_type = "stream"` automatically enables the outbox
 without needing to set `enable_outbox` at all.
 
-### Missing External Broker
+### An unregistered external broker stops startup
 
 Configuring an `external_brokers` entry that doesn't match a registered broker
 is a startup error. This configuration is wrong on purpose:
@@ -363,7 +367,7 @@ ValueError: External broker 'nonexistent_broker' configured in
 outbox.external_brokers but not found in domain broker configuration
 ```
 
-### Published Events Without External Brokers
+### Published events without external brokers log a warning
 
 If your domain has events with `published=True` but no `external_brokers`
 configured, Protean logs a warning during initialization:
@@ -377,7 +381,7 @@ This is informational, not an error. See
 [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md)
 to configure external dispatch.
 
-### Invalid Subscription Type
+### An unknown subscription type falls back to `event_store`
 
 ```python
 # fragment
@@ -391,9 +395,10 @@ builds the handler's subscription and falls back to `event_store`:
 WARNING: Unknown subscription type 'invalid', defaulting to EVENT_STORE
 ```
 
-Check the log at startup if a handler does not get the subscription you expect.
+If a handler does not get the subscription you expect, check the log at
+startup.
 
-### Invalid Profile
+### An unknown profile raises an error
 
 ```python
 # fragment
@@ -407,7 +412,7 @@ ConfigurationError: Unknown subscription profile 'nonexistent'.
 Valid profiles: batch, debug, fast, production, projection
 ```
 
-### Incompatible Options
+### The engine turns off `enable_dlq` for an event store subscription
 
 ```python
 # fragment
@@ -418,17 +423,17 @@ Valid profiles: batch, debug, fast, production, projection
 ```
 
 Protean logs no error here. `enable_dlq` controls the broker-side dead letter
-stream, which only a stream subscription has, so the engine turns `enable_dlq`
-off for an event store subscription and keeps the rest of the configuration.
-An event store subscription records failed positions in its own failed-position
-stream and retries them in a recovery pass, described in
-[Error Handling](../../guides/server/error-handling.md#eventstoresubscription).
+stream, which only a stream subscription has. For an event store subscription,
+the engine turns `enable_dlq` off and keeps the rest of the configuration. An
+event store subscription records failed positions in its own failed-position
+stream. It retries them in a recovery pass, described in [Error
+Handling](../../guides/server/error-handling.md#eventstoresubscription).
 
-## Configuration guidance
+## How should you configure subscriptions?
 
 ### 1. Use Profiles as a Starting Point
 
-Start with a profile and override specific options:
+Override specific options on top of a profile:
 
 ```python
 # fragment
@@ -456,13 +461,13 @@ Name the `debug` profile on the handlers you are working on:
 ```
 
 `default_subscription_profile = "debug"` sets far less. Protean's built-in
-server-level defaults set most fields the `debug` profile sets, and the
-resolver applies them after the profile, as the [caveat](#custom-profiles)
-explains. Only `retention_maxlen` comes from the profile, because the built-in
-`[server.stream_subscription]` block does not set it. So with
-`default_subscription_type = "stream"`, a stream subscription whose handler
-names no profile caps its stream at 1000 entries. A handler that names its own
-profile keeps that profile's cap.
+server-level defaults set most fields that the `debug` profile sets. The
+resolver applies those defaults after the profile, as the
+[caveat](#custom-profiles) explains. Only `retention_maxlen` comes from the
+profile, because the built-in `[server.stream_subscription]` block does not set
+it. So with `default_subscription_type = "stream"`, Protean caps the stream of
+each stream subscription at 1000 entries when its handler names no profile.
+When a handler names its own profile, the handler keeps that profile's cap.
 
 ### 4. Monitor and Adjust
 
@@ -486,7 +491,7 @@ Always enable DLQ for production workloads to capture failed messages:
 subscription_config={"enable_dlq": True}
 ```
 
-## Related pages
+## See also
 
 - [Subscription Types](subscription-types.md): Subscription
   types

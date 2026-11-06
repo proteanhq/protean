@@ -1,9 +1,9 @@
 # `protean projection`
 
-The `protean projection` command group manages projections, read-optimized views built from
-domain events. It provides a `rebuild` command that reconstructs projections by
-replaying events from the event store, and a `status` command that reports how far
-behind each projection is.
+The `protean projection` command group rebuilds projections and reports their
+status. Projections are read-optimized views built from domain events. The
+`rebuild` command reconstructs projections by replaying events from the event
+store. The `status` command reports how far behind each projection is.
 
 Projection rebuilding is essential when:
 
@@ -11,10 +11,10 @@ Projection rebuilding is essential when:
   rebuild replays all events through the corrected projector.
 - **Adding a new projection**: A new projection is added to an existing system
   and needs to be populated from historical events.
-- **Schema changes**: The projection's schema changed (new fields, renamed
+- **Changing the schema**: The projection's schema changed (new fields, renamed
   columns) and data must be regenerated.
-- **Data corruption recovery**: Projection data was corrupted or accidentally
-  deleted.
+- **Recovering from data corruption**: Projection data was corrupted or
+  accidentally deleted.
 
 All commands accept a `--domain` option to specify the domain module path
 (defaults to the current directory).
@@ -25,7 +25,7 @@ All commands accept a `--domain` option to specify the domain module path
     processing during a rebuild can cause data inconsistencies because the
     rebuild truncates projection data before replaying events.
 
-## Commands
+## Which commands does the group provide?
 
 | Command | Description |
 |---------|-------------|
@@ -68,7 +68,7 @@ Each projection is rebuilt independently.
 | `--projection` | Projection class name (e.g. `Balances`) | All projections |
 | `--batch-size` | Number of events to read per batch | `500` |
 
-## Output
+## What does the rebuild print?
 
 ```
 # Single projection:
@@ -84,12 +84,12 @@ Rebuilt projection 'Balances': 40 events processed through 1 projector(s) across
 Rebuilt 2 projection(s), 60 total events processed.
 ```
 
-Events are "skipped" when they cannot be resolved to a domain object, typically
-deprecated event types that have been removed from the codebase without an
-upcaster chain. Skipped events are logged as warnings but do not cause the
-rebuild to fail.
+The rebuild marks an event as "skipped" when it cannot resolve the event to a
+domain object. Such an event is typically of a deprecated type that was removed
+from the codebase without an upcaster chain. Skipped events are logged as
+warnings but do not cause the rebuild to fail.
 
-## Error handling
+## How does the rebuild respond to errors?
 
 | Condition | Behavior |
 |-----------|----------|
@@ -101,9 +101,10 @@ rebuild to fail.
 
 ## `protean projection status`
 
-Reports, for every projection, how far behind it is and how large it is, by
-reading each feeding projector's last processed position. Useful for spotting
-read models that have stalled. Does not require the server to be running.
+For every projection, the command reports how far behind it is and its size.
+The command reads the last processed position of each projector that feeds the
+projection. Useful for spotting read models that have stalled. Does not require
+the server to be running.
 
 ```bash
 protean projection status --domain=my_domain
@@ -128,7 +129,7 @@ across all of them.
     so it is reported for event-store-backed projectors. Stream-backed (Redis)
     projectors show lag and status, but their staleness is blank.
 
-### JSON output
+### Get the status as JSON
 
 ```bash
 protean projection status --domain=my_domain --json
@@ -173,7 +174,7 @@ stays parseable.
 For continuous monitoring, scrape the `protean_projection_staleness_seconds`
 metric instead; see [Server Observability](../../server/observability.md).
 
-## Domain discovery
+## How do the commands find the domain?
 
 The `protean projection` commands use the same domain discovery mechanism as
 `protean server`. The `--domain` option accepts:
@@ -187,7 +188,7 @@ See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 
 ---
 
-## Programmatic API
+## Run the same operations from Python code
 
 The same functionality is available as Domain methods for use in scripts or
 the `protean shell`:
@@ -223,7 +224,7 @@ Rebuild every projection in the domain. Returns a
 
 ---
 
-## How it works
+## How does a rebuild work?
 
 The rebuild process has three phases:
 
@@ -252,10 +253,10 @@ Existing projection data is cleared:
 ### 3. Replay events
 
 For each projector, events are read from all of its stream categories and
-merged in global position order. This ensures correct cross-aggregate
-ordering, for example, a `Registered` event from the `user` category is always processed
-before a `Transacted` event from the `transaction` category if that is the order in which they
-were originally stored.
+merged in global position order. The merge keeps the cross-aggregate order
+correct. For example, if a `Registered` event from the `user` category was
+stored before a `Transacted` event from the `transaction` category, the
+projector always processes the `Registered` event first.
 
 Each event is dispatched through the projector's `_handle()` method, which:
 
@@ -270,8 +271,8 @@ Each event is dispatched through the projector's `_handle()` method, which:
 
 If an event type cannot be resolved (deprecated event without an upcaster
 chain), a `ConfigurationError` is caught, a warning is logged, and the event is
-skipped. Other exceptions during handler execution are also caught, logged, and
-skipped, the rebuild continues with the remaining events.
+skipped. The rebuild also catches, logs, and skips other exceptions during
+handler execution. It then continues with the remaining events.
 
 The rebuild is **idempotent**: running it again truncates and replays from
 scratch. No checkpointing or partial state is maintained.

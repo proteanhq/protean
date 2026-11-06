@@ -1,4 +1,4 @@
-# Identity
+# How Protean generates and holds identities
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
@@ -8,15 +8,15 @@ an identity at the point of creation is a best practice as it ensures
 consistency, aligns with domain rules, simplifies logic, and supports
 distributed systems.
 
-Protean's design philosophy requires all invariants
-to be satisfied from the get-go - generating identities on element creation
-helps fulfill this goal.
+Protean requires every element to satisfy all its invariants from the moment
+you create it. Protean generates the identity at creation so that the element
+meets this requirement.
 
-## Configuration
+## Configure identity at the domain level
 
-Identity options are specified at the Domain level with
-[configuration attributes](../configuration/index.md#identity_strategy). A combination of
-identity strategy and identity type work together to generate identity values.
+Identity options are specified at the Domain level with [configuration
+attributes](../configuration/index.md#identity_strategy). Protean uses the
+identity strategy and the identity type together to generate identity values.
 
 ```toml
 # domain.toml
@@ -26,7 +26,7 @@ identity_type="string"
 ...
 ```
 
-### Strategy
+### Choose an identity strategy
 
 The strategy for generating identity values.
 
@@ -39,11 +39,12 @@ The following strategies are supported for identity generation:
 
 - **uuid**: Identity is a uuid4 identifier. This is the default and preferred
 strategy.
-- **function**: A function is invoked to generate identity values, supplied
-as [`identity_function`](./domain-constructor.md#identity_function) when constructing
-the domain object.
+- **function**: Protean calls a function to generate identity values. You
+  supply the function as
+  [`identity_function`](./domain-constructor.md#identity_function) when you
+  construct the domain object.
 
-### Type
+### Choose an identity type
 
 The type of the generated identity value. Supported identity types are
 `integer`, `string`, and `uuid`. Default is `string`.
@@ -68,16 +69,17 @@ Out[2]: 154702789254628181204690697941965130883
 
 - **`uuid`**: Identity is a UUID rendered as a string in Python (ADR-0021), so
 it stays JSON-serializable across event and command payloads and API responses.
-Adapters that support a native UUID column still store it as one: PostgreSQL has a
-built-in `UUID` data type (a 128-bit value, typically shown as a 36-character
-string), and the SQLAlchemy adapter maps this type to it for storage and indexing.
+Adapters that support a native UUID column still store the identity as a UUID.
+For example, PostgreSQL has a built-in `UUID` data type (a 128-bit value,
+typically shown as a 36-character string), and the SQLAlchemy adapter maps this
+type to it for storage and indexing.
 
 !!!note
-    Identity Strategy and Identity Type values have to be configured to
-    work together. For example, the values returned by configured
-    `identity_function` has to match the type configured in `identity_type`.
+    Identity Strategy and Identity Type values have to be configured to work
+    together. For example, the configured `identity_function` has to return
+    values that match the type configured in `identity_type`.
 
-## Fields
+## Hold identity values in fields
 
 Protean can hold identity values in two field types: `Auto` and `Identifier`.
 
@@ -110,7 +112,7 @@ In [6]: user.to_dict()
 Out[6]: {'user_id': '9cf4ddc4-2919-4021-bd1a-c8083b5fdda7', 'name': 'John Doe', '_version': -1}
 ```
 
-### Automatic Identity field
+### Protean adds an identity field when you leave it out
 
 When an identity field is not supplied, an `Auto` field called `id` is
 automatically added to the entity.
@@ -129,7 +131,7 @@ In [3]: id_field(Person).field_name
 Out[3]: 'id'
 ```
 
-### No Composite keys
+### Protean does not support composite keys
 
 Protean does not support composite keys. A `NotSupportedError` is thrown when
 multiple identifier fields are found.
