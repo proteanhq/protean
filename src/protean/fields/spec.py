@@ -338,9 +338,8 @@ class FieldSpec:
 # ---------------------------------------------------------------------------
 # FieldSpec helpers
 #
-# Module-level functions, not methods: field classes and user subclasses
-# override private methods, so a new private method name on FieldSpec could be
-# shadowed by a subclass attribute of the same name.
+# Module-level functions, not methods, so no new private name lands on
+# FieldSpec where a subclass could override it.
 # ---------------------------------------------------------------------------
 def _add_length_and_value_bounds(spec: FieldSpec, kwargs: dict[str, Any]) -> None:
     # String-type constraints (only for str-based types)

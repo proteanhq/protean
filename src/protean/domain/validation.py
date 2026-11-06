@@ -8,7 +8,7 @@ handlers before the domain is activated.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from protean.core.index import validate_indexes
 from protean.domain.helpers import get_env
@@ -220,28 +220,7 @@ class DomainValidator:
             owner_cls = element.cls
             for field_obj in declared_fields(owner_cls).values():
                 if isinstance(field_obj, (HasOne, HasMany)):
-                    if isinstance(field_obj.to_cls, str):
-                        raise IncorrectUsageError(
-                            f"Unresolved target `{field_obj.to_cls}` for field "
-                            f"`{owner_cls.__name__}:{field_obj.field_name}`"
-                        )
-                    if field_obj.to_cls.element_type != DomainObjects.ENTITY:
-                        raise IncorrectUsageError(
-                            f"Field `{field_obj.field_name}` in `{owner_cls.__name__}` "
-                            "is not linked to an Entity class"
-                        )
-                    if (
-                        field_obj.to_cls.meta_.aggregate_cluster
-                        != owner_cls.meta_.aggregate_cluster
-                    ):
-                        raise IncorrectUsageError(
-                            f"Field `{field_obj.field_name}` in `{owner_cls.__name__}` "
-                            f"points to `{field_obj.to_cls.__name__}` which belongs to "
-                            f"a different aggregate "
-                            f"`{field_obj.to_cls.meta_.aggregate_cluster.__name__}`. "
-                            f"HasOne/HasMany associations must target entities within "
-                            f"the same aggregate cluster."
-                        )
+                    _check_association_target(owner_cls, field_obj)
 
     def _validate_event_sourced_aggregates(self) -> None:
         """Check that no two event sourced aggregates share the same event class."""
@@ -589,3 +568,27 @@ class DomainValidator:
                 }
             )
             logger.warning(message)
+
+
+def _check_association_target(owner_cls: Any, field_obj: Any) -> None:
+    """Raise unless ``field_obj`` targets a resolved Entity in ``owner_cls``'s
+    aggregate cluster."""
+    if isinstance(field_obj.to_cls, str):
+        raise IncorrectUsageError(
+            f"Unresolved target `{field_obj.to_cls}` for field "
+            f"`{owner_cls.__name__}:{field_obj.field_name}`"
+        )
+    if field_obj.to_cls.element_type != DomainObjects.ENTITY:
+        raise IncorrectUsageError(
+            f"Field `{field_obj.field_name}` in `{owner_cls.__name__}` "
+            "is not linked to an Entity class"
+        )
+    if field_obj.to_cls.meta_.aggregate_cluster != owner_cls.meta_.aggregate_cluster:
+        raise IncorrectUsageError(
+            f"Field `{field_obj.field_name}` in `{owner_cls.__name__}` "
+            f"points to `{field_obj.to_cls.__name__}` which belongs to "
+            f"a different aggregate "
+            f"`{field_obj.to_cls.meta_.aggregate_cluster.__name__}`. "
+            f"HasOne/HasMany associations must target entities within "
+            f"the same aggregate cluster."
+        )

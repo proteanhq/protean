@@ -272,68 +272,6 @@
     ]
   },
   {
-    "path": "src/protean/domain/__init__.py",
-    "file_name": "__init__.py",
-    "functions": [
-      {
-        "name": "Domain::configure_logging",
-        "complexity": 18
-      },
-      {
-        "name": "Domain::_traverse",
-        "complexity": 23
-      },
-      {
-        "name": "Domain::_register_element",
-        "complexity": 31
-      }
-    ]
-  },
-  {
-    "path": "src/protean/domain/command_processor.py",
-    "file_name": "command_processor.py",
-    "functions": [
-      {
-        "name": "CommandProcessor::enrich",
-        "complexity": 27
-      },
-      {
-        "name": "CommandProcessor::process",
-        "complexity": 27
-      }
-    ]
-  },
-  {
-    "path": "src/protean/domain/handler_setup.py",
-    "file_name": "handler_setup.py",
-    "functions": [
-      {
-        "name": "HandlerConfigurator::validate_sequential_by",
-        "complexity": 55
-      }
-    ]
-  },
-  {
-    "path": "src/protean/domain/resolver.py",
-    "file_name": "resolver.py",
-    "functions": [
-      {
-        "name": "ElementResolver::assign_aggregate_clusters",
-        "complexity": 25
-      }
-    ]
-  },
-  {
-    "path": "src/protean/domain/validation.py",
-    "file_name": "validation.py",
-    "functions": [
-      {
-        "name": "DomainValidator::_validate_association_fields",
-        "complexity": 18
-      }
-    ]
-  },
-  {
     "path": "src/protean/ir/config.py",
     "file_name": "config.py",
     "functions": [

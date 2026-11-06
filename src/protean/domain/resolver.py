@@ -183,30 +183,7 @@ class ElementResolver:
             DomainObjects.COMMAND,
         ]:
             for element in registry._elements[element_type.value].values():
-                part_of = element.cls.meta_.part_of
-                if part_of:
-                    # Traverse up the graph tree to find the root aggregate
-                    chain = [element.cls]
-                    while not issubclass(part_of, BaseAggregate) and not issubclass(
-                        part_of, BaseProcessManager
-                    ):
-                        if part_of in chain:
-                            names = " -> ".join(
-                                f"`{c.__name__}`" for c in [*chain, part_of]
-                            )
-                            raise ConfigurationError(
-                                {
-                                    "element": (
-                                        f"The `part_of` chain {names} loops back "
-                                        "on itself; an entity chain must end at "
-                                        "an aggregate"
-                                    )
-                                }
-                            )
-                        chain.append(part_of)
-                        part_of = part_of.meta_.part_of
-
-                element.cls.meta_.aggregate_cluster = part_of
+                element.cls.meta_.aggregate_cluster = _cluster_root(element.cls)
 
     def set_aggregate_cluster_options(self) -> None:
         """Propagate aggregate-level options (like provider) to child entities."""
@@ -216,3 +193,34 @@ class ElementResolver:
                 element.cls.meta_.provider = (
                     element.cls.meta_.aggregate_cluster.meta_.provider
                 )
+
+
+def _cluster_root(cls: Any) -> Any:
+    """Return the aggregate or process manager at the end of ``cls``'s
+    ``part_of`` chain, or ``cls``'s own unset ``part_of`` when it has none.
+
+    Raises:
+        ConfigurationError: If the ``part_of`` chain loops back on itself.
+    """
+    part_of = cls.meta_.part_of
+    if part_of:
+        # Traverse up the graph tree to find the root aggregate
+        chain = [cls]
+        while not issubclass(part_of, BaseAggregate) and not issubclass(
+            part_of, BaseProcessManager
+        ):
+            if part_of in chain:
+                names = " -> ".join(f"`{c.__name__}`" for c in [*chain, part_of])
+                raise ConfigurationError(
+                    {
+                        "element": (
+                            f"The `part_of` chain {names} loops back "
+                            "on itself; an entity chain must end at "
+                            "an aggregate"
+                        )
+                    }
+                )
+            chain.append(part_of)
+            part_of = part_of.meta_.part_of
+
+    return part_of
