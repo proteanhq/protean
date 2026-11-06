@@ -185,7 +185,8 @@ def _render_process_managers(
 
 def _pm_label(pm_short: str, pm: dict[str, Any]) -> str:
     """Label a process manager node, noting whether it has start/end handlers."""
-    handler_infos = pm.get("handlers", {}).values()
+    # Sorted key order with a stop at the first match: later entries are never read.
+    handler_infos = [info for _, info in sorted(pm.get("handlers", {}).items())]
     lifecycle: list[str] = []
     if any(info.get("start") for info in handler_infos):
         lifecycle.append("start")

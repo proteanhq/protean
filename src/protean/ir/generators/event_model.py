@@ -1273,7 +1273,7 @@ def _read_model_change_phrases(
 def _render_model_changes(
     added: list[str], removed: list[str], changed: list[str]
 ) -> str:
-    """Join the three sections into the diff text, skipping empty ones."""
+    """Join the added, removed and changed lists into the diff text."""
     if not (added or removed or changed):
         return "No model changes."
 
