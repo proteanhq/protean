@@ -32,6 +32,7 @@ from protean.server.supervisor import (
     _SHUTDOWN_TIMEOUT_SECONDS,
     Supervisor,
     _config_search_root,
+    _configured_drain_window,
     _join_within,
     _termination_budget,
     _worker_entry,
@@ -564,6 +565,43 @@ class TestConfigSearchRoot:
         (package / "domain.py").write_text("domain = object()\n")
         monkeypatch.chdir(tmp_path)
         assert _config_search_root("shop.domain") == os.path.realpath(package)
+
+    @pytest.mark.parametrize("domain_path", [".", ".:domain"], ids=["dot", "dot name"])
+    def test_dot_uses_the_domain_folder_under_src(
+        self, tmp_path, monkeypatch, domain_path
+    ):
+        """For ".", the worker loads `src/<package>/domain.py` and reads the
+        `domain.toml` beside it, so the parent reads the same file."""
+        package = tmp_path / "src" / "shop"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text("")
+        (package / "domain.py").write_text("domain = object()\n")
+        (package / "domain.toml").write_text("[server]\ndrain_timeout = 77\n")
+        monkeypatch.chdir(tmp_path)
+
+        assert _config_search_root(domain_path) == os.path.realpath(package)
+        assert _configured_drain_window(domain_path) == 77.0
+
+    def test_dot_uses_a_top_level_domain_package(self, tmp_path, monkeypatch):
+        package = tmp_path / "domain"
+        package.mkdir()
+        (package / "__init__.py").write_text("")
+        monkeypatch.chdir(tmp_path)
+
+        assert _config_search_root(".") == os.path.realpath(package)
+
+    def test_dot_with_more_than_one_domain_under_src_uses_the_working_directory(
+        self, tmp_path, monkeypatch
+    ):
+        """The worker reports the ambiguous lookup; the parent does not fail."""
+        for name in ("a", "b"):
+            package = tmp_path / "src" / name
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("")
+            (package / "domain.py").write_text("domain = object()\n")
+        monkeypatch.chdir(tmp_path)
+
+        assert _config_search_root(".") == os.path.realpath(tmp_path)
 
 
 class TestSupervisorMonitor:

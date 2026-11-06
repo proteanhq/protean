@@ -42,6 +42,7 @@ from types import FrameType
 from typing import Any, Optional
 
 from protean._deprecation import warn_from_registry
+from protean.exceptions import NoDomainException
 from protean.integrations.logging import ProteanRedactionFilter, _keep_record_context
 from protean.utils.logging import (
     _PROTEAN_ROOT_FILTERS,
@@ -117,6 +118,8 @@ def _config_search_root(domain_path: str) -> str:
     candidate = os.path.realpath(path_part)
     if not os.path.splitext(candidate)[1] and os.path.isfile(candidate + ".py"):
         candidate += ".py"
+    if candidate == os.path.realpath("."):
+        candidate = _working_directory_domain_module(candidate)
     if os.path.isfile(candidate):
         return os.path.dirname(candidate)
     if os.path.isdir(candidate):
@@ -124,6 +127,23 @@ def _config_search_root(domain_path: str) -> str:
 
     module_dir = _module_directory(path_part)
     return module_dir if module_dir is not None else os.getcwd()
+
+
+def _working_directory_domain_module(directory: str) -> str:
+    """The domain module the worker loads for the path ".", or *directory*
+    itself when there is none or the lookup is ambiguous.
+
+    The worker's ``prepare_import`` swaps "." for the module that
+    ``_find_domain_file`` picks, and the domain's root path is that module's
+    folder.
+    """
+    from protean.utils.domain_discovery import _find_domain_file  # noqa: PLC0415
+
+    try:
+        return _find_domain_file(directory) or directory
+    except NoDomainException:
+        # The worker reports the ambiguous lookup when it starts.
+        return directory
 
 
 def _module_directory(module_name: str) -> str | None:

@@ -128,8 +128,13 @@ def _find_src_domain_file(directory: str) -> str | None:
     same name matches.
     """
     for filename in _DOMAIN_FILENAMES:
+        # A broken symlink matches the glob but cannot be imported.
         matches = sorted(
-            glob.glob(os.path.join(glob.escape(directory), "src", "*", filename))
+            match
+            for match in glob.glob(
+                os.path.join(glob.escape(directory), "src", "*", filename)
+            )
+            if os.path.isfile(match)
         )
         if len(matches) == 1:
             return matches[0]
@@ -242,8 +247,8 @@ def derive_domain(domain_path: str | None = None) -> Domain | None:
     `subdomain.py`, in the current folder, then `src/*/domain.py`, then
     `src/*/subdomain.py`. More than one `src/*/domain.py`, or, with no
     `src/*/domain.py`, more than one `src/*/subdomain.py`, raises
-    `NoDomainException`. With no path and no match, returns
-    None.
+    `NoDomainException`. With no path and no match, imports a module named
+    `domain` from the import path if there is one, and otherwise returns None.
     """
     domain_import_path = os.environ.get("PROTEAN_DOMAIN") or domain_path
 
@@ -263,12 +268,14 @@ def derive_domain(domain_path: str | None = None) -> Domain | None:
 def _derive_default_domain() -> Domain | None:
     """Load the domain for the current folder when no path is given.
 
-    Returns None when the folder has no `domain` or `subdomain` module and
-    nothing matches under `src/`.
+    Returns None when the folder has no `domain` or `subdomain` module,
+    nothing matches under `src/`, and no module named `domain` can be
+    imported.
     """
-    domain_file = _find_domain_file(".")
-    if domain_file is not None:
-        return locate_domain(prepare_import(domain_file), None)
+    if _find_domain_file(".") is not None:
+        # Resolve through "." so both forms import the same module name, even
+        # when `src/<package>` is a symlink.
+        return locate_domain(prepare_import("."), None)
 
     import_name = prepare_import("domain.py")
     return locate_domain(import_name, None, raise_if_not_found=False)

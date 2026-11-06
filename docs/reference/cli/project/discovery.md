@@ -28,6 +28,9 @@ import path and imports the file under its package name, such as
 stops with an error that lists every match. Pass `--domain` to choose one.
 `--domain .` uses the same order.
 
+When nothing matches and no path is given at all, not even `.`, the command
+also tries to import a module named `domain` from the import path.
+
 **`--domain auth`**
 
 The given name is imported, automatically detecting a domain (``domain`` or
@@ -41,7 +44,8 @@ The given name is imported, automatically detecting a domain (``domain`` or
     parts:
 
     - ``--domain src/auth``
-        Adds ``src`` to the import path and imports ``auth``.
+        When ``src`` has no ``__init__.py``, adds ``src`` to the import path
+        and imports ``auth``.
 
     - ``--domain auth.domain``
         Adds the current directory to the import path and imports
