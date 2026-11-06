@@ -140,10 +140,13 @@ def _working_directory_domain_module(directory: str) -> str:
     from protean.utils.domain_discovery import _find_domain_file  # noqa: PLC0415
 
     try:
-        return _find_domain_file(directory) or directory
+        found = _find_domain_file(directory)
     except NoDomainException:
         # The worker reports the ambiguous lookup when it starts.
         return directory
+    # The worker's Domain resolves symlinks in its module path, so a
+    # symlinked `src/<package>` must point the search at the target folder.
+    return os.path.realpath(found) if found else directory
 
 
 def _module_directory(module_name: str) -> str | None:

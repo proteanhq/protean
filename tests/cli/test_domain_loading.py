@@ -240,15 +240,21 @@ class TestDeriveDomainFromSrcLayout:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv("PROTEAN_DOMAIN", raising=False)
         monkeypatch.setattr(sys, "path", [*sys.path])
-        self._forget_test_modules(monkeypatch)
+        for module_name in self._test_modules():
+            monkeypatch.delitem(sys.modules, module_name)
         yield tmp_path
-        self._forget_test_modules(monkeypatch)
+        # Pop directly: `monkeypatch.delitem` here would record these modules
+        # and put them back into `sys.modules` at monkeypatch teardown.
+        for module_name in self._test_modules():
+            sys.modules.pop(module_name, None)
 
     @staticmethod
-    def _forget_test_modules(monkeypatch) -> None:
-        for module_name in list(sys.modules):
-            if module_name.split(".")[0] in _TEST_PACKAGES:
-                monkeypatch.delitem(sys.modules, module_name)
+    def _test_modules() -> list[str]:
+        return [
+            module_name
+            for module_name in sys.modules
+            if module_name.split(".")[0] in _TEST_PACKAGES
+        ]
 
     @staticmethod
     def _write_package(root: Path, package: str, filename: str, name: str) -> None:

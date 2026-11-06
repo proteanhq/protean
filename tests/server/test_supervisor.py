@@ -582,6 +582,21 @@ class TestConfigSearchRoot:
         assert _config_search_root(domain_path) == os.path.realpath(package)
         assert _configured_drain_window(domain_path) == 77.0
 
+    def test_dot_resolves_a_symlinked_package_under_src(self, tmp_path, monkeypatch):
+        """For a `src/<package>` symlink, the worker's Domain uses the target
+        folder, so the parent reads the `domain.toml` above the target."""
+        target = tmp_path / "libs" / "shop"
+        target.mkdir(parents=True)
+        (target / "__init__.py").write_text("")
+        (target / "domain.py").write_text("domain = object()\n")
+        (tmp_path / "libs" / "domain.toml").write_text("[server]\ndrain_timeout = 66\n")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "shop").symlink_to(target)
+        monkeypatch.chdir(tmp_path)
+
+        assert _config_search_root(".") == os.path.realpath(target)
+        assert _configured_drain_window(".") == 66.0
+
     def test_dot_uses_a_top_level_domain_package(self, tmp_path, monkeypatch):
         package = tmp_path / "domain"
         package.mkdir()
