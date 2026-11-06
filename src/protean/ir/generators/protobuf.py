@@ -255,48 +255,102 @@ def generate_proto_schema(
     name = element.get("name", "") or short_name(own_fqn)
     namespace = module_path(own_fqn) or "protean"
 
-    imports: set[str] = set()
     nested = import_path is not None
-    entry_names = (
-        {
-            _map_entry_name(fname)
-            for fname, fspec in element.get("fields", {}).items()
-            if fspec.get("kind") == "dict"
-        }
-        if nested
-        else set()
+    entry_names = _map_entry_names(element) if nested else set()
+    types = _TypeNames(
+        own_fqn,
+        name,
+        namespace,
+        entry_names,
+        {name, *entry_names, *(short_name(fqn) for fqn in flat)},
+        import_path,
     )
 
-    taken = {name, *entry_names, *(short_name(fqn) for fqn in flat)}
-
-    def local_name(ref_name: str) -> str:
-        return _declared_name(ref_name, name, entry_names, taken)
-
-    def resolve(target_fqn: str, referenced: set[str]) -> str:
-        ref_name = short_name(target_fqn)
-        if not ref_name:
-            return "map<string, string>"
-        # A self-reference names the message defined in this very file. An
-        # element without an fqn can only be matched by its name.
-        is_self = target_fqn == own_fqn if own_fqn else ref_name == name
-        path = import_path(target_fqn) if import_path and not is_self else None
-        if not path:
-            referenced.add(target_fqn)
-            return _local_type_name(
-                local_name(ref_name), namespace, name, nested=nested
-            )
-        imports.add(path)
-        return f".{module_path(target_fqn) or 'protean'}.{ref_name}"
-
     referenced: set[str] = set()
-    main_block = _message_body(name, element.get("fields", {}), resolve, referenced)
-    ref_blocks = _referenced_blocks(referenced, name, flat, resolve, local_name)
+    main_block = _message_body(
+        name, element.get("fields", {}), types._resolve, referenced
+    )
+    ref_blocks = _referenced_blocks(
+        referenced, name, flat, types._resolve, types._local_name
+    )
 
     if nested and ref_blocks:
         message_blocks = [_nest_blocks(main_block, ref_blocks)]
     else:
         message_blocks = [main_block, *ref_blocks]
 
+    return _render_proto_file(namespace, types.imports, message_blocks)
+
+
+def _map_entry_names(element: dict[str, Any]) -> set[str]:
+    """The map-entry message names the element's ``dict`` fields declare."""
+    return {
+        _map_entry_name(fname)
+        for fname, fspec in element.get("fields", {}).items()
+        if fspec.get("kind") == "dict"
+    }
+
+
+class _TypeNames:
+    """Name the proto type of each target one ``.proto`` file references.
+
+    ``imports`` collects the paths of the files the resolved names come from.
+    """
+
+    def __init__(
+        self,
+        own_fqn: str,
+        name: str,
+        namespace: str,
+        entry_names: set[str],
+        taken: set[str],
+        import_path: Callable[[str], str | None] | None,
+    ) -> None:
+        self._own_fqn = own_fqn
+        self._name = name
+        self._namespace = namespace
+        self._entry_names = entry_names
+        self._taken = taken
+        self._import_path = import_path
+        self.imports: set[str] = set()
+
+    def _local_name(self, ref_name: str) -> str:
+        """The name a target defined in this file is declared under."""
+        return _declared_name(ref_name, self._name, self._entry_names, self._taken)
+
+    def _resolve(self, target_fqn: str, referenced: set[str]) -> str:
+        """The proto type that names ``target_fqn`` in this file.
+
+        A target defined in this file is added to ``referenced``; a target
+        imported from another file adds that file's path to ``imports``.
+        """
+        ref_name = short_name(target_fqn)
+        if not ref_name:
+            return "map<string, string>"
+        # A self-reference names the message defined in this very file. An
+        # element without an fqn can only be matched by its name.
+        is_self = (
+            target_fqn == self._own_fqn if self._own_fqn else ref_name == self._name
+        )
+        path = (
+            self._import_path(target_fqn) if self._import_path and not is_self else None
+        )
+        if not path:
+            referenced.add(target_fqn)
+            return _local_type_name(
+                self._local_name(ref_name),
+                self._namespace,
+                self._name,
+                nested=self._import_path is not None,
+            )
+        self.imports.add(path)
+        return f".{module_path(target_fqn) or 'protean'}.{ref_name}"
+
+
+def _render_proto_file(
+    namespace: str, imports: set[str], message_blocks: list[list[str]]
+) -> str:
+    """Join the header, the imports and the message blocks into file text."""
     if any(_TIMESTAMP in line for block in message_blocks for line in block):
         imports.add("google/protobuf/timestamp.proto")
 

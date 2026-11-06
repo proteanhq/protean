@@ -83,42 +83,14 @@ def _field_to_schema(field: dict[str, Any]) -> dict[str, Any]:
     kind = field.get("kind", "standard")
     ir_type = field.get("type", "")
 
-    schema: dict[str, Any]
-
-    if kind in ("value_object", "has_one"):
-        target = field.get("target", "")
-        ref_name = short_name(target)
-        schema = {"$ref": f"#/$defs/{ref_name}"}
-        return dict(sorted(schema.items()))
-
-    if kind == "has_many":
-        target = field.get("target", "")
-        ref_name = short_name(target)
-        schema = {
-            "items": {"$ref": f"#/$defs/{ref_name}"},
-            "type": "array",
-        }
-        return dict(sorted(schema.items()))
-
-    if kind == "value_object_list":
-        target = field.get("target", "")
-        ref_name = short_name(target)
-        schema = {
-            "items": {"$ref": f"#/$defs/{ref_name}"},
-            "type": "array",
-        }
-        return dict(sorted(schema.items()))
+    if kind in _REF_KINDS:
+        return _ref_schema(kind, field)
 
     if kind == "reference":
-        schema = {"type": "string"}
-        return schema
+        return {"type": "string"}
 
     if kind == "list":
-        schema = {"type": "array"}
-        content_type = field.get("content_type")
-        if content_type and content_type in _TYPE_MAP:
-            schema["items"] = dict(sorted(_TYPE_MAP[content_type].items()))
-        return dict(sorted(schema.items()))
+        return _list_schema(field)
 
     if kind == "dict":
         return _dict_schema(field)
@@ -130,6 +102,37 @@ def _field_to_schema(field: dict[str, Any]) -> dict[str, Any]:
         return {"type": "string"}
 
     # standard / text / identifier / status
+    return _scalar_schema(field, ir_type)
+
+
+#: Field kinds whose schema is a ``$ref`` to the target's ``$defs`` entry,
+#: directly or as the items of an array.
+_REF_KINDS = ("value_object", "has_one", "has_many", "value_object_list")
+
+
+def _ref_schema(kind: str, field: dict[str, Any]) -> dict[str, Any]:
+    """Return the JSON Schema for a field that refers to a ``$defs`` entry.
+
+    A ``value_object`` or ``has_one`` field is the ``$ref`` itself; a
+    ``has_many`` or ``value_object_list`` field is an array of it.
+    """
+    ref = {"$ref": f"#/$defs/{short_name(field.get('target', ''))}"}
+    if kind in ("value_object", "has_one"):
+        return ref
+    return {"items": ref, "type": "array"}
+
+
+def _list_schema(field: dict[str, Any]) -> dict[str, Any]:
+    """Return the JSON Schema for a ``list`` field, typed by its content type."""
+    schema: dict[str, Any] = {"type": "array"}
+    content_type = field.get("content_type")
+    if content_type and content_type in _TYPE_MAP:
+        schema["items"] = dict(sorted(_TYPE_MAP[content_type].items()))
+    return dict(sorted(schema.items()))
+
+
+def _scalar_schema(field: dict[str, Any], ir_type: str) -> dict[str, Any]:
+    """Return the JSON Schema for a scalar field, with its constraints."""
     base = dict(_TYPE_MAP.get(ir_type, {"type": "string"}))
 
     # Constraints
@@ -137,6 +140,17 @@ def _field_to_schema(field: dict[str, Any]) -> dict[str, Any]:
         base["maxLength"] = field["max_length"]
     if field.get("min_length") is not None:
         base["minLength"] = field["min_length"]
+    _add_numeric_constraints(base, field, ir_type)
+    if field.get("choices"):
+        base["enum"] = field["choices"]
+
+    return dict(sorted(base.items()))
+
+
+def _add_numeric_constraints(
+    base: dict[str, Any], field: dict[str, Any], ir_type: str
+) -> None:
+    """Add a field's bounds, or a Decimal's precision and scale, to ``base``."""
     if ir_type == "Decimal":
         # minimum/maximum only constrain numbers, and a Decimal is
         # published as a string, so its bounds are left out.
@@ -149,10 +163,6 @@ def _field_to_schema(field: dict[str, Any]) -> dict[str, Any]:
             base["maximum"] = field["max_value"]
         if field.get("min_value") is not None:
             base["minimum"] = field["min_value"]
-    if field.get("choices"):
-        base["enum"] = field["choices"]
-
-    return dict(sorted(base.items()))
 
 
 def _wrap_optional(schema: dict[str, Any]) -> dict[str, Any]:
@@ -237,30 +247,34 @@ def _build_properties(
     required: list[str] = []
 
     for fname, fspec in sorted(fields.items()):
-        prop_schema = _field_to_schema(fspec)
-
         is_required = fspec.get("required") or fspec.get("identifier")
         if is_required:
             required.append(fname)
-        else:
-            # Wrap all optional fields with anyOf null, including $ref
-            prop_schema = _wrap_optional(prop_schema)
-
-        if fspec.get("description"):
-            prop_schema["description"] = fspec["description"]
-
-        if "default" in fspec:
-            default_val = fspec["default"]
-            if default_val != "<callable>":
-                if fspec.get("type") == "Decimal" and default_val is not None:
-                    # A Decimal is published as a string, so a numeric
-                    # default must be a string too to pass the field's schema.
-                    default_val = str(default_val)
-                prop_schema["default"] = default_val
-
-        properties[fname] = dict(sorted(prop_schema.items()))
+        properties[fname] = _property_schema(fspec, bool(is_required))
 
     return properties, sorted(required)
+
+
+def _property_schema(fspec: dict[str, Any], is_required: bool) -> dict[str, Any]:
+    """Build one field's property schema, with its description and default."""
+    prop_schema = _field_to_schema(fspec)
+    if not is_required:
+        # Wrap all optional fields with anyOf null, including $ref
+        prop_schema = _wrap_optional(prop_schema)
+
+    if fspec.get("description"):
+        prop_schema["description"] = fspec["description"]
+
+    if "default" in fspec:
+        default_val = fspec["default"]
+        if default_val != "<callable>":
+            if fspec.get("type") == "Decimal" and default_val is not None:
+                # A Decimal is published as a string, so a numeric
+                # default must be a string too to pass the field's schema.
+                default_val = str(default_val)
+            prop_schema["default"] = default_val
+
+    return dict(sorted(prop_schema.items()))
 
 
 def _build_extension_metadata(

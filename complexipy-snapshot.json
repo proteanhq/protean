@@ -400,54 +400,6 @@
     ]
   },
   {
-    "path": "src/protean/ir/analysis/dataflow.py",
-    "file_name": "dataflow.py",
-    "functions": [
-      {
-        "name": "_FlowBuilder::_walk_structure",
-        "complexity": 16
-      },
-      {
-        "name": "_FlowBuilder::_step",
-        "complexity": 20
-      },
-      {
-        "name": "_FlowBuilder::_step_simple",
-        "complexity": 25
-      }
-    ]
-  },
-  {
-    "path": "src/protean/ir/analysis/element_index.py",
-    "file_name": "element_index.py",
-    "functions": [
-      {
-        "name": "_role",
-        "complexity": 18
-      }
-    ]
-  },
-  {
-    "path": "src/protean/ir/analysis/facts.py",
-    "file_name": "facts.py",
-    "functions": [
-      {
-        "name": "FactCatalog::_collect",
-        "complexity": 19
-      }
-    ]
-  },
-  {
-    "path": "src/protean/ir/analysis/source_provider.py",
-    "file_name": "source_provider.py",
-    "functions": [
-      {
-        "name": "SourceProvider::_discover_modules",
-        "complexity": 28
-      }
-    ]
-  },
-  {
     "path": "src/protean/ir/builder.py",
     "file_name": "builder.py",
     "functions": [
@@ -598,82 +550,6 @@
       {
         "name": "_diff_contracts",
         "complexity": 60
-      }
-    ]
-  },
-  {
-    "path": "src/protean/ir/generators/clusters.py",
-    "file_name": "clusters.py",
-    "functions": [
-      {
-        "name": "_collect_cross_references",
-        "complexity": 26
-      }
-    ]
-  },
-  {
-    "path": "src/protean/ir/generators/event_model.py",
-    "file_name": "event_model.py",
-    "functions": [
-      {
-        "name": "_cluster_change_phrases",
-        "complexity": 17
-      },
-      {
-        "name": "generate_event_model_diff",
-        "complexity": 38
-      }
-    ]
-  },
-  {
-    "path": "src/protean/ir/generators/events.py",
-    "file_name": "events.py",
-    "functions": [
-      {
-        "name": "_collect_referenced_event_fqns",
-        "complexity": 26
-      },
-      {
-        "name": "_render_process_managers",
-        "complexity": 31
-      },
-      {
-        "name": "_render_process_manager_subgraph",
-        "complexity": 32
-      }
-    ]
-  },
-  {
-    "path": "src/protean/ir/generators/handlers.py",
-    "file_name": "handlers.py",
-    "functions": [
-      {
-        "name": "_render_process_managers",
-        "complexity": 32
-      }
-    ]
-  },
-  {
-    "path": "src/protean/ir/generators/protobuf.py",
-    "file_name": "protobuf.py",
-    "functions": [
-      {
-        "name": "generate_proto_schema",
-        "complexity": 24
-      }
-    ]
-  },
-  {
-    "path": "src/protean/ir/generators/schema.py",
-    "file_name": "schema.py",
-    "functions": [
-      {
-        "name": "_build_properties",
-        "complexity": 17
-      },
-      {
-        "name": "_field_to_schema",
-        "complexity": 26
       }
     ]
   },

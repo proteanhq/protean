@@ -13,7 +13,7 @@ Usage::
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from protean.ir.generators.base import (
@@ -153,46 +153,45 @@ def _render_process_managers(
 
     for pm_fqn, pm in sorted(pms.items()):
         pm_id = _pm_node_id(pm_fqn)
-        pm_short = short_name(pm_fqn)
-
-        # Collect lifecycle annotations
-        annotations: list[str] = []
-        for _evt_type, handler_info in sorted(pm.get("handlers", {}).items()):
-            if handler_info.get("start"):
-                annotations.append("start")
-                break
-        for _evt_type, handler_info in sorted(pm.get("handlers", {}).items()):
-            if handler_info.get("end"):
-                annotations.append("end")
-                break
-
-        label = pm_short
-        if annotations:
-            label = f"{pm_short} ({', '.join(annotations)})"
-
+        label = _pm_label(short_name(pm_fqn), pm)
         lines.append(f"    {pm_id}[{mermaid_escape(label)}]")
 
         # Events -> PM
         for evt_type in sorted(pm.get("handlers", {}).keys()):
             evt_fqn = evt_type_to_fqn.get(evt_type, "")
             if evt_fqn:
-                handler_info = pm["handlers"][evt_type]
-                edge_label_parts: list[str] = []
-                if handler_info.get("start"):
-                    edge_label_parts.append("start")
-                if handler_info.get("end"):
-                    edge_label_parts.append("end")
-
-                if edge_label_parts:
-                    edge_label = ", ".join(edge_label_parts)
-                    lines.append(
-                        f"    {_evt_node_id(evt_fqn)}"
-                        f" -->|{mermaid_escape(edge_label)}| {pm_id}"
-                    )
-                else:
-                    lines.append(f"    {_evt_node_id(evt_fqn)} --> {pm_id}")
+                lines.append(_pm_event_edge(evt_fqn, pm["handlers"][evt_type], pm_id))
 
     return lines
+
+
+def _pm_label(pm_short: str, pm: dict[str, Any]) -> str:
+    """Label a process manager node, noting whether it has start/end handlers."""
+    # Sorted key order with a stop at the first match: later entries are never read.
+    handler_infos = [info for _, info in sorted(pm.get("handlers", {}).items())]
+    annotations: list[str] = []
+    if any(info.get("start") for info in handler_infos):
+        annotations.append("start")
+    if any(info.get("end") for info in handler_infos):
+        annotations.append("end")
+
+    if annotations:
+        return f"{pm_short} ({', '.join(annotations)})"
+    return pm_short
+
+
+def _pm_event_edge(evt_fqn: str, handler_info: dict[str, Any], pm_id: str) -> str:
+    """Render an event -> PM edge, labelled when the handler starts or ends it."""
+    edge_label_parts: list[str] = []
+    if handler_info.get("start"):
+        edge_label_parts.append("start")
+    if handler_info.get("end"):
+        edge_label_parts.append("end")
+
+    if edge_label_parts:
+        edge_label = ", ".join(edge_label_parts)
+        return f"    {_evt_node_id(evt_fqn)} -->|{mermaid_escape(edge_label)}| {pm_id}"
+    return f"    {_evt_node_id(evt_fqn)} --> {pm_id}"
 
 
 def _render_projectors(
@@ -261,25 +260,33 @@ def _collect_referenced_event_fqns(
     fqns: set[str] = set()
 
     for cluster in ir.get("clusters", {}).values():
-        for eh in cluster.get("event_handlers", {}).values():
-            for evt_type in eh.get("handlers", {}):
-                fqn = evt_type_to_fqn.get(evt_type, "")
-                if fqn:
-                    fqns.add(fqn)
+        fqns |= _handled_event_fqns(
+            cluster.get("event_handlers", {}).values(), evt_type_to_fqn
+        )
 
-    for pm in ir.get("flows", {}).get("process_managers", {}).values():
-        for evt_type in pm.get("handlers", {}):
+    fqns |= _handled_event_fqns(
+        ir.get("flows", {}).get("process_managers", {}).values(), evt_type_to_fqn
+    )
+
+    for proj_group in ir.get("projections", {}).values():
+        fqns |= _handled_event_fqns(
+            proj_group.get("projectors", {}).values(), evt_type_to_fqn
+        )
+
+    return fqns
+
+
+def _handled_event_fqns(
+    consumers: Iterable[dict[str, Any]],
+    evt_type_to_fqn: dict[str, str],
+) -> set[str]:
+    """The FQNs of the known events the given consumers handle."""
+    fqns: set[str] = set()
+    for consumer in consumers:
+        for evt_type in consumer.get("handlers", {}):
             fqn = evt_type_to_fqn.get(evt_type, "")
             if fqn:
                 fqns.add(fqn)
-
-    for proj_group in ir.get("projections", {}).values():
-        for projector in proj_group.get("projectors", {}).values():
-            for evt_type in projector.get("handlers", {}):
-                fqn = evt_type_to_fqn.get(evt_type, "")
-                if fqn:
-                    fqns.add(fqn)
-
     return fqns
 
 
@@ -324,42 +331,13 @@ def _render_process_manager_subgraph(
 
     for pm_fqn, pm in sorted(pms.items()):
         pm_id = _pm_node_id(pm_fqn)
-        pm_short = short_name(pm_fqn)
-
-        annotations: list[str] = []
-        for _evt_type, handler_info in sorted(pm.get("handlers", {}).items()):
-            if handler_info.get("start"):
-                annotations.append("start")
-                break
-        for _evt_type, handler_info in sorted(pm.get("handlers", {}).items()):
-            if handler_info.get("end"):
-                annotations.append("end")
-                break
-
-        label = pm_short
-        if annotations:
-            label = f"{pm_short} ({', '.join(annotations)})"
-
+        label = _pm_label(short_name(pm_fqn), pm)
         nodes.append(f"        {pm_id}[{mermaid_escape(label)}]")
 
         for evt_type in sorted(pm.get("handlers", {}).keys()):
             evt_fqn = evt_type_to_fqn.get(evt_type, "")
             if evt_fqn:
-                handler_info = pm["handlers"][evt_type]
-                edge_label_parts: list[str] = []
-                if handler_info.get("start"):
-                    edge_label_parts.append("start")
-                if handler_info.get("end"):
-                    edge_label_parts.append("end")
-
-                if edge_label_parts:
-                    edge_label = ", ".join(edge_label_parts)
-                    edges.append(
-                        f"    {_evt_node_id(evt_fqn)}"
-                        f" -->|{mermaid_escape(edge_label)}| {pm_id}"
-                    )
-                else:
-                    edges.append(f"    {_evt_node_id(evt_fqn)} --> {pm_id}")
+                edges.append(_pm_event_edge(evt_fqn, pm["handlers"][evt_type], pm_id))
 
     if not nodes:
         return [], []
