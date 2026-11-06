@@ -60,10 +60,10 @@ a top-level export: `from protean import Q`.
 ## Cross-adapter conformance
 
 The [conformance test suite](../reference/testing/conformance.md) holds every
-built-in adapter to the same behaviour for each of these query-API primitives
-that its capability tier covers. Each primitive is gated by a capability tier:
-an adapter that declares a capability must pass every conformance test tagged
-with it. See [ADR-0023](../adr/0023-query-api-conformance-contract-and-capability-tiers.md)
+built-in adapter to the same behaviour for these query-API primitives.
+Each primitive is gated by a capability tier: an adapter that declares a
+capability must pass every conformance test tagged with it. See
+[ADR-0023](../adr/0023-query-api-conformance-contract-and-capability-tiers.md)
 for the rationale.
 
 | Primitive | Capability tier | Adapters that must pass |

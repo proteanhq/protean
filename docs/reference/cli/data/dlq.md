@@ -76,7 +76,7 @@ protean dlq inspect "1708768400000-0" --domain=my_domain
 
 Replays a single DLQ message back to its original stream for
 reprocessing. The message is removed from the DLQ and published as a new
-message on its original stream.
+message there.
 
 ```bash
 protean dlq replay "1708768400000-0" --domain=my_domain

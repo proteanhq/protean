@@ -2,7 +2,7 @@
 
 When you install Protean, you also get the `protean` script, a command line interface, in your virtualenv. Driven by [Typer](https://typer.tiangolo.com), the script gives access to commands that can help you scaffold projects, generate new code, and run background servers. The `--help` option will give more information about any commands and options.
 
-Most commands accept a domain instance. The command loads and initializes the
+Most commands accept a domain instance. They load and initialize the
 domain so that it is ready for shell access. The
 [`--domain`](project/discovery.md) option is used to specify how to load the
 domain.

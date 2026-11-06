@@ -59,7 +59,8 @@ Learn more:
 
 The [Cache port](./cache/index.md) defines the interface for interacting with
 caching systems. It exposes APIs that store projection data temporarily and
-read it back, so the application reads the database less often and runs faster.
+read it back. The application then reads the database less often, which
+improves its performance.
 
 Current Implementations:
 
