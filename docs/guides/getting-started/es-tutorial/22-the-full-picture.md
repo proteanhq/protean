@@ -1,7 +1,7 @@
 # Chapter 22: The Full Picture
 
-We have built a complete digital banking platform, starting from an empty
-project. In this final chapter, we step back and survey the full architecture,
+We have built a complete digital banking platform from the ground up.
+In this final chapter, we step back and survey the full architecture,
 add a multi-aggregate projection, present the complete production
 configuration, and review every tool at our disposal.
 

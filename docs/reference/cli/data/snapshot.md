@@ -106,7 +106,7 @@ See [Domain Discovery](../project/discovery.md) for the full resolution logic.
 ## Programmatic API
 
 You can create the same snapshots from scripts or the `protean shell` with the
-Domain methods `create_snapshot`, `create_snapshots` and
+Domain methods `create_snapshot`, `create_snapshots`, and
 `create_all_snapshots`:
 
 ??? example "The domain this example uses"

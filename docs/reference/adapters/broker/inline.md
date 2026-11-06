@@ -6,7 +6,7 @@ The Inline broker is an in-memory message broker that keeps messages within the 
 
 The Inline broker is designed for:
 
-- **Development environments** where a simple setup matters most
+- **Development environments** where simplicity is key
 - **Testing scenarios** where deterministic behavior is required
 - **Small applications** that don't need distributed messaging
 - **Prototyping** when you want to defer technology decisions

@@ -91,7 +91,7 @@ is raised. No event means no state change. The aggregate remains
 consistent.
 
 !!! note
-    The domain method runs this validation, and the `@apply` handler does not.
+    This validation runs in the domain method, not in the `@apply` handler.
     In the next chapters we will move business rules into **invariants**, which
     validate state after every `@apply` handler runs.
 

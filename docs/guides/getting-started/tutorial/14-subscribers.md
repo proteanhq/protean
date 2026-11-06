@@ -65,8 +65,8 @@ External System           Protean
      │                  └────────────┘
 ```
 
-The subscriber acts as an **anti-corruption layer** (ACL). It stops external
-data formats from reaching the domain. If BookSupply changes their payload
+The subscriber acts as an **anti-corruption layer** (ACL). It prevents external
+data formats from leaking into the domain. If BookSupply changes their payload
 format, only the subscriber needs to change.
 
 ## Testing the Subscriber

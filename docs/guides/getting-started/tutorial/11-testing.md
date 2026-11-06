@@ -6,7 +6,7 @@ commands, events, invariants, projections, and API endpoints.
 !!! tip "Focus on business logic"
     Protean validates fields, enforces immutability, and wires domain elements
     together automatically. Your tests should focus on the behavior *you*
-    wrote, invariants, state transitions, command flows, and event reactions.
+    wrote: invariants, state transitions, command flows, and event reactions.
     For a deeper discussion, see [Testing](../../testing/index.md).
 
 ## Setting Up Tests

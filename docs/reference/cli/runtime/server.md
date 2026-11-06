@@ -34,8 +34,8 @@ stream subscriptions (`subscription_type = "stream"`), or passing
 `--allow-event-store-multiworker` to override (accepting that events will be
 double-processed).
 
-The check behind this refusal is **per-process**: it only sees the workers
-within a single `protean server` invocation. It cannot detect a second
+This check is **per-process**: it only sees the workers within a single
+`protean server` invocation. It cannot detect a second
 `protean server` (another container, host, or Kubernetes replica) running
 against the same event store, so multiple single-worker processes still
 double-process event-store subscriptions.

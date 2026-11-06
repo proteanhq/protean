@@ -2,10 +2,9 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Repositories are how aggregates reach the database. The repository's `add`
-method saves an aggregate inside a transaction and publishes its events after
-the save. You call the same `add` method to update an aggregate that already
-exists.
+Repositories are how aggregates reach the database. Here is how to save one,
+what a transaction does around it, how events are published on the way out,
+and how updates differ from inserts.
 
 Aggregates are saved into the configured database using `add` method of the
 repository.

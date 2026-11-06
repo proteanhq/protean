@@ -82,8 +82,8 @@ Add `--data` to see full event payloads:
 $ protean events history --aggregate=Account --id=acc-7742 --data --domain=fidelis
 ```
 
-This history helps you debug an aggregate. You can see exactly what happened to
-an aggregate and when.
+This history helps with debugging. You can see exactly what happened to an
+aggregate and when.
 
 ## What We Built
 

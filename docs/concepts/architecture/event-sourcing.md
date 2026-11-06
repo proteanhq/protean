@@ -33,7 +33,7 @@ reconstruct the state of the system at any point in time.
 5. **Aggregate**: The Command Handler invokes the appropriate method on the Aggregate to perform the required business operation.
 6. **Output**: The business method calls `raise_()` to generate an Event that
    describes the change. `raise_()` automatically invokes the corresponding
-   `@apply` handler to mutate the aggregate's state. The same handler that runs
+   `@apply` handler to mutate the aggregate's state, the same one that runs
    during event replay. Because both paths run the same handler, the live path
    and the replay path always produce identical results.
 7. **Repository**: The generated Event is passed back to the Repository, which is responsible for persisting the Event.

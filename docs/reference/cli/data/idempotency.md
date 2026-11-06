@@ -55,7 +55,7 @@ No idempotency markers to clean up.
 
 ## Configuration
 
-You set the defaults in the `[consume_idempotency.cleanup]` section of
+You can change the defaults in the `[consume_idempotency.cleanup]` section of
 `domain.toml`:
 
 ```toml

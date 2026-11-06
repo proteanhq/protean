@@ -1,8 +1,8 @@
 # Chapter 22: The Full Picture
 
-We have built a complete online bookstore, starting from an empty project.
-Let's step back and see the full architecture, review what we built, and look
-at where to go from here.
+We have built a complete online bookstore from scratch. Let's step back
+and see the full architecture, review what we built, and look at where
+to go from here.
 
 ## Architecture Overview
 

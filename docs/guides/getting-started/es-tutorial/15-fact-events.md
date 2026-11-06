@@ -17,8 +17,8 @@ This is what **fact events** provide.
 | **Stream** | `fidelis::account-{id}` | `fidelis::account-fact-{id}` |
 | **Use for** | Aggregate replay, handlers | Reporting, external consumers |
 
-Delta events describe what happened. Fact events describe the current state of
-the aggregate.
+Delta events describe what happened. Fact events describe the aggregate's full
+state after each change.
 
 ## Enabling Fact Events
 

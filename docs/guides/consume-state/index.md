@@ -2,8 +2,8 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-The reactive layer responds to state changes that have already happened. The
-reactive layer carries changes across aggregates, updates read-optimized views,
+The reactive layer responds to state changes that have already happened. It
+carries changes across aggregates, updates read-optimized views,
 coordinates multi-step processes, and connects to external systems. None of
 this work couples back to the code that produced the original change.
 

@@ -48,7 +48,7 @@ socket_timeout = 5
 | `retry_on_timeout` | `false` | Retry a command when it times out |
 
 The broker passes the four pool settings, `max_connections`, `socket_timeout`,
-`socket_connect_timeout` and `retry_on_timeout`, to the Redis client's
+`socket_connect_timeout`, and `retry_on_timeout`, to the Redis client's
 connection pool unchanged. Leave a setting out to use the Redis client's
 default.
 
