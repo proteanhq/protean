@@ -1,7 +1,7 @@
 # Read Models
 
 Projections are read-optimized views. Projectors maintain them by reacting to
-domain events. Together they form the read side of CQRS.
+domain events. Together, projections and projectors form the read side of CQRS.
 
 **Guides:**
 [Projections](../guides/consume-state/projections.md)
