@@ -349,7 +349,8 @@ The property holds:
   with `idempotent=True`.
 
 It holds no table for an event-sourced aggregate or its entities, a projection
-stored in a cache, or an element assigned to another provider. A provider with
+stored in a cache, an element registered with `abstract=True`, or an element
+assigned to another provider. A provider with
 `managed = false` has no `outbox` or `processed_message` table in it, because
 Protean does not create those tables on an unmanaged database.
 

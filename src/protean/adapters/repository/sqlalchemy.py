@@ -2622,7 +2622,8 @@ class SAProvider(BaseProvider):
         provider owns, including Protean's ``outbox`` and ``processed_message``
         tables when the domain registers them for this provider. It holds no
         table for an event-sourced aggregate or its entities, a cache-backed
-        projection, or an element assigned to another provider.
+        projection, an abstract element, or an element assigned to another
+        provider.
 
         Reading it builds the table definitions without connecting to the
         database, so it is safe to call before any table exists and after
@@ -2640,13 +2641,14 @@ class SAProvider(BaseProvider):
 
         Reads the registry's raw element map, so Protean's internal aggregates
         (the per-provider outbox and ``processed_message``) are included.
+        Abstract elements are left out: they are base classes and have no table.
         """
         elements = self.domain.registry._elements
         return [
             record.cls
             for element_type in ("AGGREGATE", "ENTITY", "PROJECTION")
             for record in elements.get(element_type, {}).values()
-            if self.owns(record.cls)
+            if not record.cls.meta_.abstract and self.owns(record.cls)
         ]
 
     def _register_table(self, element_cls: type) -> None:

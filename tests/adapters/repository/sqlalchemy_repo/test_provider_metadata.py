@@ -44,6 +44,10 @@ class Invoice(BaseAggregate):
     number: String(required=True)
 
 
+class AbstractRecord(BaseAggregate):
+    created_by: String()
+
+
 class PersonRenamed(BaseEvent):
     person_id: Identifier()
 
@@ -126,11 +130,31 @@ class TestMetadataContents:
         domain = _domain()
         with domain.domain_context():
             provider = domain.providers["default"]
-            first = set(provider.metadata.tables)
+            first = _table_names(provider.metadata)
             second_metadata = provider.metadata
 
-            assert first == set(second_metadata.tables)
+            assert first == ELEMENT_TABLES
+            assert _table_names(second_metadata) == ELEMENT_TABLES
             assert second_metadata is provider._metadata
+
+    def test_holds_no_table_for_an_abstract_aggregate(self):
+        domain = Domain(name="ProviderMetadataAbstract")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": "sqlite:///:memory:",
+        }
+        domain.register(AbstractRecord, abstract=True)
+        domain.register(Person)
+        domain.register(Address, part_of=Person)
+        domain.register(PersonSummary)
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            provider = domain.providers["default"]
+            assert _table_names(provider.metadata) == ELEMENT_TABLES
+
+            domain.setup_database()
+            assert set(inspect(provider._engine).get_table_names()) == (ELEMENT_TABLES)
 
     def test_holds_outbox_table_when_outbox_is_enabled(self):
         domain = _domain(outbox=True)
@@ -203,7 +227,7 @@ class TestMetadataAfterDrop:
             # The order the ``db`` fixture teardown uses: no read in between.
             provider._data_reset()
 
-    def test_data_reset_after_drop_and_read_raises_nothing(self):
+    def test_data_reset_after_drop_read_and_setup_raises_nothing(self):
         domain = _domain(outbox=True)
         with domain.domain_context():
             provider = domain.providers["default"]
@@ -211,6 +235,8 @@ class TestMetadataAfterDrop:
             domain.drop_database()
 
             assert _table_names(provider.metadata) == ELEMENT_TABLES | {"outbox"}
+            # The read puts the dropped tables back into the metadata, so
+            # ``_data_reset()`` needs them to exist in the database again.
             domain.setup_database()
             provider._data_reset()
 
