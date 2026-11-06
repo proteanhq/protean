@@ -19,6 +19,7 @@ import json
 import logging
 import types as _types
 import typing
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -289,6 +290,225 @@ def _is_value_object_class(candidate: Any) -> bool:
     return isinstance(candidate, type) and issubclass(candidate, BaseValueObject)
 
 
+_ADAPTERS_PACKAGE = "protean.adapters"
+
+
+def _is_adapters_name(name: str) -> bool:
+    """Return whether a dotted name is ``protean.adapters`` or lies under it."""
+    return name == _ADAPTERS_PACKAGE or name.startswith(_ADAPTERS_PACKAGE + ".")
+
+
+class _TarjanSCC:
+    """Tarjan's strongly-connected-components algorithm over one graph.
+
+    Iterative, with an explicit work stack of ``[node, next-neighbour-index]``
+    frames, so a deep graph cannot hit the recursion limit.
+    """
+
+    def __init__(self, adjacency: dict[str, list[str]]) -> None:
+        self._adjacency = adjacency
+        self._index_of: dict[str, int] = {}
+        self._lowlink: dict[str, int] = {}
+        self._on_stack: dict[str, bool] = {}
+        self._stack: list[str] = []
+        self._found: list[list[str]] = []
+        self._counter = 0
+
+    def _components(self) -> list[list[str]]:
+        """Return each component as a sorted member list, the list itself sorted."""
+        for start in sorted(self._adjacency):
+            if start not in self._index_of:
+                self._explore(start)
+        return sorted(self._found)
+
+    def _explore(self, start: str) -> None:
+        """Visit every node reachable from ``start`` that is not yet indexed."""
+        work: list[list[Any]] = [[start, 0]]
+        while work:
+            node, i = work[-1]
+            if i == 0:
+                self._enter(node)
+            if self._descend(work, node, i):
+                continue
+            # Node fully explored: close a component if it is a root.
+            self._close_if_root(node)
+            work.pop()
+            if work:  # propagate lowlink up to the parent frame
+                parent = work[-1][0]
+                self._lowlink[parent] = min(self._lowlink[parent], self._lowlink[node])
+
+    def _enter(self, node: str) -> None:
+        """Index ``node`` and push it on the Tarjan stack."""
+        self._index_of[node] = self._lowlink[node] = self._counter
+        self._counter += 1
+        self._stack.append(node)
+        self._on_stack[node] = True
+
+    def _descend(self, work: list[list[Any]], node: str, i: int) -> bool:
+        """Scan ``node``'s neighbours from index ``i``.
+
+        Returns ``True`` after pushing a frame for the first unvisited
+        neighbour, and ``False`` once every neighbour has been scanned.
+        """
+        neighbours = self._adjacency[node]
+        while i < len(neighbours):
+            nxt = neighbours[i]
+            i += 1
+            if nxt not in self._index_of:
+                work[-1][1] = i  # resume after this neighbour
+                work.append([nxt, 0])
+                return True
+            if self._on_stack.get(nxt):
+                self._lowlink[node] = min(self._lowlink[node], self._index_of[nxt])
+        return False
+
+    def _close_if_root(self, node: str) -> None:
+        """Pop ``node``'s component off the stack when ``node`` is its root."""
+        if self._lowlink[node] != self._index_of[node]:
+            return
+        component: list[str] = []
+        while True:
+            w = self._stack.pop()
+            self._on_stack[w] = False
+            component.append(w)
+            if w == node:
+                break
+        self._found.append(sorted(component))
+
+
+_FIELD_MODULES = frozenset({"protean.fields", "protean.fields.basic"})
+_DEPRECATED_FIELDS = frozenset({"Method", "Nested"})
+
+
+class _DeprecatedImportScan:
+    """The deprecated import surfaces one parsed module uses.
+
+    :meth:`IRBuilder._find_deprecated_import_uses` states which surfaces count.
+    """
+
+    def __init__(self, tree: ast.Module) -> None:
+        self._tree = tree
+        self._plumbing = set(_DEPRECATED_PLUMBING)
+        self._module_aliases = self._whole_module_aliases(tree)
+        self._field_aliases = self._field_import_aliases(tree)
+        self._found: set[tuple[str, str]] = set()
+
+    @staticmethod
+    def _whole_module_aliases(tree: ast.Module) -> dict[str, str]:
+        """Return alias -> module for each ``import <module> as <alias>``."""
+        # Whole-module import aliases: `import protean.fields as pf` binds
+        # `pf` -> `protean.fields`.
+        module_aliases: dict[str, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.asname:
+                        module_aliases[alias.asname] = alias.name
+        return module_aliases
+
+    @staticmethod
+    def _field_import_aliases(tree: ast.Module) -> dict[str, str]:
+        """Return local name -> canonical name of module-level Method/Nested imports."""
+        # Module-level names bound to Method/Nested from either field module.
+        field_aliases: dict[str, str] = {}  # local name -> canonical
+        for stmt in tree.body:
+            if isinstance(stmt, ast.ImportFrom) and stmt.module in _FIELD_MODULES:
+                for alias in stmt.names:
+                    if alias.name in _DEPRECATED_FIELDS:
+                        field_aliases[alias.asname or alias.name] = alias.name
+        return field_aliases
+
+    def _dotted(self, node: ast.AST) -> str | None:
+        """Dotted name of an attribute/name chain, or ``None`` if impure."""
+        if isinstance(node, ast.Name):
+            return self._module_aliases.get(node.id, node.id)
+        if isinstance(node, ast.Attribute):
+            base = self._dotted(node.value)
+            return f"{base}.{node.attr}" if base is not None else None
+        return None
+
+    def _uses(self) -> list[tuple[str, str]]:
+        """Return the sorted ``(kind, symbol)`` pairs found in the tree."""
+        for node in ast.walk(self._tree):
+            # ``from protean.utils import <plumbing-name>`` — the import itself
+            # is the deprecated access (it fires ``__getattr__`` at runtime).
+            if isinstance(node, ast.ImportFrom) and node.module == "protean.utils":
+                self._visit_utils_import(node)
+            # ``protean.utils.<plumbing-name>`` attribute access.
+            elif isinstance(node, ast.Attribute) and node.attr in self._plumbing:
+                if self._dotted(node.value) == "protean.utils":
+                    self._found.add(("util", f"protean.utils.{node.attr}"))
+            # ``Method(...)`` / ``Nested(...)`` call bound to a module import, or
+            # a ``protean.fields.Method(...)`` or ``protean.fields.basic.Method(...)``
+            # attribute call.
+            elif isinstance(node, ast.Call):
+                self._visit_call(node)
+        return sorted(self._found)
+
+    def _visit_utils_import(self, node: ast.ImportFrom) -> None:
+        """Record each plumbing name a ``from protean.utils import`` names."""
+        for alias in node.names:
+            if alias.name in self._plumbing:
+                self._found.add(("util", f"protean.utils.{alias.name}"))
+
+    def _visit_call(self, node: ast.Call) -> None:
+        """Record a ``Method``/``Nested`` call reached through a field module."""
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in self._field_aliases:
+            self._found.add(("field", self._field_aliases[func.id]))
+        elif isinstance(func, ast.Attribute) and func.attr in _DEPRECATED_FIELDS:
+            base = self._dotted(func.value)
+            if base in _FIELD_MODULES:
+                self._found.add(("field", func.attr))
+
+
+class _ClusterSurfaces:
+    """The name surfaces of a build's clusters, computed once per cluster.
+
+    A cluster's surface maps a method name to the ``(element_fqn, method_name)``
+    pairs that define it across the aggregate and its entities. It holds
+    body-only methods (via ``element_methods``), so inherited framework methods
+    (``raise_``/``add``/``get``) are not in the surface. Every section key
+    resolves through ``fqn_to_cls`` by construction: a cluster/flow/projection
+    key is the ``fqn`` of a registered element, and ``fqn_to_cls`` is keyed by
+    that same ``fqn``, so the lookups index directly (fail-open lives one layer
+    down, in ``element_facts``).
+    """
+
+    def __init__(
+        self,
+        view: BehavioralView,
+        clusters: dict[str, Any],
+        fqn_to_cls: dict[str, type],
+    ) -> None:
+        self._view = view
+        self._clusters = clusters
+        self._fqn_to_cls = fqn_to_cls
+        self._cache: dict[str, dict[str, list[tuple[str, str]]]] = {}
+
+    def _cluster(self, agg_fqn: str) -> dict[str, list[tuple[str, str]]]:
+        """Return the name surface of one aggregate's cluster."""
+        cached = self._cache.get(agg_fqn)
+        if cached is not None:
+            return cached
+        surface: dict[str, list[tuple[str, str]]] = {}
+        cluster = self._clusters[agg_fqn]
+        for elem_fqn in [agg_fqn, *cluster["entities"].keys()]:
+            elem_cls = self._fqn_to_cls[elem_fqn]
+            for method in self._view.element_methods(elem_cls):
+                surface.setdefault(method.name, []).append((elem_fqn, method.name))
+        self._cache[agg_fqn] = surface
+        return surface
+
+    def _union(self, agg_fqns: set[str]) -> dict[str, list[tuple[str, str]]]:
+        """Return the merged name surface of several clusters, in sorted order."""
+        merged: dict[str, list[tuple[str, str]]] = {}
+        for agg_fqn in sorted(agg_fqns):
+            for name, pairs in self._cluster(agg_fqn).items():
+                merged.setdefault(name, []).extend(pairs)
+        return merged
+
+
 class IRBuilder:
     """Build the Intermediate Representation for a Protean domain.
 
@@ -452,45 +672,8 @@ class IRBuilder:
         field_meta: dict[str, Any] = getattr(cls, "__protean_field_meta__", {})
 
         for name, field_obj in sorted(declared_fields(cls).items()):
-            entry: dict[str, Any] = {}
-
-            if isinstance(field_obj, ValueObject):
-                entry = self._value_object_entry(
-                    field_obj.value_object_cls, field_obj.required
-                )
-
-            elif isinstance(field_obj, ValueObjectList):
-                entry["kind"] = "value_object_list"
-                if isinstance(field_obj.content_type, ValueObject):
-                    entry["target"] = self._resolved_fqn(
-                        field_obj.content_type.value_object_cls
-                    )
-                else:
-                    entry["target"] = fqn(field_obj.content_type)
-
-            elif isinstance(field_obj, HasOne):
-                entry["kind"] = "has_one"
-                entry["target"] = self._resolved_fqn(field_obj.to_cls)
-                if field_obj.via is not None:
-                    entry["via"] = field_obj.via
-
-            elif isinstance(field_obj, HasMany):
-                entry["kind"] = "has_many"
-                entry["target"] = self._resolved_fqn(field_obj.to_cls)
-                if field_obj.via is not None:
-                    entry["via"] = field_obj.via
-
-            elif isinstance(field_obj, Reference):
-                entry["kind"] = "reference"
-                entry["target"] = self._resolved_fqn(field_obj.to_cls)
-                entry["linked_attribute"] = field_obj.linked_attribute
-                if field_obj._auto_generated:
-                    entry["auto_generated"] = True
-
-            elif isinstance(field_obj, ResolvedField):
-                entry = self._resolved_field_entry(cls, field_obj, field_meta.get(name))
-
-            else:
+            entry = self._field_entry(cls, field_obj, field_meta.get(name))
+            if entry is None:
                 # Unknown field type — skip
                 continue
 
@@ -511,6 +694,59 @@ class IRBuilder:
             result[name] = dict(sorted(entry.items()))
 
         return result
+
+    def _field_entry(
+        self, cls: type[_ElementCls], field_obj: Any, spec: Any | None
+    ) -> dict[str, Any] | None:
+        """Return the unsorted IR entry of one declared field.
+
+        Returns ``None`` for a field type the IR does not describe.
+        """
+        if isinstance(field_obj, ValueObject):
+            return self._value_object_entry(
+                field_obj.value_object_cls, field_obj.required
+            )
+        if isinstance(field_obj, ValueObjectList):
+            return self._value_object_list_entry(field_obj)
+        if isinstance(field_obj, (HasOne, HasMany)):
+            return self._association_entry(field_obj)
+        if isinstance(field_obj, Reference):
+            return self._reference_entry(field_obj)
+        if isinstance(field_obj, ResolvedField):
+            return self._resolved_field_entry(cls, field_obj, spec)
+        return None
+
+    def _value_object_list_entry(self, field_obj: ValueObjectList) -> dict[str, Any]:
+        """Return the IR entry of a ``ValueObjectList`` field."""
+        entry: dict[str, Any] = {"kind": "value_object_list"}
+        if isinstance(field_obj.content_type, ValueObject):
+            entry["target"] = self._resolved_fqn(
+                field_obj.content_type.value_object_cls
+            )
+        else:
+            entry["target"] = fqn(field_obj.content_type)
+        return entry
+
+    def _association_entry(self, field_obj: HasOne | HasMany) -> dict[str, Any]:
+        """Return the IR entry of a ``HasOne`` or ``HasMany`` field."""
+        entry: dict[str, Any] = {
+            "kind": "has_one" if isinstance(field_obj, HasOne) else "has_many",
+            "target": self._resolved_fqn(field_obj.to_cls),
+        }
+        if field_obj.via is not None:
+            entry["via"] = field_obj.via
+        return entry
+
+    def _reference_entry(self, field_obj: Reference) -> dict[str, Any]:
+        """Return the IR entry of a ``Reference`` field."""
+        entry: dict[str, Any] = {
+            "kind": "reference",
+            "target": self._resolved_fqn(field_obj.to_cls),
+            "linked_attribute": field_obj.linked_attribute,
+        }
+        if field_obj._auto_generated:
+            entry["auto_generated"] = True
+        return entry
 
     def _value_object_entry(self, target: type | str, required: bool) -> dict[str, Any]:
         """Return the IR entry of a field that embeds one value object."""
@@ -598,6 +834,20 @@ class IRBuilder:
 
     def _extract_resolved_field(self, field: Any, spec: Any | None) -> dict[str, Any]:
         """Build an IR field dict from a ResolvedField + optional FieldSpec."""
+        entry = self._resolved_type_entry(field)
+        self._add_identity_flags(field, entry)
+        self._add_bounds(field, entry)
+        self._add_behaviour_flags(field, entry)
+        self._add_spec_attributes(field, spec, entry)
+        self._add_default(field, spec, entry)
+        return entry
+
+    def _resolved_type_entry(self, field: Any) -> dict[str, Any]:
+        """Return the type keys of a resolved field's entry.
+
+        The entry always has ``kind`` and ``type``. A typed list or dict also
+        has ``content_type``, and a dict of value objects also has ``target``.
+        """
         entry: dict[str, Any] = {}
         python_type = field._python_type
         base_type = self._unwrap_type(python_type)
@@ -619,8 +869,11 @@ class IRBuilder:
             kind = field.field_kind
             entry["kind"] = kind
             entry["type"] = self._resolve_type_name(base_type, kind)
+        return entry
 
-        # Sparse optional attributes
+    @staticmethod
+    def _add_identity_flags(field: Any, entry: dict[str, Any]) -> None:
+        """Add the sparse required, identifier, unique and auto-generated flags."""
         if field.required:
             entry["required"] = True
         if field.identifier:
@@ -630,6 +883,9 @@ class IRBuilder:
             entry["unique"] = True
         if field._auto_generated:
             entry["auto_generated"] = True
+
+    def _add_bounds(self, field: Any, entry: dict[str, Any]) -> None:
+        """Add the sparse length, value, precision and scale bounds."""
         if field.max_length is not None:
             entry["max_length"] = field.max_length
         if field.min_length is not None:
@@ -643,6 +899,10 @@ class IRBuilder:
             entry["precision"] = field.precision
         if field.scale is not None:
             entry["scale"] = field.scale
+
+    @staticmethod
+    def _add_behaviour_flags(field: Any, entry: dict[str, Any]) -> None:
+        """Add the sparse sanitize, increment, auto-now and description keys."""
         if field.sanitize:
             entry["sanitize"] = True
         if field.increment:
@@ -654,15 +914,14 @@ class IRBuilder:
         if getattr(field, "description", None):
             entry["description"] = field.description
 
+    @staticmethod
+    def _add_spec_attributes(
+        field: Any, spec: Any | None, entry: dict[str, Any]
+    ) -> None:
+        """Add choices, transitions and deprecation markers."""
         # Choices — from the original FieldSpec
         if spec is not None and getattr(spec, "choices", None) is not None:
-            choices: Any = spec.choices
-            if isinstance(choices, type) and issubclass(choices, Enum):
-                choices_list = sorted(item.value for item in choices)
-            else:
-                choices_iter: Any = choices
-                choices_list = sorted(str(c) for c in choices_iter)
-            entry["choices"] = choices_list
+            entry["choices"] = IRBuilder._choices_list(spec.choices)
 
         # Transitions — from ResolvedField
         if getattr(field, "transitions", None) is not None:
@@ -679,28 +938,36 @@ class IRBuilder:
         if spec is not None and getattr(spec, "_pickled_deprecated", False):
             entry["deprecated_pickled"] = True
 
+    @staticmethod
+    def _choices_list(choices: Any) -> list[Any]:
+        """Return a field's choices as a sorted list of values."""
+        if isinstance(choices, type) and issubclass(choices, Enum):
+            return sorted(item.value for item in choices)
+        choices_iter: Any = choices
+        return sorted(str(c) for c in choices_iter)
+
+    def _add_default(self, field: Any, spec: Any | None, entry: dict[str, Any]) -> None:
+        """Add the field's default, when it has one."""
         # Default — from FieldSpec for accurate representation. A default JSON
         # cannot encode (a custom type instance, a ``decimal.Decimal``) goes
         # through the field's ``as_dict``, the same serialization the
         # persistence and event paths use.
         if spec is not None:
             if spec.default is not _UNSET:
-                if callable(spec.default):
-                    entry["default"] = "<callable>"
-                else:
-                    entry["default"] = self._serialize_default(field, spec.default)
+                entry["default"] = self._default_entry(field, spec.default)
         elif field.default is not None:
             # Fallback to ResolvedField default if no spec. Generated elements —
             # a fact event, a value object projected from an entity — rebuild
             # their fields from ``FieldInfo`` and carry no spec, so a custom
             # default arrives here as a live instance and needs the same
             # serialization.
-            if callable(field.default):
-                entry["default"] = "<callable>"
-            else:
-                entry["default"] = self._serialize_default(field, field.default)
+            entry["default"] = self._default_entry(field, field.default)
 
-        return entry
+    def _default_entry(self, field: Any, default: Any) -> Any:
+        """Return the IR value of a default: a marker for a callable."""
+        if callable(default):
+            return "<callable>"
+        return self._serialize_default(field, default)
 
     @staticmethod
     def _ir_bound(value: Any, ir_type: str) -> Any:
@@ -882,29 +1149,39 @@ class IRBuilder:
         result: list[dict[str, Any]] = []
         for idx in declared:
             if isinstance(idx, RawIndex):
-                raw_entry: dict[str, Any] = {
-                    "raw": True,
-                    "dialect": idx.dialect,
-                    "ddl": idx.ddl,
-                }
-                if idx.name:
-                    raw_entry["name"] = idx.name
-                result.append(raw_entry)
+                result.append(self._raw_index_entry(idx))
             elif isinstance(idx, Index):
-                entry: dict[str, Any] = {
-                    "fields": list(idx.fields),
-                    "unique": idx.unique,
-                }
-                if idx.name:
-                    entry["name"] = idx.name
-                if idx.desc:
-                    entry["desc"] = list(idx.desc)
-                if idx.include:
-                    entry["include"] = list(idx.include)
-                if idx.where is not None:
-                    entry["partial"] = True
-                result.append(entry)
+                result.append(self._index_entry(idx))
         return result
+
+    @staticmethod
+    def _raw_index_entry(idx: RawIndex) -> dict[str, Any]:
+        """Return the IR summary of a ``RawIndex`` declaration."""
+        raw_entry: dict[str, Any] = {
+            "raw": True,
+            "dialect": idx.dialect,
+            "ddl": idx.ddl,
+        }
+        if idx.name:
+            raw_entry["name"] = idx.name
+        return raw_entry
+
+    @staticmethod
+    def _index_entry(idx: Index) -> dict[str, Any]:
+        """Return the IR summary of an ``Index`` declaration."""
+        entry: dict[str, Any] = {
+            "fields": list(idx.fields),
+            "unique": idx.unique,
+        }
+        if idx.name:
+            entry["name"] = idx.name
+        if idx.desc:
+            entry["desc"] = list(idx.desc)
+        if idx.include:
+            entry["include"] = list(idx.include)
+        if idx.where is not None:
+            entry["partial"] = True
+        return entry
 
     def _extract_aggregate(self, cls: type[_ElementCls], record: Any) -> dict[str, Any]:
         """Extract aggregate IR dict."""
@@ -1127,20 +1404,23 @@ class IRBuilder:
 
         retry_exceptions = getattr(meta, "retry_exceptions", None)
         if retry_exceptions is not None:
-            names: list[str] = []
-            for exc in retry_exceptions:
-                if isinstance(exc, str):
-                    names.append(exc)
-                elif isinstance(exc, type):
-                    names.append(fqn(exc))
-                else:
-                    # Misconfigured entry (e.g. an exception instance rather
-                    # than its class) — serialize its class instead of
-                    # crashing IR materialization with an opaque AttributeError.
-                    names.append(fqn(type(exc)))
-            policy["retry_exceptions"] = sorted(names)
+            policy["retry_exceptions"] = sorted(
+                IRBuilder._retry_exception_name(exc) for exc in retry_exceptions
+            )
 
         return dict(sorted(policy.items())) if policy else None
+
+    @staticmethod
+    def _retry_exception_name(exc: Any) -> str:
+        """Return the name a ``retry_exceptions`` entry is serialized under."""
+        if isinstance(exc, str):
+            return exc
+        if isinstance(exc, type):
+            return fqn(exc)
+        # Misconfigured entry (e.g. an exception instance rather than its
+        # class) — serialize its class instead of crashing IR materialization
+        # with an opaque AttributeError.
+        return fqn(type(exc))
 
     def _extract_handler_map(self, cls: type[_ElementCls]) -> dict[str, list[str]]:
         """Extract handler map as {__type__: sorted([method_names])}."""
@@ -1487,38 +1767,24 @@ class IRBuilder:
                 "query_handlers": {},
             }
 
-        # Populate projectors
-        for record in registry._elements.get("PROJECTOR", {}).values():
-            cls = record.cls
-            proj_for = getattr(cls.meta_, "projector_for", None)
-            if proj_for is not None:
-                proj_fqn = fqn(proj_for)
-                if proj_fqn in projections:
-                    projections[proj_fqn]["projectors"][fqn(cls)] = (
-                        self._extract_projector(cls, record)
-                    )
-
-        # Populate queries
-        for record in registry._elements.get("QUERY", {}).values():
-            cls = record.cls
-            part_of = getattr(cls.meta_, "part_of", None)
-            if part_of is not None:
-                proj_fqn = fqn(part_of)
-                if proj_fqn in projections:
-                    projections[proj_fqn]["queries"][fqn(cls)] = self._extract_query(
-                        cls, record
-                    )
-
-        # Populate query handlers
-        for record in registry._elements.get("QUERY_HANDLER", {}).values():
-            cls = record.cls
-            part_of = getattr(cls.meta_, "part_of", None)
-            if part_of is not None:
-                proj_fqn = fqn(part_of)
-                if proj_fqn in projections:
-                    projections[proj_fqn]["query_handlers"][fqn(cls)] = (
-                        self._extract_query_handler(cls, record)
-                    )
+        # Populate projectors, queries and query handlers
+        self._attach_to_projections(
+            projections,
+            "PROJECTOR",
+            "projector_for",
+            "projectors",
+            self._extract_projector,
+        )
+        self._attach_to_projections(
+            projections, "QUERY", "part_of", "queries", self._extract_query
+        )
+        self._attach_to_projections(
+            projections,
+            "QUERY_HANDLER",
+            "part_of",
+            "query_handlers",
+            self._extract_query_handler,
+        )
 
         # Sort inner dicts
         for proj in projections.values():
@@ -1526,6 +1792,29 @@ class IRBuilder:
                 proj[section] = dict(sorted(proj[section].items()))
 
         return dict(sorted(projections.items()))
+
+    def _attach_to_projections(
+        self,
+        projections: dict[str, Any],
+        element_type: str,
+        owner_option: str,
+        section: str,
+        extract: Callable[[type[_ElementCls], Any], dict[str, Any]],
+    ) -> None:
+        """Add each element of ``element_type`` to its projection's ``section``.
+
+        An element whose ``owner_option`` is unset, or names a class that is not
+        a registered projection, is left out.
+        """
+        registry = self._domain._domain_registry
+        for record in registry._elements.get(element_type, {}).values():
+            cls = record.cls
+            owner = getattr(cls.meta_, owner_option, None)
+            if owner is None:
+                continue
+            proj_fqn = fqn(owner)
+            if proj_fqn in projections:
+                projections[proj_fqn][section][fqn(cls)] = extract(cls, record)
 
     # ------------------------------------------------------------------
     # Flow extractors
@@ -1723,10 +2012,27 @@ class IRBuilder:
         goes to the aggregate of a command or event that holds it in a
         single-value field; a list or dict field on a message does not place it.
         """
-        registry = self._domain._domain_registry
         vo_map: dict[str, type] = {}
 
         # Scan aggregates and entities for VO field references
+        self._map_embedded_value_objects(vo_map)
+
+        # Also check VOs that have explicit part_of
+        self._map_part_of_value_objects(vo_map)
+
+        # Last, value objects held only by commands and events. Running after
+        # the scans above means a value object an aggregate, an entity or
+        # ``part_of`` places keeps that cluster.
+        self._map_message_value_objects(vo_map)
+
+        return vo_map
+
+    def _map_embedded_value_objects(self, vo_map: dict[str, type]) -> None:
+        """Add to ``vo_map`` each value object an aggregate or entity field embeds.
+
+        A value object already in ``vo_map`` keeps its cluster.
+        """
+        registry = self._domain._domain_registry
         for element_type in ("AGGREGATE", "ENTITY"):
             for record in registry._elements.get(element_type, {}).values():
                 owner_cls = record.cls
@@ -1738,20 +2044,18 @@ class IRBuilder:
                     if vo_fqn is not None and vo_fqn not in vo_map:
                         vo_map[vo_fqn] = agg_cls
 
-        # Also check VOs that have explicit part_of
+    def _map_part_of_value_objects(self, vo_map: dict[str, type]) -> None:
+        """Add to ``vo_map`` each value object that declares ``part_of``.
+
+        A value object already in ``vo_map`` keeps its cluster.
+        """
+        registry = self._domain._domain_registry
         for record in registry._elements.get("VALUE_OBJECT", {}).values():
             vo_fqn = fqn(record.cls)
             if vo_fqn not in vo_map:
                 part_of = getattr(record.cls.meta_, "part_of", None)
                 if part_of is not None:
                     vo_map[vo_fqn] = part_of
-
-        # Last, value objects held only by commands and events. Running after
-        # the scans above means a value object an aggregate, an entity or
-        # ``part_of`` places keeps that cluster.
-        self._map_message_value_objects(vo_map)
-
-        return vo_map
 
     def _map_message_value_objects(self, vo_map: dict[str, type]) -> None:
         """Add to ``vo_map`` each value object a message's single-value field holds.
@@ -1808,49 +2112,25 @@ class IRBuilder:
                 "value_objects": {},
             }
 
-        # Helper to place an element into its aggregate's cluster section
-        def _place_in_cluster(
-            element_type_key: str, section: str, extractor: Any
-        ) -> None:
-            for record in registry._elements.get(element_type_key, {}).values():
-                cls = record.cls
-                agg_cls = self._resolve_aggregate_cls(cls)
-                if agg_cls is not None:
-                    agg_fqn = fqn(agg_cls)
-                    if agg_fqn in clusters:
-                        clusters[agg_fqn][section][fqn(cls)] = extractor(cls, record)
-
-        _place_in_cluster("ENTITY", "entities", self._extract_entity)
-        _place_in_cluster("COMMAND", "commands", self._extract_command)
-        _place_in_cluster("EVENT", "events", self._extract_event)
-        _place_in_cluster(
-            "COMMAND_HANDLER", "command_handlers", self._extract_command_handler
+        sections = (
+            ("ENTITY", "entities", self._extract_entity),
+            ("COMMAND", "commands", self._extract_command),
+            ("EVENT", "events", self._extract_event),
+            ("COMMAND_HANDLER", "command_handlers", self._extract_command_handler),
+            ("EVENT_HANDLER", "event_handlers", self._extract_event_handler),
+            (
+                "APPLICATION_SERVICE",
+                "application_services",
+                self._extract_application_service,
+            ),
+            ("REPOSITORY", "repositories", self._extract_repository),
+            ("DATABASE_MODEL", "database_models", self._extract_database_model),
         )
-        _place_in_cluster(
-            "EVENT_HANDLER", "event_handlers", self._extract_event_handler
-        )
-        _place_in_cluster(
-            "APPLICATION_SERVICE",
-            "application_services",
-            self._extract_application_service,
-        )
-        _place_in_cluster("REPOSITORY", "repositories", self._extract_repository)
-        _place_in_cluster(
-            "DATABASE_MODEL", "database_models", self._extract_database_model
-        )
+        for element_type_key, section, extractor in sections:
+            self._place_in_cluster(clusters, element_type_key, section, extractor)
 
         # Populate value objects (derive cluster from field references)
-        vo_cluster_map = self._build_vo_cluster_map()
-        for record in registry._elements.get("VALUE_OBJECT", {}).values():
-            cls = record.cls
-            vo_fqn = fqn(cls)
-            agg_cls = vo_cluster_map.get(vo_fqn)
-            if agg_cls is not None:
-                agg_fqn = fqn(agg_cls)
-                if agg_fqn in clusters:
-                    clusters[agg_fqn]["value_objects"][vo_fqn] = (
-                        self._extract_value_object(cls, record, agg_fqn)
-                    )
+        self._place_value_objects(clusters)
 
         # Sort all inner dicts within each cluster, and sort clusters by key
         for cluster in clusters.values():
@@ -1869,6 +2149,41 @@ class IRBuilder:
 
         return dict(sorted(clusters.items()))
 
+    def _place_in_cluster(
+        self,
+        clusters: dict[str, Any],
+        element_type_key: str,
+        section: str,
+        extractor: Callable[[type[_ElementCls], Any], dict[str, Any]],
+    ) -> None:
+        """Place each element of ``element_type_key`` in its aggregate's ``section``.
+
+        An element whose aggregate is unresolved or has no cluster is left out.
+        """
+        registry = self._domain._domain_registry
+        for record in registry._elements.get(element_type_key, {}).values():
+            cls = record.cls
+            agg_cls = self._resolve_aggregate_cls(cls)
+            if agg_cls is not None:
+                agg_fqn = fqn(agg_cls)
+                if agg_fqn in clusters:
+                    clusters[agg_fqn][section][fqn(cls)] = extractor(cls, record)
+
+    def _place_value_objects(self, clusters: dict[str, Any]) -> None:
+        """Place each value object in the cluster that embeds or owns it."""
+        registry = self._domain._domain_registry
+        vo_cluster_map = self._build_vo_cluster_map()
+        for record in registry._elements.get("VALUE_OBJECT", {}).values():
+            cls = record.cls
+            vo_fqn = fqn(cls)
+            agg_cls = vo_cluster_map.get(vo_fqn)
+            if agg_cls is not None:
+                agg_fqn = fqn(agg_cls)
+                if agg_fqn in clusters:
+                    clusters[agg_fqn]["value_objects"][vo_fqn] = (
+                        self._extract_value_object(cls, record, agg_fqn)
+                    )
+
     # ------------------------------------------------------------------
     # Method edges (raise / invoke derivation)
     # ------------------------------------------------------------------
@@ -1885,80 +2200,17 @@ class IRBuilder:
         fail open: an element whose source cannot be read yields no edges and the
         build still succeeds.
         """
-        registry = self._domain._domain_registry
-
-        # ``fqn(cls)`` -> cls for every registered element, to resolve an
-        # assembled section's string keys (which the builder writes as
-        # ``fqn(cls)``) back to a class. The set of registered EVENT names, so
-        # only an event construction counts toward ``raises`` — keyed by the
-        # registry's own ``qualname``, which is what a ``ConstructionFact.fqn``
-        # is matched against (the facts layer recognizes an element by the name
-        # the registry recorded, not by the class's current ``__module__``).
-        fqn_to_cls: dict[str, type] = {}
-        event_fqns: set[str] = set()
-        for element_type, records in registry._elements.items():
-            for record in records.values():
-                fqn_to_cls[fqn(record.cls)] = record.cls
-                if element_type == "EVENT":
-                    event_fqns.add(record.qualname)
-
+        fqn_to_cls, event_fqns = self._registered_classes_and_events()
         clusters = ir["clusters"]
-
-        # message ``__type__`` -> the aggregate clusters that own it. A command
-        # or event named in more than one cluster maps to each, which only
-        # widens an invoke scope (and so makes an ambiguous name more likely to
-        # be skipped, never wrongly matched).
-        type_to_aggs: dict[str, set[str]] = {}
-        for agg_fqn, cluster in clusters.items():
-            for section in ("commands", "events"):
-                for entry in cluster[section].values():
-                    type_key = entry.get("__type__")
-                    if type_key:
-                        type_to_aggs.setdefault(type_key, set()).add(agg_fqn)
-
-        # A cluster's name surface, cached: method name -> the (element_fqn,
-        # method_name) pairs that define it across the aggregate and its
-        # entities. Body-only methods (via ``element_methods``), so inherited
-        # framework methods (``raise_``/``add``/``get``) are not in the surface.
-        # Every section key resolves through ``fqn_to_cls`` by construction: a
-        # cluster/flow/projection key is the ``fqn`` of a registered element, and
-        # ``fqn_to_cls`` is keyed by that same ``fqn``, so the lookups below index
-        # directly (fail-open lives one layer down, in ``element_facts``).
-        surface_cache: dict[str, dict[str, list[tuple[str, str]]]] = {}
-
-        def cluster_surface(agg_fqn: str) -> dict[str, list[tuple[str, str]]]:
-            cached = surface_cache.get(agg_fqn)
-            if cached is not None:
-                return cached
-            surface: dict[str, list[tuple[str, str]]] = {}
-            cluster = clusters[agg_fqn]
-            for elem_fqn in [agg_fqn, *cluster["entities"].keys()]:
-                elem_cls = fqn_to_cls[elem_fqn]
-                for method in self.view.element_methods(elem_cls):
-                    surface.setdefault(method.name, []).append((elem_fqn, method.name))
-            surface_cache[agg_fqn] = surface
-            return surface
-
-        def union_surface(agg_fqns: set[str]) -> dict[str, list[tuple[str, str]]]:
-            merged: dict[str, list[tuple[str, str]]] = {}
-            for agg_fqn in sorted(agg_fqns):
-                for name, pairs in cluster_surface(agg_fqn).items():
-                    merged.setdefault(name, []).extend(pairs)
-            return merged
+        type_to_aggs = self._message_type_clusters(clusters)
+        surfaces = _ClusterSurfaces(self.view, clusters, fqn_to_cls)
 
         # raises: aggregates and entities.
-        for agg_fqn, cluster in clusters.items():
-            raise_edges = self._raise_edges(fqn_to_cls[agg_fqn], event_fqns)
-            if raise_edges:
-                cluster["aggregate"]["method_edges"] = raise_edges
-            for ent_fqn, ent_entry in cluster["entities"].items():
-                raise_edges = self._raise_edges(fqn_to_cls[ent_fqn], event_fqns)
-                if raise_edges:
-                    ent_entry["method_edges"] = raise_edges
+        self._apply_raise_edges(clusters, fqn_to_cls, event_fqns)
 
         # invokes: command and event handlers, scoped to their own cluster.
         for agg_fqn, cluster in clusters.items():
-            surface = cluster_surface(agg_fqn)
+            surface = surfaces._cluster(agg_fqn)
             for section in ("command_handlers", "event_handlers"):
                 for handler_fqn, handler_entry in cluster[section].items():
                     invoke_edges = self._invoke_edges(fqn_to_cls[handler_fqn], surface)
@@ -1969,7 +2221,7 @@ class IRBuilder:
         # scoped to the union of the clusters the messages it handles reach.
         for pm_fqn, pm_entry in ir["flows"]["process_managers"].items():
             self._apply_handler_invokes(
-                pm_fqn, pm_entry, fqn_to_cls, type_to_aggs, union_surface
+                pm_fqn, pm_entry, fqn_to_cls, type_to_aggs, surfaces._union
             )
         for proj_group in ir["projections"].values():
             for projector_fqn, projector_entry in proj_group["projectors"].items():
@@ -1978,8 +2230,62 @@ class IRBuilder:
                     projector_entry,
                     fqn_to_cls,
                     type_to_aggs,
-                    union_surface,
+                    surfaces._union,
                 )
+
+    def _registered_classes_and_events(self) -> tuple[dict[str, type], set[str]]:
+        """Return ``fqn(cls)`` -> cls for every registered element, and the EVENT names.
+
+        The first map resolves an assembled section's string keys (which the
+        builder writes as ``fqn(cls)``) back to a class. The set holds the
+        registered EVENT names, so only an event construction counts toward
+        ``raises``. It is keyed by the registry's own ``qualname``, which is
+        what a ``ConstructionFact.fqn`` is matched against (the facts layer
+        recognizes an element by the name the registry recorded, not by the
+        class's current ``__module__``).
+        """
+        registry = self._domain._domain_registry
+        fqn_to_cls: dict[str, type] = {}
+        event_fqns: set[str] = set()
+        for element_type, records in registry._elements.items():
+            for record in records.values():
+                fqn_to_cls[fqn(record.cls)] = record.cls
+                if element_type == "EVENT":
+                    event_fqns.add(record.qualname)
+        return fqn_to_cls, event_fqns
+
+    @staticmethod
+    def _message_type_clusters(clusters: dict[str, Any]) -> dict[str, set[str]]:
+        """Return message ``__type__`` -> the aggregate clusters that own it.
+
+        A command or event named in more than one cluster maps to each, which
+        only widens an invoke scope (and so makes an ambiguous name more likely
+        to be skipped, never wrongly matched).
+        """
+        type_to_aggs: dict[str, set[str]] = {}
+        for agg_fqn, cluster in clusters.items():
+            for section in ("commands", "events"):
+                for entry in cluster[section].values():
+                    type_key = entry.get("__type__")
+                    if type_key:
+                        type_to_aggs.setdefault(type_key, set()).add(agg_fqn)
+        return type_to_aggs
+
+    def _apply_raise_edges(
+        self,
+        clusters: dict[str, Any],
+        fqn_to_cls: dict[str, type],
+        event_fqns: set[str],
+    ) -> None:
+        """Write ``raises`` edges onto every aggregate and entity entry."""
+        for agg_fqn, cluster in clusters.items():
+            raise_edges = self._raise_edges(fqn_to_cls[agg_fqn], event_fqns)
+            if raise_edges:
+                cluster["aggregate"]["method_edges"] = raise_edges
+            for ent_fqn, ent_entry in cluster["entities"].items():
+                raise_edges = self._raise_edges(fqn_to_cls[ent_fqn], event_fqns)
+                if raise_edges:
+                    ent_entry["method_edges"] = raise_edges
 
     def _apply_handler_invokes(
         self,
@@ -2233,21 +2539,8 @@ class IRBuilder:
         cycle is reported once, even when it sits on more than one cycle, and
         the output order is deterministic.
         """
-        cluster_fqns = set(ir["clusters"].keys())
-
         # 1. Build adjacency: cluster_fqn -> sorted list of target cluster FQNs.
-        adjacency: dict[str, list[str]] = {}
-        for cluster_fqn, cluster in ir["clusters"].items():
-            targets: set[str] = set()
-            entities = [cluster["aggregate"], *cluster["entities"].values()]
-            for element in entities:
-                for field in element.get("fields", {}).values():
-                    if field.get("kind") != "reference":
-                        continue
-                    target = field.get("target")
-                    if target in cluster_fqns and target != cluster_fqn:
-                        targets.add(target)
-            adjacency[cluster_fqn] = sorted(targets)
+        adjacency = self._cluster_adjacency(ir["clusters"])
 
         # 2. One diagnostic per cluster in each cyclic component. Every cluster in
         #    a strongly connected component is reachable from every other, so
@@ -2257,6 +2550,33 @@ class IRBuilder:
         for component in self._strongly_connected_components(adjacency):
             if len(component) >= 2:
                 self._emit_cluster_cycle(component)
+
+    @staticmethod
+    def _cluster_adjacency(clusters: dict[str, Any]) -> dict[str, list[str]]:
+        """Return cluster FQN -> sorted FQNs of the clusters it references."""
+        cluster_fqns = set(clusters.keys())
+        return {
+            cluster_fqn: IRBuilder._referenced_clusters(
+                cluster_fqn, cluster, cluster_fqns
+            )
+            for cluster_fqn, cluster in clusters.items()
+        }
+
+    @staticmethod
+    def _referenced_clusters(
+        cluster_fqn: str, cluster: dict[str, Any], cluster_fqns: set[str]
+    ) -> list[str]:
+        """Return the sorted other clusters a cluster's ``reference`` fields target."""
+        targets: set[str] = set()
+        entities = [cluster["aggregate"], *cluster["entities"].values()]
+        for element in entities:
+            for field in element.get("fields", {}).values():
+                if field.get("kind") != "reference":
+                    continue
+                target = field.get("target")
+                if target in cluster_fqns and target != cluster_fqn:
+                    targets.add(target)
+        return sorted(targets)
 
     @staticmethod
     def _strongly_connected_components(
@@ -2270,55 +2590,7 @@ class IRBuilder:
         byte-identical result across builds. Every node appears in exactly one
         component, so a cluster on two overlapping cycles is reported once.
         """
-        index_of: dict[str, int] = {}
-        lowlink: dict[str, int] = {}
-        on_stack: dict[str, bool] = {}
-        tarjan_stack: list[str] = []
-        components: list[list[str]] = []
-        counter = 0
-
-        for start in sorted(adjacency):
-            if start in index_of:
-                continue
-            # Explicit work stack of [node, next-neighbour-index] frames.
-            work: list[list[Any]] = [[start, 0]]
-            while work:
-                node, i = work[-1]
-                if i == 0:
-                    index_of[node] = lowlink[node] = counter
-                    counter += 1
-                    tarjan_stack.append(node)
-                    on_stack[node] = True
-                neighbours = adjacency[node]
-                recursed = False
-                while i < len(neighbours):
-                    nxt = neighbours[i]
-                    i += 1
-                    if nxt not in index_of:
-                        work[-1][1] = i  # resume after this neighbour
-                        work.append([nxt, 0])
-                        recursed = True
-                        break
-                    if on_stack.get(nxt):
-                        lowlink[node] = min(lowlink[node], index_of[nxt])
-                if recursed:
-                    continue
-                # Node fully explored: close a component if it is a root.
-                if lowlink[node] == index_of[node]:
-                    component: list[str] = []
-                    while True:
-                        w = tarjan_stack.pop()
-                        on_stack[w] = False
-                        component.append(w)
-                        if w == node:
-                            break
-                    components.append(sorted(component))
-                work.pop()
-                if work:  # propagate lowlink up to the parent frame
-                    parent = work[-1][0]
-                    lowlink[parent] = min(lowlink[parent], lowlink[node])
-
-        return sorted(components)
+        return _TarjanSCC(adjacency)._components()
 
     def _emit_cluster_cycle(self, component: list[str]) -> None:
         """Append one CIRCULAR_CLUSTER_DEPENDENCY diagnostic per cluster in the
@@ -2352,80 +2624,19 @@ class IRBuilder:
         if not self._domain.config.get("lint", {}).get("check_infra_imports", False):
             return
 
-        INFRA_PREFIX = "protean.adapters"
         # module -> True/False cache of "imports infra", to parse each file once.
         module_flags: dict[str, bool] = {}
 
-        def _module_level_imports(tree: ast.Module) -> list[ast.stmt]:
-            """Import statements at the module's top level only.
-
-            Nested imports are deliberately excluded: a ``TYPE_CHECKING`` guard,
-            an ``except ImportError`` fallback, or a function-local lazy import
-            introduce no runtime coupling — they are the idiomatic ways to
-            *avoid* it — so flagging them would be a false positive.
-            """
-            return [
-                node
-                for node in tree.body
-                if isinstance(node, (ast.Import, ast.ImportFrom))
-            ]
-
-        def _import_names(node: ast.AST) -> list[str]:
-            """Dotted names an import statement brings the adapter package under.
-
-            ``ast.ImportFrom`` must also contribute the imported alias names so
-            ``from protean import adapters`` (module ``protean``, alias
-            ``adapters``) is matched, not just ``from protean.adapters import``.
-            """
-            if isinstance(node, ast.Import):
-                return [a.name for a in node.names]
-            if isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                return [module] + [
-                    f"{module}.{a.name}" if module else a.name for a in node.names
-                ]
-            # Unreachable: callers only pass ``ast.Import``/``ast.ImportFrom``
-            # nodes filtered by ``_module_level_imports``.
-            return []  # pragma: no cover
-
-        def _module_imports_infra(module: str) -> bool:
-            if module in module_flags:
-                return module_flags[module]
-            flag = False
-            # Fails open: an unresolvable, unreadable or unparseable module
-            # yields no tree, and is treated as not importing infra.
-            tree = self.source.tree(module)
-            if tree is not None:
-                for node in _module_level_imports(tree):
-                    names = _import_names(node)
-                    if any(
-                        n == INFRA_PREFIX or n.startswith(INFRA_PREFIX + ".")
-                        for n in names
-                    ):
-                        flag = True
-                        break
-            module_flags[module] = flag
-            return flag
-
         # Iterate every non-internal registered element in a stable (fqn) order
         # so emitted diagnostics are deterministic.
-        registry = self._domain._domain_registry
-        seen: set[str] = set()
         scanned: list[tuple[str, str, str]] = []  # (fqn, name, module)
-        for records in registry._elements.values():
-            for record in records.values():
-                if record.internal:
-                    continue
-                element_fqn = fqn(record.cls)
-                if element_fqn in seen:
-                    continue
-                seen.add(element_fqn)
-                module = getattr(record.cls, "__module__", None)
-                if module:
-                    scanned.append((element_fqn, record.cls.__name__, module))
+        for element_fqn, cls in self._unique_registered_elements():
+            module = getattr(cls, "__module__", None)
+            if module:
+                scanned.append((element_fqn, cls.__name__, module))
 
         for element_fqn, name, module in sorted(scanned):
-            if _module_imports_infra(module):
+            if self._module_imports_infra(module, module_flags):
                 self._diagnostics.append(
                     build_diagnostic(
                         DiagnosticCode.INFRA_IMPORT_IN_DOMAIN,
@@ -2435,6 +2646,78 @@ class IRBuilder:
                         f"`protean.adapters`.",
                     )
                 )
+
+    def _unique_registered_elements(self) -> list[tuple[str, type]]:
+        """Return ``(fqn, cls)`` of each non-internal registered element.
+
+        The list is in registry order, and an FQN registered more than once
+        appears only the first time.
+        """
+        registry = self._domain._domain_registry
+        seen: set[str] = set()
+        elements: list[tuple[str, type]] = []
+        for records in registry._elements.values():
+            for record in records.values():
+                if record.internal:
+                    continue
+                element_fqn = fqn(record.cls)
+                if element_fqn in seen:
+                    continue
+                seen.add(element_fqn)
+                elements.append((element_fqn, record.cls))
+        return elements
+
+    def _module_imports_infra(self, module: str, module_flags: dict[str, bool]) -> bool:
+        """Return whether ``module`` imports ``protean.adapters`` at its top level.
+
+        The answer is cached in ``module_flags``.
+        """
+        if module in module_flags:
+            return module_flags[module]
+        flag = False
+        # Fails open: an unresolvable, unreadable or unparseable module
+        # yields no tree, and is treated as not importing infra.
+        tree = self.source.tree(module)
+        if tree is not None:
+            flag = any(
+                _is_adapters_name(n)
+                for node in self._module_level_imports(tree)
+                for n in self._import_names(node)
+            )
+        module_flags[module] = flag
+        return flag
+
+    @staticmethod
+    def _module_level_imports(tree: ast.Module) -> list[ast.stmt]:
+        """Import statements at the module's top level only.
+
+        Nested imports are deliberately excluded: a ``TYPE_CHECKING`` guard,
+        an ``except ImportError`` fallback, or a function-local lazy import
+        introduce no runtime coupling — they are the idiomatic ways to
+        *avoid* it — so flagging them would be a false positive.
+        """
+        return [
+            node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))
+        ]
+
+    @staticmethod
+    def _import_names(node: ast.AST) -> list[str]:
+        """Dotted names an import statement brings the adapter package under.
+
+        ``ast.ImportFrom`` must also contribute the imported alias names so
+        ``from protean import adapters`` (module ``protean``, alias
+        ``adapters``) is matched, not just ``from protean.adapters import``.
+        """
+        if isinstance(node, ast.Import):
+            return [a.name for a in node.names]
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            return [module] + [
+                f"{module}.{a.name}" if module else a.name for a in node.names
+            ]
+        # Unreachable: callers only pass ``ast.Import``/``ast.ImportFrom``
+        # nodes filtered by ``_module_level_imports``.
+        return []  # pragma: no cover
 
     def _diagnose_adapter_calls(self, ir: dict[str, Any]) -> None:
         """Report ADAPTER_CALL_IN_DOMAIN for each call in a registered element's
@@ -2446,47 +2729,33 @@ class IRBuilder:
         if not self._domain.config.get("lint", {}).get("check_adapter_calls", False):
             return
 
-        ADAPTER_PREFIX = "protean.adapters"
-
         # Iterate every non-internal registered element in a stable (fqn) order
         # so emitted diagnostics are deterministic; dedupe by FQN as the
         # module-import rule does.
-        registry = self._domain._domain_registry
-        seen: set[str] = set()
-        scanned: list[tuple[str, type]] = []  # (fqn, cls)
-        for records in registry._elements.values():
-            for record in records.values():
-                if record.internal:
-                    continue
-                element_fqn = fqn(record.cls)
-                if element_fqn in seen:
-                    continue
-                seen.add(element_fqn)
-                scanned.append((element_fqn, record.cls))
-
+        scanned = self._unique_registered_elements()
         for element_fqn, cls in sorted(scanned, key=lambda pair: pair[0]):
-            name = cls.__name__
-            # Facts come method-name-ordered, calls within a method in source
-            # order — so one diagnostic per adapter call-site, in a stable order.
-            for method_name, facts in self.view.element_facts(cls).items():
-                for call in facts.calls:
-                    callee = call.callee_fqn
-                    if callee is None:
-                        continue
-                    if callee != ADAPTER_PREFIX and not callee.startswith(
-                        ADAPTER_PREFIX + "."
-                    ):
-                        continue
-                    self._diagnostics.append(
-                        build_diagnostic(
-                            DiagnosticCode.ADAPTER_CALL_IN_DOMAIN,
-                            element=element_fqn,
-                            message=f"Domain element `{name}` calls "
-                            f"`{callee}` in method `{method_name}` "
-                            f"(line {call.location.line}), coupling the "
-                            f"domain to `protean.adapters`.",
-                        )
+            self._diagnose_adapter_calls_in(element_fqn, cls)
+
+    def _diagnose_adapter_calls_in(self, element_fqn: str, cls: type) -> None:
+        """Report ADAPTER_CALL_IN_DOMAIN for each adapter call in one element."""
+        name = cls.__name__
+        # Facts come method-name-ordered, calls within a method in source
+        # order — so one diagnostic per adapter call-site, in a stable order.
+        for method_name, facts in self.view.element_facts(cls).items():
+            for call in facts.calls:
+                callee = call.callee_fqn
+                if callee is None or not _is_adapters_name(callee):
+                    continue
+                self._diagnostics.append(
+                    build_diagnostic(
+                        DiagnosticCode.ADAPTER_CALL_IN_DOMAIN,
+                        element=element_fqn,
+                        message=f"Domain element `{name}` calls "
+                        f"`{callee}` in method `{method_name}` "
+                        f"(line {call.location.line}), coupling the "
+                        f"domain to `protean.adapters`.",
                     )
+                )
 
     def _diagnose_event_handler_foreign_event(self, ir: dict[str, Any]) -> None:
         """EVENT_HANDLER_FOREIGN_EVENT: an event handler whose ``part_of``
@@ -2501,8 +2770,25 @@ class IRBuilder:
         collide), is not flagged — there is no single deterministic owner to
         compare against.
         """
+        type_to_owner = self._event_type_owners(ir["clusters"])
+
+        for handler_cluster_fqn, cluster in ir["clusters"].items():
+            handler_cluster_name = cluster["aggregate"]["name"]
+            for eh in cluster["event_handlers"].values():
+                self._diagnose_foreign_events_of(
+                    eh, handler_cluster_fqn, handler_cluster_name, type_to_owner
+                )
+
+    @staticmethod
+    def _event_type_owners(
+        clusters: dict[str, Any],
+    ) -> dict[str, tuple[str, str, str] | None]:
+        """Return event ``__type__`` -> (cluster FQN, cluster name, event name).
+
+        A ``__type__`` that more than one cluster owns maps to ``None``.
+        """
         type_to_owner: dict[str, tuple[str, str, str] | None] = {}
-        for cluster_fqn, cluster in ir["clusters"].items():
+        for cluster_fqn, cluster in clusters.items():
             for event in cluster["events"].values():
                 event_type = event.get("__type__")
                 if not event_type:
@@ -2517,30 +2803,36 @@ class IRBuilder:
                         cluster["aggregate"]["name"],
                         event["name"],
                     )
+        return type_to_owner
 
-        for handler_cluster_fqn, cluster in ir["clusters"].items():
-            handler_cluster_name = cluster["aggregate"]["name"]
-            for eh in cluster["event_handlers"].values():
-                for handled_type in eh.get("handlers", {}):
-                    owner = type_to_owner.get(handled_type)
-                    if owner is None:
-                        continue
-                    owner_cluster_fqn, owner_cluster_name, event_name = owner
-                    if owner_cluster_fqn == handler_cluster_fqn:
-                        continue
-                    self._diagnostics.append(
-                        build_diagnostic(
-                            DiagnosticCode.EVENT_HANDLER_FOREIGN_EVENT,
-                            element=eh["fqn"],
-                            message=f"{eh['name']} (part_of {handler_cluster_name}) "
-                            f"handles event {event_name}, owned by "
-                            f"cluster {owner_cluster_name}. Cross-cluster "
-                            f"event handling couples two aggregates; "
-                            f"consider a ProcessManager to mediate the "
-                            f"interaction if the events have causal "
-                            f"dependencies.",
-                        )
-                    )
+    def _diagnose_foreign_events_of(
+        self,
+        eh: dict[str, Any],
+        handler_cluster_fqn: str,
+        handler_cluster_name: str,
+        type_to_owner: dict[str, tuple[str, str, str] | None],
+    ) -> None:
+        """Report EVENT_HANDLER_FOREIGN_EVENT for each foreign event ``eh`` handles."""
+        for handled_type in eh.get("handlers", {}):
+            owner = type_to_owner.get(handled_type)
+            if owner is None:
+                continue
+            owner_cluster_fqn, owner_cluster_name, event_name = owner
+            if owner_cluster_fqn == handler_cluster_fqn:
+                continue
+            self._diagnostics.append(
+                build_diagnostic(
+                    DiagnosticCode.EVENT_HANDLER_FOREIGN_EVENT,
+                    element=eh["fqn"],
+                    message=f"{eh['name']} (part_of {handler_cluster_name}) "
+                    f"handles event {event_name}, owned by "
+                    f"cluster {owner_cluster_name}. Cross-cluster "
+                    f"event handling couples two aggregates; "
+                    f"consider a ProcessManager to mediate the "
+                    f"interaction if the events have causal "
+                    f"dependencies.",
+                )
+            )
 
     def _apply_suppressions(self) -> None:
         """Remove suppressed diagnostics from :attr:`_diagnostics`.
@@ -2560,28 +2852,8 @@ class IRBuilder:
         Raises:
             ConfigurationError: If ``[lint].suppressions`` is malformed.
         """
-        registry = self._domain._domain_registry
-
-        # 1. FQN -> suppressed codes, read from the registry because events,
-        #    commands and value objects carry no IR ``options`` block.
-        #    ``getattr(..., ()) or ()`` is defensive:
-        #    element types whose Root never declared the ``suppress_checks``
-        #    option (e.g. UPCASTER) carry no ``suppress_checks`` key on
-        #    ``meta_``, so the stage must not assume the option's presence — it
-        #    guards a missing *option*, not a missing ``meta_``. A bare string
-        #    is normalised to a single-code tuple so ``suppress_checks="CODE"``
-        #    is not iterated character-by-character.
-        fqn_suppress: dict[str, set[str]] = {}
-        for records in registry._elements.values():
-            for record in records.values():
-                if record.internal:
-                    continue
-                codes = getattr(record.cls.meta_, "suppress_checks", ()) or ()
-                if isinstance(codes, str):
-                    codes = (codes,)
-                if codes:
-                    fqn_suppress[fqn(record.cls)] = set(codes)
-
+        # 1. Drop each diagnostic its element suppresses.
+        fqn_suppress = self._element_suppressions()
         survivors = [
             d
             for d in self._diagnostics
@@ -2621,6 +2893,34 @@ class IRBuilder:
 
         self._diagnostics = kept
 
+    def _element_suppressions(self) -> dict[str, set[str]]:
+        """Return element FQN -> the codes its ``suppress_checks`` option names.
+
+        Elements that suppress nothing are left out.
+        """
+        registry = self._domain._domain_registry
+
+        # FQN -> suppressed codes, read from the registry because events,
+        # commands and value objects carry no IR ``options`` block.
+        # ``getattr(..., ()) or ()`` is defensive:
+        # element types whose Root never declared the ``suppress_checks``
+        # option (e.g. UPCASTER) carry no ``suppress_checks`` key on
+        # ``meta_``, so the stage must not assume the option's presence — it
+        # guards a missing *option*, not a missing ``meta_``. A bare string
+        # is normalised to a single-code tuple so ``suppress_checks="CODE"``
+        # is not iterated character-by-character.
+        fqn_suppress: dict[str, set[str]] = {}
+        for records in registry._elements.values():
+            for record in records.values():
+                if record.internal:
+                    continue
+                codes = getattr(record.cls.meta_, "suppress_checks", ()) or ()
+                if isinstance(codes, str):
+                    codes = (codes,)
+                if codes:
+                    fqn_suppress[fqn(record.cls)] = set(codes)
+        return fqn_suppress
+
     def _diagnose_unhandled_events(self, ir: dict[str, Any]) -> None:
         """UNHANDLED_EVENT: events with no registered handler.
 
@@ -2628,6 +2928,27 @@ class IRBuilder:
         (auto-generated), and auto-generated events (e.g. process manager
         transition events).
         """
+        handled_event_types = self._handled_event_types(ir)
+
+        # Check each event
+        for cluster in ir["clusters"].values():
+            for event in cluster["events"].values():
+                if self._expects_no_handler(event):
+                    continue
+
+                event_type = event.get("__type__", "")
+                if event_type and event_type not in handled_event_types:
+                    self._diagnostics.append(
+                        build_diagnostic(
+                            DiagnosticCode.UNHANDLED_EVENT,
+                            element=event["fqn"],
+                            message=f"Event {event['name']} has no registered handler",
+                        )
+                    )
+
+    @staticmethod
+    def _handled_event_types(ir: dict[str, Any]) -> set[str]:
+        """Return every ``__type__`` an event handler, projector or PM handles."""
         handled_event_types: set[str] = set()
 
         # Collect all handled event types from event handlers in clusters
@@ -2644,28 +2965,19 @@ class IRBuilder:
         for pm in ir["flows"]["process_managers"].values():
             handled_event_types.update(pm.get("handlers", {}).keys())
 
-        # Check each event
-        for cluster in ir["clusters"].values():
-            for event in cluster["events"].values():
-                # Skip published events — they are intentionally external
-                if event.get("published", False):
-                    continue
-                # Skip fact events — auto-generated from aggregate changes
-                if event.get("is_fact_event", False):
-                    continue
-                # Skip auto-generated events (e.g. PM transition events)
-                if event.get("auto_generated", False):
-                    continue
+        return handled_event_types
 
-                event_type = event.get("__type__", "")
-                if event_type and event_type not in handled_event_types:
-                    self._diagnostics.append(
-                        build_diagnostic(
-                            DiagnosticCode.UNHANDLED_EVENT,
-                            element=event["fqn"],
-                            message=f"Event {event['name']} has no registered handler",
-                        )
-                    )
+    @staticmethod
+    def _expects_no_handler(event: dict[str, Any]) -> bool:
+        """Return whether an event is exempt from UNHANDLED_EVENT."""
+        # Skip published events — they are intentionally external
+        if event.get("published", False):
+            return True
+        # Skip fact events — auto-generated from aggregate changes
+        if event.get("is_fact_event", False):
+            return True
+        # Skip auto-generated events (e.g. PM transition events)
+        return bool(event.get("auto_generated", False))
 
     def _diagnose_unused_commands(self, ir: dict[str, Any]) -> None:
         """UNUSED_COMMAND: commands with no handler method wired."""
@@ -2822,96 +3134,156 @@ class IRBuilder:
             if proj.get("options", {}).get("externally_populated"):
                 continue
 
-            proj_fqn = proj["fqn"]
-            proj_fields = proj.get("fields", {})
-            written: set[str] = set()
-            dynamic = False
-            for projector_fqn, projector_entry in proj_entry["projectors"].items():
-                cls = projector_cls_by_fqn.get(projector_fqn)
-                entry = self.view.element_class_entry(cls) if cls is not None else None
-                if entry is None:
-                    continue
-                handler_names = {
-                    name
-                    for names in projector_entry.get("handlers", {}).values()
-                    for name in names
-                }
-                for method in entry.methods:
-                    facts = self.view.method_facts(entry.module, method.node)
-                    for construction in facts.constructions:
-                        if construction.fqn != proj_fqn:
-                            continue
-                        # Only a construction can disable the rule. A
-                        # ``QuerySet.update(**data)`` also fills fields from a
-                        # mapping, but its ``CallFact`` carries only the callee
-                        # name, so it cannot be told apart from ``dict.update``.
-                        if construction.dynamic_kwargs or (
-                            construction.positional_template
-                        ):
-                            dynamic = True
-                        written.update(construction.field_names)
-                    writes = [
-                        attribute
-                        for attribute in facts.attributes
-                        if attribute.is_write
-                        and not attribute.is_delete
-                        and attribute.name in proj_fields
-                    ]
-                    if writes:
-                        if method.name in handler_names:
-                            # A handler's parameters are the projector and the
-                            # message, never the record, so a write on one is
-                            # provably not a record write. Asking for the flow
-                            # costs a walk, so ask only when there is a write to
-                            # judge.
-                            excluded = {
-                                definition.name
-                                for definition in self.view.method_flow(
-                                    entry.module, method.node
-                                ).parameters
-                            }
-                        else:
-                            # A helper's parameter often *is* the record
-                            # (``_apply(self, record, event)``), so only its
-                            # receiver is dropped: the first parameter of a
-                            # non-static method is the projector, never a
-                            # record.
-                            positional = (
-                                method.node.args.posonlyargs or method.node.args.args
-                            )
-                            excluded = (
-                                {positional[0].arg}
-                                if positional
-                                and "staticmethod" not in method.decorators
-                                else set()
-                            )
-                        writes = [
-                            attribute
-                            for attribute in writes
-                            if attribute.receiver not in excluded
-                        ]
-                    written.update(attribute.name for attribute in writes)
+            written, dynamic = self._projection_writes(
+                proj, proj_entry["projectors"], projector_cls_by_fqn
+            )
 
             # A dynamic construction anywhere in the union makes the field set
             # unknowable; the evidence guard trips only when the union is empty.
             if dynamic or not written:
                 continue
 
-            identity_field = proj.get("identity_field")
-            exempt = {identity_field} if identity_field is not None else set()
-            for field_name in proj.get("fields", {}):
-                if field_name in written or field_name in exempt:
-                    continue
-                self._diagnostics.append(
-                    build_diagnostic(
-                        DiagnosticCode.UNSOURCED_PROJECTION_FIELD,
-                        element=proj_fqn,
-                        message=f"Field `{field_name}` on projection "
-                        f"`{proj['name']}` is filled by no projector write, so "
-                        f"it renders as a dead column.",
-                        field=field_name,
-                    )
+            self._emit_unsourced_projection_fields(proj, written)
+
+    def _projection_writes(
+        self,
+        proj: dict[str, Any],
+        projectors: dict[str, Any],
+        projector_cls_by_fqn: dict[str, type],
+    ) -> tuple[set[str], bool]:
+        """Return the projection fields its projectors write, and a dynamic flag.
+
+        The flag is ``True`` when any projector method builds the projection
+        from a ``**kwargs`` splat or a positional template.
+        """
+        written: set[str] = set()
+        dynamic = False
+        for projector_fqn, projector_entry in projectors.items():
+            cls = projector_cls_by_fqn.get(projector_fqn)
+            entry = self.view.element_class_entry(cls) if cls is not None else None
+            if entry is None:
+                continue
+            if self._projector_writes(entry, projector_entry, proj, written):
+                dynamic = True
+        return written, dynamic
+
+    def _projector_writes(
+        self,
+        entry: Any,
+        projector_entry: dict[str, Any],
+        proj: dict[str, Any],
+        written: set[str],
+    ) -> bool:
+        """Add the projection fields one projector writes to ``written``.
+
+        Returns whether any of its methods builds the projection dynamically.
+        """
+        proj_fqn = proj["fqn"]
+        proj_fields = proj.get("fields", {})
+        handler_names = {
+            name
+            for names in projector_entry.get("handlers", {}).values()
+            for name in names
+        }
+        dynamic = False
+        for method in entry.methods:
+            facts = self.view.method_facts(entry.module, method.node)
+            if self._record_constructions(facts, proj_fqn, written):
+                dynamic = True
+            writes = self._record_attribute_writes(
+                entry, method, facts, proj_fields, handler_names
+            )
+            written.update(attribute.name for attribute in writes)
+        return dynamic
+
+    @staticmethod
+    def _record_constructions(facts: Any, proj_fqn: str, written: set[str]) -> bool:
+        """Add the fields each construction of ``proj_fqn`` names to ``written``.
+
+        Returns whether any such construction is dynamic.
+        """
+        dynamic = False
+        for construction in facts.constructions:
+            if construction.fqn != proj_fqn:
+                continue
+            # Only a construction can disable the rule. A
+            # ``QuerySet.update(**data)`` also fills fields from a
+            # mapping, but its ``CallFact`` carries only the callee
+            # name, so it cannot be told apart from ``dict.update``.
+            if construction.dynamic_kwargs or (construction.positional_template):
+                dynamic = True
+            written.update(construction.field_names)
+        return dynamic
+
+    def _record_attribute_writes(
+        self,
+        entry: Any,
+        method: Any,
+        facts: Any,
+        proj_fields: dict[str, Any],
+        handler_names: set[str],
+    ) -> list[Any]:
+        """Return a method's attribute writes that can be writes to the record."""
+        writes = [
+            attribute
+            for attribute in facts.attributes
+            if attribute.is_write
+            and not attribute.is_delete
+            and attribute.name in proj_fields
+        ]
+        if not writes:
+            return writes
+        if method.name in handler_names:
+            # A handler's parameters are the projector and the
+            # message, never the record, so a write on one is
+            # provably not a record write. Asking for the flow
+            # costs a walk, so ask only when there is a write to
+            # judge.
+            excluded = {
+                definition.name
+                for definition in self.view.method_flow(
+                    entry.module, method.node
+                ).parameters
+            }
+        else:
+            excluded = self._helper_receiver(method)
+        return [attribute for attribute in writes if attribute.receiver not in excluded]
+
+    @staticmethod
+    def _helper_receiver(method: Any) -> set[str]:
+        """Return the receiver parameter name of a non-static helper method."""
+        # A helper's parameter often *is* the record
+        # (``_apply(self, record, event)``), so only its
+        # receiver is dropped: the first parameter of a
+        # non-static method is the projector, never a
+        # record.
+        positional = method.node.args.posonlyargs or method.node.args.args
+        return (
+            {positional[0].arg}
+            if positional and "staticmethod" not in method.decorators
+            else set()
+        )
+
+    def _emit_unsourced_projection_fields(
+        self, proj: dict[str, Any], written: set[str]
+    ) -> None:
+        """Report UNSOURCED_PROJECTION_FIELD for each unwritten projection field."""
+        proj_fqn = proj["fqn"]
+        identity_field = proj.get("identity_field")
+        exempt = {identity_field} if identity_field is not None else set()
+        for field_name in proj.get("fields", {}):
+            if field_name in written or field_name in exempt:
+                continue
+            self._diagnostics.append(
+                build_diagnostic(
+                    DiagnosticCode.UNSOURCED_PROJECTION_FIELD,
+                    element=proj_fqn,
+                    message=f"Field `{field_name}` on projection "
+                    f"`{proj['name']}` is filled by no projector write, so "
+                    f"it renders as a dead column.",
+                    field=field_name,
                 )
+            )
 
     def _diagnose_unbounded_indexed_string(self, ir: dict[str, Any]) -> None:
         """UNBOUNDED_INDEXED_STRING: an aggregate field that is both included in
@@ -2937,8 +3309,6 @@ class IRBuilder:
             # other cluster-walking design rules.
             if aggregate["fqn"] in abstract_fqns:
                 continue
-            fields = aggregate.get("fields", {})
-
             for index in aggregate.get("indexes", []):
                 # Only ``Index`` entries carry a ``fields`` key; ``RawIndex``
                 # entries carry verbatim, opaque DDL and no ``fields``. The
@@ -2946,43 +3316,49 @@ class IRBuilder:
                 # also guards the lookup below from raising.
                 if "fields" not in index:
                     continue
+                self._diagnose_unbounded_index(aggregate, index)
 
-                index_name = index.get("name", "(unnamed)")
+    def _diagnose_unbounded_index(
+        self, aggregate: dict[str, Any], index: dict[str, Any]
+    ) -> None:
+        """Report UNBOUNDED_INDEXED_STRING for each unbounded field in one index."""
+        fields = aggregate.get("fields", {})
+        index_name = index.get("name", "(unnamed)")
 
-                # A field listed twice within one index is a single occurrence;
-                # dedupe (preserving declaration order) so a degenerate
-                # ``Index("body", "body")`` yields one finding, not two.
-                for field_name in dict.fromkeys(index["fields"]):
-                    # A field name may reference a value-object or association
-                    # attribute absent from the scalar fields dict; skip it
-                    # rather than raise.
-                    field = fields.get(field_name)
-                    if field is None:
-                        continue
+        # A field listed twice within one index is a single occurrence;
+        # dedupe (preserving declaration order) so a degenerate
+        # ``Index("body", "body")`` yields one finding, not two.
+        for field_name in dict.fromkeys(index["fields"]):
+            # A field name may reference a value-object or association
+            # attribute absent from the scalar fields dict; skip it
+            # rather than raise.
+            field = fields.get(field_name)
+            if field is None:
+                continue
 
-                    field_type = field.get("type")
-                    unbounded = field_type == "Text" or (
-                        field_type == "String" and "max_length" not in field
-                    )
-                    if not unbounded:
-                        continue
+            field_type = field.get("type")
+            unbounded = field_type == "Text" or (
+                field_type == "String" and "max_length" not in field
+            )
+            if not unbounded:
+                continue
 
-                    self._diagnostics.append(
-                        build_diagnostic(
-                            DiagnosticCode.UNBOUNDED_INDEXED_STRING,
-                            element=aggregate["fqn"],
-                            message=f"Field `{field_name}` on aggregate "
-                            f"`{aggregate['name']}` is included in index "
-                            f"`{index_name}` but is an unbounded string "
-                            f"(`{field_type}`). SQL Server rejects indexes "
-                            f"on unbounded strings, MySQL requires an "
-                            f"explicit prefix length, and PostgreSQL builds "
-                            f"the index with storage and performance overhead.",
-                            field=field_name,
-                            suggestion=f"{field_name} = String(max_length=255)  "
-                            f"# size to the field's domain",
-                        )
-                    )
+            self._diagnostics.append(
+                build_diagnostic(
+                    DiagnosticCode.UNBOUNDED_INDEXED_STRING,
+                    element=aggregate["fqn"],
+                    message=f"Field `{field_name}` on aggregate "
+                    f"`{aggregate['name']}` is included in index "
+                    f"`{index_name}` but is an unbounded string "
+                    f"(`{field_type}`). SQL Server rejects indexes "
+                    f"on unbounded strings, MySQL requires an "
+                    f"explicit prefix length, and PostgreSQL builds "
+                    f"the index with storage and performance overhead.",
+                    field=field_name,
+                    suggestion=f"{field_name} = String(max_length=255)  "
+                    f"# size to the field's domain",
+                )
+            )
 
     def _diagnose_unindexed_filter_path(self, ir: dict[str, Any]) -> None:
         """Report UNINDEXED_FILTER_PATH for each aggregate field a repository
@@ -2996,7 +3372,6 @@ class IRBuilder:
         such as ``age__gte`` checks its base field. Emits one diagnostic per
         uncovered field per call-site.
         """
-        registry = self._domain._domain_registry
         clusters = ir["clusters"]
         aggregate_fqns = set(clusters.keys())
         abstract_fqns = self._abstract_aggregate_fqns()
@@ -3016,10 +3391,45 @@ class IRBuilder:
         # across all of its call-sites.
         covered_cache: dict[str, set[str]] = {}
 
+        for element_fqn, method_name, call in self._named_field_queries():
+            target_fqn = self._resolve_filter_target(
+                call.receiver_fqn,
+                element_fqn,
+                repo_to_aggregate,
+                aggregate_fqns,
+            )
+            # No join target, or an abstract aggregate that builds no
+            # table: skip rather than guess (target is a cluster key).
+            if target_fqn is None or target_fqn in abstract_fqns:
+                continue
+
+            aggregate = clusters[target_fqn]["aggregate"]
+            if target_fqn not in covered_cache:
+                covered_cache[target_fqn] = self._covered_index_fields(aggregate)
+
+            self._diagnose_unindexed_filter_call(
+                aggregate, covered_cache[target_fqn], call, element_fqn, method_name
+            )
+
+    def _named_field_queries(self) -> Iterator[tuple[str, str, Any]]:
+        """Yield ``(element_fqn, method_name, call)`` for each field-filter query.
+
+        A field-filter query is a repository query call to one of the
+        ``FILTER_PATH_QUERY_METHODS`` that names at least one field.
+        """
         # Walk every registered (non-internal) element in sorted-FQN order, so
         # the emitted findings are deterministic regardless of registration
         # order. ``element_fqn`` is the enclosing element, used to resolve a
         # self-rooted query written inside a repository.
+        for element_fqn, cls in self._registered_elements_by_key():
+            for method_name, facts in self.view.element_facts(cls).items():
+                for call in facts.calls:
+                    if self._is_named_field_query(call):
+                        yield element_fqn, method_name, call
+
+    def _registered_elements_by_key(self) -> list[tuple[str, type]]:
+        """Return ``(registry key, cls)`` of each non-internal element, key-sorted."""
+        registry = self._domain._domain_registry
         elements: list[tuple[str, type]] = []
         for records in registry._elements.values():
             for element_fqn, record in records.items():
@@ -3027,70 +3437,58 @@ class IRBuilder:
                     continue
                 elements.append((element_fqn, record.cls))
         elements.sort(key=lambda item: item[0])
+        return elements
 
-        for element_fqn, cls in elements:
-            for method_name, facts in self.view.element_facts(cls).items():
-                for call in facts.calls:
-                    if call.receiver_role is not ReceiverRole.REPOSITORY_QUERY:
-                        continue
-                    # A query surface with at least one named field: a persist
-                    # (``add``) or a dynamic ``filter(**kwargs)`` names none.
-                    if (
-                        call.method not in FILTER_PATH_QUERY_METHODS
-                        or not call.field_names
-                    ):
-                        continue
+    @staticmethod
+    def _is_named_field_query(call: Any) -> bool:
+        """Return whether a call is a field-filter repository query."""
+        if call.receiver_role is not ReceiverRole.REPOSITORY_QUERY:
+            return False
+        # A query surface with at least one named field: a persist
+        # (``add``) or a dynamic ``filter(**kwargs)`` names none.
+        return call.method in FILTER_PATH_QUERY_METHODS and bool(call.field_names)
 
-                    target_fqn = self._resolve_filter_target(
-                        call.receiver_fqn,
-                        element_fqn,
-                        repo_to_aggregate,
-                        aggregate_fqns,
-                    )
-                    # No join target, or an abstract aggregate that builds no
-                    # table: skip rather than guess (target is a cluster key).
-                    if target_fqn is None or target_fqn in abstract_fqns:
-                        continue
+    def _diagnose_unindexed_filter_call(
+        self,
+        aggregate: dict[str, Any],
+        covered: set[str],
+        call: Any,
+        element_fqn: str,
+        method_name: str,
+    ) -> None:
+        """Report UNINDEXED_FILTER_PATH for each uncovered field one query names."""
+        fields = aggregate.get("fields", {})
+        seen: set[str] = set()
+        for raw_name in call.field_names:
+            # An operator lookup (``age__gte``, ``status__in``)
+            # filters its base field; strip the ``__<lookup>`` suffix
+            # and evaluate the base, and evaluate each base at most
+            # once per call-site (``age__gte`` + ``age__lte`` name the
+            # one field ``age``). A real field name never contains a
+            # ``__``, so the split is unambiguous.
+            field_name = raw_name.split("__", 1)[0]
+            if field_name in seen:
+                continue
+            seen.add(field_name)
 
-                    aggregate = clusters[target_fqn]["aggregate"]
-                    fields = aggregate.get("fields", {})
-                    if target_fqn not in covered_cache:
-                        covered_cache[target_fqn] = self._covered_index_fields(
-                            aggregate
-                        )
-                    covered = covered_cache[target_fqn]
-
-                    seen: set[str] = set()
-                    for raw_name in call.field_names:
-                        # An operator lookup (``age__gte``, ``status__in``)
-                        # filters its base field; strip the ``__<lookup>`` suffix
-                        # and evaluate the base, and evaluate each base at most
-                        # once per call-site (``age__gte`` + ``age__lte`` name the
-                        # one field ``age``). A real field name never contains a
-                        # ``__``, so the split is unambiguous.
-                        field_name = raw_name.split("__", 1)[0]
-                        if field_name in seen:
-                            continue
-                        seen.add(field_name)
-
-                        field = fields.get(field_name)
-                        # Only a real scalar field can be index-covered on its own
-                        # name; an unknown name, a value-object attribute, or an
-                        # association names no coverable column and is left alone
-                        # (conservative, matching the sibling rule's scalar scope).
-                        if (
-                            field is None
-                            or field.get("kind") in NON_SCALAR_FILTER_FIELD_KINDS
-                            or field_name in covered
-                        ):
-                            continue
-                        self._emit_unindexed_filter_path(
-                            aggregate,
-                            field_name,
-                            element_fqn,
-                            method_name,
-                            call.location,
-                        )
+            field = fields.get(field_name)
+            # Only a real scalar field can be index-covered on its own
+            # name; an unknown name, a value-object attribute, or an
+            # association names no coverable column and is left alone
+            # (conservative, matching the sibling rule's scalar scope).
+            if (
+                field is None
+                or field.get("kind") in NON_SCALAR_FILTER_FIELD_KINDS
+                or field_name in covered
+            ):
+                continue
+            self._emit_unindexed_filter_path(
+                aggregate,
+                field_name,
+                element_fqn,
+                method_name,
+                call.location,
+            )
 
     @staticmethod
     def _covered_index_fields(aggregate: dict[str, Any]) -> set[str]:
@@ -3276,24 +3674,37 @@ class IRBuilder:
                 for entity in cluster["entities"].values()
             )
             for element_fqn, fields in owners:
-                for field_name, field in fields.items():
-                    if field.get("kind") != "reference":
-                        continue
-                    if field.get("auto_generated"):
-                        continue
-                    target = field.get("target")
-                    if target in cluster_keys and target != own:
-                        self._diagnostics.append(
-                            build_diagnostic(
-                                DiagnosticCode.CROSS_AGGREGATE_REFERENCE,
-                                element=element_fqn,
-                                message=f"Reference `{field_name}` points at a "
-                                f"different aggregate's root `{target}`; "
-                                f"aggregates should reference each other by "
-                                f"identity, not by `Reference`.",
-                                field=field_name,
-                            )
-                        )
+                self._diagnose_cross_references_in(
+                    element_fqn, fields, own, cluster_keys
+                )
+
+    def _diagnose_cross_references_in(
+        self,
+        element_fqn: str,
+        fields: dict[str, Any],
+        own: str,
+        cluster_keys: set[str],
+    ) -> None:
+        """Report CROSS_AGGREGATE_REFERENCE for each field of one element that
+        references another cluster's root."""
+        for field_name, field in fields.items():
+            if field.get("kind") != "reference":
+                continue
+            if field.get("auto_generated"):
+                continue
+            target = field.get("target")
+            if target in cluster_keys and target != own:
+                self._diagnostics.append(
+                    build_diagnostic(
+                        DiagnosticCode.CROSS_AGGREGATE_REFERENCE,
+                        element=element_fqn,
+                        message=f"Reference `{field_name}` points at a "
+                        f"different aggregate's root `{target}`; "
+                        f"aggregates should reference each other by "
+                        f"identity, not by `Reference`.",
+                        field=field_name,
+                    )
+                )
 
     def _diagnose_es_aggregate_no_events(self, ir: dict[str, Any]) -> None:
         """ES_AGGREGATE_NO_EVENTS: an ``event_sourced=True`` aggregate with no
@@ -3363,29 +3774,7 @@ class IRBuilder:
 
         for element_fqn, cls in scanned:
             for method_name, facts in self.view.element_facts(cls).items():
-                # `(line, col)` so a persist and an I/O call on the same physical
-                # line still order correctly.
-                persist_pos = min(
-                    (
-                        (call.location.line, call.location.col)
-                        for call in facts.calls
-                        if is_persistence_call(call.callee_fqn)
-                    ),
-                    default=None,
-                )
-                if persist_pos is None:
-                    continue
-                # Only an I/O call after the first repository access can be
-                # inside the transaction; one before it runs outside.
-                io = next(
-                    (
-                        call
-                        for call in facts.calls
-                        if (call.location.line, call.location.col) > persist_pos
-                        and is_external_io_call(call.callee_fqn)
-                    ),
-                    None,
-                )
+                io = self._io_call_after_persist(facts)
                 if io is None:
                     continue
                 self._diagnostics.append(
@@ -3398,6 +3787,37 @@ class IRBuilder:
                         f"can hold the transaction open across the call.",
                     )
                 )
+
+    @staticmethod
+    def _io_call_after_persist(facts: Any) -> Any | None:
+        """Return a method's first I/O call after its first persistence call.
+
+        Returns ``None`` when the method makes no persistence call, or no I/O
+        call after it.
+        """
+        # `(line, col)` so a persist and an I/O call on the same physical
+        # line still order correctly.
+        persist_pos = min(
+            (
+                (call.location.line, call.location.col)
+                for call in facts.calls
+                if is_persistence_call(call.callee_fqn)
+            ),
+            default=None,
+        )
+        if persist_pos is None:
+            return None
+        # Only an I/O call after the first repository access can be
+        # inside the transaction; one before it runs outside.
+        return next(
+            (
+                call
+                for call in facts.calls
+                if (call.location.line, call.location.col) > persist_pos
+                and is_external_io_call(call.callee_fqn)
+            ),
+            None,
+        )
 
     def _diagnose_unraised_event(self, ir: dict[str, Any]) -> None:
         """Report UNRAISED_EVENT for each cluster event that no method of the
@@ -3434,33 +3854,41 @@ class IRBuilder:
             if not analyzed:
                 continue
 
-            # An event is raised when a single method both calls `raise_` and
-            # constructs it. Correlate at the method level, not the argument span.
-            # Match on the method name: the factory idiom
-            # `user.raise_(Registered(...))` leaves the receiver role UNKNOWN.
-            raised_fqns: set[str] = set()
-            for cls in analyzed:
-                for facts in self.view.element_facts(cls).values():
-                    if not any(call.method == RAISE_METHOD for call in facts.calls):
-                        continue
-                    for construction in facts.constructions:
-                        raised_fqns.add(construction.fqn)
+            raised_fqns = self._raised_event_fqns(analyzed)
+            self._emit_unraised_events(cluster, raised_fqns)
 
-            for _event_fqn, event in sorted(cluster["events"].items()):
-                if event.get("is_fact_event", False) or event.get(
-                    "auto_generated", False
-                ):
+    def _raised_event_fqns(self, classes: list[type]) -> set[str]:
+        """Return the FQNs constructed in any method of ``classes`` that raises."""
+        # An event is raised when a single method both calls `raise_` and
+        # constructs it. Correlate at the method level, not the argument span.
+        # Match on the method name: the factory idiom
+        # `user.raise_(Registered(...))` leaves the receiver role UNKNOWN.
+        raised_fqns: set[str] = set()
+        for cls in classes:
+            for facts in self.view.element_facts(cls).values():
+                if not any(call.method == RAISE_METHOD for call in facts.calls):
                     continue
-                if event["fqn"] in raised_fqns:
-                    continue
-                self._diagnostics.append(
-                    build_diagnostic(
-                        DiagnosticCode.UNRAISED_EVENT,
-                        element=event["fqn"],
-                        message=f"Event {event['name']} is raised by no "
-                        f"aggregate or entity method",
-                    )
+                for construction in facts.constructions:
+                    raised_fqns.add(construction.fqn)
+        return raised_fqns
+
+    def _emit_unraised_events(
+        self, cluster: dict[str, Any], raised_fqns: set[str]
+    ) -> None:
+        """Report UNRAISED_EVENT for each checked cluster event not in ``raised_fqns``."""
+        for _event_fqn, event in sorted(cluster["events"].items()):
+            if event.get("is_fact_event", False) or event.get("auto_generated", False):
+                continue
+            if event["fqn"] in raised_fqns:
+                continue
+            self._diagnostics.append(
+                build_diagnostic(
+                    DiagnosticCode.UNRAISED_EVENT,
+                    element=event["fqn"],
+                    message=f"Event {event['name']} is raised by no "
+                    f"aggregate or entity method",
                 )
+            )
 
     def _diagnose_query_handler_without_query(self, ir: dict[str, Any]) -> None:
         """QUERY_HANDLER_WITHOUT_QUERY: projection with query handlers but no queries.
@@ -3637,7 +4065,6 @@ class IRBuilder:
         This is usually a mistake — events should capture the relevant state
         change data.  Auto-generated fields (id, _metadata) are excluded.
         """
-        auto_field_names = {"id", "_metadata"}
         for cluster in ir["clusters"].values():
             for event in cluster["events"].values():
                 # Skip fact events and auto-generated events
@@ -3645,12 +4072,7 @@ class IRBuilder:
                     continue
                 if event.get("auto_generated", False):
                     continue
-                user_fields = {
-                    name
-                    for name in event.get("fields", {})
-                    if name not in auto_field_names
-                }
-                if not user_fields:
+                if not self._event_user_fields(event):
                     self._diagnostics.append(
                         build_diagnostic(
                             DiagnosticCode.EVENT_WITHOUT_DATA,
@@ -3658,6 +4080,14 @@ class IRBuilder:
                             message=f"Event `{event['name']}` has no user-defined fields",
                         )
                     )
+
+    @staticmethod
+    def _event_user_fields(event: dict[str, Any]) -> set[str]:
+        """Return an event's field names other than ``id`` and ``_metadata``."""
+        auto_field_names = {"id", "_metadata"}
+        return {
+            name for name in event.get("fields", {}) if name not in auto_field_names
+        }
 
     def _diagnose_subscriber_no_streams(self, ir: dict[str, Any]) -> None:
         """SUBSCRIBER_NO_STREAMS: subscriber with no stream to consume.
@@ -3740,71 +4170,19 @@ class IRBuilder:
         # Element-level deprecation
         deprecated = element.get("deprecated")
         if deprecated is not None:
-            since = deprecated.get("since", "?")
-            removal = deprecated.get("removal")
-            if removal:
-                msg = (
-                    f"`{name}` is deprecated since v{since}, "
-                    f"scheduled for removal in v{removal}"
-                )
-            else:
-                msg = f"`{name}` is deprecated since v{since}"
-
-            superseded_by = element.get("superseded_by")
-            if superseded_by:
-                msg += f"; superseded by `{superseded_by}`"
-
             self._diagnostics.append(
                 build_diagnostic(
                     DiagnosticCode.DEPRECATED_ELEMENT,
                     element=fqn_val,
-                    message=msg,
+                    message=self._element_deprecation_message(
+                        name, deprecated, element.get("superseded_by")
+                    ),
                 )
             )
 
         # Field-level deprecation (independent of element deprecation)
         for field_name, field_info in element.get("fields", {}).items():
-            field_deprecated = field_info.get("deprecated")
-            if field_deprecated is not None:
-                f_since = field_deprecated.get("since", "?")
-                f_removal = field_deprecated.get("removal")
-                if f_removal:
-                    f_msg = (
-                        f"Field `{name}.{field_name}` is deprecated since "
-                        f"v{f_since}, scheduled for removal in v{f_removal}"
-                    )
-                else:
-                    f_msg = (
-                        f"Field `{name}.{field_name}` is deprecated since v{f_since}"
-                    )
-                self._diagnostics.append(
-                    build_diagnostic(
-                        DiagnosticCode.DEPRECATED_FIELD,
-                        element=fqn_val,
-                        message=f_msg,
-                        field=field_name,
-                    )
-                )
-
-            # Deprecated ``pickled=`` argument on a ``List`` field. The argument
-            # is inert (it never had an effect); this only nudges the user to
-            # drop it before the removal version.
-            if field_info.get("deprecated_pickled"):
-                p_removal = DEPRECATIONS["list_pickled"].removal
-                self._diagnostics.append(
-                    build_diagnostic(
-                        DiagnosticCode.DEPRECATED_FIELD,
-                        element=fqn_val,
-                        message=f"Field `{name}.{field_name}` uses the deprecated "
-                        f"`pickled=` argument on `List`, scheduled for removal "
-                        f"in v{p_removal}; it has no effect.",
-                        field=field_name,
-                        rationale="The `pickled` argument on `List` is a dead legacy flag "
-                        "with no effect; it is scheduled for removal.",
-                        fix=f"Remove the `pickled=` argument from `{name}.{field_name}`; "
-                        f"it has no effect.",
-                    )
-                )
+            self._check_field_deprecated(name, fqn_val, field_name, field_info)
 
         # Option-level deprecation (currently only commands passed the event-only
         # ``published`` option). Warning-level: unlike a still-functional
@@ -3824,6 +4202,69 @@ class IRBuilder:
                     rationale="The option is inert today and becomes a hard "
                     f"IncorrectUsageError at v{published_removal}.",
                     fix=f"Remove the `{opt}` option from `{name}`; it has no effect.",
+                )
+            )
+
+    @staticmethod
+    def _element_deprecation_message(
+        name: str, deprecated: dict[str, Any], superseded_by: Any
+    ) -> str:
+        """Return the DEPRECATED_ELEMENT message for one element."""
+        since = deprecated.get("since", "?")
+        removal = deprecated.get("removal")
+        if removal:
+            msg = (
+                f"`{name}` is deprecated since v{since}, "
+                f"scheduled for removal in v{removal}"
+            )
+        else:
+            msg = f"`{name}` is deprecated since v{since}"
+
+        if superseded_by:
+            msg += f"; superseded by `{superseded_by}`"
+        return msg
+
+    def _check_field_deprecated(
+        self, name: str, fqn_val: str, field_name: str, field_info: dict[str, Any]
+    ) -> None:
+        """Emit DEPRECATED_FIELD diagnostics for one field of an element."""
+        field_deprecated = field_info.get("deprecated")
+        if field_deprecated is not None:
+            f_since = field_deprecated.get("since", "?")
+            f_removal = field_deprecated.get("removal")
+            if f_removal:
+                f_msg = (
+                    f"Field `{name}.{field_name}` is deprecated since "
+                    f"v{f_since}, scheduled for removal in v{f_removal}"
+                )
+            else:
+                f_msg = f"Field `{name}.{field_name}` is deprecated since v{f_since}"
+            self._diagnostics.append(
+                build_diagnostic(
+                    DiagnosticCode.DEPRECATED_FIELD,
+                    element=fqn_val,
+                    message=f_msg,
+                    field=field_name,
+                )
+            )
+
+        # Deprecated ``pickled=`` argument on a ``List`` field. The argument
+        # is inert (it never had an effect); this only nudges the user to
+        # drop it before the removal version.
+        if field_info.get("deprecated_pickled"):
+            p_removal = DEPRECATIONS["list_pickled"].removal
+            self._diagnostics.append(
+                build_diagnostic(
+                    DiagnosticCode.DEPRECATED_FIELD,
+                    element=fqn_val,
+                    message=f"Field `{name}.{field_name}` uses the deprecated "
+                    f"`pickled=` argument on `List`, scheduled for removal "
+                    f"in v{p_removal}; it has no effect.",
+                    field=field_name,
+                    rationale="The `pickled` argument on `List` is a dead legacy flag "
+                    "with no effect; it is scheduled for removal.",
+                    fix=f"Remove the `pickled=` argument from `{name}.{field_name}`; "
+                    f"it has no effect.",
                 )
             )
 
@@ -3861,36 +4302,11 @@ class IRBuilder:
         """
         removal = DEPRECATIONS["method_field"].removal  # all three share one version
 
-        # Collect the distinct source modules that host a non-internal registered
-        # element. A module-level import is one fact regardless of how many
-        # elements live in the module, so dedupe on the module here.
-        registry = self._domain._domain_registry
-        modules: set[str] = set()
-        for records in registry._elements.values():
-            for record in records.values():
-                if record.internal:
-                    continue
-                module = getattr(record.cls, "__module__", None)
-                if module:
-                    modules.add(module)
-
-        for module in sorted(modules):
+        for module in self._element_modules():
             tree = self.source.tree(module)
             uses = self._find_deprecated_import_uses(tree) if tree is not None else []
             for kind, symbol in uses:
-                if kind == "field":
-                    message = (
-                        f"`{symbol}` is a deprecated serializer field type, "
-                        f"scheduled for removal in v{removal}. Serializer fields "
-                        f"are no longer supported."
-                    )
-                    fix = f"Remove the `{symbol}` field; serializer fields are gone."
-                else:  # "util"
-                    message = (
-                        f"`{symbol}` is deprecated internal plumbing, scheduled "
-                        f"for removal in v{removal}. It has no public replacement."
-                    )
-                    fix = f"Stop importing `{symbol}`; it is internal plumbing."
+                message, fix = self._deprecated_import_text(kind, symbol, removal)
                 self._diagnostics.append(
                     build_diagnostic(
                         DiagnosticCode.DEPRECATED_IMPORT,
@@ -3900,14 +4316,50 @@ class IRBuilder:
                     )
                 )
 
+    def _element_modules(self) -> list[str]:
+        """Return the sorted modules that host a non-internal registered element."""
+        # A module-level import is one fact regardless of how many elements
+        # live in the module, so dedupe on the module here.
+        registry = self._domain._domain_registry
+        modules: set[str] = set()
+        for records in registry._elements.values():
+            for record in records.values():
+                if record.internal:
+                    continue
+                module = getattr(record.cls, "__module__", None)
+                if module:
+                    modules.add(module)
+        return sorted(modules)
+
+    @staticmethod
+    def _deprecated_import_text(
+        kind: str, symbol: str, removal: str | None
+    ) -> tuple[str, str]:
+        """Return the DEPRECATED_IMPORT ``(message, fix)`` for one use."""
+        if kind == "field":
+            message = (
+                f"`{symbol}` is a deprecated serializer field type, "
+                f"scheduled for removal in v{removal}. Serializer fields "
+                f"are no longer supported."
+            )
+            fix = f"Remove the `{symbol}` field; serializer fields are gone."
+        else:  # "util"
+            message = (
+                f"`{symbol}` is deprecated internal plumbing, scheduled "
+                f"for removal in v{removal}. It has no public replacement."
+            )
+            fix = f"Stop importing `{symbol}`; it is internal plumbing."
+        return message, fix
+
     @staticmethod
     def _find_deprecated_import_uses(tree: ast.Module) -> list[tuple[str, str]]:
         """Return a ``(kind, symbol)`` pair, in a deterministic order, for each
         deprecated import surface used in ``tree``.
 
         - ``"field"``: a ``Method`` or ``Nested`` call through a name bound by
-          a module-level ``from protean.fields import ...``, or through
-          ``protean.fields``. A name imported inside a function is not matched,
+          a module-level ``from protean.fields import ...`` or
+          ``from protean.fields.basic import ...``, or through either module
+          as an attribute. A name imported inside a function is not matched,
           and an import with no call is not matched.
         - ``"util"``: a deprecated ``protean.utils`` name, imported by name or
           reached as an attribute, at any scope.
@@ -3915,60 +4367,7 @@ class IRBuilder:
         A whole-module alias (``import protean.fields as pf``) matches the same
         as the full module name.
         """
-        field_modules = {"protean.fields", "protean.fields.basic"}
-        deprecated_fields = {"Method", "Nested"}
-        plumbing = set(_DEPRECATED_PLUMBING)
-
-        # Whole-module import aliases: `import protean.fields as pf` binds
-        # `pf` -> `protean.fields`.
-        module_aliases: dict[str, str] = {}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.asname:
-                        module_aliases[alias.asname] = alias.name
-
-        def _dotted(node: ast.AST) -> str | None:
-            """Dotted name of an attribute/name chain, or ``None`` if impure."""
-            if isinstance(node, ast.Name):
-                return module_aliases.get(node.id, node.id)
-            if isinstance(node, ast.Attribute):
-                base = _dotted(node.value)
-                return f"{base}.{node.attr}" if base is not None else None
-            return None
-
-        # Module-level names bound to protean.fields' Method/Nested.
-        field_aliases: dict[str, str] = {}  # local name -> canonical
-        for stmt in tree.body:
-            if isinstance(stmt, ast.ImportFrom) and stmt.module in field_modules:
-                for alias in stmt.names:
-                    if alias.name in deprecated_fields:
-                        field_aliases[alias.asname or alias.name] = alias.name
-
-        found: set[tuple[str, str]] = set()
-        for node in ast.walk(tree):
-            # ``from protean.utils import <plumbing-name>`` — the import itself
-            # is the deprecated access (it fires ``__getattr__`` at runtime).
-            if isinstance(node, ast.ImportFrom) and node.module == "protean.utils":
-                for alias in node.names:
-                    if alias.name in plumbing:
-                        found.add(("util", f"protean.utils.{alias.name}"))
-            # ``protean.utils.<plumbing-name>`` attribute access.
-            elif isinstance(node, ast.Attribute) and node.attr in plumbing:
-                if _dotted(node.value) == "protean.utils":
-                    found.add(("util", f"protean.utils.{node.attr}"))
-            # ``Method(...)`` / ``Nested(...)`` call bound to a module import, or
-            # a ``protean.fields.Method(...)`` attribute call.
-            elif isinstance(node, ast.Call):
-                func = node.func
-                if isinstance(func, ast.Name) and func.id in field_aliases:
-                    found.add(("field", field_aliases[func.id]))
-                elif isinstance(func, ast.Attribute) and func.attr in deprecated_fields:
-                    base = _dotted(func.value)
-                    if base in field_modules:
-                        found.add(("field", func.attr))
-
-        return sorted(found)
+        return _DeprecatedImportScan(tree)._uses()
 
     def _diagnose_aggregate_no_invariants(self, ir: dict[str, Any]) -> None:
         """AGGREGATE_NO_INVARIANTS: an aggregate with no pre/post invariants,
@@ -4122,57 +4521,80 @@ class IRBuilder:
             return
 
         for path in rule_paths:
-            try:
-                callable_fn = self._import_callable(path)
-            except Exception as exc:  # noqa: BLE001 - importing a rule runs user code
-                logger.warning(
-                    "Custom lint rule %r could not be imported (%r), skipped",
-                    path,
-                    exc,
-                )
+            results = self._custom_rule_results(path, ir, logger)
+            if results is None:
                 continue
-
-            try:
-                results = callable_fn(ir)
-            except Exception as exc:  # noqa: BLE001 - a rule is user code
-                logger.warning("Custom lint rule %r raised %r, skipped", path, exc)
-                continue
-
-            if not isinstance(results, list):
-                logger.warning(
-                    "Custom lint rule %r returned %s instead of a list, so it was skipped",
-                    path,
-                    type(results).__name__,
-                )
-                continue
-
             for item in results:
-                if not isinstance(item, dict):
-                    logger.warning(
-                        "Custom lint rule %r returned a non-dict item, so it was skipped",
-                        path,
-                    )
-                    continue
-                missing = self._REQUIRED_KEYS - set(item)
-                if missing:
-                    logger.warning(
-                        "Custom lint rule %r returned item missing keys %s, so it was skipped",
-                        path,
-                        missing,
-                    )
-                    continue
-                if item["level"] not in self._VALID_LEVELS:
-                    logger.warning(
-                        "Custom lint rule %r returned invalid level %r, so it was skipped",
-                        path,
-                        item["level"],
-                    )
+                if not self._is_valid_custom_item(path, item, logger):
                     continue
                 # Custom findings default to the ``custom`` category so they
                 # carry the same schema shape as built-in diagnostics; the
                 # forward-compat ``rule``/``suggestion`` keys stay optional.
                 item.setdefault("category", "custom")
                 self._diagnostics.append(item)
+
+    def _custom_rule_results(
+        self, path: str, ir: dict[str, Any], logger: logging.Logger
+    ) -> list[Any] | None:
+        """Import and run one custom lint rule.
+
+        Returns the rule's result list, or ``None`` after logging a warning
+        when the rule cannot be imported, raises, or returns a non-list.
+        """
+        try:
+            callable_fn = self._import_callable(path)
+        except Exception as exc:  # noqa: BLE001 - importing a rule runs user code
+            logger.warning(
+                "Custom lint rule %r could not be imported (%r), skipped",
+                path,
+                exc,
+            )
+            return None
+
+        try:
+            results = callable_fn(ir)
+        except Exception as exc:  # noqa: BLE001 - a rule is user code
+            logger.warning("Custom lint rule %r raised %r, skipped", path, exc)
+            return None
+
+        if not isinstance(results, list):
+            logger.warning(
+                "Custom lint rule %r returned %s instead of a list, so it was skipped",
+                path,
+                type(results).__name__,
+            )
+            return None
+        return results
+
+    def _is_valid_custom_item(
+        self, path: str, item: Any, logger: logging.Logger
+    ) -> bool:
+        """Return whether one custom rule result is a well-formed diagnostic.
+
+        Logs a warning for a result that is not.
+        """
+        if not isinstance(item, dict):
+            logger.warning(
+                "Custom lint rule %r returned a non-dict item, so it was skipped",
+                path,
+            )
+            return False
+        missing = self._REQUIRED_KEYS - set(item)
+        if missing:
+            logger.warning(
+                "Custom lint rule %r returned item missing keys %s, so it was skipped",
+                path,
+                missing,
+            )
+            return False
+        if item["level"] not in self._VALID_LEVELS:
+            logger.warning(
+                "Custom lint rule %r returned invalid level %r, so it was skipped",
+                path,
+                item["level"],
+            )
+            return False
+        return True
 
     @staticmethod
     def _import_callable(dotted_path: str) -> Any:
