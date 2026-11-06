@@ -1,4 +1,4 @@
-# Contents
+# Find any page in the Protean docs
 
 A complete listing of every page in the Protean documentation. Use your
 browser's search (`Ctrl+F` / `Cmd+F`) to find any topic.
@@ -17,12 +17,14 @@ A guided, hands-on tutorial building a complete online bookstore.
 
 **Part I: Building the Domain**
 
-- [1. Your First Aggregate](./guides/getting-started/tutorial/01-your-first-aggregate.md): Create the foundation with a working Book aggregate.
+- [1. Your First
+  Aggregate](./guides/getting-started/tutorial/01-your-first-aggregate.md):
+  Create a working Book aggregate as the first element of the domain.
 - [2. Rich Fields and Value Objects](./guides/getting-started/tutorial/02-fields-and-value-objects.md): Add rich field types and create Money and Address value objects.
 - [3. Entities and Associations](./guides/getting-started/tutorial/03-entities-and-associations.md): Build the Order aggregate with child entities.
 - [4. Business Rules](./guides/getting-started/tutorial/04-business-rules.md): Add invariants and encapsulate behavior in aggregate methods.
 
-**Part II: Making It Real**
+**Part II: Add commands, events, projections, a database and an API**
 
 - [5. Commands and Handlers](./guides/getting-started/tutorial/05-commands.md): Formalize state changes with commands and command handlers.
 - [6. Events and Reactions](./guides/getting-started/tutorial/06-events-and-reactions.md): Define events, raise them from aggregates, and react with handlers.
@@ -41,14 +43,14 @@ A guided, hands-on tutorial building a complete online bookstore.
 - [14. Subscribers](./guides/getting-started/tutorial/14-subscribers.md): Consume messages from external systems.
 - [15. Fact Events](./guides/getting-started/tutorial/15-fact-events.md): Auto-generated snapshots for reporting pipelines.
 
-**Part IV: Production Operations**
+**Part IV: Trace, recover and monitor messages in production**
 
 - [16. Message Tracing](./guides/getting-started/tutorial/16-message-tracing.md): Track commands and events with correlation and causation IDs.
 - [17. Dead Letter Queues](./guides/getting-started/tutorial/17-dead-letter-queues.md): Inspect, replay, and purge failed messages.
 - [18. Monitoring Health](./guides/getting-started/tutorial/18-monitoring.md): Monitor subscription health with the Observatory dashboard.
 - [19. Priority Lanes](./guides/getting-started/tutorial/19-priority-lanes.md): Bulk imports without starving production traffic.
 
-**Part V: System Mastery**
+**Part V: Coordinate workflows and query across aggregates**
 
 - [20. Process Managers](./guides/getting-started/tutorial/20-process-managers.md): Orchestrate multi-step workflows with compensation.
 - [21. Advanced Query Patterns](./guides/getting-started/tutorial/21-query-patterns.md): Filtering, sorting, pagination, and cross-aggregate projections.
@@ -56,10 +58,10 @@ A guided, hands-on tutorial building a complete online bookstore.
 
 ---
 
-## Guides
+## Learn each topic from the guides
 
-Comprehensive reference organized by topic. Each guide goes deep on a
-specific area.
+Comprehensive reference organized by topic. Each guide covers one area in
+detail.
 
 - [Guide Overview](./guides/index.md): How the guides are organized and where to start.
 - [How Do I...?](./how-do-i.md): Task-oriented index: find the right guide by what you're trying to do.
@@ -73,7 +75,8 @@ specific area.
 
 ### Set Up the Domain
 
-- [The Domain Object](./guides/compose-a-domain/index.md): The composition root that manages elements, configuration, and adapters.
+- [The Domain Object](./guides/compose-a-domain/index.md): The composition root
+  that registers elements, holds configuration, and connects adapters.
 - [Register Elements](./guides/compose-a-domain/register-elements.md): How elements register themselves with the domain.
 - [Initialize the Domain](./guides/compose-a-domain/initialize-domain.md): Call `init()` to wire everything together.
 - [Activate the Domain](./guides/compose-a-domain/activate-domain.md): Bind the domain to a context for use.
@@ -99,7 +102,7 @@ specific area.
 - [Events](./guides/domain-definition/events.md): Model past changes as discrete, meaningful facts.
 - [Choosing Element Types](./concepts/building-blocks/choosing-element-types.md): Checklists and decision flows for choosing element types.
 
-**Field & Identity Reference**
+**Look up fields and identity options**
 
 - [Fields Overview](./reference/fields/index.md): Field types, attributes, options, and functionalities.
 - [Defining Fields](./reference/fields/defining-fields.md): Three styles for declaring fields: annotation, assignment, and raw Pydantic.
@@ -108,7 +111,9 @@ specific area.
 - [Association Fields](./reference/fields/association-fields.md): HasOne, HasMany, and Reference fields for relationships.
 - [Common Arguments](./reference/fields/arguments.md): Shared field arguments like `required`, `default`, and `description`.
 - [Identity Reference](./reference/domain-elements/identity.md): Identity strategies, types, and per-field customization.
-- [Indexes Reference](./reference/domain-elements/indexes.md): The `Index` API, options, dialect support matrix, and `Index.from_sql` escape hatch.
+- [Indexes Reference](./reference/domain-elements/indexes.md): The `Index` API,
+  options, dialect support matrix, and `Index.from_sql` for declaring an index
+  in raw SQL.
 
 ### Add Rules and Behavior
 
@@ -118,7 +123,9 @@ specific area.
 - [Mutating Aggregates](./guides/domain-behavior/aggregate-mutation.md): Modify state through named methods reflecting actions and events.
 - [Status Transitions](./guides/domain-behavior/status-transitions.md): Enforce lifecycle state machines with the Status field.
 - [Raising Events](./guides/domain-behavior/raising-events.md): Notify other parts of the system through domain events.
-- [Message Tracing](./guides/domain-behavior/message-tracing.md): Track the full causal chain of commands and events with correlation and causation IDs, and traverse causation chains programmatically.
+- [Message Tracing](./guides/domain-behavior/message-tracing.md): Track the
+  full causal chain of commands and events with correlation and causation IDs.
+  You can also traverse causation chains programmatically.
 - [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md): Complete guide to correlation and causation ID propagation across HTTP headers, OTEL spans, Observatory traces, structured logging, and cross-service boundaries.
 - [Explore Your Domain in the Observatory](./guides/observability/exploring-your-domain.md): Use the Observatory's Domain Visualizer (topology, event flows, process managers) and Timeline (event browser, correlation chains, traces) to navigate a running domain.
 - [Domain Services](./guides/domain-behavior/domain-services.md): Complex domain logic that spans multiple aggregates.
@@ -127,7 +134,8 @@ specific area.
 ### Change State
 
 - [Changing State](./guides/change-state/index.md): Mechanisms for state changes: services, commands, and handlers.
-- [Application Services](./guides/change-state/application-services.md): Bridge between the API layer and the domain model.
+- [Application Services](./guides/change-state/application-services.md):
+  Connect the API layer to the domain model.
 - [Commands](./guides/change-state/commands.md): Data transfer objects expressing intention to change state.
 - [Command Handlers](./guides/change-state/command-handlers.md): Process commands and execute domain logic.
 - [Repositories](./guides/change-state/repositories.md): Define custom repositories, the DAO layer, and database-specific persistence.
@@ -148,7 +156,9 @@ specific area.
 - [Projectors](./guides/consume-state/projectors.md): Define event handlers that maintain projections.
 - [Query Handlers](./guides/consume-state/query-handlers.md): Process queries and return results from projections.
 - [Subscribers](./guides/consume-state/subscribers.md): Consume messages from external brokers.
-- [CloudEvents Interoperability](./guides/consume-state/cloudevents.md): Serialize events to CloudEvents v1.0 for external systems, and consume CloudEvents from external sources.
+- [CloudEvents Interoperability](./guides/consume-state/cloudevents.md):
+  Serialize events to CloudEvents v1.0 for external systems. You can also
+  consume CloudEvents from external sources.
 - [Stream Categories](./concepts/async-processing/stream-categories.md): How messages are organized and routed.
 - [Event Upcasting](./guides/consume-state/event-upcasting.md): Transforming old event schemas to match the current version during replay.
 - [Evolving Events Over Time](./guides/evolving-events.md): The full event-evolution workflow: add fields, rename with `renamed_from`, deprecate/supersede, upcast, and check compatibility.
@@ -178,9 +188,11 @@ specific area.
 - [Running the Server](./guides/server/index.md): Start, configure, and operate the Protean server.
 - [Harden the Server](./guides/server/hardening.md): Raise pool limits, enable K8s health probes, run DLQ maintenance, pick subscription profiles, emit OTEL metrics, and shut down gracefully.
 - [Tuning Subscriptions](./guides/server/tuning-subscriptions.md): Pick a profile, override one setting, cap stream growth, use the circuit breaker, process events for one entity in order, and check consumer lag.
-- [Server Hardening Reference](./reference/server/hardening.md): Every option, default, metric, and profile shipped by the hardening epic.
+- [Server Hardening Reference](./reference/server/hardening.md): Every option,
+  default, metric, and profile for hardening the server.
 - [Error Handling](./guides/server/error-handling.md): Retry logic, dead letter queues, and recovery mechanisms for message processing failures.
-- [Dead Letter Queues](./guides/server/dead-letter-queues.md): Discover, inspect, replay, and purge messages that failed after retries were exhausted.
+- [Dead Letter Queues](./guides/server/dead-letter-queues.md): Discover,
+  inspect, replay, and purge messages that still failed after the last retry.
 - [Using the Outbox](./guides/server/outbox.md): Reliably publish domain events via the outbox pattern; configuration, retries, cleanup.
 - [Dispatching Published Events to External Brokers](./guides/server/external-event-dispatch.md): Configure external brokers to deliver published events to other bounded contexts.
 
@@ -222,7 +234,7 @@ specific area.
 
 ---
 
-## Python API Reference
+## Look up the Python API
 
 Auto-generated documentation from source code docstrings.
 
@@ -246,28 +258,29 @@ Auto-generated documentation from source code docstrings.
 
 ---
 
-## Core Concepts
+## Understand the core concepts
 
 Architectural theory and the building blocks of domain-driven systems.
 
-### Foundations
+### Learn the DDD foundations
 
 - [Ubiquitous Language](./concepts/foundations/ubiquitous-language.md): The shared vocabulary between domain experts and developers.
 - [Bounded Contexts](./concepts/foundations/bounded-contexts.md): Boundaries within which a domain model is defined and applicable.
-- [Analysis Model](./concepts/foundations/analysis-model.md): Bridging the gap between domain understanding and software implementation.
+- [Analysis Model](./concepts/foundations/analysis-model.md): Connect domain
+  understanding to software implementation.
 - [Identity](./concepts/foundations/identity.md): The property that distinguishes one domain object from all others.
 - [Invariants](./concepts/foundations/invariants.md): Business rules that must always hold true within a domain concept.
 - [Changing State](./concepts/foundations/changing-state.md): Principles governing how state transitions occur in DDD.
 - [Streams](./concepts/foundations/streams.md): The primary unit of organization in evented systems.
 
-### Architecture Patterns
+### Compare the architecture patterns
 
 - [Domain-Driven Design](./concepts/architecture/ddd.md): Tactical elements and their roles in the DDD pattern.
 - [CQRS](./concepts/architecture/cqrs.md): Separating read and write responsibilities.
 - [Event Sourcing](./concepts/architecture/event-sourcing.md): Deriving state from replaying event sequences.
 - [Choosing an Architecture](./concepts/architecture/architecture-decision.md): When to use CQRS vs Event Sourcing.
 
-### Building Blocks
+### Learn the building blocks
 
 - [Domain Elements Overview](./concepts/building-blocks/index.md): Tactical patterns organized into four layers.
 - [Aggregates](./concepts/building-blocks/aggregates.md): Clusters of objects treated as a single unit for data changes.
@@ -289,7 +302,7 @@ Architectural theory and the building blocks of domain-driven systems.
 
 ---
 
-## Adapters
+## Choose adapters for your infrastructure
 
 Plug-in infrastructure that keeps your domain code free of technology
 dependencies.
@@ -297,7 +310,7 @@ dependencies.
 - [Ports and Adapters](./concepts/ports-and-adapters/index.md): Hexagonal Architecture in Protean.
 - [Adapters Catalog](./reference/adapters/index.md): Available database, broker, cache, and event store adapters.
 
-### Database
+### Choose a database adapter
 
 - [Database Providers](./reference/adapters/database/index.md): Overview of supported database adapters, capabilities, and provider registry.
 - [Memory](./reference/adapters/database/memory.md): Default in-memory provider for development and testing.
@@ -308,7 +321,7 @@ dependencies.
 - [Elasticsearch](./reference/adapters/database/elasticsearch.md): Document store adapter for search and analytics.
 - [Custom Database Adapters](./reference/adapters/database/custom-databases.md): Build your own database adapter with entry-point registration.
 
-### Brokers
+### Choose a broker adapter
 
 - [Broker Overview](./reference/adapters/broker/index.md): Unified interface for message broker implementations.
 - [Inline Broker](./reference/adapters/broker/inline.md): Synchronous in-memory broker for development and testing.
@@ -317,28 +330,30 @@ dependencies.
 - [Redis PubSub](./reference/adapters/broker/redis-pubsub.md): Redis Lists-based queuing with consumer groups.
 - [Custom Brokers](./reference/adapters/broker/custom-brokers.md): Build your own broker adapter.
 
-### Caches
+### Choose a cache adapter
 
 - [Cache Overview](./reference/adapters/cache/index.md): Cache port interface, available providers, and configuration.
 - [Redis Cache](./reference/adapters/cache/redis.md): Persistent distributed cache with TTL support.
 
-### Event Stores
+### Choose an event store adapter
 
 - [Event Store Overview](./reference/adapters/eventstore/index.md): Event store port, core operations, temporal queries, and causation tracing.
 - [MessageDB](./reference/adapters/eventstore/message-db.md): MessageDB event store adapter.
 
 ---
 
-## Patterns & Recipes
+## Apply patterns and recipes
 
-In-depth guides for recurring patterns in domain-driven applications.
-These span multiple domain elements and represent good practices that
-Protean supports but does not enforce.
+In-depth guides for recurring patterns in domain-driven applications. These
+patterns span multiple domain elements. They are good practices that Protean
+supports but does not enforce.
 
-### Aggregate Design
+### Design aggregates
 
 - [Design Small Aggregates](./patterns/design-small-aggregates.md): Draw boundaries around consistency requirements, not data relationships.
-- [One Aggregate Per Transaction](./patterns/one-aggregate-per-transaction.md): Modify one aggregate per handler; use events for cross-aggregate side effects.
+- [One Aggregate Per Transaction](./patterns/one-aggregate-per-transaction.md):
+  Modify one aggregate per handler. Use events for cross-aggregate side
+  effects.
 - [Optimistic Concurrency as a Design Tool](./patterns/optimistic-concurrency-as-design-tool.md): Classify version conflicts by business meaning: last-writer-wins, business rejection, or conditional merge.
 - [Designing for Concurrent Event Processing](./patterns/designing-for-concurrent-event-processing.md): Prevent race conditions when multiple handlers process events for the same aggregate concurrently.
 - [Encapsulate State Changes](./patterns/encapsulate-state-changes.md): Express every state change as a named method capturing business intent.
@@ -346,7 +361,7 @@ Protean supports but does not enforce.
 - [Factory Methods for Aggregate Creation](./patterns/factory-methods-for-aggregate-creation.md): Encapsulate complex construction in factory classmethods on the aggregate or standalone factory classes.
 - [Model Aggregate Lifecycle as a State Machine](./patterns/aggregate-state-machines.md): Define explicit lifecycle states and guarded transition methods to enforce valid state changes.
 
-### Event-Driven Patterns
+### Build event-driven flows
 
 - [Design Events for Consumers](./patterns/design-events-for-consumers.md): Events carry enough context for consumers to act independently.
 - [Idempotent Event Handlers](./patterns/idempotent-event-handlers.md): Produce the same result whether an event is processed once or many times.
@@ -357,37 +372,55 @@ Protean supports but does not enforce.
 - [Message Tracing in Event-Driven Systems](./patterns/message-tracing.md): Correlation and causation IDs for end-to-end traceability across commands and events.
 - [Enrich Messages with Cross-Cutting Metadata](./patterns/message-enrichment.md): Inject tenant IDs, user context, and request trace IDs into events and commands via enrichment hooks, keeping the domain model clean.
 - [Multi-Tenancy in Event-Driven Systems](./patterns/multi-tenancy.md): Row-level tenant isolation using enrichers, `metadata.extensions`, and automatic context propagation through async processing.
-- [CloudEvents as a Boundary Contract](./patterns/cloudevents-interoperability.md): Serialize Protean events to the CloudEvents v1.0 standard at system boundaries; use `to_cloudevent()` and `from_cloudevent()` as an anti-corruption layer for interoperability.
+- [CloudEvents as a Boundary
+  Contract](./patterns/cloudevents-interoperability.md): Serialize Protean
+  events to the CloudEvents v1.0 standard at system boundaries. Use
+  `to_cloudevent()` and `from_cloudevent()` as an anti-corruption layer for
+  interoperability.
 
-### Architecture & Quality
+### Structure and test the domain code
 
-- [Organize by Domain Concept](./patterns/organize-by-domain-concept.md): The folder tree owns domain concepts; the framework carries layer metadata. Organize by aggregate, colocate capabilities, separate projections.
+- [Organize by Domain Concept](./patterns/organize-by-domain-concept.md):
+  Arrange folders by domain concept. The framework records the layer of each
+  element, so the folders do not need to. Organize by aggregate, colocate
+  capabilities, separate projections.
 - [Index Aggregates for Query Paths](./patterns/index-aggregates-for-query-paths.md): Declare indexes for the query paths an aggregate actually has; match composite order to filter-then-sort; keep hot-set indexes small with partial indexes.
 - [Validation Layering](./patterns/validation-layering.md): Different validation belongs at different layers: fields, value objects, invariants, handlers.
 - [Model Reference Data as Domain Concepts](./patterns/model-reference-data.md): Avoid the One True Lookup Table; model each kind as an enumeration value object or an aggregate keyed by its natural code.
 - [Track Audit and Lifecycle Fields](./patterns/track-audit-fields.md): Stamp `created_at`/`updated_at` and `created_by`/`updated_by` via an abstract base with `auto_now`/`auto_now_add` timestamps and a pre-persist enricher, instead of hand-writing them in every mutator.
-- [Thin Handlers, Rich Domain](./patterns/thin-handlers-rich-domain.md): Handlers orchestrate; aggregates and domain services contain all logic.
+- [Thin Handlers, Rich Domain](./patterns/thin-handlers-rich-domain.md):
+  Handlers only orchestrate the steps. Aggregates and domain services contain
+  all the business logic.
 - [Choose Between Application Services and Command Handlers](./patterns/application-service-vs-command-handler.md): Decision tree for choosing synchronous application services vs async command handlers.
 - [Design Projection Granularity Around Consumer Needs](./patterns/projection-granularity.md): Shape projections around UI views and API resources, not domain entities or endpoints.
 - [Treat Projection Rebuilds as a Deployment Strategy](./patterns/projection-rebuilds-as-deployment.md): Rebuild projections from the event store instead of migrating database schemas.
-- [Bridge the Eventual Consistency Gap in User Interfaces](./patterns/eventual-consistency-in-uis.md): Three strategies (optimistic UI, write-side result, version polling) to handle the CQRS read/write delay.
+- [Bridge the Eventual Consistency Gap in User
+  Interfaces](./patterns/eventual-consistency-in-uis.md): Three strategies
+  (optimistic UI, write-side result, version polling) for showing correct data
+  in the UI while the CQRS read side lags behind the write side.
 - [Testing Domain Logic in Isolation](./patterns/testing-domain-logic-in-isolation.md): Test aggregates and value objects directly, without infrastructure.
 
-### Identity & Communication
+### Create identities and connect bounded contexts
 
 - [Creating Identities Early](./patterns/creating-identities-early.md): Generate aggregate identities at creation, not at the database.
 - [Connecting Concepts Across Bounded Contexts](./patterns/connect-concepts-across-domains.md): Synchronize the same real-world concept across multiple contexts.
 - [Consuming Events from Other Domains](./patterns/consuming-events-from-other-domains.md): Subscribers as anti-corruption layers for external events.
-- [Sharing Event Classes Across Domains](./patterns/sharing-event-classes-across-domains.md): Share schemas, not code; use contract tests for compatibility.
+- [Sharing Event Classes Across
+  Domains](./patterns/sharing-event-classes-across-domains.md): Share event
+  schemas between domains instead of event class code. Use contract tests to
+  check compatibility.
 - [Use Fact Events as Cross-Context Integration Contracts](./patterns/fact-events-as-integration-contracts.md): Publish full aggregate snapshots for external consumers instead of forcing them to reconstruct state from granular deltas.
 - [Publishing Events to External Brokers](./patterns/publishing-events-to-external-brokers.md): Deliver published events to external brokers via the outbox with independent retry, failure isolation, and stripped metadata envelopes.
 
-### Testing & Infrastructure
+### Test event flows and set up test databases
 
 - [Test Event-Driven Flows End-to-End](./patterns/testing-event-driven-flows.md): Three testing levels for event chains: domain unit tests, sync flow tests, and async E2E tests with the Engine in test mode.
-- [Setting Up and Tearing Down Databases for Tests](./patterns/setting-up-and-tearing-down-database-for-tests.md): Manage database schema and test data lifecycles separately for fast, isolated integration tests.
+- [Setting Up and Tearing Down Databases for
+  Tests](./patterns/setting-up-and-tearing-down-database-for-tests.md): Set up
+  and tear down the database schema separately from test data, for fast,
+  isolated integration tests.
 
-### Operations
+### Run and recover a system in production
 
 - [Running Data Migrations with Priority Lanes](./patterns/running-data-migrations-with-priority-lanes.md): Route migration events to a separate backfill lane so they do not block production event processing.
 - [Classify and Handle Async Processing Errors](./patterns/classify-async-processing-errors.md): Override `handle_error()` to classify failures as transient, data, or logic errors and route each to the right recovery path.
@@ -395,12 +428,15 @@ Protean supports but does not enforce.
 
 ---
 
-## Internals
+## Learn how Protean works inside
 
 Design reasoning and internal architecture for contributors and advanced users.
 
-- [Internals Overview](./concepts/internals/index.md): What this section covers.
-- [Field System](./concepts/internals/field-system.md): How FieldSpec translates domain vocabulary to Pydantic, and why three definition styles are supported.
+- [Internals Overview](./concepts/internals/index.md): The design reasoning
+  behind Protean's internal architecture.
+- [Field System](./concepts/internals/field-system.md): How FieldSpec
+  translates domain vocabulary to Pydantic. The page also explains why Protean
+  supports three definition styles.
 - [Shadow Fields](./concepts/internals/shadow-fields.md): How ValueObject and Reference fields are flattened into database columns via shadow fields.
 - [Query System](./concepts/internals/query-system.md): How the Repository → DAO → QuerySet → Provider chain works, Q object expression trees, lookup resolution, and lazy evaluation.
 - [Event Sourcing](./concepts/internals/event-sourcing.md): How `raise_()` invokes `@apply` handlers, aggregate reconstitution, version tracking, causation chain traversal algorithms, and projection rebuilding.
@@ -409,32 +445,37 @@ Design reasoning and internal architecture for contributors and advanced users.
 
 ---
 
-## Migration
+## Upgrade between Protean versions
 
 - [Compatibility Reference](./reference/compatibility/index.md): Breaking change rules, three-tier taxonomy, deprecation lifecycle, and config.toml reference.
-- [Migrating to 0.18](./reference/migration/v0-18.md): Upgrade guide for the 0.18 release. Covers the right-sized dependency surface: the web/observatory stack, the shell, and the scaffolder move behind install extras.
+- [Migrating to 0.18](./reference/migration/v0-18.md): Upgrade guide for the
+  0.18 release. Covers the smaller default dependency set: the web/observatory
+  stack, the shell, and the scaffolder now need an install extra.
 - [Migrating to 0.17](./reference/migration/v0-17.md): Upgrade guide for the 0.17 API-consolidation release. Covers the `event_sourced` option rename, the internalized `is_fact_event` option, and the email subsystem deprecation.
 - [Migrating to 0.16](./reference/migration/v0-16.md): Upgrade guide for the 0.16 stability release. Covers the outbox column-bounds structural change and its per-backend `ALTER TABLE` recipes.
 - [Migrating to 0.15](./reference/migration/v0-15.md): Upgrade guide for the Pydantic v2 foundation release. Covers breaking changes, field style migration, and new features.
 
 ---
 
-## Reference
+## Look up definitions, principles and guarantees
 
 - [Glossary](./glossary.md): Definitions of key terms.
-- [Philosophy & Design Principles](./concepts/philosophy/index.md): The convictions that guide Protean's design.
+- [Philosophy & Design Principles](./concepts/philosophy/index.md): The
+  principles Protean's maintainers follow in designing the framework.
 - [The Always-Valid Domain](./concepts/philosophy/always-valid.md): How four validation layers guarantee domain objects are never invalid.
 - [Applicability Charter](./reference/applicability.md): What Protean is a good fit for, and the shapes of systems it is not, with the reason in each case.
-- [Consistency & Delivery Guarantees](./reference/guarantees.md): Per-port,
-  per-adapter ordering, delivery, consistency, and isolation, the contract
-  conformance and property tests cite.
-- [Versioning Policy](./reference/versioning-policy.md): What a version number promises: code that runs warning-free on 1.N runs unmodified on 1.N+1.
+- [Consistency & Delivery Guarantees](./reference/guarantees.md): The ordering,
+  delivery, consistency, and isolation guarantees of each port and adapter.
+  Conformance and property tests cite this contract.
+- [Versioning Policy](./reference/versioning-policy.md): What Protean promises
+  for each version number: code that runs warning-free on 1.N runs unmodified
+  on 1.N+1.
 - [Stable Surface](./reference/stable-surface.md): Which imports, options, config keys, and commands the compatibility contract covers, tier by tier.
 - [Why Protean?](./why-protean.md): Four capabilities that set Protean apart: domain compiler, always-valid domain, progressive architecture, infrastructure portability.
 
 ---
 
-## Testing
+## Test your domain and adapters
 
 - [Testing Reference](./reference/testing/index.md): Testing tools and plugins.
 - [Pytest Plugin](./reference/testing/pytest-plugin.md): Protean's pytest integration and fixtures.
@@ -442,7 +483,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 
 ---
 
-## Community
+## Get help and contribute to Protean
 
 - [Community](./community/index.md): Get help and connect with other Protean users.
 - [Development Setup](./community/contributing/setup.md): Set up Protean locally for contributing.

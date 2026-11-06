@@ -1,27 +1,29 @@
 # Why Protean?
 
-You work out the model on a whiteboard: aggregates, events, bounded contexts.
-Then you open your editor and the code stops matching the drawing. The ORM wants
-tables, so the aggregate becomes rows. Validation is something you remember to
-call. Infrastructure details work their way into the business logic. A few months
-later the drawing and the code describe different systems.
+You design the model on a whiteboard: aggregates, events, bounded contexts.
+Then you open your editor and the code stops matching the drawing. The ORM maps
+classes to tables, so you store the aggregate as rows. Validation is something
+you remember to call. You start to write infrastructure details into the
+business logic. A few months later the drawing and the code describe different
+systems.
 
-Protean starts somewhere else: **your domain model is the architecture.** You
-write it in Python as you drew it, and the framework takes care of the rest.
+Protean starts from a different idea: **your domain model is the
+architecture.** You write the model in Python as you drew it. The framework
+supplies the persistence, messaging and wiring around it.
 
 Four capabilities make that work.
 
 ---
 
-## 1. The domain compiler
+## 1. Compile your domain into a specification
 
 Most frameworks treat your domain classes as configuration for database tables or
 API schemas. Protean treats them as a **complete, inspectable specification** of
 your system.
 
 When you define aggregates, entities, value objects, commands, events, and
-handlers, Protean builds an Intermediate Representation (IR): a portable JSON
-structure that captures your whole domain topology, including element types,
+handlers, Protean builds an Intermediate Representation (IR). The IR is a
+portable JSON structure of your whole domain topology: element types,
 relationships, field schemas, event flows, handler wiring, and cluster
 boundaries.
 
@@ -29,8 +31,8 @@ boundaries.
 --8<-- "why-protean/001.py:compile"
 ```
 
-The IR is what everything else builds on: architecture documentation, API spec
-generation, contract testing, schema registries, and visual domain exploration.
+Tools for architecture documentation, API spec generation, contract testing,
+schema registries, and visual domain exploration take the IR as their input.
 Your domain model is not only runtime code. It is a machine-readable
 specification that tools can analyze, compare, and generate from.
 
@@ -42,7 +44,7 @@ they ship.
 
 ---
 
-## 2. The always-valid domain
+## 2. Keep every domain object valid
 
 In most frameworks, validation is something you opt into. You call `validate()`,
 `clean()`, or `is_valid()`, and between those calls your objects can hold any
@@ -74,20 +76,20 @@ Four layers of validation work together:
 | Aggregate invariants | Business rules, cross-field consistency | Aggregates |
 | Handler guards | Authorization, context, cross-aggregate rules | Handlers and services |
 
-You write no `validate()` calls, and there is no window between method calls in
-which an object can be invalid. The aggregate refuses changes that violate its
-rules.
+You write no `validate()` calls. An object cannot be invalid between method
+calls. The aggregate refuses changes that violate its rules.
 
 [:material-arrow-right-box: The Always-Valid Domain](./concepts/philosophy/always-valid.md)
 
 ---
 
-## 3. Progressive architecture
+## 3. Grow the architecture as you need it
 
-Ambitious systems rarely arrive fully formed, and you do not need to decide your
-final architecture on day one. Protean supports three approaches that build on
-each other, so you can start simple and add sophistication where and when you
-need it. An early prototype grows into the product instead of being rewritten.
+Ambitious systems are rarely complete at the start. You do not need to decide
+your final architecture on day one. Protean supports three approaches that
+build on each other. You can start simple and add sophistication where and when
+you need it. An early prototype grows into the product instead of being
+rewritten.
 
 **Start with domain-driven design.** Aggregates, application services,
 repositories. This is the simplest way to build with Protean: no commands, no
@@ -121,7 +123,7 @@ same test suite.
 
 ---
 
-## 4. Infrastructure portability
+## 4. Change infrastructure through configuration
 
 Your domain model should know nothing about databases, message brokers, or
 caches. In Protean, infrastructure is **configuration**.
@@ -148,8 +150,8 @@ provider = "message_db"
 database_uri = "${MESSAGE_DB_URL}"
 ```
 
-Your domain logic, tests, and business rules stay untouched. The framework
-handles the wiring.
+Your domain logic, tests, and business rules stay untouched. Protean connects
+your domain elements to the database, broker and event store you configure.
 
 | Port | Available adapters |
 |------|-------------------|
@@ -158,17 +160,17 @@ handles the wiring.
 | Event Store | Memory, MessageDB |
 | Cache | Memory, Redis |
 
-The payoff goes beyond convenience. Your domain model tests run in memory in
-milliseconds, your CI pipeline needs no Docker services for core logic tests, and
-moving one aggregate from PostgreSQL to Elasticsearch is a configuration change.
+Your domain model tests run in memory in milliseconds.
+Your CI pipeline needs no Docker services for core logic tests. Moving one
+aggregate from PostgreSQL to Elasticsearch is a configuration change.
 
 [:material-arrow-right-box: Adapters](./reference/adapters/index.md)
 
 ---
 
-## Built to last
+## How Protean is engineered and tested
 
-The engineering behind these capabilities:
+The Protean codebase meets these engineering standards:
 
 - A large test suite (**20,000+ tests**, about three lines of test per line of
   code). See [Quality](community/quality.md) for the current breakdown.

@@ -44,7 +44,9 @@ usage examples, definition styles, and field arguments table.
 
     ---
 
-    The internal field declaration carrier that all field factories produce.
+    The internal object that every field factory returns. It holds the field
+    type, constraints and configuration until Protean finalizes the element
+    class.
 
     [:material-arrow-right-box: FieldSpec](spec.md)
 

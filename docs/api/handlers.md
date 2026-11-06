@@ -1,14 +1,14 @@
 # Handlers
 
 Command handlers, event handlers, and query handlers process messages. Command
-and event handlers are associated with aggregates and use the `@handle`
-decorator. Query handlers are associated with projections and use the `@read`
+and event handlers are associated with aggregates. They use the `@handle`
+decorator. Query handlers are associated with projections. They use the `@read`
 decorator.
 
-**Guides:**
-[Command Handlers](../guides/change-state/command-handlers.md) ·
-[Event Handlers](../guides/consume-state/event-handlers.md) ·
-[Query Handlers](../guides/consume-state/query-handlers.md)
+**Read the guides:** [Command
+Handlers](../guides/change-state/command-handlers.md) · [Event
+Handlers](../guides/consume-state/event-handlers.md) · [Query
+Handlers](../guides/consume-state/query-handlers.md)
 
 ---
 

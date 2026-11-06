@@ -1,17 +1,18 @@
-# Testing DSL
+# Test a domain with the testing DSL
 
 Test helpers for domains, exported from `protean.testing`. The `given` function
 is the entry point for most tests: it drives the full command pipeline (command
 to handler to aggregate to events) and returns a result you assert against.
 
-See the [testing guide](../guides/testing/event-sourcing-tests.md) for how these
-fit together, and the [pytest plugin reference](../reference/testing/pytest-plugin.md)
-for the fixtures that set up a domain.
+The [testing guide](../guides/testing/event-sourcing-tests.md) shows how these
+helpers fit together. The [pytest plugin
+reference](../reference/testing/pytest-plugin.md) lists the fixtures that set
+up a domain.
 
 Everything on this page is in `protean.testing.__all__`. Anything not on this
 page is internal, whatever its name suggests.
 
-## Entry point
+## Start a test with `given`
 
 ::: protean.testing
     options:
@@ -20,11 +21,11 @@ page is internal, whatever its name suggests.
         - given
       filters: []
 
-## Results
+## Assert against the result objects
 
-What `given(...)` and the helpers below hand back. Each carries the events,
-state and errors produced, so a test asserts against one object rather than
-reaching into the domain.
+`given(...)` and the helpers below return these result objects. Each result
+object holds the events, state and errors produced. A test asserts against that
+one object and does not need to inspect the domain directly.
 
 ::: protean.testing
     options:
@@ -38,12 +39,13 @@ reaching into the domain.
         - EventSequence
       filters: []
 
-## Helpers
+## Use the test helpers
 
-`drain` and `process_and_wait` exist because asynchronous processing has no
-natural join point in a test: they run the engine until it is idle instead of
-sleeping and hoping. Prefer them to a bare `sleep`, which is the single most
-common cause of a test that passes locally and flakes in CI.
+In a test, asynchronous processing has no fixed point at which the work is
+finished. `drain` and `process_and_wait` run the engine until it is idle. A
+test then needs no sleep for a guessed duration. Prefer them to a bare `sleep`.
+A bare `sleep` is the single most common cause of a test that passes locally
+and flakes in CI.
 
 ::: protean.testing
     options:

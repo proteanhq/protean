@@ -17,11 +17,11 @@ Protean is a Python framework for domain-driven systems. You sketch aggregates,
 events, and bounded contexts on a whiteboard, then write them in Python as you
 drew them.
 
-Start with plain domain-driven design, move to CQRS or event sourcing where you
-need it, and change infrastructure through configuration.
+Start with plain domain-driven design, and move to CQRS or event sourcing where
+you need it. You change infrastructure through configuration.
 
-It is built for **ambitious systems**: the ones whose shape you can't fully see
-on day one, and that have to grow safely instead of being rewritten.
+It is built for **ambitious systems**, whose shape you can't fully see on day
+one. These systems have to grow safely instead of being rewritten.
 
 **Your domain model is the architecture.**
 
@@ -36,7 +36,7 @@ on day one, and that have to grow safely instead of being rewritten.
 
 <div class="grid cards" markdown>
 
-- __:material-magnify-scan: Domain compiler__
+- __:material-magnify-scan: Compile your domain model__
 
     ---
 
@@ -44,7 +44,7 @@ on day one, and that have to grow safely instead of being rewritten.
     Intermediate Representation of it, which other tools read to derive docs,
     API specs, contracts, and visual exploration.
 
-- __:material-shield-check-outline: Always-valid domain__
+- __:material-shield-check-outline: Keep every domain object valid__
 
     ---
 
@@ -52,20 +52,21 @@ on day one, and that have to grow safely instead of being rewritten.
     validation run on every change: field constraints, value object invariants,
     aggregate rules, and handler guards.
 
-- __:material-call-split: Progressive architecture__
+- __:material-call-split: Add architecture as you need it__
 
     ---
 
-    Start with domain-driven design, move to CQRS, adopt event sourcing, all
-    within the same framework. You can mix patterns per aggregate.
+    Start with domain-driven design, then move to CQRS and event sourcing. The
+    same framework supports all three. You can mix patterns per aggregate.
 
-- __:material-power-plug-battery-outline: Infrastructure portability__
+- __:material-power-plug-battery-outline: Change infrastructure without
+  changing code__
 
     ---
 
-    Start with in-memory adapters, so there is no database, broker, or setup to
-    deal with. When you're ready, change `domain.toml` to point at PostgreSQL,
-    Redis, Elasticsearch, or MessageDB. Your domain code stays as it is.
+    Start with in-memory adapters, so you need no database, broker, or setup.
+    When you're ready, change `domain.toml` to point at PostgreSQL, Redis,
+    Elasticsearch, or MessageDB. Your domain code stays as it is.
 
 </div>
 
@@ -87,15 +88,15 @@ on day one, and that have to grow safely instead of being rewritten.
 6. :material-cog-outline: **Command handler.** Receives a command, creates or updates aggregates, and persists them.
 7. :material-database-outline: **Repository.** The built-in persistence layer for adding, getting, and removing aggregates without touching the database directly.
 
-Aggregates, commands, events, and handlers are all pure Python, with decorators
-that wire them together. You need no infrastructure to get started.
+Aggregates, commands, events, and handlers are all pure Python. Decorators wire
+them together. You need no infrastructure to get started.
 
 ---
 
 ## Choose your path
 
-Protean supports three architectural approaches, and each builds on the one
-before it. Start simple and add sophistication as your needs change.
+Protean supports three architectural approaches. Each approach builds on the
+one before it. Start simple and add sophistication as your needs change.
 
 | | Path | Best for |
 |---|---|---|
@@ -104,16 +105,16 @@ before it. Start simple and add sophistication as your needs change.
 | :material-history: | [**Event Sourcing**](./guides/pathways/event-sourcing.md) | A full audit trail, temporal queries, and event replay |
 
 If you have no strong reason to choose, start with domain-driven design and
-evolve later. [Choose a path](./guides/pathways/index.md) compares them in
-detail.
+evolve later. [Choose a path](./guides/pathways/index.md) compares the three
+paths in detail.
 
-To work out whether Protean suits your system at all, the
-[Applicability Charter](./reference/applicability.md) states plainly what it is
-built for, and the shapes of systems it is not.
+To check whether Protean suits your system at all, read the [Applicability
+Charter](./reference/applicability.md). It states plainly what Protean is built
+for, and it lists the kinds of systems Protean is not built for.
 
 ---
 
-## Built to last
+## How does Protean stay reliable?
 
 <div class="grid cards" markdown>
 
@@ -122,7 +123,7 @@ built for, and the shapes of systems it is not.
     ---
 
     About three lines of test per line of code. Every pull request runs
-    PostgreSQL, Redis and each adapter it touches; every merge to `main` runs
+    PostgreSQL, Redis and each adapter it touches. Every merge to `main` runs
     all eight databases and brokers.
 
 - __:material-check-decagram: Zero lint violations__
@@ -143,8 +144,9 @@ built for, and the shapes of systems it is not.
 
     ---
 
-    Pluggable infrastructure across databases, brokers, event stores, and
-    caches, tested on five Python versions.
+    Protean has pluggable infrastructure across databases, brokers, event
+    stores, and caches. Protean tests this infrastructure on five Python
+    versions.
 
 </div>
 

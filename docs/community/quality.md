@@ -1,4 +1,4 @@
-# Quality Report
+# How Protean measures its quality
 
 Protean is built with a strong emphasis on code quality, test coverage,
 and long-term maintainability. This page documents the engineering
@@ -6,7 +6,7 @@ practices and metrics behind the framework.
 
 ---
 
-## At a Glance
+## What are the headline numbers?
 
 | Metric | Value |
 |---|---|
@@ -23,12 +23,12 @@ practices and metrics behind the framework.
 
 ---
 
-## Test Suite
+## What does the test suite cover?
 
 Protean has a comprehensive test suite covering domain logic, application
 services, infrastructure adapters, and integration scenarios. The current
 counts are in the breakdown below. This page is the single source of truth for
-these numbers; other pages quote round figures and link here.
+these numbers. Other pages quote round figures and link here.
 
 Refresh them with one command:
 
@@ -36,11 +36,12 @@ Refresh them with one command:
 uv run python scripts/metrics.py
 ```
 
-`tests/test_metrics_are_single_sourced.py` keeps the policy honest: it fails if
-any other page states an exact count. The counts move with every PR, so they are
-not pinned; what is pinned is that there is only **one place to change**.
+`tests/test_metrics_are_single_sourced.py` checks the policy: it fails if any
+other page states an exact count. The counts change with every PR, so the test
+does not check their values. It checks that the counts have only **one place to
+change**.
 
-### Test Breakdown
+### How do the tests break down by kind?
 
 | Metric | Count |
 |---|---|
@@ -50,7 +51,7 @@ not pinned; what is pinned is that there is only **one place to change**.
 | Pytest Fixtures | 1,461 |
 | Parametrized Tests | 543 |
 
-### Core vs. Integration
+### How many tests need real infrastructure?
 
 | Category | Tests | Share |
 |---|---|---|
@@ -63,7 +64,7 @@ real databases and message brokers. A test counts as an integration test
 when it carries one of the backing-service markers listed in
 `scripts/metrics.py`, the same markers as the table below.
 
-### Infrastructure Coverage
+### Which backing services do the integration tests use?
 
 Every merge to `main` is tested against real backing services:
 
@@ -81,14 +82,14 @@ Every merge to `main` is tested against real backing services:
 
 A test with more than one marker counts once in each row.
 
-Branch coverage is enabled, and results are reported to
-[Codecov](https://codecov.io/gh/proteanhq/protean) on every CI run.
+The test run measures branch coverage. Every CI run reports the coverage
+results to [Codecov](https://codecov.io/gh/proteanhq/protean).
 
 ---
 
-## Code Quality
+## How is code quality checked?
 
-### Linting
+### Lint and format the code with Ruff
 
 Protean uses [Ruff](https://docs.astral.sh/ruff/) for both linting and
 formatting. The codebase has **zero linting violations**. Pre-commit
@@ -97,7 +98,7 @@ hooks enforce this on every commit:
 - `ruff check --fix` (linting with auto-fix)
 - `ruff format` (consistent formatting)
 
-### Cyclomatic Complexity
+### Measure cyclomatic complexity with Radon
 
 Measured with [Radon](https://radon.readthedocs.io/):
 
@@ -110,15 +111,14 @@ Measured with [Radon](https://radon.readthedocs.io/):
 An average complexity under 5 indicates straightforward, easy-to-follow
 code paths throughout the framework.
 
-### Cognitive Complexity
+### Limit cognitive complexity with complexipy
 
 Cognitive complexity measures how hard a function is to read. It counts
 branches and loops, and charges more for each level of nesting.
 [complexipy](https://github.com/rohaquinlop/complexipy) computes it for every
 function in `src/`, `tests/` and `scripts/`, and fails the check on a function
-above 15. The limit and the paths live in `[tool.complexipy]` in
-`pyproject.toml`. The `Lint (ruff)` job in CI and the pre-commit hook both run
-the check.
+above 15. `[tool.complexipy]` in `pyproject.toml` sets the limit and the paths.
+The `Lint (ruff)` job in CI and the pre-commit hook both run the check.
 
 Some functions were already above the limit when the check arrived.
 `complexipy-snapshot.json` at the repository root lists each of them with its
@@ -129,15 +129,16 @@ snapshot like this:
 - A new function above 15 fails the check. A listed function that is renamed
   or moved to another file counts as new, so it fails too.
 - A listed function that becomes less complex gets its lower value in the
-  snapshot, and one split to 15 or less drops out of it. Every passing run
-  rewrites the file, so the change commits the rewritten file with it. CI
-  fails when the committed snapshot differs from the rewritten one.
+  snapshot. A listed function split down to a complexity of 15 or less drops
+  out of the snapshot. Every passing run rewrites the file, so you commit the
+  rewritten file with your change. CI fails when the committed snapshot differs
+  from the rewritten one.
 
-The check counts a function marked `# noqa: complexipy` or
-`# complexipy: ignore` like any other. Split a function that fails along what
-it does, and leave the limit and the snapshot as they are.
+The check counts a function marked `# noqa: complexipy` or `# complexipy:
+ignore` like any other. When a function fails the check, split it along what it
+does. Leave the limit and the snapshot as they are.
 
-### Maintainability Index
+### How maintainable are the source files?
 
 | Rank | Files | Share |
 |---|---|---|
@@ -151,9 +152,9 @@ it does, and leave the limit and the snapshot as they are.
 
 ---
 
-## Codebase Structure
+## How is the codebase organized?
 
-### Size
+### How large is the codebase?
 
 | Area | Python Files | Lines of Code | Documentation Lines |
 |---|---|---|---|
@@ -161,7 +162,7 @@ it does, and leave the limit and the snapshot as they are.
 | Tests (`tests/`) | 810 | 145,248 | 13,505 |
 | **Total** | **963** | **193,595** | **19,412** |
 
-### Architecture
+### Which packages make up the source?
 
 Protean's source is organized into 10 top-level packages:
 
@@ -178,7 +179,7 @@ Protean's source is organized into 10 top-level packages:
 | `utils/` | Shared utilities (outbox, eventing, mixins) |
 | `template/` | Project scaffolding templates |
 
-### Domain Elements and Adapters
+### How many domain elements and adapters does Protean have?
 
 | Category | Count |
 |---|---|
@@ -188,9 +189,9 @@ Protean's source is organized into 10 top-level packages:
 
 ---
 
-## CI/CD Pipeline
+## What does the CI/CD pipeline run?
 
-### Test Matrix
+### Which Python versions and services does CI test against?
 
 Protean tests across five Python versions and seven backing services, split
 between per-PR CI and a nightly run:
@@ -205,36 +206,38 @@ between per-PR CI and a nightly run:
     - MySQL 8.4
     - MariaDB 11.4
 
-Each pull request runs the in-memory core suite on every stable version, and
-the PostgreSQL and Redis adapters plus any adapter the pull request changes. A
-push to `main` adds the full adapter suite on the newest stable Python, and the
-nightly run exercises the full adapter suite across all five versions. The
-stable versions gate every merge; the 3.15 prerelease leg runs nightly as a
-non-blocking early-warning check while 3.15 is a prerelease.
+Each pull request runs the in-memory core suite on every stable version. It
+also runs the PostgreSQL and Redis adapters, plus any adapter the pull request
+changes. A push to `main` adds the full adapter suite on the newest stable
+Python. The nightly run exercises the full adapter suite across all five
+versions. A merge needs the tests to pass on every stable version. While 3.15
+is a prerelease, the 3.15 prerelease leg runs nightly as an early-warning check
+that does not block a merge.
 
-### Pipeline Steps
+### Which checks does each pull request run?
 
 Each pull request runs these gates, all in CI so none can be bypassed by a
 missing pre-commit hook, a `--no-verify`, or a web edit:
 
-1. **Lint**: `ruff check`, `ruff format --check` and the cognitive
+1. **Lint the code**: `ruff check`, `ruff format --check` and the cognitive
    complexity check, the same checks as the pre-commit hook.
-2. **Type check**: `mypy --strict` over `src/protean`.
-3. **Test suite**: the in-memory core suite (`protean test`) on every stable
-   Python version, and the `Adapters` check: PostgreSQL and Redis always, plus
-   each adapter whose files the pull request changes (`tests/adapters.toml`).
-   A push to `main` runs the full adapter suite (`protean test -c FULL`) on the
-   newest stable Python, and the nightly run extends it to every version.
-4. **Coverage**: Codecov requires 96% of a pull request's changed lines to be
-   covered (`codecov/patch`). The overall floor of 94%
-   (`coverage report --fail-under=94`) is enforced on every push to `main`,
-   the only run that sees every adapter.
-5. **Security scanning**: CodeQL (SAST) and a dependency-review check on any
-   changed dependencies.
+2. **Check the types**: `mypy --strict` over `src/protean`.
+3. **Run the tests**: the in-memory core suite (`protean test`) runs on every
+   stable Python version. The `Adapters` check runs PostgreSQL and Redis
+   always, plus each adapter whose files the pull request changes
+   (`tests/adapters.toml`). A push to `main` runs the full adapter suite
+   (`protean test -c FULL`) on the newest stable Python. The nightly run
+   extends the full adapter suite to every version.
+4. **Check coverage**: Codecov requires 96% of a pull request's changed lines
+   to be covered (`codecov/patch`). CI enforces the overall floor of 94%
+   (`coverage report --fail-under=94`) on every push to `main`, because that
+   run covers every adapter and a pull request run does not.
+5. **Scan for security issues**: CodeQL (SAST) and a dependency-review check on
+   any changed dependencies.
 
 Documentation is deployed on merge to `main`.
 
-### Documentation
+### How are the docs built and deployed?
 
 Documentation is built with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/)
 and automatically deployed to [docs.proteanhq.com](https://docs.proteanhq.com)
@@ -242,9 +245,9 @@ on every merge to `main`.
 
 ---
 
-## Dependencies
+## What does Protean depend on?
 
-Protean maintains a lean dependency footprint:
+Protean keeps its list of dependencies short:
 
 | Category | Count |
 |---|---|
@@ -253,8 +256,8 @@ Protean maintains a lean dependency footprint:
 | Dev dependencies | 7 |
 | Test dependencies | 8 |
 
-All database and message broker drivers are **optional extras**, the core
-framework installs only what's needed for in-memory development. Infrastructure
+All database and message broker drivers are **optional extras**. The core
+framework installs only what in-memory development needs. Infrastructure
 dependencies are added when you're ready to deploy:
 
 ```bash
@@ -265,7 +268,7 @@ pip install protean[elasticsearch] # Adds the elasticsearch client
 
 ---
 
-## Project History
+## How old and active is the project?
 
 | Metric | Value |
 |---|---|
@@ -279,7 +282,7 @@ pip install protean[elasticsearch] # Adds the elasticsearch client
 
 ---
 
-## Tools and Practices
+## Which tools does the project use?
 
 | Practice | Tool |
 |---|---|
@@ -295,4 +298,7 @@ pip install protean[elasticsearch] # Adds the elasticsearch client
 
 ---
 
-*The Test Suite figures (the total, the Test Breakdown, the test-to-code ratio, and the Core vs. Integration and Infrastructure Coverage tables) were last updated in October 2026, all from `scripts/metrics.py`. Code Quality and Codebase Structure are from March 2026.*
+*`scripts/metrics.py` produced the Test Suite figures, last updated in October
+2026. These figures are the total, the Test Breakdown, the test-to-code ratio,
+and the Core vs. Integration and Infrastructure Coverage tables. Code Quality
+and Codebase Structure are from March 2026.*

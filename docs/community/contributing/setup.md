@@ -5,7 +5,7 @@ Protean from source. Only collaborators can open pull requests on Protean.
 [CONTRIBUTING](https://github.com/proteanhq/protean/blob/main/CONTRIBUTING.md)
 explains how to propose a change.
 
-## First time local setup
+## Set up Protean locally for the first time
 
 - Download and install [git](https://git-scm.com/downloads).
 - Configure git with your `username`_ and `email`.
@@ -41,7 +41,10 @@ $ uv sync --all-extras --all-groups
 $ pre-commit install --install-hooks
 ```
 
-- The `postgresql` extra installs psycopg 3 with its pre-compiled binary package, and the `postgresql-psycopg2` extra installs `psycopg2-binary`. `--all-extras` installs both, so the test suite can run on either driver. Neither needs system dependencies.
+- The `postgresql` extra installs psycopg 3 with its pre-compiled binary
+  package. The `postgresql-psycopg2` extra installs `psycopg2-binary`.
+  `--all-extras` installs both, so the test suite can run on either driver.
+  Neither needs system dependencies.
 
 ## Start coding
 
@@ -54,18 +57,19 @@ $ git checkout -b your-branch-name origin/main
 
 - Using your favorite editor, make your changes, [committing as you go](
         https://afraid-to-commit.readthedocs.io/en/latest/git/commandlinegit.html#commit-your-changes).
-- Include tests that cover any code changes you make. Make sure the test fails
-without your patch. Run the tests as described below.
-- Push your branch to GitHub and [create a pull request](
-        https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/
-        proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request).
-- Link to the issue being addressed with `fixes #123` or `closes #123` in the pull request.
+- Add tests for each of your code changes. Make sure the test fails without
+your patch. Run the tests as described below.
+- Push your branch to GitHub. Then [create a pull request](
+  https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/
+  proposing-changes-to-your-work-with-pull-requests/creating-a-pull-request).
+- In the pull request, link to the issue your change fixes with `fixes #123` or
+  `closes #123`.
 
 ```sh
 $ git push --set-upstream origin your-branch-name
 ```
 
-## Running Tests
+## Run the tests
 
 Run the basic test suite with:
 
@@ -91,13 +95,13 @@ $ protean test -c FULL
 ```
 
 !!! note "Any OCI container engine works, not just Docker"
-    These services run on any OCI-compatible container engine. Protean's
-    test harness connects to the service ports on `localhost`, so it is agnostic
-    to what starts the containers. [OrbStack](https://orbstack.dev),
+    These services run on any OCI-compatible container engine. Protean's test
+    harness connects to the service ports on `localhost`. The harness works
+    with any tool that starts the containers. [OrbStack](https://orbstack.dev),
     [Podman](https://podman.io), [Colima](https://github.com/abiosoft/colima),
-    and Rancher Desktop all work with the same `docker-compose.yml`. For Podman,
-    run `podman compose` directly or point `docker-compose` (or `docker compose`) at the Podman socket
-    via `DOCKER_HOST`.
+    and Rancher Desktop all work with the same `docker-compose.yml`. For
+    Podman, run `podman compose` directly or point `docker-compose` (or `docker
+    compose`) at the Podman socket via `DOCKER_HOST`.
 
 Running a full test will also generate a coverage report as part of test
 output. An uncovered line is a good place to start contributing: find the

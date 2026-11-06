@@ -3,9 +3,9 @@
 Application services orchestrate use cases for external callers. Domain
 services encapsulate business rules that span multiple aggregates.
 
-**Guides:**
-[Application Services](../guides/change-state/application-services.md) ·
-[Domain Services](../guides/domain-behavior/domain-services.md)
+**Read the guides:** [Application
+Services](../guides/change-state/application-services.md) · [Domain
+Services](../guides/domain-behavior/domain-services.md)
 
 ---
 

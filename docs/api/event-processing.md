@@ -1,7 +1,7 @@
 # Event Processing
 
-Subscribers consume external broker messages, process managers coordinate
-multi-step workflows, and upcasters handle event schema evolution.
+Subscribers consume external broker messages. Process managers coordinate
+multi-step workflows. Upcasters handle event schema evolution.
 
 **Guides:**
 [Subscribers](../guides/consume-state/subscribers.md) ·

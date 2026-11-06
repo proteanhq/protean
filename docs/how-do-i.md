@@ -83,7 +83,7 @@ need by what you're trying to accomplish.
 | Optimize aggregate loading with snapshots       | [Snapshots](./guides/change-state/snapshots.md) | ES |
 | Handle version conflicts (optimistic concurrency) | [Optimistic Concurrency as a Design Tool](./patterns/optimistic-concurrency-as-design-tool.md) | All |
 | Prevent race conditions in concurrent event handlers | [Designing for Concurrent Event Processing](./patterns/designing-for-concurrent-event-processing.md) | All |
-| Configure or disable version conflict auto-retry | [Error Handling](./guides/server/error-handling.md#version-conflict-auto-retry) | All |
+| Configure or disable version conflict auto-retry | [Error Handling](./guides/server/error-handling.md#retry-version-conflicts-automatically) | All |
 
 ## React to State Changes
 
@@ -134,8 +134,8 @@ need by what you're trying to accomplish.
 |-------------------------------------------------|-------|
 | Push domain context per HTTP request            | [FastAPI Integration](./guides/fastapi/index.md) |
 | Map URL prefixes to different domains           | [FastAPI Integration](./guides/fastapi/index.md#domain-context-middleware) |
-| Map Protean exceptions to HTTP error responses  | [FastAPI Integration](./guides/fastapi/index.md#exception-handlers) |
-| Use a custom resolver for domain routing        | [FastAPI Integration](./guides/fastapi/index.md#custom-resolver) |
+| Map Protean exceptions to HTTP error responses  | [FastAPI Integration](./guides/fastapi/index.md#map-domain-exceptions-to-http-responses) |
+| Use a custom resolver for domain routing        | [FastAPI Integration](./guides/fastapi/index.md#pick-the-domain-with-a-custom-resolver) |
 
 ## Run in Production
 
@@ -153,10 +153,10 @@ need by what you're trying to accomplish.
 | Understand how correlation IDs propagate end-to-end | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md) |
 | Inject correlation IDs into logs automatically  | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#structured-logging-setup) |
 | Pass a correlation ID from an API gateway       | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#passing-correlation-ids-from-external-callers) |
-| Preserve correlation chains across services     | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#service-boundary-handling) |
+| Preserve correlation chains across services     | [Correlation and Causation IDs](./guides/observability/correlation-and-causation.md#keep-the-correlation-chain-across-service-boundaries) |
 | Configure logging                               | [Logging](./guides/server/logging.md#configure-via-domaintoml) |
 | Override the log level or format from the CLI    | [Logging](./guides/server/logging.md#override-from-the-cli) |
-| Parse JSON logs                                 | [Logging](./guides/server/logging.md#quick-start) |
+| Parse JSON logs                                 | [Logging](./guides/server/logging.md#start-logging-with-one-call) |
 | Enrich wide events with business context        | [Logging](./guides/server/logging.md#enrich-wide-events-with-business-context) |
 | Redact sensitive fields from logs               | [Logging Reference](./reference/logging.md#redaction) |
 | Tail the access log                             | [Logging Reference](./reference/logging.md#proteanaccess) |
@@ -167,13 +167,13 @@ need by what you're trying to accomplish.
 | Exclude health checks from the access log       | [HTTP wide events](./guides/fastapi/http-wide-events.md#tune-via-domaintoml) |
 | Make a handler consume faster or slower         | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md) |
 | Stop a Redis stream growing without bound       | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md#stop-a-stream-from-growing-forever) |
-| Pause a handler that keeps failing              | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md#stop-a-failing-handler-from-burning-through-its-backlog) |
+| Pause a handler that keeps failing              | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md#pause-a-failing-handler-before-it-retries-its-whole-backlog) |
 | Process events for the same entity in order     | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md#process-events-for-the-same-entity-in-order) |
 | See how far behind a subscription is            | [Tuning Subscriptions](./guides/server/tuning-subscriptions.md#check-how-far-behind-a-subscription-is) |
 | Disable automatic logging configuration         | [Logging](./guides/server/logging.md#disable-auto-configuration) |
 | Set up structured logging                       | [Logging](./guides/server/logging.md) |
 | Add request-scoped context to logs              | [Logging](./guides/server/logging.md#use-structured-events-in-application-code) |
-| Minimize logging noise in tests                 | [Logging](./guides/server/logging.md#minimize-noise-in-tests) |
+| Minimize logging noise in tests                 | [Logging](./guides/server/logging.md#reduce-log-output-in-tests) |
 | Monitor message flow in real time               | [Observability](./reference/server/observability.md) |
 | Expose Prometheus metrics for the message pipeline | [Observability](./reference/server/observability.md) |
 | Stream trace events via SSE                     | [Observability](./reference/server/observability.md) |
@@ -185,12 +185,12 @@ need by what you're trying to accomplish.
 | Understand the server engine architecture       | [Engine](./concepts/async-processing/engine.md) |
 | Raise SQLAlchemy and Redis pool limits for production | [Harden the Server](./guides/server/hardening.md#raise-connection-pool-limits) |
 | Expose Kubernetes liveness and readiness probes | [Harden the Server](./guides/server/hardening.md#expose-health-probes-to-kubernetes) |
-| Add health endpoints to a FastAPI app           | [Harden the Server](./guides/server/hardening.md#fastapi-apps) |
-| Trim old DLQ entries and alert on depth         | [Harden the Server](./guides/server/hardening.md#keep-the-dlq-under-control) |
-| Override DLQ retention per handler              | [Harden the Server](./guides/server/hardening.md#keep-the-dlq-under-control) |
+| Add health endpoints to a FastAPI app           | [Harden the Server](./guides/server/hardening.md#expose-health-probes-from-a-fastapi-app) |
+| Trim old DLQ entries and alert on depth         | [Harden the Server](./guides/server/hardening.md#trim-and-monitor-the-dlq) |
+| Override DLQ retention per handler              | [Harden the Server](./guides/server/hardening.md#trim-and-monitor-the-dlq) |
 | Pick a subscription profile for a handler       | [Harden the Server](./guides/server/hardening.md#pick-a-subscription-profile) |
 | Emit per-subscription OpenTelemetry metrics     | [Harden the Server](./guides/server/hardening.md#emit-opentelemetry-metrics) |
-| Reload the server on file changes (dev)         | [Run the Server, Hot Reload](./guides/server/index.md#hot-reload-in-development) |
+| Reload the server on file changes (dev)         | [Run the Server, Hot Reload](./guides/server/index.md#reload-on-code-changes-during-development) |
 | Shut the server down gracefully                 | [Harden the Server](./guides/server/hardening.md#shut-down-gracefully) |
 | Look up a specific hardening option or metric   | [Server Hardening Reference](./reference/server/hardening.md) |
 | Learn about subscription types                  | [Subscription Types](./reference/server/subscription-types.md) |
@@ -202,11 +202,11 @@ need by what you're trying to accomplish.
 | Classify and handle errors in async handlers    | [Classify Async Processing Errors](./patterns/classify-async-processing-errors.md) |
 | Handle message processing failures              | [Error Handling](./guides/server/error-handling.md) |
 | Inspect and replay dead letter queue messages   | [Dead Letter Queues](./guides/server/dead-letter-queues.md) |
-| Bulk-replay DLQ messages after a transient outage | [Dead Letter Queues: Bulk replay](./guides/server/dead-letter-queues.md#bulk-replay-after-a-transient-incident) |
+| Bulk-replay DLQ messages after a transient outage | [Dead Letter Queues: Bulk replay](./guides/server/dead-letter-queues.md#replay-in-bulk-after-a-transient-incident) |
 | Purge unrecoverable DLQ messages                | [Dead Letter Queues: Purge](./guides/server/dead-letter-queues.md#purge-messages-that-will-never-succeed) |
 | Automatically trim old DLQ entries              | [Dead Letter Queues: Trim old entries and alert on depth](./guides/server/dead-letter-queues.md#trim-old-entries-and-alert-on-depth) |
 | Page on-call when a DLQ stream grows too deep   | [Dead Letter Queues: Route alerts to your paging system](./guides/server/dead-letter-queues.md#route-alerts-to-your-paging-system) |
-| Configure retry and DLQ settings                | [Error Handling](./guides/server/error-handling.md#configuration-reference) |
+| Configure retry and DLQ settings                | [Error Handling](./guides/server/error-handling.md#which-settings-control-error-handling) |
 
 ## Check Compatibility
 
@@ -231,7 +231,7 @@ need by what you're trying to accomplish.
 | Suppress a fitness finding on one element       | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#the-suppression-system) |
 | Adopt a rule on a legacy domain gradually       | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#config-level-lintsuppressions) |
 | Fail CI on architecture violations              | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#strictness-and-ci-gating) |
-| Upload SARIF to GitHub Code Scanning            | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#sarif-github-code-scanning) |
+| Upload SARIF to GitHub Code Scanning            | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#send-sarif-results-to-github-code-scanning) |
 | Write a custom fitness rule                      | [Architecture Fitness Functions](./guides/architecture-fitness-functions.md#writing-custom-rules) |
 
 ## Use the CLI
@@ -313,7 +313,7 @@ need by what you're trying to accomplish.
 | Use Message DB as an event store                | [Message DB](./reference/adapters/eventstore/message-db.md) |
 | Build a custom database adapter                 | [Custom Databases](./reference/adapters/database/custom-databases.md) |
 | Build a custom broker adapter                   | [Custom Brokers](./reference/adapters/broker/custom-brokers.md) |
-| Check what capabilities a database supports     | [Database Capabilities](./reference/adapters/database/index.md#database-capabilities) |
+| Check what capabilities a database supports     | [Database Capabilities](./reference/adapters/database/index.md#how-providers-declare-capabilities) |
 | Test a custom adapter for conformance           | [Conformance Testing](./reference/testing/conformance.md) |
 
 ## Look Up API Details
@@ -333,4 +333,4 @@ need by what you're trying to accomplish.
 | Understand how the field system works           | [Field System](./concepts/internals/field-system.md) |
 | Learn why three field definition styles exist   | [Field System](./concepts/internals/field-system.md) |
 | Understand how the query system works internally | [Query System](./concepts/internals/query-system.md) |
-| Understand causation chain traversal internals  | [Event Sourcing Internals](./concepts/internals/event-sourcing.md#causation-chain-traversal) |
+| Understand causation chain traversal internals  | [Event Sourcing Internals](./concepts/internals/event-sourcing.md#trace-the-causation-chain) |

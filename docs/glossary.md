@@ -12,10 +12,10 @@ hide:
 
 # Glossary
 
-A comprehensive reference of terms used throughout Protean and the patterns it
-implements, Domain-Driven Design, CQRS, and Event Sourcing. Terms are grouped
-by category and listed alphabetically within each group. Use the sidebar to
-jump to any term.
+This page defines the terms used in Protean and in the patterns it implements:
+Domain-Driven Design, CQRS, and Event Sourcing. Terms are grouped by category
+and listed alphabetically within each group. Use the sidebar to jump to any
+term.
 
 ---
 
@@ -23,13 +23,23 @@ jump to any term.
 
 ### Analysis Model
 
-A conceptual artifact that bridges the gap between the real-world domain and the software implementation. The analysis model captures the core concepts, behaviors, and rules of the domain using DDD's tactical patterns (aggregates, entities, value objects, domain services) without prescribing technological details. It is developed collaboratively by domain experts and developers and serves as a blueprint for the system's design. The goal of DDD is to keep the analysis model and the code model aligned throughout the life of the project.
+A conceptual model of the real-world domain that developers turn into the
+software implementation. The analysis model captures the core concepts,
+behaviors, and rules of the domain using DDD's tactical patterns (aggregates,
+entities, value objects, domain services) without prescribing technological
+details. Domain experts and developers build it together. Developers base the
+system's design on it. The goal of DDD is to keep the analysis model and the
+code model aligned throughout the life of the project.
 
 [Learn more →](concepts/foundations/analysis-model.md) | **See also**: [Domain Model](#domain-model), [Ubiquitous Language](#ubiquitous-language)
 
 ### Aggregate
 
-A cluster of domain objects treated as a single unit for the purpose of data changes. Every aggregate has a root entity (the *aggregate root*) that controls access to its internals and enforces business rules, guaranteeing consistency within its boundary.  In Protean, aggregates are defined with the `@domain.aggregate` decorator.
+A cluster of domain objects treated as a single unit for the purpose of data
+changes. Every aggregate has a root entity (the *aggregate root*) that controls
+access to its internals. The aggregate root enforces business rules, which
+keeps the aggregate consistent within its boundary.  In Protean, aggregates are
+defined with the `@domain.aggregate` decorator.
 
 [Learn more →](guides/domain-definition/aggregates.md) | **See also**: [Aggregate Root](#aggregate-root), [Entity](#entity), [Invariant](#invariant), [Transaction Boundary](#transaction-boundary)
 
@@ -54,13 +64,19 @@ modeled differently in different bounded contexts.
 
 ### Domain
 
-The sphere of knowledge and activity around which the business logic of an application revolves. In Protean, the `Domain` class also serves as the central registry that holds all domain elements and acts as the entry point for domain operations.
+The area of knowledge and activity that the business logic of an application
+models. In Protean, the `Domain` class is also the central registry that holds
+all domain elements. The `Domain` class is the entry point for domain
+operations too.
 
 [Learn more →](guides/compose-a-domain/index.md) | **See also**: [Bounded Context](#bounded-context), [Domain Model](#domain-model)
 
 ### Domain Model
 
-The representation of core business logic and rules expressed through aggregates, entities, value objects, domain services, and events. A well-crafted domain model captures the essential complexity of the business while remaining independent of infrastructure concerns.
+The representation of core business logic and rules expressed through
+aggregates, entities, value objects, domain services, and events. In a good
+domain model, you express the essential complexity of the business and keep
+infrastructure concerns out.
 
 [Learn more →](concepts/architecture/ddd.md) | **See also**: [Aggregate](#aggregate), [Entity](#entity), [Value Object](#value-object)
 
@@ -72,7 +88,10 @@ An object defined primarily by its identity rather than its attributes. Two enti
 
 ### Ubiquitous Language
 
-A shared vocabulary developed collaboratively by domain experts and developers, used consistently in code, conversations, and documentation. The ubiquitous language ensures that the software model accurately reflects the business domain and reduces the risk of miscommunication.
+A shared vocabulary developed collaboratively by domain experts and developers,
+used consistently in code, conversations, and documentation. When the code uses
+the ubiquitous language, the software model reflects the business domain
+accurately. Domain experts and developers also miscommunicate less.
 
 [Learn more →](concepts/architecture/ddd.md) | **See also**: [Bounded Context](#bounded-context), [Domain Model](#domain-model)
 
@@ -92,8 +111,8 @@ value objects are defined with the `@domain.value_object` decorator.
 ### Command Query Responsibility Segregation (CQRS)
 
 A design pattern that separates the models used for reading data (queries) from
-the models used for writing data (commands). This separation allows each side
-to be optimized independently. The write model enforces business rules while
+the models used for writing data (commands). With this separation, you can
+optimize each side independently. The write model enforces business rules while
 the read model is denormalized for fast queries. Protean supports CQRS through
 distinct command/query paths and projections.
 
@@ -119,7 +138,10 @@ A data model optimized for querying and reading, separate from the write model. 
 
 ### Write Model
 
-The model responsible for handling state changes and enforcing business rules. In CQRS, the write model processes commands and ensures all invariants are satisfied before persisting changes. In Protean, the aggregate and its surrounding domain model constitute the write model.
+The model that applies state changes and enforces business rules. In CQRS, the
+write model processes commands and ensures all invariants are satisfied before
+persisting changes. In Protean, the aggregate and its surrounding domain model
+constitute the write model.
 
 [Learn more →](concepts/architecture/cqrs.md) | **See also**: [Aggregate](#aggregate), [Command](#command), [Read Model](#read-model)
 
@@ -131,13 +153,14 @@ The model responsible for handling state changes and enforcing business rules. I
 
 A mechanism for preventing conflicts when multiple processes attempt to modify
 the same aggregate simultaneously. Protean uses optimistic concurrency control
-through aggregate versioning, each aggregate tracks a version number that is
-checked before persisting changes, rejecting updates based on stale versions.
-When a version mismatch is detected, the framework raises `ExpectedVersionError`. In async
-handlers, this error is automatically retried with exponential backoff before
-reaching the subscription retry pipeline.
+through aggregate versioning. Each aggregate tracks a version number, and
+Protean checks it before persisting changes and rejects updates based on stale
+versions. When a version mismatch is detected, the framework raises
+`ExpectedVersionError`. In async handlers, Protean automatically retries the
+failed operation with exponential backoff before it passes this error to the
+subscription retry pipeline.
 
-[Learn more →](concepts/building-blocks/aggregates.md) | [Auto-retry config →](guides/server/error-handling.md#version-conflict-auto-retry) | **See also**: [Aggregate](#aggregate), [Event Sourcing](#event-sourcing)
+[Learn more →](concepts/building-blocks/aggregates.md) | [Auto-retry config →](guides/server/error-handling.md#retry-version-conflicts-automatically) | **See also**: [Aggregate](#aggregate), [Event Sourcing](#event-sourcing)
 
 ### Delta Event
 
@@ -159,19 +182,29 @@ A persistence pattern in which an aggregate's state is stored as a sequence of i
 
 ### Event Store
 
-A specialized persistence mechanism that stores domain events as an append-only, immutable log. The event store serves as the system of record for event-sourced aggregates, providing mechanisms to append events and retrieve them by stream. Protean supports event store adapters such as Message DB.
+A specialized persistence mechanism that stores domain events as an
+append-only, immutable log. The event store is the system of record for
+event-sourced aggregates. It appends events and retrieves them by stream.
+Protean supports event store adapters such as Message DB.
 
 [Learn more →](reference/adapters/eventstore/index.md) | **See also**: [Event Sourcing](#event-sourcing), [Event Stream](#event-stream)
 
 ### Event Stream
 
-A chronological sequence of events belonging to a specific aggregate instance. Each aggregate instance has its own event stream, identified by a combination of the stream category and the aggregate's identity. Event streams are the fundamental unit of storage in event sourcing.
+A chronological sequence of events belonging to a specific aggregate instance.
+Each aggregate instance has its own event stream. Protean identifies each event
+stream by the aggregate's stream category combined with the aggregate's
+identity. Event streams are the fundamental unit of storage in event sourcing.
 
 [Learn more →](concepts/async-processing/stream-categories.md) | **See also**: [Event Store](#event-store), [Stream Category](#stream-category)
 
 ### Fact Event
 
-A domain event that encloses the *entire* state of an aggregate at a specific point in time. Fact events are automatically generated by Protean when `fact_events=True` is set on an aggregate, and they enable the Event-Carried State Transfer pattern by providing consumers with a complete, self-contained snapshot of the aggregate.
+A domain event that encloses the *entire* state of an aggregate at a specific
+point in time. When you set `fact_events=True` on an aggregate, Protean
+generates fact events automatically. Fact events enable the Event-Carried State
+Transfer pattern: they give consumers a complete, self-contained snapshot of
+the aggregate.
 
 [Learn more →](guides/domain-definition/events.md) | **See also**: [Delta Event](#delta-event), [Event-Carried State Transfer](#event-carried-state-transfer)
 
@@ -195,7 +228,11 @@ A saved point-in-time representation of an aggregate's state, used to optimize h
 
 ### `@apply` Decorator
 
-A decorator used on methods within event-sourced aggregates to mutate aggregate state in response to a specific event type. When an event is raised or replayed, Protean calls the matching `@apply` method to update the aggregate's attributes. This separates event raising (business intent) from state mutation (mechanical update).
+A decorator used on methods within event-sourced aggregates to mutate aggregate
+state in response to a specific event type. When an event is raised or
+replayed, Protean calls the matching `@apply` method to update the aggregate's
+attributes. With this split, you raise events to express business intent, and
+the `@apply` methods mutate state as a mechanical update.
 
 [Learn more →](guides/domain-behavior/aggregate-mutation.md) | **See also**: [Event Sourcing](#event-sourcing), [Aggregate](#aggregate), [Domain Event](#domain-event)
 
@@ -211,7 +248,11 @@ An aggregate decorator option (`@domain.aggregate(event_sourced=True)`) that swi
 
 ### Command
 
-An immutable message expressing the intent to perform a specific action or change the system's state. Commands are named using imperative verbs (e.g., `PlaceOrder`, `CancelReservation`) and carry the data needed to perform the requested action. In Protean, commands are defined with the `@domain.command` decorator.
+An immutable message expressing the intent to perform a specific action or
+change the system's state. Commands are named using imperative verbs (e.g.,
+`PlaceOrder`, `CancelReservation`). They carry the data needed to perform the
+requested action. In Protean, commands are defined with the `@domain.command`
+decorator.
 
 [Learn more →](guides/change-state/commands.md) | **See also**: [Command Handler](#command-handler), [Domain Event](#domain-event)
 
@@ -245,7 +286,10 @@ defined with the `@domain.event_handler` decorator.
 
 ### Invariant
 
-A business rule or constraint that must always hold true within a domain concept. Invariants are checked before and after every state change to ensure the aggregate remains in a valid state. In Protean, invariants are defined as methods decorated with `@invariant` within an aggregate or entity class.
+A business rule or constraint that must always hold true within a domain
+concept. Protean checks invariants before and after every state change, so the
+aggregate stays in a valid state. In Protean, invariants are defined as methods
+decorated with `@invariant` within an aggregate or entity class.
 
 [Learn more →](guides/domain-behavior/invariants.md) | **See also**: [Aggregate](#aggregate), [Validation](#validation)
 
@@ -254,10 +298,10 @@ A business rule or constraint that must always hold true within a domain concept
 A stateful, event-driven coordinator that manages multi-step business processes
 spanning multiple aggregates. Process managers correlate events from different
 streams to the same running instance, maintain their own event-sourced state,
-and issue commands to drive other aggregates forward. They have a defined
-lifecycle, starting with an initiating event and completing when the process
-reaches a terminal state. In Protean, process managers are defined with the `@domain.process_manager`
-decorator.
+and issue commands that move other aggregates to their next state. They have a
+defined lifecycle, starting with an initiating event and completing when the
+process reaches a terminal state. In Protean, process managers are defined with
+the `@domain.process_manager` decorator.
 
 [Learn more →](guides/consume-state/process-managers.md) | **See also**: [Event Handler](#event-handler), [Command](#command), [Domain Event](#domain-event)
 
@@ -269,7 +313,11 @@ A read-optimized, denormalized view of data constructed by processing one or mor
 
 ### Subscriber
 
-A component that consumes messages from external message brokers or other systems outside the domain boundary. Subscribers bridge the gap between external messaging infrastructure and the domain's internal event handling. In Protean, subscribers are defined with the `@domain.subscriber` decorator.
+A component that consumes messages from external message brokers or other
+systems outside the domain boundary. Subscribers receive messages from external
+messaging infrastructure and pass them into the domain's internal event
+handling. In Protean, subscribers are defined with the `@domain.subscriber`
+decorator.
 
 [Learn more →](guides/consume-state/subscribers.md) | **See also**: [Broker](#broker), [Event Handler](#event-handler)
 
@@ -291,7 +339,11 @@ A field type that holds multiple or composite values. Protean provides `List` fo
 
 ### Field
 
-The fundamental building block for defining the structure and data types of domain elements. Fields are implemented as Python descriptors and handle type validation, constraints, and defaults. Protean provides simple fields (String, Integer, Float, Boolean, Date, DateTime, etc.), container fields, and association fields.
+The basic unit you use to define the structure and data types of domain
+elements. Fields are implemented as Python descriptors and apply type
+validation, constraints, and defaults. Protean provides simple fields (String,
+Integer, Float, Boolean, Date, DateTime, etc.), container fields, and
+association fields.
 
 [Learn more →](reference/fields/index.md) | **See also**: [Simple Field](#simple-field), [Container Field](#container-field), [Association Field](#association-field)
 
@@ -353,25 +405,39 @@ A repository with user-defined methods that go beyond standard CRUD operations, 
 
 ### Database Model
 
-A persistence-technology-specific data schema that maps domain elements to their storage representation. Database models handle the translation between domain objects and the underlying storage format (relational tables, document structures, etc.). In Protean, database models are defined with the `@domain.database_model` decorator.
+A persistence-technology-specific data schema that maps domain elements to
+their storage representation. Database models translate between domain objects
+and the underlying storage format (relational tables, document structures,
+etc.). In Protean, database models are defined with the
+`@domain.database_model` decorator.
 
 [Learn more →](guides/change-state/persist-aggregates.md) | **See also**: [Repository](#repository), [Provider](#provider)
 
 ### Projector
 
-A specialized handler responsible for keeping projections up to date by listening to domain events and applying the corresponding changes to projection data. Projectors work exclusively with projections, translating domain events into read model updates. In Protean, projectors are defined with the `@domain.projector` decorator.
+A specialized handler responsible for keeping projections up to date by
+listening to domain events and applying the corresponding changes to projection
+data. Projectors update only projections, translating domain events into read
+model updates. In Protean, projectors are defined with the `@domain.projector`
+decorator.
 
 [Learn more →](guides/consume-state/projections.md) | **See also**: [Projection](#projection), [Event Handler](#event-handler)
 
 ### Repository
 
-An abstraction that encapsulates the storage, retrieval, and search behavior for aggregates. Repositories provide a collection-like interface that isolates domain logic from the details of data storage, allowing the persistence mechanism to be swapped without affecting the domain model.
+An abstraction that encapsulates the storage, retrieval, and search behavior
+for aggregates. Repositories provide a collection-like interface that isolates
+domain logic from the details of data storage. You can swap the persistence
+mechanism without changing the domain model.
 
 [Learn more →](guides/change-state/persist-aggregates.md) | **See also**: [Aggregate](#aggregate), [Custom Repository](#custom-repository), [Unit of Work](#unit-of-work)
 
 ### Unit of Work
 
-A pattern that groups all changes made to aggregates within a single business operation into an atomic transaction. The unit of work tracks changes, coordinates persistence, and ensures that either all changes are committed or none are. In Protean, the unit of work is managed automatically via a context manager.
+A pattern that groups all changes made to aggregates within a single business
+operation into an atomic transaction. The unit of work tracks changes and
+coordinates persistence. It commits either all changes or none. In Protean, a
+context manager starts and ends the unit of work automatically.
 
 [Learn more →](guides/change-state/unit-of-work.md) | **See also**: [Repository](#repository), [Transaction Boundary](#transaction-boundary)
 
@@ -419,19 +485,29 @@ A caching infrastructure component for storing frequently accessed data to reduc
 
 ### Data Access Object (DAO)
 
-A pattern that provides a low-level abstract interface for database operations. In Protean, the DAO layer sits beneath repositories and handles the direct interaction with persistence technologies, allowing repositories to remain technology-agnostic.
+A pattern that provides a low-level abstract interface for database operations.
+In Protean, repositories call the DAO layer, and the DAO layer calls the
+persistence technologies directly, so repositories can stay
+technology-agnostic.
 
 [Learn more →](reference/adapters/database/index.md) | **See also**: [Repository](#repository), [Provider](#provider)
 
 ### Event Store Adapter
 
-An adapter implementation for persisting and retrieving domain events. Event store adapters provide the concrete storage mechanism for event sourcing, supporting operations like appending events, reading streams, and managing snapshots. Protean includes a Message DB adapter for production use.
+An adapter implementation for persisting and retrieving domain events. Event
+store adapters provide the concrete storage mechanism for event sourcing, with
+operations such as appending events, reading streams, and reading and writing
+snapshots. Protean includes a Message DB adapter for production use.
 
 [Learn more →](reference/adapters/eventstore/index.md) | **See also**: [Event Store](#event-store), [Adapter](#adapter)
 
 ### Outbox Pattern
 
-A reliability pattern that ensures messages are published to the broker exactly when the associated business transaction commits. Events are first written to an outbox table in the same database transaction as the aggregate changes, then asynchronously picked up and published to the broker by a background processor.
+A reliability pattern for publishing messages to the broker exactly when the
+associated business transaction commits. Protean first writes events to an
+outbox table in the same database transaction as the aggregate changes. A
+background processor then reads the events asynchronously and publishes them to
+the broker.
 
 [Learn more →](concepts/async-processing/outbox.md) | **See also**: [Broker](#broker), [Transaction Boundary](#transaction-boundary), [Unit of Work](#unit-of-work)
 
@@ -443,13 +519,21 @@ An abstract interface that defines the contract between the domain and external 
 
 ### Ports and Adapters Architecture
 
-An architectural pattern (also known as Hexagonal Architecture) that isolates the domain model from technology concerns. The domain defines ports (abstract interfaces) for its infrastructure needs, and adapters provide concrete implementations. This separation allows swapping technologies without changing domain logic.
+An architectural pattern (also known as Hexagonal Architecture) that isolates
+the domain model from technology concerns. The domain defines ports (abstract
+interfaces) for its infrastructure needs. Adapters provide concrete
+implementations of the ports. This separation allows swapping technologies
+without changing domain logic.
 
 [Learn more →](concepts/ports-and-adapters/index.md) | **See also**: [Adapter](#adapter), [Port](#port)
 
 ### Provider
 
-A database adapter that provides persistence functionality for a specific storage technology. Providers handle connection management, query execution, and data mapping. In Protean, providers can be assigned per aggregate using the `provider` meta option, allowing different aggregates to use different databases.
+A database adapter that provides persistence functionality for a specific
+storage technology. Providers open and close connections, execute queries, and
+map data. In Protean, providers can be assigned per aggregate using the
+`provider` meta option, allowing different aggregates to use different
+databases.
 
 [Learn more →](reference/configuration/index.md) | **See also**: [Adapter](#adapter), [Database Model](#database-model)
 
@@ -473,7 +557,7 @@ An ASGI middleware for FastAPI applications that automatically pushes the correc
 
 A set of pre-built exception handlers (`register_exception_handlers`) that map Protean domain exceptions to standard HTTP responses. `ValidationError` and `InvalidDataError` become 400, `ObjectNotFoundError` becomes 404, `InvalidStateError` becomes 409, and `InvalidOperationError` becomes 422.
 
-[Learn more →](guides/fastapi/index.md#exception-handlers) | **See also**: [DomainContextMiddleware](#domaincontextmiddleware)
+[Learn more →](guides/fastapi/index.md#map-domain-exceptions-to-http-responses) | **See also**: [DomainContextMiddleware](#domaincontextmiddleware)
 
 ---
 
@@ -487,19 +571,30 @@ A mechanism that allows multiple instances of an application to process messages
 
 ### Dead Letter Queue
 
-A dedicated stream where messages that have failed processing after exhausting all retry attempts are moved. Dead letter queues preserve failed messages along with error metadata, enabling debugging, analysis, and manual reprocessing.
+A dedicated stream for failed messages: Protean moves a message there after the
+message exhausts all retry attempts. Dead letter queues preserve failed
+messages along with error metadata, enabling debugging, analysis, and manual
+reprocessing.
 
 [Learn more →](reference/server/subscription-types.md) | **See also**: [Subscription](#subscription), [Idempotency](#idempotency)
 
 ### CommandDispatcher
 
-An internal routing mechanism that consolidates multiple command handler subscriptions on the same stream category into a single subscription. Instead of creating N separate subscriptions that compete for the same messages, the engine creates one `CommandDispatcher` per stream category that reads each command once and routes it to the correct handler based on the command type.
+An internal routing mechanism that consolidates multiple command handler
+subscriptions on the same stream category into a single subscription. The
+engine creates one `CommandDispatcher` per stream category, so N separate
+subscriptions do not compete for the same messages. The `CommandDispatcher`
+reads each command once and routes it to the correct handler based on the
+command type.
 
 [Learn more →](concepts/async-processing/engine.md) | **See also**: [Command Handler](#command-handler), [Engine](#engine), [Subscription](#subscription)
 
 ### Engine
 
-The core async message processing system in Protean that manages the lifecycle of subscriptions, coordinates message handling, and provides graceful startup and shutdown. The engine polls for messages from event stores and brokers, delivers them to the appropriate handlers, and tracks processing state.
+The core async message processing system in Protean. It starts and stops
+subscriptions, runs message handling, and starts up and shuts down gracefully.
+The engine polls for messages from event stores and brokers, delivers them to
+the appropriate handlers, and tracks processing state.
 
 [Learn more →](concepts/async-processing/engine.md) | **See also**: [Subscription](#subscription), [Broker](#broker)
 
@@ -517,36 +612,53 @@ A piece of data transmitted between components in an event-driven system. In Pro
 
 ### MessageTrace
 
-A structured dataclass representing one stage of a message's journey through the processing pipeline. Each trace captures the event type, domain, stream, message identity, status, handler name, processing duration, and optional error and metadata. MessageTrace events are serialized to JSON and published to Redis Pub/Sub by the TraceEmitter.
+A structured dataclass that records one stage of a message's processing in the
+pipeline. Each trace captures the event type, domain, stream, message identity,
+status, handler name, processing duration, and optional error and metadata.
+MessageTrace events are serialized to JSON and published to Redis Pub/Sub by
+the TraceEmitter.
 
 [Learn more →](reference/server/observability.md) | **See also**: [TraceEmitter](#traceemitter), [Observatory](#observatory)
 
 ### Observatory
 
-A standalone FastAPI server (`Observatory`) that provides real-time monitoring of the Protean message processing pipeline. It subscribes to the trace event channel and exposes an HTML dashboard, Server-Sent Events stream, REST API for infrastructure health and statistics, and a Prometheus metrics endpoint. Runs on its own port (default 9000), separate from the application.
+A standalone FastAPI server (`Observatory`) that provides real-time monitoring
+of the Protean message processing pipeline. It subscribes to the trace event
+channel. The Observatory exposes an HTML dashboard, Server-Sent Events stream,
+REST API for infrastructure health and statistics, and a Prometheus metrics
+endpoint. Runs on its own port (default 9000), separate from the application.
 
 [Learn more →](reference/server/observability.md) | **See also**: [TraceEmitter](#traceemitter), [MessageTrace](#messagetrace), [Engine](#engine)
 
 ### Position Tracking
 
-The mechanism by which subscriptions track which messages have been successfully processed. Position tracking ensures that after a restart, a subscription resumes from where it left off rather than reprocessing the entire stream. Different subscription types implement position tracking differently (cursor-based, consumer group ACKs, etc.).
+The mechanism by which subscriptions record their successfully processed
+messages. With position tracking, a subscription resumes from where it left off
+after a restart. The subscription does not reprocess the entire stream.
+Different subscription types implement position tracking differently
+(cursor-based, consumer group ACKs, etc.).
 
 [Learn more →](concepts/async-processing/subscriptions.md) | **See also**: [Subscription](#subscription), [Consumer Group](#consumer-group)
 
 ### Subscription
 
-A long-running process that connects message sources (event stores or brokers) to handlers. Subscriptions manage the message flow lifecycle: polling for new messages, delivering them to handlers, tracking processed positions, and handling errors with retries. Protean provides `StreamSubscription`, `EventStoreSubscription`, and `BrokerSubscription` types.
+A long-running process that connects message sources (event stores or brokers)
+to handlers. Subscriptions run the message flow lifecycle: polling for new
+messages, delivering them to handlers, tracking processed positions, and
+retrying messages that fail. Protean provides `StreamSubscription`,
+`EventStoreSubscription`, and `BrokerSubscription` types.
 
 [Learn more →](concepts/async-processing/subscriptions.md) | **See also**: [Engine](#engine), [Stream Category](#stream-category), [Position Tracking](#position-tracking)
 
 ### TraceEmitter
 
-A lightweight component attached to the Engine that publishes structured
-`MessageTrace` events to Redis Pub/Sub as messages flow through the processing
-pipeline. Designed for zero overhead when nobody is listening. It checks
-subscriber count via `PUBSUB NUMSUB` and short-circuits before any
-serialization when no subscribers are found. Tracing failures are silently
-swallowed and never affect message processing.
+A lightweight component attached to the Engine. It publishes structured
+`MessageTrace` events to Redis Pub/Sub as messages move through the processing
+pipeline. The TraceEmitter is designed to add zero overhead when no client
+subscribes to the trace channel. It checks subscriber count via `PUBSUB NUMSUB`
+and short-circuits before any serialization when no subscribers are found. The
+TraceEmitter silently discards tracing failures, so they never interrupt
+message processing.
 
 [Learn more →](reference/server/observability.md) | **See also**: [MessageTrace](#messagetrace), [Observatory](#observatory), [Engine](#engine)
 
@@ -554,9 +666,9 @@ swallowed and never affect message processing.
 
 The scope within which all state changes must be atomic, either all succeed or
 all are rolled back. In domain-driven design, each aggregate defines a
-transaction boundary. No single transaction should span multiple aggregates;
-cross-aggregate consistency is achieved through eventual consistency via domain
-events.
+transaction boundary. No single transaction should span multiple aggregates. To
+keep data consistent across aggregates, you rely on eventual consistency
+through domain events.
 
 [Learn more →](guides/change-state/unit-of-work.md) | **See also**: [Aggregate](#aggregate), [Unit of Work](#unit-of-work), [Eventual Consistency](#eventual-consistency)
 
@@ -566,13 +678,21 @@ events.
 
 ### DomainFixture
 
-A test lifecycle manager provided by `protean.integrations.pytest` that handles domain initialization, database schema setup/teardown, and per-test data cleanup across all adapters. `DomainFixture` is the recommended way to set up Protean's test infrastructure in pytest, providing `setup()`, `teardown()`, and `domain_context()` methods.
+A test lifecycle manager provided by `protean.integrations.pytest` that
+initializes the domain, sets up and tears down the database schema, and cleans
+up per-test data across all adapters. `DomainFixture` is the recommended way to
+set up Protean's test infrastructure in pytest, providing `setup()`,
+`teardown()`, and `domain_context()` methods.
 
 [Learn more →](guides/testing/fixtures-and-patterns.md) | **See also**: [Domain Model Testing](#domain-model-testing), [Test Mode](#test-mode)
 
 ### Domain Model Testing
 
-The practice of testing domain logic in isolation from infrastructure, using plain Python objects without mocks. Because Protean's domain model is technology-agnostic, aggregates, entities, value objects, and domain services can be tested directly by constructing them, invoking their methods, and asserting on their state.
+The practice of testing domain logic in isolation from infrastructure, using
+plain Python objects without mocks. Protean's domain model is
+technology-agnostic. As a result, you can test aggregates, entities, value
+objects, and domain services directly: construct them, invoke their methods,
+and assert on their state.
 
 [Learn more →](guides/testing/domain-model-tests.md) | **See also**: [Domain Model](#domain-model), [Test Mode](#test-mode)
 
