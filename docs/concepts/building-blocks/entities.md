@@ -3,12 +3,13 @@
 ## Why Entities?
 
 Not every concept in a domain stands on its own. An `OrderItem` only makes
-sense within an `Order`; a `Reservation` belongs to a `Booking`. These objects
-have their own identity (you need to distinguish one line item from another)
-but they don't manage their own lifecycle. If you modeled every identified
-object as an independent aggregate, you'd lose the ability to enforce rules
-that span the parent and its children (e.g. "an order's total must equal the
-sum of its line items").
+sense within an `Order`. In the same way, a `Reservation` belongs to a
+`Booking`. These objects have their own identity, because you need to
+distinguish one line item from another. Their parent creates, changes and
+deletes them, so they don't control their own lifecycle. Suppose you modeled
+every identified object as an independent aggregate. You could then no longer
+enforce a rule across the parent and its children, such as "an order's total
+must equal the sum of its line items".
 
 Entities are the answer: objects with unique, stable identity that live
 *inside* an aggregate. The aggregate root controls their creation, mutation,
@@ -18,9 +19,9 @@ Entities are similar to [Aggregates](./aggregates.md) in nature and
 purpose. In fact, an Aggregate is nothing but an entity chosen to represent
 the entire cluster.
 
-Entities are mutable and encapsulate both state and behavior. They have
-distinct identity. This identity remains consistent throughout
-the life of the entity, regardless of changes to its attributes.
+Entities are mutable. They encapsulate both state and behavior. They have
+distinct identity. This identity remains consistent throughout the life of the
+entity, regardless of changes to its attributes.
 
 ## Facts
 
@@ -36,8 +37,9 @@ various state changes.
 
 ### Entities can contain other entities or value objects. { data-toc-label="Composition" }
 Entities can compose other entities and [value objects](./value-objects.md),
-enabling the modeling of complex domain relationships. However, care should be
-taken to manage the complexity and maintain the boundaries of aggregates.
+enabling the modeling of complex domain relationships. However, keep the
+composed structure simple. Keep every composed object inside the boundaries of
+its aggregate.
 
 ### Entities enforce business rules. { data-toc-label="Business Rules" }
 Entities are responsible for ensuring that business rules and invariants are
@@ -52,19 +54,21 @@ seat numbers to patrons. If visitors are not allotted specific seats, then a
 seat can be considered a ValueObject, as one seat can be exchanged with another.
 
 ### Aggregates handle entity persistence.  { data-toc-label="Persistence" }
-Entities are persisted and retrieved through their aggregates. They should not
-be queried or updated directly, as it can lead to an invalid state because of
-unsatisfied domain invariants.
+Entities are persisted and retrieved through their aggregates. You should not
+query or update entities directly. A direct query or update skips the aggregate
+and can leave the entity in an invalid state, with domain invariants
+unsatisfied.
 
 ### Entities are related through associations. { data-toc-label="Associations" }
-Associations define how entities are connected. These associations are
-typically managed within the context of an aggregate to ensure consistency and
-integrity.
+Associations define how entities are connected. The aggregate typically
+creates, changes and removes these associations, so that they keep their
+consistency and integrity.
 
 ### Entities can contain nested entities and value objects. { data-toc-label="Nested Objects" }
 Entities can nest other entities and value objects to form hierarchical
-structures. These nested objects are managed as part of the aggregate's
-lifecycle and contribute to the overall state of the entity.
+structures. The aggregate creates, changes and deletes these nested objects as
+part of its lifecycle. Their values form part of the overall state of the
+entity.
 
 ### Entity graphs should be kept manageable. { data-toc-label="Nesting" }
 While entities can form complex graphs, it is crucial to maintain manageable
@@ -75,7 +79,7 @@ more manageable aggregates.
 
 ---
 
-## Next steps
+## What to read next
 
 For practical details on defining and using entities in Protean, see the guide:
 

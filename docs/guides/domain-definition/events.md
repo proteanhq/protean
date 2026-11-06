@@ -455,7 +455,7 @@ separation lets internal consumers subscribe to granular delta events while
 external consumers subscribe to the fact stream for complete state snapshots.
 
 Read about generating fact events in the section on
-[raising events](../domain-behavior/raising-events.md#fact-events). For
+[raising events](../domain-behavior/raising-events.md#how-protean-generates-fact-events). For
 the integration pattern, see
 [Fact Events as Integration Contracts](../../patterns/fact-events-as-integration-contracts.md).
 

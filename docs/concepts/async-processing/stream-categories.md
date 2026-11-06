@@ -217,7 +217,7 @@ When aggregates are configured with `fact_events=True`, Protean generates specia
 
 Fact event streams use the pattern `<stream_category>-fact-<aggregate_id>`, allowing separate subscription management for fact events versus delta events.
 
-Learn more in [Raising Events](../../guides/domain-behavior/raising-events.md#fact-events).
+Learn more in [Raising Events](../../guides/domain-behavior/raising-events.md#how-protean-generates-fact-events).
 
 ## Best Practices
 
