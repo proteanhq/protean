@@ -8,7 +8,8 @@ not yet committed — otherwise that position, once it commits, is skipped.
 
 This is a Hypothesis ``RuleBasedStateMachine``. It models the store as two sets —
 ``committed`` (visible) and ``pending`` (assigned, not yet committed, i.e. a live
-gap) — and drives the real ``EventStoreSubscription._gap_safe_batch`` plus the
+gap) — plus the committed positions that hold snapshot rows, which the read drops
+but reports to the gap walk. It drives the real ``EventStoreSubscription._gap_safe_batch`` plus the
 cursor advancement its ``tick`` performs. ``gap_timeout_seconds`` is set
 effectively infinite so a gap is only ever resolved by committing, never
 abandoned — that isolates the pure no-skip guarantee (timeout-based abandonment
@@ -57,12 +58,20 @@ class CheckpointNoSkip(RuleBasedStateMachine):
         self.next_position = 1
         self.pending: set[int] = set()
         self.committed: list[int] = []
+        self.snapshots: set[int] = set()  # committed positions holding a snapshot
         self.delivered: set[int] = set()
 
     @rule()
     def commit_in_order(self):
         """Assign the next position and commit it immediately."""
         self.committed.append(self.next_position)
+        self.next_position += 1
+
+    @rule()
+    def commit_snapshot(self):
+        """Assign the next position to a snapshot row and commit it."""
+        self.committed.append(self.next_position)
+        self.snapshots.add(self.next_position)
         self.next_position += 1
 
     @rule()
@@ -75,17 +84,22 @@ class CheckpointNoSkip(RuleBasedStateMachine):
     @precondition(lambda self: bool(self.pending))
     def commit_pending(self, data):
         """Commit a held position out of order — the position becomes visible
-        after ones assigned later already have."""
+        after ones assigned later already have. It may hold a snapshot row."""
         position = data.draw(st.sampled_from(sorted(self.pending)))
         self.pending.discard(position)
         self.committed.append(position)
+        if data.draw(st.booleans()):
+            self.snapshots.add(position)
 
     @rule()
     def tick(self):
         """One subscription read: feed the visible positions above the cursor to
         ``_gap_safe_batch`` and advance the cursor exactly as ``tick`` does."""
         visible = sorted(p for p in self.committed if p > self.sub.current_position)
-        returned = self.sub._gap_safe_batch([message_at(p) for p in visible])
+        returned = self.sub._gap_safe_batch(
+            [message_at(p) for p in visible if p not in self.snapshots],
+            snapshot_positions=[p for p in visible if p in self.snapshots],
+        )
         for message in returned:
             position = message.metadata.event_store.global_position
             self.sub.current_position = position
@@ -117,7 +131,11 @@ class CheckpointNoSkip(RuleBasedStateMachine):
 
     @invariant()
     def every_committed_position_below_cursor_is_delivered(self):
-        due = {p for p in self.committed if p <= self.sub.current_position}
+        due = {
+            p
+            for p in self.committed
+            if p <= self.sub.current_position and p not in self.snapshots
+        }
         assert due <= self.delivered, (
             f"committed positions {sorted(due - self.delivered)} at or below "
             f"cursor {self.sub.current_position} were never delivered"

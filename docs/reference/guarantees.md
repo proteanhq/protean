@@ -284,8 +284,9 @@ advances the cursor past a hole only *after* the batch is processed
 within `gap_timeout_seconds` (default 5) is assumed rolled back and abandoned,
 **logged, not silent**. The guarantee is therefore: **no committed `$all` event is
 silently skipped; a genuinely slow commit (> `gap_timeout_seconds`) is logged and
-dropped.** Single-category subscriptions are gap-free by construction and run none
-of this machinery.
+dropped.** A snapshot row also takes a `global_position`. The subscription counts
+that position as present, so it never holds at a snapshot. Single-category
+subscriptions are gap-free by construction and run none of this machinery.
 
 **Single writer.** Event-store subscriptions have no cluster-wide ownership;
 Protean refuses to start more than one worker when an event-store subscription is

@@ -4,6 +4,7 @@ import os
 import secrets
 import socket
 import time
+from collections.abc import Iterable
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -737,19 +738,23 @@ class EventStoreSubscription(BaseSubscription):
         messages forward (one at a time, so an interrupted batch leaves the cursor
         at the last one actually processed), advance ``current_position`` to the
         gap-safe watermark set by ``_gap_safe_batch``. This steps over abandoned
-        holes, which carry no message for ``process_batch`` to advance through.
+        holes and snapshot positions, which carry no message for ``process_batch``
+        to advance through.
         Running it *after* ``process_batch`` is what keeps it crash-safe — an
         exception there skips this and leaves the cursor at real progress. It is a
         no-op for single-category subscriptions (``_gap_watermark`` stays -1).
+
+        Returns ``True`` when the tick processed messages or moved the cursor.
         """
         messages = await self.get_next_batch_of_messages()
         if messages:
             await self.process_batch(messages)
 
-        if self._gap_watermark > self.current_position:
+        advanced = self._gap_watermark > self.current_position
+        if advanced:
             await self.update_read_position(self._gap_watermark)
 
-        return bool(messages)
+        return bool(messages) or advanced
 
     async def get_next_batch_of_messages(self) -> list[Message]:
         """
@@ -761,19 +766,32 @@ class EventStoreSubscription(BaseSubscription):
         Returns:
             List[Message]: The next batch of messages to process.
         """
-        messages = await asyncio.to_thread(
-            self.store.read,
-            self.stream_category,
-            position=self.current_position + 1,
-            no_of_messages=self.messages_per_tick,
-        )
-
         if self.stream_category == "$all":
-            messages = self._gap_safe_batch(messages)
+            # ``$all`` spans snapshot streams. The read drops snapshot rows, but
+            # each one holds a ``global_position``, so the gap walk must count
+            # those positions as present or it would wait at every snapshot.
+            messages, snapshot_positions = await asyncio.to_thread(
+                self.store._read_with_snapshot_positions,
+                self.stream_category,
+                position=self.current_position + 1,
+                no_of_messages=self.messages_per_tick,
+            )
+            messages = self._gap_safe_batch(
+                messages, snapshot_positions=snapshot_positions
+            )
+        else:
+            messages = await asyncio.to_thread(
+                self.store.read,
+                self.stream_category,
+                position=self.current_position + 1,
+                no_of_messages=self.messages_per_tick,
+            )
 
         return self.filter_on_origin(messages)
 
-    def _gap_safe_batch(self, messages: list[Message]) -> list[Message]:
+    def _gap_safe_batch(
+        self, messages: list[Message], snapshot_positions: Iterable[int] = ()
+    ) -> list[Message]:
         """Hold a ``$all`` (cross-category) batch at the first ``global_position`` gap.
 
         ``global_position`` is a store-wide sequence. Within a single category the
@@ -790,7 +808,11 @@ class EventStoreSubscription(BaseSubscription):
         ``gap_timeout_seconds`` is abandoned (skipped) rather than waited on
         forever. Positions above an unfilled gap are held until it resolves.
 
-        Records the settled watermark in ``self._gap_watermark`` (``tick`` advances
+        ``snapshot_positions`` are the ``global_position`` values of snapshot rows
+        the read skipped. They count as present, so the walk steps over them.
+
+        Records the settled watermark, abandoned holes and snapshot positions
+        included, in ``self._gap_watermark`` (``tick`` advances
         the cursor to it *after* processing, so an interrupted batch is not skipped)
         and returns the prefix of ``messages`` safe to process now (those at or
         below it); an empty list means "hold this tick".
@@ -813,7 +835,8 @@ class EventStoreSubscription(BaseSubscription):
                 f"{len(messages) - len(positioned)} $all record(s) with no "
                 f"global_position"
             )
-        if not positioned:
+        snapshots = set(snapshot_positions)
+        if not positioned and not snapshots:
             # Empty batch, or (defensively) only records missing a position: no
             # frontier to gate, so clear the gap timers and let the downstream
             # corruption guard handle any position-less records.
@@ -823,7 +846,7 @@ class EventStoreSubscription(BaseSubscription):
 
         now = time.monotonic()
         entry_cursor = self.current_position
-        present = {position for position, _ in positioned}
+        present = {position for position, _ in positioned} | snapshots
         highest = max(present)
         abandoned: list[int] = []  # holes stepped over this batch (Checkpoint trace)
         # ``global_position`` is 1-based, so a fresh subscription (current == -1)
