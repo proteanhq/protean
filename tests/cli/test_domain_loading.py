@@ -331,3 +331,35 @@ class TestDeriveDomainFromSrcLayout:
 
         assert domain is not None
         assert domain.name == "Package"
+
+    def test_dot_loads_a_top_level_domain_package(self, project_dir):
+        (project_dir / "domain").mkdir()
+        (project_dir / "domain" / "__init__.py").write_text(
+            _DOMAIN_SOURCE.format(name="Package")
+        )
+
+        domain = derive_domain(".")
+
+        assert domain is not None
+        assert domain.name == "Package"
+
+    def test_top_level_subdomain_package_wins_over_src_with_no_path(self, project_dir):
+        (project_dir / "subdomain").mkdir()
+        (project_dir / "subdomain" / "__init__.py").write_text(
+            _DOMAIN_SOURCE.format(name="SubPackage")
+        )
+        self._write_package(project_dir, "srcdemo", "domain.py", "Src")
+
+        domain = derive_domain(None)
+
+        assert domain is not None
+        assert domain.name == "SubPackage"
+
+    def test_folder_without_init_is_not_a_package(self, project_dir):
+        (project_dir / "domain").mkdir()
+        self._write_package(project_dir, "srcdemo", "domain.py", "Src")
+
+        domain = derive_domain(".")
+
+        assert domain is not None
+        assert domain.name == "Src"

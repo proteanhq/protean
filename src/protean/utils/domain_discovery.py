@@ -143,12 +143,15 @@ def _find_src_domain_file(directory: str) -> str | None:
 
 
 def _find_domain_file(directory: str) -> str | None:
-    """Return the domain file for *directory*: `domain.py` or `subdomain.py`
-    in *directory* itself, else the one found under `src/`, else None."""
-    for filename in _DOMAIN_FILENAMES:
-        candidate = os.path.join(directory, filename)
-        if os.path.exists(candidate):
-            return candidate
+    """Return the domain module for *directory*: a `domain` or `subdomain`
+    package or `.py` file in *directory* itself, else the one found under
+    `src/`, else None."""
+    for name in ("domain", "subdomain"):
+        module_path = os.path.join(directory, name)
+        if os.path.exists(os.path.join(module_path, "__init__.py")):
+            return module_path
+        if os.path.exists(module_path + ".py"):
+            return module_path + ".py"
     return _find_src_domain_file(directory)
 
 
@@ -157,9 +160,11 @@ def prepare_import(path: str) -> str:
     to the search path and return the actual module name that is expected.
 
     A path that resolves to the current directory is replaced by its domain
-    file: `domain.py` or `subdomain.py` in the directory, else the single
-    `src/*/domain.py` or `src/*/subdomain.py`. Raises `NoDomainException`
-    when more than one file matches under `src/`.
+    module: a `domain` package or `domain.py`, then a `subdomain` package or
+    `subdomain.py`, in the directory, else the single `src/*/domain.py` or
+    `src/*/subdomain.py`. A package counts only when it has an
+    `__init__.py`. Raises `NoDomainException` when more than one file
+    matches under `src/`.
     """
     path = os.path.realpath(path)
 
@@ -232,8 +237,9 @@ def derive_domain(domain_path: str | None = None) -> Domain | None:
     - An instance ("hello:app2")
 
     With no path, and with the path ".", the domain is looked up in this
-    order: `domain.py` or `subdomain.py` in the current folder, then
-    `src/*/domain.py`, then `src/*/subdomain.py`. More than one match under
+    order: a `domain` package or `domain.py`, then a `subdomain` package or
+    `subdomain.py`, in the current folder, then `src/*/domain.py`, then
+    `src/*/subdomain.py`. More than one match under
     `src/` raises `NoDomainException`. With no path and no match, returns
     None.
     """
@@ -258,10 +264,7 @@ def _derive_default_domain() -> Domain | None:
     Returns None when the folder has no `domain` or `subdomain` module and
     nothing matches under `src/`.
     """
-    # A `domain` or `subdomain` package in the current folder keeps loading
-    # the way it did before the file and `src/` lookup existed.
-    has_local_package = os.path.isdir("domain") or os.path.isdir("subdomain")
-    domain_file = None if has_local_package else _find_domain_file(".")
+    domain_file = _find_domain_file(".")
     if domain_file is not None:
         return locate_domain(prepare_import(domain_file), None)
 

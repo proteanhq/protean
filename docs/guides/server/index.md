@@ -98,7 +98,7 @@ The server discovers your domain in this order:
 
 1. **Environment variable**: `PROTEAN_DOMAIN` if set
 2. **--domain parameter**: Path or module specified
-3. **Current directory**: Looks for `domain.py` or `subdomain.py`
+3. **Current directory**: Looks for a `domain` or `subdomain` package or `.py` file, then for `src/*/domain.py` or `src/*/subdomain.py`. More than one match under `src/` is an error that asks for `--domain`. See [Domain Discovery](../../reference/cli/project/discovery.md).
 
 Within a module, it looks for:
 
