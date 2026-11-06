@@ -71,49 +71,26 @@ class ResolvedField:
         )
 
         # Extract metadata from json_schema_extra if present
-        extra = (
-            getattr(field_info, "json_schema_extra", None) or {}
-            if field_info is not None
-            else {}
-        )
-        if isinstance(extra, dict):
-            self.identifier = extra.get("identifier", False)
-            self.referenced_as = extra.get("referenced_as")
-            self.unique = extra.get("unique", False)
-            self.increment = extra.get("increment", False)
-            # FieldSpec-originated metadata
-            self.sanitize = extra.get("sanitize", False)
-            self.auto_now = extra.get("auto_now", False)
-            self.auto_now_add = extra.get("auto_now_add", False)
-            self.field_kind = extra.get("field_kind", "standard")
-            self.precision: int | None = extra.get("precision")
-            self.scale: int | None = extra.get("scale")
-            self._validators = extra.get("_validators", [])
-            self._error_messages = extra.get("_error_messages", {})
-            self._auto_generated = extra.get("_auto_generated", False)
-            self.transitions: dict[str, list[str]] | None = extra.get(
-                "transitions", None
-            )
-            # Old field name(s) this field was renamed from — carried on the
-            # resolved field (unlike ``deprecated``) because deserialization
-            # resolves aliases at runtime.
-            self.renamed_from: list[str] | None = extra.get("_renamed_from")
-        else:
-            self.identifier = False
-            self.referenced_as = None
-            self.unique = False
-            self.increment = False
-            self.sanitize = False
-            self.auto_now = False
-            self.auto_now_add = False
-            self.field_kind = "standard"
-            self.precision = None
-            self.scale = None
-            self._validators = []
-            self._error_messages = {}
-            self._auto_generated = False
-            self.transitions = None
-            self.renamed_from = None
+        extra = _schema_extra(field_info)
+        self.identifier = extra.get("identifier", False)
+        self.referenced_as = extra.get("referenced_as")
+        self.unique = extra.get("unique", False)
+        self.increment = extra.get("increment", False)
+        # FieldSpec-originated metadata
+        self.sanitize = extra.get("sanitize", False)
+        self.auto_now = extra.get("auto_now", False)
+        self.auto_now_add = extra.get("auto_now_add", False)
+        self.field_kind = extra.get("field_kind", "standard")
+        self.precision: int | None = extra.get("precision")
+        self.scale: int | None = extra.get("scale")
+        self._validators = extra.get("_validators", [])
+        self._error_messages = extra.get("_error_messages", {})
+        self._auto_generated = extra.get("_auto_generated", False)
+        self.transitions: dict[str, list[str]] | None = extra.get("transitions", None)
+        # Old field name(s) this field was renamed from — carried on the
+        # resolved field (unlike ``deprecated``) because deserialization
+        # resolves aliases at runtime.
+        self.renamed_from: list[str] | None = extra.get("_renamed_from")
 
         # Identifiers are always unique (matching legacy Field behavior)
         if self.identifier:
@@ -136,19 +113,7 @@ class ResolvedField:
         self.min_value: Any = None
         self.max_value: Any = None
         if field_info is not None:
-            for m in field_info.metadata:
-                if isinstance(m, MaxLen):
-                    self.max_length = m.max_length
-                elif isinstance(m, MinLen):
-                    self.min_length = m.min_length
-                elif isinstance(m, Ge):
-                    self.min_value = m.ge
-                elif isinstance(m, Gt):
-                    self.min_value = m.gt
-                elif isinstance(m, Le):
-                    self.max_value = m.le
-                elif isinstance(m, Lt):
-                    self.max_value = m.lt
+            _read_constraint_metadata(self, field_info.metadata)
 
     @property
     def pickled(self) -> bool:
@@ -236,6 +201,32 @@ class ResolvedField:
 # ---------------------------------------------------------------------------
 # Pydantic error conversion helper
 # ---------------------------------------------------------------------------
+def _schema_extra(field_info: Any) -> dict[str, Any]:
+    """Return the field's ``json_schema_extra`` dict, or an empty dict when
+    there is no ``FieldInfo`` or its extra is not a dict."""
+    if field_info is None:
+        return {}
+    extra = getattr(field_info, "json_schema_extra", None) or {}
+    return extra if isinstance(extra, dict) else {}
+
+
+def _read_constraint_metadata(field: "ResolvedField", metadata: list[Any]) -> None:
+    """Copy the length and value bounds in ``FieldInfo.metadata`` onto ``field``."""
+    for m in metadata:
+        if isinstance(m, MaxLen):
+            field.max_length = m.max_length
+        elif isinstance(m, MinLen):
+            field.min_length = m.min_length
+        elif isinstance(m, Ge):
+            field.min_value = m.ge
+        elif isinstance(m, Gt):
+            field.min_value = m.gt
+        elif isinstance(m, Le):
+            field.max_value = m.le
+        elif isinstance(m, Lt):
+            field.max_value = m.lt
+
+
 def convert_pydantic_errors(exc: PydanticValidationError) -> dict[str, list[str]]:
     """Convert Pydantic's ValidationError to Protean's {field: [messages]} format."""
     errors: dict[str, list[str]] = defaultdict(list)

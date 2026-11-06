@@ -256,121 +256,16 @@ class FieldSpec:
         kwargs: dict[str, Any] = {}
         json_extra: dict[str, Any] = {}
 
-        # String-type constraints (only for str-based types)
-        if isinstance(self.python_type, type) and issubclass(self.python_type, str):
-            if self.max_length is not None:
-                kwargs["max_length"] = self.max_length
-            if self.min_length is not None:
-                kwargs["min_length"] = self.min_length
-            # required=True on string fields means non-empty
-            if self.required and self.min_length is None:
-                kwargs["min_length"] = 1
-
-        # Numeric constraints
-        if self.max_value is not None:
-            kwargs["le"] = self.max_value
-        if self.min_value is not None:
-            kwargs["ge"] = self.min_value
-
-        # Decimal precision/scale → Pydantic validation + adapter metadata
-        # (read back by ResolvedField for the SQLAlchemy NUMERIC(p, s) mapping).
-        if self.python_type is decimal.Decimal:
-            if self.precision is not None:
-                kwargs["max_digits"] = self.precision
-                json_extra["precision"] = self.precision
-            if self.scale is not None:
-                kwargs["decimal_places"] = self.scale
-                json_extra["scale"] = self.scale
-
-        # Handle identifier
-        if self.identifier:
-            json_extra["identifier"] = True
-            if self.default is _UNSET:
-                if getattr(self, "_increment", False):
-                    # Auto-increment identifiers: the DAO handles the
-                    # actual value generation; default to None here.
-                    kwargs["default"] = None
-                elif self.field_kind in ("identifier", "auto"):
-                    # Use _generate_identity with identity_* options from Auto()
-                    _id_strategy = getattr(self, "_identity_strategy", None)
-                    _id_function = getattr(self, "_identity_function", None)
-                    _id_type = getattr(self, "_identity_type", None)
-
-                    kwargs["default_factory"] = (
-                        lambda s=_id_strategy, f=_id_function, t=_id_type: (
-                            _generate_identity(
-                                identity_strategy=s,
-                                identity_function=f,
-                                identity_type=t,
-                            )
-                        )
-                    )
-                    # Ensure the default_factory result is validated so
-                    # that BeforeValidator(_coerce_to_str) can coerce
-                    # UUID objects to str for identity fields.
-                    kwargs["validate_default"] = True
-
-        # For non-identifier Auto fields, auto-generate UUIDs unless increment
-        if (
-            not self.identifier
-            and self.field_kind == "auto"
-            and self.default is _UNSET
-            and not getattr(self, "_increment", False)
-        ):
-            kwargs["default_factory"] = lambda: str(uuid4())
-
-        # Handle default
-        if self.default is not _UNSET:
-            if callable(self.default):
-                kwargs["default_factory"] = self.default
-            elif isinstance(self.default, (list, dict)):
-                # Prevent mutable default bug
-                kwargs["default_factory"] = lambda d=self.default: type(d)(d)
-            else:
-                kwargs["default"] = self.default
-        elif (
-            not self.required
-            and not self.identifier
-            and "default_factory" not in kwargs
-        ):
-            kwargs["default"] = None
+        _add_length_and_value_bounds(self, kwargs)
+        _add_decimal_precision(self, kwargs, json_extra)
+        _add_identifier_default(self, kwargs, json_extra)
+        _add_default(self, kwargs)
 
         # Description
         if self.description:
             kwargs["description"] = self.description
 
-        # Collect Protean-only metadata into json_schema_extra
-        if self.unique:
-            json_extra["unique"] = True
-        if self.referenced_as:
-            json_extra["referenced_as"] = self.referenced_as
-        if self.field_kind != "standard":
-            json_extra["field_kind"] = self.field_kind
-        # Only an explicit ``sanitize=True`` is recorded in the IR: it is the
-        # declared intent. An unset field (the new default) carries no marker,
-        # because whether it sanitizes depends on the domain default resolved at
-        # validation time, not on anything the field declares.
-        if self.sanitize is True:
-            json_extra["sanitize"] = True
-        if self.auto_now:
-            json_extra["auto_now"] = True
-        if self.auto_now_add:
-            json_extra["auto_now_add"] = True
-        if getattr(self, "_increment", False):
-            json_extra["increment"] = True
-        if self.validators:
-            json_extra["_validators"] = list(self.validators)
-        if self.error_messages:
-            json_extra["_error_messages"] = self.error_messages
-        if self._auto_generated:
-            json_extra["_auto_generated"] = True
-        if self.transitions is not None:
-            json_extra["transitions"] = self.transitions
-        if self.deprecated is not None:
-            json_extra["_deprecated"] = self.deprecated
-
-        if self.renamed_from is not None:
-            json_extra["_renamed_from"] = self.renamed_from
+        _add_protean_metadata(self, json_extra)
 
         if json_extra:
             kwargs["json_schema_extra"] = json_extra
@@ -394,99 +289,17 @@ class FieldSpec:
         field_kwargs = self.resolve_field_kwargs()
         pydantic_field = PydanticField(**field_kwargs)
 
-        extra_validators: list[Any] = []
+        extra_validators: list[Any] = _type_coercion_validators(self)
 
-        # Coerce non-str values (e.g. int, UUID) to str for identifier
-        # and auto fields.  The old field system did this automatically;
-        # Pydantic v2 strict mode rejects them otherwise.
-        # Applies when:
-        #   - The field is marked as identifier=True, OR
-        #   - The field_kind is "identifier" or "auto" (e.g. Identifier()
-        #     used as a reference, not just as the entity's identity)
-        # Excludes Auto(increment=True) fields that store integer sequences.
-        if self.python_type is str and (
-            self.identifier or self.field_kind in ("identifier", "auto")
-        ):
-            extra_validators.append(BeforeValidator(_coerce_to_str))
-
-        if self.python_type is _dt.datetime:
-            extra_validators.append(AfterValidator(_stdlib_timezone))
-        elif _is_datetime_list(self.python_type):
-            # On the list itself, not its element type: adapters and the IR
-            # read the element type and expect a plain ``datetime``.
-            extra_validators.append(AfterValidator(_stdlib_timezone_each))
-
-        # Sanitization via AfterValidator. The field's length bounds are
-        # re-enforced on the sanitized (stored) value so a value that passes on
-        # write always round-trips through serialization and replay — bleach can
-        # otherwise store a value out of bounds (escaping grows it, comment /
-        # attribute stripping shrinks it). ``choices`` fields are never sanitized:
-        # the value must match a declared choice exactly, and HTML-escaping a
-        # closed vocabulary would break that match. See ADR-0026.
-        #
-        # The framework default is now ``sanitize=False``: a String/Text
-        # field left unset does not sanitize unless a domain turns it on via
-        # ``[field_defaults] sanitize = true``. So the validator is attached
-        # whenever ``sanitize`` is not explicitly False (explicit True, or unset
-        # on a String/Text field), and it decides at call time whether to clean:
-        #   - explicit True  → always cleans (``always=True``)
-        #   - unset (None)   → cleans only when the active domain's field default
-        #                      is True (``always=False``); with no active domain
-        #                      it falls back to the framework default and does not
-        #                      clean.
-        # Explicit False attaches no validator, so a raw field keeps its
-        # raw-input length behavior and pays no per-value cost.
-        sanitize_applies = self.sanitize is True or (
-            self.sanitize is None and self.field_kind in ("standard", "text")
-        )
-        if (
-            sanitize_applies
-            and self.choices is None
-            and isinstance(self.python_type, type)
-            and issubclass(self.python_type, str)
-        ):
-            # Mirror the effective ``min_length`` from ``resolve_field_kwargs``:
-            # a required string has an implicit lower bound of 1.
-            effective_min_length = self.min_length
-            if effective_min_length is None and self.required:
-                effective_min_length = 1
-            extra_validators.append(
-                AfterValidator(
-                    _make_sanitize_validator(
-                        effective_min_length,
-                        self.max_length,
-                        always=self.sanitize is True,
-                    )
-                )
-            )
+        sanitize_validator = _sanitize_after_validator(self)
+        if sanitize_validator is not None:
+            extra_validators.append(sanitize_validator)
 
         # Per-field validators via AfterValidator
         if self.validators:
-            captured_validators = list(self.validators)
-
-            def _run_protean_validators(
-                v: Any,
-                validators: list[Callable[..., Any]] = captured_validators,
-            ) -> Any:
-                # Skip validators for empty values, matching the legacy field
-                # system and the documented order (empty -> choices -> cast ->
-                # validators). An optional field left unset arrives here as None
-                # and must not be validated.
-                if v in EMPTY_VALUES:
-                    return v
-                for validator_fn in validators:
-                    try:
-                        validator_fn(v)
-                    except ProteanValidationError as e:
-                        # Re-raise as ValueError so Pydantic catches it and
-                        # maps it to the correct field name.
-                        msg = str(e.messages) if hasattr(e, "messages") else str(e)
-                        # If the validator set an error string on itself, use that
-                        msg = getattr(validator_fn, "error", msg)
-                        raise ValueError(msg) from e
-                return v
-
-            extra_validators.append(AfterValidator(_run_protean_validators))
+            extra_validators.append(
+                AfterValidator(_make_protean_validators_runner(list(self.validators)))
+            )
 
         if extra_validators:
             return Annotated[
@@ -517,73 +330,309 @@ class FieldSpec:
         return normalized
 
     def __repr__(self) -> str:
-        # Map (python_type, field_kind) to user-friendly factory name
-        _FACTORY_NAMES: dict[tuple[type, str], str] = {
-            (str, "standard"): "String",
-            (str, "text"): "Text",
-            (str, "identifier"): "Identifier",
-            (str, "status"): "Status",
-            (str, "auto"): "Auto",
-            (int, "auto"): "Auto",
-            (int, "standard"): "Integer",
-            (float, "standard"): "Float",
-            (decimal.Decimal, "standard"): "Decimal",
-            (bool, "standard"): "Boolean",
-        }
-
-        base_type = self.python_type
-        # For container types (list[X], dict), extract the origin
-        origin = getattr(base_type, "__origin__", None)
-        if origin is list:
-            factory_name = "List"
-        elif origin is dict or base_type is dict:
-            factory_name = "Dict"
-        elif base_type is _dt.date:
-            factory_name = "Date"
-        elif base_type is _dt.datetime:
-            factory_name = "DateTime"
-        else:
-            factory_name = _FACTORY_NAMES.get((base_type, self.field_kind), "FieldSpec")
-
-        parts: list[str] = []
-        if self.description:
-            parts.append(f"description={self.description!r}")
-        if self.identifier:
-            parts.append("identifier=True")
-        if not self.identifier and self.required:
-            parts.append("required=True")
-        if self.referenced_as:
-            parts.append(f"referenced_as={self.referenced_as!r}")
-        if self.default is not _UNSET:
-            if callable(self.default):
-                parts.append(f"default={self.default.__name__}")
-            elif isinstance(self.default, str):
-                parts.append(f"default={self.default!r}")
-            else:
-                parts.append(f"default={self.default!r}")
-        if self.max_length is not None:
-            parts.append(f"max_length={self.max_length}")
-        if self.min_length is not None:
-            parts.append(f"min_length={self.min_length}")
-        if self.max_value is not None:
-            parts.append(f"max_value={self.max_value}")
-        if self.min_value is not None:
-            parts.append(f"min_value={self.min_value}")
-        # Show sanitize only when it deviates from the factory default, which is
-        # now unset (``None``). Both explicit values deviate, and they are no
-        # longer interchangeable: under ``[field_defaults] sanitize = true`` an
-        # unset field cleans while an explicit ``sanitize=False`` stays raw, so
-        # hiding the False would make a per-field opt-out invisible.
-        if factory_name in ("String", "Text") and self.sanitize is not None:
-            parts.append(f"sanitize={self.sanitize}")
-        # Show increment for Auto fields
-        if factory_name == "Auto" and getattr(self, "_increment", False):
-            parts.append("increment=True")
-        # Show transition count for Status fields
-        if factory_name == "Status" and self.transitions:
-            n_rules = sum(len(v) for v in self.transitions.values())
-            parts.append(f"transitions=<{n_rules} rules>")
+        factory_name = _factory_name(self)
+        parts = _repr_constraint_parts(self) + _repr_factory_parts(self, factory_name)
         return f"{factory_name}({', '.join(parts)})"
+
+
+# ---------------------------------------------------------------------------
+# FieldSpec helpers
+#
+# Module-level functions, not methods: field classes and user subclasses
+# override private methods, so a new private method name on FieldSpec could be
+# shadowed by a subclass attribute of the same name.
+# ---------------------------------------------------------------------------
+def _add_length_and_value_bounds(spec: FieldSpec, kwargs: dict[str, Any]) -> None:
+    # String-type constraints (only for str-based types)
+    if isinstance(spec.python_type, type) and issubclass(spec.python_type, str):
+        if spec.max_length is not None:
+            kwargs["max_length"] = spec.max_length
+        if spec.min_length is not None:
+            kwargs["min_length"] = spec.min_length
+        # required=True on string fields means non-empty
+        if spec.required and spec.min_length is None:
+            kwargs["min_length"] = 1
+
+    # Numeric constraints
+    if spec.max_value is not None:
+        kwargs["le"] = spec.max_value
+    if spec.min_value is not None:
+        kwargs["ge"] = spec.min_value
+
+
+def _add_decimal_precision(
+    spec: FieldSpec, kwargs: dict[str, Any], json_extra: dict[str, Any]
+) -> None:
+    # Decimal precision/scale → Pydantic validation + adapter metadata
+    # (read back by ResolvedField for the SQLAlchemy NUMERIC(p, s) mapping).
+    if spec.python_type is not decimal.Decimal:
+        return
+    if spec.precision is not None:
+        kwargs["max_digits"] = spec.precision
+        json_extra["precision"] = spec.precision
+    if spec.scale is not None:
+        kwargs["decimal_places"] = spec.scale
+        json_extra["scale"] = spec.scale
+
+
+def _add_identifier_default(
+    spec: FieldSpec, kwargs: dict[str, Any], json_extra: dict[str, Any]
+) -> None:
+    if not spec.identifier:
+        return
+    json_extra["identifier"] = True
+    if spec.default is not _UNSET:
+        return
+    if getattr(spec, "_increment", False):
+        # Auto-increment identifiers: the DAO handles the
+        # actual value generation; default to None here.
+        kwargs["default"] = None
+    elif spec.field_kind in ("identifier", "auto"):
+        # Use _generate_identity with identity_* options from Auto()
+        _id_strategy = getattr(spec, "_identity_strategy", None)
+        _id_function = getattr(spec, "_identity_function", None)
+        _id_type = getattr(spec, "_identity_type", None)
+
+        kwargs["default_factory"] = lambda s=_id_strategy, f=_id_function, t=_id_type: (
+            _generate_identity(
+                identity_strategy=s,
+                identity_function=f,
+                identity_type=t,
+            )
+        )
+        # Ensure the default_factory result is validated so
+        # that BeforeValidator(_coerce_to_str) can coerce
+        # UUID objects to str for identity fields.
+        kwargs["validate_default"] = True
+
+
+def _add_default(spec: FieldSpec, kwargs: dict[str, Any]) -> None:
+    # For non-identifier Auto fields, auto-generate UUIDs unless increment
+    if (
+        not spec.identifier
+        and spec.field_kind == "auto"
+        and spec.default is _UNSET
+        and not getattr(spec, "_increment", False)
+    ):
+        kwargs["default_factory"] = lambda: str(uuid4())
+
+    # Handle default
+    if spec.default is not _UNSET:
+        if callable(spec.default):
+            kwargs["default_factory"] = spec.default
+        elif isinstance(spec.default, (list, dict)):
+            # Prevent mutable default bug
+            kwargs["default_factory"] = lambda d=spec.default: type(d)(d)
+        else:
+            kwargs["default"] = spec.default
+    elif not spec.required and not spec.identifier and "default_factory" not in kwargs:
+        kwargs["default"] = None
+
+
+def _add_protean_metadata(spec: FieldSpec, json_extra: dict[str, Any]) -> None:
+    # Collect Protean-only metadata into json_schema_extra
+    if spec.unique:
+        json_extra["unique"] = True
+    if spec.referenced_as:
+        json_extra["referenced_as"] = spec.referenced_as
+    if spec.field_kind != "standard":
+        json_extra["field_kind"] = spec.field_kind
+    # Only an explicit ``sanitize=True`` is recorded in the IR: it is the
+    # declared intent. An unset field (the new default) carries no marker,
+    # because whether it sanitizes depends on the domain default resolved at
+    # validation time, not on anything the field declares.
+    if spec.sanitize is True:
+        json_extra["sanitize"] = True
+    if spec.auto_now:
+        json_extra["auto_now"] = True
+    if spec.auto_now_add:
+        json_extra["auto_now_add"] = True
+    if getattr(spec, "_increment", False):
+        json_extra["increment"] = True
+    if spec.validators:
+        json_extra["_validators"] = list(spec.validators)
+    if spec.error_messages:
+        json_extra["_error_messages"] = spec.error_messages
+    if spec._auto_generated:
+        json_extra["_auto_generated"] = True
+    if spec.transitions is not None:
+        json_extra["transitions"] = spec.transitions
+    if spec.deprecated is not None:
+        json_extra["_deprecated"] = spec.deprecated
+    if spec.renamed_from is not None:
+        json_extra["_renamed_from"] = spec.renamed_from
+
+
+def _type_coercion_validators(spec: FieldSpec) -> list[Any]:
+    validators: list[Any] = []
+
+    # Coerce non-str values (e.g. int, UUID) to str for identifier
+    # and auto fields.  The old field system did this automatically;
+    # Pydantic v2 strict mode rejects them otherwise.
+    # Applies when:
+    #   - The field is marked as identifier=True, OR
+    #   - The field_kind is "identifier" or "auto" (e.g. Identifier()
+    #     used as a reference, not just as the entity's identity)
+    # Excludes Auto(increment=True) fields that store integer sequences.
+    if spec.python_type is str and (
+        spec.identifier or spec.field_kind in ("identifier", "auto")
+    ):
+        validators.append(BeforeValidator(_coerce_to_str))
+
+    if spec.python_type is _dt.datetime:
+        validators.append(AfterValidator(_stdlib_timezone))
+    elif _is_datetime_list(spec.python_type):
+        # On the list itself, not its element type: adapters and the IR
+        # read the element type and expect a plain ``datetime``.
+        validators.append(AfterValidator(_stdlib_timezone_each))
+
+    return validators
+
+
+def _sanitize_after_validator(spec: FieldSpec) -> AfterValidator | None:
+    # Sanitization via AfterValidator. The field's length bounds are
+    # re-enforced on the sanitized (stored) value so a value that passes on
+    # write always round-trips through serialization and replay — bleach can
+    # otherwise store a value out of bounds (escaping grows it, comment /
+    # attribute stripping shrinks it). ``choices`` fields are never sanitized:
+    # the value must match a declared choice exactly, and HTML-escaping a
+    # closed vocabulary would break that match. See ADR-0026.
+    #
+    # The framework default is now ``sanitize=False``: a String/Text
+    # field left unset does not sanitize unless a domain turns it on via
+    # ``[field_defaults] sanitize = true``. So the validator is attached
+    # whenever ``sanitize`` is not explicitly False (explicit True, or unset
+    # on a String/Text field), and it decides at call time whether to clean:
+    #   - explicit True  → always cleans (``always=True``)
+    #   - unset (None)   → cleans only when the active domain's field default
+    #                      is True (``always=False``); with no active domain
+    #                      it falls back to the framework default and does not
+    #                      clean.
+    # Explicit False attaches no validator, so a raw field keeps its
+    # raw-input length behavior and pays no per-value cost.
+    sanitize_applies = spec.sanitize is True or (
+        spec.sanitize is None and spec.field_kind in ("standard", "text")
+    )
+    if not (
+        sanitize_applies
+        and spec.choices is None
+        and isinstance(spec.python_type, type)
+        and issubclass(spec.python_type, str)
+    ):
+        return None
+
+    # Mirror the effective ``min_length`` from ``resolve_field_kwargs``:
+    # a required string has an implicit lower bound of 1.
+    effective_min_length = spec.min_length
+    if effective_min_length is None and spec.required:
+        effective_min_length = 1
+    return AfterValidator(
+        _make_sanitize_validator(
+            effective_min_length,
+            spec.max_length,
+            always=spec.sanitize is True,
+        )
+    )
+
+
+def _make_protean_validators_runner(
+    validators: list[Callable[..., Any]],
+) -> Callable[[Any], Any]:
+    def _run_protean_validators(v: Any) -> Any:
+        # Skip validators for empty values, matching the legacy field
+        # system and the documented order (empty -> choices -> cast ->
+        # validators). An optional field left unset arrives here as None
+        # and must not be validated.
+        if v in EMPTY_VALUES:
+            return v
+        for validator_fn in validators:
+            try:
+                validator_fn(v)
+            except ProteanValidationError as e:
+                # Re-raise as ValueError so Pydantic catches it and
+                # maps it to the correct field name.
+                msg = str(e.messages) if hasattr(e, "messages") else str(e)
+                # If the validator set an error string on itself, use that
+                msg = getattr(validator_fn, "error", msg)
+                raise ValueError(msg) from e
+        return v
+
+    return _run_protean_validators
+
+
+# Map (python_type, field_kind) to user-friendly factory name
+_FACTORY_NAMES: dict[tuple[type, str], str] = {
+    (str, "standard"): "String",
+    (str, "text"): "Text",
+    (str, "identifier"): "Identifier",
+    (str, "status"): "Status",
+    (str, "auto"): "Auto",
+    (int, "auto"): "Auto",
+    (int, "standard"): "Integer",
+    (float, "standard"): "Float",
+    (decimal.Decimal, "standard"): "Decimal",
+    (bool, "standard"): "Boolean",
+}
+
+
+def _factory_name(spec: FieldSpec) -> str:
+    base_type = spec.python_type
+    # For container types (list[X], dict), extract the origin
+    origin = getattr(base_type, "__origin__", None)
+    if origin is list:
+        return "List"
+    if origin is dict or base_type is dict:
+        return "Dict"
+    if base_type is _dt.date:
+        return "Date"
+    if base_type is _dt.datetime:
+        return "DateTime"
+    return _FACTORY_NAMES.get((base_type, spec.field_kind), "FieldSpec")
+
+
+def _repr_constraint_parts(spec: FieldSpec) -> list[str]:
+    parts: list[str] = []
+    if spec.description:
+        parts.append(f"description={spec.description!r}")
+    if spec.identifier:
+        parts.append("identifier=True")
+    if not spec.identifier and spec.required:
+        parts.append("required=True")
+    if spec.referenced_as:
+        parts.append(f"referenced_as={spec.referenced_as!r}")
+    if spec.default is not _UNSET:
+        if callable(spec.default):
+            parts.append(f"default={spec.default.__name__}")
+        else:
+            parts.append(f"default={spec.default!r}")
+    if spec.max_length is not None:
+        parts.append(f"max_length={spec.max_length}")
+    if spec.min_length is not None:
+        parts.append(f"min_length={spec.min_length}")
+    if spec.max_value is not None:
+        parts.append(f"max_value={spec.max_value}")
+    if spec.min_value is not None:
+        parts.append(f"min_value={spec.min_value}")
+    return parts
+
+
+def _repr_factory_parts(spec: FieldSpec, factory_name: str) -> list[str]:
+    parts: list[str] = []
+    # Show sanitize only when it deviates from the factory default, which is
+    # now unset (``None``). Both explicit values deviate, and they are no
+    # longer interchangeable: under ``[field_defaults] sanitize = true`` an
+    # unset field cleans while an explicit ``sanitize=False`` stays raw, so
+    # hiding the False would make a per-field opt-out invisible.
+    if factory_name in ("String", "Text") and spec.sanitize is not None:
+        parts.append(f"sanitize={spec.sanitize}")
+    # Show increment for Auto fields
+    if factory_name == "Auto" and getattr(spec, "_increment", False):
+        parts.append("increment=True")
+    # Show transition count for Status fields
+    if factory_name == "Status" and spec.transitions:
+        n_rules = sum(len(v) for v in spec.transitions.values())
+        parts.append(f"transitions=<{n_rules} rules>")
+    return parts
 
 
 # ---------------------------------------------------------------------------
