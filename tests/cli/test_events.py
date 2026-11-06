@@ -59,6 +59,7 @@ def _mock_domain_with_store(
     mock_domain.event_store.store = mock_store
 
     mock_store._read.return_value = read_return or []
+    mock_store._read_stream_fully.return_value = read_return or []
     mock_store._read_last_message.return_value = read_last_return
     mock_store._stream_identifiers.return_value = identifiers_return or []
 

@@ -254,6 +254,21 @@ class BaseEventStore(metaclass=ABCMeta):
             IncorrectUsageError: If ``page_size`` is not a positive integer, or
                 a stored row is missing its position.
         """
+        for raw_message in self._read_all_raw(stream, page_size=page_size):
+            yield Message.deserialize(raw_message)
+
+    def _read_all_raw(
+        self, stream: str = "$all", *, page_size: int = 1000
+    ) -> Iterator[dict[str, Any]]:
+        """Yield every raw row in ``stream`` except snapshot rows, paging like ``read_all``.
+
+        A caller that filters on a raw field such as ``type`` uses this to
+        deserialize only the rows it keeps.
+
+        Raises:
+            IncorrectUsageError: If ``page_size`` is not a positive integer, or
+                a stored row is missing its position.
+        """
         # Check the type before the value: a float or ``None`` slipping through
         # would flow into the adapter's row limit and either page oddly or raise
         # a bare ``TypeError`` far from the cause. ``bool`` is an ``int``, and
@@ -274,7 +289,7 @@ class BaseEventStore(metaclass=ABCMeta):
             for raw_message in raw_page:
                 if self._is_snapshot_row(raw_message):
                     continue
-                yield Message.deserialize(raw_message)
+                yield raw_message
 
             # A short raw page is the last page: the store had no more rows to
             # fill it. Terminate on the *raw* count, not the yielded count, so a
@@ -1390,7 +1405,7 @@ class BaseEventStore(metaclass=ABCMeta):
         stream_category = stream_category or "$all"
         events = [
             event
-            for event in self._read(stream_category)
+            for event in self._read_all_raw(stream_category)
             if event["type"] == event_cls.__type__
         ]
 
@@ -1417,6 +1432,6 @@ class BaseEventStore(metaclass=ABCMeta):
         stream_category = stream_category or "$all"
         return [
             Message.deserialize(event).to_domain_object()
-            for event in self._read(stream_category)
+            for event in self._read_all_raw(stream_category)
             if event["type"] == event_cls.__type__
         ]

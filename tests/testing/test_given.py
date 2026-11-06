@@ -474,6 +474,21 @@ class TestEventCounting:
 
         assert len(result.events) == 1
 
+    @pytest.mark.eventstore
+    def test_new_events_found_past_one_read_page(
+        self, small_read_page, order_id, order_created
+    ):
+        """A history longer than one read page still yields the command's events."""
+        history = [order_created] + [
+            OrderConfirmed(order_id=order_id) for _ in range(2 * small_read_page)
+        ]
+        result = given(Order, *history).process(
+            InitiatePayment(order_id=order_id, payment_id="pay-001")
+        )
+
+        assert result.events.types == [PaymentInitiated]
+        assert result.all_events.types == [PaymentInitiated]
+
 
 # ---------------------------------------------------------------------------
 # Tests: Method chaining

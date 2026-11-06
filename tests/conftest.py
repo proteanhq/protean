@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 import structlog
 
+from protean.port.event_store import BaseEventStore
 from tests.logging_isolation import LoggingSnapshot
 from tests.shared import (
     ELASTICSEARCH_URI,
@@ -350,6 +351,31 @@ def test_domain(db_config, store_config, broker_config, request):
 
         with domain.domain_context():
             yield domain
+
+
+# Page size used by ``small_read_page``.
+SMALL_READ_PAGE = 10
+
+
+@pytest.fixture
+def small_read_page(monkeypatch, test_domain):
+    """Make one event store read page ``SMALL_READ_PAGE`` rows instead of 1,000.
+
+    Lowers the page-size default of ``BaseEventStore.read``,
+    ``BaseEventStore.read_all`` and the configured store's ``_read`` together,
+    so a test can write a stream longer than one page in a few rows. Writing
+    1,000 rows to the memory store takes minutes.
+    """
+    store_read = type(test_domain.event_store.store)._read
+    for func in (BaseEventStore.read, store_read):
+        defaults = func.__defaults__
+        assert defaults is not None and defaults[-1] == 1000
+        monkeypatch.setattr(func, "__defaults__", (*defaults[:-1], SMALL_READ_PAGE))
+
+    read_all_kwdefaults = BaseEventStore.read_all.__kwdefaults__
+    assert read_all_kwdefaults is not None and read_all_kwdefaults["page_size"] == 1000
+    monkeypatch.setitem(read_all_kwdefaults, "page_size", SMALL_READ_PAGE)
+    return SMALL_READ_PAGE
 
 
 @pytest.fixture()
