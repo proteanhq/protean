@@ -11,33 +11,33 @@ A developer adds email validation to a `User` aggregate:
 Two validations, both on the aggregate's invariants, but they serve different
 purposes. The email format check is a universal truth about email addresses. It
 applies regardless of context. The admin-company-email rule is a business
-policy that could change, applies only to admins, and depends on the
+policy that could change. It applies only to admins and depends on the
 aggregate's role field.
 
 Mixing these creates problems:
 
-- **Wrong error granularity**: A user entering `"bad-email"` gets a format
-  error at the aggregate level, after the command is already processed. The
-  error could have been caught earlier, at the field or value object level,
-  with a clearer message.
+- **The error comes from the wrong level**: A user entering `"bad-email"` gets
+  a format error at the aggregate level, after the command is already
+  processed. The error could have been caught earlier, at the field or value
+  object level, with a clearer message.
 
-- **Duplicated validation**: If `Email` is used in multiple aggregates
-  (`User`, `Contact`, `Newsletter`), the format check is duplicated in each.
-  If the format rule changes (e.g., accepting `+` in local parts), every
-  aggregate must be updated.
+- **The same check is written in many places**: If `Email` is used in multiple
+  aggregates (`User`, `Contact`, `Newsletter`), the format check is duplicated
+  in each. If the format rule changes (e.g., accepting `+` in local parts),
+  every aggregate must be updated.
 
-- **Authorization mixed with domain rules**: "Only admins can cancel orders"
-  is an authorization check, not a domain invariant. Putting it in the
-  aggregate mixes infrastructure concerns with domain logic.
+- **Authorization gets mixed with domain rules**: "Only admins can cancel
+  orders" is an authorization check. It is not a domain invariant. Putting it
+  in the aggregate mixes infrastructure concerns with domain logic.
 
-- **Validation at the wrong time**: A command with clearly invalid data
-  (missing required fields, wrong types) travels through the system, gets
-  deserialized, processed by a handler, applied to an aggregate, all before the
-  aggregate's invariant catches the error. The error surface is broad and the
-  feedback is delayed.
+- **Validation runs too late**: A command can carry clearly invalid data
+  (missing required fields, wrong types) through the system. The command is
+  deserialized, a handler processes it and applies it to an aggregate, and only
+  then does the aggregate's invariant catch the error. Every one of those steps
+  runs on the invalid data. You get the error only at the end.
 
-The root cause: **all validation is treated the same, regardless of its nature,
-urgency, or scope**.
+The root cause: **the developer treats all validation the same, regardless of
+its nature, urgency, or scope**.
 
 ---
 
@@ -62,13 +62,13 @@ that slip through one layer are caught by the next.
 
 ---
 
-## Layer 1: Field Constraints
+## Layer 1: Field constraints check each value
 
 **What it validates:** Data types, formats, ranges, required-ness, and
 choices at the individual field level.
 
-**Where it lives:** Field declarations on aggregates, entities, value objects,
-commands, and events.
+**Where you declare it:** Field declarations on aggregates, entities, value
+objects, commands, and events.
 
 **When it runs:** At object construction, when a value is assigned to a field.
 
@@ -91,17 +91,17 @@ commands, and events.
 - Format patterns specific to domain concepts ("SKU must match XX-NNNN"),
   Layer 2
 
-Field constraints are the first defense. They're declarative, visible in the
-field definition, and enforced automatically by Protean.
+Field constraints are the first check that runs. They're declarative, visible
+in the field definition, and enforced automatically by Protean.
 
 ---
 
-## Layer 2: Value Object Invariants
+## Layer 2: Value objects check their own rules
 
 **What it validates:** Rules intrinsic to a domain concept, format patterns,
 internal consistency, and constraints that define what makes a concept valid.
 
-**Where it lives:** Invariants on value objects.
+**Where you declare it:** Invariants on value objects.
 
 **When it runs:** At value object construction (which triggers during aggregate
 construction or field assignment).
@@ -119,21 +119,24 @@ construction or field assignment).
 
 **What this should NOT catch:**
 
-- Business rules about how the value is used in context ("Money amount must
-  not exceed the account's credit limit"), that's Layer 3
-- Whether the current user is allowed to set this value, that's Layer 4
+- Business rules about how the value is used in context ("Money amount must not
+  exceed the account's credit limit"): those go in aggregate invariants (Layer
+  3)
+- Whether the current user is allowed to set this value: that check goes in
+  handler and service guards (Layer 4)
 
 Value object invariants are **context-free**. An `Email` is either valid or
-not, regardless of which aggregate it's in or who is setting it.
+not. Its validity is the same in every aggregate and for every caller that sets
+it.
 
 ---
 
-## Layer 3: Aggregate Invariants
+## Layer 3: Aggregate invariants enforce business rules
 
 **What it validates:** Business rules that depend on the aggregate's state,
 cross-field consistency, state machine rules, and domain-specific constraints.
 
-**Where it lives:** Invariants on aggregates and entities.
+**Where you declare it:** Invariants on aggregates and entities.
 
 **When it runs:** After aggregate methods are called (post-invariants) or
 before specific operations (pre-invariants).
@@ -161,12 +164,12 @@ or a reservation enforceable.
 
 ---
 
-## Layer 4: Handler and Service Guards
+## Layer 4: Handlers and services check the operation's context
 
 **What it validates:** Contextual rules that depend on the current operation,
 the caller's identity, external state, or cross-aggregate conditions.
 
-**Where it lives:** Command handlers, application services, event handlers,
+**Where you write it:** Command handlers, application services, event handlers,
 and domain services.
 
 **When it runs:** Before the aggregate method is called, in the handler or
@@ -191,18 +194,18 @@ service.
 
 ---
 
-## Command Validation
+## Commands validate their own fields
 
-Commands validate their own fields at Layer 1, ensuring that the data
+Commands validate their own fields at Layer 1. This check confirms the data
 structure is correct before it reaches the handler:
 
 ```python
 --8<-- "patterns/validation-layering/003.py:command"
 ```
 
-If `total` is negative or `customer_id` is missing, the error is caught at
-command construction, before the handler even runs. This is the earliest
-possible feedback.
+If `total` is negative or `customer_id` is missing, constructing the command
+raises the error. The handler never runs. This is the earliest possible
+feedback.
 
 Commands should validate data structure and presence, not business rules.
 "Is `customer_id` provided?" is a command concern. "Does this customer exist?"
@@ -210,7 +213,7 @@ is a handler concern.
 
 ---
 
-## The Layers in Action
+## Follow one order through the layers
 
 Consider a complete flow for placing an order with the `PlaceOrder` command
 above:
@@ -219,7 +222,7 @@ above:
 --8<-- "patterns/validation-layering/003.py:in_action"
 ```
 
-Each layer catches different kinds of errors at progressively deeper levels
+Each layer catches a different kind of error, and each one runs at a later step
 of the processing pipeline.
 
 ---
@@ -245,7 +248,7 @@ of the processing pipeline.
 
 ## Anti-Patterns
 
-### Business Rules in Field Validators
+### Don't put business rules in field validators
 
 ```python
 # fragment
@@ -262,7 +265,7 @@ business rule layer. Use an invariant instead:
 --8<-- "patterns/validation-layering/004.py:discount_policy"
 ```
 
-### Duplicating Validation Across Layers
+### Don't duplicate validation across layers
 
 ```python
 # fragment
@@ -292,7 +295,7 @@ The `Email` value object already validates format. The aggregate invariant
 duplicates the check. Each layer should validate what the previous layers
 don't cover.
 
-### Authorization in Aggregate Invariants
+### Don't put authorization in aggregate invariants
 
 ```python
 # fragment
@@ -312,7 +315,7 @@ the handler's responsibility (Layer 4). The aggregate should validate the
 domain rule: "discount cannot exceed 50%." The handler validates the
 authorization rule: "only admins can set discounts above 20%."
 
-### All Validation in the Handler
+### Don't put all validation in the handler
 
 ```python
 # fragment
@@ -335,9 +338,9 @@ def place_order(self, command: PlaceOrder):
 ```
 
 Every validation is in the handler. The aggregate has no invariants, no
-protection. Any code that creates an `Order` (another handler, a test, an
-import script) can create invalid instances. Distribute validation across
-layers so each layer protects its own concerns.
+protection. Another handler, a test or an import script can also create an
+`Order`, and any of them can create an invalid instance. Distribute validation
+across layers so each layer protects its own concerns.
 
 ---
 

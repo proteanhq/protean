@@ -2,7 +2,8 @@
 
 ## The Problem
 
-A flat folder of fourteen files communicates nothing about the domain:
+When you list a flat folder of fourteen files, you learn nothing about the
+domain:
 
 ```
 src/identity/customer/
@@ -24,93 +25,92 @@ src/identity/customer/
 
 This structure has three problems:
 
-1. **No narrative**: An alphabetically sorted list of files communicates
-   nothing about the domain. The aggregate root (`customer.py`) has the
-   same visual weight as a projector file. There is no hierarchy of
-   importance.
+1. **You cannot read the domain from the files**: When you read an
+   alphabetically sorted list of files, you learn nothing about the domain. In
+   the listing, the aggregate root (`customer.py`) looks no more important than
+   a projector file. There is no hierarchy of importance.
 
-2. **Write and read sides entangled**: Projector files (read-side concerns)
-   sit alongside the aggregate and its capabilities (write-side concerns).
-   Query-side plumbing pollutes the domain story.
+2. **Write and read sides are mixed**: Projector files (read-side concerns) are
+   in the same folder as the aggregate and its capabilities (write-side
+   concerns). The read-side files make the domain harder to see in the folder.
 
-3. **Scattered workflows**: To work on address management, a developer
-   touches five files: `addresses.py` for the handler, `commands.py` to
-   find the relevant commands among many others, `events.py` to find the
-   relevant events, `customer.py` for aggregate methods, and
+3. **You open five files for one workflow**: To work on address management, a
+   developer opens five files. They are `addresses.py` for the handler,
+   `commands.py` to find the relevant commands among many others, `events.py`
+   to find the relevant events, `customer.py` for aggregate methods, and
    `customer_address_book_projector.py` for the read model. One capability,
    five locations.
 
-The classic layered alternative (splitting code into `domain/`, `application/`,
-`infrastructure/`) is even worse. To understand a single feature, you fish
-through three separate subtrees. The folder tree reads like a framework manual
-instead of a business story.
+The classic layered alternative is even worse. It splits code into `domain/`,
+`application/`, `infrastructure/`. To understand a single feature, you search
+through three separate subtrees. The folder names describe the framework's
+layers instead of the business.
 
 ## The Pattern
 
-**The folder tree owns the "what" (domain concepts). The framework owns
+**The folder names record the "what" (domain concepts). The framework records
 the "which kind" (layer, side, boundary).**
 
-Organize your codebase so that the directory tree reads like the table of
-contents of a book about your business. When a newcomer opens a domain folder,
-they should immediately understand what the system *does*, not what
-technologies it uses. Every folder and top-level file should be something you'd
-explain to a product manager.
+Organize your codebase so that each folder name in the directory tree is a
+concept from your business. When a newcomer opens a domain folder, they should
+immediately understand what the system *does*, not what technologies it uses.
+Every folder and top-level file should be something you'd explain to a product
+manager.
 
-This means resolving three cross-cutting tensions:
+To organize code by domain concept, you resolve three cross-cutting tensions:
 
-### Domain Model vs. Application vs. Infrastructure
+### How do you separate the domain model, the application and the infrastructure?
 
 The framework carries layer metadata. The folder structure doesn't need to.
 
-When Protean sees `@CommandHandler`, it knows that's application layer.
-When it sees `@Aggregate`, it knows that's domain model. Protean's
-decorators carry this information so the folder structure doesn't have to
-repeat it.
+When Protean finds `@CommandHandler` on a class, it records that the class
+belongs to the application layer. When Protean finds `@Aggregate` on a class,
+it records that the class belongs to the domain model. Protean's decorators
+carry this information so the folder structure doesn't have to repeat it.
 
-Infrastructure concerns that are truly external (API endpoints,
-configuration) live as top-level files within the bounded context, visible
-as scaffolding rather than buried in a junk drawer.
+Infrastructure concerns that are truly external (API endpoints, configuration)
+are top-level files within the bounded context. You can see them there, instead
+of finding them mixed into a catch-all folder.
 
-### Write vs. Read (CQRS)
+### Where do the write side and the read side go (CQRS)?
 
 Projections live in their own top-level folder within the bounded context,
 not nested inside aggregates.
 
 Projections serve business questions. They *happen* to source data from
-aggregates, but they're organized by the question they answer, not by where
-their data comes from. An address book exists because the support team needs to
-look up where customers live, not because the Customer aggregate decided to
-project itself.
+aggregates. You organize them by the business question each one answers. You do
+not organize them by their data source. An address book exists because the
+support team needs to look up customer addresses. The Customer aggregate does
+not create the address book for itself.
 
-Placing projections at the domain level also scales naturally: when a
-projection eventually draws from multiple aggregates, it already has a
-home that doesn't belong to any single aggregate.
+Placing projections at the domain level also helps as the domain grows. When a
+projection later draws from multiple aggregates, its folder already belongs to
+no single aggregate.
 
-### External vs. Internal (Hexagonal)
+### Where do external adapters go (Hexagonal)?
 
 External adapters live at the domain boundary level, not inside aggregates.
 
-A single API endpoint often orchestrates across multiple aggregates.
-Placing `api.py` at the domain level keeps aggregate folders purely about
-domain behavior and allows APIs to naturally span multiple aggregates as
-the domain grows.
+A single API endpoint often orchestrates across multiple aggregates. Placing
+`api.py` at the domain level keeps aggregate folders purely about domain
+behavior. It also lets an API span multiple aggregates as the domain grows.
 
 ## How Protean Supports It
 
-Protean's decorator system is the enabler. Because every element declares
-its architectural role through its decorator (`@domain.aggregate`,
-`@domain.command_handler`, `@domain.projection`, `@domain.repository`),
-the framework carries architectural metadata that traditional codebases
-encode through folder structure. This frees you to organize by domain
-concept instead.
+Protean's decorator system is the enabler. Every element declares its
+architectural role through its decorator (`@domain.aggregate`,
+`@domain.command_handler`, `@domain.projection`, `@domain.repository`). As a
+result, the framework holds the architectural metadata that traditional
+codebases encode through folder structure. Because the framework holds this
+metadata, you can organize folders by domain concept instead.
 
 Protean's auto-discovery scans all Python files in the domain's `root_path`
-recursively. It doesn't care *where* you place files. It discovers elements by
-their decorators. This means structural decisions are purely for developer
-ergonomics, not framework requirements.
+recursively. The scan does not depend on *where* you place files. It discovers
+elements by their decorators. This means structural decisions are purely for
+developer ergonomics, not framework requirements.
 
-The `protean new` command scaffolds projects that follow these principles
-from day one: aggregates as top-level folders, projections at the domain
+The `protean new` command scaffolds new projects in this domain-concept layout
+from the start: aggregates as top-level folders, projections at the domain
 level, and shared vocabulary in its own folder.
 
 ## Applying the Pattern
@@ -156,34 +156,34 @@ addresses:
 --8<-- "patterns/organize-by-domain-concept/identity/customer/addresses.py:addresses"
 ```
 
-This optimizes for the most common developer workflow: understanding or
-modifying a single capability. No hunting through shared grab-bag files.
+With capability files, you speed up the most common developer workflow:
+understanding or modifying a single capability. You do not search through
+shared files that mix many capabilities.
 
 ### Events Stay Separate
 
-Commands and events are treated asymmetrically, reflecting a real
-architectural truth:
+This layout places commands and events differently, because they play different
+architectural roles:
 
-- **Commands flow inward** toward a specific capability. `AddAddress`
-  only makes sense in the context of address management. It colocates
-  with its handler.
+- **A command goes to one specific capability.** `AddAddress` only makes sense
+  in the context of address management. It colocates with its handler.
 - **Events radiate outward** to many consumers. `AddressAdded` originates
   from the Customer aggregate but is consumed by projectors, notification
   services, analytics pipelines, and potentially other domains entirely.
 
-`events.py` serves as the aggregate's **output contract**, a complete catalog
-of everything the aggregate announces. When building a new projector or
-integration, a developer scans `events.py` to discover what they can react to.
-This is a different workflow from "build the address feature."
+`events.py` is the aggregate's **output contract**: a complete list of every
+event the aggregate raises. When building a new projector or integration, a
+developer scans `events.py` to discover what they can react to. This is a
+different workflow from "build the address feature."
 
-Events must also remain separate for a mechanical reason: they're imported
-by the aggregate (which raises them), so placing them inside capability
-files would create circular imports (the capability handler imports the
-aggregate, and the aggregate would import events from the capability file).
+Events must also remain separate for a mechanical reason: the aggregate imports
+them, because it raises them. If you placed them inside capability files, you
+would create circular imports: the capability handler imports the aggregate,
+and the aggregate would import events from the capability file.
 
 ### Projections Get Their Own Folder
 
-Projections live in a `projections/` folder at the bounded context level.
+You put projections in a `projections/` folder at the bounded context level.
 Each file contains both the projection (read model definition) and the
 projector (event handler that builds it). One business question, one file:
 
@@ -201,8 +201,8 @@ rather than mirroring write-side structure. `customer_lookup.py`, not
 
 ### Shared Domain Vocabulary Gets Its Own Folder
 
-Value objects that don't belong to any single aggregate (Email, Phone, and
-similar cross-cutting domain vocabulary) live in a `shared/` folder at the
+Some value objects belong to no single aggregate (Email, Phone, and similar
+cross-cutting domain vocabulary). You put them in a `shared/` folder at the
 bounded context level:
 
 ```
@@ -211,7 +211,7 @@ bounded context level:
     └── phone.py
 ```
 
-### The Complete Structure
+### See the complete structure
 
 ```
 src/identity/                              # Bounded context
@@ -241,17 +241,17 @@ src/identity/                              # Bounded context
 
 A newcomer opens `src/identity/` and understands:
 
-> "The Identity domain is defined in `domain.py` and exposes an `api`.
-> It centers on the **Customer** aggregate, customers register, manage > their
-profiles, have addresses, go through account lifecycle, and > participate in a
-loyalty program. The domain answers queries through > **projections**: customer
+> "The Identity domain is defined in `domain.py` and exposes an `api`. > Its
+main aggregate is **Customer**: customers register, manage > their profiles,
+have addresses, go through account lifecycle, and > participate in a loyalty
+program. The domain answers queries through > **projections**: customer
 snapshots, lookups, address books, and segment > distributions. It has
 **shared** vocabulary for email and phone."
 
 ### How It Scales
 
-When a second aggregate arrives (e.g., Organization), the structure
-absorbs it without reorganization:
+When you add a second aggregate (for example, Organization), you add one folder
+and leave the rest of the structure as it is:
 
 ```
 src/identity/
@@ -280,8 +280,8 @@ src/identity/
     └── phone.py
 ```
 
-The new aggregate is a new chapter. Projections that span both aggregates
-already have a natural home.
+The new aggregate gets its own top-level folder. Projections that span Customer
+and Organization already have a folder: `projections/`.
 
 ## Anti-Patterns
 
@@ -302,10 +302,12 @@ src/identity/
 ```
 
 To understand customer address management, you open three folders. The folder
-tree reads like a framework manual. Protean's decorators already carry this
-layer information. The structure doesn't need to repeat it.
+names describe the framework's layers instead of the business. Protean's
+decorators already record whether each element belongs to the domain,
+application or infrastructure layer. You do not need to repeat the layer in the
+folder structure.
 
-### Grab-bag files
+### Collecting every command in one file
 
 ```
 # Anti-pattern: all commands in one file
@@ -315,9 +317,9 @@ customer/
 └── events.py
 ```
 
-`commands.py` becomes a grab bag that grows unbounded. Splitting by
-capability (`addresses.py`, `profile.py`, `tier.py`) keeps each file
-focused and navigable.
+`commands.py` collects commands from every capability and keeps growing. When
+you split files by capability (`addresses.py`, `profile.py`, `tier.py`), each
+file stays focused and easy to navigate.
 
 ### Projections nested inside aggregates
 
@@ -331,24 +333,23 @@ customer/
 └── address_book_projector.py
 ```
 
-This entangles read and write concerns. Projections serve business questions.
-They belong at the domain level where they can naturally span multiple
-aggregates.
+This layout mixes read concerns and write concerns in one folder. Projections
+serve business questions. Put projections at the domain level, so that each one
+can span multiple aggregates.
 
 ## When Not to Use
 
-**Small domains.** If your bounded context has a single aggregate
-with two or three capabilities, a flat file structure is fine. Don't
-create folders for organizational purity when the total file count is
-under six.
+**When the domain is small.** If your bounded context has a single aggregate
+with two or three capabilities, a flat file structure is fine. When the total
+file count is under six, don't create folders for organizational purity.
 
-**Prototyping.** During the earliest exploration, a single file with
-everything is acceptable. Structure emerges as the domain solidifies.
+**When you are prototyping.** During the earliest exploration, a single file
+with everything is acceptable. You add structure as the domain becomes clearer.
 Don't let premature organization slow down domain discovery.
 
-## Litmus Tests
+## How do you test a structure decision?
 
-Use these to validate structure decisions as the domain grows:
+Use the four tests below to check structure decisions as the domain grows:
 
 | Test | Question |
 |------|----------|

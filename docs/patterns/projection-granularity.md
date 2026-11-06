@@ -3,8 +3,8 @@
 ## The Problem
 
 Developers new to CQRS face a fundamental design question: how many projections
-should I create, and what should each one contain? The answer usually falls into
-one of two extremes, both of which cause problems.
+should I create, and what should each one contain? Most developers pick one of
+two extremes, and each extreme causes problems.
 
 ### Extreme 1: Mirror the aggregate
 
@@ -39,9 +39,9 @@ class OrderProjection:
     # plus a join to combine them. Same complexity as the write side.
 ```
 
-This defeats the purpose of CQRS. The read model mirrors the write model, so
-you get the same joins and complexity. The projection adds maintenance burden
-without any benefit.
+When the projection mirrors the aggregate, you gain nothing from CQRS. The read
+model mirrors the write model, so you get the same joins and complexity. The
+projection adds maintenance burden without any benefit.
 
 The symptoms:
 
@@ -49,9 +49,8 @@ The symptoms:
   names, so it joins the order projection with a customer projection. The same
   join the write side would have needed.
 
-- **Projectors are trivial copy machines**: Every projector just copies fields
-  from the event to the projection. No transformation, no denormalization, no
-  value added.
+- **Projectors only copy fields**: Every projector copies fields from the event
+  to the projection. No transformation, no denormalization, no value added.
 
 - **No read-side optimization**: Queries against the projection are no faster
   than queries against the aggregate's table, because the data shape is
@@ -95,23 +94,24 @@ class OrderForShipping:    # For the shipping dashboard
 Now you have three projections and three projectors all maintaining overlapping
 data from the same events. The consequences:
 
-- **Maintenance explosion**: Every new event field must be propagated to every
-  projection that needs it. Adding a `discount_amount` to `OrderPlaced` means
-  updating four projectors.
+- **Each new field means more projector changes**: You must add every new event
+  field to every projection that needs it. Adding a `discount_amount` to
+  `OrderPlaced` means updating four projectors.
 
 - **Rebuild cost**: Rebuilding projections means replaying events through all
   four projectors. With millions of orders, this takes four times as long.
 
-- **Staleness windows**: Each projection updates independently. During high
-  load, the list view might show "shipped" while the detail view still shows
-  "placed" because its projector is lagging.
+- **The views go stale at different times**: Each projection updates
+  independently. During high load, the detail view's projector can lag. The
+  list view might then show "shipped" while the detail view still shows
+  "placed".
 
-- **Schema proliferation**: The database accumulates tables that are 80%
-  identical, wasting storage and complicating migrations.
+- **Tables repeat the same columns**: The database accumulates tables that are
+  80% identical, wasting storage and complicating migrations.
 
-The root cause of both extremes: **projections were designed around domain
-entities (one per aggregate) or infrastructure concerns (one per endpoint),
-rather than around what consumers actually need**.
+Both extremes have one root cause: **you design projections around domain
+entities (one per aggregate) or infrastructure concerns (one per endpoint)**.
+Design them around what consumers actually need instead.
 
 ---
 
@@ -132,7 +132,7 @@ Right mental model:
    gets one projection, shaped to serve it directly."
 ```
 
-### The decision framework
+### Ask four questions about each consumer
 
 For every screen, API resource, or query pattern, ask these questions:
 
@@ -154,7 +154,7 @@ For every screen, API resource, or query pattern, ask these questions:
    over two separate projections. The API layer can select which fields to
    return.
 
-### Rules of thumb
+### Match each situation to a projection design
 
 | Situation | Guidance |
 |-----------|----------|
@@ -170,14 +170,14 @@ For every screen, API resource, or query pattern, ask these questions:
 
 ## Applying the Pattern
 
-The examples below share one domain. `Order` and `Customer` are the
-write-side aggregates, and their events carry the data the projections need:
+The examples below share one domain. `Order` and `Customer` are the write-side
+aggregates. Their events carry the data the projections need:
 
 ```python
 --8<-- "patterns/projection-granularity/001.py:model"
 ```
 
-### Example 1: Cross-aggregate projection
+### Example 1: Build a cross-aggregate projection
 
 An order summary page needs data from two aggregates: Order (status, total,
 item count) and Customer (name, email). Instead of two projections joined at
@@ -207,7 +207,7 @@ both aggregates, keeping the projection current as either side changes.
 
 ---
 
-### Example 2: Cache-backed projection for a real-time dashboard
+### Example 2: Back a real-time dashboard with a cache-backed projection
 
 A warehouse dashboard shows live order counts by status. The data changes
 every few seconds as orders move through the pipeline. A database-backed
@@ -257,12 +257,11 @@ The key difference is in how consumers query it:
 --8<-- "patterns/projection-granularity/001.py:order_history_queries"
 ```
 
-Database-backed projections give you the full `ReadView`: `get()`,
-`find_by()`, `count()`, `exists()`, and `view.query` with `filter()`,
-`order_by()`, `limit()`, and `offset()`. This is what makes them the right
-choice when the consumer needs to search, sort, or paginate. A query returns
-at most 100 records unless you set a limit, so `customer_orders()` passes
-`limit(None)` to get every order.
+Database-backed projections give you the full `ReadView`: `get()`, `find_by()`,
+`count()`, `exists()`, and `view.query` with `filter()`, `order_by()`,
+`limit()`, and `offset()`. Use a database-backed projection when the consumer
+needs to search, sort, or paginate. A query returns at most 100 records unless
+you set a limit. To get every order, `customer_orders()` passes `limit(None)`.
 
 ---
 
@@ -287,10 +286,10 @@ This approach works because:
 - **One projector** maintains one projection. Adding a field means updating one
   projector, not two.
 - **One rebuild** replays events once, not twice.
-- **Consistent staleness**: Both views are always at the same version of the
-  data.
+- **Both views go stale together**: Both views are always at the same version
+  of the data.
 - **The API layer owns field selection**, which is its responsibility anyway.
-  The projection owns the data shape; the API owns the response shape.
+  The projection owns the data shape. The API owns the response shape.
 
 !!! tip "The 80% rule"
     When two consumers share 80% or more of their fields, prefer one projection
@@ -304,23 +303,23 @@ This approach works because:
 ### Example 5: Knowing when NOT to use a projection
 
 Sometimes the right answer is to not create a projection at all. If the read
-pattern matches the aggregate structure exactly and the data lives in one
-aggregate, query the aggregate's repository directly:
+pattern matches the aggregate structure exactly and one aggregate holds all the
+data, query the aggregate's repository directly:
 
 ```python
 --8<-- "patterns/projection-granularity/001.py:product"
 ```
 
-Create a projection only when the read model's shape differs from the write
-model, because it combines multiple aggregates, precomputes derived data, or
-optimizes for a specific query pattern that the aggregate's table does not
-support well.
+Create a projection only when the read model needs a different shape from the
+write model. A different shape comes from combining multiple aggregates,
+precomputing derived data, or optimizing for a specific query pattern that the
+aggregate's table does not support well.
 
 ---
 
 ## Anti-Patterns
 
-### The carbon copy projection
+### Copying the aggregate field for field
 
 ```python
 # fragment
@@ -349,7 +348,7 @@ If the projection mirrors the aggregate, you are maintaining two copies of the
 same data with no benefit. Either add consumer-specific value (join in customer
 name, precompute derived fields) or remove the projection entirely.
 
-### The per-endpoint explosion
+### Creating one projection per endpoint
 
 ```python
 # fragment
@@ -380,10 +379,11 @@ class InvoiceForExport:      # CSV export
 # Three projections, three projectors, all overlapping.
 ```
 
-These share most of their fields. Consolidate into one `InvoiceView` with
-optional fields and let the API layer select what to return.
+`InvoiceListView`, `InvoiceDetailView` and `InvoiceForExport` share most of
+their fields. Consolidate them into one `InvoiceView` with optional fields. Let
+the API layer select what to return.
 
-### The projector that queries aggregates
+### Querying aggregates from a projector
 
 ```python
 # fragment
@@ -405,12 +405,12 @@ class OrderSummaryProjector:
         ))
 ```
 
-If the projector loads aggregates to get data, the events are too thin. Fix the
-events first. They should carry enough context for the projector to work
-independently. See [Design Events for
+If the projector loads aggregates to get data, the events carry too little
+data. Fix the events first. They should carry enough context for the projector
+to work independently. See [Design Events for
 Consumers](design-events-for-consumers.md).
 
-### The orphaned projection
+### Keeping a projection that nothing reads
 
 A projection that no API endpoint or UI view actually reads. This happens when
 endpoints are deleted or refactored but the projection and projector remain.
@@ -435,7 +435,7 @@ your projections periodically: if nothing calls `view_for()` or
 
 Design projections around consumer needs, not domain entities. Combine data
 from multiple aggregates into the shape the consumer requires. Use cache-backed
-projections for volatile key-value lookups and database-backed projections for
+projections for volatile key-value lookups. Use database-backed projections for
 complex queries. When two consumers need similar data, prefer one projection
 with optional fields over two separate ones.
 

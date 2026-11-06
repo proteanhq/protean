@@ -2,7 +2,7 @@
 
 ## The Problem
 
-Your bounded context raises domain events that drive internal reactions, event
+Your bounded context raises domain events that drive internal reactions. Event
 handlers sync state across aggregates, projectors update read models, and
 process managers coordinate workflows. All of these flow through a single
 internal broker (typically Redis Streams via the outbox pattern).
@@ -50,49 +50,51 @@ This has several problems:
    `priority`, `asynchronous`) is irrelevant (and potentially confusing) to
    external consumers.
 
-4. **Every published event needs a handler**: As the public surface grows,
-   you accumulate boilerplate relay handlers.
+4. **Every published event needs a handler**: As you mark more events as
+   published, you accumulate boilerplate relay handlers.
 
 ---
 
 ## The Pattern
 
-**Fork at the outbox.** When a `published=True` event is persisted, create
-one outbox row per target broker, one for internal dispatch and one for each
-configured external broker. Each row is processed independently by its own `OutboxProcessor`,
-with independent retry, independent status tracking, and an external-specific
-message envelope that strips internal metadata.
+**Fork at the outbox.** When a `published=True` event is persisted, create one
+outbox row per target broker, one for internal dispatch and one for each
+configured external broker. Its own `OutboxProcessor` processes each row
+independently, with independent retry and independent status tracking. For an
+external broker row, the processor uses an external-specific message envelope
+that strips internal metadata.
 
-The producing bounded context's responsibility ends at broker push. It does
-not track whether external consumers have read the message. The external broker
-handles delivery semantics from that point.
+The producing bounded context's responsibility ends at broker push. It does not
+track whether external consumers have read the message. From that point, the
+external broker provides the delivery semantics to its consumers.
 
-### Core Principles
+### What does the pattern guarantee?
 
-1. **Transactional atomicity**: Internal and external outbox rows are written
-   in the same database transaction as the aggregate mutation. No event is
-   ever partially published.
+1. **All outbox rows commit together**: Protean writes internal and external
+   outbox rows in the same database transaction as the aggregate mutation. An
+   event never gets its internal outbox row without its external outbox rows,
+   or the reverse.
 
-2. **Independent failure isolation**: External broker downtime does not block
+2. **External failures stay isolated**: External broker downtime does not block
    internal event processing. Each outbox row advances through the lifecycle
    independently.
 
-3. **Clean external envelope**: External consumers receive only the fields
-   they need: headers for deduplication, domain context for routing, and
-   user-provided extensions. Internal routing fields (`expected_version`,
-   `asynchronous`, `priority`) are stripped.
+3. **External consumers get a clean envelope**: External consumers receive only
+   the fields they need: headers for deduplication, domain context for routing,
+   and user-provided extensions. The external `OutboxProcessor` strips the
+   internal routing fields (`expected_version`, `asynchronous`, `priority`).
 
-4. **Zero-change backward compatibility**: The feature activates only when
-   the outbox is on and `external_brokers` is explicitly configured. Existing
+4. **Existing setups need no changes**: The feature activates only when the
+   outbox is on and `external_brokers` is explicitly configured. Existing
    deployments are unaffected.
 
 ---
 
 ## How Protean Supports It
 
-### Configuration
+### Configure the outbox for external brokers
 
-Turn on the outbox and add the external broker(s) to its configuration:
+Turn on the outbox. Then add the external broker(s) to its configuration:
 
 ```toml
 # domain.toml
@@ -120,7 +122,8 @@ events, or handlers.
 
 ### What Happens at Commit Time
 
-When a Unit of Work commits an aggregate that raised a `published=True` event:
+This is what happens when a Unit of Work commits an aggregate with a
+`published=True` event:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -139,7 +142,7 @@ When a Unit of Work commits an aggregate that raised a `published=True` event:
 
 For a non-published event, only the internal row (Row 1) is created.
 
-### Outbox Processing
+### Each broker gets its own outbox processor
 
 The Engine creates separate `OutboxProcessor` instances for each broker:
 
@@ -153,14 +156,13 @@ Priority lanes: yes                  Priority lanes: no (external only)
 Trace event: outbox.published        Trace event: outbox.external_published
 ```
 
-Each processor runs independently. If the external broker is down, the
-external row retries on its own schedule while internal processing continues
-uninterrupted.
+Each processor runs independently. If the external broker is down, the external
+row retries on its own schedule. Internal processing continues uninterrupted.
 
-### External Message Envelope
+### What does the external message envelope keep?
 
-The external envelope strips internal-only fields while preserving everything
-an external consumer needs:
+The external `OutboxProcessor` strips internal-only fields from the envelope.
+The processor keeps every field an external consumer needs:
 
 | Field | Kept | Stripped | Why |
 |-------|------|---------|-----|
@@ -252,7 +254,7 @@ producing domain's internal event classes.
 
 ## Anti-Patterns
 
-### Manual relay handlers
+### Relaying events through manual handlers
 
 ```python
 # fragment
@@ -264,7 +266,7 @@ class ManualRelay(BaseEventHandler):
         external_broker.publish(...)  # No transactional guarantee
 ```
 
-Use `external_brokers` configuration instead. The outbox handles
+Use `external_brokers` configuration instead. With the outbox, you get
 transactional guarantees, retries, and failure isolation automatically.
 
 ### Publishing all events externally
@@ -277,10 +279,10 @@ class OrderNoteAdded(BaseEvent):
     ...  # Internal detail, not a contract
 ```
 
-Be selective. Only mark events as `published` when they are part of your
-bounded context's **public API**. Internal implementation details should not
-leak to external consumers. Every published event is a contract you must
-maintain.
+Be selective. When an event is part of your bounded context's **public API**,
+and only then, mark it as `published`. Keep internal implementation details out
+of the events that external consumers receive. Every published event is a
+contract you must maintain.
 
 ### Relying on internal metadata in consumers
 
@@ -301,27 +303,27 @@ consumers need in the event `data` and `extensions`.
 
 ## When to Use
 
-- **Cross-bounded-context communication**: Other domains need to react to your
-  events.
-- **Partner integrations**: External systems consume events from your message
-  broker.
-- **Event-driven data pipelines**: Analytics, reporting, or data lake ingestion
-  from your event stream.
-- **Gradual migration**: You're splitting a monolith and need to publish events
-  from the first extracted service.
+- **You communicate across bounded contexts**: Other domains need to react to
+  your events.
+- **You integrate with partners**: External systems consume events from your
+  message broker.
+- **You feed data pipelines from events**: Analytics, reporting, or data lake
+  ingestion reads from your event stream.
+- **You migrate gradually**: You're splitting a monolith and need to publish
+  events from the first extracted service.
 
 ## When Not to Use
 
-- **Single bounded context**: If all consumers are internal event handlers
-  within the same domain, external dispatch adds unnecessary overhead.
-- **Synchronous API responses**: If the consumer needs a synchronous response,
-  use an API call, not event dispatch.
+- **You have a single bounded context**: If all consumers are internal event
+  handlers within the same domain, external dispatch adds unnecessary overhead.
+- **The consumer needs a synchronous response**: Use an API call instead of
+  event dispatch.
 - **Shared database**: If two services share a database (not recommended in
   DDD, but sometimes pragmatic), you don't need broker-based event dispatch.
 
 ---
 
-## Trade-offs
+## What are the trade-offs?
 
 | Dimension | Impact |
 |-----------|--------|
@@ -358,6 +360,6 @@ consumers need in the event `data` and `extensions`.
     - [CloudEvents as a Boundary Contract](cloudevents-interoperability.md):
       Standardized envelope format for interoperability
     - [Idempotent Event Handlers](idempotent-event-handlers.md): Why external
-      consumers must handle duplicates
+      consumers must deduplicate messages
     - [External Dispatch Guide](../guides/server/external-event-dispatch.md):
       Step-by-step setup instructions

@@ -1,4 +1,4 @@
-# Patterns
+# Solve recurring design problems with patterns
 
 Patterns are **prescriptive understanding**. They explain *what to do* about a
 recurring design problem and *why*, with explicit boundaries on when the
@@ -10,61 +10,66 @@ recurring architectural decisions in domain-driven applications. Each pattern
 diagnoses a problem, prescribes a principle, provides worked examples and
 anti-patterns, and states when *not* to apply it.
 
-These patterns **span multiple domain elements** and represent good practices
-that Protean supports but does not enforce. They are the architectural wisdom
-that separates a well-designed DDD system from one that merely uses DDD
-terminology.
+These patterns **span multiple domain elements**. They describe good practices
+that Protean supports but does not enforce. You follow these patterns to build
+a well-designed DDD system. Using DDD terminology alone does not give you one.
 
-## Reading Paths
+## Which order should you read the patterns in?
 
 If you are new to these patterns, these sequences build on each other:
 
-**Aggregate boundaries**: why small, how they communicate, how events flow
-:   [Design Small Aggregates](design-small-aggregates.md) →
-    [One Aggregate Per Transaction](one-aggregate-per-transaction.md) →
-    [Design Events for Consumers](design-events-for-consumers.md)
+**Set aggregate boundaries**: why small, how they communicate, how events flow
+:   [Design Small Aggregates](design-small-aggregates.md) → [One Aggregate Per
+Transaction](one-aggregate-per-transaction.md) → [Design Events for
+Consumers](design-events-for-consumers.md)
 
-**Behavior placement**: where logic lives, how to keep handlers thin, how to test
-:   [Encapsulate State Changes](encapsulate-state-changes.md) →
-    [Thin Handlers, Rich Domain](thin-handlers-rich-domain.md) →
-    [Testing Domain Logic in Isolation](testing-domain-logic-in-isolation.md)
+**Place behavior in the domain**: which element holds the logic, how to keep
+handlers thin, how to test :   [Encapsulate State
+Changes](encapsulate-state-changes.md) → [Thin Handlers, Rich
+Domain](thin-handlers-rich-domain.md) → [Testing Domain Logic in
+Isolation](testing-domain-logic-in-isolation.md)
 
-**Modeling values**: turning primitives and lookup tables into real concepts
-:   [Replace Primitives with Value Objects](replace-primitives-with-value-objects.md) →
-    [Model Reference Data as Domain Concepts](model-reference-data.md) →
-    [Validation Layering](validation-layering.md)
+**Model values as domain types**: turning primitives and lookup tables into
+real concepts :   [Replace Primitives with Value
+Objects](replace-primitives-with-value-objects.md) → [Model Reference Data as
+Domain Concepts](model-reference-data.md) → [Validation
+Layering](validation-layering.md)
 
-**Idempotency**: from identity generation through command and event deduplication
-:   [Creating Identities Early](creating-identities-early.md) →
-    [Command Idempotency](command-idempotency.md) →
-    [Idempotent Event Handlers](idempotent-event-handlers.md)
+**Make processing idempotent**: from identity generation through command and
+event deduplication :   [Creating Identities
+Early](creating-identities-early.md) → [Command
+Idempotency](command-idempotency.md) → [Idempotent Event
+Handlers](idempotent-event-handlers.md)
 
-**Cross-domain communication**: relating, consuming, and contracting across boundaries
-:   [Connecting Concepts Across Bounded Contexts](connect-concepts-across-domains.md) →
-    [Consuming Events from Other Domains](consuming-events-from-other-domains.md) →
-    [Sharing Event Classes Across Domains](sharing-event-classes-across-domains.md)
+**Communicate across domains**: relating, consuming, and contracting across
+boundaries :   [Connecting Concepts Across Bounded
+Contexts](connect-concepts-across-domains.md) → [Consuming Events from Other
+Domains](consuming-events-from-other-domains.md) → [Sharing Event Classes
+Across Domains](sharing-event-classes-across-domains.md)
 
-**Cross-system integration**: publishing, consuming, and contracting across system boundaries
-:   [Fact Events as Integration Contracts](fact-events-as-integration-contracts.md) →
-    [Publishing Events to External Brokers](publishing-events-to-external-brokers.md) →
-    [Consuming Events from Other Domains](consuming-events-from-other-domains.md) →
-    [CloudEvents as a Boundary Contract](cloudevents-interoperability.md)
+**Integrate with other systems**: publishing, consuming, and contracting across
+system boundaries :   [Fact Events as Integration
+Contracts](fact-events-as-integration-contracts.md) → [Publishing Events to
+External Brokers](publishing-events-to-external-brokers.md) → [Consuming Events
+from Other Domains](consuming-events-from-other-domains.md) → [CloudEvents as a
+Boundary Contract](cloudevents-interoperability.md)
 
-**Read models**: designing, deploying, and evolving projections
-:   [Design Projection Granularity](projection-granularity.md) →
-    [Projection Rebuilds as Deployment](projection-rebuilds-as-deployment.md) →
-    [Bridge Eventual Consistency](eventual-consistency-in-uis.md)
+**Build read models**: designing, deploying, and evolving projections :
+[Design Projection Granularity](projection-granularity.md) → [Projection
+Rebuilds as Deployment](projection-rebuilds-as-deployment.md) → [Bridge
+Eventual Consistency](eventual-consistency-in-uis.md)
 
-**Production resilience**: errors, concurrency, and operational concerns
-:   [Classify Async Processing Errors](classify-async-processing-errors.md) →
-    [Expiring Stale Commands](expiring-stale-commands.md) →
-    [Optimistic Concurrency as Design Tool](optimistic-concurrency-as-design-tool.md) →
-    [Designing for Concurrent Event Processing](designing-for-concurrent-event-processing.md) →
-    [Aggregate State Machines](aggregate-state-machines.md)
+**Prepare for production failures**: errors, concurrency, and operational
+concerns :   [Classify Async Processing
+Errors](classify-async-processing-errors.md) → [Expiring Stale
+Commands](expiring-stale-commands.md) → [Optimistic Concurrency as Design
+Tool](optimistic-concurrency-as-design-tool.md) → [Designing for Concurrent
+Event Processing](designing-for-concurrent-event-processing.md) → [Aggregate
+State Machines](aggregate-state-machines.md)
 
 ---
 
-## Aggregate Design
+## Design aggregates
 
 - **[Design Small Aggregates](design-small-aggregates.md)**: Draw aggregate
   boundaries around consistency requirements, not data relationships. Reference
@@ -96,14 +101,16 @@ If you are new to these patterns, these sequences build on each other:
   Encapsulate complex or repeated aggregate construction in factory
   classmethods on the aggregate itself. When construction needs repository
   access or external data translation, extract to a standalone factory class.
-  Keeps handlers thin and construction knowledge centralized.
+  Factory methods keep handlers thin. They also keep construction knowledge in
+  one place.
 
 - **[Model Aggregate Lifecycle as a State Machine](aggregate-state-machines.md)**:
   Define an explicit enum of lifecycle states and use guarded transition
-  methods to enforce valid state changes. Makes invalid transitions
-  impossible and the aggregate's lifecycle visible in one place.
+  methods to enforce valid state changes. The guarded transition methods make
+  invalid transitions impossible. The enum shows the aggregate's lifecycle in
+  one place.
 
-## Event-Driven Patterns
+## Design event-driven flows
 
 - **[Design Events for Consumers](design-events-for-consumers.md)**: Events
   should carry enough context for consumers to act independently, without
@@ -139,15 +146,15 @@ If you are new to these patterns, these sequences build on each other:
   forward step, out-of-order event handling, external timeout strategies,
   and minimal state fields.
 
-- **[Message Tracing in Event-Driven Systems](message-tracing.md)**: Thread
+- **[Message Tracing in Event-Driven Systems](message-tracing.md)**: Carry
   `correlation_id` and `causation_id` through every command and event in a
   causal chain. Enables end-to-end debugging, auditing, and cross-service
   traceability.
 
 - **[Enrich Messages with Cross-Cutting Metadata](message-enrichment.md)**:
   Inject tenant IDs, user context, request trace IDs, and feature flags into
-  every event and command via enrichment hooks. Keeps the domain model clean
-  while ensuring all messages carry operational context in
+  every event and command via enrichment hooks. Enrichment hooks keep the
+  domain model clean. They also make every message carry operational context in
   `metadata.extensions`.
 
 - **[Multi-Tenancy in Event-Driven Systems](multi-tenancy.md)**:
@@ -159,17 +166,17 @@ If you are new to these patterns, these sequences build on each other:
 
 - **[CloudEvents as a Boundary Contract](cloudevents-interoperability.md)**:
   Serialize Protean events to the CloudEvents v1.0 standard at system
-  boundaries. Keep internal metadata DDD-native; use `to_cloudevent()` and
+  boundaries. Keep internal metadata DDD-native. Use `to_cloudevent()` and
   `from_cloudevent()` as an anti-corruption layer for interoperability with
   external systems, Kafka topics, and webhooks.
 
 ## Architecture & Quality
 
-- **[Organize by Domain Concept](organize-by-domain-concept.md)**: The
-  folder tree owns the "what" (domain concepts); the framework owns the
-  "which kind" (layer, side, boundary). Organize by aggregate, colocate
-  capabilities, separate projections, and let Protean's decorators carry
-  architectural metadata.
+- **[Organize by Domain Concept](organize-by-domain-concept.md)**: Name your
+  folders after the "what" (domain concepts), and let the framework record the
+  "which kind" (layer, side, boundary). Organize folders by aggregate, with
+  each aggregate's capabilities beside it and projections kept separate.
+  Protean's decorators carry the architectural metadata.
 
 - **[Index Aggregates for Query Paths](index-aggregates-for-query-paths.md)**:
   Declare indexes for the query paths an aggregate actually has. Match
@@ -183,20 +190,20 @@ If you are new to these patterns, these sequences build on each other:
 
 - **[Model Reference Data as Domain Concepts](model-reference-data.md)**:
   Avoid the One True Lookup Table. Model each kind of reference data as its own
-  type. An enumeration value object when it is closed and static, an aggregate
-  keyed by its natural code when it is editable. And treat any shared storage
-  table as an adapter detail, never a domain model.
+  type. Use an enumeration value object when the data is closed and static. Use
+  an aggregate keyed by its natural code when the data is editable. And treat
+  any shared storage table as an adapter detail, never a domain model.
 
 - **[Track Audit and Lifecycle Fields](track-audit-fields.md)**: Keep
   `created_at`/`updated_at` and `created_by`/`updated_by` off your business
-  methods. Put them on an abstract base with `auto_now`/`auto_now_add` timestamps
-  and stamp the audit users with a pre-persist enricher that reads the acting
-  user from the domain context.
+  methods. Put them on an abstract base with `auto_now`/`auto_now_add`
+  timestamps. Stamp the audit users with a pre-persist enricher that reads the
+  acting user from the domain context.
 
 - **[Thin Handlers, Rich Domain](thin-handlers-rich-domain.md)**: Handlers
   orchestrate (load, call, save). Aggregates and domain services contain all
-  business logic. Prevents the anemic domain model anti-pattern and makes
-  domain logic directly testable.
+  business logic. With this split, you avoid the anemic domain model
+  anti-pattern. You can also test domain logic directly.
 
 - **[Choose Between Application Services and Command Handlers](application-service-vs-command-handler.md)**:
   Application services for synchronous, API-facing operations that return
@@ -240,13 +247,13 @@ If you are new to these patterns, these sequences build on each other:
   lifecycle (reset after every test). Applies to all infrastructure, not just
   databases.
 
-## Identity & Communication
+## Create identities and communicate across domains
 
 - **[Creating Identities Early](creating-identities-early.md)**: Generating
   aggregate identities at the point of creation (or earlier, at the client or
-  API boundary) rather than deferring to the database. Covers why early identity
-  generation matters for commands, events, idempotency, and distributed systems,
-  and how Protean's `Auto` field makes it the default.
+  API boundary) rather than deferring to the database. Early identity
+  generation matters for commands, events, idempotency, and distributed
+  systems. Protean's `Auto` field makes it the default.
 
 - **[Connecting Concepts Across Bounded Contexts](connect-concepts-across-domains.md)**:
   Keeping the same real-world concept synchronized across multiple bounded
@@ -256,8 +263,9 @@ If you are new to these patterns, these sequences build on each other:
 
 - **[Consuming Events from Other Domains](consuming-events-from-other-domains.md)**:
   Using subscribers as anti-corruption layers to receive external events,
-  translate them into your domain's language, and dispatch internal commands
-  or events. Nothing downstream knows the stimulus came from outside.
+  translate them into your domain's language, and dispatch internal commands or
+  events. No handler or aggregate downstream of the subscriber knows that the
+  event came from another domain.
 
 - **[Sharing Event Classes Across Domains](sharing-event-classes-across-domains.md)**:
   Share schemas (message contracts), not code (class definitions). Each domain
@@ -307,8 +315,8 @@ If you are new to these patterns, these sequences build on each other:
 ---
 
 !!! note "Related how-to guides"
-    Procedural guides for testing and infrastructure live in the
-    **Guides** section:
+    You find procedural guides for testing and infrastructure in the **Guides**
+    section:
 
     - [Testing Guide](../guides/testing/index.md): Overview of Protean's testing strategy and tools.
     - [Using Priority Lanes](../guides/server/using-priority-lanes.md): Enable and configure priority lanes for background workloads.

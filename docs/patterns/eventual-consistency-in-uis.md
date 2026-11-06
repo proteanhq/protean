@@ -1,4 +1,4 @@
-# Bridge the Eventual Consistency Gap in User Interfaces
+# Keep User Interfaces Correct Under Eventual Consistency
 
 ## The Problem
 
@@ -30,12 +30,13 @@ Teams encounter this gap and react in one of three ways, all problematic:
 
 ### Ignoring the gap
 
-The team treats it as a non-issue: "The projection will catch up in a moment."
-But users do not know about eventual consistency. They expect the data they
-just submitted to appear immediately. Ignoring the gap creates support tickets,
-duplicate submissions, and eroded trust.
+The team treats the delay as a non-issue: "The projection will be up to date in
+a moment." But users do not know about eventual consistency. They expect the
+data they just submitted to appear immediately. When the team ignores the gap,
+users file support tickets, submit duplicate orders, and stop trusting the
+application.
 
-### Adding `time.sleep()` hacks
+### Adding `time.sleep()` calls to wait for the projector
 
 ```python
 # fragment
@@ -52,8 +53,9 @@ async def create_order(data: OrderData):
     return {"order_id": order.order_id}
 ```
 
-This is fragile. Half a second is not enough under load, two seconds is too
-slow for normal traffic, and it blocks the API worker thread.
+A fixed `time.sleep()` delay is fragile. No fixed delay fits every load: half a
+second is not enough under load, and two seconds is too slow for normal
+traffic. The sleep also blocks the API worker thread.
 
 ### Forcing synchronous processing everywhere
 
@@ -62,30 +64,31 @@ slow for normal traffic, and it blocks the API worker thread.
 event_processing = "sync"
 ```
 
-This eliminates the gap by running projectors inline during the commit, but
-defeats the purpose of CQRS. Write latency includes every handler in the
-chain, and failures cascade back to the caller. Synchronous processing is
-valuable for **testing** but should not be the production strategy.
+Synchronous processing removes the gap by running projectors inline during the
+commit. It also removes the separation of writes and reads that CQRS exists to
+provide. Write latency includes every handler in the chain. A failure in any of
+those handlers fails the caller's request. Synchronous processing is valuable
+for **testing** but should not be the production strategy.
 
 ---
 
 ## The Pattern
 
-There is no single solution because the gap's impact depends on context.
-A periodically refreshing dashboard tolerates seconds of staleness; an order
-confirmation page does not. Three strategies address the gap at different
-levels:
+There is no single solution because the gap's impact depends on context. A
+periodically refreshing dashboard tolerates seconds of staleness; an order
+confirmation page does not. Three strategies, each at a different level, show
+the user the right data during the gap:
 
-### 1. Optimistic UI (frontend strategy)
+### 1. Show the expected state in the frontend (optimistic UI)
 
 The frontend immediately displays the expected state after a successful
 command, without waiting for the read side. The next time the frontend
 fetches data from the read side, it either confirms the optimistic state
 or corrects it.
 
-**Best for:** actions where the success response from the write side is
-sufficient to predict the read-side state. Order placement, status changes,
-profile updates.
+**Use it for** actions where the success response from the write side is enough
+to predict the read-side state. Order placement, status changes, profile
+updates.
 
 **Not suitable for:** actions where the read-side result depends on
 server-side computation that the frontend cannot predict (e.g., pricing
@@ -95,20 +98,20 @@ calculations, inventory checks that affect what is displayed).
 
 The application service returns the aggregate's state directly from the
 `@use_case` method. The frontend uses this write-side result for the immediate
-display and falls back to projection reads for subsequent views.
+display. For subsequent views, the frontend reads from the projection.
 
-**Best for:** single-entity views (order detail, profile page) where the
-API response after the write can carry the data the UI needs.
+**Use it for** single-entity views, such as an order detail or profile page.
+The API response after the write can carry the data those views need.
 
 **Not suitable for:** list views or dashboards that aggregate data across
 multiple entities. The write side returns one aggregate; the list needs many.
 
-### 3. Version polling (coordination strategy)
+### 3. Poll the read side for the written version (version polling)
 
-The write endpoint returns the aggregate's version alongside the entity
-data. The frontend passes this version to the read endpoint, which polls the
-projection until its version matches or exceeds the expected version, or until
-a timeout.
+The write endpoint returns the aggregate's version alongside the entity data.
+The frontend passes this version to the read endpoint. The read endpoint polls
+the projection until the projection's version matches or exceeds the expected
+version, or until a timeout.
 
 **Best for:** critical transitions where the UI must show the confirmed
 read-side state (e.g., payment confirmation page, shipping status).
@@ -139,7 +142,7 @@ elements that all three strategies build on:
 
 ---
 
-### Strategy 1: Optimistic UI
+### Strategy 1: Show the expected state at once with optimistic UI
 
 The application service returns the aggregate after the write. The API
 forwards enough data for the frontend to display optimistically.
@@ -158,11 +161,11 @@ The API endpoint returns the write-side data:
 The frontend receives this response and inserts it directly into its local
 state (React state, Vuex store, Redux store) without waiting for a read-side
 fetch. On the next background refresh, the projection data replaces the
-optimistic entry. If the projection has not caught up yet, the optimistic
-data remains visible until it does.
+optimistic entry. Until the projection has the new order, the optimistic data
+stays visible.
 
-The key insight: the frontend does not poll or wait. It uses the write-side
-response as the immediate truth and lets the projection catch up in the
+The key insight: the frontend does not poll or wait. The frontend uses the
+write-side response as the immediate truth. The projection updates in the
 background.
 
 !!! note "When optimistic UI breaks down"
@@ -193,29 +196,30 @@ reads the projection (for normal reads):
 --8<-- "patterns/eventual-consistency-in-uis/001.py:write_side_api"
 ```
 
-The frontend uses the POST response data for the initial detail page render and
-switches to the projection-backed GET endpoint for subsequent loads. This
-strategy is particularly effective because `@use_case` methods naturally return
-the aggregate, the API layer passes it through.
+The frontend renders the initial detail page from the POST response data. For
+subsequent loads, the frontend switches to the projection-backed GET endpoint.
+This strategy works well because `@use_case` methods already return the
+aggregate. The API layer passes that aggregate through to the response.
 
 !!! warning "Write-side reads are not free"
-    Reading from the aggregate's repository means querying the write database.
-    This is fine for the immediate post-write response (you just wrote to that
-    database). But do not use write-side reads as a general replacement for
-    projections. The write model is not optimized for read queries. It may lack
-    the indexes, denormalization, or shaping that projections provide.
+    When you read from the aggregate's repository, you query the write
+    database. This is fine for the immediate post-write response (you just
+    wrote to that database). But do not use write-side reads as a general
+    replacement for projections. The write model is not optimized for read
+    queries. It may lack the indexes, denormalization, or shaping that
+    projections provide.
 
 ---
 
-### Strategy 3: Version polling
+### Strategy 3: Poll the read side for the written version
 
-For critical transitions where the user must see confirmed read-side state,
-return the aggregate's version from the write endpoint and have the
-frontend poll the read endpoint until the projection catches up.
+For critical transitions, the user must see confirmed read-side state. Return
+the aggregate's version from the write endpoint, and have the frontend poll the
+read endpoint until the projection catches up.
 
 The order carries its version through the events. `OrderPlaced` and
-`OrderConfirmed` hold the version the order has once the change is saved, and
-the projector stores it on `OrderSummary.version`.
+`OrderConfirmed` hold the order's saved version. The projector stores that
+version on `OrderSummary.version`.
 
 The write endpoints return the saved order's `_version` as `version`. The read
 endpoint compares it with the version the projection stored:
@@ -235,15 +239,15 @@ endpoint with `?min_version=N`. On each poll:
 !!! note "Version tracking in projections"
     Protean's aggregates carry `_version` automatically. For an aggregate
     stored as state, saving a change moves it up by one. An event-sourced
-    aggregate moves it up by one for each event it raises, so an operation
-    that raises two events moves it up by two. A projection does not track
-    `_version` for you. To use version
-    polling, give the projection a `version` field and fill it in the
-    projector, as `OrderSummary` does above from the version its events carry.
+    aggregate moves `_version` up by one for each event it raises. An operation
+    that raises two events therefore moves `_version` up by two. A projection
+    does not track `_version` for you. To use version polling, give the
+    projection a `version` field. Fill the field in the projector from the
+    version the events carry, as `OrderSummary` does above.
 
 ---
 
-### Development and testing: synchronous mode
+### Remove the gap in development and testing with synchronous mode
 
 During development and testing, the eventual consistency gap is a nuisance
 that slows feedback cycles. Protean supports synchronous event processing
@@ -261,19 +265,19 @@ Or in test fixtures:
 ```
 
 With synchronous processing, projectors run inline during the `UnitOfWork`
-commit. The projection is updated before the `@use_case` method returns,
-so there is no gap:
+commit. The projector updates the projection before the `@use_case` method
+returns. The test below sees no gap:
 
 ```python
 --8<-- "patterns/eventual-consistency-in-uis/001.py:sync_test"
 ```
 
 !!! warning "Synchronous processing is for development and testing only"
-    In production, synchronous event processing means every projector and
-    event handler runs inside the write transaction. A slow or failing handler
-    blocks the API response and can cascade failures back to the caller. Use
-    asynchronous processing in production and apply one of the three UI
-    strategies described above.
+    In production, synchronous event processing means every projector and event
+    handler runs inside the write transaction. A slow or failing handler blocks
+    the API response. A failing handler can also cascade failures back to the
+    caller. Use asynchronous processing in production and apply one of the
+    three UI strategies described above.
 
 ---
 
@@ -299,12 +303,14 @@ async def create_order(data: OrderData):
 
 Problems:
 
-- **Unpredictable**: One second is enough under light load, not enough under
-  heavy load, and wasteful when the projector finishes in 50ms.
+- **No fixed delay fits every load**: One second is enough under light load,
+  not enough under heavy load, and wasteful when the projector finishes in
+  50ms.
 - **Blocks the worker**: An async API worker sitting in `time.sleep()` is not
   serving other requests.
-- **No feedback**: If the projector fails, the sleep completes and the
-  subsequent `view.get()` raises `ObjectNotFoundError` with no explanation.
+- **The failure gives no feedback**: If the projector fails, the sleep
+  completes and the subsequent `view.get()` raises `ObjectNotFoundError` with
+  no explanation.
 
 Use optimistic UI or version polling instead. Both provide deterministic
 behavior regardless of load.
@@ -340,11 +346,11 @@ def create_order(data: OrderData):
 # User refreshes repeatedly, creates duplicates, contacts support
 ```
 
-The gap exists by design. Ignoring it transfers the confusion to the user.
-During deployment, load spikes, or projector errors the delay will be
-noticeable. Plan for it.
+The gap exists by design. If the application ignores the gap, the user sees
+missing data and gets no explanation for it. During deployment, load spikes, or
+projector errors the delay will be noticeable. Plan for it.
 
-### Read-your-writes via direct database queries
+### Querying the write database directly to read your writes
 
 ```python
 # fragment
@@ -356,9 +362,10 @@ def list_orders():
     return [o.to_dict() for o in orders]
 ```
 
-This defeats the purpose of projections. The write model's table lacks the
-indexes, denormalization, and field shaping that projections provide, and it
-couples read and write schemas together.
+A direct query on the write database skips the projections that exist to serve
+reads. The write model's table lacks the indexes, denormalization, and field
+shaping that projections provide. The direct query also couples read and write
+schemas together.
 
 ---
 
@@ -384,11 +391,11 @@ three:
 - **Version polling** for critical state transitions (payment confirmation,
   shipping status)
 
-Eventual consistency is a feature, not a bug. The gap between write and read is
-by design. It enables independent scaling, failure isolation, and read-side
-optimization. Bridge the gap in the UI layer with explicit strategies rather
-than hiding it with sleeps, forcing synchronous processing, or pretending it
-does not exist.
+Eventual consistency is a deliberate property of CQRS. The gap between write
+and read is by design. It enables independent scaling, failure isolation, and
+read-side optimization. Show the right data during the gap with an explicit UI
+strategy. Do not hide the gap with sleeps, force synchronous processing, or
+pretend the gap does not exist.
 
 ---
 

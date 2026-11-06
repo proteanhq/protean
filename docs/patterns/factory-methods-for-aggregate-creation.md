@@ -1,4 +1,4 @@
-# Factory Methods for Aggregate Creation
+# Create aggregates through factory methods
 
 ## The problem
 
@@ -31,8 +31,8 @@ class OrderCommandHandler(BaseCommandHandler):
 ```
 
 Nothing is wrong with it. The handler creates an Order, adds the items the
-command carried, calls a domain method, and saves. Then the system grows and you
-find yourself creating orders four more ways:
+command carried, calls a domain method, and saves. Then the system grows and
+you need four more ways to create an order:
 
 - **Subscription renewal** creates an Order by copying line items from the
   previous cycle's order and applying the current pricing.
@@ -44,9 +44,9 @@ find yourself creating orders four more ways:
   order, with only the returned items, flagged as a replacement.
 
 Each one gets its own handler, and each handler assembles the Order itself.
-Which items to include, how to total them, which rules to apply, which events to
-raise: all of it now exists five times, once per handler. Each copy is slightly
-different, and they drift further apart over time.
+Which items to include, how to total them, which rules to apply, which events
+to raise: all of it now exists five times, once per handler. Each copy differs
+slightly from the others. Over time, the copies differ more.
 
 That costs you in four ways:
 
@@ -58,15 +58,16 @@ That costs you in four ways:
   to raise `OrderPlaced`. The bulk import skips the minimum-order-value check.
   The return replacement sets the wrong status.
 
-- **You cannot test the creation on its own.** Checking that a renewal copies
-  line items and prices them correctly means building a command, setting up a
-  repository, and running the handler inside a unit of work.
+- **You cannot test the creation on its own.** To check that a renewal copies
+  line items and prices them correctly, you have to build a command, set up a
+  repository, and run the handler inside a unit of work.
 
-- **Handlers get fat.** What should be three lines, load, call, save, becomes 20
-  or 40, because the handler is doing assembly work that is not its job.
+- **Handlers grow long.** A handler should take three lines: load, call, save.
+  It grows to 20 or 40 lines because it also assembles the Order, and assembly
+  is not the handler's job.
 
-All four come from the same thing: the knowledge of how to build a valid Order
-sits in the handlers, where the domain model should be holding it.
+All four costs have one cause: the handlers contain the code that builds a
+valid Order. The domain model should contain that code.
 
 ---
 
@@ -88,28 +89,28 @@ Factory classmethods (on the aggregate):
   Handler C:  order = Order.from_return(command.original_order_id, ...)
 ```
 
-Each classmethod is one testable place that holds everything needed to build a
-valid aggregate from one set of inputs. The handler calls it and saves what comes
-back.
+Each classmethod contains all the code that builds a valid aggregate from one
+set of inputs. You can test each classmethod on its own. The handler calls the
+classmethod and saves the aggregate it returns.
 
-This is Eric Evans' Factory Method pattern from the Blue Book. Evans described
-two forms:
+This is the Factory Method pattern from Eric Evans' book *Domain-Driven
+Design*, known as the Blue Book. Evans described two forms:
 
 | Form | What it is | When to use |
 |------|-----------|-------------|
 | **Factory Method** | A classmethod on the aggregate | Construction belongs conceptually to the aggregate |
 | **Standalone Factory** | A separate class dedicated to creation | Construction needs external data or doesn't belong to the aggregate |
 
-**Start with classmethods on the aggregate.** They are simpler, easier to find,
-and they keep the knowledge next to the thing it builds. Move to a standalone
-factory class only when a classmethod stops being enough, which the section
-below covers.
+**Start with classmethods on the aggregate.** They are simpler and easier to
+find, and they keep the creation code in the aggregate class it builds. When a
+classmethod stops being enough, move to a standalone factory class. A later
+section on this page says when that happens.
 
 ---
 
 ## Applying the pattern
 
-### Before: construction in handlers
+### Before: each handler constructs the Order
 
 ```python
 # fragment
@@ -162,19 +163,20 @@ class OrderCommandHandler(BaseCommandHandler):
 ```
 
 The renewal handler copies the placement handler and gets pricing wrong: it
-reuses the previous order's prices when it should look up current ones. Spread
-the assembly across handlers and a bug like this has somewhere to hide.
+reuses the previous order's prices when it should look up current ones. When
+each handler does its own assembly, you have to read every handler to find a
+bug like this.
 
-### After: factory classmethods on the aggregate
+### After: factory classmethods on the aggregate build the Order
 
 ```python
 --8<-- "patterns/factory-methods-for-aggregate-creation/001.py:elements"
 --8<-- "patterns/factory-methods-for-aggregate-creation/001.py:aggregate"
 ```
 
-Each handler is now 4-5 lines: load inputs, call a factory classmethod, persist.
-The construction knowledge lives in the aggregate, where it can be tested
-directly, reused across handlers, and maintained in one place.
+Each handler is now 4-5 lines: load inputs, call a factory classmethod,
+persist. The aggregate class now contains the construction code, so you can
+test it directly, reuse it across handlers, and maintain it in one place.
 
 ---
 
@@ -201,9 +203,10 @@ def from_cart(cls, customer_id, cart_items, shipping_address):
 
 ### 2. Check the preconditions
 
-Check what this particular creation path requires. These are not the aggregate's
-post-invariants, which run after any change and check the state it ends up in.
-A precondition asks whether you should be creating the thing *at all*:
+Check what this particular creation path requires. These are not the
+aggregate's post-invariants. Post-invariants run after any change and check the
+state the aggregate ends up in. With a precondition, you check whether you
+should create the thing *at all*:
 
 ```python
 # fragment
@@ -241,8 +244,8 @@ factory. The factory calls the method and the method owns the event, which keeps
 
 ## Naming factory methods
 
-Name a factory classmethod for **where the aggregate comes from**, or for **what
-kind of creation this is**, in the domain's own language:
+Name a factory classmethod in the domain's own language. Use the name to say
+**where the aggregate comes from**, or **what kind of creation this is**:
 
 | Good Name | What It Expresses |
 |-----------|------------------|
@@ -266,22 +269,22 @@ creation this is.
 Classmethods on the aggregate cover most cases. Sometimes the assembly work does
 not belong on the aggregate at all.
 
-### Signs you need one
+### When do you need a standalone factory?
 
 1. **It needs a repository.** An aggregate should know nothing about
    repositories. When building one means loading others first, say an Invoice
    that needs the Order, the Customer, and the TaxPolicy, put it in a standalone
    class.
 
-2. **It is large.** A classmethod running to 40 lines or more dominates the
-   aggregate class, and the aggregate reads better without it.
+2. **It is large.** When a classmethod runs to 40 lines or more, it takes up
+   much of the aggregate class. The aggregate is easier to read without it.
 
-3. **It translates outside data.** Building an aggregate from a Stripe webhook,
-   an ERP sync, or a CSV row means knowing that system's shape, which the
-   aggregate should never carry. A standalone factory is the anti-corruption
-   layer.
+3. **It translates outside data.** To build an aggregate from a Stripe webhook,
+   an ERP sync, or a CSV row, the code must know that system's data format. The
+   aggregate should never contain that knowledge. A standalone factory is the
+   anti-corruption layer.
 
-### A standalone factory as a plain class
+### Write a standalone factory as a plain class
 
 A standalone factory is just a class in the domain layer. It needs no framework
 registration; it is plain Python:
@@ -329,8 +332,9 @@ schema you edit the factory, and `Payment` and its invariants stay as they are.
 | Construction logic is 40+ lines and dominates the aggregate | Standalone factory class |
 | Single simple creation path | No factory needed, inline in handler |
 
-The progression is **inline, then classmethod, then standalone class**. Start at
-the simplest one and move along it only when the work makes you.
+The progression is **inline, then classmethod, then standalone class**. Start
+with the simplest form, inline construction. When that form no longer fits the
+creation code, move to the next form.
 
 ---
 
@@ -342,15 +346,15 @@ You can test a factory classmethod on its own, with no infrastructure:
 --8<-- "patterns/factory-methods-for-aggregate-creation/001.py:tests"
 ```
 
-No repository, no command, no handler, no unit of work: call the classmethod and
-assert on what it returns. A standalone factory is a plain class and tests the
-same way, except where it loads aggregates of its own, as
-`OrderFactory.from_cart_checkout` loads the Cart and the Customer. Those tests
-have to persist that data first.
+No repository, no command, no handler, no unit of work: call the classmethod
+and assert on what it returns. A standalone factory is a plain class, and you
+test it the same way. The exception is a factory that loads aggregates of its
+own. For example, `OrderFactory.from_cart_checkout` loads the Cart and the
+Customer. Those tests have to persist that data first.
 
 ---
 
-## Factories and domain services
+## How do factories differ from domain services?
 
 Factories and domain services do different jobs:
 
@@ -363,32 +367,33 @@ Factories and domain services do different jobs:
 | **Example** | `Order.from_cart(items, customer_id)` | `TransferService(source, policy).validate_and_debit(amount, ...)` |
 
 A factory answers "how do I bring this thing into existence?" A domain service
-answers "how do I apply a rule that spans several things which already exist?"
+answers "how do I apply a rule across several existing things?"
 
 ---
 
 ## Why this is not a framework element
 
 Evans listed Factories next to Aggregates and Repositories as DDD lifecycle
-patterns, which raises a fair question: should Protean ship a `@domain.factory`
-decorator and a `BaseFactory`, making factories registered elements the way
-command handlers and repositories are?
+patterns. So should Protean ship a `@domain.factory` decorator and a
+`BaseFactory`, and make factories registered elements like command handlers and
+repositories?
 
 It deliberately does not, for three reasons:
 
-- **A factory has no lifecycle to manage.** Repositories need database adapters,
-  event handlers need message routing, command handlers need dispatch and a unit
-  of work. A factory builds an object, and when it needs a repository it reaches
-  for the same `current_domain.repository_for()` any code can call. Registering
-  it would buy nothing.
+- **A factory has no lifecycle for Protean to manage.** Repositories need
+  database adapters. Event handlers need message routing. Command handlers need
+  dispatch and a unit of work. A factory builds an object. When it needs a
+  repository, it calls the same `current_domain.repository_for()` that any code
+  can call. Registering a factory with the domain would add nothing.
 
-- **Factories take too many shapes.** A constructor, a classmethod, a method on
-  another aggregate, a standalone class. One `BaseFactory` would be either too
-  thin to earn its place or too narrow to fit them all.
+- **Factories have too many forms.** A factory can be a constructor, a
+  classmethod, a method on another aggregate, or a standalone class. One
+  `BaseFactory` would either add too little to be worth having or be too narrow
+  to cover all these forms.
 
-- **Python already has the tools.** A classmethod is the natural form of a
-  factory method, and a standalone factory is a class. Neither needs registering
-  to be findable, testable, or maintainable.
+- **Python already provides what a factory needs.** A classmethod is the usual
+  form of a factory method. A standalone factory is a plain class. Neither
+  needs registering to be findable, testable, or maintainable.
 
 The Factory pattern is a design pattern. Protean supports it by leaving
 aggregates free to carry classmethods, and by keeping handlers thin enough that
@@ -409,8 +414,8 @@ the factory becomes the obvious place for the assembly work.
 | When to use | Single, simple creation | Multiple creation paths, moderate complexity | Repository access needed, external data, large logic |
 
 Keep the knowledge of how to build an aggregate in the domain model. Start with
-classmethods on the aggregate, and move to a standalone factory class when the
-classmethod needs a repository, has to translate outside data, or grows too big.
+classmethods on the aggregate. When the classmethod needs a repository, has to
+translate outside data, or grows too big, move to a standalone factory class.
 
 ---
 
@@ -418,7 +423,8 @@ classmethod needs a repository, has to translate outside data, or grows too big.
     **Patterns:**
 
     - [Encapsulate State Changes](encapsulate-state-changes.md): Named methods for state changes complement factory methods for creation.
-    - [Thin Handlers, Rich Domain](thin-handlers-rich-domain.md): Factories are one way handlers shed construction weight.
+    - [Thin Handlers, Rich Domain](thin-handlers-rich-domain.md): Factories are
+      one way to move construction code out of handlers.
     - [Consuming Events from Other Domains](consuming-events-from-other-domains.md): Standalone factories serve as anti-corruption layers for external data.
 
     **Concepts:**
@@ -428,5 +434,6 @@ classmethod needs a repository, has to translate outside data, or grows too big.
 
     **Guides:**
 
-    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md): Pushing behavior into aggregates.
+    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md):
+      Moving behavior into aggregates.
     - [Command Handlers](../guides/change-state/command-handlers.md): Keeping handlers thin.

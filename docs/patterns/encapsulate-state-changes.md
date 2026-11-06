@@ -25,31 +25,35 @@ priority notification when shipped." Another `if` in the handler. Then:
 "International orders need customs documentation before shipping." More
 conditions, more logic, spread across the handler.
 
-The aggregate has become a data bag. The handler has become the brain. This is
-the **anemic domain model**, the most pervasive anti-pattern in DDD.
+The aggregate now holds data and no behavior. The handler now holds all the
+business logic. This is the **anemic domain model**, the most pervasive
+anti-pattern in DDD.
 
 The problems are structural:
 
-- **Business rules scatter across handlers**: The rules about shipping live in
-  the command handler, the event handler that processes returns, the application
-  service that handles admin overrides, and the batch job that auto-ships
-  after payment confirmation. Each location has its own version of the rules.
+- **Business rules spread across handlers**: The shipping rules appear in four
+  places. They are in the command handler, the event handler that processes
+  returns, the application service for admin overrides, and the batch job that
+  ships orders automatically after payment confirmation. Each location has its
+  own version of the rules.
 
-- **Invariants can't protect the aggregate**: Protean's `@invariant.post`
-  decorator runs after methods are called on the aggregate. But if the handler
-  sets fields directly, the aggregate's methods are never called, and
-  invariants become the only defense. Invariants catch violations after the
-  fact. They can't encode the business process itself.
+- **Invariants alone can't keep the aggregate valid**: Protean runs the checks
+  marked with the `@invariant.post` decorator after you call a method on the
+  aggregate. When the handler sets fields directly, it never calls the
+  aggregate's methods. The invariants are then the only check on the
+  aggregate's state. Invariants detect a broken rule only after the state has
+  changed. They can't encode the business process itself.
 
 - **The ubiquitous language disappears**: The business says "ship an order."
-  The code says `order.status = "shipped"`. The verb (the business intent) is
-  lost. When reading the code, you see mechanical field assignments, not
-  business operations.
+  The code says `order.status = "shipped"`. The code drops the verb, which
+  carries the business intent. When reading the code, you see mechanical field
+  assignments, not business operations.
 
-- **Events are an afterthought**: Domain events should be raised as part of
-  the business operation. When the handler sets fields and then manually raises
-  an event, the event is disconnected from the state change it represents.
-  Forgetting to raise the event becomes a likely bug.
+- **The handler raises events as a separate step**: The method that performs
+  the business operation should also raise its domain events. In this design
+  the handler sets fields and then raises an event by hand. Nothing in the code
+  ties the event to the state change it records. A developer who changes the
+  fields can easily forget to raise the event.
 
 - **Testing requires infrastructure**: To test the business rules of shipping,
   you must set up the handler, the repository, the command, and the UoW. The
@@ -82,7 +86,7 @@ Pattern (aggregate method):
 ```
 
 The handler becomes a thin bridge between the command and the aggregate method.
-The aggregate method becomes the single source of truth for the business
+The aggregate method is the only place in the code that defines the business
 operation.
 
 ### The Name Is the Ubiquitous Language
@@ -105,7 +109,7 @@ without needing to understand the field-level mechanics.
 
 ## Applying the Pattern
 
-### Before: Direct Field Manipulation
+### Before: the handler sets fields directly
 
 ```python
 # fragment
@@ -181,10 +185,10 @@ Problems with this approach:
 
 - The handler validates, mutates, and raises events, three responsibilities
 - The shipping rules are duplicated if another handler also ships orders
-- Testing requires constructing commands and running through the handler
+- To test the rules, you must build a command and run it through the handler
 - The aggregate has no behavior; it's a data structure
 
-### After: Named Methods on the Aggregate
+### After: move the logic into named methods on the aggregate
 
 ```python
 --8<-- "patterns/encapsulate-state-changes/001.py:after"
@@ -192,13 +196,13 @@ Problems with this approach:
 
 Now the handler is three lines: load, call, save. All business logic
 (precondition validation, state mutation, and event raising) is in the
-aggregate where it belongs.
+aggregate.
 
 ---
 
-## The Three Responsibilities of an Aggregate Method
+## What are the three responsibilities of an aggregate method?
 
-Every state-changing method on an aggregate should handle three things:
+Every state-changing method on an aggregate should do three things:
 
 ### 1. Validate Preconditions
 
@@ -214,8 +218,8 @@ def ship(self, tracking_number: str) -> None:
 
 Preconditions are different from invariants. Preconditions check whether the
 operation *can* be performed. Invariants check whether the aggregate's state
-*is valid* after the operation. Both are important, but preconditions belong
-at the top of the method.
+*is valid* after the operation. You need both checks. Put the preconditions at
+the top of the method.
 
 ### 2. Mutate State
 
@@ -228,9 +232,10 @@ Perform the actual field changes:
     self.tracking_number = tracking_number
 ```
 
-All related field changes happen together in the same method. This prevents
-the "forgot to set shipped_at when setting status to shipped" bug that occurs
-when handlers manage field assignments independently.
+All related field changes happen together in the same method. The method sets
+the related fields together, so you avoid the "forgot to set shipped_at when
+setting status to shipped" bug. That bug appears when each handler assigns the
+fields on its own.
 
 ### 3. Raise Domain Events
 
@@ -248,9 +253,8 @@ Record what happened as a domain event:
 ```
 
 The event is raised as part of the business operation, not as an afterthought
-in the handler. This guarantees that whenever the state changes, the
-corresponding event is raised. You can't ship an order without raising
-`OrderShipped`.
+in the handler. Each time the method changes the state, it also raises the
+matching event. You can't ship an order without raising `OrderShipped`.
 
 ---
 
@@ -258,8 +262,8 @@ corresponding event is raised. You can't ship an order without raising
 
 ### Invariants Complement Methods
 
-Protean's `@invariant.post` decorator provides a safety net that works
-alongside named methods:
+Protean's `@invariant.post` decorator adds a second check on the aggregate's
+state after each named method runs:
 
 ```python
 --8<-- "patterns/encapsulate-state-changes/002.py:invariant"
@@ -269,21 +273,21 @@ The `withdraw` method validates its own preconditions (positive amount). The
 invariant catches any state that violates the business rule, regardless of how
 it was reached. Together, they provide defense in depth.
 
-### Event Sourcing Integration
+### How named methods work with event sourcing
 
 For event-sourced aggregates, methods and events are even more tightly coupled.
-The method raises an event, and the `@apply` handler mutates state:
+The method raises an event. The `@apply` handler then mutates state:
 
 ```python
 --8<-- "patterns/encapsulate-state-changes/003.py:event_sourced"
 ```
 
-In event-sourced aggregates, the method validates and raises the event, while
-the `@apply` handler performs the actual mutation. This separation is essential:
-the same `@apply` handler replays events when reconstructing the aggregate from
-its event stream. A replay starts from a blank aggregate, so the first event's
-handler sets every field. Here `open()` raises `AccountOpened`, and its handler
-sets `account_id` and `balance`.
+In event-sourced aggregates, the method validates the request and raises the
+event. The `@apply` handler performs the actual mutation. This separation is
+essential: the same `@apply` handler replays events when reconstructing the
+aggregate from its event stream. A replay starts from a blank aggregate, so the
+first event's handler sets every field. Here `open()` raises `AccountOpened`.
+The `@apply` handler for `AccountOpened` sets `account_id` and `balance`.
 
 ### The `atomic_change` Context Manager
 
@@ -294,19 +298,22 @@ invariant checks, Protean provides `atomic_change`:
 --8<-- "patterns/encapsulate-state-changes/004.py:atomic_change"
 ```
 
-Without `atomic_change`, emptying `items` would fail the
-`total_must_match_items` invariant before the new items and total are in
-place. Inside the block the checks wait until the block ends.
+Without `atomic_change`, Protean would check the `total_must_match_items`
+invariant as soon as the method empties `items`. The check would fail, because
+the new items and total are not yet in place. Inside the block the checks wait
+until the block ends.
 
-This is still an encapsulated method on the aggregate. The handler doesn't need
-to know about `atomic_change`. It calls `order.restructure_order(...)`, and the
-aggregate handles the complexity internally.
+`restructure_order` is still an encapsulated method on the aggregate. The
+command handler that calls `restructure_order` doesn't need to know about
+`atomic_change`. The command handler calls `order.restructure_order(...)`.
+Inside that method, the aggregate groups its changes with `atomic_change`.
 
 ---
 
-## The Command-Method Connection
+## How commands map to methods
 
-Commands name the intent. Methods execute it. The handler is the bridge.
+Commands name the intent. Methods execute it. The command handler calls the
+method with the command's data.
 
 ```
 Command:     ShipOrder(order_id, tracking_number)
@@ -340,7 +347,7 @@ business operation in different tenses: imperative (command), present
 
 ## Anti-Patterns
 
-### Setter Methods Disguised as Business Methods
+### Don't give a setter a business name
 
 ```python
 # fragment
@@ -351,9 +358,9 @@ class Order:
         self.tracking_number = tracking_number
 ```
 
-This is just a setter with a fancy name. It doesn't validate preconditions,
-doesn't raise events, and doesn't express the full business operation. A real
-method captures the complete behavior.
+`set_shipped` is a setter with a business-sounding name. It doesn't validate
+preconditions, doesn't raise events, and doesn't express the full business
+operation. A real method captures the complete behavior.
 
 ### God Method That Does Everything
 
@@ -376,12 +383,12 @@ class Order:
 ```
 
 Each business operation should be its own method. `ship()`, `cancel()`, and
-`pay()` are different operations with different preconditions, different
-state changes, and different events. Merging them into a generic
-`update_status` loses the ubiquitous language and creates a maintenance
-nightmare.
+`pay()` are different operations with different preconditions, different state
+changes, and different events. A generic `update_status` method merges these
+operations, so the code loses the ubiquitous language. Every change to one
+operation also means editing a method that the other operations share.
 
-### Business Logic in Constructors
+### Keep business logic out of constructors
 
 ```python
 # fragment
@@ -396,10 +403,9 @@ class Order:
         self.raise_(OrderCreated(...))
 ```
 
-Protean's `defaults()` method is the right place for conditional default
-values. For business operations at creation time, use a class method or a
-separate `place()` / `create()` method that the handler calls after
-construction:
+Put conditional default values in Protean's `defaults()` method. For business
+operations at creation time, use a class method or a separate `place()` /
+`create()` method that the handler calls after construction:
 
 ```python
 --8<-- "patterns/encapsulate-state-changes/005.py:defaults_and_place"
@@ -407,7 +413,7 @@ construction:
 
 ---
 
-## Testing Benefits
+## Why are named methods easier to test?
 
 Encapsulated methods make domain logic directly testable without
 infrastructure:
@@ -416,25 +422,26 @@ infrastructure:
 --8<-- "patterns/encapsulate-state-changes/001.py:tests"
 ```
 
-No repository, no command, no handler, no UoW. Just construct the aggregate,
-call the method, assert the result. This is fast, focused, and comprehensive.
+No repository, no command, no handler, no UoW. Each test constructs the
+aggregate, calls the method, and asserts the result. These tests run fast and
+check each business operation on its own.
 
 ---
 
 ## When Not to Use This Pattern
 
-### Simple CRUD Without Business Rules
+### Skip the pattern for CRUD aggregates with no business rules
 
-If an aggregate is genuinely a data container with no business rules (no state
-machine, no preconditions, no events) direct field assignment is acceptable.
-But this is rare in a DDD system. If most of your aggregates look like data
-bags, consider whether DDD is the right approach for your domain.
+Some aggregates are data containers with no business rules: no state machine,
+no preconditions, no events. For such an aggregate, direct field assignment is
+acceptable. But this is rare in a DDD system. If most of your aggregates look
+like data bags, consider whether DDD is the right approach for your domain.
 
-### Bulk Data Loading
+### Let the framework set fields when it loads aggregates
 
 When hydrating aggregates from a database or event stream, the framework sets
 fields directly. This is internal framework behavior, not application-level
-code. Protean handles this transparently.
+code. Protean loads the fields without any code from you.
 
 ### Value Objects
 
@@ -476,7 +483,7 @@ wraps this replacement with validation:
 | Code readability | Mechanical field updates | Business-intent method calls |
 
 Aggregates express behavior through named methods. Handlers orchestrate. The
-aggregate is the authority on its own state transitions.
+aggregate alone decides which of its state transitions are allowed.
 
 ---
 

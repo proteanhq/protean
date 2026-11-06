@@ -1,4 +1,4 @@
-# CloudEvents as a Boundary Contract
+# Use CloudEvents as a boundary contract
 
 ## The Problem
 
@@ -21,8 +21,8 @@ If you expose the internal metadata format directly:
   observability tools don't recognize Protean's format. You lose the ecosystem
   of CloudEvents-compatible middleware.
 
-- **Bidirectional friction**: Consuming events *from* external systems requires
-  ad-hoc parsing of whatever format they chose.
+- **Ad-hoc inbound parsing**: To consume events *from* external systems, you
+  write ad-hoc parsing for whatever format each system chose.
 
 The root cause: **internal event metadata is optimized for the domain, not for
 interoperability**. Exposing it directly couples every external consumer to your
@@ -51,9 +51,9 @@ External System                Boundary                     Your Domain
 └──────────────────┘                      └─────────────────┘
 ```
 
-This mirrors the subscriber / ACL pattern that Protean already uses for
-consuming external events, except instead of translating external events
-*inward*, we also translate internal events *outward*.
+Protean already uses the subscriber / ACL pattern to translate external events
+*inward* when you consume them. With CloudEvents, Protean also translates
+internal events *outward*.
 
 ---
 
@@ -75,9 +75,9 @@ cloud_event = message.to_cloudevent()
 kafka_producer.send("orders", json.dumps(cloud_event))
 ```
 
-All required CloudEvents attributes (`specversion`, `id`, `type`, `source`)
-are derived automatically. Protean-specific metadata (causal chains, checksums,
-sequence tracking) rides alongside as `protean`-namespaced extension
+All required CloudEvents attributes (`specversion`, `id`, `type`, `source`) are
+derived automatically. Protean adds its own metadata (causal chains, checksums,
+sequence tracking) to the CloudEvent as `protean`-namespaced extension
 attributes.
 
 ### Consuming CloudEvents
@@ -107,7 +107,7 @@ source_uri = "https://orders.example.com"
 If not configured, Protean derives it from the domain name:
 `urn:protean:<normalized_domain_name>`.
 
-### Extension philosophy
+### How Protean uses CloudEvents extensions
 
 CloudEvents deliberately has a small core (4 required attributes) with an
 extension model for domain-specific concerns. Protean uses this exactly as
@@ -139,7 +139,7 @@ mechanics.
 --8<-- "patterns/cloudevents-interoperability/002.py:webhook"
 ```
 
-### Multi-domain Protean system
+### Connect two Protean services through CloudEvents
 
 Two Protean services communicate via CloudEvents over a message broker:
 
@@ -161,7 +161,8 @@ The correlation ID, causation ID, and checksum survive the round-trip via
 
 Internal metadata is optimized for DDD and event sourcing. CloudEvents is
 optimized for interoperability. These are different concerns. `to_cloudevent()`
-bridges the gap without contaminating either model.
+converts the internal metadata into a CloudEvent at serialization time and
+changes neither format.
 
 ### Adding CloudEvents-only fields to internal metadata
 
@@ -179,7 +180,7 @@ maintenance burden and divergence risk. Derive them at serialization time.
 CloudEvents is a wire format, not a storage format. Protean's internal format
 carries richer metadata (expected version, stream category, event store
 positions, processing priority) that CloudEvents doesn't represent. Use
-CloudEvents at the boundary; use Protean's native format internally.
+CloudEvents at the boundary. Inside your domain, use Protean's native format.
 
 ---
 

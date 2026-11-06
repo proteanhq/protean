@@ -3,46 +3,46 @@
 ## The Problem
 
 A command handler receives a `TransferMoney` command. It loads the source
-account, debits it, loads the target account, credits it, and persists both
-in the same transaction. The code looks clean and the test passes. Then it
-reaches production.
+account, debits it, loads the target account, credits it, and persists both in
+the same transaction. The code looks clean. The test passes. Then it reaches
+production.
 
 Two transfers involving the same account execute concurrently. Both load the
 account at version 5. Both try to write version 6. One succeeds, the other
-fails with a concurrency conflict. The user retries, and now the system must
-untangle which transfer succeeded, which failed, and whether any money was
+fails with a concurrency conflict. The user retries. Now the system must
+determine which transfer succeeded, which failed, and whether any money was
 lost.
 
 This is the cost of modifying multiple aggregates in a single transaction.
 
 The problems compound:
 
-- **Deadlocks**: Two transactions each hold a lock on one aggregate and wait for
-  a lock on the other. Database deadlock detection kills one transaction, but the
-  retry may deadlock again.
+- **Transactions deadlock**: Two transactions each hold a lock on one aggregate
+  and wait for a lock on the other. Database deadlock detection kills one
+  transaction, but the retry may deadlock again.
 
-- **Increased failure surface**: A transaction that touches two aggregates can
-  fail because of a conflict on *either* one. The probability of failure
-  increases multiplicatively, not additively, with each aggregate added to the
-  transaction.
+- **More aggregates give a transaction more ways to fail**: A transaction that
+  touches two aggregates can fail because of a conflict on *either* one. The
+  probability of failure increases multiplicatively, not additively, with each
+  aggregate added to the transaction.
 
-- **Coupling through transactions**: If Account and Inventory are modified in
+- **Transactions couple aggregates**: If Account and Inventory are modified in
   the same transaction, they cannot be stored in different databases, cannot be
   scaled independently, and cannot be deployed independently. The transaction
   boundary is a hard architectural constraint.
 
-- **Unclear rollback semantics**: If the credit succeeds but the debit fails,
+- **Rollback becomes unclear**: If the credit succeeds but the debit fails,
   what happens? The transaction rolls back both. But what if the credit had
-  already raised a domain event that was partially processed? Partial failures
-  in multi-aggregate transactions are difficult to reason about and harder to
-  recover from.
+  already raised a domain event, and a handler had partially processed it?
+  Partial failures in multi-aggregate transactions are difficult to reason
+  about and harder to recover from.
 
-- **Violated aggregate boundaries**: DDD defines an aggregate as the unit of
-  consistency. The boundary within which invariants are guaranteed. Modifying
-  two aggregates in one transaction blurs those boundaries. You're no longer
-  treating aggregates as independent consistency units; you're treating the
-  transaction as the consistency unit, which defeats the purpose of aggregate
-  design.
+- **Aggregate boundaries stop holding**: DDD defines an aggregate as the unit
+  of consistency. The boundary within which invariants are guaranteed. A
+  transaction that modifies two aggregates crosses those boundaries. You're no
+  longer treating aggregates as independent consistency units. You're treating
+  the transaction as the consistency unit, and that defeats the purpose of
+  aggregate design.
 
 The root cause: **the transaction boundary does not match the aggregate
 boundary**.
@@ -51,8 +51,9 @@ boundary**.
 
 ## The Pattern
 
-Modify **exactly one aggregate per transaction**. Cross-aggregate side effects
-flow through **domain events**, processed in their own separate transactions.
+Modify **exactly one aggregate per transaction**. **Domain events** carry
+cross-aggregate side effects, and handlers process each event in its own
+separate transaction.
 
 ```
 Anti-pattern:
@@ -77,10 +78,9 @@ link between them is a domain event: an asynchronous, reliable message that
 triggers the next step.
 
 This means cross-aggregate changes are **eventually consistent** rather than
-immediately consistent. The business must accept that there is a brief window
-between the first aggregate's change and the second aggregate's reaction. In
-practice, this window is milliseconds to seconds, and the business almost always
-tolerates it.
+immediately consistent. The business must accept a brief delay between the
+first aggregate's change and the second aggregate's reaction. In practice, the
+delay lasts milliseconds to seconds. The business almost always tolerates it.
 
 ---
 
@@ -88,7 +88,8 @@ tolerates it.
 
 ### Aggregates Are Consistency Boundaries
 
-This is definitional. In Eric Evans' original formulation, an aggregate is:
+That aggregates are consistency boundaries follows from the definition of an
+aggregate. In Eric Evans' original formulation, an aggregate is:
 
 > A cluster of associated objects that are treated as a unit for the purpose of
 > data changes. External references are restricted to one member of the
@@ -115,11 +116,11 @@ Most cross-aggregate operations don't require immediate consistency. Consider:
   is already asynchronous. Adding a brief delay for the order update is
   negligible.
 
-The business operations that truly require multi-aggregate atomicity are rare.
-When they arise, consider whether the aggregate boundaries are drawn correctly
--- perhaps those two "aggregates" should actually be one.
+Few business operations truly require multi-aggregate atomicity. When such
+operations arise, first question the aggregate boundaries. Perhaps those two
+"aggregates" should actually be one.
 
-### Independent Scalability
+### Aggregates scale independently
 
 When each aggregate is its own transaction, aggregates can be:
 
@@ -139,9 +140,10 @@ though it doesn't enforce it.
 
 ### Unit of Work
 
-Protean's Unit of Work (UoW) manages the transaction for a single operation.
-When a command handler or application service runs inside a UoW, all changes
-to aggregates within that UoW are persisted atomically.
+Protean's Unit of Work (UoW) opens the transaction for a single operation and
+commits it when the operation succeeds. When a command handler or application
+service runs inside a UoW, all changes to aggregates within that UoW are
+persisted atomically.
 
 The intended usage: one aggregate per UoW.
 
@@ -162,9 +164,9 @@ raises an event, Protean stores it and delivers it to registered handlers.
 --8<-- "patterns/one-aggregate-per-transaction/001.py:event"
 ```
 
-The event carries all the data the downstream handler needs. The handler
-stays with `Order`, the aggregate that owns the event, and does not write
-`Inventory` itself. It issues one `ReserveStock` command for each product, and
+The event carries all the data the downstream handler needs. The handler stays
+with `Order`, the aggregate that owns the event. The handler does not write
+`Inventory` itself. It issues one `ReserveStock` command for each product.
 `Inventory`'s command handler does the write:
 
 ```python
@@ -185,20 +187,20 @@ compensating event or alert for manual intervention.
 This is the natural architecture: aggregates are modified one at a time, events
 carry information between them, and failures are contained.
 
-Events are delivered at least once, so the same `OrderPlaced` can arrive
-twice. The command carries the order id, and the inventory command handler
-returns without changes when it has already applied that order.
+Events are delivered at least once, so the same `OrderPlaced` can arrive twice.
+The command carries the order id. The inventory command handler returns without
+changes when it has already applied that order.
 
 ---
 
 ## Applying the Pattern
 
-### The Money Transfer Example
+### Transfer money between two accounts
 
 The classic example of a multi-aggregate operation: transferring money between
 two accounts.
 
-**Anti-pattern: both accounts in one transaction**
+**Anti-pattern: change both accounts in one transaction**
 
 ```python
 # fragment
@@ -224,12 +226,12 @@ def transfer(self, command: TransferMoney):
 ```
 
 **What about failure?** If the credit fails (target account doesn't exist,
-database error), the debit has already been committed. The event handler retries.
-If retries are exhausted, a compensating action re-credits the source account.
-This is the saga pattern, complex, but each step is a single-aggregate
-transaction, making failures predictable and recoverable.
+database error), the debit has already been committed. The event handler
+retries. If retries are exhausted, a compensating action re-credits the source
+account. This is the saga pattern. It is more complex, but each step is a
+single-aggregate transaction, so failures are predictable and recoverable.
 
-### Order Fulfillment Pipeline
+### Fulfill an order across several aggregates
 
 A more realistic example with multiple downstream aggregates:
 
@@ -258,32 +260,34 @@ aggregates, and then the command handler modifies only one:
 ```
 
 The domain service reads from `Account` and `CreditPolicy` but modifies
-neither. The command handler modifies only `Account`. The pattern holds.
+neither. The command handler modifies only `Account`. The operation still
+modifies one aggregate per transaction.
 
 ---
 
-## When to Bend the Rule
+## When to make an exception to the rule
 
-### True Business Atomicity Requirements
+### When the business truly requires atomic changes
 
 Occasionally, the business genuinely requires two things to change atomically.
-If you encounter this, first question whether the aggregate boundaries are
-correct. Often, the data that must be consistent together belongs in the same
+If you meet such a requirement, first ask: are the aggregate boundaries
+correct? Often, the data that must be consistent together belongs in the same
 aggregate.
 
-If after analysis you're certain the data belongs in separate aggregates but
-must be atomically consistent, you have a modeling tension. Options:
+After analysis, you may be certain the data belongs in separate aggregates but
+must be atomically consistent. In that case, you have a modeling tension.
+Options:
 
 1. **Merge the aggregates**: If they must always change together, they may not
    be truly separate aggregates.
 2. **Accept eventual consistency with compensating actions**: Most "must be
-   atomic" requirements soften when you discuss the actual business impact of
-   a brief inconsistency window.
+   atomic" requirements allow a short delay once you discuss the actual
+   business impact of a brief inconsistency.
 3. **Use database-level transactions as a conscious trade-off**: This sacrifices
    independent scalability for immediate consistency. Document it as technical
    debt.
 
-### Bulk Operations
+### Process bulk operations one aggregate at a time
 
 Some operations naturally batch changes to many instances of the same aggregate
 type (e.g., closing all orders past a deadline). These are still
@@ -298,7 +302,7 @@ method shares the handler's UoW. An application service method can open a
 
 ---
 
-## Signs You're Violating the Pattern
+## How to tell you're violating the pattern
 
 1. **Your handler calls `repo.add()` for more than one aggregate type.**
    Each `repo.add()` is a persistence operation. Multiple adds for different
@@ -332,8 +336,7 @@ method shares the handler's UoW. An application service method can open a
 | Testing | Must set up multiple aggregates | Test each aggregate independently |
 | Protean support | Possible but not recommended | Natural fit with UoW + events |
 
-One aggregate, one transaction, one commit. Everything else flows through
-events.
+One aggregate, one transaction, one commit. Events trigger every other change.
 
 ---
 

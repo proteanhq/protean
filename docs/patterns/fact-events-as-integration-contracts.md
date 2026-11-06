@@ -55,33 +55,36 @@ class CustomerEventSubscriber(BaseSubscriber):
     # ... and so on for every event type
 ```
 
-This creates a cascade of problems:
+This subscriber design causes five problems:
 
-- **Taxonomy coupling**: The Fulfillment domain must know about every granular
-  event type the Customer domain publishes. When the Customer domain adds
+- **The Fulfillment domain depends on the Customer domain's event taxonomy**:
+  The Fulfillment domain must know about every granular event type the Customer
+  domain publishes. When the Customer domain adds
   `CustomerPreferredLanguageSet`, the Fulfillment domain must decide whether to
-  handle it. Even if it doesn't care. Miss one event and local state drifts.
+  handle it. Even if it doesn't care. When the Fulfillment domain misses one
+  event, its local state stops matching the customer's current state.
 
-- **State reconstruction from deltas**: The subscriber must process events in
-  order and incrementally update its local model. If events arrive out of order,
-  or if the subscriber misses one, the local representation becomes inconsistent.
-  Recovering requires replaying the entire event stream from the beginning.
+- **The subscriber rebuilds state from deltas**: The subscriber must process
+  events in order and incrementally update its local model. Events can arrive
+  out of order, and the subscriber can miss one. In either case, the local
+  representation becomes inconsistent. To recover, the subscriber must replay
+  the entire event stream from the beginning.
 
-- **Brittle initialization**: When a new customer is created, the Fulfillment
-  domain must handle the `CustomerRegistered` event and then correctly process
-  every subsequent delta. If the Fulfillment domain comes online after the
-  customer already exists, it must replay every event to reconstruct the current
-  state.
+- **Initialization depends on every past event**: When a new customer is
+  created, the Fulfillment domain must handle the `CustomerRegistered` event.
+  It must then correctly process every subsequent delta. The Fulfillment domain
+  can come online after the customer already exists. It must then replay every
+  event to reconstruct the current state.
 
-- **Schema evolution amplified**: Every time the Customer domain adds, renames,
-  or restructures a granular event, every consuming domain must update its
-  subscriber. With five consuming domains and twelve event types, a single event
-  rename requires coordination across five codebases.
+- **Each schema change reaches every consumer**: Every time the Customer domain
+  adds, renames, or restructures a granular event, every consuming domain must
+  update its subscriber. With five consuming domains and twelve event types, a
+  single event rename requires coordination across five codebases.
 
-- **Testing complexity**: Testing the subscriber requires constructing sequences
-  of granular events that simulate realistic state transitions. A test for
-  "customer with verified email and updated address" requires generating three
-  events in the correct order.
+- **Tests need ordered event sequences**: To test the subscriber, you must
+  construct sequences of granular events that simulate realistic state
+  transitions. A test for "customer with verified email and updated address"
+  requires generating three events in the correct order.
 
 The root cause: **consuming granular domain events forces external contexts
 to reconstruct aggregate state from a stream of deltas, coupling them to the
@@ -95,7 +98,8 @@ Enable `fact_events=True` on aggregates whose state is consumed by other
 bounded contexts. Fact events auto-generate a **complete snapshot** of the
 aggregate's state after every persistence operation.
 
-This creates a **dual-stream architecture**:
+An aggregate with `fact_events=True` publishes two kinds of events on two
+streams, a **dual-stream architecture**:
 
 ```
                           Customer Aggregate
@@ -127,7 +131,7 @@ The consuming domain receives a single event type (`CustomerFactEvent`) that
 always contains the complete customer state. It replaces its local
 representation wholesale, regardless of what specific change triggered the
 event. No taxonomy coupling. No delta reconstruction. A duplicate snapshot does
-no harm, and a missed one is repaired by the next. Snapshots that arrive out of
+no harm. The next snapshot repairs a missed one. Snapshots that arrive out of
 order still need a version check, or an older snapshot overwrites a newer one.
 
 ---
@@ -144,9 +148,9 @@ contexts consume:
 ```
 
 With `fact_events=True`, Protean auto-generates a `CustomerFactEvent` class
-mirroring every field on the aggregate. After every successful persistence
-(add or update), a `CustomerFactEvent` is raised containing the full aggregate
-state at that point in time.
+mirroring every field on the aggregate. After every successful persistence (add
+or update), Protean raises a `CustomerFactEvent` that contains the full
+aggregate state at that point in time.
 
 The granular delta events (`CustomerNameCorrected`, `CustomerAddressChanged`,
 `CustomerTierUpgraded`) are still raised explicitly in each method. Internal
@@ -161,8 +165,8 @@ granular delta events. They react to **specific changes** with targeted logic:
 --8<-- "patterns/fact-events-as-integration-contracts/002.py:delta_events"
 ```
 
-These handlers need to know **what** changed, not the full state. Delta events
-are the right tool for internal reactions to specific state transitions.
+These handlers need to know **what** changed, not the full state. Use delta
+events for internal reactions to specific state transitions.
 
 ### Step 3: External consumers use fact events
 
@@ -174,17 +178,18 @@ field was modified:
 --8<-- "patterns/fact-events-as-integration-contracts/003.py:subscriber"
 ```
 
-The subscriber handles **one event type** (the fact event) and always
+The subscriber handles **one event type** (the fact event). It always
 overwrites the entire local representation. It doesn't matter whether the
 customer changed their name, address, phone, or tier. The subscriber receives
 the current state and replaces its local copy.
 
-When the Customer domain later adds `preferred_language` to the aggregate,
-the fact event automatically includes it. The Fulfillment subscriber can
-choose to map it to a local field or ignore it. No new event type
-to handle. No risk of silent drift.
+When the Customer domain later adds `preferred_language` to the aggregate, the
+fact event automatically includes it. The Fulfillment subscriber can choose to
+map it to a local field or ignore it. No new event type to handle. The
+subscriber cannot miss a new event type and leave its local copy out of date
+without any error.
 
-### Multiple external consumers
+### Serve multiple external consumers from one stream
 
 The fact event stream can serve any number of consuming domains. Each extracts
 only the fields it needs:
@@ -234,8 +239,9 @@ This couples the consuming domain to the producer's event taxonomy. Every new
 event type in the Customer domain creates work (or risk) in every consuming
 domain.
 
-**Fix:** Subscribe to the fact event stream instead. One event type, one
-handler, full state on every change.
+**To fix this coupling,** subscribe to the fact event stream instead. The
+subscriber then needs one handler for one event type. That event carries the
+full state on every change.
 
 ### Using fact events for internal reactions
 
@@ -264,13 +270,13 @@ class CustomerInternalHandler(BaseEventHandler):
         # Fragile, error-prone, and defeats the purpose of events
 ```
 
-Fact events carry **what the state is**, not **what happened**. Internal
-consumers that need to react to specific operations should use delta events
-that carry semantic meaning: `CustomerTierUpgraded` tells the handler exactly
-what happened; a fact event requires the handler to diff state.
+Fact events carry **what the state is**, not **what happened**. To react to
+specific operations, internal consumers should use delta events, because delta
+events carry semantic meaning. `CustomerTierUpgraded` tells the handler exactly
+what happened. A fact event requires the handler to diff state.
 
-**Fix:** Use delta events for internal reactions. Use fact events for
-external state transfer.
+**To fix this misuse,** use delta events for internal reactions. Use fact
+events for external state transfer.
 
 ### Publishing only fact events with no delta events
 
@@ -298,10 +304,11 @@ class Customer:
 Without delta events, internal consumers lose the ability to react to specific
 state transitions. The compliance handler cannot distinguish a name correction
 from a tier upgrade. The notification handler cannot send a targeted email.
-Every internal consumer must diff state, just like the anti-pattern above.
+Every internal consumer must diff state, as in the "Using fact events for
+internal reactions" anti-pattern above.
 
-**Fix:** Raise delta events for meaningful operations alongside fact events.
-The two mechanisms serve different audiences.
+**To fix this gap,** raise delta events for meaningful operations alongside
+fact events. The two mechanisms serve different audiences.
 
 ---
 

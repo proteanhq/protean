@@ -2,8 +2,8 @@
 
 ## The Problem
 
-A command expresses an *intent* to change state, and many intents are only
-valid for a window of time. Consider:
+A command expresses an *intent* to change state. Many intents are valid only
+for a window of time. Consider:
 
 - "Charge this card before the checkout session expires."
 - "Apply this price quote, valid for 5 minutes."
@@ -12,13 +12,13 @@ valid for a window of time. Consider:
 In an asynchronous system, a command can sit in a queue far longer than its
 intent remains valid: a deploy pauses workers, a backlog drains slowly, an
 outage recovers and replays hours of queued work. When the handler finally
-runs, executing the command may be worse than doing nothing: a charge against
-an abandoned cart, a passcode for a session that no longer exists.
+runs, executing the command may be worse than doing nothing. Examples include a
+charge against an abandoned cart and a passcode for a session that has ended.
 
 Protean lets a command carry a **deadline**. If the deadline has passed by the
-time a handler is about to execute, the command is not run. See the
-[Deadlines and Timeouts](../guides/change-state/commands.md#deadlines-and-timeouts)
-guide for the mechanics; this pattern covers *when* and *why*.
+time a handler is about to execute, the command is not run. See the [Deadlines
+and Timeouts](../guides/change-state/commands.md#deadlines-and-timeouts) guide
+for the mechanics. This page explains *when* and *why* to use a deadline.
 
 ---
 
@@ -30,23 +30,26 @@ as it was. Expiry is therefore not a domain-rule violation. It is a policy at
 the *delivery boundary*, deciding whether stale work is allowed to reach the
 model at all.
 
-This matters for how you reason about it. A `CommandExpiredError` is not the
-same kind of thing as a business-rule failure like `InsufficientStock`. The
-latter says "the model refused this change"; the former says "this change never
-got a chance to be attempted." Don't model expiry as a domain event or bake it
-into aggregate logic, keep it at the edge, where `domain.process()` and the engine live.
+The difference between a delivery policy and a domain rule matters for how you
+reason about expiry. A `CommandExpiredError` is not the same kind of thing as a
+business-rule failure like `InsufficientStock`. `InsufficientStock` says "the
+model refused this change". `CommandExpiredError` says "this change never got a
+chance to be attempted."" Don't model expiry as a domain event or put it in
+aggregate logic. Check expiry at the delivery boundary, in `domain.process()`
+and the engine.
 
-The real risk expiry introduces is **lost intent**: the requested change won't
-happen, and *something* may need to know. Whether that "something" is the
-caller, an operator, or a compensating process is a business decision. That is
-exactly why Protean makes expiry *observable* rather than deciding for you.
+The real risk of expiry is **lost intent**: the requested change won't happen.
+*Something* may need to know that the change was lost. The business decides
+whether that "something" is the caller, an operator, or a compensating process.
+That is exactly why Protean makes expiry *observable* rather than deciding for
+you.
 
 ---
 
-## The Synchronous / Asynchronous Asymmetry
+## Why does a deadline behave differently in sync and async processing?
 
-The same deadline behaves differently depending on how the command is
-processed, and the difference is intentional:
+The same deadline behaves differently in synchronous and asynchronous
+processing. Protean does this on purpose:
 
 | | Synchronous | Asynchronous |
 |---|---|---|
@@ -55,29 +58,30 @@ processed, and the difference is intentional:
 | Trace of the attempt | Rejected **before** the event-store write; no record of a half-attempt | Command was stored & acked; later skipped in the queue |
 | Who learns it was lost | The caller, synchronously | Operators, via metric + trace |
 
-**Synchronous** processing keeps the caller in the loop: they are still holding
-the request, so raising lets them retry with a fresh deadline, fail the user's
-operation, or choose a fallback. This is the strong-feedback path.
+**Synchronous** processing tells the caller directly. The caller is still
+waiting on the request, so the raised error lets them retry with a fresh
+deadline, fail the user's operation, or choose a fallback. This is the
+strong-feedback path.
 
 **Asynchronous** processing has no one to tell, the caller got a position back
 the moment the command was stored. So the engine acknowledges the expired
-command (its read position advances, so it is **not** retried; a retry would
-only expire again) and records it for operators rather than raising into the
-void. Reliability here comes from *observability*, not from an exception.
+command and records it for operators instead of raising an error. The engine
+advances the command's read position and does **not** retry it, since a retry
+would only expire again. Reliability here comes from *observability*, not from
+an exception.
 
 ---
 
 ## Make Async Expiry Observable
 
-Because async expiry silently drops intent, treat its telemetry as
-load-bearing:
+Because async expiry silently drops intent, you need to monitor its telemetry:
 
 - The `protean.command.expired` counter (labelled by `command_type`)
-  increments on every expiry, sync or async. **Alert on it** if dropped
-  commands have business consequences.
-- A `handler.skipped` trace event is emitted with the command type and the
-  exceeded deadline, so an expired command is visible in the lifecycle view
-  rather than vanishing.
+  increments on every expiry, sync or async. If dropped commands have business
+  consequences, **alert on it**.
+- The engine emits a `handler.skipped` trace event with the command type and
+  the exceeded deadline, so an expired command appears in the lifecycle view
+  instead of vanishing.
 
 If an expired command needs *active* recovery (notifying a customer, releasing
 a hold) react to it explicitly (e.g. a monitor on the metric, or a [process
@@ -89,19 +93,18 @@ decision.
 
 ## Deadlines Bound Staleness, Not Failure
 
-A deadline answers "is this still worth doing?". It does **not** make
-processing more reliable on its own. The complete picture pairs three
-mechanisms:
+A deadline lets you answer "is this still worth doing?". It does **not** make
+processing more reliable on its own. You get complete behaviour by combining
+three mechanisms:
 
 - **Deadline**: Don't execute work that is no longer valid.
-- **[Retry with backoff](../guides/change-state/command-handlers.md#error-handling)**:
-  recover from transient faults. Retries should respect the deadline: stop
-  retrying once it has passed.
+- **[Retry with backoff](../guides/change-state/command-handlers.md#handle-errors-in-command-handlers)**:
+  recover from transient faults. Retries should respect the deadline: once it
+  has passed, stop retrying.
 - **Dead-lettering**: Quarantine what can neither succeed nor expire cleanly.
 
-Reaching for a deadline to "stop runaway retries" is the wrong tool. That is
-the retry policy's job. Use a deadline only when the *intent itself* has a
-validity window.
+Don't use a deadline to "stop runaway retries". That is the retry policy's job.
+Use a deadline only when the *intent itself* has a validity window.
 
 ---
 
@@ -110,13 +113,14 @@ validity window.
 Protean ships with **no default deadline**: commands never expire unless asked
 to. This is deliberate. A surprise global timeout silently discards valid
 intent during exactly the moments you most want durability, deploys, backlogs,
-recovery. Commands that sit in a queue across a deploy and then process
-correctly are a *feature*, not a bug.
+recovery. When commands wait in a queue during a deploy and then process
+correctly, the system is working as designed.
 
-When you do want blanket protection, opt in at the narrowest scope that fits:
+When you do want commands to expire, opt in at the narrowest possible scope:
 
 1. **Per command**: Pass `deadline`/`timeout` to `domain.process()` for
-   intents with a genuine, specific validity window. The clearest signal.
+   intents with a genuine, specific validity window. This scope shows the
+   intent most clearly to readers of the code.
 2. **Per handler**: `@domain.command_handler(timeout=...)` when every command
    for an aggregate shares a latency budget.
 3. **Per domain**: `command_default_timeout` as a last-resort safety net.
@@ -126,7 +130,7 @@ too coarse on its own; let specific commands and handlers refine it.
 
 ---
 
-## Related
+## See also
 
 - [Commands → Deadlines and Timeouts](../guides/change-state/commands.md#deadlines-and-timeouts): How to set deadlines.
 - [Command Idempotency](command-idempotency.md): The complementary "ran more than once" problem.

@@ -1,14 +1,14 @@
-# Temporal Queries for Audit, Debugging, and Compliance
+# Query past aggregate state for audit, debugging, and compliance
 
 ## The Problem
 
 Event-sourced systems store the complete history of every aggregate as an
-ordered sequence of events. This history is one of the key selling points of
-event sourcing. In theory, you can answer questions like "what was this
+ordered sequence of events. This history is one of the main reasons teams
+choose event sourcing. In theory, you can answer questions like "what was this
 account's balance when the fraudulent transaction occurred?" or "what did this
 customer's profile look like when we approved the loan?"
 
-In practice, teams rarely operationalize this capability. When an incident
+In practice, teams rarely build tools that use this history. When an incident
 investigation, compliance audit, or customer support case requires
 reconstructing past state, engineers fall back to ad-hoc approaches:
 
@@ -72,24 +72,24 @@ Two temporal dimensions are supported:
   of the end-of-quarter reporting date."
 
 The returned aggregate is **read-only**. Protean marks it with
-`_is_temporal=True`, and any attempt to call `raise_()` on it raises
-`IncorrectUsageError`. This makes temporal aggregates safe to expose
-through API endpoints, customer support tools, and compliance dashboards
-without risk of accidental mutation.
+`_is_temporal=True`. A call to `raise_()` on the marked aggregate raises
+`IncorrectUsageError`. This makes temporal aggregates safe to expose through
+API endpoints, customer support tools, and compliance dashboards without risk
+of accidental mutation.
 
 Key behaviors:
 
-1. **Identity map bypass**: Temporal queries always bypass the Unit of
-   Work's identity map. Loading the same aggregate at version 5 and
+1. **Temporal queries skip the identity map**: Temporal queries always bypass
+   the Unit of Work's identity map. Loading the same aggregate at version 5 and
    version 10 in the same transaction returns two distinct objects.
 
-2. **Snapshot awareness**: `at_version` uses existing snapshots when
-   the snapshot version is at or below the requested version. `as_of`
+2. **Only `at_version` reads snapshots**: `at_version` uses existing snapshots
+   when the snapshot version is at or below the requested version. `as_of`
    skips snapshots entirely and replays from position 0.
 
-3. **Mutual exclusivity**: You cannot specify both `at_version` and
-   `as_of` in the same call. They represent different dimensions of
-   history and combining them would be ambiguous.
+3. **Pass one temporal parameter per call**: You cannot specify both
+   `at_version` and `as_of` in the same call. They represent different
+   dimensions of history and combining them would be ambiguous.
 
 Design temporal query endpoints for three categories of consumers:
 
@@ -104,7 +104,7 @@ Design temporal query endpoints for three categories of consumers:
 
 ## Applying the Pattern
 
-### The event-sourced aggregate
+### Define the event-sourced aggregate
 
 A financial compliance domain with an `Account` aggregate that tracks
 identity verification and transaction limits:
@@ -118,8 +118,8 @@ identity verification and transaction limits:
 Reconstruct the account after a specific number of events. Version 0 is
 the state after the first event. Version 1 adds the second event, etc.
 
-The examples on this page read an account with five events. This function
-writes them, in three saves:
+The examples on this page read an account with five events. The
+`record_account_history` function below writes the five events in three saves:
 
 ```python
 --8<-- "patterns/temporal-queries/001.py:history"
@@ -144,7 +144,7 @@ written on or before that moment are applied.
     Protean normalizes timezone-naive and timezone-aware timestamps before
     comparison. Pass your `as_of` timestamp in UTC for consistent results.
 
-### Application service exposing temporal queries
+### Expose temporal queries through an application service
 
 Wrap temporal queries in an application service that provides a clean API
 for compliance and support teams:
@@ -153,16 +153,16 @@ for compliance and support teams:
 --8<-- "patterns/temporal-queries/001.py:audit_service"
 ```
 
-### API endpoint for audit trail
+### Serve the audit trail through an API endpoint
 
-Expose temporal queries through a REST API so compliance and support teams
-can self-serve:
+Expose temporal queries through a REST API so compliance and support teams can
+run them without help from engineers:
 
 ```python
 --8<-- "patterns/temporal-queries/001.py:api"
 ```
 
-### Read-only safety
+### How Protean keeps temporal aggregates read-only
 
 Protean sets `_is_temporal=True` on every aggregate returned by a temporal
 query. The `raise_()` method checks this flag before accepting new events:
@@ -180,7 +180,7 @@ reporting tools without defensive wrappers.
     attributes. However, those changes will never be persisted because no
     events are raised.
 
-### Identity map bypass
+### How temporal queries bypass the identity map
 
 Within a Unit of Work, once `get()` loads an aggregate or `repo.add()` saves
 it, later `get()` calls return that same instance from the identity map.
@@ -239,10 +239,10 @@ def get_account_as_of(account_id: str, cutoff: datetime) -> dict:
     return state
 ```
 
-This duplicates timestamp parsing, timezone normalization, and event
-filtering that the event store handles internally. It also fails across
-adapters (PostgreSQL returns `datetime` objects; memory returns ISO
-strings). Use the repository instead:
+This code repeats the timestamp parsing, timezone normalization, and event
+filtering that the event store performs internally. It also fails across
+adapters (PostgreSQL returns `datetime` objects; memory returns ISO strings).
+Use the repository instead:
 
 ```python
 # fragment
@@ -260,8 +260,9 @@ def rollback_account(account_id: str, version: int) -> None:
     repo.add(old_account)  # Saves nothing: the old state has no new events
 ```
 
-Temporal aggregates are read-only. If you need to "undo" a change, model
-the reversal as an explicit domain operation on the **current** aggregate:
+Temporal aggregates are read-only at the domain level, because `raise_()`
+rejects new events on them. If you need to "undo" a change, model the reversal
+as an explicit domain operation on the **current** aggregate:
 
 ```python
 --8<-- "patterns/temporal-queries/001.py:restore"

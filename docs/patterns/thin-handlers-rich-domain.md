@@ -1,4 +1,4 @@
-# Thin Handlers, Rich Domain
+# Keep handlers thin and the domain rich
 
 ## The Problem
 
@@ -64,30 +64,32 @@ This handler is 40 lines of business logic. It validates, calculates, mutates,
 decides, and raises events. The `Order` aggregate is a passive data container
 that the handler manipulates.
 
-This is the **anemic domain model**. An anti-pattern where domain objects carry
-data but no behavior, and business logic lives in service layers (handlers,
-application services, utility functions).
+This is the **anemic domain model**. In this anti-pattern, domain objects carry
+data but no behavior. Service layers (handlers, application services, utility
+functions) contain the business logic.
 
 The consequences:
 
-- **Logic duplication**: Another handler that processes admin overrides
-  reimplements the refund calculation. A batch job that auto-refunds expired
-  subscriptions has its own version. Each diverges slightly over time.
+- **Handlers duplicate the logic**: A second handler, for admin overrides,
+  reimplements the refund calculation. A batch job auto-refunds expired
+  subscriptions with its own version of the calculation. Each diverges slightly
+  over time.
 
-- **Untestable business logic**: To test refund eligibility, you need to
-  construct a command, set up a repository, create a handler instance, and run
-  it within a UoW. The business rule is buried inside infrastructure.
+- **You cannot test the business logic on its own**: To test refund
+  eligibility, you need to construct a command, set up a repository, create a
+  handler instance, and run it within a UoW. The handler mixes the business
+  rule with infrastructure code.
 
-- **Hidden dependencies**: The handler knows about refund windows, partial
-  refunds, shipment interception, and warehouse notifications. These are
-  domain concerns scattered across infrastructure code.
+- **The handler hides domain dependencies**: The handler knows about refund
+  windows, partial refunds, shipment interception, and warehouse notifications.
+  These are domain concerns scattered across infrastructure code.
 
-- **Aggregate bypass**: Since the aggregate has no methods, nothing prevents
-  other code from setting `order.status = "refund_requested"` without
-  checking eligibility or raising events.
+- **Other code can bypass the aggregate**: Since the aggregate has no methods,
+  nothing prevents other code from setting `order.status = "refund_requested"`
+  without checking eligibility or raising events.
 
-The root cause: **behavior is in the wrong place**. The handler should
-orchestrate; the domain model should think.
+The root cause: **behavior is in the wrong place**. The handler should load,
+call and save. The domain model should make the business decisions.
 
 ---
 
@@ -126,7 +128,7 @@ Load. Call. Save. Everything else belongs in the domain model.
 
 ## Applying the Pattern
 
-### Before: Thick Handler
+### Before: the handler contains the business logic
 
 ```python
 # fragment
@@ -160,7 +162,7 @@ def request_refund(self, command: RequestRefund):
     repo.add(order)
 ```
 
-### After: Thin Handler, Rich Aggregate
+### After: the aggregate contains the business logic
 
 ```python
 --8<-- "patterns/thin-handlers-rich-domain/refunds/domain.py:aggregate"
@@ -172,9 +174,9 @@ clear, named methods with specific responsibilities.
 
 ---
 
-## Where Logic Lives
+## Which domain element should contain the logic?
 
-### Aggregate Methods: Single-Aggregate Business Rules
+### Put single-aggregate business rules in aggregate methods
 
 Logic that depends only on the aggregate's own state belongs in aggregate
 methods:
@@ -190,7 +192,7 @@ tracking) is in the aggregate. The handler is:
 --8<-- "patterns/thin-handlers-rich-domain/001.py:handler"
 ```
 
-### Domain Services: Cross-Aggregate Coordination
+### Put cross-aggregate coordination in domain services
 
 Logic that reads from multiple aggregates but modifies only one belongs in a
 domain service:
@@ -201,10 +203,11 @@ domain service:
 ```
 
 The handler loads both aggregates and calls the domain service. The domain
-service coordinates the validation logic. The aggregate's `debit()` method
-handles the actual state change. Each component has a clear responsibility.
+service runs the validation across both aggregates. The aggregate's `debit()`
+method makes the actual state change. Each component has a clear
+responsibility.
 
-### Value Objects: Concept-Level Logic
+### Put concept-level logic in value objects
 
 Logic intrinsic to a domain concept belongs in the value object:
 
@@ -212,15 +215,15 @@ Logic intrinsic to a domain concept belongs in the value object:
 --8<-- "patterns/thin-handlers-rich-domain/003.py:money"
 ```
 
-Currency-matching logic lives in `Money`, not in the handler that adds two
-monetary amounts.
+`Money` checks that two amounts share a currency. The handler that adds two
+monetary amounts does not check the currency itself.
 
 ---
 
-## The Three-Line Handler Test
+## Test whether your handler needs more than three lines
 
-If your handler has more than the three canonical lines (load, call, save),
-ask whether the extra logic belongs in the domain model:
+Your handler may have more than the three canonical lines (load, call, save).
+In that case, ask whether the extra logic belongs in the domain model:
 
 | Handler Line | Belongs In Handler? | Move To |
 |-------------|--------------------|----|
@@ -233,40 +236,38 @@ ask whether the extra logic belongs in the domain model:
 | `if user.role != "admin"` | Maybe | Handler (Layer 4 contextual check) |
 | `service.validate(a, b)` | Yes | Domain service (cross-aggregate) |
 
-The handler is the **coordinator**, not the **decision-maker**.
+The handler sequences the calls. The domain model makes the business decisions.
 
 ---
 
-## Signs Your Handler Is Too Thick
+## How can you tell your handler is too thick?
 
-1. **If-else business logic**: Conditional branching based on aggregate state
-   should be inside the aggregate.
+1. **The handler branches on business rules**: Put conditional branching based
+   on aggregate state inside the aggregate.
 
-2. **Calculations**: Computing amounts, percentages, dates, or derived values
-   belongs in the aggregate or a domain service.
+2. **The handler calculates values**: Compute amounts, percentages, dates, or
+   derived values in the aggregate or a domain service.
 
-3. **Multiple aggregate method calls**: If the handler calls several methods
-   in sequence on the same aggregate, those methods should be composed into a
-   single higher-level method on the aggregate.
+3. **The handler calls several aggregate methods**: If the handler calls
+   several methods in sequence on the same aggregate, compose those methods
+   into a single higher-level method on the aggregate.
 
-4. **Event raising**: Events should be raised inside aggregate methods, not
-   in the handler.
+4. **The handler raises events**: Raise events inside aggregate methods only.
 
-5. **Domain knowledge**: If the handler "knows" business rules (refund windows,
-   discount calculations, eligibility criteria), that knowledge belongs in the
-   domain model.
+5. **The handler checks business rules**: If the handler checks business rules
+   (refund windows, discount calculations, eligibility criteria), move those
+   rules into the domain model.
 
-6. **More than 10 lines of non-infrastructure code**: A handler that's longer
-   than load-call-save is a code smell.
+6. **The handler has more than 10 lines of non-infrastructure code**: A handler
+   that's longer than load-call-save is a code smell.
 
 ---
 
-## Testing Benefits
+## How do thin handlers make testing easier?
 
-The most compelling reason for thin handlers: **domain logic becomes directly
-testable**.
+The main reason for thin handlers: **you can test domain logic directly**.
 
-### Testing with Thick Handlers (Hard)
+### Test through thick handlers (hard)
 
 ```python
 # fragment
@@ -295,7 +296,7 @@ class TestRefund:
             assert updated.status == "refund_requested"
 ```
 
-### Testing with Thin Handlers (Easy)
+### Test with thin handlers (easy)
 
 The `test_domain` fixture comes from a `conftest.py` next to the tests. It
 initializes the domain and opens a domain context, so the aggregate can raise
@@ -326,11 +327,11 @@ Event handlers should be equally thin:
 --8<-- "patterns/thin-handlers-rich-domain/004.py:event_handler"
 ```
 
-The reservation logic (checking availability, preventing double-reservation,
-updating quantities) lives in `Inventory.reserve()`, not in the handler.
-`OrderPlaced` belongs to `Order`, so `stream_category` points the handler at the
-order stream. Without it the handler would listen to the inventory stream and
-never see the event.
+`Inventory.reserve()` contains the reservation logic (checking availability,
+preventing double-reservation, updating quantities). The handler only calls it.
+`OrderPlaced` belongs to `Order`, so `stream_category` points the handler at
+the order stream. Without it the handler would listen to the inventory stream
+and never see the event.
 
 ---
 
@@ -342,8 +343,8 @@ Application services orchestrate use cases and should also be thin:
 --8<-- "patterns/thin-handlers-rich-domain/005.py:application_service"
 ```
 
-Load or create, call domain methods, save. The application service coordinates
-the sequence; the domain model contains the logic.
+Load or create, call domain methods, save. The application service runs the
+steps in order. The domain model contains the business logic.
 
 ---
 
@@ -351,16 +352,16 @@ the sequence; the domain model contains the logic.
 
 Some legitimate additions to the three-line pattern:
 
-### Loading Additional Data for Domain Services
+### Load additional data for domain services
 
 ```python
 --8<-- "patterns/thin-handlers-rich-domain/002.py:handler"
 ```
 
-Loading a second aggregate for a domain service is fine. The handler is still
-just orchestrating.
+The handler can load a second aggregate for a domain service. The handler is
+still just orchestrating.
 
-### Creating New Aggregates
+### Create new aggregates
 
 ```python
 # fragment
@@ -376,9 +377,10 @@ def place_order(self, command: PlaceOrder):
     repo.add(order)
 ```
 
-Construction with multiple `add_item` calls is orchestration, not logic.
+The handler builds the order with multiple `add_item` calls. That code
+orchestrates aggregate methods and contains no business logic.
 
-### Layer 4 Guards
+### Apply Layer 4 guards in the handler
 
 ```python
 # fragment
@@ -428,4 +430,5 @@ business rules, the rules are in the wrong place.
 
     - [Command Handlers](../guides/change-state/command-handlers.md): Defining and implementing command handlers.
     - [Application Services](../guides/change-state/application-services.md): The @use_case decorator and service workflow.
-    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md): Pushing state changes into aggregates.
+    - [Aggregate Mutation](../guides/domain-behavior/aggregate-mutation.md):
+      Writing state changes as aggregate methods.

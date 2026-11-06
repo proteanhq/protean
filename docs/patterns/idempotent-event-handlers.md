@@ -1,4 +1,4 @@
-# Idempotent Event Handlers
+# Make event handlers idempotent
 
 ## The Problem
 
@@ -39,12 +39,12 @@ This is not a rare edge case. It happens routinely in distributed systems:
   acknowledgment to the event store is lost. The event is redelivered.
 
 - **Competing consumers**: In a multi-instance deployment, two instances
-  briefly process the same event before coordination kicks in.
+  briefly process the same event before coordination starts.
 
 Unlike commands (covered in [Command Idempotency](command-idempotency.md)),
 events represent **facts that already happened**. You cannot reject an event or
-return an error to its producer. The Order was placed. The handler must deal
-with it, potentially more than once.
+return an error to its producer. The Order was placed. The handler must process
+it, potentially more than once.
 
 ---
 
@@ -54,13 +54,13 @@ Design every event handler to produce the **same result** whether it processes
 an event once or multiple times. The aggregate's state after two deliveries
 should be identical to its state after one.
 
-This is achieved through one of three strategies:
+You make a handler idempotent with one of three strategies:
 
 1. **Naturally idempotent operations**: Operations that produce the same
    result regardless of repetition (set-based, not additive).
 2. **Deduplication**: Detecting and skipping duplicate deliveries.
-3. **Upsert instead of insert**: Using database semantics that handle
-   duplicates gracefully.
+3. **Upsert instead of insert**: Using database operations that update an
+   existing record instead of failing on a duplicate.
 
 The examples on this page react to events from an `Order` aggregate:
 
@@ -68,10 +68,10 @@ The examples on this page react to events from an `Order` aggregate:
 --8<-- "patterns/idempotent-event-handlers/001.py:order"
 ```
 
-Each handler that reacts to `OrderPlaced`, `OrderPaid` or `OrderShipped` is
-declared with `part_of=Order`, even when it changes another aggregate. A
-handler listens to the stream of the aggregate it is part of, so a handler
-declared with `part_of=CustomerLoyalty` would never receive `OrderPlaced`.
+Each handler for `OrderPlaced`, `OrderPaid` or `OrderShipped` is declared with
+`part_of=Order`, even when it changes another aggregate. A handler listens to
+the stream of the aggregate it is part of. A handler declared with
+`part_of=CustomerLoyalty` would therefore never receive `OrderPlaced`.
 
 ---
 
@@ -99,14 +99,15 @@ option.
 
 ---
 
-## Strategy 1: Naturally Idempotent Operations
+## Strategy 1: Use naturally idempotent operations
 
-The simplest and most reliable approach. If the handler's operation produces the
-same result whether executed once or ten times, duplicates are harmless.
+The simplest and most reliable approach. Some operations produce the same
+result whether they run once or ten times. For those operations, duplicates are
+harmless.
 
-### Set-Based Operations
+### Set state instead of adding to it
 
-Operations that **set** state rather than **add** to it are naturally
+When you **set** state instead of **adding** to it, the operation is naturally
 idempotent:
 
 ```python
@@ -116,7 +117,7 @@ idempotent:
 Setting `status = "shipped"` ten times leaves the status at "shipped". There's
 no accumulation, no duplication, no corruption.
 
-**More naturally idempotent patterns:**
+**These operations are also naturally idempotent:**
 
 - Replacing a value: `user.email = event.new_email`
 - Overwriting a flag: `order.is_paid = True`
@@ -149,7 +150,7 @@ twice changes nothing:
 
 ---
 
-## Strategy 2: Deduplication
+## Strategy 2: Deduplicate deliveries
 
 When the operation is inherently additive (incrementing counters, appending
 to lists, creating new records), you need explicit deduplication.
@@ -163,11 +164,11 @@ before processing it.
 --8<-- "patterns/idempotent-event-handlers/001.py:check_before_act"
 ```
 
-The `Inventory` aggregate tracks which orders have already reserved stock.
-If the same `OrderPlaced` event arrives twice, the second delivery finds the
-order ID already in `reserved_for_orders` and skips that product. The handler
-adds up the quantities for each product first, so an order that lists the same
-product on two lines reserves the total once.
+The `Inventory` aggregate tracks which orders have already reserved stock. If
+the same `OrderPlaced` event arrives twice, the second delivery finds the order
+ID already in `reserved_for_orders` and skips that product. The handler adds up
+the quantities for each product first. An order that lists the same product on
+two lines therefore reserves the total once.
 
 ### Track Processed Event IDs
 
@@ -178,10 +179,10 @@ identifiers:
 --8<-- "patterns/idempotent-event-handlers/001.py:processed_events"
 ```
 
-The handler assigns a new list instead of calling `append()` on the stored
-one. Protean tracks a change to a `List` field when you assign it. An in-place
-`append()` on its own is not seen as a change, so saving an aggregate whose only
-change is the append does not store it.
+The handler assigns a new list instead of calling `append()` on the stored one.
+Protean tracks a change to a `List` field when you assign it. Protean does not
+track an in-place `append()` on its own as a change. When the append is the
+aggregate's only change, saving the aggregate does not store it.
 
 The `processed_events` list is a bounded collection of recently processed
 event IDs. For high-volume aggregates, prune entries older than a retention
@@ -201,21 +202,23 @@ aggregate, so it cannot serve as one watermark shared by several aggregates:
 This is particularly useful for projectors that rebuild from an event stream
 and need to track their position.
 
-Use the watermark only where processing stops at the first failure, such as a
-rebuild that halts on an error. A live event store subscription does not work
-that way. With recovery on (the default), it records a failed event, moves on to
-newer events, and retries the failed one later. By then the watermark has moved
-past the failed event's position, so the handler skips it and the order is never
-counted. For a live handler, track processed event IDs instead.
+A rebuild that halts on an error stops processing at the first failure. Use the
+watermark only in that kind of processing. A live event store subscription does
+not work that way. With recovery on (the default), it records a failed event,
+moves on to newer events, and retries the failed one later. By then the
+watermark has moved past the failed event's position, so the handler skips it
+and the order is never counted. For a live handler, track processed event IDs
+instead.
 
 ---
 
-## Strategy 3: Upsert Operations
+## Strategy 3: Use upsert operations
 
-For handlers that create new records (like projections), use upsert semantics
-to handle duplicates at the database level.
+When a handler creates new records (like projections), use upsert semantics. An
+upsert updates the existing record at the database level instead of inserting a
+duplicate.
 
-### Projector Upserts
+### Upsert in a projector
 
 Projectors are a common case where idempotency matters. When a projector
 processes `OrderPlaced` to create an `OrderSummary` projection, a duplicate
@@ -227,11 +230,11 @@ delivery would try to create a second record with the same ID:
 ```
 
 `repo.get()` raises `ObjectNotFoundError` when no record has the ID, so the
-projector catches it to tell a first delivery from a repeat. This pattern
-handles both first delivery and duplicate delivery. The result is the same
-either way.
+projector catches it to tell a first delivery from a repeat. The projector
+creates the record on the first delivery and updates it on a duplicate
+delivery. The result is the same either way.
 
-### Existence Guard
+### Check that the aggregate does not exist yet
 
 For handlers that create an aggregate, check whether one already exists for the
 source of the event before creating it. `ShipmentRepository.find_by_order_id`
@@ -245,20 +248,20 @@ looks the shipment up by order ID and returns `None` when there is none:
 
 ## Applying the Pattern: Worked Examples
 
-### Example 1: Loyalty Points (Additive Operation)
+### Example 1: Award loyalty points, an additive operation
 
-Loyalty points are additive, awarding points twice doubles the reward. This
+Loyalty points are additive. Awarding points twice doubles the reward. This
 requires explicit deduplication.
 
 ```python
 --8<-- "patterns/idempotent-event-handlers/002.py:loyalty"
 ```
 
-The idempotency logic lives in the aggregate's `award_points` method, not
-in the handler. The handler is thin. The aggregate checks its
+The aggregate's `award_points` method contains the idempotency logic. The
+handler contains none. The handler is thin. The aggregate checks its
 `point_transactions` to detect duplicates.
 
-### Example 2: Inventory Reservation (Cross-Aggregate Side Effect)
+### Example 2: Reserve inventory as a cross-aggregate side effect
 
 ```python
 --8<-- "patterns/idempotent-event-handlers/002.py:inventory_imports"
@@ -269,7 +272,7 @@ The `Reservation` entity within the `Inventory` aggregate acts as a
 deduplication record. The `order_id` on each reservation uniquely identifies
 the source event, making the operation idempotent.
 
-### Example 3: Notification (External Side Effect)
+### Example 3: Send a notification as an external side effect
 
 External side effects (sending emails, calling APIs) require special care
 because they cannot be rolled back:
@@ -293,12 +296,13 @@ Once a notification is marked as sent and saved, a later run of
 `send_pending_notifications` does not send it again. The sender calls the
 provider before it saves the status. If the save fails or the process stops
 between the two, the notification stays pending and the next run sends it
-again. To rule that out, pass the notification's ID to the provider as an
-idempotency key, if the provider supports one.
+again. If the provider supports an idempotency key, pass the notification's ID
+to the provider as that key. With that key, the provider does not send the
+notification twice.
 
 ---
 
-## Event Handler vs Projector Idempotency
+## How event handler and projector idempotency differ
 
 Projectors and event handlers have different idempotency characteristics:
 
@@ -316,7 +320,7 @@ produces the same projection state.
 
 ### Event Handlers
 
-Event handlers that modify domain aggregates need more care because aggregates
+An event handler that modifies a domain aggregate needs more care. Aggregates
 have business rules, invariants, and state machines:
 
 ```python
@@ -333,7 +337,7 @@ explicit deduplication).
 
 Some scenarios make perfect idempotency difficult:
 
-### Time-Dependent Operations
+### Base time-dependent decisions on the event's time
 
 If the handler's behavior depends on the current time, two executions at
 different times may produce different results:
@@ -357,7 +361,7 @@ def on_order_placed(self, event: OrderPlaced):
         order.flag_as_delayed()
 ```
 
-### External API Calls
+### Guard calls to external APIs
 
 If the handler calls an external API that's not idempotent, duplicate
 processing produces duplicate external effects:
@@ -375,9 +379,9 @@ deduplication).
 
 ---
 
-## Signs Your Handler Isn't Idempotent
+## How to tell that a handler is not idempotent
 
-1. **Counter increments**: `stats.count += 1` is not idempotent.
+1. **The handler increments a counter**: `stats.count += 1` is not idempotent.
 
 2. **List appends without checking**: `items.append(new_item)` without
    checking if the item is already present.
@@ -385,8 +389,8 @@ deduplication).
 3. **Creating records without existence checks**: `repo.add(new_record)`
    without checking if a record for this event already exists.
 
-4. **Direct external API calls**: Sending emails, SMS, or API requests
-   without deduplication.
+4. **The handler calls an external API directly**: Sending emails, SMS, or API
+   requests without deduplication.
 
 5. **Generating new identifiers**: If the handler creates a new aggregate
    with `Auto(identifier=True)`, a duplicate delivery creates a second

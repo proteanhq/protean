@@ -4,17 +4,17 @@
 
 ## The Problem
 
-Almost every persisted aggregate wants four cross-cutting fields:
+Almost every persisted aggregate needs four cross-cutting fields:
 
 - `created_at` / `updated_at`. When the row was first written and last
   changed.
 - `created_by` / `updated_by`, which user made those changes.
 
-These have nothing to do with the aggregate's business rules, but if you leave
-them to each aggregate you end up re-implementing the same thing everywhere:
-setting `updated_at = now()` at the top of every mutating method, and threading
-the current user down into the domain by hand. Miss one method and the audit
-trail is quietly wrong.
+These fields have nothing to do with the aggregate's business rules. If you
+leave them to each aggregate, you write the same code in every aggregate: you
+set `updated_at = now()` at the top of every mutating method, and you pass the
+current user into the domain by hand. Miss one method and the audit trail is
+quietly wrong.
 
 The two halves of the problem are different in nature. Timestamps are a pure
 function of *when* the save happens. Audit users are a function of *who* is
@@ -23,49 +23,51 @@ each with the mechanism that fits it.
 
 ## The Pattern
 
-Put the cross-cutting fields on an **abstract base aggregate** and inherit it.
-Let the framework fill them in on save:
+Put the cross-cutting fields on an **abstract base aggregate** that your
+aggregates inherit. Let the framework fill them in on save:
 
 - Timestamps are **declarative**, `auto_now_add` / `auto_now` flags on the `DateTime` fields.
 - Audit users come from a **pre-persist enricher** that reads the acting user
   from the domain context and stamps them just before the save.
 
-The aggregate stays focused on its business behavior; the base and the enricher
-carry the bookkeeping.
+The base aggregate and the enricher supply the audit fields, so the aggregate's
+own code contains only its business behavior.
 
 ## How Protean Supports This
 
-### An abstract audit base
+### Put the audit fields on an abstract base
 
 ```python
 --8<-- "patterns/track-audit-fields/001.py:base"
 ```
 
 `auto_now_add` and `auto_now` are Django-parity flags on `DateTime` (and
-`Date`). They are stamped in the persistence path, so an `auto_now*` field is
-`None` until the first save. The two are mutually exclusive.
+`Date`). Protean stamps these fields in the persistence path, so an `auto_now*`
+field is `None` until the first save. The two are mutually exclusive.
 
-### A pre-persist enricher for the acting user
+### Stamp the acting user with a pre-persist enricher
 
-Register a callback that stamps the audit users just before an aggregate is
-saved. It **mutates the aggregate in place** (unlike event/command enrichers,
-which return metadata), and it runs on both create and update:
+Register a callback that stamps the audit users. The callback runs just before
+the repository saves an aggregate. It **mutates the aggregate in place**
+(unlike event/command enrichers, which return metadata). It runs on both create
+and update:
 
 ```python
 --8<-- "patterns/track-audit-fields/001.py:enricher"
 ```
 
-Setting `created_by` only when the aggregate is new keeps it stable across
-later updates, even when the create ran with no user. `updated_by` refreshes
-every time. The enricher runs each time a repository saves an aggregate to a
-database. Event-sourced aggregates are stored as events, so the enricher never
-runs for them. It never runs for the records Protean saves for itself, such as
-outbox rows. The `hasattr` check skips any aggregate without audit fields.
+The enricher sets `created_by` only when the aggregate is new. Later updates
+then leave `created_by` unchanged, even when the create ran with no user.
+`updated_by` refreshes every time. The enricher runs each time a repository
+saves an aggregate to a database. Event-sourced aggregates are stored as
+events, so the enricher never runs for them. It never runs for the records
+Protean saves for itself, such as outbox rows. The `hasattr` check skips any
+aggregate without audit fields.
 
 ### Supplying the acting user
 
-The enricher reads `current_user` off the domain context, so put it there at the
-edge of your application (an HTTP middleware, a CLI entry point, a worker):
+The enricher reads `current_user` from the domain context, so set it in your
+application's entry point (an HTTP middleware, a CLI entry point, a worker):
 
 ```python
 --8<-- "patterns/track-audit-fields/001.py:supply"
@@ -79,19 +81,20 @@ Create and update, end to end:
 --8<-- "patterns/track-audit-fields/001.py:round_trip"
 ```
 
-## Where it applies
+## Where does the stamping run?
 
-The stamping and the enricher run on the `repository.add()` → save path (the
-same place Protean manages aggregate versions) and, because they persist
-through the same path, on `update()` and `QuerySet.update()` as well. Two
-notes:
+Protean runs the stamping and the enricher on the `repository.add()` → save
+path (the same place Protean manages aggregate versions). Because `update()`
+and `QuerySet.update()` persist through the same path, they stamp and enrich as
+well. Two notes:
 
 - **Bulk / raw updates**: `QuerySet.update(...)` updates each matched row
-  individually, so it stamps and enriches like a save. When you need a raw write
-  that must *not* touch audit fields (e.g. a data backfill), pass
+  individually, so it stamps and enriches like a save. For a raw write that
+  must *not* touch audit fields (e.g. a data backfill), pass
   `apply_hooks=False` to `save()` / `update()` / `QuerySet.update()`. It skips
   the stamping and enrichers (optimistic-concurrency version management still
-  applies). See [ADR-0022](../adr/0022-pre-persist-aggregate-enricher.md).
+  applies). See the decision record on the pre-persist aggregate enricher
+  ([ADR-0022](../adr/0022-pre-persist-aggregate-enricher.md)).
 - **Event-sourced aggregates**: These persist as a stream of events, not rows in
   a table, so there are no columns to stamp. Record who and when *in the events*
   themselves (see [Message Enrichment](../guides/domain-behavior/message-enrichment.md)
@@ -101,17 +104,16 @@ notes:
 
 ### Stamping in every mutator
 
-Setting `updated_at = utc_now()` at the top of each business method works but
-drifts: the one method that forgets it leaves a stale timestamp, and there is no
-single place to audit. `auto_now` removes the need entirely.
+You can set `updated_at = utc_now()` at the top of each business method, but
+the one method that forgets it leaves a stale timestamp. With this approach,
+there is no single place to audit. `auto_now` removes the need entirely.
 
 ### Overloading the enricher with business logic
 
-The pre-persist enricher is powerful, it *can* mutate any field or raise an
-exception. Keep it to cross-cutting lifecycle/audit metadata. Business state
-changes belong in the aggregate's own named methods, where they can raise
-events and be tested in isolation. The enricher is a bookkeeping hook, not an
-escape hatch.
+The pre-persist enricher *can* mutate any field or raise an exception. Keep it
+to cross-cutting lifecycle/audit metadata. Business state changes belong in the
+aggregate's own named methods, where they can raise events and be tested in
+isolation. Use the enricher only for audit bookkeeping.
 
 ### Modeling the acting user inside the domain
 
@@ -126,5 +128,6 @@ your application layer.
     - [Simple Fields, Auto-populated
       timestamps](../reference/fields/simple-fields.md#auto-populated-timestamps):
       The `auto_now`/`auto_now_add` reference
-    - [Message Enrichment](../guides/domain-behavior/message-enrichment.md#aggregate-pre-persist-enrichers): The aggregate enricher alongside event/command enrichers
-    - [Multi-Tenancy](multi-tenancy.md): The same context-propagation approach applied to tenant isolation
+    - [Message Enrichment](../guides/domain-behavior/message-enrichment.md#stamp-fields-on-the-aggregate-before-it-is-saved): The aggregate enricher alongside event/command enrichers
+    - [Multi-Tenancy](multi-tenancy.md): The context-propagation approach from
+      this page, applied to tenant isolation

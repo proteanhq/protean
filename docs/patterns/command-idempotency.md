@@ -26,10 +26,11 @@ arrives at the same state regardless of how many times the command is delivered.
 
 ---
 
-## Idempotency Keys
+## What is an idempotency key?
 
 An idempotency key is a unique token that identifies a specific **request**,
-not a specific data shape or entity. This distinction is critical.
+not a specific data shape or entity. The key tells a retry apart from a new
+request that carries the same data.
 
 Consider two calls that look identical:
 
@@ -42,10 +43,10 @@ domain.process(AddItemToCart(cart_id="c-1", product_id="X", quantity=3))
 domain.process(AddItemToCart(cart_id="c-1", product_id="X", quantity=3))
 ```
 
-These have the same payload, the same entity identifier, but they are
-**two different requests**. The user genuinely wants 6 units total. A system
-that deduplicates based on the command's data would silently swallow the second
-request.
+These have the same payload, the same entity identifier, but they are **two
+different requests**. The user genuinely wants 6 units total. If a system
+deduplicates based on the command's data, it discards the second request and
+reports no error.
 
 Now consider a retry of the same request:
 
@@ -61,11 +62,11 @@ domain.process(AddItemToCart(cart_id="c-1", product_id="X", quantity=3))
 Same payload, same entity, and now they are truly the **same request**. The
 system should process it only once.
 
-The payload alone cannot distinguish these scenarios. Only the caller knows
-whether a submission is a retry or a new intent. This is why the idempotency
-key must come from the caller.
+The payload alone cannot tell a second intentional call from a retry of the
+same call. Only the caller knows whether a submission is a retry or a new
+intent. This is why the idempotency key must come from the caller.
 
-### Protean's Design: Caller-Provided Keys
+### Why does the caller provide the key in Protean?
 
 Protean follows the model established by Stripe and other well-designed APIs:
 the idempotency key is a **header-level field provided by the caller**, not
@@ -136,9 +137,9 @@ def on_payment_confirmed(self, event: PaymentConfirmed):
 
 ---
 
-## Protean's Approach: Three-Layer Idempotency
+## How does Protean make commands idempotent in three layers?
 
-Protean addresses command idempotency through three independent, complementary
+Protean splits command idempotency into three independent, complementary
 layers. Each layer provides value on its own. Together they form defense in
 depth.
 
@@ -153,12 +154,12 @@ Layer 1: Submission-Level Deduplication
          Redis-backed check in domain.process()
 ```
 
-### Layer 1: Submission-Level Deduplication
+### Layer 1: Deduplicate commands at submission
 
 When a caller provides an idempotency key, `domain.process()` checks a
 Redis-backed idempotency cache before doing any work.
 
-#### How It Works
+#### How does Layer 1 check a submission?
 
 ```
 domain.process(command, idempotency_key="req-123")
@@ -200,11 +201,11 @@ domain.process(command, idempotency_key="req-123")
 
 1. **Cache hit (status: success)**: Return the cached result immediately.
    For sync commands, this is the handler's return value. For async commands,
-   this is the event store position. The caller sees exactly the same
-   response as the original submission.
-   The store keeps the result as JSON, so a sync handler called with an
-   idempotency key must return a JSON-serializable value, such as an
-   identifier or a count, and not an aggregate.
+   this is the event store position. The caller sees exactly the same response
+   as the original submission. The store keeps the result as JSON. So a sync
+   handler called with an idempotency key must return a JSON-serializable
+   value, such as an identifier or a count, and an aggregate cannot be that
+   value.
 
 2. **Cache miss or error entry**: Proceed normally, enrich the command, append
    to event store, process (sync or async), and cache the result on success.
@@ -212,11 +213,11 @@ domain.process(command, idempotency_key="req-123")
 3. **Processing failure**: The command is in the event store but processing
    failed. The Redis entry is either absent or marked as error. The caller
    receives the exception and can safely retry with the same idempotency key.
-   The retry goes through from the beginning.
+   The retry runs every step again from the start.
 
-#### Duplicate Behavior
+#### What happens to a duplicate submission?
 
-By default, duplicate submissions are **silently acknowledged**, the caller
+By default, Protean **silently acknowledges** duplicate submissions. The caller
 receives the same result as the first submission. This is critical for retry
 safety: a client retrying a failed network request should not get an error
 because the first attempt actually succeeded.
@@ -252,15 +253,15 @@ except DuplicateCommandError as exc:
     original_result = exc.original_result
 ```
 
-#### Without an Idempotency Key
+#### What happens without an idempotency key?
 
 When no key is provided, Layer 1 is bypassed entirely. Every call to
 `domain.process()` appends to the event store and proceeds with handling. This
-is the appropriate behavior for internal framework use (e.g., saga-generated
-commands where the caller manages idempotency at a higher level) or for
-commands where handler-level patterns provide sufficient protection.
+behavior suits internal framework use, such as saga-generated commands whose
+caller manages idempotency at a higher level. It also suits commands that
+handler-level patterns already protect.
 
-### Layer 2: Subscription-Level Deduplication
+### Layer 2: Deduplicate commands at the subscription
 
 The Protean server engine processes commands asynchronously through event store
 subscriptions. Each subscription tracks its read position in the stream so it
@@ -270,14 +271,16 @@ Position tracking alone is not sufficient. If the server processes a command
 but crashes before persisting the updated position, the command will be
 redelivered on restart.
 
-Layer 2 closes this gap by consulting the same Redis idempotency cache that
-Layer 1 writes to. When the subscription picks up a command for processing:
+To stop a redelivered command from running twice, Layer 2 checks the same Redis
+idempotency cache that Layer 1 writes to. When the subscription reads a command
+from the event store for processing:
 
 1. If the command carries an idempotency key, check Redis.
-2. If found with status `success`, skip processing and advance the position.
+2. If Redis holds the key with status `success`, the subscription skips
+   processing and advances the position.
 3. If not found, process the message via the handler.
-4. On successful processing, write the result to Redis (just as Layer 1
-   would), then advance the position.
+4. On successful processing, the subscription writes the result to Redis (as
+   Layer 1 would), then advances the position.
 
 For commands **without** idempotency keys, Layer 2 relies on position tracking
 alone, the existing behavior. The subscription advances past messages it has
@@ -288,10 +291,10 @@ already seen based on its stored position.
 - Server crash between handler execution and position persistence.
 - Position update interval gaps (position is written periodically, not after
   every single message).
-- Any scenario where the subscription replays messages that were already
-  successfully processed.
+- A replay of any command with an idempotency key that the subscription has
+  already processed successfully.
 
-### Layer 3: Handler-Level Idempotency
+### Layer 3: Make the handler idempotent
 
 Layers 1 and 2 provide framework-level deduplication for commands that carry
 idempotency keys. Layer 3 is about making the handler logic itself resilient
@@ -307,9 +310,9 @@ Handler-level idempotency falls into two categories: operations that are
 
 ---
 
-## Developer Patterns
+## Which patterns can you use in your handlers?
 
-### Natural Idempotency: Set-Based Operations
+### Use set-based operations for natural idempotency
 
 Commands that overwrite state rather than accumulate it are inherently
 idempotent. "Set the email to X" produces the same result whether executed once
@@ -319,17 +322,17 @@ or ten times.
 --8<-- "patterns/command-idempotency/002.py:update_email"
 ```
 
-This is the simplest and most common pattern. If you can design your commands
-as set-based operations, you get idempotency for free.
+This is the simplest and most common pattern. If you design your commands as
+set-based operations, they are idempotent with no extra code.
 
-**More examples of naturally idempotent commands:**
+**These commands are also naturally idempotent:**
 
 - `UpdateAddress`: Replaces the address
 - `SetPreference`: Overwrites a preference value
 - `AssignRole`: Assigns a role (assigning the same role twice is a no-op)
 - `RenameProduct`: Replaces the product name
 
-### Create Operations: Check-Then-Act
+### Check-then-act: check for the aggregate before you create it
 
 Commands that create new aggregates can use existence checks:
 
@@ -343,64 +346,67 @@ ideally at the client.
 
 ### Additive Operations: Track Processed Commands
 
-Commands that add items, increment counters, or accumulate state need
-explicit deduplication. Processing them twice would produce incorrect state.
+Some commands add items, increment counters, or accumulate state. These
+commands need explicit deduplication. Processing them twice would produce
+incorrect state.
 
-When using idempotency keys (the recommended approach), the framework handles
-this at Layers 1 and 2. But as defense-in-depth, or when keys aren't
-available, the handler can track processed commands on the aggregate:
+With idempotency keys, the approach this page recommends, the framework
+deduplicates additive commands at Layers 1 and 2. But as defense-in-depth, or
+when keys aren't available, the handler can track processed commands on the
+aggregate:
 
 ```python
 --8<-- "patterns/command-idempotency/004.py:add_item"
 ```
 
 The `processed_commands` field on the aggregate serves as a bounded set of
-recently processed command keys. For aggregates with high command volume,
-this set can be pruned periodically (keeping only the last N entries or
-entries within a time window).
+recently processed command keys. For aggregates with high command volume, you
+can prune this set periodically (keeping only the last N entries or entries
+within a time window).
 
 ### Event-Sourced Aggregates: Expected Version Alone Does Not Stop Duplicates
 
-Event-sourced aggregates in Protean use optimistic concurrency. A handler
-loads the aggregate at some version, raises new events, and adds it back to the
-repository. When the unit of work commits, the event store checks that the
-aggregate's stream is still at the version the handler loaded. If another copy
-of the command committed in between, the versions differ and the commit raises
-`ExpectedVersionError`.
+Event-sourced aggregates in Protean use optimistic concurrency. A handler loads
+the aggregate at some version, raises new events, and adds it back to the
+repository. The event store checks the aggregate's stream when the unit of work
+commits. The stream must still be at the version the handler loaded. If another
+copy of the command committed in between, the versions differ and the commit
+raises `ExpectedVersionError`.
 
 ```python
 --8<-- "patterns/command-idempotency/005.py:bank_account"
 ```
 
 The version check alone does not stop a duplicate. When two copies run at the
-same time, both load the same version, the first commits, and the second
-fails its commit. A command handler then retries the second copy, because
-[version conflict auto-retry](../guides/server/error-handling.md#version-conflict-auto-retry)
-is on by default (`version_retry`, 3 retries). The retry loads the newer
-version, the check passes, and the deposit is applied a second time. A copy
-that arrives after the first one has committed takes the same path without
-any conflict. For both cases, pair the aggregate with an idempotency key
-(Layers 1 and 2), or track processed command keys on the aggregate as in the
-additive pattern above.
+same time, both load the same version, the first commits, and the second fails
+its commit. A command handler then retries the second copy, because [version
+conflict
+auto-retry](../guides/server/error-handling.md#retry-version-conflicts-automatically) is
+on by default (`version_retry`, 3 retries). The retry loads the newer version,
+the check passes, and the deposit is applied a second time. A late copy can
+also arrive after the first one has committed. That late copy takes the same
+path and raises no conflict. For both cases, pair the aggregate with an
+idempotency key (Layers 1 and 2), or track processed command keys on the
+aggregate as in the additive pattern above.
 
-The conflict surfaces when the unit of work commits, after the handler method
-returns. A `try`/`except ExpectedVersionError` inside the handler never sees it.
-The error says only that another write came first, not that it was the same
+The unit of work raises the conflict when it commits, after the handler method
+returns. A `try`/`except ExpectedVersionError` inside the handler never sees
+it. The error says only that another write came first, not that it was the same
 command. Swallowing it would also drop a different command that happened to
 collide, so leave conflicts to the version retry. The error reaches the caller
 only when the retries run out or `version_retry` is turned off.
 
-### Cross-Aggregate Commands
+### How do you make cross-aggregate commands idempotent?
 
-Commands that affect multiple aggregates through events are handled by a key
+When a command changes multiple aggregates through events, follow one key
 principle: **each aggregate is independently responsible for its own
 idempotency**.
 
 The command handler modifies only the primary aggregate. Downstream aggregates
 are modified through event handlers, each in its own transaction.
 
-Layer 2 does not cover those event handlers. It checks the idempotency key, and
-events do not carry the key of the command that raised them. An event
+Layer 2 does not cover those event handlers. It checks the idempotency key.
+Events do not carry the key of the command that raised them. An event
 subscription relies on its stored position alone, so a redelivered event runs
 the handler again. Make the event handler idempotent itself, as described in
 [Idempotent Event Handlers](idempotent-event-handlers.md).
@@ -409,13 +415,13 @@ the handler again. Make the event handler idempotent itself, as described in
 --8<-- "patterns/command-idempotency/006.py:transfer"
 ```
 
-### External Side Effects
+### Make external side effects idempotent yourself
 
 External side effects (sending emails, calling payment APIs, posting to
-third-party services) cannot be made idempotent by the framework alone. The
-developer must handle these explicitly.
+third-party services) cannot be made idempotent by the framework alone. You
+must make these side effects idempotent explicitly in your handler code.
 
-#### Pattern: Status Flag
+#### Track the side effect with a status flag
 
 Track whether the side effect has already occurred:
 
@@ -435,7 +441,7 @@ def send_welcome(self, command: SendWelcomeEmail):
     repo.add(user)
 ```
 
-#### Pattern: Pass-Through Idempotency Key
+#### Pass the idempotency key through to the external API
 
 Many external APIs support idempotency keys natively (Stripe, payment
 processors, notification services). Pass the command's idempotency key
@@ -457,12 +463,12 @@ the command at Protean's layer also protects the external API call. If the
 charge already went through, Stripe returns the existing result instead of
 charging again.
 
-#### Pattern: Outbox for Side Effects
+#### Use the outbox pattern for side effects
 
 For side effects that must happen exactly once and survive crashes, use the
 outbox pattern. Instead of performing the side effect directly in the handler,
-raise an event. A separate processor picks it up and executes it with retry
-and deduplication:
+raise an event. A separate processor reads the event and executes the side
+effect with retry and deduplication:
 
 ```python
 # fragment
@@ -488,7 +494,7 @@ def send_welcome(self, command: SendWelcomeEmail):
 A critical edge case: the command is appended to the event store, but
 processing fails. What should happen on retry?
 
-### Synchronous Processing
+### What happens when a synchronous handler fails?
 
 The caller submitted a command with an idempotency key and
 `asynchronous=False`. The command was stored in the event store, but the
@@ -496,34 +502,34 @@ handler threw an exception. The caller receives the error.
 
 On retry (same idempotency key):
 
-- Redis has no `success` entry for this key (it was never cached, or it was
-  cached as `error` with a short TTL that has expired).
+- Redis has no `success` entry for this key. Either the key was never cached,
+  or it was cached as `error` with a short TTL that has expired.
 - The framework treats this as a fresh submission: appends to the event store
   again and re-invokes the handler.
 - If the handler succeeds this time, the result is cached in Redis and
   returned.
 
-The duplicate command in the event store is harmless. Both copies are marked
-as processed synchronously, and the subscription skips commands that were
+The duplicate command in the event store is harmless. The framework marks both
+copies as processed synchronously. The subscription skips commands that were
 already handled inline.
 
-### Asynchronous Processing
+### What happens when an asynchronous handler fails?
 
 The command was stored in the event store and a position was returned. The
-subscription picks it up, but the handler fails.
+subscription reads the command from the event store. The handler then fails.
 
 - The subscription advances its position past the failed message (to avoid
   blocking subsequent messages).
-- The subscription retries the message, up to `max_retries`, with a fixed
-  `retry_delay_seconds` between attempts. An event store subscription
-  retries on its recovery passes. See
-  [Classify async processing errors](classify-async-processing-errors.md#transient-errors-let-the-framework-retry)
+- A stream subscription retries the message, up to `max_retries`, with a fixed
+  `retry_delay_seconds` between attempts. An event store subscription retries
+  on its recovery passes. See [Classify async processing
+  errors](classify-async-processing-errors.md#transient-errors-let-the-framework-retry)
   for how each subscription type counts and spaces its retries.
-- If the handler eventually succeeds, the idempotency key is cached in Redis.
-- If all retries are exhausted, a stream subscription moves the message to
-  its dead-letter stream (`enable_dlq`, on by default), and an event store
-  subscription marks the position exhausted in the event store's dead-letter
-  queue.
+- If the handler eventually succeeds, the subscription caches the idempotency
+  key in Redis.
+- If all retries are exhausted, a stream subscription moves the message to its
+  dead-letter stream (`enable_dlq`, on by default). An event store subscription
+  instead marks the position exhausted in the event store's dead-letter queue.
 
 If the caller retries with the same idempotency key before the subscription
 succeeds:
@@ -587,21 +593,22 @@ Redis, finds the `success` entry, and returns the cached identifier immediately.
 No event store write, no handler invocation. The client sees the same response
 as if the first call had succeeded normally.
 
-**Layer 2 (Subscription)**: For async commands, the subscription picks up the
+**Layer 2 (Subscription)**: For async commands, the subscription reads the
 command from the event store. It reads the idempotency key from the command's
-metadata headers and checks Redis. If found with `success`, it skips
-processing and advances position. If not found (e.g., command was submitted
-without processing), it invokes the handler and caches the result on success.
+metadata headers and checks Redis. If found with `success`, it skips processing
+and advances position. If not found (e.g., command was submitted without
+processing), it invokes the handler and caches the result on success.
 
 **Layer 3 (Handler)**: Even if Redis were empty (fresh deployment, data loss),
-the handler's check-then-act logic (does `ord-42` already exist?) provides the
-final safety net. The order is created exactly once.
+the handler's check-then-act logic (does `ord-42` already exist?) is the last
+check that stops a duplicate order. The order is created exactly once.
 
-Each layer catches what the others miss. No single layer needs to be perfect.
+Each layer detects duplicates that the other layers do not detect. No single
+layer needs to be perfect.
 
 ---
 
-## Configuration
+## How do you configure idempotency?
 
 Idempotency behavior is configured in `domain.toml`:
 

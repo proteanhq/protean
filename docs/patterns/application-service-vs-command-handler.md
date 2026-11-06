@@ -4,8 +4,8 @@
 
 Protean provides two mechanisms for coordinating state changes: **application
 services** and **command handlers**. Both load aggregates, call domain methods,
-and persist results. From the outside, they look interchangeable, and that is
-exactly why teams misuse them.
+and persist results. Because both mechanisms do the same steps, teams often
+treat them as interchangeable and pick the wrong one.
 
 A developer building a user registration endpoint reaches for a command handler
 because "commands sound right for changing state":
@@ -59,7 +59,8 @@ def create_user(payload: CreateUserRequest):
 
 The code processes the command synchronously and then immediately queries for
 the result. Two round-trips where one should suffice. The `asynchronous=False`
-flag fights the command handler's natural purpose.
+flag removes the main reason to use a command handler, which is to process the
+command in the background.
 
 Meanwhile, another developer on the same team uses an application service for
 processing incoming webhook events from a payment provider:
@@ -94,18 +95,19 @@ Both developers chose the wrong tool:
 
 The confusion has deeper consequences:
 
-- **Inconsistent invocation patterns**: Some operations are triggered by
-  direct method calls, others by `domain.process()`. The team cannot predict
-  which pattern a given operation uses without reading the code.
+- **Operations use different invocation patterns**: Some operations are
+  triggered by direct method calls, others by `domain.process()`. The team
+  cannot predict which pattern a given operation uses without reading the code.
 
 - **Forced synchrony or forced asynchrony**: Using `asynchronous=False` on
   every `domain.process()` call defeats the purpose of command handlers. Using
   application services for operations that should be fire-and-forget requires
   building custom async infrastructure.
 
-- **Duplicate coordination layers**: Some teams define both an application
-  service and a command handler for the same operation "just in case," leading
-  to two code paths that must be kept in sync.
+- **Two coordination layers do the same work**: Some teams define both an
+  application service and a command handler for the same operation as a
+  precaution. Those teams then have two code paths to update together on every
+  change.
 
 The root cause: the team never established a decision rule for when to use
 each mechanism.
@@ -116,7 +118,7 @@ each mechanism.
 
 Choose based on the **caller's needs**, not the operation's name.
 
-### The Decision Tree
+### Follow the decision tree
 
 ```
 Does the caller need a return value immediately?
@@ -140,7 +142,7 @@ Does the caller need a return value immediately?
                   (domain.process() from event handler or subscriber)
 ```
 
-### The Core Distinction
+### How do the two mechanisms differ?
 
 | Aspect | Application Service | Command Handler |
 |--------|-------------------|-----------------|
@@ -152,12 +154,12 @@ Does the caller need a return value immediately?
 | Transaction | Wrapped in UoW by `@use_case` | Wrapped in UoW by engine |
 | Idempotency | Caller's responsibility | Built-in via `idempotency_key` |
 
-### The Rule
+### Pick one coordination path per operation
 
 **Never define both an application service method and a command handler for the
 same aggregate operation.** One operation, one coordination path. If your
-context is primarily API-driven, lean toward application services. If it is
-event-driven with background processing, lean toward command handlers.
+context is primarily API-driven, prefer application services. If it is
+event-driven with background processing, prefer command handlers.
 
 ---
 
@@ -183,8 +185,8 @@ The API endpoint uses the service directly:
 ```
 
 No `domain.process()`, no command object, no async/sync flag. The `@use_case`
-decorator wraps the method in a `UnitOfWork`, so the aggregate is persisted
-and events are published when the method returns.
+decorator wraps the method in a `UnitOfWork`. When the method returns, the
+`UnitOfWork` persists the aggregate and publishes its events.
 
 ### Command Handler: Order Payment Processing
 
@@ -203,10 +205,10 @@ The webhook endpoint dispatches the command and returns immediately:
 ```
 
 `domain.process()` stores the command in the event store and returns. The
-Protean server picks up the command and routes it to the handler. The webhook
-never waits for the order update.
+Protean server reads the command from the event store and routes it to the
+handler. The webhook never waits for the order update.
 
-### The Decision Tree in Action
+### Apply the decision tree to common scenarios
 
 | Scenario | Needs return value? | Async possible? | Event-triggered? | Choice |
 |----------|-------------------|-----------------|-----------------|--------|
@@ -219,13 +221,13 @@ never waits for the order update.
 | Cancel expired orders (scheduled job) | No | Yes | No | Command handler |
 | Look up order details for display | Yes (return order) | No | No | Neither, use repository directly or query handler |
 
-### Synchronous Command Processing
+### Process a command synchronously
 
 Sometimes a command handler makes sense for the domain model, but the caller
 needs the result during development or testing. Protean supports this with
 two mechanisms:
 
-**Per-call override:**
+**Override the mode on one call:**
 
 ```python
 --8<-- "patterns/application-service-vs-command-handler/002.py:per_call"
@@ -247,7 +249,7 @@ service instead.
 
 ## Anti-Patterns
 
-### Defining Both for the Same Operation
+### Don't define both for the same operation
 
 ```python
 # fragment
@@ -288,13 +290,15 @@ class OrderCommandHandler(BaseCommandHandler):
         repo.add(order)
 ```
 
-Two code paths doing the same thing. When business rules change, both must be
-updated. When a bug is found, it might exist in one path but not the other.
+Two code paths doing the same thing. When business rules change, you must
+update both code paths. When a bug is found, it might exist in one path but not
+the other.
 
-**Fix:** Choose one. If the API needs to return the order, use the application
-service. If order placement should be async, use the command handler. Not both.
+**To fix it**, choose one. If the API needs to return the order, use the
+application service. If order placement should be async, use the command
+handler. Not both.
 
-### Forcing Async When Sync Is Needed
+### Don't force async processing when you need sync
 
 ```python
 # fragment
@@ -327,7 +331,7 @@ The endpoint then calls the service and returns the product it gets back:
 --8<-- "patterns/application-service-vs-command-handler/003.py:endpoint"
 ```
 
-### Using Application Services for Event Reactions
+### Don't use application services for event reactions
 
 ```python
 # fragment
@@ -348,15 +352,15 @@ class InventoryEventHandler(BaseEventHandler):
 
 Application services are for external callers (APIs, CLIs), not event-driven
 reactions. The event handler already runs inside the engine's processing
-pipeline. Calling an application service introduces a nested `UnitOfWork`
-(from `@use_case`) inside the event handler's own UoW. That nested UoW joins the
-handler's transaction rather than opening its own (see
-[Nested Units of Work](../guides/change-state/unit-of-work.md#nested-units-of-work)),
-so the two collapse into one transaction. It works, but it hides the coordination
-inside a service built for a different purpose; put the logic in the handler
-instead.
+pipeline. Calling an application service introduces a nested `UnitOfWork` (from
+`@use_case`) inside the event handler's own UoW. That nested UoW joins the
+handler's transaction rather than opening its own (see [Nested Units of
+Work](../guides/change-state/unit-of-work.md#nested-units-of-work)), so the two
+collapse into one transaction. Calling the application service from the handler
+works, but it hides the coordination inside a service built for a different
+purpose. Put the logic in the handler instead.
 
-**Fix:** Put the coordination logic directly in the event handler:
+**To fix it**, put the coordination logic directly in the event handler:
 
 ```python
 --8<-- "patterns/application-service-vs-command-handler/004.py:inventory"
@@ -370,7 +374,7 @@ Or, if the reaction should produce a command for another aggregate, use
 --8<-- "patterns/application-service-vs-command-handler/005.py:event_handler"
 ```
 
-### Mixing Invocation Styles Within a Bounded Context
+### Don't mix invocation styles within a bounded context
 
 ```python
 # fragment
@@ -394,13 +398,14 @@ class OrderCommandHandler(BaseCommandHandler):
 ```
 
 A developer looking at the `Order` aggregate sees four operations split across
-two coordination mechanisms with no clear rationale. Is it intentional that
-placement and cancellation are synchronous while shipping and payment are
-async? Or accidental?
+two coordination mechanisms with no clear rationale. Placement and cancellation
+are synchronous, and shipping and payment are async. Is that split intentional?
+Or accidental?
 
-**Fix:** Be consistent. If the context is API-driven, use application services
-for all API-triggered operations. If a specific operation must be async
-(event-triggered or webhook-driven), use a command handler and document why.
+**To fix it**, be consistent. If the context is API-driven, use application
+services for all API-triggered operations. If a specific operation must be
+async (event-triggered or webhook-driven), use a command handler. Document why
+that operation is async.
 
 ---
 
@@ -421,9 +426,9 @@ for all API-triggered operations. If a specific operation must be async
 | **Processing config** | Not applicable | `command_processing` in `domain.toml` |
 | **Priority lanes** | Not applicable | Supported via `priority` param |
 
-**If the caller needs the answer now, use an application
-service. If the caller can walk away and let the system handle it, use a
-command handler. Never both for the same operation.**
+**If the caller needs the answer now, use an application service. If the caller
+does not need to wait for the result, use a command handler. Never both for the
+same operation.**
 
 ---
 

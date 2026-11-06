@@ -8,15 +8,16 @@ A developer models a `User` aggregate:
 --8<-- "patterns/replace-primitives-with-value-objects/001.py:user"
 ```
 
-This compiles, tests pass, and the application works, until it doesn't.
+The `User` aggregate compiles and its tests pass. The application works until
+one of the cases below occurs.
 
 - A user signs up with `email="not-an-email"`. The system stores it, sends a
   welcome email, and the email bounces. The bounce handler crashes because it
   expected a valid email address.
 
 - A financial report sums `balance_amount` across users in different currencies.
-  The result is meaningless: you can't add USD and EUR. But the code doesn't
-  know that, they're just floats.
+  The result is meaningless: you can't add USD and EUR. But the code cannot
+  detect the currency mismatch, because `balance_amount` holds plain floats.
 
 - A test creates a user with `country="United States"`, another with
   `country="US"`, and a third with `country="usa"`. The query for US users
@@ -24,21 +25,22 @@ This compiles, tests pass, and the application works, until it doesn't.
 
 - The address is six independent fields. To validate that a complete address
   was provided, the handler checks each field individually. To pass an address
-  between methods, it passes six parameters. To compare two addresses, it
+  between methods, it passes six parameters. To compare two addresses, the code
   compares six fields.
 
-These problems share a root cause: **primitive obsession**, using basic types
-(strings, integers, floats) to represent domain concepts that have structure,
-rules, and meaning beyond the primitive type's capabilities.
+These problems share a root cause called **primitive obsession**. Primitive
+obsession means using basic types (strings, integers, floats) for domain
+concepts with structure, rules, and meaning beyond the primitive type's
+capabilities.
 
 ---
 
 ## The Pattern
 
-Replace groups of related primitives and validated primitives with
-**value objects**, immutable domain objects that encapsulate their own
-validation rules, are defined by their attributes (not identity), and make
-invalid states unrepresentable.
+Replace groups of related primitives and validated primitives with **value
+objects**. A value object is an immutable domain object that encapsulates its
+own validation rules and is defined by its attributes instead of an identity.
+Value objects make invalid states unrepresentable.
 
 ```
 Primitive obsession:
@@ -56,10 +58,10 @@ Value objects:
 Apply these tests to identify primitives that should be value objects:
 
 1. **Format rules exist**: If a string must match a pattern (email, phone,
-   postal code, URL), it's a value object. The validation should live with the
-   data, not in every handler that touches it.
+   postal code, URL), it's a value object. Write the format validation once in
+   the value object, so that no handler has to repeat it.
 
-2. **Multiple fields travel together**: If two or more fields are meaningless
+2. **Multiple fields belong together**: If two or more fields are meaningless
    alone but meaningful together (amount + currency, latitude + longitude,
    street + city + state + postal code), they form a value object.
 
@@ -67,18 +69,19 @@ Apply these tests to identify primitives that should be value objects:
    in multiple places, the validation belongs in a value object, written once.
 
 4. **Equality is by value, not identity**: Two email addresses "user@example.com"
-   are the same regardless of which user they belong to. Two `Money(100, "USD")`
-   instances are equal. These are value objects.
+   are the same regardless of which user they belong to. Two `Money(100,
+   "USD")` instances are equal. Email addresses and `Money` amounts are value
+   objects.
 
 5. **Operations exist**: If you can add two of them, compare them, or transform
-   them, the operation logic should live in the value object. `Money` can be
-   added (if currencies match). `DateRange` can check for overlaps.
+   them, put the operation logic in the value object. `Money` can be added (if
+   currencies match). `DateRange` can check for overlaps.
 
 ---
 
 ## Applying the Pattern
 
-### Email: Validated String
+### Turn an email string into an `Email` value object
 
 The simplest case, a string with format rules.
 
@@ -92,7 +95,7 @@ The validation is on the aggregate, but it's a concern of the email concept
 itself, not the user. Every aggregate that has an email field must duplicate
 this check.
 
-**After: value object**
+**After: move the validation into an `Email` value object**
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/003.py:email"
@@ -106,11 +109,11 @@ invariant. Any aggregate that uses `Email` gets validation automatically.
 --8<-- "patterns/replace-primitives-with-value-objects/003.py:usage"
 ```
 
-### Money: Compound Value
+### Group an amount and a currency into `Money`
 
 Two fields that are meaningless apart.
 
-**Before: disconnected primitives**
+**Before: the amount and the currency are separate primitives**
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/004.py:product"
@@ -118,27 +121,28 @@ Two fields that are meaningless apart.
 
 Can you calculate margin? `price_amount - cost_amount`, but only if the
 currencies match. Nothing enforces that. The currency fields are just strings.
-You could set `price_currency="XYZ"` and the system would happily store it.
+You could set `price_currency="XYZ"` and the system would store it without an
+error.
 
-**After: value object with operations**
+**After: give `Money` its own operations**
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/005.py:money"
 ```
 
-Now `Money` enforces its own rules: non-negative amounts, valid currencies,
-and same-currency arithmetic. The `Product` aggregate uses `Money` without
-worrying about currency mismatches:
+Now `Money` enforces its own rules: non-negative amounts, valid currencies, and
+same-currency arithmetic. The `Product` aggregate uses `Money`, and `Money`
+rejects currency mismatches:
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/005.py:usage"
 ```
 
-### Address: Multi-Field Group
+### Group five address fields into `Address`
 
 Five fields that form a single concept.
 
-**Before: flat primitives**
+**Before: each address part is a separate primitive field**
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/006.py:customer"
@@ -148,15 +152,15 @@ Ten address fields on one aggregate. To add a "work address," you'd add
 five more. To validate that a complete address was provided, you check
 each field individually.
 
-**After: value object**
+**After: replace the fields with an `Address` value object**
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/007.py:address"
 ```
 
-The ten address fields became two `Address` fields. Adding a work address is one more
-field. The `Address` value object validates itself. You can't create a partial
-address with just a city and no street.
+The ten address fields became two `Address` fields. To add a work address, you
+add one more field. The `Address` value object validates itself. You can't
+create a partial address with just a city and no street.
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/007.py:usage"
@@ -221,10 +225,11 @@ class Money:
     currency: String()
 ```
 
-This enforces the distinction between entities (which have identity) and value
-objects (which are defined by their attributes).
+By rejecting identifier fields, Protean keeps entities and value objects
+distinct. Entities have identity, and value objects are defined by their
+attributes.
 
-### Equality by Value
+### Compare value objects by their attributes
 
 Two value objects with the same attributes are equal:
 
@@ -234,7 +239,7 @@ Two value objects with the same attributes are equal:
 
 This is automatic in Protean. You don't need to implement `__eq__`.
 
-### Invariants on Value Objects
+### Add invariants to value objects
 
 Value objects support `@invariant.post`, just like aggregates:
 
@@ -246,18 +251,18 @@ The invariant fires at construction time. An invalid `Percentage` cannot exist.
 
 ---
 
-## The Validation Shift
+## Move validation from the aggregate to the value objects
 
-When you introduce value objects, validation naturally migrates from the
+When you introduce value objects, you move the format validation from the
 aggregate to the value object:
 
-**Before: validation on the aggregate**
+**Before: the aggregate validates each field**
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/011.py:user"
 ```
 
-**After: validation on the value objects**
+**After: each value object validates its own fields**
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/012.py:value_objects"
@@ -269,7 +274,7 @@ the value object's responsibility.
 
 ---
 
-## Nested Value Objects
+## Nest value objects inside other value objects
 
 Value objects can contain other value objects:
 
@@ -282,9 +287,9 @@ both are immutable, and both validate themselves.
 
 ---
 
-## Common Value Objects by Domain
+## Which value objects are common in each domain?
 
-### Universal Value Objects
+### Which value objects appear in nearly every domain?
 
 These appear in nearly every domain:
 
@@ -298,7 +303,7 @@ These appear in nearly every domain:
 | `Percentage` | value | Between 0 and 100 |
 | `URL` | value | Valid URL format |
 
-### Domain-Specific Value Objects
+### Which value objects belong to one domain?
 
 These emerge from your specific domain:
 
@@ -315,27 +320,27 @@ These emerge from your specific domain:
 
 ## When Not to Use Value Objects
 
-### Truly Simple Strings
+### Keep simple strings as primitives
 
 Not every string needs to be a value object. A `name` field with no format
 rules, no operations, and no composition is fine as a `String`. Apply the
 extraction tests from the beginning of this pattern, if none apply, keep the
 primitive.
 
-### Performance-Critical Paths
+### Measure the overhead on performance-critical paths
 
 Value objects add a small overhead: object construction, invariant checking,
 and the wrapper object itself. In hot paths processing millions of records per
-second, this overhead might matter. Profile before optimizing, in most
+second, this overhead might matter. Profile before optimizing. In most
 applications, the overhead is negligible compared to database and network
 latency.
 
-### Fields That Are Truly Independent
+### Keep independent fields separate
 
 If two fields happen to appear together but don't have a conceptual
 relationship, don't force them into a value object. `created_at` and
-`updated_at` often appear together but aren't a single concept, they're two independent
-timestamps.
+`updated_at` often appear together. They are two independent timestamps and do
+not form a single concept.
 
 ---
 
@@ -353,10 +358,10 @@ class Name:
 ```
 
 This adds complexity without benefit. A plain `String` field is simpler and
-equally correct. Value objects earn their keep through validation, operations,
-or composition.
+equally correct. A value object is worth adding when it provides validation,
+operations, or composition.
 
-### Mutable State Through Backdoors
+### Do not change a value object through its internal data
 
 ```python
 # fragment
@@ -368,12 +373,12 @@ email._value_object_data["address"] = "new@example.com"  # Don't do this
 Protean enforces immutability through `__setattr__`. Bypassing it breaks the
 value object's guarantees. Replace the entire value object instead.
 
-### Value Objects with Identity
+### Do not give a value object an identity
 
-If a concept has identity (meaning two instances with the same attributes can
-be different) it's an entity, not a value object. A `BankAccount` with a
-balance of $100 is not the same as another `BankAccount` with $100. They have
-different identities. Use an entity or aggregate instead.
+A concept has identity when two instances with the same attributes can be
+different. Model such a concept as an entity instead of a value object. A
+`BankAccount` with a balance of $100 is not the same as another `BankAccount`
+with $100. They have different identities. Use an entity or aggregate instead.
 
 ---
 
@@ -391,8 +396,8 @@ different identities. Use an entity or aggregate instead.
 | Readability | `shipping_street`, `shipping_city`, ... | `shipping_address` |
 
 If a primitive value has format rules, composition, or operations, it's a value
-object. Extract it, validate it once, and let the type system enforce your
-domain rules.
+object. Extract the value into a value object that validates it once. The type
+system then enforces your domain rules.
 
 ---
 

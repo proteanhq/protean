@@ -16,23 +16,25 @@ def confirm_and_notify(self, event):
     httpx.post(PARTNER_URL, json={"order_id": event.order_id})   # holds locks
 ```
 
-The `@handle` decorator wraps every handler method in a Unit of Work, and since
-[ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md) that Unit of Work
-is one real database transaction. The transaction opens at the first repository
-access and stays open until the method returns. So the `httpx.post` runs inside
-the transaction, and while it waits on the partner it holds the row locks and the
-pooled connection that `repo.get` and `repo.add` acquired.
+The `@handle` decorator wraps every handler method in a Unit of Work. Since the
+decision that a Unit of Work is a real transaction
+([ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md)), that Unit of
+Work is one real database transaction. The transaction opens at the first
+repository access and stays open until the method returns. So the `httpx.post`
+runs inside the transaction. While the call waits on the partner, it holds the
+row locks and the pooled connection acquired by `repo.get` and `repo.add`.
 
-Two things go wrong from there. A slow partner holds locks for the length of the
-call, and under load the connection pool drains while every handler waits on the
-network. And version-conflict (OCC) retry re-runs the whole method body, so a
-retry re-posts to the partner. The webhook fires twice for one order.
+Two things go wrong from there. A slow partner holds locks for the length of
+the call. Under load, the connection pool runs out of connections while every
+handler waits on the network. And version-conflict (OCC) retry re-runs the
+whole method body, so a retry re-posts to the partner. The webhook fires twice
+for one order.
 
 ---
 
 ## The Pattern
 
-A handler method either persists or talks to the outside world. Not both.
+A handler method either persists or calls an external system. Not both.
 
 Split the work into two methods:
 
@@ -56,31 +58,33 @@ sibling methods and run in any order:
 --8<-- "patterns/calling-external-systems-from-handlers/002.py:siblings"
 ```
 
-When the call has to follow the write, or needs a value the write produces, the
-persisting method raises an event and the calling method handles that event:
+Sometimes the call has to follow the write, or needs a value that the write
+produces. In that case, the persisting method raises an event and the calling
+method handles that event:
 
 ```python
 --8<-- "patterns/calling-external-systems-from-handlers/003.py:chain"
 ```
 
-`OrderConfirmed` goes to the [outbox](../concepts/async-processing/outbox.md)
-inside the confirming transaction and is published once that transaction commits,
-so `notify_partner` runs after the write is durable. The value it needs travels
-on the event. `confirmed_at` is a `datetime`, which is not JSON, so
-`notify_partner` sends it as an ISO 8601 string.
+Protean writes `OrderConfirmed` to the
+[outbox](../concepts/async-processing/outbox.md) inside the confirming
+transaction and publishes it after that transaction commits. As a result,
+`notify_partner` runs after the write is durable. The value it needs travels on
+the event. `confirmed_at` is a `datetime`, and a `datetime` is not JSON. So
+`notify_partner` sends `confirmed_at` as an ISO 8601 string.
 
 With sync event processing, `notify_partner` runs in the caller's thread right
 after the confirming commit. If the partner call fails, the caller gets a
-`TransactionError`, and the confirmed order stays saved.
+`TransactionError`. Even then, the confirmed order stays saved.
 
 ---
 
 ## How Protean Supports This
 
-**The Unit of Work is lazy.** A handler method that reaches no repository runs no
-transaction and holds no pooled connection, so the "no persistence means no
-transaction" half of the rule is a guarantee you can rely on. See [When the
-transaction actually
+**The Unit of Work is lazy.** A handler method that reaches no repository runs
+no transaction and holds no pooled connection. So you can rely on the "no
+persistence means no transaction" half of the persist-or-call-out rule. See
+[When the transaction actually
 opens](../guides/change-state/unit-of-work.md#when-the-transaction-actually-opens).
 
 **The outbox delivers the value to the calling method.** The event the persisting
@@ -95,8 +99,8 @@ Handlers](../guides/consume-state/event-handlers.md#the-handle-decorator).
 
 **A check flags the shape.** `protean check` reports
 [HANDLER_PERSISTS_AND_CALLS_OUT](../reference/fitness-functions.md#handler-persists-and-calls-out)
-when a method calls out after a repository access, the point at which the
-transaction is already open. It is advisory, because a handler that needs the
+when a method calls out after a repository access. By that point the
+transaction is already open. The check is advisory: a handler that needs the
 call's result sometimes has to do both.
 
 ---
@@ -105,12 +109,14 @@ call's result sometimes has to do both.
 
 ### Syncing many facets from one external snapshot
 
-The costly shape is a multi-facet sync: one external fetch produces a snapshot,
-several facets apply it to the same aggregate, and some facets depend on what an
-earlier facet wrote. A billing provider sync is a good example. One `Subscriber`
-aggregate holds contact details, a plan, and the feature flags the plan unlocks,
-and all three come from the provider. A `ProfileSnapshot` holds one fetched
-copy of the provider's data. The two aggregates look like this:
+The costly shape is a multi-facet sync, where a facet is one part of an
+aggregate's state, such as its contact details. In a multi-facet sync, one
+external fetch produces a snapshot, several facets apply it to the same
+aggregate, and some facets depend on what an earlier facet wrote. A billing
+provider sync is a good example. One `Subscriber` aggregate holds contact
+details, a plan, and the feature flags the plan unlocks, and all three come
+from the provider. A `ProfileSnapshot` holds one fetched copy of the provider's
+data. The `Subscriber` and `ProfileSnapshot` aggregates look like this:
 
 ```python
 --8<-- "patterns/calling-external-systems-from-handlers/001.py:aggregates"
@@ -124,25 +130,25 @@ repository access, so it runs before the transaction opens.
 --8<-- "patterns/calling-external-systems-from-handlers/001.py:fetch"
 ```
 
-Because the fetch precedes the persist, the call holds no lock, and `protean
-check` does not flag it: the rule fires only on a call that comes after a
-repository access. A retry re-runs the fetch, a safe repeat for a read.
+Because the fetch comes before the persist, the call holds no lock. `protean
+check` does not flag the fetch, because the check fires only on a call made
+after a repository access. A retry re-runs the fetch, a safe repeat for a read.
 
 `ProfileFetch` is part of `Subscriber`, yet it adds a `ProfileSnapshot`. It
 creates a new record and changes no existing one, so no other writer competes
 for it. To change an existing aggregate of another kind, issue a command to it,
 as the next step does.
 
-Persisting the snapshot and giving it an identity keeps the payload out of the
-event. The step that applies the facets then loads the snapshot by id rather
-than carrying it on the event or fetching it again. A fat event would put the
-whole payload into the event store forever, and a re-fetch per facet turns one
-call into several.
+The handler persists the snapshot with its own identity, so the payload stays
+out of the event. The step that applies the facets then loads the snapshot by
+id rather than carrying it on the event or fetching it again. A fat event would
+put the whole payload into the event store forever. A re-fetch per facet would
+turn one call into several.
 
 **Apply every facet in one command.** `ProfileSnapshotStored` belongs to
 `ProfileSnapshot`, so the event handler is part of `ProfileSnapshot`. The
 handler issues one `ApplyProfileSnapshot` command, which is part of
-`Subscriber`, and Subscriber's command handler applies every facet:
+`Subscriber`. Subscriber's command handler applies every facet:
 
 ```python
 --8<-- "patterns/calling-external-systems-from-handlers/001.py:sync"
@@ -150,34 +156,36 @@ handler issues one `ApplyProfileSnapshot` command, which is part of
 
 The facets run in one method, in the order the code gives: contact, then plan,
 then flags. The feature flags depend on the plan tier, so
-`set_flags_for_tier()` reads the tier that `change_plan()` has just set. The
-order is ordinary code, which is where an ordering dependency belongs. All three
-facets and the snapshot id go into `Subscriber` in one write.
+`set_flags_for_tier()` reads the tier that `change_plan()` has just set.
+Ordinary code sets this order, which is the right way to express an ordering
+dependency. All three facets and the snapshot id go into `Subscriber` in one
+write.
 
 Events are delivered at least once, so the same `ProfileSnapshotStored` can
-arrive twice. `Subscriber` records the ids of the snapshots it has applied, and
-the command handler returns without changes when it sees one again. The id is
-saved in the same write as the facets. A retry after that write commits does
-nothing, and a retry after a failed write applies the snapshot again in full.
+arrive twice. `Subscriber` records the ids of the snapshots it has applied.
+When the command handler sees one of those ids again, it returns without
+changes. The id is saved in the same write as the facets. A retry after that
+write commits does nothing. A retry after a failed write applies the snapshot
+again in full.
 
 The command handler expects the `Subscriber` to exist already. If it does not,
 `repo.get` raises `ObjectNotFoundError`, and the command fails and is retried
 like any other failed message.
 
-`subscriber_id` is the command's identifier, so every `ApplyProfileSnapshot` for
-one subscriber goes to the same command stream. That choice of stream does not
-make the snapshots apply in order. Several workers can handle commands for the
-same subscriber at once, and after a version conflict the retried command can
-apply an older snapshot over a newer one. If the order matters, store the
-provider's sequence number or timestamp on `Subscriber` and skip a snapshot that
-is older than the last one applied.
+`subscriber_id` is the command's identifier, so every `ApplyProfileSnapshot`
+for one subscriber goes to the same command stream. Even with one command
+stream per subscriber, Protean can apply the snapshots out of order. Several
+workers can handle commands for the same subscriber at once, and after a
+version conflict the retried command can apply an older snapshot over a newer
+one. If the order matters, store the provider's sequence number or timestamp on
+`Subscriber`. Then skip any snapshot older than the last one applied.
 
 ### Recording the result of a call
 
-A notification dispatcher sends a message through a channel, then records
-whether the send worked on the `Notification`. The record step needs the send's
-result, so the call has to come first. The aggregate and the command that
-records the result look like this:
+A notification dispatcher sends a message through a channel. It then records on
+the `Notification` whether the send worked. The record step needs the send's
+result, so the call has to come first. Here are the `Notification` aggregate
+and the `RecordDispatchResult` command, which records the result:
 
 ```python
 --8<-- "patterns/calling-external-systems-from-handlers/005.py:model"
@@ -192,25 +200,27 @@ to the `RecordDispatchResult` command with `asynchronous=True`:
 
 The domain uses sync command processing. The `@handle` decorator opens a Unit
 of Work around `send`, so `domain.process` stores the command with that Unit of
-Work and returns `None`. The command runs after the Unit of Work commits, in its
-own Unit of Work with its own version retry. A version conflict on the
-`Notification` retries the record step alone, and the channel sends once.
+Work and returns `None`. The command runs after the Unit of Work commits, in
+its own Unit of Work with its own version retry. After a version conflict on
+the `Notification`, Protean retries only the record step, so the channel sends
+once.
 
-When the record step fails for good, the commit raises `TransactionError` with
-the failure as its cause, or with an `ExceptionGroup` as its cause when more
-than one command or event handler failed. It never raises a version conflict,
-so the caller's own version retry does not send again. The same deferral
-applies inside a `@use_case` method, a `with UnitOfWork():` block and an
-explicit `UnitOfWork.start()`. Outside any Unit of Work,
+When the record step fails after its last retry, the commit raises
+`TransactionError` with the failure as its cause. If more than one command or
+event handler failed, the cause is an `ExceptionGroup`. It never raises a
+version conflict, so the caller's own version retry does not send again. The
+same deferral applies inside a `@use_case` method, a `with UnitOfWork():` block
+and an explicit `UnitOfWork.start()`. Outside any Unit of Work,
 `domain.process(command, asynchronous=True)` handles the command at once and
-returns its result. See [ADR-0031](../adr/0031-handlers-persist-or-call-out.md#when-the-call-comes-first-and-the-write-needs-its-result)
-for the reasons.
+returns its result. For the reasons, see the decision that handlers persist or
+call out
+([ADR-0031](../adr/0031-handlers-persist-or-call-out.md#when-the-call-comes-first-and-the-write-needs-its-result)).
 
-A process that stops after the commit and before the command runs leaves the
-command stored and not handled, the same risk that events handled in sync mode
-carry. And if your domain lists `TransactionError` among the exceptions it
-retries as transient, that retry runs the whole method again and sends a second
-message. Leave `TransactionError` off that list.
+Suppose the process stops after the commit and before the command runs. The
+command then stays stored and not handled, the same risk as for events handled
+in sync mode. Your domain might list `TransactionError` among the exceptions it
+retries as transient. In that case, the retry runs the whole method again and
+sends a second message. Leave `TransactionError` off that list.
 
 Under `event_processing = "async"`, the `TransactionError` from a failed record
 step also reaches the engine. The engine delivers the `NotificationDispatchStarted`
@@ -229,18 +239,19 @@ aggregate stores what the service returned:
 --8<-- "patterns/calling-external-systems-from-handlers/004.py:normalize"
 ```
 
-Call first, then persist. Because the Unit of Work is lazy, the transaction opens
-at `repo.get`, after the call has already returned, so the call holds no lock. The
-risk that remains is that OCC or transient retry re-runs the whole method and
-re-issues the call. Pass the remote system's idempotency key so the repeat is
-harmless. Protean builds no mechanism for this; the idempotency key is what makes
-the retry safe.
+Call first, then persist. The Unit of Work is lazy, so the transaction opens at
+`repo.get`. By then the call has already returned, so it holds no lock. One
+risk remains: OCC or transient retry re-runs the whole method and re-issues the
+call. Pass the remote system's idempotency key so the repeat is harmless.
+Protean builds no mechanism for this; the idempotency key is what makes the
+retry safe.
 
-When the call itself needs a value you can only read from the aggregate first (a
-stored token, the current balance), the call has to sit between the read and the
-write, inside the transaction the read opened. `protean check` reports that method
-as HANDLER_PERSISTS_AND_CALLS_OUT. Keep the call short, pass the idempotency key,
-and silence the check on that handler with `suppress_checks`.
+Sometimes the call itself needs a value that you can only read from the
+aggregate first (a stored token, the current balance). Then the call has to run
+between the read and the write, inside the transaction that the read opened.
+`protean check` reports that method as HANDLER_PERSISTS_AND_CALLS_OUT. Keep the
+call short, pass the idempotency key, and silence the check on that handler
+with `suppress_checks`.
 
 ---
 
@@ -249,12 +260,12 @@ and silence the check on that handler with `suppress_checks`.
 ### One method that persists then calls out
 
 This is the `confirm_and_notify` method from [The Problem](#the-problem): the
-external call sits inside the transaction the write opened, so it holds locks and
-a connection while it waits on the partner, and an OCC retry re-posts. Split it
-into `confirm` and `notify_partner`, and chain the call to `OrderConfirmed` when
-it must follow the write.
+external call sits inside the transaction the write opened, so it holds locks
+and a connection while it waits on the partner, and an OCC retry re-posts.
+Split the method into `confirm` and `notify_partner`. When the call must follow
+the write, chain it to `OrderConfirmed`.
 
-### One command per facet
+### Issuing one command per facet
 
 It can look tidier to give each facet its own command: `UpdateContact`,
 `ChangePlan` and `SetFlags`, all issued by the same event handler. With async
@@ -267,25 +278,25 @@ instead of one.
 Keep facets that depend on each other in one command and one command handler
 method, where their order is the order of the code.
 
-### A fat event or a re-fetch per facet
+### Carrying the snapshot on the event or fetching it for each facet
 
-Passing the fetched snapshot on the event makes the event large and writes the
-payload into the event store permanently. Re-fetching the snapshot for each facet
-turns one external call into one per facet. Persist the snapshot once, give it an
-identity, and load it by id.
+If you pass the fetched snapshot on the event, the event grows large and the
+event store keeps the payload permanently. If you re-fetch the snapshot for
+each facet, one external call becomes one call per facet. Persist the snapshot
+once with its own identity. Load it by id.
 
 ---
 
 ## When Not to Use / Trade-offs
 
-The one-method form covered in [When the two genuinely cannot be
-split](#when-the-two-genuinely-cannot-be-split) is the exception: when the write
-needs the call's result, the split cannot help, so reach for the remote system's
-idempotency key.
+The one-method form in [When the two genuinely cannot be
+split](#when-the-two-genuinely-cannot-be-split) is the exception, for a write
+that needs the call's result. That form relies on the remote system's
+idempotency key, since a split cannot help.
 
-Splitting persistence from external calls means more handler methods, and the
-value one method needs from another travels on an event. That is the cost of not
-holding a transaction open while an external call runs.
+When you split persistence from external calls, you write more handler methods.
+The value one method needs from another then travels on an event. That is the
+cost of not holding a transaction open while an external call runs.
 
 ---
 
@@ -315,7 +326,9 @@ holding a transaction open while an external call runs.
 
     **Explanation:**
 
-    - [ADR-0031](../adr/0031-handlers-persist-or-call-out.md): The decision and what was rejected along the way.
+    - Handlers persist or call out
+      ([ADR-0031](../adr/0031-handlers-persist-or-call-out.md)): The decision
+      and the options it rejected.
     - [Outbox](../concepts/async-processing/outbox.md): How an event published after commit delivers the value to the next handler.
 
     **Patterns:**

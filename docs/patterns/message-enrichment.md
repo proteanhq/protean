@@ -32,32 +32,32 @@ class OrderPlaced(BaseEvent):
 
 This creates several problems:
 
-- **Domain model pollution**: The `OrderPlaced` event now mixes business facts
-  (`order_id`, `items`, `total`) with infrastructure concerns (`tenant_id`,
-  `request_id`, `feature_flags`). The event's purpose (recording what happened
-  in the business) is diluted by operational plumbing.
+- **Infrastructure fields enter the domain model**: The `OrderPlaced` event now
+  mixes business facts (`order_id`, `items`, `total`) with infrastructure
+  concerns (`tenant_id`, `request_id`, `feature_flags`). The event's purpose
+  (recording what happened in the business) is diluted by operational plumbing.
 
-- **Repetition across every event and command**: Every event class needs the
-  same cross-cutting fields. Every `raise_()` call must populate them. Every
-  command must carry them. Miss one, and downstream processing silently loses
-  context.
+- **Every event and command repeats the same fields**: Every event class needs
+  the same cross-cutting fields. Every `raise_()` call must populate them.
+  Every command must carry them. Miss one, and downstream processing silently
+  loses context.
 
-- **Coupling between domain logic and operational context**: The aggregate's
-  `place()` method now needs to know about tenants, users, and feature
-  flags. It reaches into request-scoped globals to populate fields that have
+- **Domain logic depends on operational context**: The aggregate's `place()`
+  method now needs to know about tenants, users, and feature flags. The
+  `place()` method reads request-scoped globals to populate fields that have
   nothing to do with order placement.
 
-- **Schema evolution friction**: Adding a new cross-cutting field (say,
-  `deployment_version`) requires updating every event class, every `raise_()`
-  call, and every handler that reads the field. The change fans out across the
-  entire domain.
+- **A new cross-cutting field changes every event class**: Adding a new
+  cross-cutting field (say, `deployment_version`) requires updating every event
+  class, every `raise_()` call, and every handler that reads the field. One new
+  field changes code across the entire domain.
 
-- **Testing complexity**: Unit tests for business logic must now construct
-  events with tenant IDs, user IDs, and request IDs, even when testing
-  something as simple as "placing an order emits `OrderPlaced`."
+- **Tests must build infrastructure fields**: Unit tests for business logic
+  must now construct events with tenant IDs, user IDs, and request IDs, even
+  when testing something as simple as "placing an order emits `OrderPlaced`."
 
-The root cause: **cross-cutting metadata is being treated as domain data
-instead of message infrastructure.**
+The root cause: **the code treats cross-cutting metadata as domain data instead
+of message infrastructure.**
 
 ---
 
@@ -90,19 +90,19 @@ The enrichment layer sits between the domain model and the message store:
    or aggregate state. This keeps the domain model unaware of operational
    concerns.
 
-3. **Enriched data lands in `metadata.extensions`**, a dict on the message's
-   metadata that is persisted alongside headers, envelope, and domain meta.
-   Extensions survive serialization, round-trip through the event store, and
-   are available to every downstream handler.
+3. **Enrichers write their data to `metadata.extensions`**, a dict on the
+   message's metadata that is persisted alongside headers, envelope, and domain
+   meta. Extensions survive serialization and round-trips through the event
+   store. Every downstream handler can read them.
 
 4. **Downstream handlers access extensions via `message.metadata.extensions`**
    or `event._metadata.extensions`. They never see cross-cutting data mixed
    into the event's business fields.
 
-The result: the domain model stays clean. Every event and command automatically
-carries the operational context that infrastructure needs. Adding a new
-cross-cutting concern means registering one enricher, not updating every event
-class.
+As a result, the domain model holds only business data. Every event and command
+automatically carries the operational context that infrastructure needs. Adding
+a new cross-cutting concern means registering one enricher, not updating every
+event class.
 
 ---
 
@@ -128,9 +128,9 @@ every event and command. Do this during domain setup, before `domain.init()`:
 --8<-- "patterns/message-enrichment/001.py:domain"
 ```
 
-### Clean Domain Model
+### Keep only business data in the domain model
 
-With enrichers handling cross-cutting metadata, the domain model carries only
+When enrichers add the cross-cutting metadata, the domain model carries only
 business data:
 
 ```python
@@ -164,7 +164,7 @@ The handler belongs to `Inventory` but reacts to an `Order` event, so it sets
 --8<-- "patterns/message-enrichment/003.py:projector"
 ```
 
-### Conditional Enrichment
+### Choose what to add for each event
 
 Enrichers can inspect the event or aggregate to decide what metadata to add.
 This is useful when different event types need different extensions:
@@ -175,20 +175,20 @@ This is useful when different event types need different extensions:
 
 ### Combining Enrichers with Correlation IDs
 
-Message enrichment complements Protean's built-in
-[message tracing](message-tracing.md). Correlation and causation IDs live in
-`metadata.domain` and are managed automatically. Extensions hold *additional*
-context that the framework does not manage:
+Message enrichment complements Protean's built-in [message
+tracing](message-tracing.md). Protean stores correlation and causation IDs in
+`metadata.domain` and sets them automatically. Extensions hold *additional*
+context that the framework does not set:
 
 ```python
 --8<-- "patterns/message-enrichment/004.py:tracing"
 ```
 
-This lets you correlate domain events with infrastructure spans in tools like
-Jaeger, Zipkin, or Datadog, while keeping the domain model free of tracing
-infrastructure.
+The `enrich_with_tracing` enricher lets you correlate domain events with
+infrastructure spans in tools like Jaeger, Zipkin, or Datadog. The domain model
+stays free of tracing infrastructure.
 
-### Functional Registration
+### Register enrichers with function calls
 
 The decorator form (`@domain.event_enricher`) is convenient when enrichers are
 defined alongside the domain. For enrichers defined in separate modules or
@@ -208,22 +208,23 @@ Command and event enrichers add to message metadata. To set fields on the
 aggregate itself, such as `updated_by`, register an aggregate enricher with
 `@domain.aggregate_enricher`. It receives the aggregate just before a
 repository saves it and sets fields on it in place. See
-[Aggregate Pre-Persist Enrichers](../guides/domain-behavior/message-enrichment.md#aggregate-pre-persist-enrichers)
+[Aggregate Pre-Persist Enrichers](../guides/domain-behavior/message-enrichment.md#stamp-fields-on-the-aggregate-before-it-is-saved)
 and [Track Audit and Lifecycle Fields](track-audit-fields.md).
 
 ### Testing with Enrichers
 
-Because enrichers read from `g`, tests that need enriched metadata must set up
-the global context. Tests that only care about business logic can ignore
-enrichers entirely. They just get empty extensions:
+Enrichers read from `g`. A test that needs enriched metadata must set up the
+global context. Tests that only care about business logic can ignore enrichers
+entirely. They just get empty extensions:
 
 ```python
 --8<-- "patterns/message-enrichment/001.py:tests"
 ```
 
-### End-to-End: Multi-Tenant SaaS
+### Follow a multi-tenant SaaS request end to end
 
-Putting it all together, here is the flow for a multi-tenant order placement:
+A multi-tenant order placement runs through these steps, from the HTTP request
+to the server's handlers:
 
 ```
 1. HTTP Request arrives
@@ -271,12 +272,12 @@ class OrderPlaced(BaseEvent):
 ```
 
 Every event class repeats the same fields. Every `raise_()` call must populate
-them. The event schema mixes business facts with operational plumbing. When
-you add a new cross-cutting field, every event class and every `raise_()` call
-must change.
+them. The event schema mixes business facts with operational fields. When you
+add a new cross-cutting field, every event class and every `raise_()` call must
+change.
 
-**Fix:** Remove cross-cutting fields from the event payload. Register enrichers
-that inject them into `metadata.extensions`.
+**Fix it:** Remove cross-cutting fields from the event payload. Register
+enrichers that inject them into `metadata.extensions`.
 
 ### Accessing g Directly in Domain Logic
 
@@ -299,11 +300,11 @@ class Order:
 ```
 
 The aggregate now depends on the request context. It cannot be tested without
-setting up `g`. It conflates domain behavior (placing an order) with
-infrastructure plumbing (extracting tenant context).
+setting up `g`. The `place()` method mixes domain behavior (placing an order)
+with infrastructure work (extracting tenant context).
 
-**Fix:** Let enrichers handle `g` access. The aggregate's `raise_()` call
-passes only business data. Enrichers, which are explicitly registered as
+**Fix it:** Let enrichers read from `g`. The aggregate's `raise_()` call passes
+only business data. Enrichers, which are explicitly registered as
 infrastructure hooks, read from `g`.
 
 ### Building One Monolithic Enricher
@@ -331,7 +332,7 @@ A single enricher that returns everything is harder to test, harder to
 compose, and harder to disable selectively. If feature flag evaluation fails,
 the entire enricher fails and the event is not appended.
 
-**Fix:** Separate enrichers by concern. One for tenancy, one for audit, one
+**Fix it:** Separate enrichers by concern. One for tenancy, one for audit, one
 for feature flags, one for tracing. Each can be tested, enabled, or disabled
 independently.
 
@@ -352,9 +353,9 @@ Enrichers run synchronously inside `raise_()`. A database call in an enricher
 means every `raise_()` incurs a round-trip. If the database is slow or
 unavailable, event raising fails.
 
-**Fix:** Keep enrichers fast. Read only from in-memory context (`g`, environment
-variables, cached values). If you need data from a database, load it once per
-request in middleware and store it in `g`.
+**Fix it:** Keep enrichers fast. Read only from in-memory context (`g`,
+environment variables, cached values). If you need data from a database, load
+it once per request in middleware and store it in `g`.
 
 ---
 
@@ -373,9 +374,8 @@ request in middleware and store it in `g`.
 
 Event and command payloads carry business facts. Operational context (tenancy,
 audit, tracing, feature flags) belongs in `metadata.extensions`, injected
-automatically by enrichers that read from ambient context. The domain model
-never knows, and never needs to know, about the infrastructure that surrounds
-it.
+automatically by enrichers that read from ambient context. Aggregates and
+events never refer to the operational context, and they do not need to.
 
 ---
 

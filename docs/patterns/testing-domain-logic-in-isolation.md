@@ -31,18 +31,18 @@ class TestPlaceOrder:
             assert order.total == 20.0
 ```
 
-This test works, but it tests the entire pipeline: command deserialization,
-handler dispatch, repository operations, and aggregate behavior, all in one
-test. When it fails, which part broke? The test doesn't tell you. It requires
-registering multiple domain elements, initializing the domain, and managing a
-domain context. It's slow relative to a unit test and tests more than it
-intends to.
+This test works. It also tests the entire pipeline in one test: command
+deserialization, handler dispatch, repository operations, and aggregate
+behavior. When it fails, which part broke? The test doesn't tell you. It
+requires registering multiple domain elements, initializing the domain, and
+managing a domain context. It runs slower than a unit test. It also tests more
+than it intends to.
 
 The deeper problem: when tests can only exercise business logic through the
-handler pipeline, developers write fewer tests. The setup overhead discourages
-testing edge cases, boundary conditions, and specific business rules. The
-domain model (the most important part of the system) ends up being the least
-tested.
+handler pipeline, developers write fewer tests. Because of the setup overhead,
+developers skip tests for edge cases, boundary conditions, and specific
+business rules. The domain model (the most important part of the system) ends
+up being the least tested.
 
 ---
 
@@ -67,11 +67,11 @@ Both types of tests are valuable. But domain unit tests should be the
 **majority** of your test suite because they test the most important code
 (business rules) with the least overhead (no infrastructure).
 
-### Test Setup
+### Set up the tests
 
 The examples below assume a `tests/conftest.py` that uses Protean's
 `DomainFixture` to initialize the domain and provide a per-test context. The
-domain and its elements live in an `isolation_shop` package, and the tests
+domain and its elements are defined in an `isolation_shop` package. The tests
 import them from `isolation_shop.domain`:
 
 ```python
@@ -79,14 +79,14 @@ import them from `isolation_shop.domain`:
 --8<-- "patterns/testing-domain-logic-in-isolation/conftest.py:fixtures"
 ```
 
-With this setup, every test runs within an active domain context and all
-data is reset between tests automatically.
+With this setup, every test runs within an active domain context. All data is
+reset between tests automatically.
 
 ---
 
-## Testing Aggregates
+## Test aggregates
 
-### Basic State Changes
+### Test basic state changes
 
 Test aggregate methods by constructing an aggregate, calling a method, and
 asserting the resulting state:
@@ -98,7 +98,7 @@ asserting the resulting state:
 
 No repository, no handler, no command. Just the aggregate and its behavior.
 
-### Preconditions and Business Rules
+### Test preconditions and business rules
 
 Each business rule gets its own test:
 
@@ -110,7 +110,7 @@ Each business rule gets its own test:
 Five tests, each targeting a specific business rule. Each runs in
 milliseconds. Together, they comprehensively test the withdrawal behavior.
 
-### Domain Events
+### Check the domain events an aggregate raises
 
 Verify that aggregate methods raise the correct events:
 
@@ -124,30 +124,30 @@ This allows direct inspection without infrastructure.
 
 ---
 
-## Testing Value Objects
+## Test value objects
 
-### Construction and Validation
+### Test construction and validation
 
 ```python
 # fragment
 --8<-- "patterns/testing-domain-logic-in-isolation/test_value_objects.py:construction"
 ```
 
-### Equality
+### Test equality
 
 ```python
 # fragment
 --8<-- "patterns/testing-domain-logic-in-isolation/test_value_objects.py:equality"
 ```
 
-### Operations
+### Test operations
 
 ```python
 # fragment
 --8<-- "patterns/testing-domain-logic-in-isolation/test_value_objects.py:operations"
 ```
 
-### Immutability
+### Test immutability
 
 ```python
 # fragment
@@ -156,9 +156,9 @@ This allows direct inspection without infrastructure.
 
 ---
 
-## Testing Invariants
+## Test invariants
 
-### Post-Invariants
+### Test post-invariants
 
 Protean runs post-invariants when an aggregate is created and after every
 change to it. When a change breaks one, Protean undoes the change:
@@ -168,7 +168,7 @@ change to it. When a change breaks one, Protean undoes the change:
 --8<-- "patterns/testing-domain-logic-in-isolation/test_invariants.py:post"
 ```
 
-### Pre-Invariants
+### Test pre-invariants
 
 Protean runs pre-invariants before every change, against the state the
 aggregate is in at that moment. Here a closed account rejects any change:
@@ -180,7 +180,7 @@ aggregate is in at that moment. Here a closed account rejects any change:
 
 ---
 
-## Testing Domain Services
+## Test domain services
 
 Domain services coordinate logic across aggregates. Test them by building the
 service with aggregate instances directly:
@@ -190,12 +190,12 @@ service with aggregate instances directly:
 --8<-- "patterns/testing-domain-logic-in-isolation/test_domain_services.py:services"
 ```
 
-No repositories, no handlers. Construct the aggregates, pass them to the
-service, assert results.
+No repositories, no handlers. Each test constructs the aggregates, passes them
+to the service, and asserts the results.
 
 ---
 
-## Testing Entities Within Aggregates
+## Test entities through their parent aggregate
 
 ```python
 # fragment
@@ -207,28 +207,28 @@ accessed in production.
 
 ---
 
-## When Integration Tests Are Needed
+## When do you need integration tests?
 
 Domain unit tests don't replace integration tests. They complement them.
 Integration tests verify that the pipeline works end-to-end. They use the
 domain that `conftest.py` already initialized, with its repositories and
-handlers, so they need no setup of their own:
+handlers. They need no setup of their own:
 
-### Repository Integration
+### Test persistence through the repository
 
 ```python
 # fragment
 --8<-- "patterns/testing-domain-logic-in-isolation/test_integration.py:persistence"
 ```
 
-### Handler Pipeline
+### Test the handler pipeline
 
 ```python
 # fragment
 --8<-- "patterns/testing-domain-logic-in-isolation/test_integration.py:handler"
 ```
 
-### Event Handler Integration
+### Test event handlers against the domain
 
 ```python
 # fragment
@@ -237,7 +237,7 @@ handlers, so they need no setup of their own:
 
 ---
 
-## The Testing Pyramid
+## Balance your tests with the testing pyramid
 
 ```
                     /\
@@ -277,14 +277,16 @@ they test the most important code with the least overhead.
 | End-to-end | Full system behavior | Real infrastructure | Slow | Happy paths |
 
 Domain logic is the most important code in your system. Test it directly,
-without infrastructure, in isolation. Construct aggregates, call methods,
-assert results. Save integration tests for verifying the plumbing.
+without infrastructure, in isolation. Each test constructs aggregates, calls
+methods, and asserts results. Save integration tests for verifying that
+commands, handlers, repositories and the database work together.
 
 !!! tip "Run all test layers in both modes"
-    Domain unit tests already use in-memory adapters. Integration tests can
-    too, with Protean's [Dual-Mode Testing](dual-mode-testing.md), a single `pytest --protean-env memory`
-    flag switches every adapter to its in-memory equivalent. Run fast during
-    development, then validate against real infrastructure in CI.
+    Domain unit tests already use in-memory adapters. Integration tests can use
+    them too, with Protean's [Dual-Mode Testing](dual-mode-testing.md). A
+    single `pytest --protean-env memory` flag switches every adapter to its
+    in-memory equivalent. During development, run the tests in memory for
+    speed. In CI, validate them against real infrastructure.
 
 ---
 

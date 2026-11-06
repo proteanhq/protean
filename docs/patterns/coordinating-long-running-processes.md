@@ -9,7 +9,7 @@ places an order, the system must:
 1. Accept the order
 2. Request and confirm payment
 3. Create and track shipment
-4. Handle failures (declined payment, shipping delay) with compensation
+4. Compensate for failures (declined payment, shipping delay)
 
 The naive approach uses an event handler that hard-codes the entire workflow:
 
@@ -30,23 +30,24 @@ class OrderWorkflow:
         current_domain.process(CancelOrder(order_id=event.order_id))
 ```
 
-This breaks down quickly:
+This approach fails in five ways:
 
-- **No state tracking**: The handler has no memory. If payment is confirmed
-  but shipping fails, there is no record of what step the process is on.
-  Debugging requires reconstructing the sequence from scattered event logs.
+- **The handler tracks no state**: The handler keeps no record of earlier
+  events. Suppose payment is confirmed but shipping fails. Nothing records
+  which step the process is on. Debugging requires reconstructing the sequence
+  from scattered event logs.
 
-- **No correlation**: Each handler processes events in isolation. If two
-  orders are in progress simultaneously, there is no built-in mechanism to
-  ensure `PaymentConfirmed` is matched to the correct `OrderPlaced`.
+- **The handlers do not correlate events**: Each handler processes events in
+  isolation. If two orders are in progress simultaneously, nothing built in
+  matches `PaymentConfirmed` to the correct `OrderPlaced`.
 
-- **No lifecycle**: There is no concept of "this process is done." The
-  handler will process events for a completed order the same way it processes
-  events for an active one.
+- **The process has no lifecycle**: There is no concept of "this process is
+  done." The handler will process events for a completed order the same way it
+  processes events for an active one.
 
-- **No compensation**: When a step fails mid-process, there is no structured
-  way to undo previous steps. Compensation logic gets scattered across
-  multiple handlers with no central coordination point.
+- **Nothing coordinates compensation**: When a step fails mid-process, no
+  structured mechanism undoes the previous steps. Each handler carries its own
+  piece of compensation logic, with no central coordination point.
 
 - **No idempotency**: If `PaymentConfirmed` is delivered twice (e.g., server
   crash before subscription position is persisted), `CreateShipment` is
@@ -63,17 +64,17 @@ A **Process Manager** is a stateful, event-driven coordinator that:
 3. **Maintains its own state**: Tracking which steps have completed and what
    data has been collected
 4. **Issues commands** to drive other aggregates forward
-5. **Manages its own lifecycle**: Starting when an initiating event arrives
-   and completing when the process reaches a terminal state
+5. **Starts and completes on its own**: It starts when an initiating event
+   arrives. It completes when the process reaches a terminal state.
 
-The process manager does not contain business logic. It is a coordinator:
-it decides *what* should happen next based on the events it has seen, and
-delegates the *how* to the appropriate aggregate via commands.
+The process manager does not contain business logic. It is a coordinator. It
+decides *what* should happen next from the events it has seen. It delegates the
+*how* to the appropriate aggregate via commands.
 
 This is a well-established pattern in DDD and event-driven architectures,
 documented by Vaughn Vernon, Greg Young, and the NServiceBus / MassTransit
-communities. The key insight is that a multi-step process needs its own
-identity and state, separate from the aggregates it coordinates.
+communities. A multi-step process needs its own identity and state, separate
+from the aggregates the process coordinates.
 
 ---
 
@@ -95,18 +96,18 @@ Protean provides a `@domain.process_manager` element with:
 
 ## Applying the Pattern
 
-### The Aggregates
+### Define the aggregates
 
-Four aggregates participate in order fulfillment, `Order`, `Payment`, `Inventory`, and `Shipping`. Each
-publishes events that the PM reacts to, and each accepts commands that the PM
-issues:
+Four aggregates participate in order fulfillment, `Order`, `Payment`,
+`Inventory`, and `Shipping`. Each one publishes events that the PM reacts to.
+Each one also accepts commands that the PM issues:
 
 ```python
 --8<-- "patterns/coordinating-long-running-processes/001.py:aggregates"
 --8<-- "patterns/coordinating-long-running-processes/001.py:messages"
 ```
 
-### The Process Manager
+### Define the process manager
 
 A production-ready PM is built around five principles: design it as a state
 machine, make every handler idempotent, handle out-of-order events, design
@@ -120,7 +121,7 @@ compensation explicitly, and handle timeouts.
 
 ## What Happens at Runtime
 
-### The happy path
+### What happens when every step succeeds
 
 The PM acts as a state machine that advances one step per event:
 
@@ -144,9 +145,10 @@ States:     new ──► awaiting_inventory ──► awaiting_payment ──�
    `awaiting_delivery`.
 
 5. `ShipmentDelivered` arrives → status set to `completed`,
-   `mark_as_complete()` called. Future events for this `order_id` are skipped.
+   `mark_as_complete()` called. Protean skips future events for this
+   `order_id`.
 
-### A failure path
+### What happens when payment fails
 
 If `PaymentFailed` arrives instead of `PaymentConfirmed`:
 
@@ -157,42 +159,43 @@ If `PaymentFailed` arrives instead of `PaymentConfirmed`:
 
 The failure handlers call `mark_as_complete()` instead of using `end=True`.
 `end=True` completes the PM after every normal return from the handler,
-including a guard's early `return`. A `PaymentFailed` that arrives while the
-PM is in `awaiting_shipment` would then end the PM with no compensation. A
-handler that should end the PM only on some paths calls `mark_as_complete()`
-on those paths.
+including a guard's early `return`. Suppose a `PaymentFailed` arrives while the
+PM is in `awaiting_shipment`. With `end=True`, Protean would then end the PM
+with no compensation. When a handler should end the PM only on some paths, call
+`mark_as_complete()` on those paths.
 
 ### Why Each Design Principle Matters
 
-**Idempotent handlers.** `PaymentConfirmed` is delivered twice. The first
+**Handlers stay idempotent.** `PaymentConfirmed` is delivered twice. The first
 delivery finds `status == "awaiting_payment"` and transitions to
 `"awaiting_shipment"`. The second delivery finds `"awaiting_shipment"` and
 returns immediately. No duplicate shipment.
 
-**Compensation.** `ShipmentRejected` arrives after payment was confirmed
-and inventory was reserved. The PM issues `RefundPayment`,
-`ReleaseInventory`, and `CancelOrder`, unwinding every forward step.
+**Compensation undoes the forward steps.** `ShipmentRejected` arrives after
+payment was confirmed and inventory was reserved. The PM issues
+`RefundPayment`, `ReleaseInventory`, and `CancelOrder`, unwinding every forward
+step.
 
-**Out-of-order events.** `PaymentConfirmed` arrives before the PM exists.
-Protean cannot load a PM instance for that `order_id`, so it skips the
+**Events can arrive out of order.** `PaymentConfirmed` arrives before the PM
+exists. Protean cannot load a PM instance for that `order_id`, so it skips the
 event. The skip counts as handled: the subscription moves past the event and
-does not deliver it again. When `OrderPlaced` later creates the PM, the PM
-has no record of the payment. In this PM the case does not come up, because
+does not deliver it again. When `OrderPlaced` later creates the PM, the PM has
+no record of the payment. In this PM the case cannot happen, because
 `PaymentConfirmed` only follows the `RequestPayment` command the PM issues
-itself. Where an event can arrive first, use the second strategy under
-[Handle out-of-order events](#2-handle-out-of-order-events).
+itself. Where an event can arrive first, use the second strategy under [Handle
+out-of-order events](#2-handle-out-of-order-events).
 
-**Timeouts.** An external cron job publishes `OrderFulfillmentTimedOut`
-for PMs stalled longer than a threshold. The timeout handler compensates
-based on how far the process progressed.
+**A timeout event reports a stalled process.** An external cron job publishes
+`OrderFulfillmentTimedOut` for PMs stalled longer than a threshold. The timeout
+handler compensates based on how far the process progressed.
 
-**Terminal state protection.** Once `mark_as_complete()` is called,
-Protean sets `_is_complete = True`. The framework checks this flag before
-dispatching subsequent events. Late events are silently skipped.
+**Protean skips events after a terminal state.** Once `mark_as_complete()` is
+called, Protean sets `_is_complete = True`. The framework checks this flag
+before dispatching subsequent events. Late events are silently skipped.
 
 ---
 
-## Design Principles
+## Follow these design principles
 
 ### 1. Design as a state machine
 
@@ -207,33 +210,33 @@ States:     new -> awaiting_payment -> awaiting_shipment -> completed
                     cancelled             cancelled
 ```
 
-A handler for `PaymentConfirmed` only acts when status is
-`awaiting_payment`. If the PM is already in `awaiting_shipment` (because
-the event was delivered twice), the handler is a no-op.
+A handler for `PaymentConfirmed` only acts when status is `awaiting_payment`.
+Suppose the event was delivered twice and the PM is already in
+`awaiting_shipment`. Then the handler is a no-op.
 
 ### 2. Handle out-of-order events
 
 Events from different aggregate streams have no guaranteed ordering.
 `PaymentConfirmed` can arrive before `OrderPlaced`. Two strategies:
 
-- **Make the early arrival impossible**: If the PM does not exist when
-  `PaymentConfirmed` arrives (because `OrderPlaced` has not created it
-  yet), Protean skips the event and does not deliver it again. This is safe
-  when the event can only follow a command the PM issued, as
-  `PaymentConfirmed` follows `RequestPayment` here.
+- **Make the early arrival impossible**: `PaymentConfirmed` can arrive before
+  `OrderPlaced` has created the PM. If the PM does not exist yet, Protean skips
+  the event and does not deliver it again. This is safe when the event can only
+  follow a command the PM issued, as `PaymentConfirmed` follows
+  `RequestPayment` here.
 
 - **Design correlation to make ordering irrelevant**: Structure each
-  handler to set state based on what it knows, not on what it assumes
-  happened before. Mark the handler `start=True` too, so an early
-  `PaymentConfirmed` creates the PM instead of being skipped, and record
-  the payment details. When `OrderPlaced` arrives, check whether payment is
-  already recorded and skip the `RequestPayment` step.
+  handler to set state based on what it knows, not on what it assumes happened
+  before. Mark the handler `start=True` too, so an early `PaymentConfirmed`
+  creates the PM instead of being skipped. In that handler, record the payment
+  details. In the `OrderPlaced` handler, check whether payment is already
+  recorded. If payment is recorded, skip the `RequestPayment` step.
 
 ### 3. Design compensation explicitly
 
-For every "forward" step the PM orchestrates, document the compensating
-action. When a step fails, the PM issues compensation commands to undo
-previous steps.
+For every "forward" step the PM orchestrates, document the compensating action.
+When a step fails, the failure handler you write in the PM issues compensation
+commands for the previous steps.
 
 | Forward step | Compensating action |
 |---|---|
@@ -273,7 +276,7 @@ its own repository.
 
 ## Anti-Patterns
 
-### Non-idempotent handlers
+### Writing handlers that are not idempotent
 
 ```python
 # fragment
@@ -288,7 +291,7 @@ If delivered twice, `CreateShipment` is issued twice, a duplicate shipment.
 **Fix:** guard every handler with a status check so the second delivery is a
 no-op.
 
-### Business logic in the process manager
+### Putting business logic in the process manager
 
 ```python
 # fragment
@@ -319,9 +322,9 @@ class OrderFulfillmentPM:
     status = String(default="new")
 ```
 
-**Fix:** Keep only `order_id`, `payment_id`, `shipment_id`, and `status`.
-Commands carry enough context for the receiving aggregate to load business
-data from its own repository.
+**To fix it,** keep only `order_id`, `payment_id`, `shipment_id`, and `status`.
+Commands carry enough context for the receiving aggregate to load business data
+from its own repository.
 
 ### Ignoring terminal states
 
@@ -334,11 +337,11 @@ def on_shipment_delivered(self, event: ShipmentDelivered) -> None:
     # Forgot to signal completion to the framework
 ```
 
-The PM is logically finished but Protean does not know that. Future events
-for this `order_id` are still dispatched, potentially causing unexpected
-behavior. **Fix:** always call `self.mark_as_complete()` or use `end=True`.
+The PM is logically finished but Protean does not know that. Future events for
+this `order_id` are still dispatched, potentially causing unexpected behavior.
+**To fix it,** always call `self.mark_as_complete()` or use `end=True`.
 
-### Missing failure handlers
+### Leaving out failure handlers
 
 ```python
 # fragment
@@ -348,7 +351,7 @@ def on_payment_confirmed(self, event): ...
 ```
 
 When payment fails, the PM stays in `awaiting_payment` forever. Inventory
-remains reserved. **Fix:** for every forward command, implement a handler
+remains reserved. **To fix it,** for every forward command, implement a handler
 for its failure event that compensates and transitions to a terminal state.
 
 ---
@@ -363,7 +366,7 @@ for its failure event that compensates and transitions to a terminal state.
 | Compensation | Scattered across handlers | Centralized in PM handlers |
 | Multi-stream | Multiple independent handlers | Single PM subscribes to all |
 
-### Design checklist
+### Check your design against this list
 
 | Principle | Question | What to check |
 |---|---|---|

@@ -3,27 +3,28 @@
 ## The problem
 
 In most systems the database assigns the identity. A row gets an auto-increment
-integer when you save it, so until the save completes the aggregate has no
-identity and neither does the caller.
+integer when you save it. Until the save completes, neither the aggregate nor
+the caller has an identity.
 
-That delay causes five problems:
+Waiting on the save for an identity causes five problems:
 
 - **A command cannot reference the aggregate it creates.** A `PlaceOrder` command
-  cannot carry an `order_id`, because no `order_id` exists yet. The handler has to
-  create the order, persist it, read back the generated ID, and return it. The
-  caller waits on all of it.
+  cannot carry an `order_id`, because no `order_id` exists yet. The command
+  handler has to create the order, persist it, read back the generated ID, and
+  return it. The caller waits on all of it.
 - **The API response waits on the database.** A client POSTs an order, and the
-  server cannot return the resource URL until it has written the row. That rules
-  out optimistic UI and keeps the request synchronous.
-- **A retry cannot be spotted by identity.** If the client retries after a
-  timeout, or the user double-clicks, the request carries no order ID to check
-  against, and each attempt writes another row with another ID. A separate
-  idempotency key can still catch the repeat; the aggregate's own identity
-  cannot.
+  server cannot return the resource URL until it has written the row. Because
+  of that wait, you cannot use optimistic UI. The request also has to stay
+  synchronous.
+- **A retry cannot be spotted by identity.** When the client retries after a
+  timeout, or the user double-clicks, the request carries no order ID that the
+  handler can check. Each attempt writes another row with another ID. A
+  separate idempotency key can still catch the repeat; the aggregate's own
+  identity cannot.
 - **Events raised during creation carry no stable reference.** `OrderPlaced`
   should carry the `order_id`, but the event is raised before the database has
-  assigned one. Either the event goes out incomplete, or you patch it after the
-  write.
+  assigned one. Either the event is raised without the `order_id`, or you patch
+  the event after the write.
 - **Auto-increment depends on a single sequence.** Distribute the work across
   nodes, services, or event-sourced aggregates and that sequence becomes a
   bottleneck and a single point of failure.
@@ -34,8 +35,8 @@ All five follow from one decision: letting the storage layer assign the identity
 
 ## The pattern
 
-Give the aggregate its identity when you create it, or earlier still, wherever
-the intent starts.
+Give the aggregate its identity when you create it. Better still, give it one
+earlier, at the caller that starts the intent.
 
 ```
 Traditional flow:
@@ -51,9 +52,9 @@ Early identity flow:
     (as early as possible)
 ```
 
-Domain-Driven Design treats identity as part of what an entity **is**, not as
-something storage does to it. An entity is defined by its identity, so it should
-have one from the moment it exists.
+Domain-Driven Design treats identity as part of what an entity **is**. Storage
+does not give an entity its identity. An entity is defined by its identity, so
+it should have one from the moment it exists.
 
 ---
 
@@ -66,18 +67,20 @@ Identity is what separates entities and aggregates from value objects. Two
 orders. Two with different fields but the same identity are one order at two
 points in time.
 
-An aggregate without an identity can take part in none of this. Nothing can address it, no
-command or event can reference it, and it cannot enforce any rule that depends on
-knowing which one it is.
+An aggregate without an identity cannot be told apart from another aggregate or
+followed from one point in time to the next. Nothing can address the aggregate,
+and no command or event can reference it. It also cannot enforce any rule that
+depends on its identity.
 
-### Everything else is keyed on it
+### Commands, events and repositories are keyed on identity
 
 An aggregate is the boundary that holds your invariants. Commands target one
 instance by identity. Events say which aggregate changed by identity.
 Repositories load and save by identity.
 
-Defer the identity to the database and you open a window where the aggregate
-exists but can do none of that. Generating it early closes the window.
+Defer the identity to the database, and the aggregate exists for a time before
+any command, event or repository can refer to it. Generate the identity early,
+and the aggregate has it from the start.
 
 ### A command should carry everything the handler needs
 
@@ -95,16 +98,18 @@ PlaceOrder(
 )
 ```
 
-Now the command stands on its own. The handler reuses that one `order_id` in
-every event it raises, every repository call it makes, and whatever it returns.
+Now the command carries everything the handler needs, including the identity.
+The handler reuses that one `order_id` in its events, its repository calls and
+its return value.
 
 ### Events are facts, and facts need stable references
 
-Domain events are immutable. Once raised they are part of your history, and every
+Domain events are immutable. Once raised, they are part of your history. Every
 event handler, projector, and process manager downstream uses the identities
-inside them to correlate and route.
+inside the events to correlate and route.
 
-Generate the identity early and those references are stable from the first event:
+Generate the identity early and the identities in your events are stable from
+the first event:
 
 ```python
 # fragment
@@ -121,8 +126,8 @@ OrderPlaced(
 
 ## What Protean gives you
 
-Protean generates identities close to where the element is created, without
-asking any database.
+Protean generates an identity when you construct the element, without asking
+any database.
 
 ### You get an identity at construction
 
@@ -145,8 +150,8 @@ Declare no identity field and Protean adds an `Auto` field called `id`:
 
 ### You can supply your own
 
-When you already have an identity, because the client made it, or the API layer
-did, or a command carried it in, pass it straight through:
+When you already have an identity from the client, the API layer or a command,
+pass it straight through:
 
 ```python
 --8<-- "patterns/creating-identities-early/001.py:supplied"
@@ -155,7 +160,7 @@ did, or a command carried it in, pass it straight through:
 `Auto` takes an explicit value and uses it as given. Leave it out and you get a
 generated one. The same aggregate definition covers both.
 
-### Strategies and types
+### Configure the identity strategy and type
 
 You configure identity in two places: a default for the domain, and an override
 per field.
@@ -179,27 +184,27 @@ For one field with its own needs:
 
 ### `Identifier` on commands
 
-Commands carry aggregate identities in `Identifier` fields. A plain `Identifier`
-field generates nothing, so the caller supplies the value. Marked
+Commands carry aggregate identities in `Identifier` fields. A plain
+`Identifier` field generates nothing, so the caller supplies the value. Marked
 `identifier=True`, it falls back to the domain's configured identity generator
-when the caller leaves it out, a UUID by default. So pass the caller's identity
-in whenever it has to be preserved:
+when the caller leaves it out, a UUID by default. So, whenever the caller's
+identity has to be preserved, pass it in:
 
 ```python
 --8<-- "patterns/creating-identities-early/001.py:command"
 ```
 
-The field type says what the pattern says: the identity starts at the caller and
-flows through the command into the aggregate.
+With `Identifier` fields, the caller creates the identity, and the command
+handler passes it from the command to the aggregate.
 
 ---
 
-## Putting it to work
+## Applying the pattern
 
-### At the API boundary
+### Generate the identity at the API boundary
 
 The API layer is the usual place. When a creation request arrives, take the
-identity from the client or make one, then build the command:
+identity from the client or make one. Then build the command:
 
 ```python
 --8<-- "patterns/creating-identities-early/001.py:api"
@@ -209,7 +214,7 @@ You return the `order_id` right away. If the command runs asynchronously the
 client already knows the identity and can poll on it, navigate to it, or send
 follow-up commands with it.
 
-### At the client
+### Generate the identity at the client
 
 Earlier still: let the client make the ID.
 
@@ -226,14 +231,15 @@ Server:
   3. Aggregate created with the client-provided identity
 ```
 
-The client shows the new order without waiting for the server to confirm it. The
-UUID is unique whoever makes it, so nothing has to coordinate.
+The client shows the new order without waiting for the server to confirm it.
+The UUID is unique whoever makes it, so the client and the server do not have
+to coordinate.
 
-### Creation, then everything after
+### Pass the identity in every command after creation
 
-This applies to the **creation** command, the one that brings the aggregate into
-existence. Every later command carries the identity anyway, because you have to
-say which aggregate you mean:
+Generating the identity early applies to the **creation** command, the one that
+brings the aggregate into existence. Every later command carries the identity
+anyway, because each one names its target aggregate:
 
 ```python
 # fragment
@@ -247,11 +253,11 @@ domain.process(ConfirmOrder(order_id=order_id))
 domain.process(ShipOrder(order_id=order_id, tracking_number="TRK-456"))
 ```
 
-There is never a point where the caller is holding a reference it cannot use.
+The caller never holds a reference that it cannot use.
 
 ---
 
-## Idempotent creation
+## Make creation idempotent
 
 An early identity gives the handler a stable key for spotting duplicates.
 Without it the handler has no aggregate ID to look up, so a repeat has to be
@@ -267,17 +273,17 @@ The command carries the identity, so the handler can look first:
 
 `get_or_none()` returns `None` only when the order is missing, so any other
 repository failure still surfaces. This catches a retry that arrives after the
-first write is visible, and it needs no Redis and no extra infrastructure. It is
-not deduplication on its own: two deliveries running at the same time can both
-read a miss before either write lands.
+first write is visible, and it needs no Redis and no extra infrastructure. It
+is not deduplication on its own: two deliveries running at the same time can
+both read a miss before either write completes.
 
-Protean's idempotency keys do not close that gap either: `domain.process()`
-checks the key before handling and records the result after, so two deliveries
-running together can both read a miss. They protect a retry that arrives once a
-result is recorded. For simultaneous deliveries you need something atomic. A
-unique constraint on the identity column is the simplest: the second insert
-fails, and the retry that follows finds the row. The
-[Command Idempotency](command-idempotency.md) pattern covers keys in full.
+Protean's idempotency keys do not prevent this race condition either.
+`domain.process()` checks the key before handling and records the result after,
+so two deliveries running together can both read a miss. They protect a retry
+only after Protean has recorded the result. For simultaneous deliveries you
+need something atomic. A unique constraint on the identity column is the
+simplest: the second insert fails, and the retry that follows finds the row.
+The [Command Idempotency](command-idempotency.md) pattern covers keys in full.
 
 ### Why database IDs break it
 
@@ -311,7 +317,8 @@ nothing can tell them apart.
 | Internal service-to-service | Calling service | The caller tracks the identity for correlation across services |
 | Batch/import processing | Import script | Each record gets an identity before the batch begins |
 
-The rule behind every row: whoever starts the intent makes the identity.
+In every row of the table, the caller that starts the intent makes the
+identity.
 
 ---
 
@@ -331,9 +338,9 @@ and skip the UUID. Only take this route for a key that never changes. An email
 or a username reads like an identity until someone updates it, and then every
 command, event, and reference holding the old value points at nothing.
 
-**Something outside needs a sequence.** Invoice and receipt numbers often have to
-run in order. Use `increment` on the `Auto` field, knowing you have handed
-identity back to the database:
+**An external system needs a sequence.** Invoice and receipt numbers often have
+to run in order. Use `increment` on the `Auto` field, and accept that the
+database now assigns the identity:
 
 ```python
 --8<-- "patterns/creating-identities-early/005.py:sequence"

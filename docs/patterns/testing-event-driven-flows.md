@@ -3,10 +3,10 @@
 ## The Problem
 
 Unit testing individual domain elements is straightforward. You construct an
-aggregate, call a method, assert the resulting state. The [Testing Domain Logic
-in Isolation](testing-domain-logic-in-isolation.md) pattern covers this well.
-But real event-driven systems are not made of isolated pieces. They are made of
-*chains*:
+aggregate, call a method, assert the resulting state. You can test these
+elements well with the [Testing Domain Logic in
+Isolation](testing-domain-logic-in-isolation.md) pattern. But real event-driven
+systems are not made of isolated pieces. They are made of *chains*:
 
 ```
 PlaceOrder (command)
@@ -16,22 +16,23 @@ PlaceOrder (command)
         -> OrderDashboardProjector (updates read model)
 ```
 
-Testing the full chain is harder. The command fires a handler, which persists
-an aggregate, which raises an event, which triggers another handler, which
-updates a projection. Each link depends on the previous one completing
-correctly. Without guidance, teams fall into predictable traps:
+Testing the full chain is harder. The command reaches a handler, and the
+handler persists an aggregate. The aggregate raises an event, another handler
+processes the event, and that handler updates a projection. Each link depends
+on the previous one completing correctly. Without guidance, teams fall into
+predictable traps:
 
 **Trap 1: Skipping E2E tests entirely.** "Our unit tests pass, so the chain
-works." It doesn't. A misconfigured stream category or missing handler
-registration only shows up when the full chain runs.
+works." It doesn't. A test detects a misconfigured stream category or missing
+handler registration only when the full chain runs.
 
 **Trap 2: Testing handlers in isolation with fabricated events.** A developer
 constructs an `OrderPlaced` event manually and calls the handler directly. The
 handler works, but in production the event has different metadata or is routed
 to a different stream.
 
-**Trap 3: Fragile async test setups.** The team reaches for the Engine but
-wrestles with timing:
+**Trap 3: Writing async tests that depend on timing.** The team uses the Engine
+but cannot predict how long processing takes:
 
 ```python
 # fragment
@@ -45,18 +46,18 @@ def test_order_flow(self):
     assert projection.status == "placed"  # Fails intermittently
 ```
 
-The result: teams either avoid testing event chains entirely or build
-unreliable tests that erode trust in the suite.
+As a result, teams either avoid testing event chains entirely or write tests
+that fail intermittently, and developers stop trusting the suite.
 
 ---
 
 ## The Pattern
 
-Test event-driven flows at three levels. Each level trades speed for
-realism. Most teams need all three, but the middle level covers the
-majority of integration needs.
+Test event-driven flows at three levels. Each level trades speed for realism.
+Most teams need all three levels. The middle level covers the majority of
+integration needs.
 
-### Level 1: Domain unit tests
+### Level 1: Unit-test the domain logic
 
 Test aggregates, value objects, and domain services directly. No handlers,
 no repositories, no event processing infrastructure.
@@ -72,7 +73,7 @@ that projections update.
 
 **Use for:** Business rules, invariants, state transitions, event payloads.
 
-### Level 2: Sync flow tests
+### Level 2: Test the flow with sync processing
 
 Set `event_processing = "sync"` in the domain configuration. With sync
 processing, event handlers and projectors fire **inline** during the Unit of
@@ -101,27 +102,27 @@ assert dashboard.status == "placed"
 ```
 
 **Use for:** Verifying the full command-to-projection chain, handler wiring,
-event routing, projection correctness. This is your primary integration
-testing tool.
+event routing, projection correctness. Sync flow testing is your primary
+integration testing tool.
 
-### Level 3: Async E2E tests
+### Level 3: Test end to end with the async engine
 
-Use `Engine(domain, test_mode=True)` for tests that exercise the actual
-async processing infrastructure. The engine's `run()` method in test mode
-starts every subscription, lets them process messages until none of them finds
-more work, then performs a graceful shutdown. Messages that handlers raise
-along the way are processed too. No `time.sleep()` guesswork.
+Use `Engine(domain, test_mode=True)` for tests that exercise the actual async
+processing infrastructure. The engine's `run()` method in test mode starts
+every subscription, lets them process messages until none of them finds more
+work, then performs a graceful shutdown. The engine also processes the messages
+that handlers raise along the way. No `time.sleep()` guesswork.
 
-Test mode stops waiting after about a second if some subscription keeps
-finding work, for example while it retries a failing handler. A partitioned
-stream subscription cannot report that it is idle, so with one present test
-mode always waits the full second.
+If a subscription keeps finding work, test mode stops waiting after about a
+second. A subscription that retries a failing handler is one example. A
+partitioned stream subscription cannot report its idle state. When one is
+present, test mode always waits the full second.
 
 Test mode does not wait for a broker to redeliver a failed message. A broker
-subscription waits `retry_delay_seconds` before it nacks the message, and the
-inline broker then holds it back for its own `retry_delay`. Test mode stops
-before the redelivery. To test a handler that fails and then succeeds on retry, set
-both delays to 0:
+subscription waits `retry_delay_seconds` before it nacks the message. The
+inline broker then holds the message back for its own `retry_delay`. Test mode
+stops before the redelivery. To test a handler that fails and then succeeds on
+retry, set both delays to 0:
 
 ```toml
 [server.broker_subscription]
@@ -174,7 +175,7 @@ The examples below use a consistent e-commerce domain: an `Order` aggregate
 that raises `OrderPlaced`, an `InventoryEventHandler` that reserves stock, and
 an `OrderDashboard` projection that tracks order status.
 
-### Domain setup
+### Set up the domain
 
 The domain is in `ecommerce/domain.py`. `InventoryEventHandler` belongs to
 `Inventory` but listens to the order stream, so it names that stream with
@@ -185,7 +186,7 @@ and never receive `OrderPlaced`.
 --8<-- "patterns/testing-event-driven-flows/ecommerce/domain.py:domain"
 ```
 
-### Test fixtures
+### Define the test fixtures
 
 A `tests/conftest.py` that initializes the domain with sync processing and
 provides a per-test context. `DomainFixture` resets the data after each test:
@@ -195,7 +196,7 @@ provides a per-test context. `DomainFixture` resets the data after each test:
 --8<-- "patterns/testing-event-driven-flows/conftest.py:fixtures"
 ```
 
-### Level 1: Domain unit tests
+### Level 1: Unit-test the domain logic
 
 Test the aggregate's business logic and event raising directly:
 
@@ -207,7 +208,7 @@ Test the aggregate's business logic and event raising directly:
 These tests run in microseconds. They verify that `Order.place()` produces
 the correct state and the correct event payload.
 
-### Level 2: Sync flow tests
+### Level 2: Test the flow with sync processing
 
 Test the full command-to-projection chain with sync processing:
 
@@ -220,7 +221,7 @@ These tests verify the **wiring**: commands reach handlers, events reach
 projectors, and projections reflect the correct state. They run at near
 unit-test speed because sync processing has no async overhead.
 
-### Level 3: Async E2E tests
+### Level 3: Test end to end with the async engine
 
 Test the async engine for scenarios that require the full infrastructure. The
 `async_events` fixture switches event processing to async for one test and
@@ -234,10 +235,10 @@ back to sync afterwards:
 ### Testing error handling paths
 
 Level 3 is essential for testing `handle_error()` overrides. A decorator
-registers a handler on its domain when the module is imported, and pytest
-imports every test module before it runs any test. So a handler that fails on
-purpose goes on a small domain of its own, built in its test module. The
-shared domain never sees it:
+registers a handler on its domain when Python imports the module. Pytest
+imports every test module before it runs any test. So you build a small domain
+in the test module and register the handler that fails on purpose on that
+domain. The shared domain never registers the failing handler:
 
 ```python
 # fragment
@@ -312,9 +313,9 @@ test would still pass.
 # events are routed to the wrong stream category.
 ```
 
-**Why it's wrong:** Unit tests cannot verify that components are wired
-together correctly. Registration, stream routing, and projection mapping
-only surface when the full chain runs.
+**Why it's wrong:** Unit tests cannot verify that components are wired together
+correctly. A test detects errors in registration, stream routing, and
+projection mapping only when the full chain runs.
 
 **Fix:** Add Level 2 sync flow tests for every command-to-projection path.
 
@@ -355,11 +356,11 @@ mode (Level 3) after dispatching the command.
 | **Test count** | Many (majority) | Some (key flows) | Few (infra-specific) |
 | **Typical assertion** | `order.status`, `order._events` | `domain.view_for(P).get(id)` | `domain.view_for(P).get(id)` after `engine.run()` |
 
-Most event-driven flow testing belongs at Level 2. Set `event_processing =
-"sync"`, call `domain.process()`, and assert on projection state immediately.
-The sync pipeline exercises the same handlers and projectors as production,
-without async complexity. Reserve Level 3 for subscription configuration,
-priority lanes, and error handling paths.
+Most event-driven flow testing belongs at Level 2. A Level 2 test sets
+`event_processing = "sync"`, calls `domain.process()`, and asserts on
+projection state immediately. The sync pipeline exercises the same handlers and
+projectors as production, without async complexity. Reserve Level 3 for
+subscription configuration, priority lanes, and error handling paths.
 
 ---
 

@@ -1,15 +1,16 @@
-# Dual-Mode Testing with Memory and Real Adapters
+# Test in two modes with memory and real adapters
 
 !!! tip "Quick Start"
     Already familiar with the concept? Add a `[memory]` section to your
-    `domain.toml` (see [Step 1](#step-1-add-the-memory-overlay-to-domaintoml))
-    and run `pytest --protean-env memory`. That's it.
+    `domain.toml` (see [Step 1](#step-1-add-the-memory-overlay-to-domaintoml)).
+    Then run `pytest --protean-env memory`. That's it.
 
 ## The Problem
 
 Production Protean applications use real infrastructure, PostgreSQL for
 persistence, Redis for message brokering, Message DB for event sourcing. Tests
-that run against these services provide high confidence but come with costs:
+that run against these services give high confidence, but they have three
+costs:
 
 - **Docker required**: Every developer needs PostgreSQL, Redis, and Message DB
   running locally. CI jobs need service containers. A fresh contributor cannot
@@ -23,9 +24,9 @@ that run against these services provide high confidence but come with costs:
   cause test failures unrelated to business logic. Developers learn to distrust
   test results.
 
-These costs are worth paying for final validation, but they are too high for
-the rapid feedback loops that drive development. You want to run tests after
-every change, and you want them to finish in seconds.
+These costs are acceptable for final validation. They are too high for the
+quick feedback you need while you develop. You want to run tests after every
+change, and you want them to finish in seconds.
 
 ---
 
@@ -38,11 +39,12 @@ Run the **same test suite** in two modes:
 | **Memory** | In-memory database, inline broker, memory event store | Local development, pre-commit checks, CI fast lane |
 | **Real** | PostgreSQL, Redis, Message DB | Final CI validation, debugging infrastructure-specific issues |
 
-The key insight is that Protean's memory adapters implement the **same interface**
-as real adapters. A test that creates an aggregate, processes a command, and
-verifies a projection works identically whether the aggregate is stored in a
-Python dictionary or a PostgreSQL table. By switching adapters at the
-configuration level, you get two modes from one test suite with zero code changes.
+The key insight is that Protean's memory adapters implement the **same
+interface** as real adapters. Consider a test that creates an aggregate,
+processes a command, and verifies a projection. The test works identically
+whether the aggregate is stored in a Python dictionary or a PostgreSQL table.
+By switching adapters at the configuration level, you get two modes from one
+test suite with zero code changes.
 
 ```
                  ┌─────────────────┐
@@ -82,14 +84,15 @@ Protean's default configuration uses in-memory adapters for everything:
 ```
 
 These adapters implement the full provider interface, create, read, update,
-delete, filtering, sorting, stream reads, consumer groups, and data reset. They
-are not stubs; they are complete implementations that happen to store data in
-Python dictionaries and lists instead of external services.
+delete, filtering, sorting, stream reads, consumer groups, and data reset. Each
+one is a complete implementation that stores data in Python dictionaries and
+lists instead of external services. None of them is a stub.
 
 ### 2. Environment Overlays in `domain.toml`
 
-The `domain.toml` configuration file supports environment-specific sections
-that are deep-merged on top of the base configuration when `PROTEAN_ENV` is set:
+The `domain.toml` configuration file supports environment-specific sections.
+When `PROTEAN_ENV` is set, Protean deep-merges the matching section into the
+base configuration:
 
 ```toml
 # Base configuration (development)
@@ -128,16 +131,16 @@ provider = "memory"
 provider = "inline"
 ```
 
-When `PROTEAN_ENV=memory`, the `[memory]` section is deep-merged on top of
-the base configuration, replacing the adapter providers. Leftover keys like
+When `PROTEAN_ENV=memory`, Protean deep-merges the `[memory]` section into the
+base configuration and replaces the adapter providers. Leftover keys like
 `database_uri` and `URI` remain but are harmlessly ignored by memory adapters.
 
 ### 3. The `--protean-env` Pytest Option
 
 Protean's pytest plugin registers a `--protean-env` CLI option (default:
-`test`) that sets `PROTEAN_ENV` before test collection. Since Domain instances
-read `domain.toml` at construction time, and domain modules are imported during
-collection, the correct overlay is always applied:
+`test`) that sets `PROTEAN_ENV` before test collection. Domain instances read
+`domain.toml` at construction time. Pytest imports domain modules during
+collection, so the correct overlay is always applied:
 
 ```shell
 # Real adapters (default)
@@ -209,7 +212,8 @@ test-memory-fast: ## Run fast tests with in-memory adapters
 ### Step 4: Add a CI Fast Lane
 
 Add a parallel CI job that runs memory-mode tests without service containers.
-This job starts faster, uses fewer resources, and provides rapid feedback:
+This job starts faster and uses fewer resources, so it gives you rapid
+feedback:
 
 ```yaml
 # .github/workflows/ci.yml
@@ -231,10 +235,11 @@ any adapter-specific issues.
 
 ---
 
-## Multi-Domain Applications
+## Use dual-mode testing in multi-domain applications
 
-For applications with multiple bounded contexts (each with its own `domain.toml`),
-the pattern scales naturally. Each domain gets the same `[memory]` overlay:
+You can use dual-mode testing in applications with multiple bounded contexts
+(each with its own `domain.toml`). Each domain gets the same `[memory]`
+overlay:
 
 ```
 src/
@@ -247,26 +252,28 @@ src/
 ```
 
 Since `--protean-env memory` sets a single `PROTEAN_ENV` environment variable,
-all domains pick up their respective `[memory]` overlays automatically. No
-per-domain switching logic is needed.
+every domain loads its own `[memory]` overlay automatically. No per-domain
+switching logic is needed.
 
 ---
 
-## What Works Identically in Both Modes
+## Which features work identically in both modes?
 
 Protean's memory adapters are complete implementations, not mocks. The
 following all work identically in memory and real mode:
 
-- **Aggregate persistence**: Create, read, update, delete via repositories
-- **Query filtering**: Exact match, contains, gt/lt, in, and other lookups
-- **Sorting and pagination**: Order by any field, limit/offset
+- Repositories create, read, update and delete aggregates.
+- Queries filter by exact match, contains, gt/lt, in, and other lookups.
+- Queries sort by any field and paginate with limit/offset.
 - **Event sourcing**: Append events, replay from stream, snapshots
-- **Event store reads**: Stream filtering, category queries, position tracking
-- **Command processing**: Synchronous `domain.process()` with UoW commit
-- **Event handling**: Handlers fire during UoW commit (sync mode)
-- **Projections**: Projectors update read models from domain events
-- **Outbox pattern**: Events written to outbox table in same transaction
-- **Data reset**: `_data_reset()` clears all state between tests
+- The event store filters streams, answers category queries, and tracks
+  positions.
+- `domain.process()` processes commands synchronously with a UoW commit.
+- Event handlers fire during the UoW commit (sync mode).
+- Projectors update projections (read models) from domain events.
+- Protean writes events to the outbox table in the same transaction (the outbox
+  pattern).
+- `_data_reset()` clears all state between tests.
 
 ---
 
@@ -274,18 +281,19 @@ following all work identically in memory and real mode:
 
 In rare cases, tests may behave differently between modes:
 
-- **Database-specific SQL**: If a test relies on PostgreSQL-specific features
-  (JSON operators, full-text search, advisory locks), the memory provider won't
-  support it. These are infrastructure concerns, not domain logic, and should be
-  isolated to integration tests.
+- **Tests that use database-specific SQL can diverge**: If a test relies on
+  PostgreSQL-specific features (JSON operators, full-text search, advisory
+  locks), the memory provider won't support it. These features are
+  infrastructure concerns outside your domain logic. Keep the tests that use
+  them in your integration tests.
 
-- **Concurrent access**: The memory provider uses thread-local locks, not
-  database-level isolation. Tests that verify concurrent write behavior may
-  need real adapters.
+- **Concurrent access can diverge**: The memory provider uses thread-local
+  locks instead of database-level isolation. Tests that verify concurrent write
+  behavior may need real adapters.
 
-- **Message ordering**: The inline broker provides FIFO ordering within a
-  single process. Redis Streams provide ordering across distributed consumers.
-  If your tests verify multi-consumer ordering, use real adapters.
+- **Message ordering can diverge**: The inline broker provides FIFO ordering
+  within a single process. Redis Streams provide ordering across distributed
+  consumers. If your tests verify multi-consumer ordering, use real adapters.
 
 The goal is for memory adapters to be functionally equivalent to real adapters
 for all domain logic. If you find a case where they diverge on domain behavior,
@@ -306,9 +314,9 @@ that is a bug in the memory adapter that should be fixed.
 | **CI cost** | Low (no service containers) | Higher (service startup + health checks) |
 | **Use case** | Development, pre-commit, fast CI | Final validation, infra debugging |
 
-The pattern follows a simple principle: **your domain logic should not know or
-care which adapter is active**. If it does, that is a sign that infrastructure
-concerns have leaked into the domain model.
+Dual-mode testing depends on one principle: **your domain logic should behave
+the same whichever adapter is active**. If your domain logic depends on the
+active adapter, your domain model contains infrastructure concerns.
 
 ---
 

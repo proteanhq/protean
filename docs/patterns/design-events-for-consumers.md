@@ -58,28 +58,30 @@ class OrderSummaryProjector(BaseProjector):
         current_domain.repository_for(OrderSummaryProjection).add(projection)
 ```
 
-Every consumer must load the aggregate. This creates a cascade of problems:
+Every consumer must load the aggregate. Loading the aggregate in every consumer
+causes the following problems:
 
-- **Coupling through queries**: Every event consumer depends on the Order
-  aggregate's structure. If Order's fields change, every consumer breaks.
+- **Consumers couple to the aggregate through queries**: Every event consumer
+  depends on the Order aggregate's structure. If Order's fields change, every
+  consumer breaks.
 
-- **Performance degradation**: Each consumer triggers a separate database
-  query to load the same aggregate. With five consumers, a single event causes
-  five aggregate loads.
+- **Consumers repeat the same database load**: Each consumer triggers a
+  separate database query to load the same aggregate. With five consumers, a
+  single event causes five aggregate loads.
 
-- **Cross-aggregate data access**: The notification handler needs the customer's
-  email, which lives on the Customer aggregate. Now it needs to load *two*
-  aggregates (Order and Customer) to process one event.
+- **Consumers load other aggregates too**: The notification handler needs the
+  customer's email, which is a field of the Customer aggregate. Now it needs to
+  load *two* aggregates (Order and Customer) to process one event.
 
-- **Event sourcing incompatibility**: In an event-sourced system, the aggregate's
-  current state may have advanced past the state at the time the event was raised.
-  Loading the current aggregate gives you *today's* data, not the data at event
-  time.
+- **Consumers read the wrong state under event sourcing**: In an event-sourced
+  system, the aggregate's current state may have moved past the state at the
+  time the event was raised. Loading the current aggregate gives you *today's*
+  data, not the data at event time.
 
-- **Broken in async processing**: When events are processed asynchronously (as
-  they should be), the aggregate may have been modified between when the event
-  was raised and when the handler runs. The handler loads stale or inconsistent
-  data.
+- **Broken in async processing**: Handlers should process events
+  asynchronously. The aggregate may change between the moment it raises the
+  event and the moment the handler runs. The handler loads stale or
+  inconsistent data.
 
 The root cause: **events carry references instead of data, forcing consumers
 to query back to the source**.
@@ -108,7 +110,7 @@ Rich event (pattern):
 This doesn't mean events should contain the entire aggregate. It means events
 should contain the data that **consumers need to do their job**.
 
-### The Litmus Test
+### Test each event with one question
 
 For every event you design, ask:
 
@@ -119,12 +121,12 @@ If the answer is no, the event is too thin. Add the data that consumers need.
 
 ---
 
-## Delta Events vs Fact Events
+## Choose between delta events and fact events
 
-Protean supports two styles of events, and the choice affects how you design
-event payloads.
+Protean supports two styles of events, and you design event payloads
+differently for each style.
 
-### Delta Events: What Changed
+### Use delta events to record what changed
 
 Delta events capture **the specific change** that occurred. They carry the data
 relevant to that particular state transition:
@@ -144,7 +146,7 @@ hand-crafted domain events.
 - When events represent meaningful business operations with specific data
 - When using event sourcing (events are the source of truth)
 
-### Fact Events: Complete State Snapshot
+### Use fact events to snapshot the complete state
 
 Fact events capture **the aggregate's complete state** after a change. Protean
 can generate these automatically:
@@ -176,11 +178,11 @@ state as a snapshot.
 | Event sourcing | Required | Not suitable (no operation semantics) |
 | Protean support | Hand-crafted | Auto-generated with `fact_events=True` |
 
-### Combining Both
+### Combine both styles on one aggregate
 
 You can use both delta and fact events on the same aggregate. Raise specific
-delta events for meaningful operations, and let fact events provide a catch-all
-for projections:
+delta events for meaningful operations. Let fact events carry every state
+change for projections:
 
 ```python
 --8<-- "patterns/design-events-for-consumers/003.py:combined"
@@ -191,19 +193,19 @@ Projections that just need the latest state listen for the fact event.
 
 ---
 
-## Event Payload Design Principles
+## Follow these principles when you design event payloads
 
 ### 1. Include Identifiers for All Referenced Aggregates
 
-Every aggregate that a consumer might need to correlate should have its
-identity in the event:
+Put the identity of every aggregate that a consumer might need to correlate in
+the event:
 
 ```python
 --8<-- "patterns/design-events-for-consumers/004.py:identifiers"
 ```
 
-Even if a consumer doesn't need all of them, including identifiers is cheap
-and enables future consumers without changing the event.
+Even if a consumer doesn't need all of them, identifiers cost little to
+include. They also let future consumers use the event without changing it.
 
 ### 2. Carry Enough Context for Consumers to Act Without Querying Back
 
@@ -228,8 +230,8 @@ Customer aggregate.
 
 ### 4. Don't Include Everything
 
-Events should carry enough context, not the entire aggregate. Data that no
-consumer needs should be omitted:
+Events should carry enough context, not the entire aggregate. Omit data that no
+consumer needs:
 
 ```python
 # fragment
@@ -243,7 +245,7 @@ class OrderPlaced(BaseEvent):
     raw_request_payload: Dict()           # API concern, not domain
 ```
 
-The rule of thumb: include business data that consumers need, exclude
+As a general rule, include business data that consumers need and exclude
 infrastructure details.
 
 ### 5. Events Are Immutable Contracts
@@ -252,12 +254,12 @@ Once an event is published and consumers depend on it, its fields become a
 contract. Adding new fields is safe (existing consumers ignore them). Removing
 or renaming fields is a breaking change.
 
-Design events thoughtfully from the start, knowing that evolution is possible
-but removal is painful.
+Design events with care from the start, because you can evolve an event later
+but removing a field breaks its consumers.
 
 ---
 
-## Projection-Driven Event Design
+## Design events backward from the projection
 
 Projections are the most common event consumers. A practical approach to event
 design is to **work backward from the projection**:
@@ -293,7 +295,7 @@ no cross-boundary queries, no coupling.
 
 ---
 
-## Handling Cross-Domain Events
+## Design events that cross domain boundaries
 
 When events cross domain boundaries (consumed by another bounded context),
 the payload design becomes even more critical. The consuming domain should
@@ -305,8 +307,8 @@ never need to query back to the producing domain.
 ```
 
 If the event doesn't carry enough data, the Fulfillment domain must call back
-to the Order domain's API, creating runtime coupling between domains that
-should be autonomous.
+to the Order domain's API. That call creates runtime coupling between domains
+that should be autonomous.
 
 ---
 
@@ -323,14 +325,14 @@ projection rebuild) can be thin:
 
 ### Events with Fact Event Fallback
 
-If you use `fact_events=True` on the aggregate, delta events can be thinner
-because consumers that need full state can listen for the fact event instead:
+If you use `fact_events=True` on the aggregate, delta events can be thinner.
+Consumers that need full state can listen for the fact event instead:
 
 ```python
 --8<-- "patterns/design-events-for-consumers/010.py:thin_delta"
 ```
 
-### Single-Consumer Events
+### Accept a thin event that has a single consumer
 
 If an event has exactly one consumer and that consumer is in the same bounded
 context, a thin event with an aggregate lookup is a pragmatic choice. But
@@ -340,7 +342,7 @@ consider that consumers may be added later.
 
 ## Anti-Patterns
 
-### The "Just Load It" Event
+### Avoid the "Just Load It" event
 
 ```python
 # fragment
@@ -351,7 +353,7 @@ class OrderPlaced(BaseEvent):
     # That's it. Every consumer must load the Order aggregate.
 ```
 
-### The event that carries everything
+### Avoid the event that carries everything
 
 ```python
 # fragment
@@ -376,10 +378,11 @@ class OrderPlaced(BaseEvent):
     # ... 20 more fields
 ```
 
-Include what consumers need, not everything the aggregate has. Derivable
-fields (item_count from items, subtotal from items) are noise.
+Include what consumers need, not everything the aggregate has. Derivable fields
+(item_count from items, subtotal from items) repeat data that consumers can
+compute, so leave them out.
 
-### Exposing Internal State
+### Avoid exposing internal state
 
 ```python
 # fragment

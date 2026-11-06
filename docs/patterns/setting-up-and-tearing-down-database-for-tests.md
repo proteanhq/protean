@@ -2,22 +2,37 @@
 
 ## The Problem
 
-Integration tests that touch real databases are essential for verifying that your domain model works correctly with actual persistence infrastructure. But they introduce problems that in-memory tests do not have:
+Integration tests against real databases check your domain model with actual
+persistence infrastructure. You need them to know the model works with that
+infrastructure. But they introduce problems that in-memory tests do not have:
 
-- **Data leaks between tests**: A test that creates an `Order` leaves that order in the database for the next test to find. Tests that pass in isolation start failing when run together, and the failures change depending on execution order.
+- **Data leaks between tests**: A test that creates an `Order` leaves that
+  order in the database for the next test to find. Tests that pass alone start
+  to fail when you run them together. Which tests fail changes with the
+  execution order.
 
 - **Missing schema**: The first test runs against a database that has no
-  tables. Without explicit schema setup, every test fails with a "table not
-  found" error, or worse, silently passes because an exception is caught
-  somewhere and swallowed.
+  tables. Without explicit schema setup, a test fails with a "table not found"
+  error, or worse, passes silently because some code catches the exception and
+  swallows it.
 
-- **Stale schema**: After adding a new field to an aggregate, the database tables still reflect the old schema. Tests pass locally because the developer remembered to recreate the tables, but fail in CI where the database is fresh.
+- **Stale schema**: After adding a new field to an aggregate, the database
+  tables still reflect the old schema. Tests pass locally after the developer
+  recreates the tables by hand. The same tests fail in CI, where the database
+  is fresh.
 
 - **Forgotten infrastructure cleanup**: Database tables get created and reset, but the broker still holds messages from the previous test. An event handler fires unexpectedly because a message was left over from three tests ago.
 
-- **Slow test suites**: Creating and dropping the entire database schema before every single test is correct but slow. A test suite that takes 30 seconds with in-memory adapters takes 10 minutes against PostgreSQL because of schema overhead.
+- **Slow test suites**: If your fixtures create and drop the entire database
+  schema before every test, the tests are correct but slow. With in-memory
+  adapters, a test suite might run in 30 seconds. Against PostgreSQL, the
+  schema work stretches the same suite to 10 minutes.
 
-These problems share a root cause: **the lifecycle of database schema and test data are not managed separately.** Schema changes rarely (only when the domain model changes), but data changes every test. Treating them the same leads to either correctness problems (no cleanup) or performance problems (full recreation per test).
+These problems share a root cause: **the test setup manages the database schema
+and the test data on one lifecycle.** Schema changes rarely (only when the
+domain model changes), but data changes in every test. Treating them the same
+leads to either correctness problems (no cleanup) or performance problems (full
+recreation per test).
 
 ---
 
@@ -28,8 +43,8 @@ Separate the **schema lifecycle** from the **data lifecycle**:
 1. **Schema** (tables, indexes, constraints) is created once at the start of the test session and dropped once at the end. This is the expensive operation, but it only happens twice per test run.
 
 2. **Data** (rows, messages, events) is reset after every test. This
-   is cheap. It truncates tables and flushes in-memory stores rather than
-   recreating them.
+   is cheap. The reset truncates tables and flushes in-memory stores, and
+   leaves them in place.
 
 3. **All infrastructure** (database providers, brokers, event stores) is cleaned up, not just the database. `DomainFixture` does not reset caches. A test that publishes an event to a broker is just as capable of leaking state as one that writes a row to PostgreSQL.
 
@@ -49,7 +64,8 @@ Session end:     drop schema for all providers
 
 ## How Protean Supports This
 
-Every Protean adapter exposes lifecycle methods designed for exactly this separation:
+Every Protean adapter exposes lifecycle methods that keep the schema lifecycle
+apart from the data lifecycle:
 
 ### Database Providers (`domain.providers`)
 
@@ -71,13 +87,18 @@ Every Protean adapter exposes lifecycle methods designed for exactly this separa
 |--------|---------|
 | `domain.event_store.store._data_reset()` | Flush all stored events |
 
-The in-memory adapters implement these same methods as no-ops or simple dictionary clears, so the same fixture code works regardless of which adapter is active.
+The in-memory adapters implement the lifecycle methods in the tables above as
+no-ops or dictionary clears. Your fixture code therefore works with any active
+adapter.
 
 ---
 
 ## `DomainFixture`: The Recommended Approach
 
-Protean provides `DomainFixture` (from `protean.integrations.pytest`) that encapsulates the entire pattern described above. It handles domain initialization, schema creation, schema teardown, and per-test data cleanup across **all** adapters automatically.
+Protean provides `DomainFixture` (from `protean.integrations.pytest`) that
+encapsulates the entire pattern described above. `DomainFixture` initializes
+the domain, creates the schema, drops the schema, and cleans up data after each
+test across **all** adapters automatically.
 
 ```python
 --8<-- "patterns/setting-up-and-tearing-down-database-for-tests/in_memory/conftest.py:import"
@@ -89,7 +110,8 @@ Protean provides `DomainFixture` (from `protean.integrations.pytest`) that encap
 | `teardown()` | Drops database schema via `domain.drop_database()` |
 | `domain_context()` | Context manager that activates the domain context, yields the domain, and on exit resets all data in providers, brokers, and the event store |
 
-This gives you the session-scoped schema lifecycle and per-test data cleanup in two fixtures in `tests/conftest.py`:
+With `DomainFixture`, you get the session-scoped schema lifecycle and per-test
+data cleanup from two fixtures in `tests/conftest.py`:
 
 ```python
 # fragment
@@ -102,7 +124,7 @@ The recipes below show how to apply `DomainFixture` to various scenarios.
 
 ## Applying the Pattern
 
-### Recipe 1: In-Memory Only
+### Recipe 1: Test with in-memory adapters only
 
 The simplest configuration. No schema management is needed because in-memory adapters have no persistent schema. In `tests/conftest.py`:
 
@@ -111,9 +133,12 @@ The simplest configuration. No schema management is needed because in-memory ada
 --8<-- "patterns/setting-up-and-tearing-down-database-for-tests/in_memory/conftest.py:conftest"
 ```
 
-This is sufficient for most development workflows. The domain is initialized once, and `domain_context()` resets all data between tests automatically.
+This is sufficient for most development workflows. The fixture initializes the
+domain once. `domain_context()` resets all data between tests automatically.
 
-Two tests that each expect an empty store show the reset. Whichever test runs second fails if the first test's order is still there:
+The two tests below each expect an empty store, so they show the reset from
+`domain_context()`. If the first test's order is still in the store, the second
+test fails:
 
 ```python
 # fragment
@@ -122,9 +147,10 @@ Two tests that each expect an empty store show the reset. Whichever test runs se
 
 ---
 
-### Recipe 2: Single Real Database
+### Recipe 2: Test against one real database
 
-When testing against PostgreSQL, SQLite, or Elasticsearch, `DomainFixture` handles schema creation and teardown automatically. In `tests/conftest.py`:
+When you test against PostgreSQL, SQLite, or Elasticsearch, `DomainFixture`
+creates and drops the schema automatically. In `tests/conftest.py`:
 
 ```python
 # fragment
@@ -160,19 +186,20 @@ def _ctx(app_fixture):
 
 `DomainFixture.setup()` calls `domain.init()` and creates tables for every
 configured provider. `teardown()` drops them. `domain_context()` resets data
-after each test. Schema creation happens once; data cleanup happens hundreds of
-times, but it is fast because it only truncates.
+after each test. The fixture creates the schema once per session. It cleans up
+data hundreds of times, and each cleanup is fast because it only truncates
+tables.
 
 ---
 
-### Recipe 3: Switch Between In-Memory and Real Database
+### Recipe 3: Switch between in-memory and real databases
 
 !!! tip "Prefer `--protean-env` for whole-suite switching"
     If you want to switch **all** adapters between in-memory and real
     infrastructure at once, Protean's `--protean-env` flag is simpler than
-    manual environment variables. Define a `[memory]` overlay in `domain.toml`
-    and run `pytest --protean-env memory`. See
-    [Dual-Mode Testing](dual-mode-testing.md) for the full setup.
+    manual environment variables. Define a `[memory]` overlay in `domain.toml`.
+    Then run `pytest --protean-env memory`. See [Dual-Mode
+    Testing](dual-mode-testing.md) for the full setup.
 
 The recipe below is useful when you need to switch individual adapters
 independently or control adapter selection per-directory. Use an environment
@@ -183,7 +210,8 @@ variable to control which adapter runs, in `tests/conftest.py`:
 --8<-- "patterns/setting-up-and-tearing-down-database-for-tests/env_switch/conftest.py:conftest"
 ```
 
-A test can read the provider the run uses, so a run with `TEST_DB=sqlite` proves it reached SQLite:
+A test can read which provider the run uses. With `TEST_DB=sqlite`, the test
+below proves the run reached SQLite:
 
 ```python
 # fragment
@@ -205,9 +233,11 @@ TEST_DB=sqlite pytest tests/
 
 ---
 
-### Recipe 4: Full Infrastructure (Database + Broker + Event Store)
+### Recipe 4: Test against full infrastructure (database + broker + event store)
 
-Production systems often use a real database, a message broker, and an event store. `DomainFixture` manages all three automatically. In `tests/conftest.py`:
+Production systems often use a real database, a message broker, and an event
+store. `DomainFixture` sets up and resets all three automatically. In
+`tests/conftest.py`:
 
 ```python
 # fragment
@@ -266,7 +296,7 @@ TEST_INFRA=full \
 
 ---
 
-### Recipe 5: Separate Unit and Integration Fixtures
+### Recipe 5: Keep unit and integration fixtures apart
 
 For larger projects, separate `conftest.py` files allow unit tests to run with in-memory
 adapters while integration tests use real infrastructure, without environment
@@ -333,16 +363,15 @@ pytest tests/unit/
 pytest tests/integration/
 ```
 
-Run the two folders in separate pytest runs. Both conftests change the
-same `domain` object, so in a single `pytest tests/` run the integration
-fixture's database setting stays in place for the unit tests that run after
-it.
+Run the two folders in separate pytest runs. Both conftests change the same
+`domain` object. In a single `pytest tests/` run, the unit tests that run after
+the integration tests keep the integration fixture's database setting.
 
 ---
 
 ## Common Anti-Patterns
 
-### No Data Reset
+### Skipping the data reset
 
 ```python
 # fragment
@@ -368,7 +397,9 @@ def test_no_orders_exist():
     assert len(orders.items) == 0  # FAILS: order from previous test
 ```
 
-Fix: use `DomainFixture.domain_context()` which resets all data automatically, or add a `function`-scoped `clean_data` fixture that calls `_data_reset()` on all providers, all brokers and the event store.
+Fix: use `DomainFixture.domain_context()`, which resets all data automatically.
+Or add a `function`-scoped `clean_data` fixture that calls `_data_reset()` on
+all providers, all brokers and the event store.
 
 ### Recreating Schema Per Test
 
@@ -386,7 +417,10 @@ def setup_database():
             provider._drop_database_artifacts()
 ```
 
-This is correct but slow. If you have 500 tests, you create and drop the entire schema 500 times. Use `DomainFixture` (which is session-scoped) or move schema operations to `scope="session"` and use `_data_reset()` per test instead.
+A fixture that recreates the schema per test is correct but slow. If you have
+500 tests, you create and drop the entire schema 500 times. Use `DomainFixture`
+(which is session-scoped) or move schema operations to `scope="session"` and
+use `_data_reset()` per test instead.
 
 ### Forgetting Broker and Event Store Cleanup
 
@@ -408,7 +442,11 @@ If your test raises domain events that are published to a broker, the broker acc
 --8<-- "patterns/setting-up-and-tearing-down-database-for-tests/manual_cleanup/conftest.py:clean_data"
 ```
 
-These pairs of tests each expect an empty database, broker stream and event store at the start, so the second test of a pair fails if a store kept data. With the in-memory adapters, the provider reset also empties the event store, because the memory event store keeps its messages in the memory provider. The last line of `clean_data` matters for a separate event store such as MessageDB:
+Each pair of tests below expects an empty database, broker stream and event
+store at the start. If any store kept data, the second test of the pair fails.
+With the in-memory adapters, the provider reset also empties the event store,
+because the memory event store keeps its messages in the memory provider. The
+last line of `clean_data` matters for a separate event store such as MessageDB:
 
 ```python
 # fragment
@@ -419,7 +457,8 @@ These pairs of tests each expect an empty database, broker stream and event stor
 
 ## Summary
 
-The recommended approach is to use `DomainFixture` from `protean.integrations.pytest`, which handles all lifecycle management automatically:
+Use `DomainFixture` from `protean.integrations.pytest`. `DomainFixture` creates
+the schema, drops it, and resets data automatically:
 
 | Concern | `DomainFixture` Method | Scope |
 |---------|------------------------|-------|
@@ -427,7 +466,7 @@ The recommended approach is to use `DomainFixture` from `protean.integrations.py
 | Schema teardown | `teardown()` | Once per session |
 | Data cleanup (all adapters) | `domain_context()` exit | After every test |
 
-`DomainFixture` calls these adapter methods:
+`DomainFixture` calls the adapter methods in the table below:
 
 | Concern | Adapter Method | Scope |
 |---------|----------|-------|
@@ -443,7 +482,9 @@ the schema. It is also available as a CLI command (`protean db truncate`) for
 use outside of tests, for example, to reset a development database without
 dropping and recreating tables.
 
-**The key principle: create schema once, reset data often.** This gives you the correctness of full isolation with the performance of shared infrastructure.
+**The key principle: create schema once, reset data often.** With this split,
+your tests stay as isolated as with a fresh database per test and run as fast
+as with a shared one.
 
 For fixture organization patterns, test layout conventions, and additional recipes, see [Fixtures and Patterns](../guides/testing/fixtures-and-patterns.md).
 

@@ -14,11 +14,12 @@ You need to backfill a `loyalty_tier` field onto 500,000 existing customer
 records. The migration script loads each customer, sets the tier, and saves,
 producing 500,000 `LoyaltyTierAssigned` events.
 
-Those events flood the same Redis Stream that handles real-time customer
-registrations, order placements, and payment confirmations. The Engine processes
-them in FIFO order, so production events are now stuck behind half a million
-migration events. A customer who just placed an order waits minutes (or longer)
-for their confirmation because the projector is busy processing backfill events.
+Those events are published to the same Redis Stream as the real-time customer
+registration, order placement, and payment confirmation events. The Engine
+processes them in FIFO order (first in, first out). Production events now wait
+until the Engine has processed half a million migration events. The projector
+is busy processing backfill events. A customer who just placed an order waits
+minutes (or longer) for their confirmation.
 
 ```
 Without priority lanes:
@@ -31,19 +32,21 @@ Without priority lanes:
 ```
 
 You could pause the migration, wait for production to catch up, and resume in
-small batches, but this is manual, error-prone, and slow. You could run the
-migration at 3 AM, but that only works if your traffic has a quiet window.
+small batches. Pausing and resuming by hand is manual, error-prone, and slow.
+You could run the migration at 3 AM, but that only works if your traffic has a
+quiet window.
 
-The root issue is that **migration events and production events are treated
-identically**, even though they have fundamentally different urgency profiles.
+The root issue is that the Engine **treats migration events and production
+events identically**. The two kinds of event have fundamentally different
+urgency profiles.
 
 ---
 
 ## The Pattern
 
-Route migration events to a separate backfill lane that the Engine processes
-only when production work is idle. This way, migrations run continuously at
-full speed without ever delaying a production event.
+Route migration events to a separate backfill lane. The Engine processes the
+backfill lane only when production work is idle. This way, migrations run
+continuously at full speed without ever delaying a production event.
 
 Tag migration commands with a low priority, and let the infrastructure route
 them accordingly.
@@ -66,9 +69,9 @@ priority. The framework handles the rest.
 
 ## How Protean Supports It
 
-Protean provides this pattern through three mechanisms:
+Protean supports priority lanes through three mechanisms:
 
-### 1. Processing Priority Context
+### 1. Tag commands with a processing priority
 
 The `processing_priority()` context manager tags all commands processed within
 a block with a specific priority. Events produced by those commands inherit the
@@ -106,7 +109,7 @@ For the full configuration and priority level reference, see
 
 ## Applying the Pattern
 
-### A Complete Migration Script
+### Write a complete migration script
 
 The script works on this `Customer` aggregate. Priority lanes are switched on
 in the domain's configuration:
@@ -116,10 +119,10 @@ in the domain's configuration:
 ```
 
 Here is a migration script that backfills a `loyalty_tier` field on existing
-customer records. The key is wrapping all `domain.process()` calls inside a
-`processing_priority(Priority.LOW)` context manager. The script reads
-customers one page at a time, because a query returns at most 100 records
-unless you set a limit.
+customer records. The script wraps all `domain.process()` calls inside a
+`processing_priority(Priority.LOW)` context manager. A query returns at most
+100 records unless you set a limit. The script therefore reads customers one
+page at a time.
 
 ```python
 --8<-- "patterns/running-data-migrations-with-priority-lanes/001.py:script"
@@ -139,7 +142,7 @@ Then run the migration while production is running:
 python migrate_loyalty_tiers.py
 ```
 
-### Key Points
+### What each part does during the migration
 
 1. **`processing_priority(Priority.LOW)`** wraps all `domain.process()` calls.
    Every event produced inside the block is tagged with `priority=-50` in the
@@ -179,13 +182,14 @@ stored in the stream, read or not.
 Zero lag does not mean the migration succeeded. Outbox records may still be
 waiting to be published, and a message whose handler failed is acknowledged
 once it moves to the dead-letter stream (`identity::customer:backfill:dlq`).
-Treat the migration as done only when the outbox has no unpublished records
-and the dead-letter stream holds no migration events.
+The migration is done only when the outbox has no unpublished records and the
+dead-letter stream holds no migration events.
 
 If you are running the [Observatory](../reference/server/observability.md),
-`outbox.published` traces show each migration event as it is published. Their
-`stream` field is the stream category (`identity::customer`), not the backfill
-stream, so use `XINFO GROUPS` above to confirm which lane the events went to.
+`outbox.published` traces show each migration event at the moment of
+publication. Their `stream` field is the stream category
+(`identity::customer`), not the backfill stream, so use `XINFO GROUPS` above to
+confirm which lane the events went to.
 
 ---
 
@@ -206,10 +210,11 @@ any migration that changes domain state should go through `domain.process()`.
 
 ### Running migrations during a maintenance window "because it's simpler"
 
-Taking the system offline to run a migration avoids the priority lane problem
-but creates a different one: downtime. For systems that need to stay available,
-priority lanes let you run migrations during normal operation. The added
-complexity is minimal, a single `with processing_priority(Priority.LOW):` wrapper.
+If you take the system offline to run a migration, you avoid the priority lane
+problem but create a different one: downtime. For systems that need to stay
+available, priority lanes let you run migrations during normal operation. The
+added complexity is minimal, a single `with processing_priority(Priority.LOW):`
+wrapper.
 
 ### Parallelizing migration scripts without coordination
 
@@ -223,19 +228,20 @@ subset.
 
 ## When Not to Use
 
-- **Small datasets**: If the migration processes fewer events than the Engine
-  can handle in a few seconds, priority lanes add no value. run the script
-  and let the events flow through the normal pipeline.
+- **When the dataset is small**: Priority lanes add no value for a migration
+  whose events the Engine can process in a few seconds. Run the script and let
+  the events go through the normal pipeline.
 
-- **Schema-only migrations**: If you are adding a column, changing an index, or
-  altering table structure without changing domain state, use database migration
-  tools directly. Priority lanes are for domain-level data changes that produce
-  events.
+- **When the migration changes only the schema**: If you are adding a column,
+  changing an index, or altering table structure without changing domain state,
+  use database migration tools directly. Priority lanes are for domain-level
+  data changes that produce events.
 
-- **Migrations requiring strict ordering with production**: If migration events
-  must be interleaved with production events in a specific order, priority lanes
-  will break that ordering. The two-lane system intentionally allows production
-  events to jump ahead of migration events.
+- **When migration events must keep a strict order with production events**: If
+  migration events must be interleaved with production events in a specific
+  order, priority lanes will break that ordering. The two-lane system
+  intentionally lets the Engine process production events before migration
+  events that were published earlier.
 
 ---
 

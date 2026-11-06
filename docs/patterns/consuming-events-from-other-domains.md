@@ -16,17 +16,19 @@ If your Fulfillment domain consumes this event directly:
 - **Language coupling**: Your code uses the Order domain's terminology.
   If the Order domain renames `items` to `line_items`, your handler breaks.
 
-- **Schema coupling**: Your domain depends on the exact structure of the
-  external event. Field additions, removals, or type changes propagate into
-  your domain.
+- **Your domain depends on the external schema**: Your domain depends on the
+  exact structure of the external event. When the Order domain adds a field,
+  removes one or changes its type, your domain has to change too.
 
-- **Release coupling**: When the Order domain deploys a new event version,
-  your domain must update simultaneously, or fail.
+- **Your releases are tied to the Order domain's releases**: When the Order
+  domain deploys a new event version, your domain must update at the same time,
+  or fail.
 
-- **Conceptual leaking**: The Order domain's `OrderPlaced` event carries data
-  shaped for the Order context. Your Fulfillment domain needs a subset of that
-  data, differently structured. Processing the raw external event forces
-  Fulfillment to think in Order domain terms.
+- **Order concepts enter your Fulfillment domain**: The Order domain's
+  `OrderPlaced` event carries data shaped for the Order context. Your
+  Fulfillment domain needs a subset of that data, differently structured. When
+  your Fulfillment code processes the raw external event, you have to write
+  that code in Order domain terms.
 
 The root cause: **consuming external events without translation creates
 coupling between bounded contexts that should be autonomous**.
@@ -49,23 +51,24 @@ External Domain                  Your Domain Boundary                Your Domain
                             └──────────────────┘
 ```
 
-The subscriber is the **only place** in your domain that knows about the
-external event's structure. Everything downstream works with your domain's
-own commands and events.
+The subscriber is the **only** element in your domain that reads the external
+event's structure. The handlers and projectors that run after the subscriber
+receive only your domain's own commands and events.
 
 !!!note "Co-located domains have a second option"
-    This pattern applies to **distributed domains**, separate services
-    communicating through a broker, or external systems you don't control.
+    The subscriber pattern applies to **distributed domains**, separate
+    services communicating through a broker, or external systems you don't
+    control.
 
-    When multiple domains live in the **same repository and share the same
-    event store**, Protean also supports `register_external_event()`, which
-    gives your domain typed access to another domain's events without raw
-    dict parsing. This is especially useful for process managers coordinating
-    cross-domain workflows.
+    Sometimes multiple domains are in the **same repository and share the same
+    event store**. For these domains Protean also supports
+    `register_external_event()`, which gives your domain typed access to
+    another domain's events without raw dict parsing. This is especially useful
+    for process managers coordinating cross-domain workflows.
 
     See [Multi-Domain Applications, Cross-domain
-    communication](../guides/multi-domain-applications.md#cross-domain-communication)
-    for guidance on choosing between the two approaches.
+    communication](../guides/multi-domain-applications.md#communicate-across-domains)
+    for guidance on choosing between a subscriber and `register_external_event()`.
 
 ---
 
@@ -90,29 +93,30 @@ The subscriber:
 
 !!!note "Payload shape"
     The examples on this page read flat JSON payloads, like the ones under
-    [Handling External Schema Changes](#handling-external-schema-changes).
-    That is the shape a producer outside Protean usually sends. When the
-    producer is a Protean domain publishing through its outbox, the event
-    fields sit under `payload["data"]` and the event type under
-    `payload["metadata"]["headers"]["type"]`.
-    [Publishing Events to External Brokers](publishing-events-to-external-brokers.md#step-4-consume-on-the-other-side)
+    [Handling External Schema Changes](#handling-external-schema-changes). That
+    is the shape a producer outside Protean usually sends. A Protean domain
+    that publishes through its outbox puts the event fields in
+    `payload["data"]`. It puts the event type in
+    `payload["metadata"]["headers"]["type"]`. [Publishing Events to External
+    Brokers](publishing-events-to-external-brokers.md#step-4-consume-on-the-other-side)
     shows a subscriber that reads that shape.
 
 !!!note
     Subscribers deliberately receive raw `dict` payloads rather than typed
     domain objects. This is the anti-corruption boundary. Your domain does
     **not** import or depend on the external domain's event classes. The raw
-    dict is the firewall between external and internal models.
+    `dict` payload keeps the external domain's event classes out of your
+    internal model.
 
 ---
 
-## The Translation Layer
+## Translate external events into your domain's language
 
 ### Translating to Commands
 
 The most common pattern: translate external payloads into internal commands.
-This funnels external stimuli through your domain's normal command processing
-pipeline:
+Your domain then processes the external input through its normal command
+processing pipeline:
 
 ```python
 --8<-- "patterns/consuming-events-from-other-domains/002.py:subscriber"
@@ -131,8 +135,8 @@ When the external event should trigger reactive processing across your domain
 --8<-- "patterns/consuming-events-from-other-domains/003.py:subscriber"
 ```
 
-The internal `ProductBecameUnavailable` event triggers your domain's own
-event handlers and projectors, all speaking your domain's language.
+The internal `ProductBecameUnavailable` event triggers your domain's own event
+handlers and projectors, which use only your domain's language.
 
 ### Filtering Irrelevant Events
 
@@ -189,11 +193,11 @@ Only the subscriber changes:
 ```
 
 Your domain's `CreateShipment` command, `Shipment` aggregate, and all handlers
-remain unchanged. The schema change is absorbed by the subscriber.
+remain unchanged. Only the subscriber code changes to match the new schema.
 
 ---
 
-## Error Handling
+## Validate external events in the subscriber
 
 External events may be malformed, carry unexpected data, or reference entities
 that don't exist in your domain:
@@ -202,15 +206,16 @@ that don't exist in your domain:
 --8<-- "patterns/consuming-events-from-other-domains/007.py:subscriber"
 ```
 
-**Key principle:** Never trust external data. Validate it at the subscriber
-boundary before passing it into your domain.
+**Never trust external data.** Validate it at the subscriber boundary before
+passing it into your domain.
 
 !!! tip "Preserving the correlation chain"
-    When consuming events from external services, the `correlation_id` from the
-    source event is automatically bridged into your subscriber's processing
-    context. Any commands dispatched inside the subscriber inherit it, stitching
-    the causal chain across service boundaries. See
-    [Correlation and Causation IDs](../guides/observability/correlation-and-causation.md#service-boundary-handling)
+    When your subscriber consumes events from external services, Protean
+    automatically copies the `correlation_id` from the source event into your
+    subscriber's processing context. Any commands dispatched inside the
+    subscriber inherit the `correlation_id`, so you can trace one causal chain
+    across service boundaries. See [Correlation and Causation
+    IDs](../guides/observability/correlation-and-causation.md#keep-the-correlation-chain-across-service-boundaries)
     for details.
 
 ---
@@ -276,10 +281,10 @@ def __call__(self, payload: dict) -> None:
     ...
 ```
 
-If the subscriber needs more data than the event carries, either request that
-the external domain enrich its events (see [Design Events for
-Consumers](design-events-for-consumers.md)) or maintain a local projection
-of the external data.
+If the subscriber needs more data than the event carries, you have two options.
+Ask the external domain to enrich its events (see [Design Events for
+Consumers](design-events-for-consumers.md)), or maintain a local projection of
+the external data.
 
 ---
 
@@ -295,8 +300,8 @@ of the external data.
 
 Subscribers are anti-corruption layers. They receive external events as raw
 dicts, translate them into your domain's language, and dispatch internal
-commands or events. Nothing downstream knows or cares that the stimulus came
-from outside.
+commands or events. The handlers and projectors that run after the subscriber
+do not depend on where the message came from.
 
 ---
 
