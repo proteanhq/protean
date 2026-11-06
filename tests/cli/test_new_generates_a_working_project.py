@@ -389,6 +389,42 @@ class TestGeneratedProjectStarts:
         )
 
 
+class TestCommandsFindTheGeneratedDomain:
+    """Commands run from the project root find `src/<package>/domain.py`."""
+
+    @pytest.mark.parametrize(
+        "command",
+        [["db", "setup"], ["server", "--test-mode"]],
+        ids=["db setup", "server test mode"],
+    )
+    def test_command_runs_without_a_domain_option(self, tmp_path, command):
+        """No `--domain` and no `src` on `PYTHONPATH`: discovery must find the
+        domain under `src/` and put `src` on the import path itself."""
+        project = _generate(tmp_path, ["-d", "database=sqlite"])
+        env = _subprocess_env(project)
+        env["PYTHONPATH"] = os.pathsep.join(
+            entry
+            for entry in env["PYTHONPATH"].split(os.pathsep)
+            if entry != str(project / "src")
+        )
+        env.pop("PROTEAN_DOMAIN", None)
+
+        completed = subprocess.run(
+            [sys.executable, "-m", "protean", *command],
+            cwd=project,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+
+        assert completed.returncode == 0, (
+            f"`protean {' '.join(command)}` with no --domain fails in a "
+            f"generated project:\n{completed.stdout}\n{completed.stderr}"
+        )
+
+
 class TestGeneratedProjectIsDxManaged:
     """A generated project is dx-managed from birth.
 

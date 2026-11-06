@@ -1,4 +1,5 @@
 import ast
+import glob
 import logging
 import os
 import re
@@ -115,18 +116,66 @@ def find_domain_by_string(module: ModuleType, domain_name: str) -> Domain:
     return domain
 
 
+_DOMAIN_FILENAMES = ("domain.py", "subdomain.py")
+
+
+def _find_src_domain_file(directory: str) -> str | None:
+    """Return the one `src/*/domain.py` or `src/*/subdomain.py` under *directory*.
+
+    `domain.py` files are searched first; `subdomain.py` files only when
+    there is no `domain.py`. Returns None when nothing matches. Raises
+    `NoDomainException` listing every match when more than one file of the
+    same name matches.
+    """
+    for filename in _DOMAIN_FILENAMES:
+        # A broken symlink matches the glob but cannot be imported.
+        matches = sorted(
+            match
+            for match in glob.glob(
+                os.path.join(glob.escape(directory), "src", "*", filename)
+            )
+            if os.path.isfile(match)
+        )
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            listed = ", ".join(os.path.relpath(match, directory) for match in matches)
+            raise NoDomainException(
+                f"Found more than one domain under 'src': {listed}."
+                " Pass --domain to choose one."
+            )
+    return None
+
+
+def _find_domain_file(directory: str) -> str | None:
+    """Return the domain module for *directory*: a `domain` or `subdomain`
+    package or `.py` file in *directory* itself, else the one found under
+    `src/`, else None."""
+    for name in ("domain", "subdomain"):
+        module_path = os.path.join(directory, name)
+        if os.path.exists(os.path.join(module_path, "__init__.py")):
+            return module_path
+        if os.path.exists(module_path + ".py"):
+            return module_path + ".py"
+    return _find_src_domain_file(directory)
+
+
 def prepare_import(path: str) -> str:
     """Given a filename this will try to calculate the python path, add it
     to the search path and return the actual module name that is expected.
+
+    A path that resolves to the current directory is replaced by its domain
+    module: a `domain` package or `domain.py`, then a `subdomain` package or
+    `subdomain.py`, in the directory, else the single `src/*/domain.py` or
+    `src/*/subdomain.py`. A package counts only when it has an
+    `__init__.py`. Raises `NoDomainException` when more than one
+    `src/*/domain.py` matches, or, with no `src/*/domain.py`, more than one
+    `src/*/subdomain.py`.
     """
     path = os.path.realpath(path)
 
-    # If the path is ".", look for domain.py or subdomain.py in the current directory
     if path == os.path.realpath("."):
-        if os.path.exists(os.path.join(path, "domain.py")):
-            path = os.path.join(path, "domain.py")
-        elif os.path.exists(os.path.join(path, "subdomain.py")):
-            path = os.path.join(path, "subdomain.py")
+        path = _find_domain_file(path) or path
 
     filename, ext = os.path.splitext(path)
     if ext == ".py":
@@ -192,6 +241,14 @@ def derive_domain(domain_path: str | None = None) -> Domain | None:
     - A module in a sub folder ("src/hello")
     - A module string ("hello.web")
     - An instance ("hello:app2")
+
+    With no path, and with the path ".", the domain is looked up in this
+    order: a `domain` package or `domain.py`, then a `subdomain` package or
+    `subdomain.py`, in the current folder, then `src/*/domain.py`, then
+    `src/*/subdomain.py`. More than one `src/*/domain.py`, or, with no
+    `src/*/domain.py`, more than one `src/*/subdomain.py`, raises
+    `NoDomainException`. With no path and no match, imports a module named
+    `domain` from the import path if there is one, and otherwise returns None.
     """
     domain_import_path = os.environ.get("PROTEAN_DOMAIN") or domain_path
 
@@ -203,7 +260,22 @@ def derive_domain(domain_path: str | None = None) -> Domain | None:
         import_name = prepare_import(path)
         domain = locate_domain(import_name, name)
     else:
-        import_name = prepare_import("domain.py")
-        domain = locate_domain(import_name, None, raise_if_not_found=False)
+        domain = _derive_default_domain()
 
     return domain
+
+
+def _derive_default_domain() -> Domain | None:
+    """Load the domain for the current folder when no path is given.
+
+    Returns None when the folder has no `domain` or `subdomain` module,
+    nothing matches under `src/`, and no module named `domain` can be
+    imported.
+    """
+    if _find_domain_file(".") is not None:
+        # Resolve through "." so both forms import the same module name, even
+        # when `src/<package>` is a symlink.
+        return locate_domain(prepare_import("."), None)
+
+    import_name = prepare_import("domain.py")
+    return locate_domain(import_name, None, raise_if_not_found=False)
