@@ -1398,8 +1398,8 @@ def _upcaster_citation(
         return None
     # Keyed by event base name (matching the `Domain.Name` type string and
     # `_diagnose_upcaster_gap`). Two events sharing a class name across
-    # aggregates would pool edges, a limitation of the name-based key.
-    # TODO(#1985): key by the event's qualified name.
+    # aggregates would pool edges, a limitation of the name-based key. The
+    # matching TODO in the IR builder tracks keying by the qualified name.
     edges = [
         (e["from_version"], e["to_version"])
         for e in upcasters.get(right_entry.get("name", ""), [])
