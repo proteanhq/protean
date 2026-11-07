@@ -22,9 +22,9 @@ page is internal, whatever its name suggests.
 
 ## Results
 
-What `given(...)` and the helpers below hand back. Each carries the events,
-state and errors produced, so a test asserts against one object rather than
-reaching into the domain.
+`given(...)` and the helpers below return these result objects. Each carries
+the events, state and errors produced, so a test asserts against one object
+instead of inspecting the domain.
 
 ::: protean.testing
     options:
@@ -41,9 +41,9 @@ reaching into the domain.
 ## Helpers
 
 `drain` and `process_and_wait` exist because asynchronous processing has no
-natural join point in a test: they run the engine until it is idle instead of
-sleeping and hoping. Prefer them to a bare `sleep`, which is the single most
-common cause of a test that passes locally and flakes in CI.
+natural join point in a test. They run the engine until it is idle, so a test
+does not sleep for a guessed duration. Prefer them to a bare `sleep`, which is
+the single most common cause of a test that passes locally and flakes in CI.
 
 ::: protean.testing
     options:

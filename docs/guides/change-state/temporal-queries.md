@@ -4,9 +4,9 @@
 
 Event sourcing preserves the complete history of every aggregate as a sequence
 of domain events. Temporal queries let you reconstitute an aggregate at any
-historical point, answering "what was the state of this order yesterday?" or
-"what did the account look like at version 5?" without any extra
-infrastructure.
+historical point without any extra infrastructure. They answer questions such
+as "what was the state of this order yesterday?" or "what did the account look
+like at version 5?"
 
 The examples on this page use this event-sourced `Order`. The order
 `order-123` has seven events, and `cutoff` is a moment between the fourth and
@@ -28,8 +28,8 @@ version 1 after the second, and so on.
 --8<-- "guides/change-state/temporal-queries/001.py:at_version"
 ```
 
-This is useful for comparing state before and after a particular event, or for
-debugging unexpected state transitions.
+Use `at_version` to compare state before and after a particular event, or to
+debug unexpected state transitions.
 
 ## By timestamp
 
@@ -64,8 +64,9 @@ You can check whether an aggregate was loaded temporally via the
 --8<-- "guides/change-state/temporal-queries/001.py:is_temporal"
 ```
 
-This safety guard prevents accidental writes to historical state. If you need
-to modify an aggregate, load it at its current version with a plain `get()`.
+The read-only guard on temporal aggregates prevents accidental writes to
+historical state. If you need to modify an aggregate, load it at its current
+version with a plain `get()`.
 
 ## Mutual exclusivity
 
@@ -84,7 +85,8 @@ Protean's snapshot mechanism optimizes aggregate loading by caching state at
 periodic intervals (see
 [Event Sourcing Internals](../../concepts/internals/event-sourcing.md#snapshots)).
 
-Temporal queries handle snapshots correctly:
+Temporal queries use a snapshot only when it gives the correct historical
+state:
 
 - **`at_version`** uses existing snapshots when the snapshot version is
   at or before the requested version. If the snapshot is newer than the
@@ -95,10 +97,10 @@ Temporal queries handle snapshots correctly:
 
 ## Identity map bypass
 
-Temporal queries always bypass the Unit of Work's identity map. Even if the
-identity map holds the aggregate in the current transaction (because it was
-loaded or saved earlier in it), a temporal query replays events
-from the event store to ensure the historical state is accurate:
+Temporal queries always bypass the Unit of Work's identity map. The identity
+map holds the aggregate when the current transaction loaded or saved it
+earlier. A temporal query still replays events from the event store, so the
+historical state is accurate:
 
 ```python
 --8<-- "guides/change-state/temporal-queries/001.py:identity_map"

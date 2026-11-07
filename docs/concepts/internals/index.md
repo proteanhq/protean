@@ -4,18 +4,18 @@ The design reasoning and internal architecture behind Protean's core systems.
 Read these if you are contributing, or if you want to know **why** Protean
 works the way it does rather than only how to use it.
 
-These pages go deeper than the guides. Where guides show you what to write,
-internals explain the machinery that makes it work and the decisions that
-shaped it.
+These pages give more detail than the guides. The guides show you what to
+write, while the internals pages explain how Protean makes it work and the
+decisions that shaped it.
 
 ## Topics
 
 - [Field system](./field-system.md): How Protean's field functions translate
   domain vocabulary into Pydantic's type system, and why three definition
   styles are supported.
-- [Shadow fields](./shadow-fields.md): How ValueObject and Reference fields
-  are flattened into database columns via shadow fields, and why they live
-  outside Pydantic's model fields.
+- [Shadow fields](./shadow-fields.md): How ValueObject and Reference fields are
+  flattened into database columns via shadow fields, and why shadow fields are
+  not part of Pydantic's model fields.
 - [Query system](./query-system.md): How the Repository → DAO → QuerySet →
   Provider chain works, Q object expression trees, lookup resolution, lazy
   evaluation, and entity state tracking.

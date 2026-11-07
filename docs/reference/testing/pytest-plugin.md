@@ -1,13 +1,12 @@
 # Pytest Plugin
 
-Auto-registered via the `pytest11` entry point, installed alongside Protean. No `conftest.py`
-registration required.
+The plugin is installed with Protean, and pytest loads it automatically through
+the `pytest11` entry point. You do not need to register it in `conftest.py`.
 
-For task-oriented workflow guidance see
-[Dual-Mode Testing](../../guides/testing/index.md#dual-mode-testing) for
-switching environments via `--protean-env`, and
-[Fixtures and Patterns](../../guides/testing/fixtures-and-patterns.md)
-for `DomainFixture` and `conftest.py` recipes.
+To switch environments via `--protean-env`, see
+[Dual-Mode Testing](../../guides/testing/index.md#dual-mode-testing). For
+`DomainFixture` and `conftest.py` recipes, see
+[Fixtures and Patterns](../../guides/testing/fixtures-and-patterns.md).
 
 ## CLI options
 
@@ -89,7 +88,7 @@ in-memory adapter). See
 
 ## Framework development
 
-The `protean test` CLI command is used to run Protean's own test suite
-across adapter configurations. It is not intended for user
-applications. See
-[Testing Protean](../../community/contributing/testing.md) for details.
+Protean's contributors use the `protean test` CLI command to run Protean's own
+test suite across adapter configurations. It is not intended for user
+applications. See [Testing Protean](../../community/contributing/testing.md)
+for details.

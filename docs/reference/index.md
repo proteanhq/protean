@@ -4,9 +4,9 @@ The reference section provides factual, lookup-oriented documentation for
 Protean's machinery. Use it to find specific configuration options, field
 types, CLI commands, adapter settings, and API details.
 
-For understanding *why* things work as they do, see
-[Concepts](../concepts/index.md).
-For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
+For an explanation of *why* Protean works as it does, see
+[Concepts](../concepts/index.md). For step-by-step *how-to* instructions, see
+[Guides](../guides/index.md).
 
 <div class="grid cards" markdown>
 
@@ -110,8 +110,8 @@ For step-by-step *how-to* instructions, see [Guides](../guides/index.md).
 
     ---
 
-    What Protean is a good fit for, and the shapes of systems it is not, with
-    the reason in each case.
+    Which systems Protean fits and which it does not. Each case states the
+    reason.
 
     [:material-arrow-right-box: Applicability Charter](applicability.md)
 

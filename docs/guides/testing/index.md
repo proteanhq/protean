@@ -25,7 +25,7 @@ application:
 
 ## Testing Layers
 
-Protean applications lend themselves to three complementary layers of tests:
+You can test a Protean application in three complementary layers:
 
 | Layer | What You Test | How You Test |
 |-------|--------------|--------------|
@@ -33,9 +33,9 @@ Protean applications lend themselves to three complementary layers of tests:
 | **Application** | Commands, command handlers, event handlers, application services | BDD-style tests, Given a state, When a command is processed, Then verify outcomes |
 | **Integration** | Full flows across aggregates, projections, and infrastructure | End-to-end tests, process commands, verify events, check projections and persistence |
 
-Each layer builds on the one below. Domain model tests are fast and isolated.
-Application tests exercise the orchestration layer. Integration tests verify
-that everything works together.
+Each layer tests more of the application than the layer before it. Domain model
+tests are fast and isolated. Application tests exercise the orchestration
+layer. Integration tests verify that everything works together.
 
 ```mermaid
 graph TD
@@ -65,10 +65,11 @@ Protean is installed. It sets `PROTEAN_ENV` before test collection (so
 `domain.toml` environment overlays are applied) and registers standard
 test-category markers.
 
-Protean also provides `DomainFixture`, a test lifecycle manager that handles domain
-initialization, database schema setup/teardown, and per-test data cleanup
-across all adapters. See [Fixtures and Patterns](./fixtures-and-patterns.md)
-for full details and recipes.
+Protean also provides `DomainFixture`, a test lifecycle manager that
+initializes the domain, sets up and tears down the database schema, and cleans
+up per-test data across all adapters. See
+[Fixtures and Patterns](./fixtures-and-patterns.md) for full details and
+recipes.
 
 ## Dual-Mode Testing
 

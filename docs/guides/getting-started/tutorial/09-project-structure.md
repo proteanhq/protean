@@ -35,7 +35,7 @@ tests/
 
 ### The Domain Instance
 
-The domain lives in `bookshelf/__init__.py`:
+`bookshelf/__init__.py` defines the domain instance:
 
 ```python
 # fragment
@@ -102,8 +102,9 @@ next chapter, that is the API module:
 --8<-- "guides/getting-started/tutorial/bookshelf/api.py:init_domain"
 ```
 
-This finds all `@domain.aggregate`, `@domain.command`, `@domain.event`,
-etc. decorators across every module in the `bookshelf/` package.
+`domain.init()` finds all `@domain.aggregate`, `@domain.command`,
+`@domain.event`, etc. decorators across every module in the `bookshelf/`
+package.
 
 ## The Configuration File
 
@@ -122,8 +123,8 @@ database_uri = "${DATABASE_URL|postgresql://postgres:postgres@localhost:5432/boo
 
 ## Using CLI Tools
 
-With a package structure, Protean CLI tools need to know where the
-domain lives. Use the `--domain` flag:
+With a package structure, Protean CLI tools need to know which package defines
+the domain. Use the `--domain` flag:
 
 ```shell
 $ protean shell --domain bookshelf

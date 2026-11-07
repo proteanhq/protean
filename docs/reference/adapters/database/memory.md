@@ -20,7 +20,7 @@ threading locks:
 - Thread-safe access via `Lock` for concurrent operations
 - All data is lost when the process terminates
 
-Because it is the default provider, no configuration is needed at all, a fresh
+Because it is the default provider, no configuration is needed at all: a fresh
 domain uses the Memory provider automatically.
 
 ## Configuration
@@ -65,15 +65,16 @@ The Memory provider supports the following capabilities:
 ## Indexes
 
 The memory provider accepts [`Index`](../../domain-elements/indexes.md)
-declarations and validates them for shape at `Domain.init()`. Non-unique indexes
-are **advisory** (the in-memory store performs no index-backed lookups), but
-**unique** indexes (`Index(..., unique=True)`) are **enforced**: a duplicate
-insert or update that violates a single-column or composite unique index raises
-`ValidationError` (the same error Protean raises for a field-level
-`unique=True`; a SQL backend rejects the duplicate at the database instead).
-NULLs are treated as distinct (PostgreSQL/SQLite semantics). This lets you declare the indexes your
-aggregates need, develop against the memory provider, and switch to a SQL backend
-without changing the domain.
+declarations and validates them for shape at `Domain.init()`. Non-unique
+indexes are **advisory**, because the in-memory store performs no index-backed
+lookups. **Unique** indexes (`Index(..., unique=True)`), however, are
+**enforced**: a duplicate insert or update that violates a single-column or
+composite unique index raises `ValidationError`. Protean raises the same error
+for a field-level `unique=True`. A SQL backend rejects the duplicate at the
+database instead. NULLs are treated as distinct (PostgreSQL/SQLite semantics).
+Because the memory provider accepts these index declarations, you can declare
+the indexes your aggregates need, develop against the memory provider, and
+switch to a SQL backend without changing the domain.
 
 ## Raw Queries
 
@@ -128,9 +129,9 @@ provider = "postgresql"
 database_uri = "postgresql://user:pass@db.example.com:5432/myapp"
 ```
 
-Your domain code remains unchanged when switching providers, because all
-providers implement the same `BaseProvider` interface. update the
-configuration and Protean handles the rest.
+All providers implement the same `BaseProvider` interface, so your domain code
+stays the same when you switch providers. To switch, update the configuration,
+and Protean uses the new provider.
 
 ## Related pages
 

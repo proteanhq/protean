@@ -14,8 +14,8 @@ mirroring how commands flow through `domain.process(command)`.
 ### Queries target a projection. { data-toc-label="Target a Projection" }
 
 A query is associated with a projection (a read model) via `part_of`, not with an
-aggregate. This places it firmly on the read side: queries describe reads against
-the denormalized views that projectors maintain.
+aggregate. A query therefore belongs to the read side, because it describes a
+read against the denormalized views that projectors maintain.
 
 ### Queries are immutable. { data-toc-label="Immutable" }
 
@@ -57,8 +57,8 @@ runtime.
 
 ### Keep queries to read parameters. { data-toc-label="Read Parameters Only" }
 
-A query is a parameter object, not a place for behavior. It should not reach
-into repositories or compute results. That is the query handler's job.
+A query is a parameter object and holds no behavior. It should not read from
+repositories or compute results. That is the query handler's job.
 
 ### Model one query per read shape. { data-toc-label="One per Read" }
 

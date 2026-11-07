@@ -17,8 +17,8 @@ provider = "postgresql"
 database_uri = "postgresql://postgres:postgres@localhost:5432/bookshelf"
 ```
 
-That is the only change needed. Every aggregate, command, event, and
-projection we have built will now persist to PostgreSQL instead of
+Adding `domain.toml` is the only change needed. Every aggregate, command,
+event, and projection we have built will now persist to PostgreSQL instead of
 memory.
 
 ## Starting PostgreSQL
@@ -66,7 +66,7 @@ use `protean database setup` as part of your deployment process.
 
 ## Indexing for Performance
 
-Now that the data lives in a real database, queries that aren't simple
+Now that the data is stored in a real database, queries that aren't simple
 identifier lookups need indexes to stay fast. The catalog is browsed by
 `category` and looked up by `isbn`, so declare indexes for those paths on the
 `Book` aggregate:

@@ -50,7 +50,7 @@ Protean supports three processing flags that control how work is dispatched and 
 - `command_processing`: Controls how commands are processed.
 - `message_processing`: Controls how standalone messages from brokers (such as Redis Streams or Pub/Sub) are handled.
 
-Set any of these to `"async"` in your domain configuration to process the respective tasks asynchronously using the server. When set to `"async"`, the Protean server will run the corresponding background workers to handle these tasks outside of the main request flow.
+Set any of these to `"async"` in your domain configuration to process the respective tasks asynchronously using the server. When you set a flag to `"async"`, the Protean server runs the corresponding background workers. These workers process the tasks outside of the main request flow.
 
 ### Example Configuration
 
@@ -113,7 +113,7 @@ Learn more in [Configuration](../../reference/server/configuration.md).
 
 ### Outbox Pattern
 
-The outbox pattern ensures reliable message delivery by:
+With the outbox pattern, Protean delivers messages reliably by:
 
 1. Storing messages and business data in the database as part of a single transaction
 2. Publishing messages to the broker in a separate process

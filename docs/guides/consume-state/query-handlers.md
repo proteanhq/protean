@@ -4,8 +4,8 @@
 
 Queries carry read intent, and query handlers process them. They receive a
 query, access the right projection through a ReadView, and return the result.
-Query handlers are the read-side mirror of command handlers, completing the
-CQRS pipeline.
+Query handlers do on the read side what command handlers do on the write side,
+and they complete the CQRS pipeline.
 
 For background on how query handlers complete the CQRS read pipeline, see
 [Query Handlers concept](../../concepts/building-blocks/query-handlers.md).
@@ -95,7 +95,8 @@ The result type must match what the handler returns; the query declares it once,
 next to its fields. This is plain typing, so it works under both mypy and pyright
 with no plugin. Declaring the result type is optional: a query that does not
 subscript `BaseQuery` keeps dispatching to `Any`, and runtime behavior is
-identical either way. See [ADR-0043](../../adr/0043-typed-query-dispatch.md).
+identical either way. See the decision record on typed query dispatch,
+[ADR-0043](../../adr/0043-typed-query-dispatch.md).
 
 ### Comparison with `domain.process()`
 

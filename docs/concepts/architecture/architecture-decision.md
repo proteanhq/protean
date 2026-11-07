@@ -12,8 +12,8 @@ forcing inappropriate patterns onto aggregates creates its own cognitive
 burden. So choosing the right pattern for each aggregate is one of the
 most important decisions you'll make for your domain model.
 
-This guide provides a systematic approach to making these architectural
-decisions, balancing technical requirements with practical constraints.
+For each aggregate, weigh its technical requirements against practical
+constraints with the criteria below.
 
 ## Decision Framework
 
@@ -75,5 +75,5 @@ Choose **CQRS** when:
 **Never mix patterns within a single aggregate**: Choose one pattern per
 aggregate and apply it consistently throughout that aggregate's lifecycle.
 
-**Avoid architectural drift**: Regular architecture reviews ensure pattern
-choices remain aligned with evolving business needs.
+**Avoid architectural drift**: Hold regular architecture reviews to check that
+pattern choices still fit evolving business needs.
