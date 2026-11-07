@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from dataclasses import field as dc_field
 from datetime import datetime
+from enum import Flag, auto
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -112,6 +113,31 @@ class IntegrityReport:
         }
 
 
+class EventStoreCapabilities(Flag):
+    """The guarantees an event store makes.
+
+    Each event store declares its flags on ``capabilities``. Check a guarantee
+    with ``EventStoreCapabilities.DURABLE in store.capabilities``.
+    """
+
+    WRITE = auto()  # Append a message and return its stream position
+    READ_STREAM = auto()  # Read one stream by stream position
+    READ_CATEGORY = auto()  # Read a category by global position, inclusive
+    READ_ALL = auto()  # Read the whole store by global position, inclusive
+    EXPECTED_VERSION = auto()  # A stale expected version raises and writes nothing
+    CATEGORY_COMMIT_ORDER = auto()  # Category writes become visible in position order
+    CONSUMER_GROUPS = auto()  # A category read can be split across group members
+    DURABLE = auto()  # Messages survive a process restart
+    SCHEMA_MANAGEMENT = auto()  # The store creates and drops its own tables
+
+    # Convenience Capability Sets
+    BASIC_STORE = WRITE | READ_STREAM | READ_CATEGORY | READ_ALL
+
+    CONSISTENT_STORE = BASIC_STORE | EXPECTED_VERSION | CATEGORY_COMMIT_ORDER
+
+    PRODUCTION_STORE = CONSISTENT_STORE | DURABLE
+
+
 class BaseEventStore(metaclass=ABCMeta):
     """This class outlines the base event store capabilities
     to be implemented in all supported event store adapters.
@@ -133,6 +159,11 @@ class BaseEventStore(metaclass=ABCMeta):
         implementation is a no-op so that adapters without external
         resources (e.g. the in-memory store) work without changes.
         """
+
+    @property
+    @abstractmethod
+    def capabilities(self) -> EventStoreCapabilities:
+        """The guarantees this event store makes."""
 
     @abstractmethod
     def _write(
