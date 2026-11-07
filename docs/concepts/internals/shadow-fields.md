@@ -50,7 +50,7 @@ If the target aggregate uses a custom identifier (e.g., `email` with
 | ValueObject | `{field_name}_{embedded_field_name}` | `billing_address_street` |
 | Reference | `{field_name}_{target_id_field}` | `order_id` |
 
-Both can be overridden with `referenced_as`.
+You can override both shadow field names with `referenced_as`.
 
 ### Overriding with `referenced_as`
 
@@ -88,8 +88,8 @@ model fields. This means:
   directly.
 
 This is by design. Shadow fields are a persistence concern, not a domain
-model concern. The domain model works with `customer.billing_address`
-(an `Address` instance); the database works with `billing_address_street`,
+model concern. In the domain model, you access `customer.billing_address` (an
+`Address` instance). The database stores `billing_address_street`,
 `billing_address_city`, and `billing_address_zip_code` as separate columns.
 
 ---
@@ -98,22 +98,22 @@ model concern. The domain model works with `customer.billing_address`
 
 ### Initialization
 
-When you create an entity, shadow fields are handled in three stages:
+When you create an entity, Protean sets its shadow fields in three stages:
 
-**1. Extraction.** Shadow field names are detected from the class metadata.
-Any matching keyword arguments are extracted from `kwargs` before Pydantic
-validation:
+**1. Extraction.** Protean detects the shadow field names from the class
+metadata. Any matching keyword arguments are extracted from `kwargs` before
+Pydantic validation:
 
 ```python
 --8<-- "concepts/internals/shadow-fields/001.py:extraction"
 ```
 
-**2. Preservation.** Extracted values are pushed onto a thread-local stack
-(`_init_context`) because Pydantic's `__init__` clears `__dict__` during
+**2. Preservation.** Protean pushes the extracted values onto a thread-local
+stack (`_init_context`) because Pydantic's `__init__` clears `__dict__` during
 validation.
 
-**3. Restoration.** In `model_post_init()`, shadow values are written back
-to `__dict__`. If a ValueObject field was not explicitly provided, Protean
+**3. Restoration.** In `model_post_init()`, Protean writes the shadow values
+back to `__dict__`. If a ValueObject field was not explicitly provided, Protean
 reconstructs it from the shadow values:
 
 ```python

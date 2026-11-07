@@ -2,13 +2,13 @@
 
 We create the foundation of our digital banking platform, **Fidelis**. By the
 end, we will have an event-sourced `Account` aggregate that records every state
-change as an immutable event and reconstructs its balance by replaying those
-events.
+change as an immutable event. The aggregate reconstructs its balance by
+replaying those events.
 
 A bank cannot store the current balance and overwrite it on every transaction.
 Every deposit, every withdrawal is a **fact** that happened, and facts cannot
-be undone. Event Sourcing captures this reality: instead of storing state, we
-store the events that produced it.
+be undone. With Event Sourcing, we store the events that produced the state
+instead of storing the state itself.
 
 ## Setting Up
 
@@ -74,9 +74,9 @@ There is a lot happening here. Let's break it down:
 
 !!! important "The Golden Rule"
     In an event-sourced aggregate, **never set fields directly** outside
-    of `@apply` handlers. All state changes flow through `raise_()` →
-    `@apply`. This guarantees that replaying events produces identical
-    state.
+    of `@apply` handlers. Every state change starts with a call to `raise_()`,
+    which then calls the `@apply` handler. This guarantees that replaying
+    events produces identical state.
 
 ## Creating an Account
 

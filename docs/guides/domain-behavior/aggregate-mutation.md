@@ -2,10 +2,10 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-In DDD, aggregates are not passive data containers. They are the guardians of
-business rules. If external code could freely set fields on an aggregate (the
-"anemic domain model" anti-pattern), invariants would be bypassed and the
-aggregate could silently drift into an invalid state. Instead, state changes
+In DDD, aggregates are not passive data containers. Aggregates enforce business
+rules. If external code could freely set fields on an aggregate (the "anemic
+domain model" anti-pattern), that code would bypass invariants and could leave
+the aggregate in an invalid state without any error. Instead, state changes
 happen through **methods on the aggregate** that encapsulate the business
 logic, enforce invariants, and raise events.
 
@@ -39,16 +39,14 @@ be below the overdraft limit.
 
 ## Mutating State
 
-Changing state within an aggregate is straightforward, in the form of attribute
-updates.
+You change state within an aggregate by updating its attributes.
 
 ```python hl_lines="15"
 --8<-- "guides/domain-behavior/002.py:account"
 ```
 
-If the state change is successful, meaning it satisfies all
-invariants defined on the model, the aggregate immediately reflects the
-changes.
+If the state change satisfies all invariants defined on the model, the
+aggregate immediately reflects the changes.
 
 ```shell hl_lines="8"
 In [1]: account = Account(account_number="1234", balance=1000.0, overdraft_limit=50.0)
@@ -94,9 +92,10 @@ intercepted by `__setattr__`, which runs a full validation cycle:
 4. **The entity is marked as changed**: Protean's internal `_EntityState`
    tracks the mutation so the Unit of Work knows to persist it.
 
-This means that **every individual assignment** triggers the full invariant
-cycle. If you need to change multiple fields together (where intermediate
-states would be invalid), use `atomic_change`. This example uses the `Order`
+Because `__setattr__` intercepts each field assignment, **every individual
+assignment** triggers the full invariant cycle. If you need to change multiple
+fields together (where intermediate states would be invalid), use
+`atomic_change`. This example uses the `Order`
 aggregate from the [Invariants](invariants.md) guide:
 
 ```python
@@ -122,8 +121,9 @@ InvalidOperationError: Identifiers cannot be changed once set
 ### Child Entity Mutations
 
 When a child entity's attribute is changed, the **root aggregate's** invariants
-fire, not just the entity's own. This ensures cross-entity business rules are
-always enforced, even when mutations happen deep in the aggregate cluster.
+fire, not just the entity's own. As a result, Protean always enforces
+cross-entity business rules, including for mutations to nested entities in the
+aggregate cluster.
 
 ## Event-Sourced Aggregates
 
@@ -136,12 +136,12 @@ handler to perform the state change:
 --8<-- "guides/domain-behavior/aggregate-mutation/001.py:es_order"
 ```
 
-This ensures the **same code path** runs whether the aggregate is
-processing a live command or being reconstructed from stored events.
+With `@apply` handlers, the aggregate runs the **same code path** for a live
+command and for reconstruction from stored events.
 
-The `raise_()` method wraps the `@apply` call inside `atomic_change()`, so
-invariants are checked before and after the state change, the "always valid"
-guarantee is preserved.
+The `raise_()` method wraps the `@apply` call inside `atomic_change()`. As a
+result, Protean checks invariants before and after the state change and
+preserves the "always valid" guarantee.
 
 See [Raising Events](raising-events.md#es-raise-apply) for full
 details on the `raise_()` + `@apply` integration.

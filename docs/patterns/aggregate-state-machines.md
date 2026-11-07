@@ -56,9 +56,9 @@ It compiles. It passes the happy-path tests. Then things go wrong:
   `status = "shipped"` regardless of the current state.
 
 - **Valid states are implicit**: Is `"refund_requested"` a valid status?
-  What about `"PAID"` or `"Shipped"`? The set of allowed states lives only
-  in the developer's head and whatever strings happen to appear in handler
-  code.
+  What about `"PAID"` or `"Shipped"`? Only the developer knows the set of
+  allowed states. The code records it only as the strings that appear in
+  handler code.
 
 - **Transitions are invisible**: Which states can transition to which? Can a
   `"delivered"` order be cancelled? The only way to answer is to read every
@@ -67,8 +67,8 @@ It compiles. It passes the happy-path tests. Then things go wrong:
 
 - **Invalid transitions are silent**: Setting `order.status = "shipped"`
   when the order is in `"draft"` produces no error, no log, no event. The
-  aggregate happily accepts any string, and downstream consumers see
-  nonsensical state sequences.
+  aggregate accepts any string. Downstream consumers then see state sequences
+  that cannot happen in the business.
 
 - **New team members guess**: A developer who joined last month adds a new
   handler that sets `status = "processing"`, a state that no consumer knows
@@ -112,9 +112,9 @@ Transitions:
 
 The aggregate becomes its own state machine. The set of valid states is
 visible in one place. The set of valid transitions is visible in the
-method signatures and their guards. Invalid transitions are caught at the
-moment they are attempted, not downstream when a consumer sees an
-impossible state sequence.
+method signatures and their guards. The transition method raises an error the
+moment code attempts an invalid transition. A consumer downstream never has to
+detect the impossible state sequence.
 
 ---
 
@@ -142,9 +142,9 @@ current state, performs the transition, and raises a domain event.
 ```
 
 !!! note "Guard placement"
-    The precondition check lives directly inside each transition method as
-    an early `if` guard. This is the simplest and most readable approach.
-    Protean's `@invariant.pre` decorator is an alternative that runs
+    Each transition method checks its precondition with an early `if` guard in
+    its own body. This is the simplest and most readable approach. Protean's
+    `@invariant.pre` decorator is an alternative that runs
     before every mutation, useful as a safety net but less precise for
     per-method guards.
 
@@ -161,8 +161,8 @@ aggregate guards its own transitions.
 
 ### Step 4: Test the state machine directly
 
-Because the lifecycle rules live in the aggregate, tests are simple and
-infrastructure-free:
+Because the aggregate holds the lifecycle rules, you can test them with plain
+calls and no infrastructure:
 
 ```python
 --8<-- "patterns/aggregate-state-machines/001.py:tests"
@@ -273,9 +273,9 @@ def update_status(self, new_status: str) -> None:
     self.status = new_status
 ```
 
-This is a setter with extra steps. It has no guards, raises no events, and
-loses the ubiquitous language. "Ship an order" becomes
-`order.update_status("shipped")` instead of `order.ship()`.
+The `update_status` method is a plain setter under another name. It has no
+guards, raises no events, and loses the ubiquitous language. "Ship an order"
+becomes `order.update_status("shipped")` instead of `order.ship()`.
 
 Each transition has different preconditions, different side effects, and
 different events. They deserve separate methods.

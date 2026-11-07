@@ -89,7 +89,7 @@ Now `order.status = "CANCELLED"` succeeds when the order is already cancelled.
 !!! note "Three categories of same-value behavior"
     When designing your transition map, classify each state:
 
-    1. **Re-entry is a business error** (most common), don't list the state in
+    1. **Re-entry is a business error** (most common): Don't list the state in
        its own targets. `approve()` on a published review fails.
     2. **Idempotent by design**: List the state in its own targets.
        `cancel()` on a cancelled order succeeds as a no-op.
@@ -163,7 +163,8 @@ its transitions independently:
    values clearly. They appear in error messages and database records.
 
 2. **Keep transition maps in the aggregate**: The transition map is business
-   logic. It belongs where the business rules live.
+   logic. The transition map belongs in the aggregate, with the other business
+   rules.
 
 3. **Use terminal states intentionally**: Terminal states are states with no
    outgoing transitions (absent from the map's keys). Design them as
@@ -174,9 +175,9 @@ its transitions independently:
    operation should be safe to call twice (e.g., for race conditions), add
    the state to its own target list: `CANCELLED: [CANCELLED]`.
 
-5. **Combine with invariants**: `Status` handles *which* transitions are
-   legal. Use `@invariant.pre` for *under what conditions*, for example, "can only confirm
-   an order if payment has been received."
+5. **Combine with invariants**: `Status` enforces *which* transitions are
+   legal. Use `@invariant.pre` for *under what conditions*, for example, "can
+   only confirm an order if payment has been received."
 
 6. **Status on Value Objects is not allowed**: Value Objects are immutable
    and cannot transition. `Status` with `transitions` on a Value Object

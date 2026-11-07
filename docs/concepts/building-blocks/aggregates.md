@@ -11,9 +11,10 @@ natural place to detect the conflict.
 
 Aggregates solve this by drawing an explicit boundary around a cluster of
 related objects. All changes within that boundary go through a single root
-entity (the **aggregate root**) which enforces business rules, guards
-consistency, and acts as the unit of persistence and concurrency control.
-Outside code never reaches past the root to modify internal objects directly.
+entity (the **aggregate root**). The aggregate root enforces business rules,
+keeps the cluster consistent, and is the unit of persistence and concurrency
+control. Code outside the aggregate modifies internal objects only through
+methods on the root.
 
 An aggregate is a cluster of domain objects that can be treated as a single
 unit for data changes. Each aggregate has a root entity, known as the
@@ -36,11 +37,10 @@ first persisted, and increases by one on each subsequent save.
 ### Aggregates have concurrency control. { data-toc-label="Concurrency Control" }
 Aggregates are persisted with optimistic concurrency. If the expected version
 of the aggregate does not match the version in the database, the framework
-raises `ExpectedVersionError`. In async handlers (`@handle`), this error is
-automatically retried with exponential backoff, each retry creates a fresh Unit
-of Work that re-reads the aggregate at the latest version. See [Version
-conflict
-auto-retry](../../guides/server/error-handling.md#version-conflict-auto-retry)
+raises `ExpectedVersionError`. In async handlers (`@handle`), the framework
+retries this error automatically with exponential backoff. Each retry creates a
+fresh Unit of Work that re-reads the aggregate at the latest version. See
+[Version conflict auto-retry](../../guides/server/error-handling.md#version-conflict-auto-retry)
 for configuration details and [Optimistic Concurrency as a Design
 Tool](../../patterns/optimistic-concurrency-as-design-tool.md) for handling
 different conflict categories.
@@ -61,18 +61,18 @@ aggregate cluster, individual [entities](./entities.md), or
 ### Aggregates declare their own indexes. { data-toc-label="Indexes" }
 
 An aggregate knows how it will be queried, so it declares the indexes those
-query paths need with the `indexes=` option, uniqueness on identifiers, composite
-ordering for hot paths, partial indexes for active subsets. Keeping the
-declaration on the aggregate (rather than in a hand-maintained migration) means
-the query shape and its index live in one place. See [Declaring
-Indexes](../../guides/domain-definition/indexes.md) and the [Index Aggregates
-for Query Paths](../../patterns/index-aggregates-for-query-paths.md) pattern.
+query paths need with the `indexes=` option. Typical indexes are uniqueness on
+identifiers, composite ordering for hot paths, and partial indexes for active
+subsets. When the declaration stays on the aggregate instead of in a
+hand-maintained migration, each query shape and its index are defined together.
+See [Declaring Indexes](../../guides/domain-definition/indexes.md) and the
+[Index Aggregates for Query Paths](../../patterns/index-aggregates-for-query-paths.md)
+pattern.
 
 ## Object Graphs
 
-Aggregates compose a graph of enclosed elements. The objects themselves can nest
-other objects and so on infinitely, though it is recommended to not go beyond
-2 levels.
+Aggregates compose a graph of enclosed elements. The enclosed objects can nest
+other objects to any depth. Protean recommends at most 2 levels of nesting.
 
 ### Aggregates can hold two types of objects - Entities and Value Objects. { data-toc-label="Types of Objects" }
 [Entities](./entities.md) are objects with an identity.
@@ -85,8 +85,8 @@ All changes to entities should be driven through the aggregates.
 
 ## Persistence
 
-Data persistence and retrieval are always at the level of an aggregate.
-They internally load and manage the objects within their cluster.
+Protean always saves and loads data one aggregate at a time. They internally
+load and manage the objects within their cluster.
 
 ### Aggregates persist data with the help of Repositories. { data-toc-label="Repositories" }
 

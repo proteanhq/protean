@@ -36,17 +36,17 @@ system, `Order-abc123`, `Order-def456`, and all others.
 
 Category streams are the primary subscription mechanism. Subscribers and event
 handlers typically subscribe to a category rather than to individual entity
-streams. This allows a single subscriber to process events from all instances
-of an aggregate type, for example, a projector that maintains an order summary
-table subscribes to the `Order` category and receives events from every order as
-they occur.
+streams. By subscribing to a category, a single subscriber processes events
+from all instances of an aggregate type. For example, a projector that
+maintains an order summary table subscribes to the `Order` category and
+receives events from every order as they occur.
 
 ## Stream Names
 
 Stream names follow a structured convention: the category name, a separator, and the entity identity. The category is typically the aggregate type name, and the identity is the aggregate's unique identifier. This naming structure makes it possible to derive an aggregate's stream name from its type and identity alone.
 
 Stream names must be unique within a message store. There is no separate
-namespacing mechanism, if the same stream name must be used for different
+namespacing mechanism. If the same stream name must be used for different
 purposes, those streams should either be stored in separate message store
 databases, or the names should include a distinguishing prefix or suffix.
 

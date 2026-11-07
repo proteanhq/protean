@@ -39,8 +39,8 @@ Here is how they work:
       the handler made are undone
 
 2. **`balance_must_not_be_negative`** ensures no operation can leave
-   the account with a negative balance. We no longer need the manual
-   check in `withdraw()`, the invariant handles it.
+   the account with a negative balance. We no longer need the manual check in
+   `withdraw()`, because the invariant now handles it.
 
 3. **`closed_account_must_have_zero_balance`** ensures an account
    cannot be closed while funds remain. This rule would be difficult to

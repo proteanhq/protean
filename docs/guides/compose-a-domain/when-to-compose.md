@@ -19,17 +19,18 @@ The exact integration point depends on your application framework.
 
 ## FastAPI (recommended)
 
-Protean provides built-in middleware for FastAPI that handles domain context
-management automatically. This example defines the domain in the same file. In
-a larger app you would import it from its own module instead:
+Protean provides built-in middleware for FastAPI that pushes and pops the
+domain context for each request automatically. This example defines the domain
+in the same file. In a larger app you would import it from its own module
+instead:
 
 ```python
 --8<-- "guides/compose-a-domain/when-to-compose/001.py:full"
 ```
 
-The middleware ensures every request runs inside a domain context, and the
-exception handlers translate `ValidationError`, `ObjectNotFoundError`, etc.
-into appropriate HTTP responses.
+The middleware runs every request inside a domain context. The exception
+handlers translate `ValidationError`, `ObjectNotFoundError`, etc. into
+appropriate HTTP responses.
 
 See [FastAPI Integration](../fastapi/index.md) for the full guide.
 
@@ -57,14 +58,14 @@ a `with` block for the domain context:
 
 ## Background workers and the Protean server
 
-The Protean server (`protean server`) handles domain composition internally.
-You only need to point it at your domain module:
+The Protean server (`protean server`) composes the domain internally. You only
+need to point it at your domain module:
 
 ```shell
 $ protean server --domain my_app.domain
 ```
 
-The server initializes the domain, pushes a context, and manages the event
+The server initializes the domain, pushes a context, and runs the event
 processing loop. See [Running the Server](../server/index.md) for details.
 
 ## Key principles
@@ -76,5 +77,6 @@ processing loop. See [Running the Server](../server/index.md) for details.
   domain context (`domain.domain_context()`). The context makes
   `current_domain` available and manages the Unit of Work lifecycle.
 - **Let the framework manage it**: Prefer framework-provided integration
-  (FastAPI middleware, Flask hooks) over manual context management. This
-  ensures contexts are properly cleaned up even when exceptions occur.
+  (FastAPI middleware, Flask hooks) over manual context management. The
+  framework integration then cleans up each context, even when an exception
+  occurs.

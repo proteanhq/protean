@@ -6,9 +6,9 @@ queue (DLQ)** instead of blocking the stream. The DLQ is how you recover
 from handler bugs, bad data, and transient failures without losing
 messages or halting production.
 
-This guide is the operational walkthrough: how to find failed messages, inspect
-them, replay them after a fix, and clear out messages that will never succeed.
-For the full retry flow per subscription type (how messages *enter* the DLQ)
+Use the commands below to find failed messages, inspect them, replay them after
+a fix, and clear out messages that will never succeed. For the full retry flow
+per subscription type (how messages *enter* the DLQ)
 see [Error Handling](./error-handling.md).
 
 ## When messages end up in the DLQ
@@ -28,9 +28,9 @@ each subscription type.
     StreamSubscription (Redis Streams) and BrokerSubscription route
     failed messages to `{stream}:dlq` streams. EventStoreSubscription
     uses a recovery-pass model instead. Failed positions are retried from the
-    event store rather than copied to a DLQ. A position that runs out of
-    retries is recorded as `Exhausted` in the subscription's `failed-*`
-    stream; [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md)
+    event store rather than copied to a DLQ. When a position runs out of
+    retries, the subscription records it as `Exhausted` in its `failed-*`
+    stream. [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md)
     lists, replays and purges these positions.
 
 ---
@@ -108,17 +108,17 @@ original stream. The handler sees it as a fresh delivery, retries start from
 zero.
 
 !!! warning "Deploy the fix first"
-    If you replay before deploying the fix, the handler fails again,
-    runs through its retries a second time, and lands right back in
+    If you replay before deploying the fix, the handler fails again and runs
+    through its retries a second time. Protean then moves the message back to
     the DLQ with `retry_count=3`. Deploy first, replay second.
 
 ---
 
 ## Bulk replay after a transient incident
 
-When an external dependency was down (database, broker, third-party API) and
-dozens or hundreds of messages have piled up in the DLQ with the same root
-cause, replay the whole subscription at once:
+Sometimes an external dependency (database, broker, third-party API) was down,
+and dozens or hundreds of messages with the same root cause have collected in
+the DLQ. In that case, replay the whole subscription at once:
 
 ```shell
 $ protean dlq replay-all --subscription=order --domain=my_domain
@@ -193,9 +193,9 @@ retry_delay_seconds = 1
 enable_dlq = true
 ```
 
-Set `enable_dlq = false` only if you're certain failed messages are safe
-to drop, without the DLQ you lose the fix-and-replay workflow entirely. The
-full configuration matrix is in [Error Handling: Configuration
+Set `enable_dlq = false` only if you're certain failed messages are safe to
+drop. Without the DLQ you lose the fix-and-replay workflow entirely. The full
+configuration matrix is in [Error Handling: Configuration
 reference](./error-handling.md#configuration-reference).
 
 ---
@@ -238,8 +238,8 @@ alert_callback = "myapp.alerts.page_oncall"
 ```
 
 Exceptions raised by the callback are caught and logged. They never crash the
-maintenance task. Use this hook for PagerDuty, Slack, OpsGenie, or whatever
-your on-call system is.
+maintenance task. Use `alert_callback` to send alerts to PagerDuty, Slack,
+OpsGenie, or another on-call system.
 
 ### Override per subscription
 
