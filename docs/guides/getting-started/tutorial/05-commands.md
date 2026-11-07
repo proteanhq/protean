@@ -7,7 +7,7 @@ through a formal command interface instead of direct aggregate creation.
     From here the tutorial takes the **CQRS** approach to handling state
     changes. In the pure **DDD** approach, you'd use
     [Application Services](../../change-state/application-services.md) instead
-    of Commands and Command Handlers, the Application Service receives requests
+    of Commands and Command Handlers. The Application Service receives requests
     directly and coordinates the domain logic. See the [DDD
     Pathway](../../pathways/ddd.md) for that reading order.
 
@@ -66,8 +66,9 @@ All checks passed!
 ```
 
 Notice that we never touched the repository directly. The command handler did
-that for us. This separation means the same command can later be processed
-asynchronously by a background server (Chapter 12).
+that for us. Because the command handler makes the repository calls, a
+background server can later process the same command asynchronously (Chapter
+12).
 
 ## What We Built
 

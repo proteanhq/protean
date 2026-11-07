@@ -17,8 +17,8 @@ standards-compliant event format.
 ## Producing CloudEvents
 
 Any Protean `Message` can be serialized to a CloudEvents v1.0 JSON object.
-Here an `Order` raises an `OrderPlaced` event, and the event goes out as a
-CloudEvent:
+Here an `Order` raises an `OrderPlaced` event, and Protean serializes the event
+as a CloudEvent:
 
 ```python
 --8<-- "guides/consume-state/cloudevents/001.py:produce"

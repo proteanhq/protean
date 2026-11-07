@@ -27,16 +27,16 @@ is captured as an event, enabling complete traceability and the ability to
 reconstruct the state of the system at any point in time.
 
 1. **Request**: A client request is made to the system, which is received by the API layer.
-2. **Command**: The API layer converts the request into a Command, which encapsulates the action that should be performed, and passes it to the Command Handler.
+2. **Command**: The API layer converts the request into a Command that describes the action to perform. The API layer then passes the Command to the Command Handler.
 3. **Command Handler**: The Command Handler processes the Command, interacting with the Repository to retrieve the relevant Aggregate.
 4. **Hydrate**: The Repository hydrates the Aggregate by reconstructing its state from past events stored in the Event Store.
 5. **Aggregate**: The Command Handler invokes the appropriate method on the Aggregate to perform the required business operation.
 6. **Output**: The business method calls `raise_()` to generate an Event that
    describes the change. `raise_()` automatically invokes the corresponding
-   `@apply` handler to mutate the aggregate's state. The same handler that runs
-   during event replay. This ensures the live path and the replay path always
-   produce identical results.
+   `@apply` handler to mutate the aggregate's state, the same one that runs
+   during event replay. Because both paths run the same handler, the live path
+   and the replay path always produce identical results.
 7. **Repository**: The generated Event is passed back to the Repository, which is responsible for persisting the Event.
 8. **Event Store**: The Repository saves the Event in the Event Store, ensuring that all changes in the domain are captured as a series of events.
 9. **Event Handler**: The Event is then processed by an Event Handler, which reacts to the event by performing additional business logic or updating projections.
-10. **Read Models**: The Event Handler updates the Read Store with new or modified Read Models that are optimized for query operations, ensuring that the latest state can be efficiently retrieved for future read requests.
+10. **Read Models**: The Event Handler updates the Read Store with new or modified Read Models that are optimized for query operations. Future read requests can then retrieve the latest state quickly.

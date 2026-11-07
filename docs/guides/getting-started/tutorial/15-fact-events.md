@@ -36,7 +36,7 @@ Add `fact_events=True` to the Book aggregate:
 --8<-- "guides/getting-started/tutorial/ch15.py:aggregate"
 ```
 
-That's it. Protean now generates a `BookFactEvent` automatically
+You need no other change. Protean now generates a `BookFactEvent` automatically
 whenever a Book is persisted.
 
 ## Building a Report Projection
@@ -58,8 +58,8 @@ When running the async server (`protean server`), the handler is invoked automat
 --8<-- "guides/getting-started/tutorial/ch15.py:handler"
 ```
 
-The handler receives the complete state and can overwrite the projection, no
-need to track deltas.
+The handler receives the complete state and can overwrite the projection. It
+does not need to track deltas.
 
 ## Verifying
 

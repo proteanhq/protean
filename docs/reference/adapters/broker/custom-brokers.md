@@ -1,6 +1,6 @@
 # Custom Brokers
 
-Learn how to create custom broker adapters for Protean to integrate with any message broker or streaming platform.
+You can write a custom broker adapter to connect Protean to any message broker or streaming platform.
 
 ## Overview
 

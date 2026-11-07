@@ -241,9 +241,9 @@ type, time, correlation ID, and causation ID columns:
 Found 3 event(s) for correlation ID 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
 ```
 
-The tree view is most useful for debugging because it shows causal relationships
-at a glance. The flat view is useful when you need to see exact positions and
-timestamps for every message.
+The tree view is most useful for debugging because it shows causal
+relationships in one view. The flat view is useful when you need to see exact
+positions and timestamps for every message.
 
 See [Message Tracing](../../../guides/domain-behavior/message-tracing.md) for
 details on how correlation and causation IDs work, including the programmatic
@@ -254,10 +254,10 @@ causation chain API.
 Lists every concrete event in the domain with its **evolution status**:
 version, deprecation and supersession markers, upcaster chain, and the
 consumers (event handlers, projectors, and process managers) that subscribe to
-it. Unlike the other `events` commands, `catalog` is sourced from the domain
-**IR** (the contract), not the event store, so it works from a live domain
-(`--domain`)
-**or** a serialized IR file (`--ir`), and does not need a running event store.
+it. Unlike the other `events` commands, `catalog` reads the domain **IR** (the
+contract) instead of the event store, so it does not need a running event
+store. You can point it at a live domain (`--domain`) **or** a serialized IR
+file (`--ir`).
 
 The catalog covers events that belong to an aggregate cluster (every event you
 raise). Abstract events and events on internal aggregates are not listed, and
@@ -317,11 +317,11 @@ event's `fqn`, owning `aggregate`, `published`/`is_fact_event` flags, and full
 }
 ```
 
-Under `--json`, any usage or load error (neither `--domain` nor `--ir`, both at
-once, an unloadable domain, or a missing/unreadable/non-object `--ir` file) is
-the error envelope (`status="error"`, the message under `data.error`) on stdout
-and exits `2`, so stdout stays exactly one object and a `| jq` pipe stays
-parseable.
+Under `--json`, the command reports any usage or load error (neither `--domain`
+nor `--ir`, both at once, an unloadable domain, or a
+missing/unreadable/non-object `--ir` file) as the error envelope
+(`status="error"`, the message under `data.error`) on stdout and exits `2`.
+Stdout then holds exactly one object, so a `| jq` pipe can still parse it.
 
 Without `--json` the two error kinds differ, as they did before this change. A
 usage error (neither `--domain` nor `--ir`, or both) prints to stderr and exits

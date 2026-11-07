@@ -68,7 +68,7 @@ The subscriber prints `User created: John Doe`.
 
 ### Testing with Inline Broker
 
-The Inline broker is ideal for testing as it provides deterministic, synchronous behavior. Use Protean's `DomainFixture` to manage the domain lifecycle:
+The Inline broker is ideal for testing as it provides deterministic, synchronous behavior. Use Protean's `DomainFixture` to set up and tear down the domain in your tests:
 
 ```python
 --8<-- "adapters/broker/inline/002.py:full"
@@ -122,7 +122,7 @@ URI = "redis://localhost:6379/0"
 Your application code remains unchanged when switching brokers, as long as you:
 
 1. Only use capabilities supported by both brokers
-2. Handle broker-specific errors appropriately
+2. Catch the errors specific to each broker
 3. Test with the production broker before deployment
 
 ## Related pages

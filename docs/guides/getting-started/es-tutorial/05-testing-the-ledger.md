@@ -123,10 +123,10 @@ test_fidelis.py::test_cannot_close_with_balance PASSED
 
 ## Why Integration Tests?
 
-Notice that `given().process()` runs the **full pipeline**: it calls
-`domain.process()`, which routes to the command handler, which loads the
-aggregate from the event store, calls the domain method, persists the
-result, and returns. There are no mocks.
+`given().process()` runs the **full pipeline** by calling `domain.process()`.
+`domain.process()` routes to the command handler, and the handler loads the
+aggregate from the event store, calls the domain method, persists the result,
+and returns. There are no mocks.
 
 This is deliberate. Event-sourced systems derive their state from events.
 Mocking the event store would defeat the purpose. The testing DSL makes

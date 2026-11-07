@@ -1,7 +1,7 @@
 # Chapter 14: Connecting to the Outside World with Subscribers
 
-Bookshelf has partnered with a book distributor (**BookSupply**) that sends
-webhook notifications when new books become available or when stock is
+Bookshelf has partnered with a book distributor (**BookSupply**). BookSupply
+sends webhook notifications when new books become available or when stock is
 replenished. These messages arrive on a Redis stream from an external system.
 We need to consume them and translate them into our domain language.
 

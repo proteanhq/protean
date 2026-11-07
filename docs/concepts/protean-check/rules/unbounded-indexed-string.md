@@ -49,9 +49,10 @@ Protean supports:
 | MySQL | Requires an **explicit prefix length** (`INDEX (col(191))`); without one the DDL fails, and a prefix silently indexes only a leading slice of the value. InnoDB caps an index key at 3072 bytes, which is 768 `utf8mb4` characters, so the MySQL provider raises `IncorrectUsageError` naming the field rather than emitting DDL that fails or silently truncates. |
 | PostgreSQL | Accepts it, but with **storage and performance overhead**, large values bloat the index and can exceed the B-tree row-size limit at runtime. |
 
-Epic #941 set `max_length` on the Outbox string fields for exactly this reason:
-indexes cannot be created on unbounded strings on most engines. This rule
-detects the same mismatch mechanically, at build time, for every aggregate.
+Protean set `max_length` on the Outbox string fields (epic #941) for exactly
+this reason: most engines cannot create an index on an unbounded string. This
+rule detects the same mismatch mechanically, at build time, for every
+aggregate.
 
 ## Example
 

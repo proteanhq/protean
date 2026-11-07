@@ -5,7 +5,7 @@ A production bug in the `ComplianceAlertHandler` causes it to crash with a
 case. The handler exhausts its retry attempts and messages pile up in the
 **dead-letter queue**.
 
-When a handler keeps failing, the message ends up in a dead letter queue.
+When a handler keeps failing, Protean moves the message to a dead letter queue.
 Now we walk through the workflow around that: finding those messages, working
 out what went wrong, and getting them processed.
 

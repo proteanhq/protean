@@ -53,8 +53,7 @@ Trace for correlation abc-123:
   └─ Complete ✓
 ```
 
-If the chain is broken (a handler failed or didn't run), the trace
-shows where the gap is.
+If a handler failed or did not run, the trace shows which step is missing.
 
 ## Programmatic Tracing
 
@@ -76,7 +75,7 @@ Bookshelf.AddBook.v1 (COMMAND)
 
 ## Debugging the Customer's Issue
 
-Armed with the order's correlation ID, the support team can:
+With the order's correlation ID, the support team can:
 
 1. Find the `ConfirmOrder` command in the trace.
 2. See if it produced an `OrderConfirmed` event.

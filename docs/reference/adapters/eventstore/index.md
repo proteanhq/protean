@@ -1,9 +1,9 @@
 # Event Stores
 
 The Event Store port provides persistence for domain events and commands in
-event-sourced systems. It serves a dual role: storing the event stream that
-forms the source of truth for event-sourced aggregates, and acting as the
-internal messaging backbone within a Protean-based application.
+event-sourced systems. The event store holds the event stream that is the
+source of truth for event-sourced aggregates. It also carries the internal
+messages between the parts of a Protean-based application.
 
 ## Overview
 
@@ -39,7 +39,7 @@ durable event storage with SQL-based stream operations.
 
 - **Requires**: PostgreSQL with the Message DB extension
 - Persistent, durable storage
-- Production-ready with proven reliability
+- Suitable for production use
 
 ## Configuration
 

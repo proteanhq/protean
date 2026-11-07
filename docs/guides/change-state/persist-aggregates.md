@@ -38,16 +38,16 @@ The following calls are equivalent in behavior:
 --8<-- "guides/change-state/persist-aggregates/001.py:version_2"
 ```
 
-This means changes across the aggregate cluster are committed as a single
-transaction (assuming the underlying database supports transactions, of course).
+Changes across the aggregate cluster are therefore committed as a single
+transaction, when the underlying database supports transactions.
 
 ```python hl_lines="22-30 33"
 --8<-- "guides/change-state/002.py:full"
 ```
 
 !!!note
-    This is especially handy in ***Relational databases*** because each entity is a
-    separate table.
+    A single transaction is especially useful in ***Relational databases***
+    because each entity is a separate table.
 
 ## Events
 
@@ -86,8 +86,8 @@ Out[6]: []
 
 ## Updates
 
-Recall that Protean repositories behave like a `set` collection. Updating is
-as simple as mutating an aggregate and persisting it with `add` again.
+Recall that Protean repositories behave like a `set` collection. To update an
+aggregate, you mutate it and persist it with `add` again.
 
 ```shell hl_lines="15 21 23 26 28"
 In [1]: post = Post(

@@ -1,9 +1,9 @@
 # Chapter 2: Deposits and Withdrawals
 
 An account that can only be opened is not much use. Now we add deposits and
-withdrawals, multiple event types flowing through a single aggregate. Along the
-way, we will see a core principle of Event Sourcing: **all state changes flow
-exclusively through events**.
+withdrawals, multiple event types flowing through a single aggregate. These
+events show a core principle of Event Sourcing: **the aggregate changes its
+state only by applying events**.
 
 ## New Events
 
@@ -91,10 +91,9 @@ is raised. No event means no state change. The aggregate remains
 consistent.
 
 !!! note
-    This validation lives in the domain method, not in the `@apply`
-    handler. In the next chapters we will move business rules into
-    **invariants**, which validate state
-    after every `@apply` handler runs.
+    This validation runs in the domain method, not in the `@apply` handler.
+    In the next chapters we will move business rules into **invariants**, which
+    validate state after every `@apply` handler runs.
 
 ## What We Built
 

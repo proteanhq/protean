@@ -1,8 +1,8 @@
 # Chapter 16: Following the Trail with Message Tracing
 
 An auditor asks: "Show me every system action triggered by deposit DEP-9921."
-This deposit was over $10,000. It triggered a compliance alert, which generated
-an investigation, which led to an account hold.
+This deposit was over $10,000. It triggered a compliance alert. The alert
+generated an investigation. The investigation led to an account hold.
 
 To answer this, we need to trace the complete **causal chain** from the
 original command through every downstream event and reaction.
@@ -100,7 +100,7 @@ The `CausationNode` tree structure contains:
 Correlation IDs propagate automatically through the system:
 
 1. You set `correlation_id` on `domain.process()`
-2. The command handler runs, events raised by the aggregate inherit the
+2. The command handler runs. Events raised by the aggregate inherit the
    correlation ID
 3. Event handlers receive events with the correlation ID
 4. When a handler issues a new command via `domain.process()`, the
@@ -111,7 +111,7 @@ You never need to manually pass correlation IDs between handlers.
 
 ## What We Built
 
-- **Correlation IDs** that tie together entire causal chains.
+- **Correlation IDs** that link every message in a causal chain.
 - **Causation IDs** that establish parent-child relationships.
 - **`protean events trace`** CLI for tree and flat visualization.
 - **`--trace`** flag on event CLI commands.

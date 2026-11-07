@@ -1,9 +1,9 @@
 # Domain Discovery
 
 In most cases, you will use the `protean` script to interact with your domain
-over the CLI. The script must be told where to find your domain to load and
-initialize it, prepping it for your use. The `--domain` option is used to
-specify how to load the domain.
+over the CLI. You tell the script where to find your domain. The script then
+loads and initializes the domain so it is ready for use. The `--domain` option
+is used to specify how to load the domain.
 
 While `--domain` supports a variety of options for specifying your domain,
 the below typical values cover most use cases:
@@ -33,8 +33,8 @@ also tries to import a module named `domain` from the import path.
 
 **`--domain auth`**
 
-The given name is imported, automatically detecting a domain (``domain`` or
-``subdomain``).
+The command imports the module you name, here `auth`, and detects the domain
+instance in it (``domain`` or ``subdomain``).
 
 !!! note
 

@@ -80,8 +80,8 @@ When `repo.get(account_id)` is called:
 5. If the number of new events exceeds `snapshot_threshold`, create a
    fresh snapshot
 
-If no snapshot exists, all events are replayed from the beginning, the same
-behavior as before.
+If no snapshot exists, Protean replays all events from the beginning, as it
+does for an aggregate without snapshots.
 
 ## Snapshots Are Not Source of Truth
 

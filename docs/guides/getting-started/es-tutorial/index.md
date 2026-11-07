@@ -48,10 +48,10 @@ previous one, growing the Fidelis platform step by step.
     in order for the best experience.
 
 !!! info "Which pathway does this tutorial follow?"
-    This tutorial follows the **Event Sourcing** path, aggregates derive their
-    state from events rather than storing snapshots in a database. If you are
-    looking for the standard CQRS approach, see the [Bookshelf
-    tutorial](../tutorial/index.md).
+    This tutorial follows the **Event Sourcing** path. In this path, aggregates
+    rebuild their state from events instead of loading it from a database
+    table. If you are looking for the standard CQRS approach, see the
+    [Bookshelf tutorial](../tutorial/index.md).
 
 ## Prerequisites
 

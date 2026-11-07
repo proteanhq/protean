@@ -52,7 +52,8 @@ Now we can see the issue: the handler assumes `isbn` is always present.
 
 ## The Fix-and-Replay Cycle
 
-1. **Fix the bug**: Handle the `None` case in the handler:
+1. **Fix the bug**: Change the handler to store an empty string when `isbn` is
+   `None`:
 
 ```python
 # fragment

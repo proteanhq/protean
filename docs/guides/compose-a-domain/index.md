@@ -3,8 +3,8 @@
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 The `Domain` is the central composition root of a Protean application. It
-registers domain elements, loads configuration, and manages adapter
-lifecycle. Every Protean project starts by creating a `Domain` instance.
+registers domain elements, loads configuration, and initializes and shuts down
+adapters. Every Protean project starts by creating a `Domain` instance.
 
 ## Creating a Domain
 

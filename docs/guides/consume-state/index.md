@@ -3,9 +3,9 @@
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 The reactive layer responds to state changes that have already happened. It
-propagates changes across aggregates, maintains read-optimized views,
-coordinates multi-step processes, and bridges to external systems, all without
-coupling back to the code that produced the original change.
+carries changes across aggregates, updates read-optimized views,
+coordinates multi-step processes, and connects to external systems. None of
+this work couples back to the code that produced the original change.
 
 ## Core Concepts
 
@@ -32,7 +32,7 @@ Projections are read-optimized, denormalized views built from domain events. The
 
 ### Projectors <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Projectors are specialized event handlers responsible for maintaining projections. They listen to domain events and update projection data, bridging the write and read sides of CQRS.
+Projectors are specialized event handlers responsible for maintaining projections. They listen to domain events and update projection data, so the read side of CQRS reflects the changes made on the write side.
 
 [Learn more about projectors →](./projectors.md)
 
@@ -50,10 +50,10 @@ Subscribers consume messages from external message brokers and other systems out
 
 ### CloudEvents Interoperability <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-When events need to cross system boundaries (external APIs, Kafka topics,
-webhooks, or other Protean domains) CloudEvents serialization translates
-between Protean's internal metadata and the standard format. Protean is a
-compliant CloudEvents v1.0 producer and consumer.
+Some events cross system boundaries to external APIs, Kafka topics, webhooks,
+or other Protean domains. For those events, CloudEvents serialization
+translates between Protean's internal metadata and the standard format. Protean
+is a compliant CloudEvents v1.0 producer and consumer.
 
 [Learn more about CloudEvents interoperability →](./cloudevents.md)
 

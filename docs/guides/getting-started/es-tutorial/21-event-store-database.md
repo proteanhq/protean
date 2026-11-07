@@ -136,8 +136,8 @@ The domain code does not change, only the configuration.
 - **Memory** vs. **MessageDB** event store adapters.
 
 The event store is not just an implementation detail. It is a database of facts
-about your business. Learning to query it directly is a useful debugging and
-analysis tool.
+about your business. When you query the event store directly, you can debug
+problems and analyze your data.
 
 ## Full Source
 

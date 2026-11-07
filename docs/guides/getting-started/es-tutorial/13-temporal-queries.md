@@ -82,7 +82,7 @@ Add `--data` to see full event payloads:
 $ protean events history --aggregate=Account --id=acc-7742 --data --domain=fidelis
 ```
 
-This is invaluable for debugging. You can see exactly what happened to an
+This history helps with debugging. You can see exactly what happened to an
 aggregate and when.
 
 ## What We Built
@@ -93,8 +93,8 @@ aggregate and when.
 - **Read-only temporal aggregates** that prevent accidental mutations.
 - **Event history CLI** for exploring an aggregate's timeline.
 
-Temporal queries are a superpower unique to Event Sourcing. Traditional
-CRUD systems cannot answer "what was the state at time T?" without
+Temporal queries are a capability unique to Event Sourcing. Traditional CRUD
+systems cannot answer "what was the state at time T?" without
 complex auditing infrastructure. With Event Sourcing, it is a one-line
 query.
 

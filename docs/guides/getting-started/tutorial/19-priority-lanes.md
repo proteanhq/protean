@@ -3,7 +3,7 @@
 Bookshelf has acquired the catalog of **Vintage Press**, 50,000 books that need
 to be imported. Running 50,000 `AddBook` commands through the normal pipeline would
 flood the Redis streams and starve real-time orders and browsing. We need a way
-to run the import without affecting production traffic.
+to run the import without delaying production traffic.
 
 ## Priority Lanes
 

@@ -70,18 +70,18 @@ The SQLite provider supports the following capabilities:
 ## Timestamps
 
 A `DateTime` field maps to a `DATETIME` column, which SQLite stores as text.
-A `DateTime` column holds no UTC offset, so Protean converts each value to
-UTC before it writes it or compares it in a filter, and reads a naive value as
-UTC. A load returns a UTC-aware `datetime`. A filter value in any offset then
-matches the same instant. Rows written before 0.18.1 hold the wall-clock time
+A `DateTime` column holds no UTC offset, so Protean converts each value to UTC
+for writes and filter comparisons. Protean reads a naive value as UTC. A load
+returns a UTC-aware `datetime`. A filter value in any offset then matches the
+same instant. Rows written before 0.18.1 hold the wall-clock time
 they were saved with; see
 [Datetimes are compared and stored as UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc)
 to convert them.
 
 ## Indexes
 
-SQLite honors most of the [`Index`](../../domain-elements/indexes.md) surface,
-emitted during `protean db setup`:
+`protean db setup` creates SQLite indexes with most of the
+[`Index`](../../domain-elements/indexes.md) options:
 
 - Composite, descending (`desc=`), and unique (`unique=`) indexes.
 - Partial indexes (`where=Q(...)`).
@@ -90,8 +90,8 @@ emitted during `protean db setup`:
 
 ## SQLAlchemy Model
 
-You can supply a custom SQLAlchemy Model in place of the one that Protean
-generates internally, allowing full customization of column types and
+You can supply a custom SQLAlchemy Model to replace the one Protean generates
+internally. A custom model gives you full control of column types and
 constraints. The pattern is identical to
 [PostgreSQL models](./postgresql.md#sqlalchemy-model).
 
@@ -106,11 +106,11 @@ constraints. The pattern is identical to
 
 ## Slow Query Detection
 
-The SQLAlchemy-based SQLite provider emits the same structured
-``protean.adapters.repository.sqlalchemy.slow_query`` WARNING and
-``protean.adapters.repository.sqlalchemy.query`` DEBUG events as the
-[PostgreSQL provider](./postgresql.md#slow-query-detection). Configure the
-threshold via ``[logging].slow_query_threshold_ms`` in ``domain.toml``.
+The SQLite provider is built on SQLAlchemy, so it emits the same structured log
+events as the [PostgreSQL provider](./postgresql.md#slow-query-detection).
+These are the ``protean.adapters.repository.sqlalchemy.slow_query`` WARNING and
+the ``protean.adapters.repository.sqlalchemy.query`` DEBUG events. Configure
+the threshold via ``[logging].slow_query_threshold_ms`` in ``domain.toml``.
 
 ## Limitations
 
