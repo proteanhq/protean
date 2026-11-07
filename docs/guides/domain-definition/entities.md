@@ -7,12 +7,12 @@ They are usually composed of two kinds of elements - those with unique
 identities (**Entities**) and those without (**Value Objects**).
 
 Entities represent unique objects in the domain model just like Aggregates, but
-they don't manage other objects. Just like Aggregates, Entities are identified
-by unique identities that remain the same throughout its life - they are not
-defined by their attributes or values. For example, a passenger in the airline
-domain is an Entity. The passenger's identity remains the same across multiple
-seat bookings, even if her profile information (name, address, etc.) changes
-over time.
+they don't own the lifecycle of other objects. Just like Aggregates, Entities
+are identified by unique identities that remain the same throughout their life.
+Their attributes or values do not define them. For example, a passenger in the
+airline domain is an Entity. The passenger's identity remains the same
+across multiple seat bookings, even if her profile information (name, address,
+etc.) changes over time.
 
 !!!note
     In Protean, Aggregates are actually entities that have taken on the
@@ -126,9 +126,9 @@ state determines what happens when the aggregate is persisted:
 | **Changed** | `_state.is_changed` | Modified since last persistence. Updated when the aggregate is next persisted with `repository.add()`. |
 | **Destroyed** | `_state.is_destroyed` | Marked for deletion. Deleted when the aggregate is next persisted with `repository.add()`. |
 
-State transitions happen automatically. You don't need to manage them directly.
-Creating an entity marks it as *new*; modifying an attribute marks it as
-*changed*; removing it from a collection marks it as *destroyed*; persisting
+State transitions happen automatically. You don't need to set the state
+yourself. Creating an entity marks it as *new*; modifying an attribute marks it
+as *changed*; removing it from a collection marks it as *destroyed*; persisting
 the aggregate marks surviving entities as *persisted*.
 
 ## Raising Events from Entities
@@ -146,8 +146,8 @@ with the entity. Access the owning aggregate via `self._owner`.
 
 ## Invariants
 
-Entities support the same invariant mechanism as aggregates, use `@invariant.post` to enforce
-rules that must always hold:
+Entities support the same invariant mechanism as aggregates. Use
+`@invariant.post` to enforce rules that must always hold:
 
 ```python
 --8<-- "guides/domain-definition/entities/004.py:invariant"
@@ -203,9 +203,9 @@ The conversion itself needs no handler. With `OrderItem` as defined above:
 ```
 
 `from_value_object()` calls `vo.to_dict()` and constructs an entity instance.
-Identity fields with `None` values are stripped so that auto-generated defaults
-kick in. This means each converted entity gets a fresh identity rather than
-failing validation.
+Protean strips identity fields with `None` values, so the auto-generated
+defaults apply. This means each converted entity gets a fresh identity rather
+than failing validation.
 
 ## Associations
 
@@ -222,7 +222,8 @@ When an entity is associated with an aggregate, Protean automatically creates a 
 ### Explicit Reference Fields
 
 You can also define the reference field yourself, for example to rename its
-shadow field. Tell the aggregate's `HasMany` about the new name with `via`:
+shadow field, the attribute that holds the parent's identity. Tell the
+aggregate's `HasMany` about the new name with `via`:
 
 ```python
 --8<-- "guides/domain-definition/entities/009.py:explicit_reference"

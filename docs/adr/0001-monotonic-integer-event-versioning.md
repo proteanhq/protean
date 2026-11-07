@@ -7,8 +7,9 @@ ladder in [ADR-0040](0040-schema-evolution-ladder.md).
 
 ## Context
 
-Events and commands in Protean are messages that cross time. They are
-serialized, stored in event stores, transmitted through brokers, and consumed
+Events and commands in Protean are messages that a consumer may read long after
+a producer writes them. They are serialized, stored in event stores,
+transmitted through brokers, and consumed
 by handlers that may have been deployed at a different time than the producer.
 When the shape of an event changes (a field is added, renamed, or removed),
 consumers need to know which shape they're dealing with.
@@ -31,14 +32,16 @@ marker.
 
 We will version events and commands with monotonic positive integers. The `__version__`
 attribute on message classes is an integer starting at 1, incremented by 1 for a change that
-needs a new version. ADR-0040's schema-evolution ladder settles which changes do: a
-structural change bumps the version, and a change that weak schema handles (a field added
-with a default, a rename via `renamed_from`, or a removed field read leniently) keeps the
-current version. Upcasters apply to
-stored events: an upcaster transforms an old event payload to the new version, or the event
-becomes a new type when no value can be supplied. Commands are versioned the same way, but
-they are not replayed, so they carry no upcaster. The framework validates the integer at
-class creation time in `BaseMessageType.__init_subclass__()`:
+needs a new version. The schema-evolution ladder (ADR-0040) lists which changes
+need a new version: a structural change bumps the version. A change that weak
+schema supports keeps the current version: a field added with a default, a
+rename via `renamed_from`, or a removed field read leniently. Upcasters apply
+to stored events: an upcaster transforms an old event payload to the new
+version, or the event becomes a new type when no value can be supplied.
+Commands are versioned the same way, but
+they are not replayed, so they carry no upcaster. The framework validates the
+`__version__` integer at class creation time in
+`BaseMessageType.__init_subclass__()`:
 
 ```python
 class UserRegistered(BaseEvent):
@@ -54,17 +57,19 @@ class UserRegistered(BaseEvent):
     email: String(required=True)
 ```
 
-The block shows the class change only. The v1 → v2 upcaster that supplies `email`
-for stored v1 payloads is a separate registration; see the [Event Upcasting
-guide](../guides/consume-state/event-upcasting.md).
+The code block above shows only the change to the `UserRegistered` class. The
+v1 → v2 upcaster that supplies `email` for stored v1 payloads is registered
+separately, as the [Event Upcasting guide](../guides/consume-state/event-upcasting.md)
+shows.
 
 The version appears in the message's `__type__` string as
-`{Domain}.{ClassName}.v{version}` (e.g., `Auth.UserRegistered.v2`), which is used
-for runtime routing and event store lookups. Compatibility semantics (whether
-v2 is backward-compatible with v1, and how to convert between them) are settled
-by the schema-evolution ladder in ADR-0040, which routes each change to weak
-schema (`renamed_from`, lenient mode), an upcaster, or a new event type. The version number
-stays an identity marker.
+`{Domain}.{ClassName}.v{version}` (e.g., `Auth.UserRegistered.v2`). Protean
+uses the `__type__` string for runtime routing and event store lookups.
+The schema-evolution ladder (ADR-0040) defines the compatibility semantics:
+whether v2 is backward-compatible with v1, and how to convert between them.
+Under the ladder, each change goes to weak schema (`renamed_from`, lenient
+mode), an upcaster, or a new event type. The version number stays an identity
+marker.
 
 ## Consequences
 
@@ -81,9 +86,9 @@ The trade-off is that the version number alone tells you nothing about
 compatibility. Given `UserRegistered` v3, you cannot know from the number alone
 whether v1 events can be read as v3. You need to inspect the change and the
 evolution mechanism it uses, weak schema or an upcaster (the schema-evolution
-ladder in ADR-0040). Compatibility analysis is a tooling concern (see ADR-0000,
-principle 8), and the Phase 4 compatibility checker will provide this analysis
-automatically.
+ladder in ADR-0040). Under Protean's guiding principles (ADR-0000, principle
+8), compatibility analysis belongs to tooling. The Phase 4 compatibility
+checker will provide this analysis automatically.
 
 Validation is strict: `__version__` must be a positive integer. Strings, floats, zero, and
 negative numbers are rejected with `IncorrectUsageError` at class definition time, preventing
@@ -93,11 +98,12 @@ accidental misuse.
 
 **Semantic versioning** was rejected because it embeds compatibility policy into the version
 format. In practice, determining whether an event schema change is "breaking"
-requires inspecting the actual field changes and the upcaster chain. The same
-work the tooling does regardless of version format. Semver adds complexity
-(three numbers to manage, rules about what constitutes major/minor/patch)
-without reducing the need for compatibility tooling.
+requires inspecting the actual field changes and the upcaster chain. This is
+the same work the tooling does regardless of version format. Semver adds
+complexity (three numbers to manage, rules about what constitutes
+major/minor/patch) without reducing the need for compatibility tooling.
 
-**String-based version tags** (e.g., `"v2-with-name-field"`) were considered for readability
-but rejected because they don't support ordering, make upcaster chain traversal ambiguous,
-and introduce naming convention debates.
+**String-based version tags** (e.g., `"v2-with-name-field"`) were considered
+for readability but rejected for three reasons. They don't support ordering,
+they make upcaster chain traversal ambiguous, and they introduce naming
+convention debates.

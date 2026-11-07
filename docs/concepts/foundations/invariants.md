@@ -18,15 +18,14 @@ Invariants operate at different levels of granularity:
 
 - **Aggregate-level invariants**: Rules spanning multiple objects within the aggregate cluster. The sum of line item totals must equal the order total. A reservation cannot overlap with another reservation for the same resource. These are the invariants that define why certain objects are grouped into the same aggregate.
 
-- **Cross-aggregate invariants**: Rules spanning multiple aggregates. An order can only be placed if the customer's credit limit allows it, but the customer and the order are separate aggregates. These invariants cannot be enforced within a single transaction and are handled through eventual consistency via [domain events](../building-blocks/events.md).
+- **Cross-aggregate invariants**: Rules spanning multiple aggregates. An order can only be placed if the customer's credit limit allows it, but the customer and the order are separate aggregates. A single transaction cannot enforce these invariants, so you enforce them through eventual consistency via [domain events](../building-blocks/events.md).
 
 ## The Always-Valid Guarantee
 
 Protean enforces a strict design principle: **an aggregate cluster can never
-exist in an invalid state.** Once you define field constraints, value object
-rules, or aggregate invariants, Protean ensures they hold at all times, not
-just when you explicitly ask for validation, but after every single field
-change.
+exist in an invalid state.** Protean checks the field constraints, value object
+rules, and aggregate invariants you define after every single field change.
+They hold at all times, and you do not need to ask for validation explicitly.
 
 This works because Protean intercepts every attribute assignment on aggregates
 and entities. When you write `order.total_amount = 50.0`, the framework
@@ -75,12 +74,12 @@ don't need to remember to call a `validate()` method. You don't need to check
 validity before persisting. The aggregate refuses to accept invalid
 changes.
 
-This has several consequences for application design:
+The always-valid guarantee has several consequences for application design:
 
 - **Named methods on aggregates are safe by default**: A method like
-  `order.place()` can set multiple fields, and invariants will catch any
-  inconsistency on each assignment (or use `atomic_change` for batched
-  mutations).
+  `order.place()` can set multiple fields, and Protean checks invariants on
+  each assignment to catch any inconsistency (or use `atomic_change` for
+  batched mutations).
 - **Handlers can't corrupt domain state**: Even if a command handler sets
   fields directly rather than using named methods, invariants will still fire.
 - **Testing is simpler**: You can test invariants by directly setting fields
@@ -107,7 +106,7 @@ For example, when an `Order` is placed, it raises an `OrderPlaced` event. An eve
 
 ## Further Reading
 
-- [The Always-Valid Domain](../philosophy/always-valid.md): The complete story of four-layer validation and what the always-valid guarantee means for your code
+- [The Always-Valid Domain](../philosophy/always-valid.md): How the four validation layers work and what the always-valid guarantee means for your code
 - [Aggregates](../building-blocks/aggregates.md): Invariant enforcement within aggregate boundaries
 - [Invariants Guide](../../guides/domain-behavior/invariants.md): Implementing invariants in Protean
 - [Validation Layering](../../patterns/validation-layering.md): Where different types of validation belong

@@ -14,11 +14,12 @@ You need to backfill a `loyalty_tier` field onto 500,000 existing customer
 records. The migration script loads each customer, sets the tier, and saves,
 producing 500,000 `LoyaltyTierAssigned` events.
 
-Those events flood the same Redis Stream that handles real-time customer
-registrations, order placements, and payment confirmations. The Engine processes
-them in FIFO order, so production events are now stuck behind half a million
-migration events. A customer who just placed an order waits minutes (or longer)
-for their confirmation because the projector is busy processing backfill events.
+Those events are published to the same Redis Stream as the real-time customer
+registration, order placement, and payment confirmation events. The Engine
+processes them in FIFO order (first in, first out). Production events now wait
+until the Engine has processed half a million migration events. A customer who
+just placed an order waits minutes (or longer) for their confirmation because
+the projector is busy processing backfill events.
 
 ```
 Without priority lanes:
@@ -66,7 +67,7 @@ priority. The framework handles the rest.
 
 ## How Protean Supports It
 
-Protean provides this pattern through three mechanisms:
+Protean supports priority lanes through three mechanisms:
 
 ### 1. Processing Priority Context
 
@@ -116,9 +117,9 @@ in the domain's configuration:
 ```
 
 Here is a migration script that backfills a `loyalty_tier` field on existing
-customer records. The key is wrapping all `domain.process()` calls inside a
-`processing_priority(Priority.LOW)` context manager. The script reads
-customers one page at a time, because a query returns at most 100 records
+customer records. The script wraps all `domain.process()` calls inside a
+`processing_priority(Priority.LOW)` context manager. The script reads customers
+one page at a time, because a query returns at most 100 records
 unless you set a limit.
 
 ```python

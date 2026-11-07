@@ -4,17 +4,17 @@
 
 ## The Problem
 
-Almost every persisted aggregate wants four cross-cutting fields:
+Almost every persisted aggregate needs four cross-cutting fields:
 
 - `created_at` / `updated_at`. When the row was first written and last
   changed.
 - `created_by` / `updated_by`, which user made those changes.
 
-These have nothing to do with the aggregate's business rules, but if you leave
-them to each aggregate you end up re-implementing the same thing everywhere:
-setting `updated_at = now()` at the top of every mutating method, and threading
-the current user down into the domain by hand. Miss one method and the audit
-trail is quietly wrong.
+These fields have nothing to do with the aggregate's business rules. If you
+leave them to each aggregate, you write the same code in every aggregate: you
+set `updated_at = now()` at the top of every mutating method, and you pass the
+current user into the domain by hand. Miss one method and the audit trail is
+quietly wrong.
 
 The two halves of the problem are different in nature. Timestamps are a pure
 function of *when* the save happens. Audit users are a function of *who* is
@@ -30,8 +30,8 @@ Let the framework fill them in on save:
 - Audit users come from a **pre-persist enricher** that reads the acting user
   from the domain context and stamps them just before the save.
 
-The aggregate stays focused on its business behavior; the base and the enricher
-carry the bookkeeping.
+The base aggregate and the enricher supply the audit fields, so the aggregate's
+own code contains only its business behavior.
 
 ## How Protean Supports This
 
@@ -64,8 +64,9 @@ outbox rows. The `hasattr` check skips any aggregate without audit fields.
 
 ### Supplying the acting user
 
-The enricher reads `current_user` off the domain context, so put it there at the
-edge of your application (an HTTP middleware, a CLI entry point, a worker):
+The enricher reads `current_user` from the domain context, so set it where a
+request enters your application (an HTTP middleware, a CLI entry point, a
+worker):
 
 ```python
 --8<-- "patterns/track-audit-fields/001.py:supply"
@@ -81,10 +82,10 @@ Create and update, end to end:
 
 ## Where it applies
 
-The stamping and the enricher run on the `repository.add()` → save path (the
-same place Protean manages aggregate versions) and, because they persist
-through the same path, on `update()` and `QuerySet.update()` as well. Two
-notes:
+Protean runs the stamping and the enricher on the `repository.add()` → save
+path (the same place Protean manages aggregate versions). Because `update()`
+and `QuerySet.update()` persist through the same path, they stamp and enrich as
+well. Two notes:
 
 - **Bulk / raw updates**: `QuerySet.update(...)` updates each matched row
   individually, so it stamps and enriches like a save. When you need a raw write
@@ -101,17 +102,16 @@ notes:
 
 ### Stamping in every mutator
 
-Setting `updated_at = utc_now()` at the top of each business method works but
-drifts: the one method that forgets it leaves a stale timestamp, and there is no
-single place to audit. `auto_now` removes the need entirely.
+You can set `updated_at = utc_now()` at the top of each business method, but
+the one method that forgets it leaves a stale timestamp. With this approach,
+there is no single place to audit. `auto_now` removes the need entirely.
 
 ### Overloading the enricher with business logic
 
-The pre-persist enricher is powerful, it *can* mutate any field or raise an
-exception. Keep it to cross-cutting lifecycle/audit metadata. Business state
-changes belong in the aggregate's own named methods, where they can raise
-events and be tested in isolation. The enricher is a bookkeeping hook, not an
-escape hatch.
+The pre-persist enricher *can* mutate any field or raise an exception. Keep it
+to cross-cutting lifecycle/audit metadata. Business state changes belong in the
+aggregate's own named methods, where they can raise
+events and be tested in isolation. Use the enricher only for audit bookkeeping.
 
 ### Modeling the acting user inside the domain
 

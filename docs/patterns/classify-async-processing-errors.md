@@ -53,7 +53,7 @@ into one of three categories and respond accordingly:
 | **Data error** | Schema mismatch, missing fields, invalid payload | Route to DLQ for manual inspection, alert the team |
 | **Logic error** | Business rule violations, incorrect calculations, unexpected `None` | Alert immediately, fix the code, replay |
 
-The mental model:
+Classify each exception with these questions, in order:
 
 ```
 Exception raised in handler
@@ -73,8 +73,8 @@ Exception raised in handler
 Projectors maintain read models. A failed projector update means the read side
 has diverged from the write side. Unlike a failed event handler (where the
 consequence might be a delayed side effect) a failed projector creates
-**stale data that users see**. This makes projector error handling especially
-critical: a transient failure should retry quickly, a persistent failure
+**stale data that users see**. Projector error handling is therefore especially
+critical. A transient failure should retry quickly, and a persistent failure
 should alert immediately.
 
 ### The `handle_error` contract
@@ -93,7 +93,7 @@ def handle_error(cls, exc: Exception, message: Message) -> None:
     """
 ```
 
-The engine's processing flow:
+The engine processes a failure in these steps:
 
 1. `handler_cls._handle(message)` raises an exception.
 2. The engine logs the exception with full traceback.
@@ -127,8 +127,8 @@ Build helpers that recognize common failure signatures:
     `isinstance(exc, ConnectionError)` sees the group, matches nothing, and
     treats a passing network blip as a logic error. Recurse into
     `exc.exceptions`, as the functions above do. `except*` matches a group too,
-    but `handle_error` receives the exception as an argument rather than raising
-    it, so reaching for `except*` means re-raising it inside a `try` first.
+    but `handle_error` receives the exception as an argument and does not raise
+    it. To use `except*`, you first re-raise the exception inside a `try`.
 
 !!! note
     This classification is domain-specific. If your projection store is
@@ -148,8 +148,8 @@ places:
   retries run out. See
   [Transient-failure retries](../guides/consume-state/event-handlers.md#transient-failure-retries).
 - **In the subscription.** The subscription that delivered the message
-  tries it again after a failure. `max_retries` (3 by default) sets when it
-  gives up, and the two subscription types retry differently:
+  tries it again after a failure. `max_retries` (3 by default) sets when the
+  subscription gives up. The two subscription types retry differently:
     - A stream subscription retries straight away, waiting
       `retry_delay_seconds` (1 second by default) between attempts. It stops
       after `max_retries` attempts in total, so 3 attempts by default.
@@ -171,10 +171,10 @@ For transient errors, the best action in `handle_error` is minimal logging:
 --8<-- "patterns/classify-async-processing-errors/001.py:transient"
 ```
 
-The handler is `part_of=Inventory`, but `OrderPlaced` belongs to `Order`. An
-event handler reads its own aggregate's stream unless it sets
-`stream_category`, so this one names the order stream. Without it, the engine
-would never deliver `OrderPlaced` to the handler.
+The handler is `part_of=Inventory`, but `OrderPlaced` belongs to `Order`. By
+default, an event handler reads its own aggregate's stream. This handler sets
+`stream_category` to name the order stream. Without it, the engine would never
+deliver `OrderPlaced` to the handler.
 
 The log calls pass `exc_info=exc`. That attaches the traceback of the
 exception `handle_error` received. `exc_info=True` reads the exception being
@@ -256,8 +256,8 @@ time:
 - **`message.nacked`**: Emitted on each retry attempt.
 
 Monitor the ratio of `handler.failed` to `handler.completed`. A sudden spike
-indicates a systemic problem (deployment bug, infrastructure outage). A
-steady trickle indicates data quality issues.
+indicates a systemic problem (deployment bug, infrastructure outage). A steady
+low rate of failures indicates data quality issues.
 
 ---
 
@@ -376,8 +376,8 @@ on the subscription, or turn on `transient_retry`, instead.
 The default `handle_error` is a no-op by design. It keeps the engine running.
 In production, override it in every handler to classify failures, route to the
 right recovery path, and ensure that no error goes unnoticed. Transient errors
-heal themselves. Data errors need human inspection. Logic errors need code
-fixes. Treating them all the same way produces silent data drift.
+clear up on their own. Data errors need human inspection. Logic errors need
+code fixes. Treating them all the same way produces silent data drift.
 
 ---
 
