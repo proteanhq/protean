@@ -592,6 +592,22 @@ class TestParseConfigSectionTypeChecks:
         ):
             _parse_config({"compatibility": {"deprecation": "fast"}})
 
+    def test_domains_not_a_table(self):
+        with pytest.raises(ValueError) as exc_info:
+            _parse_config({"domains": ["identity"]})
+        assert str(exc_info.value) == "domains must be a TOML table, not list"
+
+    def test_domains_entry_not_a_string(self):
+        with pytest.raises(ValueError) as exc_info:
+            _parse_config({"domains": {"identity": 3}})
+        assert str(exc_info.value) == (
+            'domains entries must be string key-value pairs (name = "module.path")'
+        )
+
+    def test_domains_table_maps_names_to_module_paths(self):
+        config = _parse_config({"domains": {"identity": "identity.domain"}})
+        assert config.domains == {"identity": "identity.domain"}
+
 
 # ---------------------------------------------------------------------------
 # TestLoadConfigErrorHandling — CLI/hooks handle config errors gracefully

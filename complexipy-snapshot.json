@@ -210,50 +210,6 @@
     ]
   },
   {
-    "path": "src/protean/ir/config.py",
-    "file_name": "config.py",
-    "functions": [
-      {
-        "name": "_parse_config",
-        "complexity": 19
-      }
-    ]
-  },
-  {
-    "path": "src/protean/ir/diff.py",
-    "file_name": "diff.py",
-    "functions": [
-      {
-        "name": "_apply_reserved_mitigation",
-        "complexity": 16
-      },
-      {
-        "name": "_classify_clusters",
-        "complexity": 19
-      },
-      {
-        "name": "_diff_element",
-        "complexity": 19
-      },
-      {
-        "name": "_apply_upcaster_mitigation",
-        "complexity": 21
-      },
-      {
-        "name": "_classify_replay_hazards",
-        "complexity": 25
-      },
-      {
-        "name": "_classify_field_changes",
-        "complexity": 40
-      },
-      {
-        "name": "_diff_contracts",
-        "complexity": 60
-      }
-    ]
-  },
-  {
     "path": "src/protean/port/broker.py",
     "file_name": "broker.py",
     "functions": [
