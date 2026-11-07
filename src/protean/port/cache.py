@@ -99,9 +99,9 @@ class CacheCapabilities(Flag):
     """
 
     KEY_VALUE = auto()
-    """Reads, writes and deletes by key: the `BaseCache` members `add`, `get`,
-    `remove`, `remove_by_key` and `flush_all`, which every cache adapter
-    implements. The planned `CachePort` protocol names them `get`, `put`,
+    """Reads, writes and deletes by key, and clearing the cache: the `BaseCache`
+    members `add`, `get`, `remove`, `remove_by_key` and `flush_all`, which
+    every cache adapter implements. The planned `CachePort` protocol names them `get`, `put`,
     `delete` and `clear`."""
 
     TTL = auto()

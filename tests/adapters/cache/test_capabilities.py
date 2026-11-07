@@ -25,6 +25,19 @@ def _cache_for(config: dict[str, Any]) -> BaseCache:
     return domain.caches["default"]
 
 
+class TestFlags:
+    def test_there_are_five_distinct_single_bit_flags(self):
+        # Iterating a `Flag` yields only its distinct single-bit members, so an
+        # extra flag, a flag aliased to another, or a merged pair changes this list.
+        assert [flag.name for flag in CacheCapabilities] == [
+            "KEY_VALUE",
+            "TTL",
+            "PATTERN_MATCH",
+            "SHARED",
+            "DURABLE",
+        ]
+
+
 class TestTiers:
     def test_local_is_key_value_ttl_and_pattern_match(self):
         assert CacheCapabilities.LOCAL == (
