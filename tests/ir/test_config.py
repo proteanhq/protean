@@ -260,6 +260,8 @@ class TestLoadConfigErrors:
                 "positive integer",
             ),
             ('[staleness]\nenabled = "yes"\n', "must be a boolean"),
+            ('domains = ["identity"]\n', "domains must be a TOML table"),
+            ("[domains]\nidentity = 3\n", "domains entries must be string"),
         ],
         ids=[
             "invalid toml",
@@ -270,6 +272,8 @@ class TestLoadConfigErrors:
             "zero min_versions",
             "negative min_versions",
             "non-bool staleness",
+            "non-table domains",
+            "non-string domains entry",
         ],
     )
     def test_raises_on_an_invalid_value(self, tmp_path, content, message):

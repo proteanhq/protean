@@ -1387,8 +1387,9 @@ def _upcaster_citation(
 ) -> str | None:
     """Name the upcaster chain that covers an event's version bump, if one does.
 
-    Returns ``None`` when the version did not rise, when the chain misses a
-    stored version, or when the type string's base moved.
+    Returns ``None`` when either ``__version__`` is not an int, when the
+    version did not rise, when the chain misses a stored version, or when the
+    type string's base moved.
     """
     left_v = left_entry.get("__version__")
     right_v = right_entry.get("__version__")
