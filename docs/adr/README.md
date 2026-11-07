@@ -5,9 +5,9 @@ This directory contains Architecture Decision Records (ADRs) for the Protean fra
 ## What are ADRs?
 
 An Architecture Decision Record captures a single architectural decision along with its context
-and consequences. ADRs are short documents that record why we made
-a particular choice at a particular time, so that future contributors can understand not just
-what the system does, but why it does it that way.
+and consequences. ADRs are short documents that record why we made a particular
+choice at a particular time. Future contributors read them to learn why the
+system works the way it does, in addition to what it does.
 
 The practice was introduced by Michael Nygard in his blog post
 [Documenting Architecture Decisions](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions).
@@ -16,8 +16,9 @@ The practice was introduced by Michael Nygard in his blog post
 
 Protean is an opinionated DDD framework with a growing IR-based "domain compiler" architecture.
 Many of our decisions involve trade-offs between DDD purity, developer ergonomics, and tooling
-extensibility. Recording these decisions prevents re-litigating settled questions and helps new
-contributors understand the reasoning behind the framework's design.
+extensibility. We record these decisions so that contributors do not reopen
+questions we have already settled. New contributors read the records to learn
+the reasons behind the framework's design.
 
 ## Naming convention
 
@@ -79,9 +80,9 @@ sentence in it holds. So an ADR leaves out:
   only after they are answered.
 - Plans: which issue or pull request does what, in what order, or what holds
   during a migration. Plans belong in issues.
-- Issues and epics as the source of a decision. The ADR makes the decision and
-  gives its reason. An issue link can serve as evidence, such as a bug report
-  that shows the problem.
+- Issues and epics as the source of a decision. The ADR itself states the
+  decision and its reason. An issue link can serve as evidence, such as a bug
+  report that shows the problem.
 - Lists of names: method signatures, record fields, module lists and file
   trees. Names belong in docstrings and reference pages. A name appears in an
   ADR when the decision is about that name.

@@ -1,9 +1,9 @@
 # Event Handlers
 
-Event handlers react to [domain events](./events.md) by orchestrating side
-effects, syncing state across [aggregates](./aggregates.md), sending
-notifications, triggering downstream processes, or any other work that should
-happen *after* a state change has occurred.
+Event handlers react to [domain events](./events.md) with work that runs
+*after* a state change. That work includes orchestrating side effects, syncing
+state across [aggregates](./aggregates.md), sending notifications, and
+triggering downstream processes.
 
 Event handlers follow a fire-and-forget pattern. They consume events
 asynchronously, they do not return values, and the code that raised the
@@ -14,9 +14,9 @@ decoupling is what makes event-driven architectures flexible and evolvable.
 
 ### Event handlers are always associated with an aggregate. { data-toc-label="Linked to Aggregate" }
 
-Every event handler declares the aggregate it belongs to. This association
-determines the stream of events the handler subscribes to by default and
-anchors the handler within a specific aggregate's boundary.
+Every event handler declares the aggregate it belongs to. Protean uses this
+aggregate to pick the stream of events the handler subscribes to by default.
+The handler is also part of that aggregate's boundary.
 
 ### Event handlers process events asynchronously. { data-toc-label="Asynchronous" }
 
@@ -41,7 +41,7 @@ logic focused and independently testable.
 
 While an event handler is associated with one aggregate, it can subscribe to
 events from *other* aggregates by specifying a source stream or stream
-category. This is the primary mechanism for eventual consistency, one aggregate
+category. This is the primary mechanism for eventual consistency. One aggregate
 reacts to changes in another without direct coupling.
 
 ### Event handlers run within a Unit of Work. { data-toc-label="Transactions" }
@@ -60,9 +60,10 @@ independently and event handlers bridge the gap asynchronously.
 
 ### Event handlers coordinate side effects. { data-toc-label="Side Effects" }
 
-Beyond cross-aggregate state synchronization, event handlers are where work that
-should follow a domain event goes: sending emails, updating caches, calling
-external APIs, writing audit logs, or publishing messages to downstream systems.
+Beyond cross-aggregate state synchronization, event handlers run the work that
+follows a domain event. That work includes sending emails, updating caches,
+calling external APIs, writing audit logs, and publishing messages to
+downstream systems.
 
 A single handler method either persists or talks to an external system, never
 both. The method runs inside a Unit of Work, so an external call after a

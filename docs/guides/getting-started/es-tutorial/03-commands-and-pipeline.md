@@ -15,7 +15,7 @@ Commands are imperative: they describe what we want to happen.
 --8<-- "guides/getting-started/es-tutorial/ch03.py:commands"
 ```
 
-Notice the naming convention:
+Commands and events follow different naming conventions:
 
 - **Commands** use imperative verbs: `OpenAccount`, `MakeDeposit`,
   `MakeWithdrawal`.
@@ -45,9 +45,9 @@ The command handler follows a consistent pattern:
 2. **Call** the domain method with data from the command
 3. **Save** the aggregate back to the repository
 
-The handler is a thin coordinator. It does not contain business logic. Business
-logic lives in the aggregate (the `deposit()` and `withdraw()` methods we wrote
-in Chapter 2).
+The handler is a thin coordinator. It does not contain business logic. The
+aggregate's methods contain the business logic (the `deposit()` and
+`withdraw()` methods we wrote in Chapter 2).
 
 !!! tip "current_domain"
     `current_domain` is a thread-local reference to the active domain.

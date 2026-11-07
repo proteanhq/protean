@@ -49,7 +49,7 @@ A typical aggregate uses all three:
 --8<-- "guides/domain-definition/fields/002.py:aggregate"
 ```
 
-Lifecycle state gets its own type, use
+Lifecycle state gets its own type. Use
 [`Status`](../../reference/fields/simple-fields.md#status) when the value must move
 through a defined state machine. See the [Status
 Transitions](../domain-behavior/status-transitions.md) guide for patterns like
@@ -66,8 +66,8 @@ reject construction when the value is missing or blank:
 --8<-- "guides/domain-definition/fields/003.py:aggregate"
 ```
 
-Attempting to build a `Customer` without an email raises a
-`ValidationError` with a `messages` dict pointing at the offending field:
+When you build a `Customer` without an email, Protean raises a
+`ValidationError`. Its `messages` dict names the offending field:
 
 ```shell
 In [1]: Customer(name="Jane Doe")
@@ -198,8 +198,9 @@ concept (money, an address, a coordinate), promote them to a
 --8<-- "guides/domain-definition/fields/009.py:aggregate"
 ```
 
-You can hand in a `Money(...)` instance or the flattened attributes
-(`balance_currency`, `balance_amount`), Protean reconstitutes the VO in either case.
+You can pass a `Money(...)` instance or the flattened attributes
+(`balance_currency`, `balance_amount`). Protean reconstitutes the VO in either
+case.
 
 ---
 

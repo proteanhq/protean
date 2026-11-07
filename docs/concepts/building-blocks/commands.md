@@ -46,8 +46,8 @@ Headers and metadata such as timestamps, unique identifiers, and version
 numbers are included in commands for precise tracking of origin and intent.
 
 ### Commands are **versioned**. { data-toc-label="Versioning" }
-Each command is assigned a version number (defaulting to `1`), ensuring that
-commands can evolve over time. Set `__version__` on the class to override:
+Protean assigns each command a version number (defaulting to `1`), so commands
+can evolve over time. Set `__version__` on the class to override:
 
 ```python hl_lines="8"
 --8<-- "concepts/building-blocks/commands/001.py:versioned"
@@ -63,19 +63,18 @@ which is crucial for processing incoming commands chronologically.
 
 ### Commands are written into streams.  { data-toc-label="Command Streams" }
 Commands are written to and read from streams. Review the section on
-[Streams](../foundations/streams.md) for a deep-dive.
+[Streams](../foundations/streams.md) for a detailed explanation.
 
 ### Command objects are always valid. { data-toc-label="Validation" }
-Like other elements in Protean, commands are validated as soon as they are
-initialized to ensure they contain all required information and that the data
-is in the correct format.
+Like other elements in Protean, a command is validated as soon as it is
+initialized. Protean checks that the command contains all required information
+and that its data is in the correct format.
 
 ## Persistence
 
 ### Commands do not persist data directly. { data-toc-label="Persistence" }
-Commands themselves do not persist data; they trigger domain operations that
-result in changes to the state of aggregates, which are then persisted by
-repositories.
+Commands themselves do not persist data but trigger domain operations that
+change the state of aggregates. Repositories then persist those aggregates.
 
 ### Commands can result in events. { data-toc-label="Events" }
 Once a command has been successfully handled, it may result in domain events

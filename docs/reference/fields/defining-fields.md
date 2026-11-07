@@ -16,8 +16,8 @@ Fields are declared as type annotations using Protean's field functions:
 ```
 
 This is the recommended style. It reads as a declaration ("description IS a
-String") which aligns naturally with domain modeling, where you are stating
-what something **is**, not assigning it a value.
+String"). This style fits domain modeling, where you state what something
+**is** instead of assigning it a value.
 
 The annotation style also aligns with how modern Python libraries declare
 structured data (dataclasses, Pydantic, attrs). Tools that process annotations
@@ -99,8 +99,8 @@ assignment style instead:
 ```
 
 Assignment style places the FieldSpec in the class namespace (not in
-`__annotations__`), so deferred evaluation does not affect it. Raw Pydantic
-style also works because Pydantic handles string annotations natively.
+`__annotations__`), so deferred evaluation does not convert it to a string. Raw
+Pydantic style also works because Pydantic handles string annotations natively.
 
 !!! warning
     This limitation only affects annotation style. Assignment and raw Pydantic

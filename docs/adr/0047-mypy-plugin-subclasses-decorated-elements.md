@@ -47,8 +47,8 @@ runtime. Its synthesized `__init__` includes the fields of decorated parents.
 
 With the base in the MRO, mypy also applies the `dataclass_transform` that
 `BaseEntity` declares. That transform now sets `kw_only_default=True`, which
-is how pydantic constructs the model, so mypy does not apply positional field
-ordering rules to Protean fields.
+matches how pydantic constructs the model. mypy therefore does not apply
+positional field ordering rules to Protean fields.
 
 ## Consequences
 

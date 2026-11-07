@@ -6,8 +6,8 @@ job is to maintain a [projection](./projections.md). It listens to
 and translates each event into the appropriate create, update, or delete
 operation on a projection record.
 
-Projectors are the bridge between the write side and the read side of a CQRS
-architecture. They ensure that projections stay consistent with the domain
+Projectors update the read side of a CQRS architecture from the events the
+write side raises. They ensure that projections stay consistent with the domain
 state as events flow through the system.
 
 ## Facts
@@ -20,9 +20,9 @@ model it produces clear and traceable.
 
 ### Projectors listen to events from one or more aggregates. { data-toc-label="Multiple Aggregates" }
 
-A projector can subscribe to event streams from multiple aggregates. This is
-what allows a single projection to incorporate data from across the domain, for
-example, a dashboard view that combines order, customer, and product data.
+A projector can subscribe to event streams from multiple aggregates. A single
+projection can then incorporate data from across the domain. For example, a
+dashboard view can combine order, customer, and product data.
 
 ### Projectors use a handler decorator to process events. { data-toc-label="Handler Decorator" }
 
@@ -61,7 +61,7 @@ processes an event once or multiple times.
 
 ### Handle event ordering carefully. { data-toc-label="Ordering" }
 
-Projections often depend on events arriving in the correct order, an
+Projections often depend on events arriving in the correct order. An
 "OrderShipped" event makes no sense without the preceding "OrderPlaced." Design
 projectors to handle ordering constraints, and be aware that cross-aggregate
 events may not have a guaranteed global order.

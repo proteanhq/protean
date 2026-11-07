@@ -23,8 +23,9 @@ yet converged**: its exit codes and output shape still differ.
 
 ## The result envelope
 
-Every command that emits machine-readable output (under `--json`, or
-`--format json` for `check`) wraps its result in one stable JSON object:
+Each command listed above as following the envelope wraps its machine-readable
+output (under `--json`, or `--format json` for `check`) in one stable JSON
+object:
 
 ```json
 {
@@ -48,21 +49,23 @@ Every command that emits machine-readable output (under `--json`, or
 - `fail`: The command ran and found a failure it is designed to detect (a
   gating diagnostic, a failed stage). The fine-grained severity is in `data` and
   `diagnostics`, not the status.
-- `error`: A usage or environment error it could not run past (a bad option, no
-  or unloadable domain, malformed config, IO). Maps to the usage class (exit `2`).
+- `error`: A usage or environment error that stopped the command from running
+  (a bad option, no or unloadable domain, malformed config, IO). Maps to the
+  usage class (exit `2`).
 
 The envelope ships a pinned, versioned JSON Schema at
 `src/protean/cli/schema/v0.1.0/envelope.schema.json` (mirroring the IR schema
-precedent). Conformance tests validate each converged command's `--json` output
-against it, so the shape is enforced, not just documented.
+precedent). Conformance tests check the `--json` output of each command that
+follows the envelope against this schema, so a change that breaks the shape
+fails the tests.
 
 `data` and `diagnostics` split the payload deliberately, so a consumer should
-read **both**: `diagnostics` carries the lint findings (the recoverable,
-per-element diagnostics), while `data` carries the command's own detail and its
+read **both**. `diagnostics` carries the lint findings (the recoverable,
+per-element diagnostics). `data` carries the command's own detail and its
 *fatal* errors: a domain that would not load, a malformed `[lint]` config, a
-failed init stage. Those fatal errors live under `data` (e.g. `data.error`, or
-`data.stages.init.error` for `verify`), not in `diagnostics`. A diagnostics-only
-consumer will miss them.
+failed init stage. The command reports those fatal errors in `data` (e.g.
+`data.error`, or `data.stages.init.error` for `verify`). It does not report
+them in `diagnostics`. A diagnostics-only consumer will miss them.
 
 SARIF and GitHub-annotations output (`check --format sarif` /
 `--format github-annotations`) are **not** wrapped: they are external standard
@@ -90,7 +93,8 @@ command that sets no explicit exit code already conforms.
 | `1` | A findings failure: validator errors, an IR-build error, or a warning/info at or above the floor. |
 | `2` | Usage/environment: a bad `--domain`, `--level`, or `--format`; a domain that will not load; a malformed `[lint]` config. |
 
-**`protean verify`** (the stage classes are pinned above the shared `0`/`2`):
+**`protean verify`** (it gives each stage a fixed code from `3` up, in addition
+to the shared `0`/`2`):
 
 | Exit code | Meaning |
 |-----------|---------|

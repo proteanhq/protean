@@ -4,15 +4,15 @@ A bounded context is a boundary within which a particular domain model is
 defined and applicable. Each bounded context has its own [ubiquitous
 language](./ubiquitous-language.md), its own aggregates, entities, value
 objects, and its own rules. The model inside one context does not need to be
-consistent with models in other contexts, and attempting to force consistency
-across contexts is one of the most common sources of accidental complexity in
-software.
+consistent with models in other contexts. When teams force consistency across
+contexts, they create one of the most common sources of accidental complexity
+in software.
 
 Without bounded contexts, a system grows into a Big Ball of Mud where every concept is entangled with every other concept. Bounded contexts are the strategic pattern that controls this complexity.
 
 ## Why Boundaries Exist
 
-Different parts of a business have different vocabularies and different rules for the same real-world concepts. A "Customer" in a billing context has payment terms, invoices, and credit limits. A "Customer" in a support context has tickets, SLAs, and satisfaction scores. Forcing a single Customer model to serve both contexts creates a bloated, fragile class that satisfies neither context well and changes for reasons that have nothing to do with each other.
+Different parts of a business have different vocabularies and different rules for the same real-world concepts. A "Customer" in a billing context has payment terms, invoices, and credit limits. A "Customer" in a support context has tickets, SLAs, and satisfaction scores. Forcing a single Customer model to serve both contexts creates a bloated, fragile class that satisfies neither context well. The class also changes for reasons that have nothing to do with each other.
 
 Bounded contexts let each part of the system model its own slice of reality
 without compromise. Each context captures exactly the concepts and rules it
@@ -43,7 +43,7 @@ In Protean, cross-context communication is supported through domain events and [
 
 ## How to Identify Boundaries
 
-Recognizing where one context ends and another begins is a modeling skill that improves with practice. Three signals help:
+Recognizing where one context ends and another begins is a modeling skill that improves with practice. Three clues help you find a boundary:
 
 - **Language divergence**: When the same word means different things to different people, a boundary likely exists between their contexts.
 - **Organizational boundaries**: Different teams often correspond to different bounded contexts. Conway's Law suggests that system boundaries will mirror communication structures.

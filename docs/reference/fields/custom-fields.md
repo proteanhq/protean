@@ -2,11 +2,11 @@
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
-`Custom` builds a field over a Python type Protean has no built-in factory for,
-when the type still needs Protean's field machinery: `required`, a default,
-constraints, or adapter mapping. You supply the type and the Pydantic objects
-that parse a raw value into it and render it back; Protean wires them into the
-same field pipeline every built-in field uses.
+`Custom` builds a field over a Python type that Protean has no built-in factory
+for. Use it when the type still needs Protean's field support: `required`, a
+default, constraints, or adapter mapping. You supply the type and the Pydantic
+objects that parse a raw value into it and render it back. Protean then adds
+those objects to the field pipeline that every built-in field uses.
 
 If the type needs none of that, you do not need `Custom`. Declare it as a raw
 `Annotated[YourType, Field(...)]` and Pydantic handles it directly. See the
@@ -72,10 +72,11 @@ missing optional value never reaches your parser.
 
     Passing `choices` to `Custom` raises `IncorrectUsageError` at declaration.
     A choice set makes Protean replace the field's type with a `Literal` of the
-    choice values, which would discard your custom type: the field would store
-    the raw primitive and your parser would never run. `Custom` is for a type
-    that parses and validates, not for a closed vocabulary of primitive values.
-    For that, use `String(choices=...)` or `Status`.
+    choice values. That replacement would discard your custom type, so the
+    field would store the raw primitive and your parser would never run.
+    `Custom` is for a type that parses and validates, not for a closed
+    vocabulary of primitive values. For that, use `String(choices=...)` or
+    `Status`.
 
 ## The serialization boundary adapters read
 
@@ -92,8 +93,8 @@ string, so a `Color` saved as `"#3366FF"` reloads as the same `Color`.
 
 That serialized form is what the store holds, so it is also what a query compares
 against. Protean serializes a custom value in a filter the same way, so both
-`filter(brand=Color("#3366FF"))` and `filter(brand="#3366FF")` find the record,
-and `unique=True` catches a duplicate.
+`filter(brand=Color("#3366FF"))` and `filter(brand="#3366FF")` find the record.
+For the same reason, `unique=True` catches a duplicate.
 
 The generated schemas (JSON Schema, Avro, Protobuf) read the field's Python type.
 A custom field over a primitive is typed as that primitive: `Custom(int, ...)` is
