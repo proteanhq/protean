@@ -10,11 +10,11 @@ through `domain.process(command)`, reads flow through
 
 **Why not query projections directly?** You can, and for simple lookups, `domain.view_for(Projection).get(id)` is
 perfectly fine. But as read patterns grow in complexity (filtered searches with
-pagination, access control checks, response shaping), that logic needs a home.
-Scattering it across API controllers mixes infrastructure with domain concerns.
-Query handlers give structured reads the same organized treatment that command
-handlers give writes: named intents with validated inputs, routed through the
-domain to a dedicated handler.
+pagination, access control checks, response shaping), you need one place to put
+that logic. Scattering it across API controllers mixes infrastructure with
+domain concerns. Query handlers give structured reads the same organized
+treatment that command handlers give writes: named intents with validated
+inputs, routed through the domain to a dedicated handler.
 
 ## Facts
 
@@ -57,8 +57,8 @@ synchronously and return immediately.
 
 ### One handler per query. { data-toc-label="Single Handler" }
 
-Each query can only be handled by one handler method. This mirrors the
-command handler constraint and ensures unambiguous routing.
+Each query can only be handled by one handler method. Command handlers follow
+the same constraint. With one handler per query, routing is never ambiguous.
 
 ## Best Practices
 
@@ -71,8 +71,8 @@ in the projection design, not the handler.
 ### Use ReadView, not repositories. { data-toc-label="Use ReadView" }
 
 Access projection data through `domain.view_for(Projection)` which
-returns a read-only facade. This enforces CQRS separation and prevents
-accidental mutations.
+returns a read-only facade. The read-only facade enforces CQRS separation and
+prevents accidental mutations.
 
 ### Validate through query fields. { data-toc-label="Query Validation" }
 

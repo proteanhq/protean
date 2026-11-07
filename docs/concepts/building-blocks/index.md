@@ -3,7 +3,7 @@
 Building blocks are the tactical patterns of Domain-Driven Design: the concrete
 elements you use to model, enforce, and evolve business logic in code. Protean
 provides a decorator-driven element for each pattern, so you can focus on
-domain semantics rather than infrastructure plumbing.
+domain semantics rather than infrastructure code.
 
 The elements are organized into four layers, each with a distinct
 responsibility.
@@ -76,9 +76,9 @@ graph TB
 
 ## Domain Model
 
-The domain model is the heart of the system. It captures the essential
-complexity of the business in code: the concepts, rules, and relationships that
-give the software its reason to exist.
+The domain model holds the business logic of the system. It captures the
+essential complexity of the business in code: the concepts, rules, and
+relationships that the software exists to serve.
 
 | Element | Purpose |
 |---------|---------|
@@ -89,9 +89,9 @@ give the software its reason to exist.
 
 ## Application Layer
 
-The application layer sits between the external world and the domain model.
-It translates intentions into domain operations without containing business
-logic itself.
+The application layer receives requests from the external world and passes them
+to the domain model. It translates intentions into domain operations without
+containing business logic itself.
 
 | Element | Purpose |
 |---------|---------|
@@ -101,10 +101,10 @@ logic itself.
 
 ## Reactive Layer
 
-The reactive layer responds to things that have already happened. It
-propagates state changes, maintains read models, and bridges to external
-systems, all without coupling back to the code that produced the original
-change.
+The reactive layer responds to things that have already happened. Reactive
+elements propagate state changes, maintain read models, and connect to
+external systems. None of this work couples back to the code that produced
+the original change.
 
 | Element | Purpose |
 |---------|---------|
@@ -119,8 +119,8 @@ change.
 
 ## Persistence
 
-Persistence elements decouple the domain model from storage technology,
-so aggregates remain ignorant of how and where they are stored.
+Persistence elements separate the domain model from storage technology, so
+aggregates do not depend on how and where they are stored.
 
 | Element | Purpose |
 |---------|---------|

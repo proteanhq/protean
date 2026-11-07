@@ -4,7 +4,7 @@
 
 Domain model tests are **unit tests** that validate your aggregates, entities,
 value objects, invariants, and domain services. They are the foundation of your
-test suite, fast, isolated, and focused on business rules.
+test suite: fast, isolated, and focused on business rules.
 
 These tests require no infrastructure and run entirely in-memory, making them
 the fastest tests in your suite. Every business rule you encode in your domain
@@ -75,8 +75,8 @@ Verify that your aggregate methods raise the expected domain events:
 
 ## Testing Entities
 
-Entities live within aggregates and have their own identity. Test the business
-logic in entity methods, especially when they affect the parent aggregate's
+Each entity is part of an aggregate and has its own identity. Test the business
+logic in entity methods, especially when they change the parent aggregate's
 state:
 
 ```python
@@ -99,7 +99,7 @@ define on your value objects:
 
 Invariants are **your** business rules. They represent domain constraints that
 you define. Protean guarantees that invariants are *enforced* (triggered on
-initialization and mutation), but you should test that **your invariant logic
+initialization and mutation). You should still test that **your invariant logic
 is correct** and catches the violations you intend.
 
 ### Testing That Invalid State Is Rejected
@@ -122,7 +122,7 @@ pass your invariant:
 ### Pre-Invariants
 
 Pre-invariants validate state *before* a mutation occurs. They are useful for
-guard conditions, test that your guard logic correctly rejects invalid
+guard conditions. Test that your guard logic correctly rejects invalid
 operations:
 
 ```python

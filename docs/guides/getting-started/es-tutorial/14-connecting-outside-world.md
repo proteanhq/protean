@@ -40,9 +40,9 @@ Subscribers can override `handle_error` for custom error handling:
 --8<-- "guides/getting-started/es-tutorial/ch14.py:handle_error"
 ```
 
-This is called when `__call__` raises an exception, giving you a chance
-to log, alert, or transform the error before it propagates to the
-subscription's retry/DLQ mechanism.
+Protean calls `handle_error` when `__call__` raises an exception. In
+`handle_error` you can log, alert, or transform the error before it propagates
+to the subscription's retry/DLQ mechanism.
 
 ## Message Enrichment
 

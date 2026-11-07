@@ -100,7 +100,7 @@ The server discovers your domain in this order:
 2. **--domain parameter**: Path or module specified
 3. **Current directory**: Looks for a `domain` or `subdomain` package or `.py` file, then for `src/*/domain.py` or `src/*/subdomain.py`. More than one `src/*/domain.py`, or more than one `src/*/subdomain.py` when there is no `src/*/domain.py`, is an error that asks for `--domain`. See [Domain Discovery](../../reference/cli/project/discovery.md).
 
-Within a module, it looks for:
+Within a module, the server looks for:
 
 1. Variable named `domain` or `subdomain`
 2. Any variable that is a `Domain` instance
@@ -133,10 +133,11 @@ protean server --domain=my_domain --reload
 ```
 
 An outer process watches the working directory with
-[`watchfiles`](https://watchfiles.helpmanual.io/), using `watchfiles.PythonFilter` (which skips `.pyc`, `__pycache__`, `.venv`,
-and `node_modules`), plus an extra exclusion for the `.protean/` cache directory, and replaces the
-inner Engine worker when sources change. `--reload` requires the `dev` extra (`pip install "protean[dev]"`) and
-is incompatible with `--workers > 1`.
+[`watchfiles`](https://watchfiles.helpmanual.io/) and replaces the inner Engine
+worker when sources change. It uses `watchfiles.PythonFilter` to skip `.pyc`,
+`__pycache__`, `.venv`, and `node_modules`, and it also excludes the
+`.protean/` cache directory. `--reload` requires the `dev` extra
+(`pip install "protean[dev]"`) and is incompatible with `--workers > 1`.
 
 !!! warning "Never enable `--reload` in production"
     Hot reload spawns a second Python process and restarts

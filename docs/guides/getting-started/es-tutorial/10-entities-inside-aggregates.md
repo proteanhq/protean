@@ -7,7 +7,7 @@ aggregates handle child entities through events.
 
 ## Defining the Entity
 
-An entity is an object with identity that lives inside an aggregate:
+An entity is an object with identity that is part of an aggregate:
 
 ```python
 # fragment
@@ -19,8 +19,8 @@ It is always accessed and persisted through its parent aggregate.
 
 ## Events for Entity Operations
 
-Adding and removing signatories are state changes, so they flow through
-events:
+Adding and removing signatories are state changes, so the aggregate raises an
+event for each one:
 
 ```python
 # fragment
@@ -29,8 +29,8 @@ events:
 
 ## Connecting Entities to the Aggregate
 
-The `Account` aggregate uses `HasMany` to declare a collection of
-signatories, and `@apply` handlers manage the entity lifecycle:
+The `Account` aggregate uses `HasMany` to declare a collection of signatories.
+Its `@apply` handlers add entities to that collection and remove them:
 
 ```python
 # fragment
@@ -45,17 +45,17 @@ Key points:
   `HasMany`. It adds a child entity to the collection.
 - During **event replay** (`from_events()`), the same `@apply` handler
   runs, rebuilding the entity collection from events.
-- Entity identity within the aggregate is managed automatically.
+- Protean generates each entity's identity within the aggregate automatically.
 
 ## The Rule
 
-In event-sourced aggregates, **all state changes flow through events**,
+In event-sourced aggregates, **every state change happens through an event**,
 including entity creation and removal. You never modify the `signatories`
 collection directly. You raise an event, and the `@apply` handler does the
 mutation.
 
-This ensures that replaying events produces the exact same entity
-collection every time.
+Because the `@apply` handler makes every change, replaying events produces the
+exact same entity collection every time.
 
 ## What We Built
 

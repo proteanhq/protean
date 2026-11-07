@@ -1,10 +1,9 @@
 # Chapter 19: The Great Migration, Run on Priority Lanes
 
 Fidelis acquires another bank and must migrate 2 million historical
-accounts. Running all 2 million `OpenAccount` commands through the
-normal pipeline would starve real-time production traffic, deposits and
-withdrawals from existing customers would queue behind millions of migration
-events.
+accounts. Running all 2 million `OpenAccount` commands through the normal
+pipeline would starve real-time production traffic: deposits and withdrawals
+from existing customers would queue behind millions of migration events.
 
 **Priority lanes** solve this by separating production traffic from bulk
 operations.
@@ -122,7 +121,7 @@ touched when production is idle.
 
 That completes Part IV. The platform now has fact
 events, message tracing, DLQ management, monitoring, and priority lanes.
-In Part V, we achieve mastery over the complete system.
+In Part V, we learn to operate the complete system.
 
 ## Full Source
 

@@ -11,8 +11,8 @@ source.
 !!! note "Internal API"
     The substrate is machinery for Protean's own diagnostic rules. Nothing in
     `protean.ir.analysis` is re-exported from `protean` or `protean.ir`, and its
-    shape is not a public contract. This page explains how the rules see it, not
-    an interface to build on.
+    shape is not a public contract. This page explains how the diagnostic rules
+    use the substrate. It does not document an interface to build on.
 
 ## The layers
 
@@ -42,17 +42,18 @@ The view groups the substrate into three query families:
   `method_facts(module, node)`.
 - **dataflow**: `method_flow(module, node)` → `MethodFlow`.
 
-A single view is built once per `IRBuilder` and shares that build's one
-`SourceProvider` and `ElementIndex`, so a module a rule already read is not
-parsed again for its facts or its dataflow. One parse per run.
+Each `IRBuilder` builds a single view once, and the view shares that build's
+one `SourceProvider` and `ElementIndex`. Because the view shares them, a module
+that one rule already read is not parsed again for its facts or its dataflow.
+One parse per run.
 
 ## A rule reading the view
 
 A diagnostic rule receives the view the way it receives the IR: as `self.view`,
 a lazily-built property on the builder. Every rule is a `_diagnose_*(self, ir)`
-method that appends findings to `self._diagnostics`. On top of the three families
-the view offers one convenience, `filter_call_sites(cls)`, which enumerates a
-repository's `filter` call-sites and the fields each filters on:
+method that appends findings to `self._diagnostics`. Besides the three query
+families, the view has one helper method, `filter_call_sites(cls)`. The helper
+lists a repository's `filter` call-sites and the fields each call filters on:
 
 ```python
 # fragment
@@ -78,7 +79,7 @@ def _diagnose_unindexed_filters(self, ir):
                     )
 ```
 
-The rule never reaches into `FactCatalog` or `ElementIndex` internals to assemble
-that answer; it asks the view, and the view's determinism (methods in name order,
-call-sites in source order) means the same source always produces the same
-findings in the same order.
+The rule gets the filter call-sites from the view and never reads `FactCatalog`
+or `ElementIndex` internals to assemble them. The view is deterministic
+(methods in name order, call-sites in source order), so the same source always
+produces the same findings in the same order.

@@ -3,12 +3,12 @@
 ## The Problem
 
 Event-sourced systems store the complete history of every aggregate as an
-ordered sequence of events. This history is one of the key selling points of
-event sourcing. In theory, you can answer questions like "what was this
+ordered sequence of events. This history is one of the main reasons teams
+choose event sourcing. In theory, you can answer questions like "what was this
 account's balance when the fraudulent transaction occurred?" or "what did this
 customer's profile look like when we approved the loan?"
 
-In practice, teams rarely operationalize this capability. When an incident
+In practice, teams rarely build tools that use this history. When an incident
 investigation, compliance audit, or customer support case requires
 reconstructing past state, engineers fall back to ad-hoc approaches:
 
@@ -118,8 +118,8 @@ identity verification and transaction limits:
 Reconstruct the account after a specific number of events. Version 0 is
 the state after the first event. Version 1 adds the second event, etc.
 
-The examples on this page read an account with five events. This function
-writes them, in three saves:
+The examples on this page read an account with five events. The
+`record_account_history` function below writes the five events in three saves:
 
 ```python
 --8<-- "patterns/temporal-queries/001.py:history"
@@ -155,8 +155,8 @@ for compliance and support teams:
 
 ### API endpoint for audit trail
 
-Expose temporal queries through a REST API so compliance and support teams
-can self-serve:
+Expose temporal queries through a REST API so compliance and support teams can
+run them without help from engineers:
 
 ```python
 --8<-- "patterns/temporal-queries/001.py:api"
@@ -239,8 +239,8 @@ def get_account_as_of(account_id: str, cutoff: datetime) -> dict:
     return state
 ```
 
-This duplicates timestamp parsing, timezone normalization, and event
-filtering that the event store handles internally. It also fails across
+This code repeats the timestamp parsing, timezone normalization, and event
+filtering that the event store performs internally. It also fails across
 adapters (PostgreSQL returns `datetime` objects; memory returns ISO
 strings). Use the repository instead:
 
@@ -260,8 +260,9 @@ def rollback_account(account_id: str, version: int) -> None:
     repo.add(old_account)  # Saves nothing: the old state has no new events
 ```
 
-Temporal aggregates are read-only. If you need to "undo" a change, model
-the reversal as an explicit domain operation on the **current** aggregate:
+Temporal aggregates are read-only at the domain level, because `raise_()`
+rejects new events on them. If you need to "undo" a change, model the reversal
+as an explicit domain operation on the **current** aggregate:
 
 ```python
 --8<-- "patterns/temporal-queries/001.py:restore"

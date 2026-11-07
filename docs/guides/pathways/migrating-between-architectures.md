@@ -4,15 +4,15 @@ Protean is designed so you can start simple and evolve your architecture
 incrementally. This guide shows the concrete code transformations for each
 migration step: **DDD to CQRS** and **CQRS to Event Sourcing**.
 
-Each migration is additive. You layer new capabilities on top of what already
+Each migration is additive. You add new capabilities to the code that already
 works, without rewriting from scratch.
 
 ---
 
 ## DDD to CQRS
 
-The core shift: replace direct application service calls with explicit
-commands routed through `domain.process()`, and add read-optimized
+The main change is to replace direct application service calls with explicit
+commands routed through `domain.process()`. You also add read-optimized
 projections.
 
 ### Step 1: Extract commands from application service methods
@@ -134,8 +134,8 @@ from events. These are the **only** place where state changes happen.
 ```
 
 The pattern is: **command method raises an event, `@apply` method mutates
-state**. This separation ensures that replaying events from the store
-produces the same aggregate state.
+state**. Because only the `@apply` method changes state, replaying events from
+the store produces the same aggregate state.
 
 `place()` is a class method. `_create_new()` gives the new order only its
 identity, so the constructor's required-field check does not run before the
@@ -144,7 +144,7 @@ replay starts from a blank aggregate.
 
 ### Step 3: Update command handlers
 
-Command handlers for event-sourced aggregates use the same pattern, the
+Command handlers for event-sourced aggregates use the same pattern: the
 repository automatically loads from the event store and saves by appending
 events.
 
@@ -200,8 +200,8 @@ level and migrate it. The rest can follow later, or stay where they are.
 to verify independently. Run your tests after each step, not just at the
 end.
 
-**The tutorials show the full picture.** If you want to see each architecture
-in a complete application context:
+**The tutorials build complete applications.** If you want to see each
+architecture in a complete application context:
 
 - [CQRS Tutorial](../getting-started/tutorial/index.md): 22 chapters
   building a bookshelf app from DDD through CQRS

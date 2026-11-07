@@ -29,7 +29,7 @@ Value objects have no identity. Two `Money(amount=10, currency="USD")`
 instances are interchangeable. They are equal if their attributes are equal,
 and there is no need to track "which one" you are working with.
 
-The decision between entity and value object often hinges on whether identity matters for the concept being modeled. If you need to track a specific instance over time and distinguish it from other instances with the same attributes, it is an entity. If you only care about what something *is* rather than *which one* it is, it is a value object.
+To choose between entity and value object, you often ask one question: does identity matter for the concept you are modeling? If you need to track a specific instance over time and distinguish it from other instances with the same attributes, it is an entity. If you only care about what something *is* rather than *which one* it is, it is a value object.
 
 ## Generate Identity Early
 
