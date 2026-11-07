@@ -70,7 +70,10 @@ Named sets group the common combinations:
 The built-in stores declare:
 
 - **Memory**: `CONSISTENT_STORE`. It keeps messages in process memory, so it
-  does not declare `DURABLE`.
+  does not declare `DURABLE`. `EXPECTED_VERSION` and `CATEGORY_COMMIT_ORDER`
+  hold while one Unit of Work writes at a time. Two Units of Work that are open
+  at the same time can both pass the expected-version check and commit out of
+  global-position order.
 - **Message DB**: `PRODUCTION_STORE`. See [Message DB](./message-db.md#what-message-db-guarantees)
   for the flags it leaves out.
 

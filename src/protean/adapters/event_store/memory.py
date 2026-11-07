@@ -163,9 +163,12 @@ class MemoryEventStore(BaseEventStore):
 
     @property
     def capabilities(self) -> EventStoreCapabilities:
-        # Writes run under one lock, so positions are assigned in commit order
-        # and CATEGORY_COMMIT_ORDER holds. Events live in process memory and
-        # are lost on exit, so the store is not DURABLE.
+        # EXPECTED_VERSION and CATEGORY_COMMIT_ORDER hold while one Unit of
+        # Work writes at a time. The write lock covers the version check and
+        # the append to the session. The version check cannot see rows that
+        # another Unit of Work has not committed yet, so two overlapping Units
+        # of Work can both pass it and commit out of global-position order. Events live in process memory
+        # and are lost on exit, so the store is not DURABLE.
         return EventStoreCapabilities.CONSISTENT_STORE
 
     def _write(
