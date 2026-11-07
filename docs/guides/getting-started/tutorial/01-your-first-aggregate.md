@@ -112,7 +112,8 @@ All checks passed!
 
 Everything runs in-memory right now. When we are ready for a real database, we
 will swap in a different adapter through configuration. Domain code stays
-exactly the same. We will do this in [Chapter 8](08-persistence.md).
+exactly the same. We will swap in a real database adapter in
+[Chapter 8](08-persistence.md).
 
 ## Exploring in the Shell
 
@@ -134,7 +135,7 @@ can create books, persist them, and query, all interactively:
 '1984'
 ```
 
-The shell is a great way to experiment as you build out the domain.
+Use the shell to test code interactively while you add elements to the domain.
 
 ## What We Built
 

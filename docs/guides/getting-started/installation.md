@@ -4,17 +4,16 @@
 ## Install Python
 
 !!! note
-    Protean supports Python 3.11 and newer, but it is recommended that you
-    use the latest version of Python.
+    Protean supports Python 3.11 and newer, but we recommend that you use the
+    latest version of Python.
 
 [pyenv](https://github.com/pyenv/pyenv) allows you to install and manage
 multiple versions of python. Follow pyenv's
 [installation](https://github.com/pyenv/pyenv?tab=readme-ov-file#installation)
 guide to install Python 3.11+.
 
-There are many version managers that help you create virtual environments,
-but we will quickly walk through the steps to create a virtual environment with
-one bundled with Python, `venv`.
+Many version managers can create virtual environments, but the steps below use
+`venv`, which comes bundled with Python.
 
 ## Create a virtual environment
 
@@ -54,7 +53,7 @@ through the in-memory adapter, and run the async engine (`protean server`).
 
 ## Optional features
 
-Some features live behind install extras so the core stays small (see
+Protean ships some features as install extras so the core stays small (see
 [ADR-0029](https://github.com/proteanhq/protean/blob/main/docs/adr/0029-runtime-dependency-boundary-and-extras.md)).
 Install the extra for what you use:
 
@@ -94,9 +93,9 @@ $ python
 
 ## Upgrading an existing project?
 
-Start with the [migration guides](../../reference/migration/index.md), which
-carry one page per release describing what changed and what to do about it.
-Read every guide between your current version and the one you are moving to.
+Start with the [migration guides](../../reference/migration/index.md). Each
+release has one page that says what changed and what you need to do. Read every
+guide between your current version and the one you are moving to.
 
 Then let the framework tell you what your own code needs:
 
@@ -104,9 +103,9 @@ Then let the framework tell you what your own code needs:
 $ protean upgrade-check --domain=my_app
 ```
 
-It inspects your domain and, where it can reach the database, your live schema,
-and reports what needs attention with the SQL to apply. It is read-only: nothing
-is changed for you.
+The upgrade check inspects your domain, and your live schema when it can reach
+the database. It reports what needs attention, with the SQL to apply. It is
+read-only: nothing is changed for you.
 
 -------------------
 

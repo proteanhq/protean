@@ -52,8 +52,8 @@ External System                Boundary                     Your Domain
 ```
 
 This mirrors the subscriber / ACL pattern that Protean already uses for
-consuming external events, except instead of translating external events
-*inward*, we also translate internal events *outward*.
+consuming external events. That pattern translates external events *inward*;
+this one translates internal events *outward*.
 
 ---
 
@@ -76,9 +76,9 @@ kafka_producer.send("orders", json.dumps(cloud_event))
 ```
 
 All required CloudEvents attributes (`specversion`, `id`, `type`, `source`)
-are derived automatically. Protean-specific metadata (causal chains, checksums,
-sequence tracking) rides alongside as `protean`-namespaced extension
-attributes.
+are derived automatically. Protean adds its own metadata (causal chains,
+checksums, sequence tracking) to the CloudEvent as `protean`-namespaced
+extension attributes.
 
 ### Consuming CloudEvents
 
@@ -161,7 +161,7 @@ The correlation ID, causation ID, and checksum survive the round-trip via
 
 Internal metadata is optimized for DDD and event sourcing. CloudEvents is
 optimized for interoperability. These are different concerns. `to_cloudevent()`
-bridges the gap without contaminating either model.
+converts the internal metadata into a CloudEvent and changes neither model.
 
 ### Adding CloudEvents-only fields to internal metadata
 

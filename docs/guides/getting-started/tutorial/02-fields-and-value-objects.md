@@ -47,8 +47,8 @@ Attempting to create a book with an invalid genre raises a `ValidationError`:
 ValidationError: {'genre': ["Value 'ROMANCE' is not a valid choice. ..."]}
 ```
 
-Notice that Protean catches invalid values at the domain boundary, invalid
-aggregates never enter your domain.
+Protean checks field values when you create the aggregate. It raises an error
+on an invalid value, so your domain never holds an invalid aggregate.
 
 ## From Float to Money
 
@@ -79,7 +79,8 @@ Notice that `price` is now declared with `ValueObject(Money)` instead of
 ```
 
 The currency defaults to `"USD"` because we set `default="USD"` on the
-field. The price now carries both pieces of information together.
+field. The `price` field now holds both the amount and the currency in one
+`Money` value object.
 
 ## Value Equality
 
@@ -129,8 +130,8 @@ Retrieved: The Great Gatsby, $12.99 USD
 All checks passed!
 ```
 
-Notice that the `Money` value object persisted and retrieved correctly, the
-repository handles it transparently.
+The repository saved the `Money` value object and loaded it back unchanged. You
+write no extra persistence code for a value object.
 
 ## What We Built
 
@@ -141,8 +142,9 @@ repository handles it transparently.
 - **`Address` value object**: Ready for use in orders.
 - **`ValueObject` field**: Embeds a value object inside an aggregate.
 
-Our Book aggregate now has rich fields and a proper price model. In the
-next chapter, we will build the `Order` aggregate with child entities.
+Our Book aggregate now has more field types and a price that carries its
+currency. In the next chapter, we will build the `Order` aggregate with child
+entities.
 
 ## Full Source
 

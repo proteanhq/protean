@@ -23,11 +23,13 @@ name and the adapter:
 - A **category** (`order`) or **`$all`** read spans many streams, so the only
   ordering that is meaningful across them is `global_position`.
 
-The two adapters disagreed. MessageDB keyed **category** reads on `global_position`
-(`get_category_messages` filters `global_position >= position`), but read **`$all`**
-with a strict, unordered `global_position > position LIMIT n`, skipping the first position and returning an
-arbitrary page. The **memory** adapter keyed *both* category and `$all` reads on
-the **per-stream** ordinal and sorted by it. A consumer paging by `global_position` then
+The two adapters disagreed. MessageDB keyed **category** reads on
+`global_position` (`get_category_messages` filters
+`global_position >= position`). Its **`$all`** read, however, used a strict,
+unordered `global_position > position LIMIT n`, which skipped the first
+position and returned an arbitrary page. The **memory** adapter keyed *both*
+category and `$all` reads on the **per-stream** ordinal and sorted by it. A
+consumer paging by `global_position` then
 filtered the per-stream ordinal by a global value and read the wrong page, most
 often nothing at all, at zero apparent lag. This was masked because most reads
 are *full* reads from `position = 0`, where `>= 0` matches everything regardless of the key;
@@ -36,9 +38,9 @@ and even for a single stream once a subscription advanced its cursor and
 re-read from `current + 1` (the per-stream ordinal is 0-indexed while `global_position` is 1-indexed,
 so the two never line up on a re-read).
 
-Because the common test setup does a single full read, the divergence survived
-undetected and made it impossible to reason about (or deterministically test)
-any `global_position`-ordered behavior on the memory adapter.
+The common test setup does a single full read, so the tests never caught the
+divergence. It was therefore impossible to reason about (or deterministically
+test) any `global_position`-ordered behavior on the memory adapter.
 
 ## Decision
 
@@ -69,25 +71,26 @@ satisfied the contract).
 - The outbox reconciliation tail scan (`read("$all", position=tail - limit + 1)`)
   now includes the boundary position it intends to inspect, rather than skipping
   it.
-- The memory adapter carries `global_position` as a distinct, monotonic field
-  (it already did); the read path now depends on it, so an adapter that fails to
-  assign a meaningful `global_position` cannot satisfy the category/`$all`
-  contract. This is the correct constraint: a global order is exactly what these
-  reads require.
-- No deprecation or compatibility flag is warranted: this corrects a bug (the
-  memory adapter returned wrong or missing pages; the MessageDB `$all` read was
-  exclusive and unordered) rather than changing a supported contract. The
-  `global_position`-ordered, inclusive semantics were already the de facto
-  behaviour of MessageDB category reads, which every consumer relies on.
+- The read path now depends on the distinct, monotonic `global_position` field,
+  which the memory adapter already carries. As a result, an adapter that fails
+  to assign a meaningful `global_position` cannot satisfy the category/`$all`
+  contract. This is the correct constraint: a global order is exactly what
+  these reads require.
+- No deprecation or compatibility flag is needed, because this change corrects
+  a bug and leaves every supported contract as it was. The memory adapter
+  returned wrong or missing pages, and the MessageDB `$all` read was exclusive
+  and unordered. The `global_position`-ordered, inclusive semantics were
+  already the de facto behaviour of MessageDB category reads, which every
+  consumer relies on.
 
 ## Alternatives Considered
 
 - **Make `$all` exclusive (`> position`) everywhere and have consumers page from
-  `last_global_position`.** Rejected. Category reads were already inclusive,
-  and aligning on inclusive keeps one rule for every stream kind and matches
+  `last_global_position`.** Rejected. Category reads were already inclusive.
+  When every read is inclusive, one rule covers every stream kind and matches
   how consumers already compute `last + 1`.
 - **Leave the memory adapter keyed on the per-stream ordinal and forbid
-  multi-stream categories in tests.** Rejected. It entrenches a silent
-  divergence from the production adapter and blocks deterministic testing of
-  the behavior that matters most (ordered, gapless category/`$all`
-  consumption).
+  multi-stream categories in tests.** Rejected. It keeps the memory adapter
+  silently diverging from the production adapter. It also prevents
+  deterministic testing of the behavior that matters most (ordered, gapless
+  category/`$all` consumption).

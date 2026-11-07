@@ -114,7 +114,7 @@ After the first publish, the subscriber above has recorded
 
 ## Message Processing Engine
 
-Protean includes a built-in message processing engine that handles message consumption from brokers:
+Protean includes a built-in message processing engine that consumes messages from brokers:
 
 ```bash
 # Start the message processing engine
@@ -145,14 +145,14 @@ Here `error` is `{"message": ["Message cannot be empty"]}`.
 
 When the broker's client library raises a connection error, Protean tries to
 reconnect. If it reconnects, it retries the operation once. If it cannot
-reconnect, or the retry fails, the client library's error is raised (for
+reconnect, or the retry fails, Protean raises the client library's error (for
 Redis, a `redis.exceptions.ConnectionError`).
 
-This covers only the errors that reach Protean. An adapter can handle errors
-itself: the Redis broker's `get_next`, `ack` and `nack` log any error and
-return `None` or `False`. Inside a Unit of Work, `publish` does not contact the
-broker at all. It records the message, which is sent when the Unit of Work
-commits.
+The reconnect and retry behavior covers only the errors that reach Protean. An
+adapter can catch errors itself: the Redis broker's `get_next`, `ack` and
+`nack` log any error and return `None` or `False`. Inside a Unit of Work,
+`publish` does not contact the broker at all. It records the message, which is
+sent when the Unit of Work commits.
 
 ## Health Checks
 
@@ -200,8 +200,9 @@ redis_pubsub = "protean.adapters.broker.redis_pubsub:register"
 
 Each entry point maps a broker name to a `register()` function. The function
 is called on first access and registers the broker class path with the
-`BrokerRegistry`. Dependencies are wrapped in `try/except` so that brokers
-with uninstalled optional dependencies are silently skipped.
+`BrokerRegistry`. Each `register()` function wraps its dependency imports in
+`try/except`, so Protean silently skips brokers with uninstalled optional
+dependencies.
 
 External packages can register their own brokers the same way. See
 [Custom Brokers](./custom-brokers.md) for a complete guide including a Kafka

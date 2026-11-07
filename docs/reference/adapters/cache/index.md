@@ -1,8 +1,8 @@
 # Caches
 
 The Cache port provides a key-value interface for storing and retrieving
-projection data. Caches sit on the read side of CQRS, offering fast access to
-denormalized views built by projectors.
+projection data. Caches are part of the read side of CQRS. They give fast
+access to the denormalized views that projectors build.
 
 ## Overview
 
@@ -73,9 +73,9 @@ provider = "redis"
 TTL = "${CACHE_TTL|3600}"
 ```
 
-Substitution runs over already-parsed TOML strings, so a TTL sourced from the
-environment arrives as a string; that is why the string form is accepted rather
-than merely tolerated.
+Substitution runs on TOML strings after parsing, so a TTL from the environment
+arrives as a string. For this reason the cache accepts the string form by
+design, as a supported input.
 
 Anything else, including `0`, a negative, `nan` or `inf`, raises a
 `ConfigurationError` naming the cache.
@@ -97,7 +97,7 @@ are not durations, and every adapter answers them the same way:
 
 An expired entry counts as absent, so `get_ttl` returns `None` for it, the same
 way `get` does. `math.inf` only ever comes from Redis: the memory cache writes
-every entry with a concrete TTL, so it has no never-expiring keys to report.
+every entry with a concrete TTL, so it never holds a key without an expiry.
 
 So code reads the same on either adapter:
 
@@ -112,15 +112,15 @@ On the memory cache, `present` is `"60s left"` and `missing` is `"missing"`.
 `_get_all(key_pattern)` returns the entries whose key matches `key_pattern`, in
 key order, the same on every adapter. It is private (the leading underscore) and
 deliberately unpaginated. A cache is for point reads by key; enumerating a match
-set is not what it is for. On Redis it scans the whole keyspace, so it is a
-convenience for tests and small, bounded stores, not a production read path.
-`count` has the same full-scan cost. On Redis it deduplicates its scan, so a
-key that `SCAN` returns more than once is counted once.
+set is not what it is for. On Redis, `_get_all` scans the whole keyspace, so it
+is a convenience for tests and small, bounded stores, not a production read
+path. `count` has the same full-scan cost. On Redis it deduplicates its scan,
+so a key that `SCAN` returns more than once is counted once.
 
-It returns at most 1000 entries (`GET_ALL_MAX`). Past that it truncates to the
-first 1000 in key order and logs a warning naming the pattern and the match
-count, so a store that outgrew the cache surfaces as a warning rather than a
-silent partial read.
+`_get_all` returns at most 1000 entries (`GET_ALL_MAX`). Past that limit, it
+truncates the result to the first 1000 entries in key order and logs a warning
+with the pattern and the match count. When a store grows too large for the
+cache, you see that warning instead of getting a silent partial read.
 
 To page a large projection set, query the projection's repository
 (`repository_for(Projection).query`), which has indexes and native pagination.

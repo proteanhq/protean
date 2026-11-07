@@ -74,7 +74,7 @@ pipeline, no hand-crafted event fixtures needed:
 ```
 
 Each `.process()` runs the command through the real pipeline. The event store
-accumulates naturally, just like production.
+collects the events from each command, as it does in production.
 
 After chaining:
 
@@ -95,8 +95,8 @@ After chaining:
 | `given(Order).process(cmd1).process(cmd2)` | You're testing a lifecycle or user journey. The setup steps aren't the focus; the final command is. |
 | `Order.from_events([e1, e2])` | Unit testing aggregate logic directly, without the command pipeline. |
 
-Both patterns coexist. Event-based `given()` gives surgical precision.
-Command chaining gives lifecycle-level testing.
+Both patterns coexist. Event-based `given()` gives you precise control over the
+aggregate's history. Command chaining gives lifecycle-level testing.
 
 ## Asserting Outcomes
 
@@ -135,7 +135,8 @@ was accepted.
 ### Events (EventLog)
 
 New events raised by the command are available via `.events`. The `EventLog`
-class uses Python's own vocabulary:
+class supports Python's container operations, such as `in`, truthiness and
+indexing:
 
 ```python
 # fragment

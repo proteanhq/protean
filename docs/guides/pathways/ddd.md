@@ -1,8 +1,8 @@
 # Domain-Driven Design with Protean
 
 !!! info "The Foundation"
-    This is the simplest way to use Protean and the foundation for the other
-    two approaches. Start here if you're new to Protean or building a
+    Pure DDD is the simplest way to use Protean and the foundation for the
+    other two approaches. Start here if you're new to Protean or building a
     straightforward application.
 
 ## Overview
@@ -13,7 +13,7 @@ Repositories handle persistence, and domain events propagate side effects
 to event handlers.
 
 This approach follows the patterns from Eric Evans' *Domain-Driven Design*
-(the "Blue Book"). There are no commands or command handlers, application
+(the "Blue Book"). There are no commands or command handlers: application
 services receive requests directly and coordinate the domain logic.
 
 ## Request Flow

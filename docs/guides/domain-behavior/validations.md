@@ -48,8 +48,8 @@ ValidationError: {
 }
 ```
 
-These validations kick in even on attribute change, not just during
-initialization, thus keeping the aggregate valid at all times.
+Protean runs these validations when you change an attribute too, not just
+during initialization, so the aggregate stays valid at all times.
 
 ```shell
 In [1]: account = Account(account_number=1234, account_type="SAVINGS", balance=500.0)
@@ -118,9 +118,11 @@ ERROR: Error during initialization:
 ValidationError: {'name': ['String should have at least 3 characters'], 'age': ['Input should be less than or equal to 120']}
 ```
 
-These parameters create built-in validator instances from
-`protean.fields.validators`, `MinLengthValidator`, `MaxLengthValidator`, `MinValueValidator`, `MaxValueValidator`, and `RegexValidator`. You rarely need to use them directly, but
-they are available if you need to compose validators programmatically.
+Protean turns these parameters into built-in validator instances from
+`protean.fields.validators`: `MinLengthValidator`, `MaxLengthValidator`,
+`MinValueValidator`, `MaxValueValidator`, and `RegexValidator`. You rarely need
+to use them directly, but they are available if you need to compose validators
+programmatically.
 
 A full list of in-built validators is available in the
 [Fields](../../reference/fields/index.md) section under each field.

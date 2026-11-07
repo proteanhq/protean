@@ -1,9 +1,10 @@
 # Application Services
 
-Application services coordinate use-cases. They sit at the boundary between the
-external world (API controllers, CLI commands, background jobs) and the domain
-model. An application service receives a request, orchestrates the necessary
-[aggregates](./aggregates.md) and [domain services](./domain-services.md), and
+Application services coordinate use-cases. They take requests from the external
+world (API controllers, CLI commands, background jobs) and pass the work to the
+domain model. An application service receives a request, orchestrates the
+necessary [aggregates](./aggregates.md) and
+[domain services](./domain-services.md), and
 returns a result.
 
 Application services are the entry point for the DDD architectural style.
@@ -22,8 +23,8 @@ boundary of responsibility clear.
 
 An application service does not contain business logic. It loads an aggregate,
 calls a method on it, and persists the result. The aggregate and domain
-services are where rules live. If an application service starts making business
-decisions, that logic should be pushed down into the domain model.
+services hold the business rules. If an application service starts making
+business decisions, move that logic into the domain model.
 
 ### Each use-case method runs within a Unit of Work. { data-toc-label="Transactions" }
 

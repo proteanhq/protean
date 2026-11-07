@@ -3,10 +3,10 @@
 A ubiquitous language is a shared vocabulary developed collaboratively by
 domain experts and developers, used consistently in code, conversations,
 documentation, and tests. It is the shared vocabulary of Domain-Driven
-Design. The mechanism that ensures everyone involved in building a system means
-the same thing when they use the same words.
+Design. With it, everyone who builds a system means the same thing by the same
+word.
 
-Miscommunication between business and engineering is the root cause of software that solves the wrong problem. A shared language eliminates the translation layer between "what the business says" and "what the code does." When domain experts describe a process and developers can point to the exact class, method, or event that implements it, the gap between intent and implementation disappears.
+Miscommunication between business and engineering is the root cause of software that solves the wrong problem. With a shared language, developers no longer translate between "what the business says" and "what the code does." When domain experts describe a process and developers can point to the exact class, method, or event that implements it, the gap between intent and implementation disappears.
 
 The language is not invented by developers. It is discovered through conversation with domain experts and refined through modeling.
 
@@ -36,7 +36,7 @@ Do not try to create one universal vocabulary for the entire organization. Each 
 
 ## The Language Evolves
 
-As understanding deepens, terms are refined, renamed, split, or merged. A concept that starts as "Shipment" might later be distinguished into "Dispatch" and "Delivery" as the team learns more about the logistics domain.
+As understanding deepens, terms are refined, renamed, split, or merged. A concept that starts as "Shipment" might later split into "Dispatch" and "Delivery" as the team learns more about the logistics domain.
 
 When the language evolves, the code must evolve with it. Refactoring code to
 match updated language is not cosmetic. It is an essential practice that keeps

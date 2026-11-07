@@ -1,7 +1,7 @@
 # Troubleshooting
 
-A cookbook of common issues and how to debug them. For error classification
-patterns in production, see
+This page lists common problems and shows how to debug each one. For error
+classification patterns in production, see
 [Classify Async Processing Errors](../patterns/classify-async-processing-errors.md).
 
 The examples on this page use a small order domain:
@@ -25,7 +25,8 @@ isn't created or updated.
 --8<-- "reference/troubleshooting/001.py:check_handler"
 ```
 
-If this returns `None`, the handler isn't registered. Verify:
+If `domain.command_handler_for()` returns `None`, the domain has no handler
+registered for the command. Verify:
 
 - The handler is decorated with `@domain.command_handler(part_of=YourAggregate)`
 - The handler file is inside the domain's discovery path
@@ -48,7 +49,7 @@ expects immediate side effects, configure sync processing:
 --8<-- "reference/troubleshooting/001.py:sync_config"
 ```
 
-Or use the `DomainFixture` which handles this automatically.
+Or use the `DomainFixture`, which configures sync processing automatically.
 
 ---
 
@@ -212,9 +213,10 @@ causes:
     handling *that* can index it safely. But `ValidationError` carries whatever
     it was raised with. An aggregate method, a domain service method or a
     handler is free to raise `ValidationError("Order is already shipped")`.
-    Then `messages` is a plain `str`, and a list raises it as a `list[str]`.
-    (An `@invariant` check is different: it must raise the dict form.) A blanket
-    `except ValidationError` that does `e.messages.items()` will fail on those.
+    Then `messages` is a plain `str`. When code raises `ValidationError` with a
+    list, `messages` is a `list[str]`. (An `@invariant` check is different: it
+    must raise the dict form.) If your blanket `except ValidationError` block
+    calls `e.messages.items()`, that call fails on a `str` or a `list[str]`.
 
     ```python
     # fragment
@@ -292,7 +294,8 @@ protean observatory --domain .
    engine runs. Use `engine.run()` in test mode rather than `time.sleep()`.
 
 3. **Database state leakage:** Ensure each test starts clean. The
-   `DomainFixture` handles this, but custom fixtures might not.
+   `DomainFixture` gives each test a clean database, but custom fixtures might
+   not.
 
 4. **Port conflicts:** If multiple CI jobs run in parallel, broker/database
    ports may collide. Use unique port mappings per job.

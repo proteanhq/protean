@@ -1,8 +1,8 @@
 # PostgreSQL
 
-The PostgreSQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) under
-the covers as the ORM to communicate with the database. It is the recommended
-provider for production deployments.
+The PostgreSQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) as its
+ORM to communicate with the database. It is the recommended provider for
+production deployments.
 
 ## Overview
 
@@ -108,7 +108,7 @@ provider).
 
 ## Indexes
 
-PostgreSQL honors the full [`Index`](../../domain-elements/indexes.md) surface.
+PostgreSQL supports every option of [`Index`](../../domain-elements/indexes.md).
 Declarations on an aggregate or entity are emitted as `CREATE INDEX` statements
 during `protean db setup`:
 
@@ -173,9 +173,9 @@ slow_query_truncate_chars = 500  # max statement length in log events
 ```
 
 Set ``slow_query_threshold_ms = 0`` to WARN on every query (useful during
-performance investigations). Correlation context (``correlation_id``,
-``causation_id``) flows onto every record automatically via the
-``ProteanCorrelationFilter`` on the root logger's handlers.
+performance investigations). The ``ProteanCorrelationFilter`` on the root
+logger's handlers adds the correlation context (``correlation_id``,
+``causation_id``) to every record automatically.
 
 ## Limitations
 

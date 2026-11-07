@@ -10,7 +10,7 @@ option, that defeats the purpose of Event Sourcing.
 
 The answer is **upcasting**: transparently transforming old event payloads into
 the current schema during deserialization. The old events are never rewritten.
-They are upgraded on the fly whenever they are read.
+Protean upgrades the old events each time it reads them.
 
 ## Versioning the Event
 
@@ -85,7 +85,8 @@ If any validation fails, `domain.init()` raises an error immediately.
 - **Current events (v2 reading v2)**: Zero overhead. Direct type lookup,
   no upcasting.
 - **Old events (v1 reading v2)**: O(N) where N is the number of version
-  hops. For v1 → v3 with two upcasters, N = 2. This is negligible.
+  hops. For v1 → v3 with two upcasters, N = 2. Two upcaster calls per event add
+  a negligible cost.
 - **Never rewrite events**: The event store is append-only in normal operation,
   and upcasting respects that by transforming old payloads in memory. A deliberate
   operator migration is the separate exception; see [Migration
@@ -100,8 +101,8 @@ If any validation fails, `domain.init()` raises an error immediately.
 - **Lazy migration**: Events are never rewritten, only transformed at
   read time.
 
-This is the event-sourcing answer to database migrations. No downtime,
-no data rewriting, no migration scripts.
+In event sourcing, upcasting takes the place of database migrations. No
+downtime, no data rewriting, no migration scripts.
 
 ## Full Source
 

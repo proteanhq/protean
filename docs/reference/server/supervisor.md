@@ -4,7 +4,7 @@ Protean can run multiple Engine worker processes from a single CLI invocation
 using the `--workers` flag. The **Supervisor** spawns N independent processes,
 each running its own Engine with a dedicated event loop and domain
 initialization. Workers coordinate implicitly through Redis consumer groups and
-database-level locking, no IPC or shared memory is needed.
+database-level locking. They need no IPC or shared memory.
 
 ## When to Use Multiple Workers
 
@@ -89,9 +89,9 @@ graph TD
 
 ### Stream Messages
 
-Redis consumer groups handle message distribution automatically. When multiple
-workers subscribe to the same stream, Redis assigns each message to one
-consumer. No application-level coordination is needed.
+Redis consumer groups distribute messages across workers automatically. When
+multiple workers subscribe to the same stream, Redis assigns each message to
+one consumer. No application-level coordination is needed.
 
 ### Outbox Processing
 
@@ -118,14 +118,15 @@ available). When a signal is received:
 4. Workers that do not stop within the timeout are forcefully killed with
    `SIGKILL`.
 
-Messages a worker read and did not handle before it stopped stay pending in
-Redis. When a worker starts, it claims the pending messages last delivered at
-least [`server.reclaim_idle_seconds`](hardening.md#serverreclaim_idle_seconds)
+A worker can stop after it reads a message and before it handles the message.
+Redis keeps that message pending. When a worker starts, it claims the pending
+messages last delivered at least [`server.reclaim_idle_seconds`](hardening.md#serverreclaim_idle_seconds)
 earlier, and handles them. A partitioned subscription (`sequential_by`) does
 not wait for this threshold: the partition's next owner claims its pending
 messages through the lease handover.
 
-Sending a second signal while shutdown is already in progress is ignored.
+The Supervisor ignores a second signal that arrives while shutdown is already
+in progress.
 
 `SIGTERM` to the Supervisor is the only way to quiesce every worker at once.
 `POST /drainz` drains the single worker whose health server answered it, since
@@ -177,10 +178,11 @@ takes a `dictConfig` dict. `log_level` must be one of `DEBUG`, `INFO`,
 `WARNING`, `ERROR` or `CRITICAL`, and `log_format` one of `auto`, `console` or
 `json`. Any other value raises `ValueError`.
 
-The arguments do not set up logging in your own process. With more than one
-worker, every worker sends its records to the supervisor, and the supervisor
-writes them with the handlers on its root logger. Their levels and formatters
-decide what you see. With no handlers there, the supervisor writes to stdout at
+The `log_level`, `log_format` and `log_config` arguments do not set up logging
+in your own process. With more than one worker, every worker sends its records
+to the supervisor, and the supervisor writes them with the handlers on its root
+logger. Their levels and formatters decide what you see. With no handlers
+there, the supervisor writes to stdout at
 INFO, so worker DEBUG records are dropped. Set up logging before you call
 `run()`:
 

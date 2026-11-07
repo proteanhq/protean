@@ -6,11 +6,11 @@ Protean provides two paths for changing state: directly through Application Serv
 
 ## Process Requests
 
-The request processing pipeline handles incoming intentions to change state, whether from API endpoints, CLI commands, or background jobs.
+The request processing pipeline processes requests to change state, whether from API endpoints, CLI commands, or background jobs.
 
 ### Application Services <span class="pathway-tag pathway-tag-ddd">DDD</span>
 
-Application services coordinate use cases by orchestrating aggregates and domain services. They bridge the gap between the external world and the domain model. Use these when following the **DDD** pathway.
+Application services coordinate use cases by orchestrating aggregates and domain services. They receive requests from outside the domain and call the domain model to carry them out. Use these when following the **DDD** pathway.
 
 [Learn more about application services →](./application-services.md)
 

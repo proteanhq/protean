@@ -62,7 +62,8 @@ A command handler receives the command and makes the change:
 
 `PostCommandHandler` creates a `Post` from the command, calls `publish()`, and
 saves it through the repository. Protean wraps each handler method in a
-transaction. `domain.process()` routes a `PublishPost` command to this handler.
+transaction. `domain.process()` routes a `PublishPost` command to
+`PostCommandHandler`.
 
 ## React to events
 
@@ -92,8 +93,9 @@ published posts without loading the `Post` aggregate.
 
 ## Put it all together
 
-Initialize the domain and run the full arc. The command publishes a post, and
-the last lines query the feed and print what the projector recorded:
+Initialize the domain and run every step, from the command to the query. The
+command publishes a post, and the last lines query the feed and print what the
+projector recorded:
 
 ```python
 --8<-- "reference_app/blog.py:usage"
@@ -138,8 +140,8 @@ sequenceDiagram
 2. The handler creates a `Post`, calls `publish()`, which changes the status
    and raises a `PostPublished` event, and persists the post.
 3. On commit, `PostPublished` reaches `PostEventHandler`, which prints the
-   announcement, and `PublishedPostsFeedProjector`, which adds a row to
-   `PublishedPostsFeed`.
+   announcement. The event also reaches `PublishedPostsFeedProjector`, which
+   adds a row to `PublishedPostsFeed`.
 4. You query `PublishedPostsFeed` and get the published post back.
 
 All of this runs in-memory, with no database, message broker, or event store.

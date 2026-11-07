@@ -35,7 +35,8 @@ use it to prevent invalid operations:
 --8<-- "guides/getting-started/tutorial/ch04.py:pre_invariant"
 ```
 
-This prevents any modifications once an order has been shipped:
+The pre-invariant rejects any change to an order once the order has been
+shipped:
 
 ```pycon
 >>> order.ship()
@@ -87,7 +88,7 @@ Caught: {'_entity': ['Cannot modify an order that has been shipped']}
 All checks passed!
 ```
 
-Notice how every rule is enforced automatically, the aggregate never enters an
+Protean enforces every rule automatically, so the aggregate never enters an
 invalid state.
 
 ## What We Built
@@ -107,13 +108,13 @@ and business rules.
     objects, and invariants. These concepts are the foundation for every
     Protean application, regardless of architecture.
 
-    If you are following the **pure DDD** approach, your next step is
-    [Application Services](../../change-state/application-services.md) to
-    wire use cases. See the [DDD Pathway](../../pathways/ddd.md) for the
-    full reading order.
+    If you are following the **pure DDD** approach, read
+    [Application Services](../../change-state/application-services.md) next.
+    That guide shows you how to wire use cases. See the
+    [DDD Pathway](../../pathways/ddd.md) for the full reading order.
 
     The remaining chapters add **CQRS patterns** (Commands, Projections, and
-    separated read/write models) on top of this foundation.
+    separated read/write models) to this DDD domain model.
 
 ## Full Source
 

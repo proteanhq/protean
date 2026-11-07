@@ -2,10 +2,10 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span>
 
-Application services act as a bridge between the external API layer and the
-domain model, orchestrating business logic and use cases without exposing the
-underlying domain complexity. They encapsulate and coordinate operations,
-making them reusable and easier to manage, ensuring that all interactions with
+Application services connect the external API layer to the domain model. They
+orchestrate business logic and use cases without exposing the underlying domain
+complexity. They encapsulate and coordinate operations, making them reusable
+and easier to manage, ensuring that all interactions with
 the domain are consistent and controlled.
 
 For background on how application services orchestrate use cases, see
@@ -36,16 +36,16 @@ arguments, and can return values directly to the caller.
 Unlike command handlers (which are dispatched via `domain.process()`),
 application services are instantiated and called directly. A use case runs
 inside a Unit of Work, so call it after the domain is initialized (the example
-above ends with `auth.init(traverse=False)`) and inside a domain context, such
-as `with auth.domain_context():`. Without one, the call raises
+above ends with `auth.init(traverse=False)`). Call it inside a domain context
+too, such as `with auth.domain_context():`. Without one, the call raises
 `ConfigurationError`:
 
 ```python
 --8<-- "guides/change-state/008.py:call"
 ```
 
-This makes them ideal for synchronous request-response workflows where the
-caller needs an immediate result.
+Because you call application services directly, they are ideal for synchronous
+request-response workflows where the caller needs an immediate result.
 
 ## The `@use_case` Decorator
 
@@ -161,8 +161,8 @@ For details on how the Unit of Work pattern works, see the
     A `UnitOfWork` context applies to objects in the aggregate cluster,
     and not multiple aggregates. An Application Service method can load
     multiple aggregates to perform the business process, but should never
-    persist more than one at a time. Other aggregates should be synced
-    eventually through domain events.
+    persist more than one at a time. Event handlers should sync the other
+    aggregates eventually, in response to domain events.
 
 ## Error Handling
 
@@ -184,8 +184,8 @@ data consistency.
 
 - Keep use case methods focused on orchestration so that domain-level errors
 are raised by the aggregate, not the service.
-- Let domain validation errors bubble up to the API layer for appropriate
-HTTP status mapping.
+- Let domain validation errors propagate to the API layer, which maps them to
+the appropriate HTTP status.
 - Use the API layer for cross-cutting concerns like logging failed operations,
 not the application service itself.
 

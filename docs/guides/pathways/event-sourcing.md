@@ -6,10 +6,10 @@
     pathway yet, start there, Event Sourcing builds on those concepts.
 
 !!! tip "Hands-On Tutorial"
-    For a hands-on, project-based introduction, see the
-    **[Event Sourcing Tutorial](../getting-started/es-tutorial/index.md)**:
-    A 22-chapter guide that builds a complete banking platform from
-    scratch, covering every Event Sourcing capability in Protean.
+    For a practical, project-based introduction, see the
+    **[Event Sourcing Tutorial](../getting-started/es-tutorial/index.md)**: a
+    22-chapter guide that builds a complete banking platform from an empty
+    project and covers every Event Sourcing capability in Protean.
 
 ## Overview
 
@@ -159,9 +159,9 @@ design, command and event handling, and event schema evolution:
 
 In event-sourced aggregates, state changes are expressed through events.
 The `@apply` decorator marks methods that define how each event type
-mutates the aggregate's state. These handlers are invoked automatically
-by `raise_()` during live operations and during event replay, making them the **single
-source of truth** for all state mutations:
+mutates the aggregate's state. Protean invokes these `@apply` methods
+automatically from `raise_()` during live operations and during event replay,
+so they are the **single source of truth** for all state mutations:
 
 ```python
 --8<-- "guides/pathways/event-sourcing/001.py:aggregate"

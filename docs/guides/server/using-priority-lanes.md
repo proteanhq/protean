@@ -29,8 +29,8 @@ backfill_suffix = "backfill"
 
 The command handlers run in the calling process (`command_processing =
 "sync"`). With `default_subscription_type = "stream"`, the engine reads
-commands from a broker stream that asynchronous commands never reach, so an
-asynchronous command is stored and never handled.
+commands from a broker stream. Asynchronous commands never reach that stream,
+so an asynchronous command is stored and never handled.
 
 If you use environment overlays, you can enable lanes only in production:
 
@@ -112,11 +112,11 @@ yet. `pending` is the number it has read but not acknowledged. When both are
 been handled. `XLEN` does not tell you this: it counts every entry still
 stored in the stream, read or not.
 
-Zero lag does not mean the batch succeeded. Outbox records may still be
-waiting to be published (see below), and a message whose handler failed is
-acknowledged once it moves to the dead-letter stream
-(`crm::customer:backfill:dlq`). Treat the batch as done only when the outbox
-has no unpublished records and the dead-letter stream holds no batch events.
+Zero lag does not mean the batch succeeded. Outbox records may still be waiting
+to be published (see below). When a handler fails, its message moves to the
+dead-letter stream (`crm::customer:backfill:dlq`) and is acknowledged. Treat
+the batch as done only when the outbox has no unpublished records and the
+dead-letter stream holds no batch events.
 
 ### Check Outbox Records
 
