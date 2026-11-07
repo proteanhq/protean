@@ -146,7 +146,9 @@ def raise_if_expired(
 
 
 class _CommandLineage(NamedTuple):
-    """What a command takes over from the message being handled, if any."""
+    """The origin stream, correlation ID, causation ID and deadline a command
+    is enriched with: each comes from the caller or from the message being
+    handled, if any."""
 
     origin_stream: str | None
     correlation_id: str | None
@@ -534,7 +536,6 @@ class CommandProcessor:
                 deadline=resolved_deadline,
             )
 
-            # Set span attributes from enriched command metadata
             cmd_meta = command_with_metadata._metadata
             _set_command_span_attributes(span, cmd_meta)
 

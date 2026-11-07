@@ -2782,8 +2782,8 @@ class Domain:
 # ---------------------------------------------------------------------------
 # Domain helpers
 #
-# Module-level functions, not methods, so no new private name lands on
-# ``Domain`` where a subclass could override it.
+# Module-level functions, so no new private name lands on ``Domain`` where a
+# subclass could override it.
 # ---------------------------------------------------------------------------
 # Element types whose string ``part_of`` is resolved to an aggregate class
 _PART_OF_AGGREGATE_TYPES = (
@@ -2921,7 +2921,8 @@ def _logging_kwargs_from_config(logging_config: dict[str, Any]) -> dict[str, Any
     section of the domain config sets."""
     config_kwargs: dict[str, Any] = {}
 
-    # level: env var overrides config, but explicit kwargs override both.
+    # level: env var overrides config; the caller's explicit kwargs, merged
+    # in by configure_logging, override both.
     # Only forward config level when the env var is absent.
     cfg_level = logging_config.get("level", "")
     if cfg_level and "PROTEAN_LOG_LEVEL" not in os.environ:

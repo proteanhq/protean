@@ -331,15 +331,15 @@ class FieldSpec:
 
     def __repr__(self) -> str:
         factory_name = _factory_name(self)
-        parts = _repr_constraint_parts(self) + _repr_factory_parts(self, factory_name)
+        parts = _repr_declared_parts(self) + _repr_factory_parts(self, factory_name)
         return f"{factory_name}({', '.join(parts)})"
 
 
 # ---------------------------------------------------------------------------
 # FieldSpec helpers
 #
-# Module-level functions, not methods, so no new private name lands on
-# FieldSpec where a subclass could override it.
+# Module-level functions, so no new private name lands on FieldSpec where a
+# subclass could override it.
 # ---------------------------------------------------------------------------
 def _add_length_and_value_bounds(spec: FieldSpec, kwargs: dict[str, Any]) -> None:
     # String-type constraints (only for str-based types)
@@ -520,7 +520,7 @@ def _sanitize_after_validator(spec: FieldSpec) -> AfterValidator | None:
     ):
         return None
 
-    # Mirror the effective ``min_length`` from ``resolve_field_kwargs``:
+    # Mirror the effective ``min_length`` from ``_add_length_and_value_bounds``:
     # a required string has an implicit lower bound of 1.
     effective_min_length = spec.min_length
     if effective_min_length is None and spec.required:
@@ -589,7 +589,7 @@ def _factory_name(spec: FieldSpec) -> str:
     return _FACTORY_NAMES.get((base_type, spec.field_kind), "FieldSpec")
 
 
-def _repr_constraint_parts(spec: FieldSpec) -> list[str]:
+def _repr_declared_parts(spec: FieldSpec) -> list[str]:
     parts: list[str] = []
     if spec.description:
         parts.append(f"description={spec.description!r}")

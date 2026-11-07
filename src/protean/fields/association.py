@@ -770,8 +770,8 @@ class HasMany(Association):
 # ---------------------------------------------------------------------------
 # Association helpers
 #
-# Module-level functions, not methods, so no new private name lands on the
-# association fields where a subclass could override it.
+# Module-level functions, so no new private name lands on the association
+# fields where a subclass could override it.
 # ---------------------------------------------------------------------------
 def _precheck_root(instance: Any) -> None:
     if instance._initialized and instance._root is not None:

@@ -66,8 +66,9 @@ def _discover_handler_methods(cls: type) -> list[tuple[str, HandlerMethod]]:
 
 
 class _PartitionKeyMap:
-    """The stream category to partition key map that ``sequential_by``
-    handlers build up, rejecting two different keys for one category."""
+    """The stream category to partition key map that
+    ``HandlerConfigurator.validate_sequential_by`` builds, rejecting a second
+    key for a category that already has a different one."""
 
     def __init__(self) -> None:
         self.keys: dict[str, str] = {}

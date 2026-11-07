@@ -315,12 +315,18 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         return value
 
 
+# ---------------------------------------------------------------------------
+# Module-level functions, so no new private name lands on ``Field`` where a
+# subclass could override it.
+# ---------------------------------------------------------------------------
 def _load_empty_value(field: Field, value: Any) -> tuple[bool, Any]:
     """Resolve an empty ``value`` for ``field``.
 
     Returns ``(True, result)`` when ``Field._load`` should return ``result``
     as is, and ``(False, value)`` when the empty value still goes through the
     choice check, the cast and the validators.
+
+    Raises ``ValidationError`` when ``field`` is required and has no default.
     """
     # If a default has been set for the field return it
     if field.default is not None:
@@ -331,8 +337,8 @@ def _load_empty_value(field: Field, value: Any) -> tuple[bool, Any]:
     if field.required:
         field.fail("required")
 
-    # In all other cases just return the passed value, as we do not want to
-    # run validations against an empty value
+    # A None value is returned as is, as we do not want to run validations
+    # against it. Any other empty value goes on to the cast.
     # Because of this behavior, we preserve the data sanctity for int and float objects,
     # and return 0 or 0.0, as need be.
     elif value is None:
