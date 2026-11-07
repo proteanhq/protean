@@ -298,6 +298,138 @@ class ESSession:
         pass
 
 
+def _search(
+    conn: Elasticsearch,
+    model_cls: _Any,
+    q: _Any,
+    fields: Sequence[str] | None,
+    order_by: Sequence[str],
+    offset: int,
+    limit: int | None,
+) -> Search:
+    """The ``Search`` for one page of ``model_cls`` documents matching ``q``.
+
+    A ``None`` limit reads up to 10000 documents from ``offset``.
+    """
+    s = Search(using=conn, index=model_cls._index._name).query(q).extra(version=True)
+
+    if fields is not None:
+        s = s.source(list(fields))
+
+    if order_by:
+        s = s.sort(*order_by)
+
+    if limit is not None:
+        s = s[offset : offset + limit]
+    else:
+        # When limit is None, we want to return all results
+        # Elasticsearch has a default limit of 10 and max of 10000 by default
+        # We set a very large limit to effectively get all results
+        s = s[offset : offset + 10000]
+
+    return s
+
+
+def _result_set(
+    response: _Any, model_cls: _Any, offset: int, limit: int | None
+) -> ResultSet:
+    """A ``ResultSet`` of ``model_cls`` objects built from a search response.
+
+    Each object carries its hit's document id and, when the response has one,
+    its version.
+    """
+    # Convert hits to ElasticsearchModel objects with proper metadata
+    model_items = []
+    for hit in response.hits:
+        # Create a model object from the hit data
+        model_obj = model_cls(**hit.to_dict())
+        model_obj.meta.id = hit.meta.id
+        if hasattr(hit.meta, "version"):
+            model_obj.meta.version = hit.meta.version
+        model_items.append(model_obj)
+
+    return ResultSet(
+        offset=offset,
+        limit=limit,
+        total=_hits_total(response),
+        items=model_items,
+    )
+
+
+def _lookup_expression(
+    dao: "ElasticsearchDAO", child: tuple[str, _Any], negated: bool
+) -> _Any:
+    """The query expression for one ``(lookup key, value)`` criterion.
+
+    The expression is inverted when ``negated`` is true.
+    """
+    stripped_key, lookup_class = dao.provider._extract_lookup(child[0])
+    lookup = lookup_class(
+        stripped_key,
+        child[1],
+        database_model_cls=dao.database_model_cls,
+    )
+    expression = lookup.as_expression()
+    if negated:
+        assert expression is not None
+        return ~expression
+    return expression
+
+
+def _custom_index_options(
+    database_model_cls: _Any, schema_name: str, conn_info: dict[str, _Any]
+) -> dict[str, _Any]:
+    """The inner ``Index`` options for a model built from a custom model.
+
+    The index name is the custom model's ``schema_name`` option, else the
+    name its own ``Index`` class sets, else ``schema_name``. The settings
+    come from the provider's ``SETTINGS`` when it has them.
+    """
+    options = {}
+
+    # Set schema name intelligently
+    #   database_model_cls.meta_.schema_name - would come from custom model's options
+    #   database_model_cls._index._name - would come from custom model's `Index` inner class
+    #   schema_name - is derived
+    index_name = (
+        database_model_cls._index._name
+        if hasattr(database_model_cls, "_index")
+        else None
+    )
+    options["name"] = database_model_cls.meta_.schema_name or index_name or schema_name
+
+    # Gather adapter settings
+    if conn_info.get("SETTINGS"):
+        options["settings"] = conn_info["SETTINGS"]
+
+    return options
+
+
+def _custom_model_mapping(entity_cls: _Any, custom_attrs: dict[str, _Any]) -> Mapping:
+    """The mapping for the entity attributes a custom model does not define.
+
+    A field the custom model defines keeps its own mapping. ``_version`` maps
+    to ``entity_version``, unless the custom model defines that.
+    """
+    # Auto-map entity attributes not explicitly defined in the custom model.
+    # User-defined ES fields take precedence.
+    m = Mapping()
+    entity_attributes = attributes(entity_cls)
+    for attr_name, field_obj in entity_attributes.items():
+        # Skip _version — remapped to entity_version in from_entity()
+        if attr_name == "_version":
+            continue
+        if attr_name not in custom_attrs:
+            es_field = _es_field_mapping_for(field_obj)
+            if es_field is not None:
+                m.field(attr_name, es_field)
+
+    if hasattr(entity_cls, "_version") and "entity_version" not in custom_attrs:
+        m.field("entity_version", ESInteger())
+
+    return m
+
+
 class ElasticsearchDAO(BaseDAO):
     # Narrow the base ``type[BaseDatabaseModel]`` to the concrete ES model class.
     # ``ElasticsearchModel`` subclasses ``elasticsearch_dsl.Document``, which
@@ -319,35 +451,17 @@ class ElasticsearchDAO(BaseDAO):
                 if isinstance(child, Q):
                     composed_query = composed_query & self._build_filters(child)
                 else:
-                    stripped_key, lookup_class = self.provider._extract_lookup(child[0])
-                    lookup = lookup_class(
-                        stripped_key,
-                        child[1],
-                        database_model_cls=self.database_model_cls,
+                    composed_query = composed_query & _lookup_expression(
+                        self, child, criteria.negated
                     )
-                    expression = lookup.as_expression()
-                    if criteria.negated:
-                        assert expression is not None
-                        composed_query = composed_query & ~expression
-                    else:
-                        composed_query = composed_query & expression
         else:
             for child in criteria.children:
                 if isinstance(child, Q):
                     composed_query = composed_query | self._build_filters(child)
                 else:
-                    stripped_key, lookup_class = self.provider._extract_lookup(child[0])
-                    lookup = lookup_class(
-                        stripped_key,
-                        child[1],
-                        database_model_cls=self.database_model_cls,
+                    composed_query = composed_query | _lookup_expression(
+                        self, child, criteria.negated
                     )
-                    expression = lookup.as_expression()
-                    if criteria.negated:
-                        assert expression is not None
-                        composed_query = composed_query | ~expression
-                    else:
-                        composed_query = composed_query | expression
 
         return composed_query
 
@@ -379,46 +493,11 @@ class ElasticsearchDAO(BaseDAO):
         if criteria.children:
             q = self._build_filters(criteria)
 
-        s = (
-            Search(using=conn, index=self.database_model_cls._index._name)
-            .query(q)
-            .extra(version=True)
-        )
-
-        if fields is not None:
-            s = s.source(list(fields))
-
-        if order_by:
-            s = s.sort(*order_by)
-
-        if limit is not None:
-            s = s[offset : offset + limit]
-        else:
-            # When limit is None, we want to return all results
-            # Elasticsearch has a default limit of 10 and max of 10000 by default
-            # We set a very large limit to effectively get all results
-            s = s[offset : offset + 10000]
+        s = _search(conn, self.database_model_cls, q, fields, order_by, offset, limit)
 
         # Return the results
         try:
-            response = s.execute()
-
-            # Convert hits to ElasticsearchModel objects with proper metadata
-            model_items = []
-            for hit in response.hits:
-                # Create a model object from the hit data
-                model_obj = self.database_model_cls(**hit.to_dict())
-                model_obj.meta.id = hit.meta.id
-                if hasattr(hit.meta, "version"):
-                    model_obj.meta.version = hit.meta.version
-                model_items.append(model_obj)
-
-            result = ResultSet(
-                offset=offset,
-                limit=limit,
-                total=_hits_total(response),
-                items=model_items,
-            )
+            result = _result_set(s.execute(), self.database_model_cls, offset, limit)
         except Exception as exc:
             # Check if it's a sort field mapping error
             if "No mapping found for" in str(exc) and "in order to sort on" in str(exc):
@@ -427,36 +506,11 @@ class ElasticsearchDAO(BaseDAO):
                 )
                 # Retry without sorting
                 try:
-                    s_no_sort = (
-                        Search(using=conn, index=self.database_model_cls._index._name)
-                        .query(q)
-                        .extra(version=True)
+                    s_no_sort = _search(
+                        conn, self.database_model_cls, q, fields, (), offset, limit
                     )
-
-                    if fields is not None:
-                        s_no_sort = s_no_sort.source(list(fields))
-
-                    if limit is not None:
-                        s_no_sort = s_no_sort[offset : offset + limit]
-                    else:
-                        s_no_sort = s_no_sort[offset : offset + 10000]
-
-                    response = s_no_sort.execute()
-
-                    # Convert hits to ElasticsearchModel objects with proper metadata
-                    model_items = []
-                    for hit in response.hits:
-                        model_obj = self.database_model_cls(**hit.to_dict())
-                        model_obj.meta.id = hit.meta.id
-                        if hasattr(hit.meta, "version"):
-                            model_obj.meta.version = hit.meta.version
-                        model_items.append(model_obj)
-
-                    result = ResultSet(
-                        offset=offset,
-                        limit=limit,
-                        total=_hits_total(response),
-                        items=model_items,
+                    result = _result_set(
+                        s_no_sort.execute(), self.database_model_cls, offset, limit
                     )
                 # Any client error on the retry becomes DatabaseError; logged.
                 except Exception as retry_exc:
@@ -883,24 +937,9 @@ class ESProvider(BaseProvider):
             }
 
             # Construct Inner Index class with options
-            options = {}
-
-            # Set schema name intelligently
-            #   database_model_cls.meta_.schema_name - would come from custom model's options
-            #   database_model_cls._index._name - would come from custom model's `Index` inner class
-            #   schema_name - is derived
-            index_name = (
-                database_model_cls._index._name
-                if hasattr(database_model_cls, "_index")
-                else None
+            options = _custom_index_options(
+                database_model_cls, schema_name, self.conn_info
             )
-            options["name"] = (
-                database_model_cls.meta_.schema_name or index_name or schema_name
-            )
-
-            # Gather adapter settings
-            if self.conn_info.get("SETTINGS"):
-                options["settings"] = self.conn_info["SETTINGS"]
 
             # Set options into `Index` inner class for ElasticsearchModel
             index_cls = type("Index", (object,), options)
@@ -924,26 +963,9 @@ class ESProvider(BaseProvider):
                 ),
             )
 
-            # Auto-map entity attributes not explicitly defined in the custom model.
-            # User-defined ES fields take precedence.
-            m = Mapping()
-            entity_attributes = attributes(entity_cls)
-            for attr_name, field_obj in entity_attributes.items():
-                # Skip _version — remapped to entity_version in from_entity()
-                if attr_name == "_version":
-                    continue
-                if attr_name not in custom_attrs_snapshot:
-                    es_field = _es_field_mapping_for(field_obj)
-                    if es_field is not None:
-                        m.field(attr_name, es_field)
-
-            if (
-                hasattr(entity_cls, "_version")
-                and "entity_version" not in custom_attrs_snapshot
-            ):
-                m.field("entity_version", ESInteger())
-
-            decorated_database_database_model_cls._index.mapping(m)
+            decorated_database_database_model_cls._index.mapping(
+                _custom_model_mapping(entity_cls, custom_attrs_snapshot)
+            )
 
             # Precompute and cache field type information for efficient lookup operations
             keyword_fields = self._compute_keyword_fields(

@@ -48,68 +48,6 @@
     ]
   },
   {
-    "path": "src/protean/adapters/repository/elasticsearch.py",
-    "file_name": "elasticsearch.py",
-    "functions": [
-      {
-        "name": "ElasticsearchDAO::_build_filters",
-        "complexity": 24
-      },
-      {
-        "name": "ESProvider::decorate_database_model_class",
-        "complexity": 26
-      },
-      {
-        "name": "ElasticsearchDAO::_filter",
-        "complexity": 30
-      }
-    ]
-  },
-  {
-    "path": "src/protean/adapters/repository/memory.py",
-    "file_name": "memory.py",
-    "functions": [
-      {
-        "name": "MemorySession::commit",
-        "complexity": 18
-      },
-      {
-        "name": "DictDAO::_filter",
-        "complexity": 29
-      }
-    ]
-  },
-  {
-    "path": "src/protean/adapters/repository/sqlalchemy.py",
-    "file_name": "sqlalchemy.py",
-    "functions": [
-      {
-        "name": "SADAO::_update",
-        "complexity": 18
-      },
-      {
-        "name": "_mysql_index_key_width",
-        "complexity": 23
-      },
-      {
-        "name": "_resolve_python_type",
-        "complexity": 23
-      },
-      {
-        "name": "_refuse_unstorable_identity",
-        "complexity": 25
-      },
-      {
-        "name": "_make_sa_indexes",
-        "complexity": 26
-      },
-      {
-        "name": "SqlalchemyModel::__init_subclass__",
-        "complexity": 158
-      }
-    ]
-  },
-  {
     "path": "src/protean/core/aggregate.py",
     "file_name": "aggregate.py",
     "functions": [
