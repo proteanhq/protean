@@ -2921,8 +2921,8 @@ def _logging_kwargs_from_config(logging_config: dict[str, Any]) -> dict[str, Any
     section of the domain config sets."""
     config_kwargs: dict[str, Any] = {}
 
-    # level: env var overrides config; the caller's explicit kwargs, merged
-    # in by configure_logging, override both.
+    # level: env var overrides config. ``Domain.configure_logging`` then
+    # updates these values with its own kwargs, so those override both.
     # Only forward config level when the env var is absent.
     cfg_level = logging_config.get("level", "")
     if cfg_level and "PROTEAN_LOG_LEVEL" not in os.environ:
