@@ -25,6 +25,27 @@
       "version_id_col": "_version"
     }
   },
+  "mariadb/column_mapping_elements/Article": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE article (\n\ttitle VARCHAR(50), \n\t`body` TEXT, \n\tunbounded TEXT, \n\tpublished_at DATETIME(6), \n\ttags JSON, \n\textra JSON, \n\tviews INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/column_mapping_elements/Graded": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE graded (\n\tstatus VARCHAR(20), \n\trequired_status VARCHAR(20) NOT NULL, \n\tenum_status VARCHAR(20), \n\tlevel INTEGER, \n\trequired_level INTEGER NOT NULL, \n\tratio FLOAT, \n\tflag BOOL, \n\tprice NUMERIC(5, 2), \n\tday DATE, \n\tmoment DATETIME(6), \n\tgrade INTEGER, \n\tstage INTEGER, \n\tnamed_stage VARCHAR(10), \n\tmixed TEXT, \n\tbool_and_int TEXT, \n\tmixed_enum TEXT, \n\tliteral_union TEXT, \n\tliteral_or_str TEXT, \n\tbyte_code TEXT, \n\tint_or_literal INTEGER, \n\tlist_or_literal JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/column_mapping_elements/JsonHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE json_holder (\n\tpayload JSON, \n\tlabels JSON, \n\tname VARCHAR(50), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
   "mariadb/custom_model/Ticket": {
     "model": {
       "indexes": [
@@ -40,7 +61,98 @@
   "mariadb/fields/Catalogue": {
     "model": {
       "indexes": [],
-      "table": "CREATE TABLE catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary TEXT, \n\tunbounded TEXT, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOL, \n\tpublished_on DATE, \n\tpublished_at DATETIME(6), \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags JSON, \n\tlabels JSON, \n\tcounts JSON, \n\tplain_counts JSON, \n\tblobs JSON, \n\tmeasures JSON, \n\tsequence INTEGER, \n\texternal_id TEXT, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list JSON, \n\tmixed_choice TEXT, \n\tmeasure_obj BLOB, \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures JSON, \n\tpickled_measures BLOB, \n\tlegacy_names JSON, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "table": "CREATE TABLE catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary TEXT, \n\tunbounded TEXT, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOL, \n\tpublished_on DATE, \n\tpublished_at DATETIME(6), \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags JSON, \n\tlabels JSON, \n\tcounts JSON, \n\tplain_counts JSON, \n\tblobs JSON, \n\tmeasures JSON, \n\tpickled_list_measures JSON, \n\tratings JSON, \n\tsequence INTEGER, \n\texternal_id TEXT, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list JSON, \n\tmixed_choice TEXT, \n\tmeasure_obj BLOB, \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures JSON, \n\tpickled_measures BLOB, \n\tlegacy_names JSON, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_column_elements/ArrayHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE array_holder (\n\tname VARCHAR(100) NOT NULL, \n\titems JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_column_elements/Campaign": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE campaign (\n\tlabel VARCHAR(100) NOT NULL, \n\tstarts_on DATE, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_column_elements/Config": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE config (\n\tname VARCHAR(100) NOT NULL, \n\ttags JSON, \n\tmetadata_field JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_column_elements/JsonDocument": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE json_document (\n\tname VARCHAR(100) NOT NULL, \n\tdata JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_column_elements/MetadataHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE metadata_holder (\n\tname VARCHAR(100) NOT NULL, \n\tmetadata_field JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_column_elements/Money": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE money (\n\tlabel VARCHAR(100) NOT NULL, \n\tamount NUMERIC(19, 4), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_column_elements/Slot": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE slot (\n\tname VARCHAR(50), \n\tat DATETIME(6), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_column_elements/TaggedItem": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE tagged_item (\n\tname VARCHAR(100) NOT NULL, \n\ttags JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_ordering_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at DATETIME(6), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_query_elements/Contact": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE contact (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tnickname VARCHAR(50), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_query_elements/Customer": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE customer (\n\tname VARCHAR(100) NOT NULL, \n\tid CHAR(32), \n\temail_address VARCHAR(254) NOT NULL, \n\tbilling_address_street VARCHAR(100), \n\tbilling_address_city VARCHAR(50), \n\tbilling_address_zip_code VARCHAR(10), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_query_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at DATETIME(6), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/generic_query_elements/RetryTask": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE retry_task (\n\tretry_count INTEGER, \n\tmax_retries INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
       "version_id_col": "_version"
     }
   },
@@ -272,6 +384,20 @@
       "version_id_col": "_version"
     }
   },
+  "mariadb/repository_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/repository_elements/User": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE user (\n\tpassword VARCHAR(255) NOT NULL, \n\tid CHAR(32), \n\temail_address VARCHAR(254) NOT NULL, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
   "mariadb/string_associations/Book": {
     "model": {
       "indexes": [
@@ -340,6 +466,27 @@
       "version_id_col": "_version"
     }
   },
+  "mssql/column_mapping_elements/Article": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.article (\n\ttitle VARCHAR(50) NULL, \n\tbody VARCHAR(max) NULL, \n\tunbounded VARCHAR(max) NULL, \n\tpublished_at DATETIME2 NULL, \n\ttags NVARCHAR(max) NULL, \n\textra NVARCHAR(max) NULL, \n\tviews INTEGER NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/column_mapping_elements/Graded": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.graded (\n\tstatus VARCHAR(20) NULL, \n\trequired_status VARCHAR(20) NOT NULL, \n\tenum_status VARCHAR(20) NULL, \n\tlevel INTEGER NULL, \n\trequired_level INTEGER NOT NULL, \n\tratio FLOAT NULL, \n\tflag BIT NULL, \n\tprice NUMERIC(5, 2) NULL, \n\tday DATETIME NULL, \n\tmoment DATETIME2 NULL, \n\tgrade INTEGER NULL, \n\tstage INTEGER NULL, \n\tnamed_stage VARCHAR(10) NULL, \n\tmixed VARCHAR(max) NULL, \n\tbool_and_int VARCHAR(max) NULL, \n\tmixed_enum VARCHAR(max) NULL, \n\tliteral_union VARCHAR(max) NULL, \n\tliteral_or_str VARCHAR(max) NULL, \n\tbyte_code VARCHAR(max) NULL, \n\tint_or_literal INTEGER NULL, \n\tlist_or_literal NVARCHAR(max) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/column_mapping_elements/JsonHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.json_holder (\n\tpayload NVARCHAR(max) NULL, \n\tlabels NVARCHAR(max) NULL, \n\tname VARCHAR(50) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
   "mssql/custom_model/Ticket": {
     "model": {
       "indexes": [
@@ -356,7 +503,98 @@
   "mssql/fields/Catalogue": {
     "model": {
       "indexes": [],
-      "table": "CREATE TABLE dbo.catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60) NULL, \n\tsummary VARCHAR(max) NULL, \n\tunbounded VARCHAR(max) NULL, \n\tpages INTEGER NULL, \n\trating FLOAT NULL, \n\tactive BIT NULL, \n\tpublished_on DATETIME NULL, \n\tpublished_at DATETIME2 NULL, \n\tprice NUMERIC(10, 2) NULL, \n\tloose_price NUMERIC NULL, \n\tattributes NVARCHAR(max) NULL, \n\ttags NVARCHAR(max) NULL, \n\tlabels NVARCHAR(max) NULL, \n\tcounts NVARCHAR(max) NULL, \n\tplain_counts NVARCHAR(max) NULL, \n\tblobs NVARCHAR(max) NULL, \n\tmeasures NVARCHAR(max) NULL, \n\tsequence INTEGER NULL, \n\texternal_id VARCHAR(max) NULL, \n\tstatus VARCHAR(10) NULL, \n\tlevel INTEGER NULL, \n\tbare_list NVARCHAR(max) NULL, \n\tmixed_choice VARCHAR(max) NULL, \n\tmeasure_obj IMAGE NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\taddress_street VARCHAR(100) NULL, \n\taddress_city VARCHAR(50) NULL, \n\tlegacy_measures NVARCHAR(max) NULL, \n\tpickled_measures IMAGE NULL, \n\tlegacy_names NVARCHAR(max) NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)",
+      "table": "CREATE TABLE dbo.catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60) NULL, \n\tsummary VARCHAR(max) NULL, \n\tunbounded VARCHAR(max) NULL, \n\tpages INTEGER NULL, \n\trating FLOAT NULL, \n\tactive BIT NULL, \n\tpublished_on DATETIME NULL, \n\tpublished_at DATETIME2 NULL, \n\tprice NUMERIC(10, 2) NULL, \n\tloose_price NUMERIC NULL, \n\tattributes NVARCHAR(max) NULL, \n\ttags NVARCHAR(max) NULL, \n\tlabels NVARCHAR(max) NULL, \n\tcounts NVARCHAR(max) NULL, \n\tplain_counts NVARCHAR(max) NULL, \n\tblobs NVARCHAR(max) NULL, \n\tmeasures NVARCHAR(max) NULL, \n\tpickled_list_measures NVARCHAR(max) NULL, \n\tratings NVARCHAR(max) NULL, \n\tsequence INTEGER NULL, \n\texternal_id VARCHAR(max) NULL, \n\tstatus VARCHAR(10) NULL, \n\tlevel INTEGER NULL, \n\tbare_list NVARCHAR(max) NULL, \n\tmixed_choice VARCHAR(max) NULL, \n\tmeasure_obj IMAGE NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\taddress_street VARCHAR(100) NULL, \n\taddress_city VARCHAR(50) NULL, \n\tlegacy_measures NVARCHAR(max) NULL, \n\tpickled_measures IMAGE NULL, \n\tlegacy_names NVARCHAR(max) NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_column_elements/ArrayHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.array_holder (\n\tname VARCHAR(100) NOT NULL, \n\titems NVARCHAR(max) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_column_elements/Campaign": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.campaign (\n\tlabel VARCHAR(100) NOT NULL, \n\tstarts_on DATETIME NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_column_elements/Config": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.config (\n\tname VARCHAR(100) NOT NULL, \n\ttags NVARCHAR(max) NULL, \n\tmetadata_field NVARCHAR(max) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_column_elements/JsonDocument": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.json_document (\n\tname VARCHAR(100) NOT NULL, \n\tdata NVARCHAR(max) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_column_elements/MetadataHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.metadata_holder (\n\tname VARCHAR(100) NOT NULL, \n\tmetadata_field NVARCHAR(max) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_column_elements/Money": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.money (\n\tlabel VARCHAR(100) NOT NULL, \n\tamount NUMERIC(19, 4) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_column_elements/Slot": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.slot (\n\tname VARCHAR(50) NULL, \n\tat DATETIME2 NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_column_elements/TaggedItem": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.tagged_item (\n\tname VARCHAR(100) NOT NULL, \n\ttags NVARCHAR(max) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_ordering_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER NULL, \n\tcreated_at DATETIME2 NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_query_elements/Contact": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.contact (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER NULL, \n\tnickname VARCHAR(50) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_query_elements/Customer": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.customer (\n\tname VARCHAR(100) NOT NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\temail_address VARCHAR(254) NOT NULL, \n\tbilling_address_street VARCHAR(100) NULL, \n\tbilling_address_city VARCHAR(50) NULL, \n\tbilling_address_zip_code VARCHAR(10) NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_query_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER NULL, \n\tcreated_at DATETIME2 NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/generic_query_elements/RetryTask": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.retry_task (\n\tretry_count INTEGER NULL, \n\tmax_retries INTEGER NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
       "version_id_col": "_version"
     }
   },
@@ -603,6 +841,20 @@
       "version_id_col": "_version"
     }
   },
+  "mssql/repository_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/repository_elements/User": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.[user] (\n\tpassword VARCHAR(255) NOT NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\temail_address VARCHAR(254) NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
   "mssql/string_associations/Book": {
     "model": {
       "indexes": [
@@ -671,6 +923,27 @@
       "version_id_col": "_version"
     }
   },
+  "mysql/column_mapping_elements/Article": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE article (\n\ttitle VARCHAR(50), \n\tbody TEXT, \n\tunbounded TEXT, \n\tpublished_at DATETIME(6), \n\ttags JSON, \n\textra JSON, \n\tviews INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/column_mapping_elements/Graded": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE graded (\n\tstatus VARCHAR(20), \n\trequired_status VARCHAR(20) NOT NULL, \n\tenum_status VARCHAR(20), \n\tlevel INTEGER, \n\trequired_level INTEGER NOT NULL, \n\tratio FLOAT, \n\tflag BOOL, \n\tprice NUMERIC(5, 2), \n\tday DATE, \n\tmoment DATETIME(6), \n\tgrade INTEGER, \n\tstage INTEGER, \n\tnamed_stage VARCHAR(10), \n\tmixed TEXT, \n\tbool_and_int TEXT, \n\tmixed_enum TEXT, \n\tliteral_union TEXT, \n\tliteral_or_str TEXT, \n\tbyte_code TEXT, \n\tint_or_literal INTEGER, \n\tlist_or_literal JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/column_mapping_elements/JsonHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE json_holder (\n\tpayload JSON, \n\tlabels JSON, \n\tname VARCHAR(50), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
   "mysql/custom_model/Ticket": {
     "model": {
       "indexes": [
@@ -686,7 +959,98 @@
   "mysql/fields/Catalogue": {
     "model": {
       "indexes": [],
-      "table": "CREATE TABLE catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary TEXT, \n\tunbounded TEXT, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOL, \n\tpublished_on DATE, \n\tpublished_at DATETIME(6), \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags JSON, \n\tlabels JSON, \n\tcounts JSON, \n\tplain_counts JSON, \n\tblobs JSON, \n\tmeasures JSON, \n\tsequence INTEGER, \n\texternal_id TEXT, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list JSON, \n\tmixed_choice TEXT, \n\tmeasure_obj BLOB, \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures JSON, \n\tpickled_measures BLOB, \n\tlegacy_names JSON, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "table": "CREATE TABLE catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary TEXT, \n\tunbounded TEXT, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOL, \n\tpublished_on DATE, \n\tpublished_at DATETIME(6), \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags JSON, \n\tlabels JSON, \n\tcounts JSON, \n\tplain_counts JSON, \n\tblobs JSON, \n\tmeasures JSON, \n\tpickled_list_measures JSON, \n\tratings JSON, \n\tsequence INTEGER, \n\texternal_id TEXT, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list JSON, \n\tmixed_choice TEXT, \n\tmeasure_obj BLOB, \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures JSON, \n\tpickled_measures BLOB, \n\tlegacy_names JSON, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_column_elements/ArrayHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE array_holder (\n\tname VARCHAR(100) NOT NULL, \n\titems JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_column_elements/Campaign": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE campaign (\n\tlabel VARCHAR(100) NOT NULL, \n\tstarts_on DATE, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_column_elements/Config": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE config (\n\tname VARCHAR(100) NOT NULL, \n\ttags JSON, \n\tmetadata_field JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_column_elements/JsonDocument": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE json_document (\n\tname VARCHAR(100) NOT NULL, \n\tdata JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_column_elements/MetadataHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE metadata_holder (\n\tname VARCHAR(100) NOT NULL, \n\tmetadata_field JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_column_elements/Money": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE money (\n\tlabel VARCHAR(100) NOT NULL, \n\tamount NUMERIC(19, 4), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_column_elements/Slot": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE slot (\n\tname VARCHAR(50), \n\tat DATETIME(6), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_column_elements/TaggedItem": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE tagged_item (\n\tname VARCHAR(100) NOT NULL, \n\ttags JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_ordering_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at DATETIME(6), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_query_elements/Contact": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE contact (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tnickname VARCHAR(50), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_query_elements/Customer": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE customer (\n\tname VARCHAR(100) NOT NULL, \n\tid CHAR(32), \n\temail_address VARCHAR(254) NOT NULL, \n\tbilling_address_street VARCHAR(100), \n\tbilling_address_city VARCHAR(50), \n\tbilling_address_zip_code VARCHAR(10), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_query_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at DATETIME(6), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/generic_query_elements/RetryTask": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE retry_task (\n\tretry_count INTEGER, \n\tmax_retries INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
       "version_id_col": "_version"
     }
   },
@@ -920,6 +1284,20 @@
       "version_id_col": "_version"
     }
   },
+  "mysql/repository_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/repository_elements/User": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE user (\n\tpassword VARCHAR(255) NOT NULL, \n\tid CHAR(32), \n\temail_address VARCHAR(254) NOT NULL, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
   "mysql/string_associations/Book": {
     "model": {
       "indexes": [
@@ -988,6 +1366,27 @@
       "version_id_col": "_version"
     }
   },
+  "postgresql/column_mapping_elements/Article": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.article (\n\ttitle VARCHAR(50), \n\tbody VARCHAR, \n\tunbounded VARCHAR, \n\tpublished_at TIMESTAMP WITHOUT TIME ZONE, \n\ttags VARCHAR[], \n\textra JSON, \n\tviews INTEGER, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/column_mapping_elements/Graded": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.graded (\n\tstatus VARCHAR(20), \n\trequired_status VARCHAR(20) NOT NULL, \n\tenum_status VARCHAR(20), \n\tlevel INTEGER, \n\trequired_level INTEGER NOT NULL, \n\tratio FLOAT, \n\tflag BOOLEAN, \n\tprice NUMERIC(5, 2), \n\tday DATE, \n\tmoment TIMESTAMP WITHOUT TIME ZONE, \n\tgrade INTEGER, \n\tstage INTEGER, \n\tnamed_stage VARCHAR(10), \n\tmixed VARCHAR, \n\tbool_and_int VARCHAR, \n\tmixed_enum VARCHAR, \n\tliteral_union VARCHAR, \n\tliteral_or_str VARCHAR, \n\tbyte_code VARCHAR, \n\tint_or_literal INTEGER, \n\tlist_or_literal INTEGER[], \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/column_mapping_elements/JsonHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.json_holder (\n\tpayload JSON, \n\tlabels VARCHAR[], \n\tname VARCHAR(50), \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
   "postgresql/custom_model/Ticket": {
     "model": {
       "indexes": [
@@ -1004,7 +1403,98 @@
   "postgresql/fields/Catalogue": {
     "model": {
       "indexes": [],
-      "table": "CREATE TABLE public.catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary VARCHAR, \n\tunbounded VARCHAR, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOLEAN, \n\tpublished_on DATE, \n\tpublished_at TIMESTAMP WITHOUT TIME ZONE, \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags VARCHAR[], \n\tlabels VARCHAR[], \n\tcounts INTEGER[], \n\tplain_counts INTEGER[], \n\tblobs JSON[], \n\tmeasures JSON[], \n\tsequence INTEGER, \n\texternal_id VARCHAR, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list TEXT[], \n\tmixed_choice VARCHAR, \n\tmeasure_obj BYTEA, \n\tid UUID, \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures JSON[], \n\tpickled_measures BYTEA, \n\tlegacy_names VARCHAR[], \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)",
+      "table": "CREATE TABLE public.catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary VARCHAR, \n\tunbounded VARCHAR, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOLEAN, \n\tpublished_on DATE, \n\tpublished_at TIMESTAMP WITHOUT TIME ZONE, \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags VARCHAR[], \n\tlabels VARCHAR[], \n\tcounts INTEGER[], \n\tplain_counts INTEGER[], \n\tblobs JSON[], \n\tmeasures JSON[], \n\tpickled_list_measures JSON[], \n\tratings FLOAT[], \n\tsequence INTEGER, \n\texternal_id VARCHAR, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list TEXT[], \n\tmixed_choice VARCHAR, \n\tmeasure_obj BYTEA, \n\tid UUID, \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures JSON[], \n\tpickled_measures BYTEA, \n\tlegacy_names VARCHAR[], \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_column_elements/ArrayHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.array_holder (\n\tname VARCHAR(100) NOT NULL, \n\titems VARCHAR[], \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_column_elements/Campaign": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.campaign (\n\tlabel VARCHAR(100) NOT NULL, \n\tstarts_on DATE, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_column_elements/Config": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.config (\n\tname VARCHAR(100) NOT NULL, \n\ttags VARCHAR[], \n\tmetadata_field JSON, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_column_elements/JsonDocument": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.json_document (\n\tname VARCHAR(100) NOT NULL, \n\tdata JSON, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_column_elements/MetadataHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.metadata_holder (\n\tname VARCHAR(100) NOT NULL, \n\tmetadata_field JSON, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_column_elements/Money": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.money (\n\tlabel VARCHAR(100) NOT NULL, \n\tamount NUMERIC(19, 4), \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_column_elements/Slot": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.slot (\n\tname VARCHAR(50), \n\tat TIMESTAMP WITHOUT TIME ZONE, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_column_elements/TaggedItem": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.tagged_item (\n\tname VARCHAR(100) NOT NULL, \n\ttags VARCHAR[], \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_ordering_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at TIMESTAMP WITHOUT TIME ZONE, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_query_elements/Contact": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.contact (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tnickname VARCHAR(50), \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_query_elements/Customer": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.customer (\n\tname VARCHAR(100) NOT NULL, \n\tid UUID, \n\temail_address VARCHAR(254) NOT NULL, \n\tbilling_address_street VARCHAR(100), \n\tbilling_address_city VARCHAR(50), \n\tbilling_address_zip_code VARCHAR(10), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_query_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at TIMESTAMP WITHOUT TIME ZONE, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/generic_query_elements/RetryTask": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.retry_task (\n\tretry_count INTEGER, \n\tmax_retries INTEGER, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
       "version_id_col": "_version"
     }
   },
@@ -1252,6 +1742,20 @@
       "version_id_col": "_version"
     }
   },
+  "postgresql/repository_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/repository_elements/User": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.\"user\" (\n\tpassword VARCHAR(255) NOT NULL, \n\tid UUID, \n\temail_address VARCHAR(254) NOT NULL, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
   "postgresql/string_associations/Book": {
     "model": {
       "indexes": [
@@ -1320,6 +1824,27 @@
       "version_id_col": "_version"
     }
   },
+  "sqlite/column_mapping_elements/Article": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE article (\n\ttitle VARCHAR(50), \n\tbody VARCHAR, \n\tunbounded VARCHAR, \n\tpublished_at DATETIME, \n\ttags JSON, \n\textra JSON, \n\tviews INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/column_mapping_elements/Graded": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE graded (\n\tstatus VARCHAR(20), \n\trequired_status VARCHAR(20) NOT NULL, \n\tenum_status VARCHAR(20), \n\tlevel INTEGER, \n\trequired_level INTEGER NOT NULL, \n\tratio FLOAT, \n\tflag BOOLEAN, \n\tprice NUMERIC(5, 2), \n\tday DATE, \n\tmoment DATETIME, \n\tgrade INTEGER, \n\tstage INTEGER, \n\tnamed_stage VARCHAR(10), \n\tmixed VARCHAR, \n\tbool_and_int VARCHAR, \n\tmixed_enum VARCHAR, \n\tliteral_union VARCHAR, \n\tliteral_or_str VARCHAR, \n\tbyte_code VARCHAR, \n\tint_or_literal INTEGER, \n\tlist_or_literal JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/column_mapping_elements/JsonHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE json_holder (\n\tpayload JSON, \n\tlabels JSON, \n\tname VARCHAR(50), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
   "sqlite/custom_model/Ticket": {
     "model": {
       "indexes": [
@@ -1335,7 +1860,98 @@
   "sqlite/fields/Catalogue": {
     "model": {
       "indexes": [],
-      "table": "CREATE TABLE catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary VARCHAR, \n\tunbounded VARCHAR, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOLEAN, \n\tpublished_on DATE, \n\tpublished_at DATETIME, \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags JSON, \n\tlabels JSON, \n\tcounts JSON, \n\tplain_counts JSON, \n\tblobs JSON, \n\tmeasures JSON, \n\tsequence INTEGER, \n\texternal_id VARCHAR, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list JSON, \n\tmixed_choice VARCHAR, \n\tmeasure_obj BLOB, \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures BLOB, \n\tpickled_measures BLOB, \n\tlegacy_names BLOB, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)",
+      "table": "CREATE TABLE catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary VARCHAR, \n\tunbounded VARCHAR, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOLEAN, \n\tpublished_on DATE, \n\tpublished_at DATETIME, \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags JSON, \n\tlabels JSON, \n\tcounts JSON, \n\tplain_counts JSON, \n\tblobs JSON, \n\tmeasures JSON, \n\tpickled_list_measures JSON, \n\tratings JSON, \n\tsequence INTEGER, \n\texternal_id VARCHAR, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list JSON, \n\tmixed_choice VARCHAR, \n\tmeasure_obj BLOB, \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures BLOB, \n\tpickled_measures BLOB, \n\tlegacy_names BLOB, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_column_elements/ArrayHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE array_holder (\n\tname VARCHAR(100) NOT NULL, \n\titems JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_column_elements/Campaign": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE campaign (\n\tlabel VARCHAR(100) NOT NULL, \n\tstarts_on DATE, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_column_elements/Config": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE config (\n\tname VARCHAR(100) NOT NULL, \n\ttags JSON, \n\tmetadata_field JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_column_elements/JsonDocument": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE json_document (\n\tname VARCHAR(100) NOT NULL, \n\tdata JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_column_elements/MetadataHolder": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE metadata_holder (\n\tname VARCHAR(100) NOT NULL, \n\tmetadata_field JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_column_elements/Money": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE money (\n\tlabel VARCHAR(100) NOT NULL, \n\tamount NUMERIC(19, 4), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_column_elements/Slot": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE slot (\n\tname VARCHAR(50), \n\tat DATETIME, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_column_elements/TaggedItem": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE tagged_item (\n\tname VARCHAR(100) NOT NULL, \n\ttags JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_ordering_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at DATETIME, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_query_elements/Contact": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE contact (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tnickname VARCHAR(50), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_query_elements/Customer": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE customer (\n\tname VARCHAR(100) NOT NULL, \n\tid CHAR(32), \n\temail_address VARCHAR(254) NOT NULL, \n\tbilling_address_street VARCHAR(100), \n\tbilling_address_city VARCHAR(50), \n\tbilling_address_zip_code VARCHAR(10), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_query_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at DATETIME, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/generic_query_elements/RetryTask": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE retry_task (\n\tretry_count INTEGER, \n\tmax_retries INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
       "version_id_col": "_version"
     }
   },
@@ -1580,6 +2196,20 @@
     "model": {
       "indexes": [],
       "table": "CREATE TABLE user (\n\temail VARCHAR(255) NOT NULL, \n\tpassword VARCHAR(3026), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (email), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/repository_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/repository_elements/User": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE user (\n\tpassword VARCHAR(255) NOT NULL, \n\tid CHAR(32), \n\temail_address VARCHAR(254) NOT NULL, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
       "version_id_col": "_version"
     }
   },

@@ -57,8 +57,19 @@ from protean.fields import (
     ValueObjectList,
 )
 from protean.fields import Decimal as ProteanDecimal
+from tests.adapters.repository.generic import (
+    test_complex_fields,
+    test_datetime_offsets,
+    test_filtering,
+    test_native_array,
+    test_native_json,
+    test_ordering,
+    test_value_objects,
+)
+from tests.repository import elements as repository_elements
 from tests.shared import MARIADB_URI, MSSQL_URI, MYSQL_URI, POSTGRES_URI
 
+from . import test_choices_column_mapping, test_mysql_column_mapping
 from .mssql import elements as mssql_elements
 from .postgresql import elements as postgresql_elements
 
@@ -115,6 +126,8 @@ class Catalogue(BaseAggregate):
     plain_counts: List(content_type=int)
     blobs: List(content_type=Dict())
     measures: List(content_type=ValueObject(Measure))
+    pickled_list_measures: List(content_type=ValueObject(Measure), pickled=True)
+    ratings: List(content_type=Float())
     address = ValueObject(Address)
     legacy_measures = ValueObjectList(content_type=ValueObject(Measure))
     pickled_measures = ValueObjectList(content_type=ValueObject(Measure), pickled=True)
@@ -392,6 +405,54 @@ CASES = [
         ],
         {},
     ),
+    (
+        "repository_elements",
+        UUID_DOMAIN,
+        [(repository_elements.Person, {}), (repository_elements.User, {})],
+        {},
+    ),
+    (
+        "column_mapping_elements",
+        UUID_DOMAIN,
+        [
+            (test_mysql_column_mapping.Article, {}),
+            (test_mysql_column_mapping.JsonHolder, {}),
+            (test_choices_column_mapping.Graded, {}),
+        ],
+        {},
+    ),
+    (
+        "generic_column_elements",
+        UUID_DOMAIN,
+        [
+            (test_complex_fields.TaggedItem, {}),
+            (test_complex_fields.MetadataHolder, {}),
+            (test_complex_fields.Config, {}),
+            (test_complex_fields.Money, {}),
+            (test_complex_fields.Campaign, {}),
+            (test_native_json.JsonDocument, {}),
+            (test_native_array.ArrayHolder, {}),
+            (test_datetime_offsets.Slot, {}),
+        ],
+        {},
+    ),
+    (
+        "generic_query_elements",
+        UUID_DOMAIN,
+        [
+            (test_filtering.Person, {}),
+            (test_filtering.Contact, {}),
+            (test_filtering.RetryTask, {}),
+            (test_value_objects.Customer, {}),
+        ],
+        {},
+    ),
+    (
+        "generic_ordering_elements",
+        UUID_DOMAIN,
+        [(test_ordering.Person, {})],
+        {},
+    ),
 ]
 
 
@@ -450,12 +511,12 @@ def rendered_entry(element, dialect_name):
         return error_entry(exc)
 
 
-def generate_ddl():
+def generate_ddl(dialects):
     ddl = {}
     for case_name, config, registrations, models in CASES:
         domain = build_domain(case_name, config, registrations, models)
         with domain.domain_context():
-            for dialect_name, provider_cls, uri, _ in DIALECTS:
+            for dialect_name, provider_cls, uri, _ in dialects:
                 provider = provider_cls(
                     name=dialect_name,
                     domain=domain,
@@ -472,17 +533,24 @@ def generate_ddl():
 
 
 def test_emitted_ddl_matches_the_golden_file():
-    for _, _, _, module in DIALECTS:
-        if importlib.util.find_spec(module) is None:
-            pytest.skip(f"DBAPI module {module} is not installed")
+    # A missing DBAPI module skips only its own dialect, so SQLite keeps
+    # running wherever the server drivers are not installed.
+    dialects = [d for d in DIALECTS if importlib.util.find_spec(d[3]) is not None]
+    assert dialects, "no dialect has its DBAPI module installed"
 
-    ddl = generate_ddl()
+    ddl = generate_ddl(dialects)
     assert ddl, "no DDL was generated"
 
     if REGENERATE:
+        assert len(dialects) == len(DIALECTS), "regenerate with every DBAPI module"
         GOLDEN_FILE.write_text(json.dumps(ddl, indent=2, sort_keys=True) + "\n")
 
-    golden = json.loads(GOLDEN_FILE.read_text())
+    ran = {name for name, *_ in dialects}
+    golden = {
+        key: value
+        for key, value in json.loads(GOLDEN_FILE.read_text()).items()
+        if key.split("/", 1)[0] in ran
+    }
     assert sorted(ddl) == sorted(golden)
     for key in sorted(golden):
         assert ddl[key] == golden[key], key

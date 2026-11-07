@@ -309,7 +309,9 @@ def _search(
 ) -> Search:
     """The ``Search`` for one page of ``model_cls`` documents matching ``q``.
 
-    A ``None`` limit reads up to 10000 documents from ``offset``.
+    A ``None`` limit asks for 10000 documents starting at ``offset``. With
+    Elasticsearch's default result window of 10000, any ``offset`` above 0
+    then makes the search fail.
     """
     s = Search(using=conn, index=model_cls._index._name).query(q).extra(version=True)
 
