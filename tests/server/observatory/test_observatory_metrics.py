@@ -7,13 +7,14 @@ so they need no infrastructure.
 
 import contextlib
 import logging
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 import redis
 from fastapi.testclient import TestClient
 
-from protean.server.observatory import Observatory
+from protean.server.observatory import Observatory, metrics
 from protean.server.observatory.metrics import _scrape_cache, _ScrapeCache
 
 
@@ -421,3 +422,185 @@ class TestMetricsErrorPaths:
         # Should have outbox HELP/TYPE headers but no broker metrics
         assert "protean_outbox_pending_count" in body
         assert "protean_broker_up" not in body
+
+
+# --- The full hand-rolled text, with every section holding rows ---
+#
+# The test domain runs without OpenTelemetry, so /metrics serves the
+# hand-rolled text. The fixture fakes the raw Redis client and the shared
+# collectors so that every section has rows with known values, and the test
+# compares the whole body, line order included.
+
+
+FULL_TEXT_LINES = [
+    "# HELP protean_outbox_pending_count Current pending outbox messages",
+    "# TYPE protean_outbox_pending_count gauge",
+    'protean_outbox_pending_count{domain="Observatory Tests"} 0',
+    "",
+    "# HELP protean_broker_up Broker health (1=up, 0=down)",
+    "# TYPE protean_broker_up gauge",
+    "protean_broker_up 1",
+    "",
+    "# HELP protean_broker_memory_bytes Broker memory usage in bytes",
+    "# TYPE protean_broker_memory_bytes gauge",
+    "protean_broker_memory_bytes 2048",
+    "",
+    "# HELP protean_broker_connected_clients Number of connected broker clients",
+    "# TYPE protean_broker_connected_clients gauge",
+    "protean_broker_connected_clients 3",
+    "",
+    "# HELP protean_broker_ops_per_sec Broker operations per second",
+    "# TYPE protean_broker_ops_per_sec gauge",
+    "protean_broker_ops_per_sec 0",
+    "",
+    "# HELP protean_stream_messages_total Total messages in streams",
+    "# TYPE protean_stream_messages_total gauge",
+    "protean_stream_messages_total 0",
+    "",
+    "# HELP protean_stream_pending Pending (in-flight) messages",
+    "# TYPE protean_stream_pending gauge",
+    "protean_stream_pending 0",
+    "",
+    "# HELP protean_streams_count Number of active streams",
+    "# TYPE protean_streams_count gauge",
+    "protean_streams_count 0",
+    "",
+    "# HELP protean_consumer_groups_count Number of consumer groups",
+    "# TYPE protean_consumer_groups_count gauge",
+    "protean_consumer_groups_count 0",
+    "",
+    "# HELP protean_subscription_consumer_lag Messages behind stream head",
+    "# TYPE protean_subscription_consumer_lag gauge",
+    "",
+    "# HELP protean_subscription_pending_messages Unacknowledged messages",
+    "# TYPE protean_subscription_pending_messages gauge",
+    "",
+    "# HELP protean_subscription_dlq_depth Dead letter queue depth",
+    "# TYPE protean_subscription_dlq_depth gauge",
+    "",
+    "# HELP protean_subscription_status Subscription health (1=ok, 0=not ok)",
+    "# TYPE protean_subscription_status gauge",
+    "",
+    "# HELP protean_subscription_lag_seconds Seconds since a subscription's last processed position",
+    "# TYPE protean_subscription_lag_seconds gauge",
+    'protean_subscription_consumer_lag{domain="Observatory Tests",handler="OrderHandler",stream="orders::order",type="stream"} 7',
+    'protean_subscription_lag_seconds{domain="Observatory Tests",handler="OrderHandler",stream="orders::order",type="stream"} 1.5',
+    'protean_subscription_pending_messages{domain="Observatory Tests",handler="OrderHandler",stream="orders::order",type="stream"} 2',
+    'protean_subscription_dlq_depth{domain="Observatory Tests",handler="OrderHandler",stream="orders::order",type="stream"} 1',
+    'protean_subscription_status{domain="Observatory Tests",handler="OrderHandler",stream="orders::order",type="stream"} 1',
+    'protean_subscription_pending_messages{domain="Observatory Tests",handler="ShipHandler",stream="ships::ship",type="event_store"} 0',
+    'protean_subscription_dlq_depth{domain="Observatory Tests",handler="ShipHandler",stream="ships::ship",type="event_store"} 0',
+    'protean_subscription_status{domain="Observatory Tests",handler="ShipHandler",stream="ships::ship",type="event_store"} 0',
+    "",
+    "# HELP protean_projection_staleness_seconds Seconds a projection is behind its source events",
+    "# TYPE protean_projection_staleness_seconds gauge",
+    'protean_projection_staleness_seconds{domain="Observatory Tests",projection="OrderSummary"} 12.5',
+    "",
+    "# HELP protean_consumer_pending Per-consumer unacknowledged messages",
+    "# TYPE protean_consumer_pending gauge",
+    "",
+    "# HELP protean_consumer_idle_ms Per-consumer idle time in milliseconds",
+    "# TYPE protean_consumer_idle_ms gauge",
+    'protean_consumer_pending{consumer="worker-1",group="OrderHandler",stream="orders::order"} 4',
+    'protean_consumer_idle_ms{consumer="worker-1",group="OrderHandler",stream="orders::order"} 1500',
+    'protean_consumer_pending{consumer="worker-2",group="OrderHandler",stream="orders::order"} 0',
+    'protean_consumer_idle_ms{consumer="worker-2",group="OrderHandler",stream="orders::order"} 0',
+    "",
+    "# HELP protean_db_pool_size Database connection pool size",
+    "# TYPE protean_db_pool_size gauge",
+    "",
+    "# HELP protean_db_pool_checked_out Checked out database connections",
+    "# TYPE protean_db_pool_checked_out gauge",
+    "",
+    "# HELP protean_db_pool_overflow Overflow database connections",
+    "# TYPE protean_db_pool_overflow gauge",
+    "",
+    "# HELP protean_db_pool_checked_in Available database connections",
+    "# TYPE protean_db_pool_checked_in gauge",
+    'protean_db_pool_size{provider_name="default",database_type="POSTGRESQL"} 5',
+    'protean_db_pool_checked_out{provider_name="default",database_type="POSTGRESQL"} 2',
+    'protean_db_pool_overflow{provider_name="default",database_type="POSTGRESQL"} 1',
+    'protean_db_pool_checked_in{provider_name="default",database_type="POSTGRESQL"} 0',
+    "",
+    "# HELP protean_broker_pool_active_connections Active broker pool connections",
+    "# TYPE protean_broker_pool_active_connections gauge",
+    'protean_broker_pool_active_connections{broker_name="default"} 3',
+]
+
+
+def _fake_redis_with_consumers():
+    fake = MagicMock()
+    fake.ping.return_value = True
+    fake.info.return_value = {"used_memory": 2048, "connected_clients": 3}
+    fake.scan.return_value = (0, [b"orders::order"])
+    fake.xinfo_groups.return_value = [
+        {"name": "OrderHandler", "pending": 4, "lag": 2},
+        "not-a-dict",
+        {"name": ""},
+    ]
+    fake.xinfo_consumers.return_value = [
+        {"name": "worker-1", "pending": 4, "idle": 1500},
+        {b"name": b"worker-2", b"pending": None, b"idle": 0},
+        "not-a-dict",
+    ]
+    fake.connection_pool = redis.ConnectionPool()
+    return fake
+
+
+@pytest.fixture
+def full_text_client(test_domain, monkeypatch):
+    monkeypatch.setattr(
+        test_domain.brokers["default"], "redis_instance", _fake_redis_with_consumers()
+    )
+    subscriptions = [
+        SimpleNamespace(
+            handler_name="OrderHandler",
+            stream_category="orders::order",
+            subscription_type="stream",
+            lag=7,
+            lag_seconds=1.5,
+            pending=2,
+            dlq_depth=1,
+            status="ok",
+        ),
+        SimpleNamespace(
+            handler_name="ShipHandler",
+            stream_category="ships::ship",
+            subscription_type="event_store",
+            lag=None,
+            lag_seconds=None,
+            pending=0,
+            dlq_depth=0,
+            status="lagging",
+        ),
+    ]
+    projections = [
+        SimpleNamespace(projection_name="OrderSummary", staleness_seconds=12.5),
+        SimpleNamespace(projection_name="ShipSummary", staleness_seconds=None),
+    ]
+    pools = [
+        ("default", "POSTGRESQL", {"size": 5, "checked_out": 2, "overflow": 1}),
+    ]
+    broker_pools = [("default", 3, 2, 10)]
+    monkeypatch.setattr(
+        metrics,
+        "_collect_subscription_statuses",
+        lambda domains: [(test_domain, s) for s in subscriptions],
+    )
+    monkeypatch.setattr(
+        metrics,
+        "_collect_projection_statuses",
+        lambda domains: [(test_domain, p) for p in projections],
+    )
+    monkeypatch.setattr(metrics, "_collect_pool_stats", lambda domains: pools)
+    monkeypatch.setattr(
+        metrics, "_collect_broker_pool_stats", lambda domains: broker_pools
+    )
+    return TestClient(Observatory(domains=[test_domain]).app)
+
+
+def test_hand_rolled_metrics_full_text(full_text_client):
+    response = full_text_client.get("/metrics")
+
+    assert response.status_code == 200
+    assert response.text.split("\n") == [*FULL_TEXT_LINES, ""]
