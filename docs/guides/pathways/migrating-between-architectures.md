@@ -5,7 +5,7 @@ incrementally. This guide shows the concrete code transformations for each
 migration step: **DDD to CQRS** and **CQRS to Event Sourcing**.
 
 Each migration is additive. You add new capabilities to the code that already
-works, without rewriting that code.
+works, without rewriting from scratch.
 
 ---
 
