@@ -85,8 +85,8 @@ All changes to entities should be driven through the aggregates.
 
 ## Persistence
 
-Protean always saves and loads data one aggregate at a time. They internally
-load and manage the objects within their cluster.
+Protean always saves and loads data as whole aggregates. Each aggregate loads
+and manages the objects within its cluster.
 
 ### Aggregates persist data with the help of Repositories. { data-toc-label="Repositories" }
 
