@@ -561,8 +561,10 @@ def _custom_json_dumps(value: typing.Any) -> str:
 def _union_column_arm(python_type: typing.Any) -> typing.Any:
     """The arm of an Optional/Union annotation whose column a field gets.
 
-    ``str | None`` gives ``str``. A union led by a ``Literal`` gives ``None``.
-    An annotation that is not a union comes back unchanged.
+    ``str | None`` gives ``str``. A union with more than one arm besides
+    ``None``, led by a ``Literal``, gives ``None``; ``Literal["a"] | None``
+    gives the ``Literal``. An annotation that is not a union comes back
+    unchanged.
     """
     # Unwrap Optional/Union: str | None → str
     origin = typing.get_origin(python_type)
