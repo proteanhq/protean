@@ -14,8 +14,8 @@ A domain element whose **method body calls a concrete adapter** under
 element, the method, the adapter symbol, and the source line.
 
 This rule finds runtime coupling inside method bodies. `INFRA_IMPORT_IN_DOMAIN`
-reads only module-level imports and does not check method bodies. It reads
-method bodies through the [behavioral analysis substrate](../behavioral-analysis.md).
+reads only module-level imports and does not check method bodies. This rule
+reads method bodies through the [behavioral analysis substrate](../behavioral-analysis.md).
 A method can reach an adapter through `import protean` attribute access
 (`protean.adapters.broker.inline.InlineBroker(...)`), and that call is a real
 call-site coupling. The module imports only `protean`, so the module-level
