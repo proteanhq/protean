@@ -7,7 +7,7 @@ from threading import RLock
 from typing import Any
 
 from protean.core.projection import BaseProjection
-from protean.port.cache import BaseCache, TTLValue
+from protean.port.cache import BaseCache, CacheCapabilities, TTLValue
 from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
 
@@ -117,6 +117,12 @@ class MemoryCache(BaseCache):
         self._db = TTLDict(self.ttl)
 
         self._lock = RLock()
+
+    @property
+    def capabilities(self) -> CacheCapabilities:
+        """Entries live in a `TTLDict` inside this adapter instance, so a
+        second adapter sees none of them and a new adapter starts empty."""
+        return CacheCapabilities.LOCAL
 
     def ping(self) -> bool:
         """Always returns True for memory cache"""

@@ -38,6 +38,19 @@ support.
 - **Requires**: Redis server and the `redis` Python package
 - Full TTL support with millisecond precision
 
+### Capabilities
+
+Each cache adapter declares what it supports through its `capabilities`
+property, a `CacheCapabilities` value from `protean.port.cache`. To check one
+behaviour, test the flag directly, for example
+`CacheCapabilities.SHARED in domain.caches["default"].capabilities`.
+
+The memory cache declares `LOCAL`: key-value reads and writes, per-key TTLs and
+glob patterns. Its entries live in one adapter instance, so a second adapter
+built from the same config sees none of them. The Redis cache declares
+`DISTRIBUTED`, which adds `SHARED` and `DURABLE`: every adapter built from the
+same `URI` sees the same entries, and they remain after an adapter closes.
+
 ## Configuration
 
 Caches are configured in the `[caches]` section of your domain configuration:

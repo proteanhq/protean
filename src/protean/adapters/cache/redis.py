@@ -6,7 +6,7 @@ from typing import Any
 import redis
 
 from protean.core.projection import BaseProjection
-from protean.port.cache import BaseCache, TTLValue
+from protean.port.cache import BaseCache, CacheCapabilities, TTLValue
 from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
 
@@ -68,6 +68,12 @@ class RedisCache(BaseCache):
                 logger.debug("Closed Redis cache connection: %s", self.name)
         except Exception:  # closing must not raise during shutdown; logged
             logger.exception("Error closing Redis cache %s", self.name)
+
+    @property
+    def capabilities(self) -> CacheCapabilities:
+        """Entries live in the Redis server, so every adapter built from the
+        same `URI` sees them, and they outlast the adapter that wrote them."""
+        return CacheCapabilities.DISTRIBUTED
 
     def ping(self) -> bool:
         return bool(self._client.ping())

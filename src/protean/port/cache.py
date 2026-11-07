@@ -1,6 +1,7 @@
 import logging
 import math
 from abc import ABCMeta, abstractmethod
+from enum import Flag, auto
 from typing import Any, TypeVar
 
 from protean.core.projection import BaseProjection
@@ -88,6 +89,43 @@ def _resolve_ttl(value: Any, source: str) -> int | float:
     return number
 
 
+class CacheCapabilities(Flag):
+    """The behaviours a cache adapter supports.
+
+    Each adapter declares one value through `BaseCache.capabilities`. A caller
+    or a conformance test reads the flag directly to learn whether the adapter
+    supports a behaviour. Most adapters declare one of the two tiers, `LOCAL`
+    or `DISTRIBUTED`.
+    """
+
+    KEY_VALUE = auto()
+    """Get, put and delete by key: `get`, `put`, `delete` and `clear`, the
+    members `CachePort` requires of every cache adapter."""
+
+    TTL = auto()
+    """Per-key expiry: the `CacheTTLPort` members `set_ttl` and `get_ttl`."""
+
+    PATTERN_MATCH = auto()
+    """Glob reads, counts and deletes: the `CachePatternPort` members
+    `keys_matching`, `count_matching` and `delete_matching`."""
+
+    SHARED = auto()
+    """A second adapter built from the same config sees the first one's writes
+    while both are open."""
+
+    DURABLE = auto()
+    """Entries survive closing the adapter and building a new one from the
+    same config."""
+
+    LOCAL = KEY_VALUE | TTL | PATTERN_MATCH
+    """Key-value reads and writes, per-key expiry and glob patterns, inside
+    one adapter instance."""
+
+    DISTRIBUTED = LOCAL | SHARED | DURABLE
+    """Everything in `LOCAL`, with entries shared across adapter instances and
+    kept after an adapter closes."""
+
+
 class BaseCache(metaclass=ABCMeta):
     def __init__(self, name: str, domain: Any, conn_info: dict[str, Any]) -> None:
         """Initialize Cache with Connection/Adapter details"""
@@ -165,6 +203,11 @@ class BaseCache(metaclass=ABCMeta):
         implementation is a no-op so that adapters without external
         resources (e.g. the in-memory cache) work without changes.
         """
+
+    @property
+    @abstractmethod
+    def capabilities(self) -> CacheCapabilities:
+        """The behaviours this cache adapter supports."""
 
     @abstractmethod
     def ping(self) -> bool:
