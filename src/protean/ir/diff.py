@@ -2031,7 +2031,11 @@ def _field_removal_change(
 def _field_delta_change(
     field_name: str, field_changes: dict[str, Any], fqn: str, element_type: str
 ) -> CompatibilityChange | None:
-    """Rate a changed field from its attribute delta, or ``None`` if it is safe as is."""
+    """Rate a changed field from its attribute delta.
+
+    Returns a breaking change, a safe change for a widened Decimal, or
+    ``None`` when the delta needs no entry in the report.
+    """
     # The delta holds only the keys that differ; a key left out is equal on
     # both sides, so comparing the delta alone gives the same answer as
     # comparing the full fields.
