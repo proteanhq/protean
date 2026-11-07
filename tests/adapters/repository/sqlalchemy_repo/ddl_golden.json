@@ -1,0 +1,1628 @@
+{
+  "mariadb/associations/Book": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+      ],
+      "table": "CREATE TABLE book (\n\ttitle VARCHAR(100), \n\tpublished_at DATETIME(6) NOT NULL, \n\tid CHAR(32), \n\tshelf_id CHAR(32), \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": null
+    },
+    "rendered": [
+      "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+    ]
+  },
+  "mariadb/associations/Label": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE label (\n\ttext VARCHAR(30), \n\tid CHAR(32), \n\tshelf_id CHAR(32), \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": null
+    }
+  },
+  "mariadb/associations/Shelf": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE shelf (\n\tname VARCHAR(50), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/custom_model/Ticket": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_ticket_subject_body ON ticket (subject, `body`)"
+      ],
+      "table": "CREATE TABLE ticket (\n\tsubject VARCHAR(80), \n\t`body` VARCHAR(500), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COMMENT='tickets' COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_ticket_subject_body ON ticket (subject, `body`)"
+    ]
+  },
+  "mariadb/fields/Catalogue": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary TEXT, \n\tunbounded TEXT, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOL, \n\tpublished_on DATE, \n\tpublished_at DATETIME(6), \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags JSON, \n\tlabels JSON, \n\tcounts JSON, \n\tplain_counts JSON, \n\tblobs JSON, \n\tmeasures JSON, \n\tsequence INTEGER, \n\texternal_id TEXT, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list JSON, \n\tmixed_choice TEXT, \n\tmeasure_obj BLOB, \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures JSON, \n\tpickled_measures BLOB, \n\tlegacy_names JSON, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/index_widths/JsonKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over tags' on 'JsonKey' covers tags, which maps to MySQL's JSON type. MySQL indexes a JSON column only through a generated column on a JSON path, which Protean does not emit. Index a scalar field instead."
+    },
+    "rendered": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over tags' on 'JsonKey' covers tags, which maps to MySQL's JSON type. MySQL indexes a JSON column only through a generated column on a JSON path, which Protean does not emit. Index a scalar field instead."
+    }
+  },
+  "mariadb/index_widths/PickledVOListKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over measures' on 'PickledVOListKey' covers measures, which maps to a TEXT or BLOB column. InnoDB cannot index either without a prefix length. Give the field a max_length (e.g. Field(max_length=255)), or map it to a VARCHAR column."
+    },
+    "rendered": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over measures' on 'PickledVOListKey' covers measures, which maps to a TEXT or BLOB column. InnoDB cannot index either without a prefix length. Give the field a max_length (e.g. Field(max_length=255)), or map it to a VARCHAR column."
+    }
+  },
+  "mariadb/index_widths/SizedKeys": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)",
+        "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+        "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)"
+      ],
+      "table": "CREATE TABLE sized_keys (\n\tflag BOOL, \n\tcount INTEGER, \n\tratio FLOAT, \n\tday DATE, \n\tat DATETIME(6), \n\tamount NUMERIC(12, 3), \n\tloose_amount NUMERIC, \n\tcode VARCHAR(100), \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+      "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)",
+      "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)"
+    ]
+  },
+  "mariadb/index_widths/TextKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over body' on 'TextKey' covers body, which maps to a TEXT or BLOB column. InnoDB cannot index either without a prefix length. Give the field a max_length (e.g. Field(max_length=255)), or map it to a VARCHAR column."
+    },
+    "rendered": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over body' on 'TextKey' covers body, which maps to a TEXT or BLOB column. InnoDB cannot index either without a prefix length. Give the field a max_length (e.g. Field(max_length=255)), or map it to a VARCHAR column."
+    }
+  },
+  "mariadb/index_widths/VOListKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over measures' on 'VOListKey' covers measures, which maps to MySQL's JSON type. MySQL indexes a JSON column only through a generated column on a JSON path, which Protean does not emit. Index a scalar field instead."
+    },
+    "rendered": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over measures' on 'VOListKey' covers measures, which maps to MySQL's JSON type. MySQL indexes a JSON column only through a generated column on a JSON path, which Protean does not emit. Index a scalar field instead."
+    }
+  },
+  "mariadb/index_widths/WideKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over first, second' on 'WideKey' covers first, second, needing 3200 bytes. InnoDB caps an index key at 3072 bytes across every column in it, which is 768 utf8mb4 characters if the key is all string. Shorten the fields' max_length, or index fewer of them."
+    },
+    "rendered": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over first, second' on 'WideKey' covers first, second, needing 3200 bytes. InnoDB caps an index key at 3072 bytes across every column in it, which is 768 utf8mb4 characters if the key is all string. Shorten the fields' max_length, or index fewer of them."
+    }
+  },
+  "mariadb/indexes/IndexedJob": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_indexed_job_correlation_id ON indexed_job (correlation_id)",
+        "CREATE INDEX ix_job_active ON indexed_job (status, priority DESC)",
+        "CREATE INDEX ix_job_failed_or_low ON indexed_job (status)",
+        "CREATE UNIQUE INDEX uq_indexed_job_message_id ON indexed_job (message_id)"
+      ],
+      "table": "CREATE TABLE indexed_job (\n\tstatus VARCHAR(32), \n\tpriority INTEGER, \n\tmessage_id VARCHAR(64), \n\tcorrelation_id VARCHAR(64), \n\tnote VARCHAR(200), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_job_active ON indexed_job (status, priority DESC)",
+      "CREATE INDEX ix_job_failed_or_low ON indexed_job (status)",
+      "CREATE UNIQUE INDEX uq_indexed_job_message_id ON indexed_job (message_id)",
+      "CREATE INDEX ix_indexed_job_correlation_id ON indexed_job (correlation_id)"
+    ]
+  },
+  "mariadb/integer_identity_function_strategy/Counter": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_counter_id_total ON counter (id, total)"
+      ],
+      "table": "CREATE TABLE counter (\n\ttotal INTEGER, \n\tid INTEGER AUTO_INCREMENT, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_counter_id_total ON counter (id, total)"
+    ]
+  },
+  "mariadb/integer_identity_function_strategy/CounterItem": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE counter_item (\n\tamount INTEGER, \n\tid INTEGER AUTO_INCREMENT, \n\tcounter_with_items_id INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": null
+    }
+  },
+  "mariadb/integer_identity_function_strategy/CounterWithItems": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE counter_with_items (\n\tid INTEGER AUTO_INCREMENT, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/integer_identity_function_strategy/StringIdInIntegerDomain": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `StringIdInIntegerDomain` on provider `mariadb` (mysql) generates a string identity, but the domain `identity_type` is \"integer\", so its column is an integer column. The column type follows the domain setting, not the field. Drop `identity_type` from the field, or store the identifier in a domain whose `identity_type` matches it."
+    }
+  },
+  "mariadb/integer_identity_uuid_strategy/Counter": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `Counter` on provider `mariadb` (mysql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "mariadb/integer_identity_uuid_strategy/CounterItem": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Entity `CounterItem` on provider `mariadb` (mysql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "mariadb/integer_identity_uuid_strategy/CounterWithItems": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `CounterWithItems` on provider `mariadb` (mysql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "mariadb/integer_identity_uuid_strategy/Incremented": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE incremented (\n\tseq INTEGER AUTO_INCREMENT, \n\t_version INTEGER, \n\tPRIMARY KEY (seq), \n\tUNIQUE (seq)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/integer_identity_uuid_strategy/IntegerKeyed": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE integer_keyed (\n\tcode INTEGER NOT NULL AUTO_INCREMENT, \n\t_version INTEGER, \n\tPRIMARY KEY (code), \n\tUNIQUE (code)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/integer_identity_uuid_strategy/ModelledCounter": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE modelled_counter (\n\tid INTEGER NOT NULL AUTO_INCREMENT, \n\ttotal INTEGER, \n\t_version INTEGER, \n\tPRIMARY KEY (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/keys/KeyedByString": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE keyed_by_string (\n\tcode CHAR(32) NOT NULL, \n\tname VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (code), \n\tUNIQUE (code)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/keys/PickledKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Field 'measures' on 'PickledKey' is a primary key or unique column stored as a BLOB. InnoDB cannot index a BLOB without a prefix length, so it cannot carry a key. Drop the constraint, or store the value in a bounded String column."
+    }
+  },
+  "mariadb/keys/UnboundedUnique": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Field 'handle' on 'UnboundedUnique' is a primary key or unique column with no max_length. MySQL cannot index a TEXT column without a prefix length, so declare one (e.g. Field(max_length=255))."
+    }
+  },
+  "mariadb/keys/UniqueAttributes": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Field 'attributes' on 'UniqueAttributes' is a primary key or unique column holding JSON. MySQL indexes a JSON column only through a generated column on a JSON path, which Protean does not emit, so the constraint cannot be created."
+    }
+  },
+  "mariadb/keys/WideUnique": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Field 'handle' on 'WideUnique' is a primary key or unique column with max_length=1000. InnoDB caps an index key at 3072 bytes, which is 768 utf8mb4 characters, so the column cannot be indexed in full. Reduce max_length to 768 or below."
+    }
+  },
+  "mariadb/mssql_elements/MssqlTestEntity": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE mssql_test_entity (\n\tname VARCHAR(50), \n\tdescription VARCHAR(200), \n\tage INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/mssql_elements/MssqlTimestampedEntity": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE mssql_timestamped_entity (\n\tlabel VARCHAR(50), \n\toccurred_at DATETIME(6), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/postgresql_elements/Alien": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE alien (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/postgresql_elements/ComplexUser": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE complex_user (\n\tpassword VARCHAR(255) NOT NULL, \n\tid CHAR(32), \n\temail_address VARCHAR(254) NOT NULL, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/postgresql_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at DATETIME(6), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/postgresql_elements/User": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE user (\n\temail VARCHAR(255) NOT NULL, \n\tpassword VARCHAR(3026), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (email), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/string_associations/Book": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+      ],
+      "table": "CREATE TABLE book (\n\ttitle VARCHAR(100), \n\tpublished_at DATETIME(6) NOT NULL, \n\tid VARCHAR(255), \n\tshelf_id VARCHAR(255), \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": null
+    },
+    "rendered": [
+      "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+    ]
+  },
+  "mariadb/string_associations/Label": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE label (\n\ttext VARCHAR(30), \n\tid VARCHAR(255), \n\tshelf_id VARCHAR(255), \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": null
+    }
+  },
+  "mariadb/string_associations/Shelf": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE shelf (\n\tname VARCHAR(50), \n\tid VARCHAR(255), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mariadb/string_index_widths/SizedKeys": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)",
+        "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+        "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)"
+      ],
+      "table": "CREATE TABLE sized_keys (\n\tflag BOOL, \n\tcount INTEGER, \n\tratio FLOAT, \n\tday DATE, \n\tat DATETIME(6), \n\tamount NUMERIC(12, 3), \n\tloose_amount NUMERIC, \n\tcode VARCHAR(100), \n\tid VARCHAR(255), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_uca1400_as_cs",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+      "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)",
+      "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)"
+    ]
+  },
+  "mssql/associations/Book": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_book_shelf_id ON dbo.book (shelf_id)"
+      ],
+      "table": "CREATE TABLE dbo.book (\n\ttitle VARCHAR(100) NULL, \n\tpublished_at DATETIME2 NOT NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\tshelf_id UNIQUEIDENTIFIER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    },
+    "rendered": [
+      "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+    ]
+  },
+  "mssql/associations/Label": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.label (\n\ttext VARCHAR(30) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\tshelf_id UNIQUEIDENTIFIER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    }
+  },
+  "mssql/associations/Shelf": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.shelf (\n\tname VARCHAR(50) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/custom_model/Ticket": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_ticket_subject_body ON dbo.ticket (subject, body)",
+        "execute sp_addextendedproperty 'MS_Description', N'tickets', 'schema', dbo, 'table', ticket"
+      ],
+      "table": "CREATE TABLE dbo.ticket (\n\tsubject VARCHAR(80) NULL, \n\tbody VARCHAR(500) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_ticket_subject_body ON ticket (subject, body)"
+    ]
+  },
+  "mssql/fields/Catalogue": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60) NULL, \n\tsummary VARCHAR(max) NULL, \n\tunbounded VARCHAR(max) NULL, \n\tpages INTEGER NULL, \n\trating FLOAT NULL, \n\tactive BIT NULL, \n\tpublished_on DATETIME NULL, \n\tpublished_at DATETIME2 NULL, \n\tprice NUMERIC(10, 2) NULL, \n\tloose_price NUMERIC NULL, \n\tattributes NVARCHAR(max) NULL, \n\ttags NVARCHAR(max) NULL, \n\tlabels NVARCHAR(max) NULL, \n\tcounts NVARCHAR(max) NULL, \n\tplain_counts NVARCHAR(max) NULL, \n\tblobs NVARCHAR(max) NULL, \n\tmeasures NVARCHAR(max) NULL, \n\tsequence INTEGER NULL, \n\texternal_id VARCHAR(max) NULL, \n\tstatus VARCHAR(10) NULL, \n\tlevel INTEGER NULL, \n\tbare_list NVARCHAR(max) NULL, \n\tmixed_choice VARCHAR(max) NULL, \n\tmeasure_obj IMAGE NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\taddress_street VARCHAR(100) NULL, \n\taddress_city VARCHAR(50) NULL, \n\tlegacy_measures NVARCHAR(max) NULL, \n\tpickled_measures IMAGE NULL, \n\tlegacy_names NVARCHAR(max) NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/index_widths/JsonKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_json_key_tags ON dbo.json_key (tags)"
+      ],
+      "table": "CREATE TABLE dbo.json_key (\n\ttags NVARCHAR(max) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_json_key_tags ON json_key (tags)"
+    ]
+  },
+  "mssql/index_widths/PickledVOListKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_pickled_vo_list_key_measures ON dbo.pickled_vo_list_key (measures)"
+      ],
+      "table": "CREATE TABLE dbo.pickled_vo_list_key (\n\tid UNIQUEIDENTIFIER NOT NULL, \n\tmeasures IMAGE NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_pickled_vo_list_key_measures ON pickled_vo_list_key (measures)"
+    ]
+  },
+  "mssql/index_widths/SizedKeys": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_sized_keys_address_city ON dbo.sized_keys (address_city)",
+        "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON dbo.sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+        "CREATE INDEX ix_sized_keys_id_code ON dbo.sized_keys (id, code)"
+      ],
+      "table": "CREATE TABLE dbo.sized_keys (\n\tflag BIT NULL, \n\tcount INTEGER NULL, \n\tratio FLOAT NULL, \n\tday DATETIME NULL, \n\tat DATETIME2 NULL, \n\tamount NUMERIC(12, 3) NULL, \n\tloose_amount NUMERIC NULL, \n\tcode VARCHAR(100) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\taddress_street VARCHAR(100) NULL, \n\taddress_city VARCHAR(50) NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+      "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)",
+      "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)"
+    ]
+  },
+  "mssql/index_widths/TextKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_text_key_body ON dbo.text_key (body)"
+      ],
+      "table": "CREATE TABLE dbo.text_key (\n\tbody VARCHAR(max) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_text_key_body ON text_key (body)"
+    ]
+  },
+  "mssql/index_widths/VOListKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_vo_list_key_measures ON dbo.vo_list_key (measures)"
+      ],
+      "table": "CREATE TABLE dbo.vo_list_key (\n\tid UNIQUEIDENTIFIER NOT NULL, \n\tmeasures NVARCHAR(max) NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_vo_list_key_measures ON vo_list_key (measures)"
+    ]
+  },
+  "mssql/index_widths/WideKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_wide_key_first_second ON dbo.wide_key (first, second)"
+      ],
+      "table": "CREATE TABLE dbo.wide_key (\n\tfirst VARCHAR(700) NULL, \n\tsecond VARCHAR(100) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_wide_key_first_second ON wide_key (first, second)"
+    ]
+  },
+  "mssql/indexes/IndexedJob": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_indexed_job_correlation_id ON dbo.indexed_job (correlation_id) INCLUDE (note)",
+        "CREATE INDEX ix_job_active ON dbo.indexed_job (status, priority DESC)",
+        "CREATE INDEX ix_job_failed_or_low ON dbo.indexed_job (status)",
+        "CREATE INDEX ix_job_ms ON indexed_job (note)",
+        "CREATE UNIQUE INDEX uq_indexed_job_message_id ON dbo.indexed_job (message_id)"
+      ],
+      "table": "CREATE TABLE dbo.indexed_job (\n\tstatus VARCHAR(32) NULL, \n\tpriority INTEGER NULL, \n\tmessage_id VARCHAR(64) NULL, \n\tcorrelation_id VARCHAR(64) NULL, \n\tnote VARCHAR(200) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_job_active ON indexed_job (status, priority DESC)",
+      "CREATE INDEX ix_job_failed_or_low ON indexed_job (status)",
+      "CREATE UNIQUE INDEX uq_indexed_job_message_id ON indexed_job (message_id)",
+      "CREATE INDEX ix_indexed_job_correlation_id ON indexed_job (correlation_id) INCLUDE (note)",
+      "CREATE INDEX ix_job_ms ON indexed_job (note)"
+    ]
+  },
+  "mssql/integer_identity_function_strategy/Counter": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_counter_id_total ON dbo.counter (id, total)"
+      ],
+      "table": "CREATE TABLE dbo.counter (\n\ttotal INTEGER NULL, \n\tid INTEGER NOT NULL IDENTITY, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_counter_id_total ON counter (id, total)"
+    ]
+  },
+  "mssql/integer_identity_function_strategy/CounterItem": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.counter_item (\n\tamount INTEGER NULL, \n\tid INTEGER NOT NULL IDENTITY, \n\tcounter_with_items_id INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    }
+  },
+  "mssql/integer_identity_function_strategy/CounterWithItems": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.counter_with_items (\n\tid INTEGER NOT NULL IDENTITY, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/integer_identity_function_strategy/StringIdInIntegerDomain": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `StringIdInIntegerDomain` on provider `mssql` (mssql) generates a string identity, but the domain `identity_type` is \"integer\", so its column is an integer column. The column type follows the domain setting, not the field. Drop `identity_type` from the field, or store the identifier in a domain whose `identity_type` matches it."
+    }
+  },
+  "mssql/integer_identity_uuid_strategy/Counter": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `Counter` on provider `mssql` (mssql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "mssql/integer_identity_uuid_strategy/CounterItem": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Entity `CounterItem` on provider `mssql` (mssql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "mssql/integer_identity_uuid_strategy/CounterWithItems": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `CounterWithItems` on provider `mssql` (mssql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "mssql/integer_identity_uuid_strategy/Incremented": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.incremented (\n\tseq INTEGER NOT NULL IDENTITY, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (seq), \n\tUNIQUE (seq)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/integer_identity_uuid_strategy/IntegerKeyed": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.integer_keyed (\n\tcode INTEGER NOT NULL IDENTITY, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (code), \n\tUNIQUE (code)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/integer_identity_uuid_strategy/ModelledCounter": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.modelled_counter (\n\tid INTEGER NOT NULL IDENTITY, \n\ttotal INTEGER NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/keys/KeyedByString": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.keyed_by_string (\n\tcode UNIQUEIDENTIFIER NOT NULL, \n\tname VARCHAR(50) NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (code), \n\tUNIQUE (code)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/keys/PickledKey": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.pickled_key (\n\tid UNIQUEIDENTIFIER NOT NULL, \n\tmeasures IMAGE NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id), \n\tUNIQUE (measures)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/keys/UnboundedUnique": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Field 'handle' on 'UnboundedUnique' is mapped to a VARCHAR column and marked as unique. MSSQL requires an explicit max_length for indexed/unique string columns (e.g. Field(max_length=255))."
+    }
+  },
+  "mssql/keys/UniqueAttributes": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.unique_attributes (\n\tattributes NVARCHAR(max) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (attributes), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/keys/WideUnique": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.wide_unique (\n\thandle VARCHAR(1000) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (handle), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/mssql_elements/MssqlTestEntity": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.mssql_test_entity (\n\tname VARCHAR(50) NULL, \n\tdescription VARCHAR(200) NULL, \n\tage INTEGER NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/mssql_elements/MssqlTimestampedEntity": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.mssql_timestamped_entity (\n\tlabel VARCHAR(50) NULL, \n\toccurred_at DATETIME2 NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/postgresql_elements/Alien": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.alien (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/postgresql_elements/ComplexUser": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.complex_user (\n\tpassword VARCHAR(255) NOT NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\temail_address VARCHAR(254) NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/postgresql_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER NULL, \n\tcreated_at DATETIME2 NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/postgresql_elements/User": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.[user] (\n\temail VARCHAR(255) NOT NULL, \n\tpassword VARCHAR(3026) NULL, \n\tid UNIQUEIDENTIFIER NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (email), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/string_associations/Book": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_book_shelf_id ON dbo.book (shelf_id)"
+      ],
+      "table": "CREATE TABLE dbo.book (\n\ttitle VARCHAR(100) NULL, \n\tpublished_at DATETIME2 NOT NULL, \n\tid VARCHAR(255) NOT NULL, \n\tshelf_id VARCHAR(max) NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    },
+    "rendered": [
+      "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+    ]
+  },
+  "mssql/string_associations/Label": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.label (\n\ttext VARCHAR(30) NULL, \n\tid VARCHAR(255) NOT NULL, \n\tshelf_id VARCHAR(max) NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    }
+  },
+  "mssql/string_associations/Shelf": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE dbo.shelf (\n\tname VARCHAR(50) NULL, \n\tid VARCHAR(255) NOT NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "mssql/string_index_widths/SizedKeys": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_sized_keys_address_city ON dbo.sized_keys (address_city)",
+        "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON dbo.sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+        "CREATE INDEX ix_sized_keys_id_code ON dbo.sized_keys (id, code)"
+      ],
+      "table": "CREATE TABLE dbo.sized_keys (\n\tflag BIT NULL, \n\tcount INTEGER NULL, \n\tratio FLOAT NULL, \n\tday DATETIME NULL, \n\tat DATETIME2 NULL, \n\tamount NUMERIC(12, 3) NULL, \n\tloose_amount NUMERIC NULL, \n\tcode VARCHAR(100) NULL, \n\tid VARCHAR(255) NOT NULL, \n\taddress_street VARCHAR(100) NULL, \n\taddress_city VARCHAR(50) NULL, \n\t_version INTEGER NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+      "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)",
+      "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)"
+    ]
+  },
+  "mysql/associations/Book": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+      ],
+      "table": "CREATE TABLE book (\n\ttitle VARCHAR(100), \n\tpublished_at DATETIME(6) NOT NULL, \n\tid CHAR(32), \n\tshelf_id CHAR(32), \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": null
+    },
+    "rendered": [
+      "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+    ]
+  },
+  "mysql/associations/Label": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE label (\n\ttext VARCHAR(30), \n\tid CHAR(32), \n\tshelf_id CHAR(32), \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": null
+    }
+  },
+  "mysql/associations/Shelf": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE shelf (\n\tname VARCHAR(50), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/custom_model/Ticket": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_ticket_subject_body ON ticket (subject, body)"
+      ],
+      "table": "CREATE TABLE ticket (\n\tsubject VARCHAR(80), \n\tbody VARCHAR(500), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COMMENT='tickets' COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_ticket_subject_body ON ticket (subject, body)"
+    ]
+  },
+  "mysql/fields/Catalogue": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary TEXT, \n\tunbounded TEXT, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOL, \n\tpublished_on DATE, \n\tpublished_at DATETIME(6), \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags JSON, \n\tlabels JSON, \n\tcounts JSON, \n\tplain_counts JSON, \n\tblobs JSON, \n\tmeasures JSON, \n\tsequence INTEGER, \n\texternal_id TEXT, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list JSON, \n\tmixed_choice TEXT, \n\tmeasure_obj BLOB, \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures JSON, \n\tpickled_measures BLOB, \n\tlegacy_names JSON, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/index_widths/JsonKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over tags' on 'JsonKey' covers tags, which maps to MySQL's JSON type. MySQL indexes a JSON column only through a generated column on a JSON path, which Protean does not emit. Index a scalar field instead."
+    },
+    "rendered": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over tags' on 'JsonKey' covers tags, which maps to MySQL's JSON type. MySQL indexes a JSON column only through a generated column on a JSON path, which Protean does not emit. Index a scalar field instead."
+    }
+  },
+  "mysql/index_widths/PickledVOListKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over measures' on 'PickledVOListKey' covers measures, which maps to a TEXT or BLOB column. InnoDB cannot index either without a prefix length. Give the field a max_length (e.g. Field(max_length=255)), or map it to a VARCHAR column."
+    },
+    "rendered": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over measures' on 'PickledVOListKey' covers measures, which maps to a TEXT or BLOB column. InnoDB cannot index either without a prefix length. Give the field a max_length (e.g. Field(max_length=255)), or map it to a VARCHAR column."
+    }
+  },
+  "mysql/index_widths/SizedKeys": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)",
+        "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+        "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)"
+      ],
+      "table": "CREATE TABLE sized_keys (\n\tflag BOOL, \n\tcount INTEGER, \n\tratio FLOAT, \n\tday DATE, \n\tat DATETIME(6), \n\tamount NUMERIC(12, 3), \n\tloose_amount NUMERIC, \n\tcode VARCHAR(100), \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+      "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)",
+      "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)"
+    ]
+  },
+  "mysql/index_widths/TextKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over body' on 'TextKey' covers body, which maps to a TEXT or BLOB column. InnoDB cannot index either without a prefix length. Give the field a max_length (e.g. Field(max_length=255)), or map it to a VARCHAR column."
+    },
+    "rendered": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over body' on 'TextKey' covers body, which maps to a TEXT or BLOB column. InnoDB cannot index either without a prefix length. Give the field a max_length (e.g. Field(max_length=255)), or map it to a VARCHAR column."
+    }
+  },
+  "mysql/index_widths/VOListKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over measures' on 'VOListKey' covers measures, which maps to MySQL's JSON type. MySQL indexes a JSON column only through a generated column on a JSON path, which Protean does not emit. Index a scalar field instead."
+    },
+    "rendered": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over measures' on 'VOListKey' covers measures, which maps to MySQL's JSON type. MySQL indexes a JSON column only through a generated column on a JSON path, which Protean does not emit. Index a scalar field instead."
+    }
+  },
+  "mysql/index_widths/WideKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over first, second' on 'WideKey' covers first, second, needing 3200 bytes. InnoDB caps an index key at 3072 bytes across every column in it, which is 768 utf8mb4 characters if the key is all string. Shorten the fields' max_length, or index fewer of them."
+    },
+    "rendered": {
+      "error": "IncorrectUsageError",
+      "message": "Index 'over first, second' on 'WideKey' covers first, second, needing 3200 bytes. InnoDB caps an index key at 3072 bytes across every column in it, which is 768 utf8mb4 characters if the key is all string. Shorten the fields' max_length, or index fewer of them."
+    }
+  },
+  "mysql/indexes/IndexedJob": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_indexed_job_correlation_id ON indexed_job (correlation_id)",
+        "CREATE INDEX ix_job_active ON indexed_job (status, priority DESC)",
+        "CREATE INDEX ix_job_failed_or_low ON indexed_job (status)",
+        "CREATE INDEX ix_job_my ON indexed_job (note)",
+        "CREATE UNIQUE INDEX uq_indexed_job_message_id ON indexed_job (message_id)"
+      ],
+      "table": "CREATE TABLE indexed_job (\n\tstatus VARCHAR(32), \n\tpriority INTEGER, \n\tmessage_id VARCHAR(64), \n\tcorrelation_id VARCHAR(64), \n\tnote VARCHAR(200), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_job_active ON indexed_job (status, priority DESC)",
+      "CREATE INDEX ix_job_failed_or_low ON indexed_job (status)",
+      "CREATE UNIQUE INDEX uq_indexed_job_message_id ON indexed_job (message_id)",
+      "CREATE INDEX ix_indexed_job_correlation_id ON indexed_job (correlation_id)",
+      "CREATE INDEX ix_job_my ON indexed_job (note)"
+    ]
+  },
+  "mysql/integer_identity_function_strategy/Counter": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_counter_id_total ON counter (id, total)"
+      ],
+      "table": "CREATE TABLE counter (\n\ttotal INTEGER, \n\tid INTEGER AUTO_INCREMENT, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_counter_id_total ON counter (id, total)"
+    ]
+  },
+  "mysql/integer_identity_function_strategy/CounterItem": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE counter_item (\n\tamount INTEGER, \n\tid INTEGER AUTO_INCREMENT, \n\tcounter_with_items_id INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": null
+    }
+  },
+  "mysql/integer_identity_function_strategy/CounterWithItems": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE counter_with_items (\n\tid INTEGER AUTO_INCREMENT, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/integer_identity_function_strategy/StringIdInIntegerDomain": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `StringIdInIntegerDomain` on provider `mysql` (mysql) generates a string identity, but the domain `identity_type` is \"integer\", so its column is an integer column. The column type follows the domain setting, not the field. Drop `identity_type` from the field, or store the identifier in a domain whose `identity_type` matches it."
+    }
+  },
+  "mysql/integer_identity_uuid_strategy/Counter": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `Counter` on provider `mysql` (mysql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "mysql/integer_identity_uuid_strategy/CounterItem": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Entity `CounterItem` on provider `mysql` (mysql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "mysql/integer_identity_uuid_strategy/CounterWithItems": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `CounterWithItems` on provider `mysql` (mysql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "mysql/integer_identity_uuid_strategy/Incremented": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE incremented (\n\tseq INTEGER AUTO_INCREMENT, \n\t_version INTEGER, \n\tPRIMARY KEY (seq), \n\tUNIQUE (seq)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/integer_identity_uuid_strategy/IntegerKeyed": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE integer_keyed (\n\tcode INTEGER NOT NULL AUTO_INCREMENT, \n\t_version INTEGER, \n\tPRIMARY KEY (code), \n\tUNIQUE (code)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/integer_identity_uuid_strategy/ModelledCounter": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE modelled_counter (\n\tid INTEGER NOT NULL AUTO_INCREMENT, \n\ttotal INTEGER, \n\t_version INTEGER, \n\tPRIMARY KEY (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/keys/KeyedByString": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE keyed_by_string (\n\tcode CHAR(32) NOT NULL, \n\tname VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (code), \n\tUNIQUE (code)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/keys/PickledKey": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Field 'measures' on 'PickledKey' is a primary key or unique column stored as a BLOB. InnoDB cannot index a BLOB without a prefix length, so it cannot carry a key. Drop the constraint, or store the value in a bounded String column."
+    }
+  },
+  "mysql/keys/UnboundedUnique": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Field 'handle' on 'UnboundedUnique' is a primary key or unique column with no max_length. MySQL cannot index a TEXT column without a prefix length, so declare one (e.g. Field(max_length=255))."
+    }
+  },
+  "mysql/keys/UniqueAttributes": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Field 'attributes' on 'UniqueAttributes' is a primary key or unique column holding JSON. MySQL indexes a JSON column only through a generated column on a JSON path, which Protean does not emit, so the constraint cannot be created."
+    }
+  },
+  "mysql/keys/WideUnique": {
+    "model": {
+      "error": "IncorrectUsageError",
+      "message": "Field 'handle' on 'WideUnique' is a primary key or unique column with max_length=1000. InnoDB caps an index key at 3072 bytes, which is 768 utf8mb4 characters, so the column cannot be indexed in full. Reduce max_length to 768 or below."
+    }
+  },
+  "mysql/mssql_elements/MssqlTestEntity": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE mssql_test_entity (\n\tname VARCHAR(50), \n\tdescription VARCHAR(200), \n\tage INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/mssql_elements/MssqlTimestampedEntity": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE mssql_timestamped_entity (\n\tlabel VARCHAR(50), \n\toccurred_at DATETIME(6), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/postgresql_elements/Alien": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE alien (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/postgresql_elements/ComplexUser": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE complex_user (\n\tpassword VARCHAR(255) NOT NULL, \n\tid CHAR(32), \n\temail_address VARCHAR(254) NOT NULL, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/postgresql_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at DATETIME(6), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/postgresql_elements/User": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE user (\n\temail VARCHAR(255) NOT NULL, \n\tpassword VARCHAR(3026), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (email), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/string_associations/Book": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+      ],
+      "table": "CREATE TABLE book (\n\ttitle VARCHAR(100), \n\tpublished_at DATETIME(6) NOT NULL, \n\tid VARCHAR(255), \n\tshelf_id VARCHAR(255), \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": null
+    },
+    "rendered": [
+      "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+    ]
+  },
+  "mysql/string_associations/Label": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE label (\n\ttext VARCHAR(30), \n\tid VARCHAR(255), \n\tshelf_id VARCHAR(255), \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": null
+    }
+  },
+  "mysql/string_associations/Shelf": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE shelf (\n\tname VARCHAR(50), \n\tid VARCHAR(255), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    }
+  },
+  "mysql/string_index_widths/SizedKeys": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)",
+        "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+        "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)"
+      ],
+      "table": "CREATE TABLE sized_keys (\n\tflag BOOL, \n\tcount INTEGER, \n\tratio FLOAT, \n\tday DATE, \n\tat DATETIME(6), \n\tamount NUMERIC(12, 3), \n\tloose_amount NUMERIC, \n\tcode VARCHAR(100), \n\tid VARCHAR(255), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)CHARSET=utf8mb4 ENGINE=InnoDB ROW_FORMAT=DYNAMIC COLLATE utf8mb4_0900_as_cs",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+      "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)",
+      "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)"
+    ]
+  },
+  "postgresql/associations/Book": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_book_shelf_id ON public.book (shelf_id)"
+      ],
+      "table": "CREATE TABLE public.book (\n\ttitle VARCHAR(100), \n\tpublished_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, \n\tid UUID, \n\tshelf_id UUID, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    },
+    "rendered": [
+      "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+    ]
+  },
+  "postgresql/associations/Label": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.label (\n\ttext VARCHAR(30), \n\tid UUID, \n\tshelf_id UUID, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    }
+  },
+  "postgresql/associations/Shelf": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.shelf (\n\tname VARCHAR(50), \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/custom_model/Ticket": {
+    "model": {
+      "indexes": [
+        "COMMENT ON TABLE public.ticket IS 'tickets'",
+        "CREATE INDEX ix_ticket_subject_body ON public.ticket (subject, body)"
+      ],
+      "table": "CREATE TABLE public.ticket (\n\tsubject VARCHAR(80), \n\tbody VARCHAR(500), \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_ticket_subject_body ON ticket (subject, body)"
+    ]
+  },
+  "postgresql/fields/Catalogue": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary VARCHAR, \n\tunbounded VARCHAR, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOLEAN, \n\tpublished_on DATE, \n\tpublished_at TIMESTAMP WITHOUT TIME ZONE, \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags VARCHAR[], \n\tlabels VARCHAR[], \n\tcounts INTEGER[], \n\tplain_counts INTEGER[], \n\tblobs JSON[], \n\tmeasures JSON[], \n\tsequence INTEGER, \n\texternal_id VARCHAR, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list TEXT[], \n\tmixed_choice VARCHAR, \n\tmeasure_obj BYTEA, \n\tid UUID, \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures JSON[], \n\tpickled_measures BYTEA, \n\tlegacy_names VARCHAR[], \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/index_widths/JsonKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_json_key_tags ON public.json_key (tags)"
+      ],
+      "table": "CREATE TABLE public.json_key (\n\ttags VARCHAR[], \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_json_key_tags ON json_key (tags)"
+    ]
+  },
+  "postgresql/index_widths/PickledVOListKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_pickled_vo_list_key_measures ON public.pickled_vo_list_key (measures)"
+      ],
+      "table": "CREATE TABLE public.pickled_vo_list_key (\n\tid UUID, \n\tmeasures BYTEA, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_pickled_vo_list_key_measures ON pickled_vo_list_key (measures)"
+    ]
+  },
+  "postgresql/index_widths/SizedKeys": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_sized_keys_address_city ON public.sized_keys (address_city)",
+        "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON public.sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+        "CREATE INDEX ix_sized_keys_id_code ON public.sized_keys (id, code)"
+      ],
+      "table": "CREATE TABLE public.sized_keys (\n\tflag BOOLEAN, \n\tcount INTEGER, \n\tratio FLOAT, \n\tday DATE, \n\tat TIMESTAMP WITHOUT TIME ZONE, \n\tamount NUMERIC(12, 3), \n\tloose_amount NUMERIC, \n\tcode VARCHAR(100), \n\tid UUID, \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+      "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)",
+      "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)"
+    ]
+  },
+  "postgresql/index_widths/TextKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_text_key_body ON public.text_key (body)"
+      ],
+      "table": "CREATE TABLE public.text_key (\n\tbody VARCHAR, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_text_key_body ON text_key (body)"
+    ]
+  },
+  "postgresql/index_widths/VOListKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_vo_list_key_measures ON public.vo_list_key (measures)"
+      ],
+      "table": "CREATE TABLE public.vo_list_key (\n\tid UUID, \n\tmeasures JSON[], \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_vo_list_key_measures ON vo_list_key (measures)"
+    ]
+  },
+  "postgresql/index_widths/WideKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_wide_key_first_second ON public.wide_key (first, second)"
+      ],
+      "table": "CREATE TABLE public.wide_key (\n\tfirst VARCHAR(700), \n\tsecond VARCHAR(100), \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_wide_key_first_second ON wide_key (first, second)"
+    ]
+  },
+  "postgresql/indexes/IndexedJob": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_indexed_job_correlation_id ON public.indexed_job (correlation_id) INCLUDE (note)",
+        "CREATE INDEX ix_job_active ON public.indexed_job (status, priority DESC) WHERE status IN ('pending', 'failed')",
+        "CREATE INDEX ix_job_failed_or_low ON public.indexed_job (status) WHERE status = 'failed' OR priority <= 3",
+        "CREATE INDEX ix_job_pg ON indexed_job (note)",
+        "CREATE UNIQUE INDEX uq_indexed_job_message_id ON public.indexed_job (message_id)"
+      ],
+      "table": "CREATE TABLE public.indexed_job (\n\tstatus VARCHAR(32), \n\tpriority INTEGER, \n\tmessage_id VARCHAR(64), \n\tcorrelation_id VARCHAR(64), \n\tnote VARCHAR(200), \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_job_active ON indexed_job (status, priority DESC) WHERE status IN ('pending', 'failed')",
+      "CREATE INDEX ix_job_failed_or_low ON indexed_job (status) WHERE status = 'failed' OR priority <= 3",
+      "CREATE UNIQUE INDEX uq_indexed_job_message_id ON indexed_job (message_id)",
+      "CREATE INDEX ix_indexed_job_correlation_id ON indexed_job (correlation_id) INCLUDE (note)",
+      "CREATE INDEX ix_job_pg ON indexed_job (note)"
+    ]
+  },
+  "postgresql/integer_identity_function_strategy/Counter": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_counter_id_total ON public.counter (id, total)"
+      ],
+      "table": "CREATE TABLE public.counter (\n\ttotal INTEGER, \n\tid SERIAL, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_counter_id_total ON counter (id, total)"
+    ]
+  },
+  "postgresql/integer_identity_function_strategy/CounterItem": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.counter_item (\n\tamount INTEGER, \n\tid SERIAL, \n\tcounter_with_items_id INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    }
+  },
+  "postgresql/integer_identity_function_strategy/CounterWithItems": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.counter_with_items (\n\tid SERIAL, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/integer_identity_function_strategy/StringIdInIntegerDomain": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `StringIdInIntegerDomain` on provider `postgresql` (postgresql) generates a string identity, but the domain `identity_type` is \"integer\", so its column is an integer column. The column type follows the domain setting, not the field. Drop `identity_type` from the field, or store the identifier in a domain whose `identity_type` matches it."
+    }
+  },
+  "postgresql/integer_identity_uuid_strategy/Counter": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `Counter` on provider `postgresql` (postgresql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "postgresql/integer_identity_uuid_strategy/CounterItem": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Entity `CounterItem` on provider `postgresql` (postgresql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "postgresql/integer_identity_uuid_strategy/CounterWithItems": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `CounterWithItems` on provider `postgresql` (postgresql) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "postgresql/integer_identity_uuid_strategy/Incremented": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.incremented (\n\tseq SERIAL, \n\t_version INTEGER, \n\tPRIMARY KEY (seq), \n\tUNIQUE (seq)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/integer_identity_uuid_strategy/IntegerKeyed": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.integer_keyed (\n\tcode SERIAL NOT NULL, \n\t_version INTEGER, \n\tPRIMARY KEY (code), \n\tUNIQUE (code)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/integer_identity_uuid_strategy/ModelledCounter": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.modelled_counter (\n\tid SERIAL NOT NULL, \n\ttotal INTEGER, \n\t_version INTEGER, \n\tPRIMARY KEY (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/keys/KeyedByString": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.keyed_by_string (\n\tcode UUID NOT NULL, \n\tname VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (code), \n\tUNIQUE (code)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/keys/PickledKey": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.pickled_key (\n\tid UUID, \n\tmeasures BYTEA, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id), \n\tUNIQUE (measures)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/keys/UnboundedUnique": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.unbounded_unique (\n\thandle VARCHAR, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (handle), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/keys/UniqueAttributes": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.unique_attributes (\n\tattributes JSON, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (attributes), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/keys/WideUnique": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.wide_unique (\n\thandle VARCHAR(1000), \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (handle), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/mssql_elements/MssqlTestEntity": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.mssql_test_entity (\n\tname VARCHAR(50), \n\tdescription VARCHAR(200), \n\tage INTEGER, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/mssql_elements/MssqlTimestampedEntity": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.mssql_timestamped_entity (\n\tlabel VARCHAR(50), \n\toccurred_at TIMESTAMP WITHOUT TIME ZONE, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/postgresql_elements/Alien": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.alien (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/postgresql_elements/ComplexUser": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.complex_user (\n\tpassword VARCHAR(255) NOT NULL, \n\tid UUID, \n\temail_address VARCHAR(254) NOT NULL, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/postgresql_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at TIMESTAMP WITHOUT TIME ZONE, \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/postgresql_elements/User": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.\"user\" (\n\temail VARCHAR(255) NOT NULL, \n\tpassword VARCHAR(3026), \n\tid UUID, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (email), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/string_associations/Book": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_book_shelf_id ON public.book (shelf_id)"
+      ],
+      "table": "CREATE TABLE public.book (\n\ttitle VARCHAR(100), \n\tpublished_at TIMESTAMP WITHOUT TIME ZONE NOT NULL, \n\tid VARCHAR(255), \n\tshelf_id VARCHAR, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    },
+    "rendered": [
+      "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+    ]
+  },
+  "postgresql/string_associations/Label": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.label (\n\ttext VARCHAR(30), \n\tid VARCHAR(255), \n\tshelf_id VARCHAR, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    }
+  },
+  "postgresql/string_associations/Shelf": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE public.shelf (\n\tname VARCHAR(50), \n\tid VARCHAR(255), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "postgresql/string_index_widths/SizedKeys": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_sized_keys_address_city ON public.sized_keys (address_city)",
+        "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON public.sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+        "CREATE INDEX ix_sized_keys_id_code ON public.sized_keys (id, code)"
+      ],
+      "table": "CREATE TABLE public.sized_keys (\n\tflag BOOLEAN, \n\tcount INTEGER, \n\tratio FLOAT, \n\tday DATE, \n\tat TIMESTAMP WITHOUT TIME ZONE, \n\tamount NUMERIC(12, 3), \n\tloose_amount NUMERIC, \n\tcode VARCHAR(100), \n\tid VARCHAR(255), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+      "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)",
+      "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)"
+    ]
+  },
+  "sqlite/associations/Book": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+      ],
+      "table": "CREATE TABLE book (\n\ttitle VARCHAR(100), \n\tpublished_at DATETIME NOT NULL, \n\tid CHAR(32), \n\tshelf_id CHAR(32), \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    },
+    "rendered": [
+      "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+    ]
+  },
+  "sqlite/associations/Label": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE label (\n\ttext VARCHAR(30), \n\tid CHAR(32), \n\tshelf_id CHAR(32), \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    }
+  },
+  "sqlite/associations/Shelf": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE shelf (\n\tname VARCHAR(50), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/custom_model/Ticket": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_ticket_subject_body ON ticket (subject, body)"
+      ],
+      "table": "CREATE TABLE ticket (\n\tsubject VARCHAR(80), \n\tbody VARCHAR(500), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_ticket_subject_body ON ticket (subject, body)"
+    ]
+  },
+  "sqlite/fields/Catalogue": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE catalogue (\n\ttitle VARCHAR(100) NOT NULL, \n\tslug VARCHAR(60), \n\tsummary VARCHAR, \n\tunbounded VARCHAR, \n\tpages INTEGER, \n\trating FLOAT, \n\tactive BOOLEAN, \n\tpublished_on DATE, \n\tpublished_at DATETIME, \n\tprice NUMERIC(10, 2), \n\tloose_price NUMERIC, \n\tattributes JSON, \n\ttags JSON, \n\tlabels JSON, \n\tcounts JSON, \n\tplain_counts JSON, \n\tblobs JSON, \n\tmeasures JSON, \n\tsequence INTEGER, \n\texternal_id VARCHAR, \n\tstatus VARCHAR(10), \n\tlevel INTEGER, \n\tbare_list JSON, \n\tmixed_choice VARCHAR, \n\tmeasure_obj BLOB, \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\tlegacy_measures BLOB, \n\tpickled_measures BLOB, \n\tlegacy_names BLOB, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (slug), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/index_widths/JsonKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_json_key_tags ON json_key (tags)"
+      ],
+      "table": "CREATE TABLE json_key (\n\ttags JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_json_key_tags ON json_key (tags)"
+    ]
+  },
+  "sqlite/index_widths/PickledVOListKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_pickled_vo_list_key_measures ON pickled_vo_list_key (measures)"
+      ],
+      "table": "CREATE TABLE pickled_vo_list_key (\n\tid CHAR(32), \n\tmeasures BLOB, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_pickled_vo_list_key_measures ON pickled_vo_list_key (measures)"
+    ]
+  },
+  "sqlite/index_widths/SizedKeys": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)",
+        "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+        "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)"
+      ],
+      "table": "CREATE TABLE sized_keys (\n\tflag BOOLEAN, \n\tcount INTEGER, \n\tratio FLOAT, \n\tday DATE, \n\tat DATETIME, \n\tamount NUMERIC(12, 3), \n\tloose_amount NUMERIC, \n\tcode VARCHAR(100), \n\tid CHAR(32), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+      "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)",
+      "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)"
+    ]
+  },
+  "sqlite/index_widths/TextKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_text_key_body ON text_key (body)"
+      ],
+      "table": "CREATE TABLE text_key (\n\tbody VARCHAR, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_text_key_body ON text_key (body)"
+    ]
+  },
+  "sqlite/index_widths/VOListKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_vo_list_key_measures ON vo_list_key (measures)"
+      ],
+      "table": "CREATE TABLE vo_list_key (\n\tid CHAR(32), \n\tmeasures BLOB, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_vo_list_key_measures ON vo_list_key (measures)"
+    ]
+  },
+  "sqlite/index_widths/WideKey": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_wide_key_first_second ON wide_key (first, second)"
+      ],
+      "table": "CREATE TABLE wide_key (\n\tfirst VARCHAR(700), \n\tsecond VARCHAR(100), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_wide_key_first_second ON wide_key (first, second)"
+    ]
+  },
+  "sqlite/indexes/IndexedJob": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_indexed_job_correlation_id ON indexed_job (correlation_id)",
+        "CREATE INDEX ix_job_active ON indexed_job (status, priority DESC) WHERE status IN ('pending', 'failed')",
+        "CREATE INDEX ix_job_failed_or_low ON indexed_job (status) WHERE status = 'failed' OR priority <= 3",
+        "CREATE INDEX ix_job_lite ON indexed_job (note)",
+        "CREATE UNIQUE INDEX uq_indexed_job_message_id ON indexed_job (message_id)"
+      ],
+      "table": "CREATE TABLE indexed_job (\n\tstatus VARCHAR(32), \n\tpriority INTEGER, \n\tmessage_id VARCHAR(64), \n\tcorrelation_id VARCHAR(64), \n\tnote VARCHAR(200), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_job_active ON indexed_job (status, priority DESC) WHERE status IN ('pending', 'failed')",
+      "CREATE INDEX ix_job_failed_or_low ON indexed_job (status) WHERE status = 'failed' OR priority <= 3",
+      "CREATE UNIQUE INDEX uq_indexed_job_message_id ON indexed_job (message_id)",
+      "CREATE INDEX ix_indexed_job_correlation_id ON indexed_job (correlation_id)",
+      "CREATE INDEX ix_job_lite ON indexed_job (note)"
+    ]
+  },
+  "sqlite/integer_identity_function_strategy/Counter": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_counter_id_total ON counter (id, total)"
+      ],
+      "table": "CREATE TABLE counter (\n\ttotal INTEGER, \n\tid INTEGER, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_counter_id_total ON counter (id, total)"
+    ]
+  },
+  "sqlite/integer_identity_function_strategy/CounterItem": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE counter_item (\n\tamount INTEGER, \n\tid INTEGER, \n\tcounter_with_items_id INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    }
+  },
+  "sqlite/integer_identity_function_strategy/CounterWithItems": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE counter_with_items (\n\tid INTEGER, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/integer_identity_function_strategy/StringIdInIntegerDomain": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `StringIdInIntegerDomain` on provider `sqlite` (sqlite) generates a string identity, but the domain `identity_type` is \"integer\", so its column is an integer column. The column type follows the domain setting, not the field. Drop `identity_type` from the field, or store the identifier in a domain whose `identity_type` matches it."
+    }
+  },
+  "sqlite/integer_identity_uuid_strategy/Counter": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `Counter` on provider `sqlite` (sqlite) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "sqlite/integer_identity_uuid_strategy/CounterItem": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Entity `CounterItem` on provider `sqlite` (sqlite) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "sqlite/integer_identity_uuid_strategy/CounterWithItems": {
+    "model": {
+      "error": "ConfigurationError",
+      "message": "Aggregate `CounterWithItems` on provider `sqlite` (sqlite) uses an integer identity under the `uuid` identity strategy. The `uuid` strategy makes a 128-bit integer, and no SQL integer column holds it. Set `identity_strategy = \"function\"` with an `identity_function` that returns integers that fit the column, so the id is set when the object is created. Or declare the identifier as `Auto(increment=True)`, so the database assigns the id on the first save."
+    }
+  },
+  "sqlite/integer_identity_uuid_strategy/Incremented": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE incremented (\n\tseq INTEGER, \n\t_version INTEGER, \n\tPRIMARY KEY (seq), \n\tUNIQUE (seq)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/integer_identity_uuid_strategy/IntegerKeyed": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE integer_keyed (\n\tcode INTEGER NOT NULL, \n\t_version INTEGER, \n\tPRIMARY KEY (code), \n\tUNIQUE (code)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/integer_identity_uuid_strategy/ModelledCounter": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE modelled_counter (\n\tid INTEGER NOT NULL, \n\ttotal INTEGER, \n\t_version INTEGER, \n\tPRIMARY KEY (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/keys/KeyedByString": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE keyed_by_string (\n\tcode CHAR(32) NOT NULL, \n\tname VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (code), \n\tUNIQUE (code)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/keys/PickledKey": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE pickled_key (\n\tid CHAR(32), \n\tmeasures BLOB, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id), \n\tUNIQUE (measures)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/keys/UnboundedUnique": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE unbounded_unique (\n\thandle VARCHAR, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (handle), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/keys/UniqueAttributes": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE unique_attributes (\n\tattributes JSON, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (attributes), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/keys/WideUnique": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE wide_unique (\n\thandle VARCHAR(1000), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (handle), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/mssql_elements/MssqlTestEntity": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE mssql_test_entity (\n\tname VARCHAR(50), \n\tdescription VARCHAR(200), \n\tage INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/mssql_elements/MssqlTimestampedEntity": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE mssql_timestamped_entity (\n\tlabel VARCHAR(50), \n\toccurred_at DATETIME, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/postgresql_elements/Alien": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE alien (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/postgresql_elements/ComplexUser": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE complex_user (\n\tpassword VARCHAR(255) NOT NULL, \n\tid CHAR(32), \n\temail_address VARCHAR(254) NOT NULL, \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/postgresql_elements/Person": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE person (\n\tfirst_name VARCHAR(50) NOT NULL, \n\tlast_name VARCHAR(50) NOT NULL, \n\tage INTEGER, \n\tcreated_at DATETIME, \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/postgresql_elements/User": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE user (\n\temail VARCHAR(255) NOT NULL, \n\tpassword VARCHAR(3026), \n\tid CHAR(32), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (email), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/string_associations/Book": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+      ],
+      "table": "CREATE TABLE book (\n\ttitle VARCHAR(100), \n\tpublished_at DATETIME NOT NULL, \n\tid VARCHAR(255), \n\tshelf_id VARCHAR, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    },
+    "rendered": [
+      "CREATE INDEX ix_book_shelf_id ON book (shelf_id)"
+    ]
+  },
+  "sqlite/string_associations/Label": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE label (\n\ttext VARCHAR(30), \n\tid VARCHAR(255), \n\tshelf_id VARCHAR, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": null
+    }
+  },
+  "sqlite/string_associations/Shelf": {
+    "model": {
+      "indexes": [],
+      "table": "CREATE TABLE shelf (\n\tname VARCHAR(50), \n\tid VARCHAR(255), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    }
+  },
+  "sqlite/string_index_widths/SizedKeys": {
+    "model": {
+      "indexes": [
+        "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)",
+        "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+        "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)"
+      ],
+      "table": "CREATE TABLE sized_keys (\n\tflag BOOLEAN, \n\tcount INTEGER, \n\tratio FLOAT, \n\tday DATE, \n\tat DATETIME, \n\tamount NUMERIC(12, 3), \n\tloose_amount NUMERIC, \n\tcode VARCHAR(100), \n\tid VARCHAR(255), \n\taddress_street VARCHAR(100), \n\taddress_city VARCHAR(50), \n\t_version INTEGER, \n\tPRIMARY KEY (id), \n\tUNIQUE (id)\n)",
+      "version_id_col": "_version"
+    },
+    "rendered": [
+      "CREATE INDEX ix_sized_keys_flag_count_ratio_day_at_amount_loose_amount_code ON sized_keys (flag, count, ratio, day, at, amount, loose_amount, code)",
+      "CREATE INDEX ix_sized_keys_id_code ON sized_keys (id, code)",
+      "CREATE INDEX ix_sized_keys_address_city ON sized_keys (address_city)"
+    ]
+  }
+}
