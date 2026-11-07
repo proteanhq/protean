@@ -78,5 +78,4 @@ processing loop. See [Running the Server](../server/index.md) for details.
   `current_domain` available and manages the Unit of Work lifecycle.
 - **Let the framework manage it**: Prefer framework-provided integration
   (FastAPI middleware, Flask hooks) over manual context management. The
-  framework integration then cleans up each context, even when an exception
-  occurs.
+  framework integration cleans up each context, even when an exception occurs.

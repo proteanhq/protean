@@ -80,8 +80,9 @@ infrastructure-agnostic by construction.
 The primary organizational unit is the aggregate cluster, an aggregate and
 everything that belongs to it (entities, value objects, commands, events,
 handlers, repositories). Cross-cutting concerns (domain services, process
-managers, subscribers) span more than one aggregate. The framework does not
-force them into clusters and treats each one as an element in its own right.
+managers, subscribers) are not tied to a single aggregate. The framework does
+not force them into clusters and treats each one as an element in its own
+right.
 
 **Example:** During `domain.init()`, `ElementResolver.assign_aggregate_clusters()` groups
 entities, commands, and events under their root aggregate by traversing

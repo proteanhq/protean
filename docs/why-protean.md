@@ -1,9 +1,9 @@
 # Why Protean?
 
 You work out the model on a whiteboard: aggregates, events, bounded contexts.
-Then you open your editor and the code stops matching the drawing. The ORM maps
-classes to tables, so you store the aggregate as rows. Validation is something
-you remember to call. Infrastructure details work their way into the business
+Then you open your editor and the code stops matching the drawing. The ORM
+wants tables, so the aggregate becomes rows. Validation is something you
+remember to call. Infrastructure details work their way into the business
 logic. A few months later the drawing and the code describe different systems.
 
 Protean starts somewhere else: **your domain model is the architecture.** You
@@ -29,8 +29,8 @@ boundaries.
 --8<-- "why-protean/001.py:compile"
 ```
 
-Tools for architecture documentation, API spec generation, contract testing,
-schema registries, and visual domain exploration take the IR as their input.
+The IR is what everything else builds on: architecture documentation, API spec
+generation, contract testing, schema registries, and visual domain exploration.
 Your domain model is not only runtime code. It is a machine-readable
 specification that tools can analyze, compare, and generate from.
 
@@ -149,7 +149,7 @@ database_uri = "${MESSAGE_DB_URL}"
 ```
 
 Your domain logic, tests, and business rules stay untouched. Protean connects
-your domain elements to the database, broker and event store you configure.
+your domain elements to the database, broker, and event store you configure.
 
 | Port | Available adapters |
 |------|-------------------|

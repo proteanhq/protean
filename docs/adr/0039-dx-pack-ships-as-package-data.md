@@ -71,8 +71,8 @@ clean-venv CI check catches that, and a deleted or moved file too, because it
 reads the pack from the installed wheel rather than the source tree.
 
 The wheel grows with the pack. The skills corpus is text, so the added wheel
-size is small. Tying the pack to the framework version is the goal of the
-developer-experience epic.
+size is small. That small cost is acceptable, because tying the pack to the
+framework version is the goal of the developer-experience epic.
 
 ## Alternatives Considered
 

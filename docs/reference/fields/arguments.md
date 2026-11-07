@@ -274,8 +274,8 @@ renamed field without an upcaster.
 
 When a stored `OrderPlaced` payload carries the old `name` key, Protean loads
 the value into `customer_name`. If a payload carries both keys, Protean keeps
-the value under the current name and drops any stale alias keys. Protean also
-writes the rename into the IR, so `protean ir diff` reports a safe
+the value under the current name. Protean drops any stale alias keys. Protean
+also writes the rename into the IR, so `protean ir diff` reports a safe
 `field_renamed` change instead of a breaking remove + add. The generated Avro
 schema carries an `aliases` entry, so an external Avro consumer resolves the
 old name on the wire. See [Evolving Events Over Time](../../guides/evolving-events.md)
