@@ -74,8 +74,8 @@ The built-in stores declare:
 - **Message DB**: `PRODUCTION_STORE`. See [Message DB](./message-db.md#what-message-db-guarantees)
   for the flags it leaves out.
 
-An event store written outside Protean must define `capabilities`.
-`BaseEventStore` raises `TypeError` when you create a subclass that does not.
+An event store written outside Protean must define `capabilities`. Creating an
+instance of a subclass that does not define it raises `TypeError`.
 
 ## Configuration
 
