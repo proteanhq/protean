@@ -94,20 +94,25 @@ class CacheCapabilities(Flag):
 
     Each adapter declares one value through `BaseCache.capabilities`. A caller
     or a conformance test reads the flag directly to learn whether the adapter
-    supports a behaviour. Most adapters declare one of the two tiers, `LOCAL`
-    or `DISTRIBUTED`.
+    supports a behaviour. Most adapters declare a named tier, `LOCAL` or
+    `DISTRIBUTED`.
     """
 
     KEY_VALUE = auto()
-    """Get, put and delete by key: `get`, `put`, `delete` and `clear`, the
-    members `CachePort` requires of every cache adapter."""
+    """Reads, writes and deletes by key: the `BaseCache` members `add`, `get`,
+    `remove`, `remove_by_key` and `flush_all`, which every cache adapter
+    implements. The planned `CachePort` protocol names them `get`, `put`,
+    `delete` and `clear`."""
 
     TTL = auto()
-    """Per-key expiry: the `CacheTTLPort` members `set_ttl` and `get_ttl`."""
+    """Per-key expiry: the `BaseCache` members `set_ttl` and `get_ttl`, which
+    the planned `CacheTTLPort` sub-protocol holds."""
 
     PATTERN_MATCH = auto()
-    """Glob reads, counts and deletes: the `CachePatternPort` members
-    `keys_matching`, `count_matching` and `delete_matching`."""
+    """Glob reads, counts and deletes: the `BaseCache` members `_get_all`,
+    `count` and `remove_by_key_pattern`. The planned `CachePatternPort`
+    sub-protocol names them `keys_matching`, `count_matching` and
+    `delete_matching`."""
 
     SHARED = auto()
     """A second adapter built from the same config sees the first one's writes
