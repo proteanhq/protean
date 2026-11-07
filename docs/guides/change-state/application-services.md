@@ -184,8 +184,8 @@ data consistency.
 
 - Keep use case methods focused on orchestration so that domain-level errors
 are raised by the aggregate, not the service.
-- Let domain validation errors propagate to the API layer, which maps them to
-the appropriate HTTP status.
+- Let domain validation errors propagate to the API layer, where you can map
+them to the appropriate HTTP status.
 - Use the API layer for cross-cutting concerns like logging failed operations,
 not the application service itself.
 

@@ -5,8 +5,8 @@ Read these if you are contributing, or if you want to know **why** Protean
 works the way it does rather than only how to use it.
 
 These pages give more detail than the guides. The guides show you what to
-write, while the internals pages explain how Protean makes it work and why its
-design took its form.
+write, while the internals pages explain how Protean makes it work and the
+decisions that shaped it.
 
 ## Topics
 

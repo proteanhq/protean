@@ -101,10 +101,10 @@ containing business logic itself.
 
 ## Reactive Layer
 
-The reactive layer responds to events, which record changes that have already
-happened. Reactive elements propagate state changes, maintain read models, and
-connect to external systems. They do this without depending on the code that
-produced the original change.
+The reactive layer responds to things that have already happened. Reactive
+elements propagate state changes, maintain read models, and connect to
+external systems. None of this work couples back to the code that produced
+the original change.
 
 | Element | Purpose |
 |---------|---------|

@@ -6,7 +6,7 @@ Protean provides two paths for changing state: directly through Application Serv
 
 ## Process Requests
 
-The request processing pipeline processes requests to change state, whether from API endpoints, CLI commands, or background jobs.
+The request processing pipeline receives requests to change state, whether from API endpoints, CLI commands, or background jobs.
 
 ### Application Services <span class="pathway-tag pathway-tag-ddd">DDD</span>
 

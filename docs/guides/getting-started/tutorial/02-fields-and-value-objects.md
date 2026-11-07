@@ -47,8 +47,9 @@ Attempting to create a book with an invalid genre raises a `ValidationError`:
 ValidationError: {'genre': ["Value 'ROMANCE' is not a valid choice. ..."]}
 ```
 
-Protean checks field values when you create the aggregate. It raises an error
-on an invalid value, so your domain never holds an invalid aggregate.
+Protean checks field values when you create or change the aggregate. It
+raises an error on an invalid value, so your domain never holds an invalid
+aggregate.
 
 ## From Float to Money
 

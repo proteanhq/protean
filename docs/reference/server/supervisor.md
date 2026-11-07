@@ -178,7 +178,7 @@ takes a `dictConfig` dict. `log_level` must be one of `DEBUG`, `INFO`,
 `WARNING`, `ERROR` or `CRITICAL`, and `log_format` one of `auto`, `console` or
 `json`. Any other value raises `ValueError`.
 
-The `log_level`, `log_format` and `log_config` arguments do not set up logging
+The `log_level`, `log_format`, and `log_config` arguments do not set up logging
 in your own process. With more than one worker, every worker sends its records
 to the supervisor, and the supervisor writes them with the handlers on its root
 logger. Their levels and formatters decide what you see. With no handlers

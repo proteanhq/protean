@@ -114,7 +114,7 @@ and business rules.
     [DDD Pathway](../../pathways/ddd.md) for the full reading order.
 
     The remaining chapters add **CQRS patterns** (Commands, Projections, and
-    separated read/write models) to this DDD domain model.
+    separated read/write models) on top of this foundation.
 
 ## Full Source
 

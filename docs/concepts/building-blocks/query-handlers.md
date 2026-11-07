@@ -58,7 +58,7 @@ synchronously and return immediately.
 ### One handler per query. { data-toc-label="Single Handler" }
 
 Each query can only be handled by one handler method. Command handlers follow
-the same constraint, so the domain always knows which handler receives a query.
+the same constraint. With one handler per query, routing is never ambiguous.
 
 ## Best Practices
 

@@ -74,8 +74,8 @@ TTL = "${CACHE_TTL|3600}"
 ```
 
 Substitution runs on TOML strings after parsing, so a TTL from the environment
-arrives as a string. For this reason the cache accepts the string form by
-design, as a supported input.
+arrives as a string. For this reason the cache supports the string form by
+design.
 
 Anything else, including `0`, a negative, `nan` or `inf`, raises a
 `ConfigurationError` naming the cache.

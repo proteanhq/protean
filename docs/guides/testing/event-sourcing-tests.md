@@ -135,7 +135,7 @@ was accepted.
 ### Events (EventLog)
 
 New events raised by the command are available via `.events`. The `EventLog`
-class supports Python's container operations, such as `in`, truthiness and
+class supports Python's container operations, such as `in`, truthiness, and
 indexing:
 
 ```python

@@ -1,6 +1,6 @@
 # Identity
 
-Identity is the property that distinguishes one domain object from all others. Two objects with the same attributes but different identities are different objects. Two objects with different attributes but the same identity are the same object at different points in time. Domain-Driven Design depends on this distinction, because you use it to decide whether to model a concept as an entity (has identity) or a [value object](../building-blocks/value-objects.md) (defined entirely by its attributes).
+Identity is the property that distinguishes one domain object from all others. Two objects with the same attributes but different identities are different objects. Two objects with different attributes but the same identity are the same object at different points in time. This distinction is fundamental to Domain-Driven Design because it determines whether a concept should be modeled as an entity (has identity) or a [value object](../building-blocks/value-objects.md) (defined entirely by its attributes).
 
 ## Identity in Entities and Aggregates
 
@@ -35,7 +35,7 @@ To choose between entity and value object, you often ask one question: does iden
 
 A best practice in DDD is to generate identity at the point of creation, not at the database. When identity is assigned immediately, it is available for use in commands, events, and cross-aggregate references before the object is ever persisted. This eliminates an entire class of problems in distributed systems where objects need to be referenced before a round-trip to the database can occur.
 
-By default, Protean generates identities on object creation, following the practice of generating identity at the point of creation.
+Protean generates identities on object creation by default, following this principle.
 
 ## Further Reading
 

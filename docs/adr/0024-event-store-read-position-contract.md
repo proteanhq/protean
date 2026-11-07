@@ -39,8 +39,9 @@ re-read from `current + 1` (the per-stream ordinal is 0-indexed while `global_po
 so the two never line up on a re-read).
 
 The common test setup does a single full read, so the tests never caught the
-divergence. It was therefore impossible to reason about (or deterministically
-test) any `global_position`-ordered behavior on the memory adapter.
+divergence. The divergence also made it impossible to reason about (or
+deterministically test) any `global_position`-ordered behavior on the memory
+adapter.
 
 ## Decision
 

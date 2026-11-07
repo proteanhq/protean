@@ -8,8 +8,8 @@
 !!! tip "Hands-On Tutorial"
     For a practical, project-based introduction, see the
     **[Event Sourcing Tutorial](../getting-started/es-tutorial/index.md)**: a
-    22-chapter guide that builds a complete banking platform from an empty
-    project and covers every Event Sourcing capability in Protean.
+    22-chapter guide that builds a complete banking platform from
+    scratch and covers every Event Sourcing capability in Protean.
 
 ## Overview
 

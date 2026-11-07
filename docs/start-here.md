@@ -106,9 +106,8 @@ delivery and comes with
 
 ## CLI
 
-The `protean` command-line tool scaffolds projects, runs the server, and sets
-up, truncates, and drops database tables. See [CLI](./reference/cli/index.md)
-for the full list of commands.
+The `protean` command-line tool scaffolds projects, runs the server, and manages
+databases. See [CLI](./reference/cli/index.md) for the full list of commands.
 
 ## Testing
 
