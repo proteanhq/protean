@@ -298,42 +298,13 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
 
         # Check if value is one among recognized empty values, or is False (for complex objects)
         if value in self.empty_values:
-            # If a default has been set for the field return it
-            if self.default is not None:
-                default = self.default
-                value = default() if callable(default) else default
-                return value
-
-            # If no default is set and this field is required
-            elif self.required:
-                self.fail("required")
-
-            # In all other cases just return the passed value, as we do not want to
-            # run validations against an empty value
-            # Because of this behavior, we preserve the data sanctity for int and float objects,
-            # and return 0 or 0.0, as need be.
-            elif value is None:
+            resolved, value = _load_empty_value(self, value)
+            if resolved:
                 return value
 
         # If choices exist then validate that value is be one of the choices
         if self.choices:
-            choices: list[Any] | tuple[Any, ...]
-            # A list/tuple of choices is used as-is; otherwise it is an Enum class
-            if isinstance(self.choices, (list, tuple)):
-                choices = self.choices
-            else:
-                enum_cls = self.choices
-                choices = [item.value for item in enum_cls]
-
-                # Check if value is an Enum instance
-                if isinstance(value, enum_cls):
-                    value = value.value
-
-            value_list = [value] if not isinstance(value, (list, tuple)) else value
-
-            for v in value_list:
-                if v not in choices:
-                    self.fail("invalid_choice", value=v, choices=choices)
+            value = _check_choices(self, self.choices, value)
 
         # Cast and Validate the value for this Field
         value = self._cast_to_type(value)
@@ -342,3 +313,63 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         self._run_validators(value)
 
         return value
+
+
+# ---------------------------------------------------------------------------
+# Module-level functions, so no new private name lands on ``Field`` where a
+# subclass could override it.
+# ---------------------------------------------------------------------------
+def _load_empty_value(field: Field, value: Any) -> tuple[bool, Any]:
+    """Resolve an empty ``value`` for ``field``.
+
+    Returns ``(True, result)`` when ``Field._load`` should return ``result``
+    as is, and ``(False, value)`` when the empty value still goes through the
+    choice check, the cast and the validators.
+
+    Raises ``ValidationError`` when ``field`` is required and has no default.
+    """
+    # If a default has been set for the field return it
+    if field.default is not None:
+        default = field.default
+        return True, default() if callable(default) else default
+
+    # If no default is set and this field is required
+    if field.required:
+        field.fail("required")
+
+    # A None value is returned as is, as we do not want to run validations
+    # against it. Any other empty value goes on to the choice check, the cast
+    # and the validators.
+    elif value is None:
+        return True, value
+
+    return False, value
+
+
+def _check_choices(
+    field: Field,
+    allowed: type[enum.Enum] | list[Any] | tuple[Any, ...],
+    value: Any,
+) -> Any:
+    """Fail unless ``value`` (or each item of a list/tuple value) is one of
+    ``allowed``, and return the value. When ``allowed`` is an Enum class, a
+    member of it is replaced by its ``.value``."""
+    choices: list[Any] | tuple[Any, ...]
+    # A list/tuple of choices is used as-is; otherwise it is an Enum class
+    if isinstance(allowed, (list, tuple)):
+        choices = allowed
+    else:
+        enum_cls = allowed
+        choices = [item.value for item in enum_cls]
+
+        # Check if value is an Enum instance
+        if isinstance(value, enum_cls):
+            value = value.value
+
+    value_list = [value] if not isinstance(value, (list, tuple)) else value
+
+    for v in value_list:
+        if v not in choices:
+            field.fail("invalid_choice", value=v, choices=choices)
+
+    return value

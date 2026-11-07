@@ -65,6 +65,29 @@ def _discover_handler_methods(cls: type) -> list[tuple[str, HandlerMethod]]:
     ]
 
 
+class _PartitionKeyMap:
+    """The stream category to partition key map that
+    ``HandlerConfigurator.validate_sequential_by`` builds, rejecting a second
+    key for a category that already has a different one."""
+
+    def __init__(self) -> None:
+        self.keys: dict[str, str] = {}
+        # The first declarer of each category, for the conflict message.
+        self._declared_by: dict[str, str] = {}
+
+    def _record(self, category: str, field: str, element_name: str) -> None:
+        existing = self.keys.get(category)
+        if existing is not None and existing != field:
+            raise IncorrectUsageError(
+                f"Stream category `{category}` is partitioned by conflicting "
+                f"keys: `{existing}` (from `{self._declared_by[category]}`) and "
+                f"`{field}` (from `{element_name}`). A category can be "
+                f"partitioned by only one key (ADR-0028)."
+            )
+        self.keys[category] = field
+        self._declared_by.setdefault(category, element_name)
+
+
 class HandlerConfigurator:
     """Configure handler maps for command handlers, event handlers,
     projectors, process managers, and query handlers.
@@ -370,98 +393,91 @@ class HandlerConfigurator:
         """
         registry = self._domain._domain_registry
         # Rebuild from scratch so a re-run (re-init) does not accumulate stale
-        # entries; ``declared_by`` tracks the first declarer for conflict text.
-        partition_map: dict[str, str] = {}
-        declared_by: dict[str, str] = {}
+        # entries.
+        partitions = _PartitionKeyMap()
 
-        def _record(category: str, field: str, element_name: str) -> None:
-            existing = partition_map.get(category)
-            if existing is not None and existing != field:
-                raise IncorrectUsageError(
-                    f"Stream category `{category}` is partitioned by conflicting "
-                    f"keys: `{existing}` (from `{declared_by[category]}`) and "
-                    f"`{field}` (from `{element_name}`). A category can be "
-                    f"partitioned by only one key (ADR-0028)."
-                )
-            partition_map[category] = field
-            declared_by.setdefault(category, element_name)
-
-        # Event handlers: value is a direct field name on each handled event.
-        for element in registry._elements[DomainObjects.EVENT_HANDLER.value].values():
-            handler_cls = element.cls
-            key = getattr(handler_cls.meta_, "sequential_by", None)
-            if key is None:
-                continue
-            self._assert_field_name_key(key, handler_cls)
-            for _, method in _discover_handler_methods(handler_cls):
-                target = method._target_cls
-                if inspect.isclass(target) and issubclass(target, BaseEvent):
-                    self._assert_partition_field(target, key, handler_cls, "Event")
-                    category = self._event_published_category(target)
-                    if category is not None:
-                        _record(category, key, handler_cls.__name__)
-
-        # Projectors: same meaning as event handlers.
-        for element in registry._elements[DomainObjects.PROJECTOR.value].values():
-            projector_cls = element.cls
-            key = getattr(projector_cls.meta_, "sequential_by", None)
-            if key is None:
-                continue
-            self._assert_field_name_key(key, projector_cls)
-            for _, method in _discover_handler_methods(projector_cls):
-                target = method._target_cls
-                if inspect.isclass(target) and issubclass(target, BaseEvent):
-                    self._assert_partition_field(target, key, projector_cls, "Event")
-                    category = self._event_published_category(target)
-                    if category is not None:
-                        _record(category, key, projector_cls.__name__)
+        # Event handlers and projectors: value is a direct field name on each
+        # handled event.
+        for kind in (DomainObjects.EVENT_HANDLER, DomainObjects.PROJECTOR):
+            for element in registry._elements[kind.value].values():
+                self._record_event_consumer_partitions(element.cls, partitions)
 
         # Command handlers: value is a direct field name on each handled command.
         for element in registry._elements[DomainObjects.COMMAND_HANDLER.value].values():
-            handler_cls = element.cls
-            key = getattr(handler_cls.meta_, "sequential_by", None)
-            if key is None:
-                continue
-            self._assert_field_name_key(key, handler_cls)
-            for _, method in _discover_handler_methods(handler_cls):
-                target = method._target_cls
-                if inspect.isclass(target) and issubclass(target, BaseCommand):
-                    self._assert_partition_field(target, key, handler_cls, "Command")
-            _record(handler_cls.meta_.stream_category, key, handler_cls.__name__)
+            self._record_command_handler_partitions(element.cls, partitions)
 
         # Process managers: boolean opt-in; the per-category key is the field the
         # event's ``correlate`` spec maps to the correlation value.
         for element in registry._elements[DomainObjects.PROCESS_MANAGER.value].values():
-            pm_cls = element.cls
-            key = getattr(pm_cls.meta_, "sequential_by", None)
-            if key is None:
-                continue
-            key = self._coerce_boolean_key(key, pm_cls)
-            if not key:
-                continue
-            for _, method in _discover_handler_methods(pm_cls):
-                target = method._target_cls
-                # Defensive: ``_setup_process_managers`` (run earlier in
-                # ``_prepare``) already rejects a PM handler whose target is not
-                # an event and one with no ``correlate``, so neither guard below
-                # can fire through init. They stay as belt-and-suspenders against
-                # a future reordering, hence the coverage pragmas.
-                if not (inspect.isclass(target) and issubclass(target, BaseEvent)):
-                    continue  # pragma: no cover
-                field = self._correlate_field(getattr(method, "_correlate", None))
-                if field is None:  # pragma: no cover
-                    raise IncorrectUsageError(
-                        f"Process Manager `{pm_cls.__name__}` sets "
-                        f"`sequential_by=True` but handler for "
-                        f"`{target.__name__}` has no usable `correlate` field "
-                        f"to partition by (ADR-0028)."
-                    )
-                self._assert_partition_field(target, field, pm_cls, "Event")
+            self._record_process_manager_partitions(element.cls, partitions)
+
+        self._domain._partition_keys = partitions.keys
+
+    def _record_event_consumer_partitions(
+        self, consumer_cls: type[Any], partitions: _PartitionKeyMap
+    ) -> None:
+        """Check an event handler's or projector's ``sequential_by`` field and
+        record the partition key of each stream category it consumes."""
+        key = getattr(consumer_cls.meta_, "sequential_by", None)
+        if key is None:
+            return
+        self._assert_field_name_key(key, consumer_cls)
+        for _, method in _discover_handler_methods(consumer_cls):
+            target = method._target_cls
+            if inspect.isclass(target) and issubclass(target, BaseEvent):
+                self._assert_partition_field(target, key, consumer_cls, "Event")
                 category = self._event_published_category(target)
                 if category is not None:
-                    _record(category, field, pm_cls.__name__)
+                    partitions._record(category, key, consumer_cls.__name__)
 
-        self._domain._partition_keys = partition_map
+    def _record_command_handler_partitions(
+        self, handler_cls: type[Any], partitions: _PartitionKeyMap
+    ) -> None:
+        """Check a command handler's ``sequential_by`` field and record it as the
+        partition key of the handler's stream category."""
+        key = getattr(handler_cls.meta_, "sequential_by", None)
+        if key is None:
+            return
+        self._assert_field_name_key(key, handler_cls)
+        for _, method in _discover_handler_methods(handler_cls):
+            target = method._target_cls
+            if inspect.isclass(target) and issubclass(target, BaseCommand):
+                self._assert_partition_field(target, key, handler_cls, "Command")
+        partitions._record(handler_cls.meta_.stream_category, key, handler_cls.__name__)
+
+    def _record_process_manager_partitions(
+        self, pm_cls: type[Any], partitions: _PartitionKeyMap
+    ) -> None:
+        """Record, for a process manager that sets ``sequential_by``, each handled
+        event's ``correlate`` field as the partition key of the event's stream
+        category."""
+        key = getattr(pm_cls.meta_, "sequential_by", None)
+        if key is None:
+            return
+        key = self._coerce_boolean_key(key, pm_cls)
+        if not key:
+            return
+        for _, method in _discover_handler_methods(pm_cls):
+            target = method._target_cls
+            # Defensive: ``_setup_process_managers`` (run earlier in
+            # ``_prepare``) already rejects a PM handler whose target is not
+            # an event and one with no ``correlate``, so neither guard below
+            # can fire through init. They stay as belt-and-suspenders against
+            # a future reordering, hence the coverage pragmas.
+            if not (inspect.isclass(target) and issubclass(target, BaseEvent)):
+                continue  # pragma: no cover
+            field = self._correlate_field(getattr(method, "_correlate", None))
+            if field is None:  # pragma: no cover
+                raise IncorrectUsageError(
+                    f"Process Manager `{pm_cls.__name__}` sets "
+                    f"`sequential_by=True` but handler for "
+                    f"`{target.__name__}` has no usable `correlate` field "
+                    f"to partition by (ADR-0028)."
+                )
+            self._assert_partition_field(target, field, pm_cls, "Event")
+            category = self._event_published_category(target)
+            if category is not None:
+                partitions._record(category, field, pm_cls.__name__)
 
     def validate_sequential_by_capabilities(self) -> None:
         """Gate ``sequential_by`` handlers on the broker's partitioning support.

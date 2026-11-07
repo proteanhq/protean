@@ -49,24 +49,7 @@ def List(  # pyright: ignore[reportRedeclaration]
     if isinstance(content_type, FieldSpec) and content_type.field_kind == "auto":
         raise ValidationError({"content_type": ["Content type not supported"]})
 
-    if isinstance(content_type, FieldSpec):
-        # Use the resolved type to preserve Literal/choices constraints.
-        # Strip Optional wrapping since list elements don't need it.
-        resolved = content_type.resolve_type()
-        origin = typing.get_origin(resolved)
-        if origin is _types.UnionType or origin is typing.Union:
-            args = [a for a in typing.get_args(resolved) if a is not type(None)]
-            inner_type = args[0] if args else content_type.python_type
-        else:
-            inner_type = resolved
-    elif isinstance(content_type, VODescriptor):
-        # ValueObject descriptors wrap a VO class; use the actual VO type
-        # so Pydantic accepts VO instances directly.
-        inner_type = content_type.value_object_cls
-    elif content_type is not None:
-        inner_type = content_type
-    else:
-        inner_type = Any
+    inner_type = _list_element_type(content_type)
 
     python_type = list[inner_type]  # type: ignore[valid-type]
 
@@ -82,6 +65,26 @@ def List(  # pyright: ignore[reportRedeclaration]
         # behavior (it is absent unless ``pickled=`` was passed).
         spec._pickled_deprecated = True
     return spec
+
+
+def _list_element_type(content_type: Any) -> Any:
+    """Return the element type ``List`` declares for ``content_type``."""
+    if isinstance(content_type, FieldSpec):
+        # Use the resolved type to preserve Literal/choices constraints.
+        # Strip Optional wrapping since list elements don't need it.
+        resolved = content_type.resolve_type()
+        origin = typing.get_origin(resolved)
+        if origin is _types.UnionType or origin is typing.Union:
+            args = [a for a in typing.get_args(resolved) if a is not type(None)]
+            return args[0] if args else content_type.python_type
+        return resolved
+    if isinstance(content_type, VODescriptor):
+        # ValueObject descriptors wrap a VO class; use the actual VO type
+        # so Pydantic accepts VO instances directly.
+        return content_type.value_object_cls
+    if content_type is not None:
+        return content_type
+    return Any
 
 
 def Dict(  # pyright: ignore[reportRedeclaration]

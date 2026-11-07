@@ -10,7 +10,7 @@ import logging
 import time
 from datetime import UTC, datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 from uuid import uuid4
 
 from protean.core.command import BaseCommand
@@ -47,6 +47,8 @@ from protean.utils.telemetry import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from protean.core.unit_of_work import UnitOfWork
     from protean.domain import Domain
     from protean.utils.idempotency import IdempotencyStore
@@ -143,6 +145,159 @@ def raise_if_expired(
         )
 
 
+class _CommandLineage(NamedTuple):
+    """The origin stream, correlation ID, causation ID and deadline a command
+    takes from its caller and from the message in context.
+
+    The origin stream and causation ID come only from the message in context.
+    The correlation ID and deadline come from the caller when given, and
+    otherwise from that message. A correlation ID that is still ``None`` is
+    filled in later from the request header or generated."""
+
+    origin_stream: str | None
+    correlation_id: str | None
+    causation_id: str | None
+    deadline: datetime | None
+
+
+def _command_identifier(command: BaseCommand) -> Any:
+    identity_field = id_field(command)
+    if identity_field is not None and identity_field.field_name is not None:
+        return getattr(command, identity_field.field_name)
+    return str(uuid4())
+
+
+def _inherit_lineage(
+    correlation_id: str | None, deadline: datetime | None
+) -> _CommandLineage:
+    """Take the correlation ID, causation ID and deadline from the message in
+    context, and the origin stream when that message is an event. A
+    caller-provided ``correlation_id`` and ``deadline`` take precedence over
+    the inherited ones."""
+    origin_stream = None
+    inherited_correlation_id = correlation_id  # Caller-provided takes precedence
+    causation_id = None
+
+    if hasattr(g, "message_in_context"):
+        msg_ctx = g.message_in_context
+        if msg_ctx.metadata.domain.kind == "EVENT":
+            origin_stream = msg_ctx.metadata.headers.stream
+        # Inherit correlation_id from parent message (if not caller-provided)
+        if inherited_correlation_id is None and msg_ctx.metadata.domain:
+            inherited_correlation_id = msg_ctx.metadata.domain.correlation_id
+        # Set causation_id = parent message's ID
+        if msg_ctx.metadata.headers:
+            causation_id = msg_ctx.metadata.headers.id
+            # Propagate the deadline down the chain unless the caller
+            # set one explicitly for this command.
+            if deadline is None and msg_ctx.metadata.headers.deadline:
+                deadline = msg_ctx.metadata.headers.deadline
+
+    return _CommandLineage(
+        origin_stream, inherited_correlation_id, causation_id, deadline
+    )
+
+
+def _root_correlation_id(correlation_id: str | None) -> str:
+    # Fall back to HTTP request header correlation ID (set by middleware)
+    if correlation_id is None and hasattr(g, "request_correlation_id"):
+        correlation_id = g.request_correlation_id
+
+    # Generate new correlation_id if this is a root entry point
+    if correlation_id is None:
+        correlation_id = new_correlation_id()
+
+    return correlation_id
+
+
+def _command_fqn(command: BaseCommand) -> str | None:
+    command_fqn: str | None = None
+    if command._metadata.domain:
+        command_fqn = command._metadata.domain.fqn
+    elif hasattr(command._metadata, "fqn"):
+        command_fqn = command._metadata.fqn
+    return command_fqn
+
+
+def _apply_command_enrichers(
+    enrichers: list[Callable[..., Any]],
+    command: BaseCommand,
+    metadata: Metadata,
+) -> Metadata:
+    """Return ``metadata`` with the enrichers' output merged into its
+    extensions, or ``metadata`` itself when the merged extensions are
+    empty."""
+    extensions = dict(metadata.extensions)
+    for enricher in enrichers:
+        result = enricher(command)
+        if result:
+            extensions.update(result)
+    if not extensions:
+        return metadata
+    return Metadata(
+        headers=metadata.headers,
+        envelope=metadata.envelope,
+        domain=metadata.domain,
+        event_store=metadata.event_store,
+        extensions=extensions,
+    )
+
+
+def _parent_trace_context(command: Any) -> Any:
+    if command._metadata and command._metadata.headers:
+        return extract_context_from_traceparent(command._metadata.headers.traceparent)
+    return None
+
+
+def _resolve_asynchronous(domain: Domain, asynchronous: bool | None) -> bool:
+    # If asynchronous is not specified, use the command_processing setting from config
+    if asynchronous is None:
+        return bool(domain.config["command_processing"] == Processing.ASYNC.value)
+    return asynchronous
+
+
+def _assert_command_registered(domain: Domain, command: Any) -> None:
+    if (
+        fqn(command.__class__)
+        not in domain.registry._elements[DomainObjects.COMMAND.value]
+    ):
+        raise IncorrectUsageError(
+            f"Element {command.__class__.__name__} is not registered in domain {domain.name}"
+        )
+
+
+def _find_processed_result(
+    store: IdempotencyStore, idempotency_key: str, raise_on_duplicate: bool
+) -> tuple[bool, Any]:
+    """Return ``(True, cached_result)`` when ``idempotency_key`` already holds
+    a success, and ``(False, None)`` otherwise.
+
+    Raises:
+        DuplicateCommandError: If the key holds a success and
+            ``raise_on_duplicate`` is set.
+    """
+    existing = _check_idempotency_key(store, idempotency_key)
+    if not (existing and existing.get("status") == "success"):
+        return False, None
+    cached_result = existing.get("result")
+    if raise_on_duplicate:
+        raise DuplicateCommandError(
+            f"Command with idempotency key '{idempotency_key}' "
+            f"has already been processed",
+            original_result=cached_result,
+        )
+    return True, cached_result
+
+
+def _set_command_span_attributes(span: Any, cmd_meta: Metadata) -> None:
+    # Set span attributes from enriched command metadata
+    if cmd_meta.headers:
+        span.set_attribute("protean.command.id", str(cmd_meta.headers.id))
+        span.set_attribute("protean.stream", cmd_meta.headers.stream or "")
+    if cmd_meta.domain and cmd_meta.domain.correlation_id:
+        span.set_attribute("protean.correlation_id", cmd_meta.domain.correlation_id)
+
+
 class CommandProcessor:
     """Enrich, deduplicate, and dispatch commands.
 
@@ -186,56 +341,25 @@ class CommandProcessor:
         with tracer.start_as_current_span("protean.command.enrich") as span:
             span.set_attribute("protean.command.type", command.__class__.__type__)
 
-            identifier = None
-            identity_field = id_field(command)
-            if identity_field is not None and identity_field.field_name is not None:
-                identifier = getattr(command, identity_field.field_name)
-            else:
-                identifier = str(uuid4())
+            identifier = _command_identifier(command)
 
             stream = (
                 f"{command.meta_.part_of.meta_.stream_category}:command-{identifier}"
             )
 
-            origin_stream = None
-            inherited_correlation_id = (
-                correlation_id  # Caller-provided takes precedence
-            )
-            causation_id = None
-
-            if hasattr(g, "message_in_context"):
-                msg_ctx = g.message_in_context
-                if msg_ctx.metadata.domain.kind == "EVENT":
-                    origin_stream = msg_ctx.metadata.headers.stream
-                # Inherit correlation_id from parent message (if not caller-provided)
-                if inherited_correlation_id is None and msg_ctx.metadata.domain:
-                    inherited_correlation_id = msg_ctx.metadata.domain.correlation_id
-                # Set causation_id = parent message's ID
-                if msg_ctx.metadata.headers:
-                    causation_id = msg_ctx.metadata.headers.id
-                    # Propagate the deadline down the chain unless the caller
-                    # set one explicitly for this command.
-                    if deadline is None and msg_ctx.metadata.headers.deadline:
-                        deadline = msg_ctx.metadata.headers.deadline
+            lineage = _inherit_lineage(correlation_id, deadline)
+            deadline = lineage.deadline
 
             # Fall back to a configured default (handler option or domain config)
             # only when no deadline was provided or inherited.
             if deadline is None:
                 deadline = self._default_deadline_for(command)
 
-            # Fall back to HTTP request header correlation ID (set by middleware)
-            if inherited_correlation_id is None and hasattr(
-                g, "request_correlation_id"
-            ):
-                inherited_correlation_id = g.request_correlation_id
-
-            # Generate new correlation_id if this is a root entry point
-            if inherited_correlation_id is None:
-                inherited_correlation_id = new_correlation_id()
+            resolved_correlation_id = _root_correlation_id(lineage.correlation_id)
 
             # Store the resolved correlation ID so the HTTP middleware can
             # reflect it in the response header (even when auto-generated).
-            g.used_correlation_id = inherited_correlation_id
+            g.used_correlation_id = resolved_correlation_id
 
             # Capture the current OTEL span context as a traceparent header
             # so that downstream handlers can continue the distributed trace.
@@ -258,21 +382,17 @@ class CommandProcessor:
 
             # Build domain metadata
             domain_meta = DomainMeta(
-                fqn=command._metadata.domain.fqn
-                if command._metadata.domain
-                else command._metadata.fqn
-                if hasattr(command._metadata, "fqn")
-                else None,
+                fqn=_command_fqn(command),
                 kind="COMMAND",
-                origin_stream=origin_stream,
+                origin_stream=lineage.origin_stream,
                 version=command._metadata.domain.version
                 if command._metadata.domain
                 else getattr(command._metadata, "version", 1),
                 sequence_id=None,
                 asynchronous=asynchronous,
                 priority=priority,
-                correlation_id=inherited_correlation_id,
-                causation_id=causation_id,
+                correlation_id=resolved_correlation_id,
+                causation_id=lineage.causation_id,
             )
 
             metadata = Metadata(
@@ -283,19 +403,9 @@ class CommandProcessor:
 
             # Run command enrichers
             if self._domain._command_enrichers:
-                extensions = dict(metadata.extensions)
-                for enricher in self._domain._command_enrichers:
-                    result = enricher(command)
-                    if result:
-                        extensions.update(result)
-                if extensions:
-                    metadata = Metadata(
-                        headers=metadata.headers,
-                        envelope=metadata.envelope,
-                        domain=metadata.domain,
-                        event_store=metadata.event_store,
-                        extensions=extensions,
-                    )
+                metadata = _apply_command_enrichers(
+                    self._domain._command_enrichers, command, metadata
+                )
 
             command_with_metadata = command.__class__(
                 command.to_dict(),
@@ -381,11 +491,7 @@ class CommandProcessor:
 
         # Extract incoming traceparent as parent OTEL context so the
         # processing span becomes a child of the distributed trace.
-        parent_ctx = None
-        if command._metadata and command._metadata.headers:
-            parent_ctx = extract_context_from_traceparent(
-                command._metadata.headers.traceparent
-            )
+        parent_ctx = _parent_trace_context(command)
 
         with tracer.start_as_current_span(
             "protean.command.process",
@@ -395,32 +501,17 @@ class CommandProcessor:
         ) as span:
             span.set_attribute("protean.command.type", command.__class__.__type__)
 
-            # If asynchronous is not specified, use the command_processing setting from config
-            if asynchronous is None:
-                asynchronous = bool(
-                    domain.config["command_processing"] == Processing.ASYNC.value
-                )
+            asynchronous = _resolve_asynchronous(domain, asynchronous)
 
-            if (
-                fqn(command.__class__)
-                not in domain.registry._elements[DomainObjects.COMMAND.value]
-            ):
-                raise IncorrectUsageError(
-                    f"Element {command.__class__.__name__} is not registered in domain {domain.name}"
-                )
+            _assert_command_registered(domain, command)
 
             # --- Idempotency: check for existing result ---
             store = domain.idempotency_store
             if idempotency_key and store.is_active:
-                existing = _check_idempotency_key(store, idempotency_key)
-                if existing and existing.get("status") == "success":
-                    cached_result = existing.get("result")
-                    if raise_on_duplicate:
-                        raise DuplicateCommandError(
-                            f"Command with idempotency key '{idempotency_key}' "
-                            f"has already been processed",
-                            original_result=cached_result,
-                        )
+                is_duplicate, cached_result = _find_processed_result(
+                    store, idempotency_key, raise_on_duplicate
+                )
+                if is_duplicate:
                     return cached_result
 
             # Resolve priority: explicit param > context var > default (0)
@@ -449,15 +540,8 @@ class CommandProcessor:
                 deadline=resolved_deadline,
             )
 
-            # Set span attributes from enriched command metadata
             cmd_meta = command_with_metadata._metadata
-            if cmd_meta.headers:
-                span.set_attribute("protean.command.id", str(cmd_meta.headers.id))
-                span.set_attribute("protean.stream", cmd_meta.headers.stream or "")
-            if cmd_meta.domain and cmd_meta.domain.correlation_id:
-                span.set_attribute(
-                    "protean.correlation_id", cmd_meta.domain.correlation_id
-                )
+            _set_command_span_attributes(span, cmd_meta)
 
             # Reject stale commands before they are written to the store when
             # they will be handled synchronously (mirrors the pre-append

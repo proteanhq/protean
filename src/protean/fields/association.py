@@ -451,81 +451,25 @@ class HasOne(Association):
         super().__set__(instance, value)
 
         if value is not None and not isinstance(value, self._target_cls):
-            raise ValidationError(
-                {
-                    "_entity": [
-                        f"Value assigned to '{self.field_name}' is not of type '{self._target_cls.__name__}'"
-                    ]
-                }
-            )
+            raise _wrong_type_error(self)
 
         # 1. Preserve parent linkage in child entity
         if value is not None:
-            # This updates the parent's unique identifier in the child
-            #   so that the foreign key relationship is preserved
-            instance_id_fld = id_field(instance)
-            assert instance_id_fld is not None
-            assert instance_id_fld.field_name is not None
-            id_value = getattr(instance, instance_id_fld.field_name)
-            linked_attribute = self._linked_attribute(instance.__class__)
-            if hasattr(value, linked_attribute):
-                setattr(
-                    value, linked_attribute, id_value
-                )  # This overwrites any existing linkage, which is correct
-
-            # Add the parent to the child entity cache
-            # Temporarily set linkage to parent in child entity
-            setattr(value, self._linked_reference(type(instance)), instance)
+            _link_has_one_child(self, instance, value)
 
         # 2. Determine and store the change in the relationship
         assert self.field_name is not None
         current_value = getattr(instance, self.field_name)
-        if current_value:
-            current_value_id_fld = id_field(current_value)
-            assert current_value_id_fld is not None
-            assert current_value_id_fld.field_name is not None
-            current_value_id = getattr(current_value, current_value_id_fld.field_name)
-        else:
-            current_value_id = None
-        if value:
-            value_id_fld = id_field(value)
-            assert value_id_fld is not None
-            assert value_id_fld.field_name is not None
-            value_id = getattr(value, value_id_fld.field_name)
-        else:
-            value_id = None
         cache = instance._temp_cache.setdefault(self.field_name, HasOneChanges())
-        if current_value is None:
-            # Entity was not associated earlier
-            cache.change = "ADDED"
-        elif value is None:
-            # Entity was associated earlier, but now being removed
-            cache.change = "DELETED"
-            cache.old_value = current_value
-        elif current_value_id != value_id:
-            # A New Entity is being associated replacing the old one
-            cache.change = "UPDATED"
-            cache.old_value = current_value
-        elif current_value_id == value_id and value.state_.is_changed:
-            # Entity was associated earlier, but now being updated
-            cache.change = "UPDATED"
-        else:
-            cache.change = None  # The same object has been assigned, No-Op
+        _record_has_one_change(cache, current_value, value)
 
         self._set_own_value(instance, value)
 
         # 3. Go Recursive and remove child entities if they are associated with the old value
         if cache.change == "DELETED":
-            old_value = cache.old_value
-            if has_association_fields(old_value):
-                for field_name, field_obj in association_fields(old_value).items():
-                    if isinstance(field_obj, HasMany):
-                        field_obj.remove(old_value, getattr(old_value, field_name))
-                    elif isinstance(field_obj, HasOne):
-                        setattr(old_value, field_name, None)
+            _remove_child_associations(cache.old_value)
 
-        if instance._initialized and instance._root is not None:
-            instance._root._postcheck()  # Trigger validations from the top
+        _postcheck_root(instance)
 
     def _fetch_objects(self, instance: Any, key: str, value: Any) -> Any:
         """Fetch single linked object"""
@@ -608,8 +552,7 @@ class HasMany(Association):
         super().__set__(instance, items)
 
         # Pre-check invariants before mutation
-        if instance._initialized and instance._root is not None:
-            instance._root._precheck()
+        _precheck_root(instance)
 
         assert self.field_name is not None
         data = getattr(instance, self.field_name)
@@ -618,24 +561,12 @@ class HasMany(Association):
         items = [items] if not isinstance(items, list) else items
 
         # Validate that all items are of the same type, and the correct type
-        for item in items:
-            if not isinstance(item, self._target_cls):
-                raise ValidationError(
-                    {
-                        "_entity": [
-                            f"Value assigned to '{self.field_name}' is not of type '{self._target_cls.__name__}'"
-                        ]
-                    }
-                )
+        _check_item_types(self, items)
 
-        entity_id_fld = id_field(self._target_cls)
-        assert entity_id_fld is not None
-        assert entity_id_fld.field_name is not None
-        instance_id_fld = id_field(instance)
-        assert instance_id_fld is not None
-        assert instance_id_fld.field_name is not None
+        entity_id_name = _id_field_name(self._target_cls)
+        instance_id_name = _id_field_name(instance)
 
-        current_value_ids = [getattr(value, entity_id_fld.field_name) for value in data]
+        current_value_ids = [getattr(value, entity_id_name) for value in data]
 
         # Remove items when set to empty
         if len(items) == 0 and len(current_value_ids) > 0:
@@ -651,21 +582,12 @@ class HasMany(Association):
 
         cache = instance._temp_cache.setdefault(self.field_name, HasManyChanges())
         for item in items:
+            identity = getattr(item, entity_id_name)
             # Items to add
-            identity = getattr(item, entity_id_fld.field_name)
             if identity not in current_value_ids:
                 # If the same item is added multiple times, the last item added will win
                 cache.added[identity] = item
-
-                setattr(
-                    item,
-                    self._linked_attribute(type(instance)),
-                    getattr(instance, instance_id_fld.field_name),
-                )
-
-                # Temporarily set linkage to parent in child entity
-                setattr(item, self._linked_reference(type(instance)), instance)
-
+                _link_has_many_child(self, instance, item, instance_id_name)
                 new_data.append(item)
             # Items to update
             elif (
@@ -673,22 +595,11 @@ class HasMany(Association):
                 and item.state_.is_persisted
                 and item.state_.is_changed
             ):
-                setattr(
-                    item,
-                    self._linked_attribute(type(instance)),
-                    getattr(instance, instance_id_fld.field_name),
-                )
-
-                # Temporarily set linkage to parent in child entity
-                setattr(item, self._linked_reference(type(instance)), instance)
-
+                _link_has_many_child(self, instance, item, instance_id_name)
                 cache.updated[identity] = item
 
                 # Replace updated item in the working copy
-                for i, existing in enumerate(new_data):
-                    if getattr(existing, entity_id_fld.field_name) == identity:
-                        new_data[i] = item
-                        break
+                _replace_by_identity(new_data, item, entity_id_name, identity)
 
         # Update cache with complete item list instead of deleting it.
         # This ensures items are immediately visible via __get__ without
@@ -696,8 +607,7 @@ class HasMany(Association):
         # aggregates that have no database tables.
         self.set_cached_value(instance, new_data)
 
-        if instance._initialized and instance._root is not None:
-            instance._root._postcheck()  # Trigger validations from the top
+        _postcheck_root(instance)
 
     def remove(self, instance: Any, items: Any) -> None:
         """
@@ -712,8 +622,7 @@ class HasMany(Association):
             items (list | BaseEntity): The linked entity or entities to be removed.
         """
         # Pre-check invariants before mutation
-        if instance._initialized and instance._root is not None:
-            instance._root._precheck()
+        _precheck_root(instance)
 
         assert self.field_name is not None
         data = getattr(instance, self.field_name)
@@ -722,49 +631,33 @@ class HasMany(Association):
         items = [items] if not isinstance(items, list) else items
 
         # Validate that all items are of the same type, and the correct type
-        for item in items:
-            if not isinstance(item, self._target_cls):
-                raise ValidationError(
-                    {
-                        "_entity": [
-                            f"Value assigned to '{self.field_name}' is not of type '{self._target_cls.__name__}'"
-                        ]
-                    }
-                )
+        _check_item_types(self, items)
 
-        entity_id_fld = id_field(self._target_cls)
-        assert entity_id_fld is not None
-        assert entity_id_fld.field_name is not None
+        entity_id_name = _id_field_name(self._target_cls)
 
-        current_value_ids = [getattr(value, entity_id_fld.field_name) for value in data]
+        current_value_ids = [getattr(value, entity_id_name) for value in data]
 
         cache = instance._temp_cache.setdefault(self.field_name, HasManyChanges())
         removed_ids: set[Any] = set()
         for item in items:
-            identity = getattr(item, entity_id_fld.field_name)
+            identity = getattr(item, entity_id_name)
             if identity in current_value_ids and identity not in cache.removed:
                 cache.removed[identity] = item
                 removed_ids.add(identity)
 
             # Remove child entities
-            if has_association_fields(item):
-                for field_name, field_obj in association_fields(item).items():
-                    if isinstance(field_obj, HasMany):
-                        field_obj.remove(item, getattr(item, field_name))
-                    elif isinstance(field_obj, HasOne):
-                        setattr(item, field_name, None)
+            _remove_child_associations(item)
 
         # Update cache with items remaining after removal instead of deleting it.
         if removed_ids:
             new_data = [
                 item
                 for item in data
-                if getattr(item, entity_id_fld.field_name) not in removed_ids
+                if getattr(item, entity_id_name) not in removed_ids
             ]
             self.set_cached_value(instance, new_data)
 
-        if instance._initialized and instance._root is not None:
-            instance._root._postcheck()  # Trigger validations from the top
+        _postcheck_root(instance)
 
     def _fetch_objects(self, instance: Any, key: str, value: Any) -> list[Any]:
         """
@@ -872,3 +765,120 @@ class HasMany(Association):
             for item in data
             if all(getattr(item, key) == value for key, value in kwargs.items())
         ]
+
+
+# ---------------------------------------------------------------------------
+# Association helpers
+#
+# Module-level functions, so no new private name lands on the association
+# fields where a subclass could override it.
+# ---------------------------------------------------------------------------
+def _precheck_root(instance: Any) -> None:
+    if instance._initialized and instance._root is not None:
+        instance._root._precheck()
+
+
+def _postcheck_root(instance: Any) -> None:
+    if instance._initialized and instance._root is not None:
+        instance._root._postcheck()  # Trigger validations from the top
+
+
+def _wrong_type_error(field: Association) -> ValidationError:
+    return ValidationError(
+        {
+            "_entity": [
+                f"Value assigned to '{field.field_name}' is not of type '{field._target_cls.__name__}'"
+            ]
+        }
+    )
+
+
+def _check_item_types(field: Association, items: list[Any]) -> None:
+    for item in items:
+        if not isinstance(item, field._target_cls):
+            raise _wrong_type_error(field)
+
+
+def _id_field_name(entity_or_cls: Any) -> str:
+    id_fld = id_field(entity_or_cls)
+    assert id_fld is not None
+    assert id_fld.field_name is not None
+    return id_fld.field_name
+
+
+def _identity_or_none(entity: Any) -> Any:
+    """Return the entity's identity, or None when ``entity`` is falsy."""
+    if not entity:
+        return None
+    return getattr(entity, _id_field_name(entity))
+
+
+def _link_has_one_child(field: HasOne, instance: Any, value: Any) -> None:
+    # This updates the parent's unique identifier in the child
+    #   so that the foreign key relationship is preserved
+    id_value = getattr(instance, _id_field_name(instance))
+    linked_attribute = field._linked_attribute(instance.__class__)
+    if hasattr(value, linked_attribute):
+        setattr(
+            value, linked_attribute, id_value
+        )  # This overwrites any existing linkage, which is correct
+
+    # Add the parent to the child entity cache
+    # Temporarily set linkage to parent in child entity
+    setattr(value, field._linked_reference(type(instance)), instance)
+
+
+def _record_has_one_change(
+    cache: HasOneChanges, current_value: Any, value: Any
+) -> None:
+    current_value_id = _identity_or_none(current_value)
+    value_id = _identity_or_none(value)
+    if current_value is None:
+        # Entity was not associated earlier
+        cache.change = "ADDED"
+    elif value is None:
+        # Entity was associated earlier, but now being removed
+        cache.change = "DELETED"
+        cache.old_value = current_value
+    elif current_value_id != value_id:
+        # A New Entity is being associated replacing the old one
+        cache.change = "UPDATED"
+        cache.old_value = current_value
+    elif current_value_id == value_id and value.state_.is_changed:
+        # Entity was associated earlier, but now being updated
+        cache.change = "UPDATED"
+    else:
+        cache.change = None  # The same object has been assigned, No-Op
+
+
+def _link_has_many_child(
+    field: HasMany, instance: Any, item: Any, instance_id_name: str
+) -> None:
+    setattr(
+        item,
+        field._linked_attribute(type(instance)),
+        getattr(instance, instance_id_name),
+    )
+
+    # Temporarily set linkage to parent in child entity
+    setattr(item, field._linked_reference(type(instance)), instance)
+
+
+def _replace_by_identity(
+    entities: list[Any], item: Any, id_field_name: str, identity: Any
+) -> None:
+    for i, existing in enumerate(entities):
+        if getattr(existing, id_field_name) == identity:
+            entities[i] = item
+            break
+
+
+def _remove_child_associations(entity: Any) -> None:
+    """Clear every association on ``entity``: remove all its HasMany children
+    and set each HasOne to None."""
+    if has_association_fields(entity):
+        for field_name, field_obj in association_fields(entity).items():
+            if isinstance(field_obj, HasMany):
+                field_obj.remove(entity, getattr(entity, field_name))
+            elif isinstance(field_obj, HasOne):
+                setattr(entity, field_name, None)

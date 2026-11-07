@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from opentelemetry import trace
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -34,6 +35,7 @@ from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
 from protean.core.query import BaseQuery
 from protean.core.query_handler import BaseQueryHandler
+from protean.domain import Domain
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Float, Identifier, String
 from protean.utils.eventing import Message
@@ -265,6 +267,85 @@ class TestCommandEnrichSpan:
         assert enrich_span.parent is not None
         assert enrich_span.parent.span_id == process_span.context.span_id
         assert enrich_span.attributes["protean.command.type"] == OpenAccount.__type__
+
+    def test_enrichers_run_inside_the_enrich_span(self, test_domain, span_exporter):
+        seen_span_names = []
+
+        def record_current_span(command):
+            seen_span_names.append(trace.get_current_span().name)
+            return {}
+
+        test_domain.register_command_enricher(record_current_span)
+
+        _process_open_account(test_domain)
+
+        assert seen_span_names == ["protean.command.enrich"]
+
+
+class _DictIdempotencyStore:
+    """An idempotency store kept in a dict, with the Redis store's outcomes."""
+
+    def __init__(self) -> None:
+        self.entries: dict[str, dict] = {}
+
+    @property
+    def is_active(self) -> bool:
+        return True
+
+    def check(self, idempotency_key: str) -> dict | None:
+        return self.entries.get(idempotency_key)
+
+    def record_success(self, idempotency_key: str, result: object) -> None:
+        self.entries[idempotency_key] = {"status": "success", "result": result}
+
+    def record_error(self, idempotency_key: str, error: str) -> None:
+        self.entries[idempotency_key] = {"status": "error", "error": error}
+
+
+class TestCommandProcessSpanScope:
+    """The checks that end ``process`` early still run inside its span."""
+
+    def test_unregistered_command_is_rejected_inside_the_process_span(self):
+        other_domain = Domain(name="Other")
+        other_domain.init(traverse=False)
+        other_exporter = _init_telemetry_in_memory(other_domain)
+        command = OpenAccount(account_id=str(uuid4()), name="Acme")
+
+        with other_domain.domain_context():
+            with pytest.raises(IncorrectUsageError, match="not registered"):
+                other_domain.process(command, asynchronous=False)
+
+        process_spans = [
+            s
+            for s in other_exporter.get_finished_spans()
+            if s.name == "protean.command.process"
+        ]
+        assert len(process_spans) == 1
+        assert process_spans[0].attributes["protean.command.type"] == (
+            OpenAccount.__type__
+        )
+
+    def test_duplicate_idempotency_key_is_answered_inside_a_process_span(
+        self, test_domain, span_exporter, monkeypatch
+    ):
+        monkeypatch.setattr(test_domain, "_idempotency_store", _DictIdempotencyStore())
+        account_id = str(uuid4())
+
+        first = test_domain.process(
+            OpenAccount(account_id=account_id, name="Acme"),
+            asynchronous=False,
+            idempotency_key="open-once",
+        )
+        span_exporter.clear()
+        second = test_domain.process(
+            OpenAccount(account_id=account_id, name="Acme"),
+            asynchronous=False,
+            idempotency_key="open-once",
+        )
+
+        assert second == first == {"opened": account_id}
+        span_names = [s.name for s in span_exporter.get_finished_spans()]
+        assert span_names == ["protean.command.process"]
 
 
 # ---------------------------------------------------------------------------

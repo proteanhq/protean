@@ -412,7 +412,7 @@ class Domain:
         self.teardown_domain_context_functions: list[Callable[..., Any]] = []
 
         # Placeholder array for resolving classes referenced by domain elements
-        self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
+        self._pending_class_resolutions: defaultdict[str, list[Any]] = defaultdict(list)
 
         # Partition-per-key routing map (ADR-0028): stream_category ->
         # partition-key field name. Built by ``HandlerConfigurator`` during
@@ -896,32 +896,8 @@ class Domain:
 
         logger.debug(f"Loading domain from {root_dir}...")
 
-        # Identify subdirectories
-        # Sorted so modules load, and enrichers register, in the same order
-        # on every filesystem. `os.listdir` returns entries in arbitrary order.
-        subdirectories = [
-            name
-            for name in sorted(os.listdir(root_dir))
-            if os.path.isdir(os.path.join(root_dir, name))
-            and name not in ["__pycache__"]
-        ]
-
-        directories_to_traverse = [str(root_dir)]  # Include root directory
-
-        # Identify subdirectories that have a toml file
-        #   And ignore them from traversal
-        files_to_check = ["domain.toml", ".domain.toml", "pyproject.toml"]
-        for subdirectory in subdirectories:
-            subdirectory_path = os.path.join(root_dir, subdirectory)
-            if not any(
-                file
-                for file in files_to_check
-                if os.path.isfile(os.path.join(subdirectory_path, file))
-            ):
-                directories_to_traverse.append(subdirectory_path)
-
         # Traverse directories one by one
-        for directory in directories_to_traverse:
+        for directory in _directories_to_traverse(root_dir):
             for filename in sorted(os.listdir(directory)):
                 package_path = directory[len(str(system_folder_path)) + 1 :]
                 module_name = package_path.replace(os.sep, ".")
@@ -932,27 +908,7 @@ class Domain:
                     and os.path.splitext(filename)[1] == ".py"
                     and not self._is_domain_file(full_file_path)
                 ):
-                    # Construct the module path to import from
-                    if filename != "__init__.py":
-                        sub_module_name = os.path.splitext(filename)[0]
-                        file_module_name = module_name + "." + sub_module_name
-                    else:
-                        file_module_name = module_name
-                    full_file_path = os.path.join(root_dir, filename)
-
-                    spec = importlib.util.spec_from_file_location(
-                        file_module_name, os.path.join(directory, filename)
-                    )
-                    assert spec is not None and spec.loader is not None
-                    module = importlib.util.module_from_spec(spec)
-
-                    # Register in sys.modules before execution to prevent
-                    # duplicate loading if another module imports this one
-                    # during execution (e.g., circular or relative imports).
-                    if module.__name__ not in sys.modules:
-                        sys.modules[module.__name__] = module
-                        spec.loader.exec_module(module)
-
+                    _load_domain_module(directory, filename, module_name)
                     logger.debug(f"Loaded {filename}")
 
     def _is_domain_file(self, file_path: str) -> bool:
@@ -1164,80 +1120,12 @@ class Domain:
 
         # 1. Associations
         if has_fields(new_cls):
-            for field_obj in declared_fields(new_cls).values():
-                # Record Association references to resolve later
-                if isinstance(field_obj, (HasOne, HasMany, Reference)) and isinstance(
-                    field_obj.to_cls, str
-                ):
-                    self._pending_class_resolutions[field_obj.to_cls].append(
-                        ("Association", (field_obj, new_cls))
-                    )
-
-                # Record Value Object references to resolve later
-                if isinstance(field_obj, ValueObject) and isinstance(
-                    field_obj.value_object_cls, str
-                ):
-                    self._pending_class_resolutions[field_obj.value_object_cls].append(
-                        ("ValueObject", (field_obj, new_cls))
-                    )
-
-                # Record Value Object references in List fields to resolve later
-                if (
-                    isinstance(field_obj, ValueObjectList)
-                    and isinstance(field_obj.content_type, ValueObject)
-                    and isinstance(field_obj.content_type.value_object_cls, str)
-                ):
-                    self._pending_class_resolutions[
-                        field_obj.content_type.value_object_cls
-                    ].append(("ValueObject", (field_obj.content_type, new_cls)))
-
-            # Also scan FieldSpec metadata for ValueObject descriptors, such
-            # as a List whose content_type is a ValueObject
-            field_meta = getattr(new_cls, "__protean_field_meta__", {})
-            for spec in field_meta.values():
-                ct = getattr(spec, "content_type", None)
-                if isinstance(ct, ValueObject) and isinstance(ct.value_object_cls, str):
-                    self._pending_class_resolutions[ct.value_object_cls].append(
-                        ("ValueObject", (ct, new_cls))
-                    )
+            _record_pending_field_resolutions(self._pending_class_resolutions, new_cls)
 
         # 2. Meta Linkages
-        if element_type in [
-            DomainObjects.APPLICATION_SERVICE,
-            DomainObjects.ENTITY,
-            DomainObjects.EVENT,
-            DomainObjects.EVENT_HANDLER,
-            DomainObjects.COMMAND,
-            DomainObjects.COMMAND_HANDLER,
-            DomainObjects.DATABASE_MODEL,
-            DomainObjects.REPOSITORY,
-            DomainObjects.EVENT_SOURCED_REPOSITORY,
-            DomainObjects.VALUE_OBJECT,
-        ] and isinstance(new_cls.meta_.part_of, str):
-            self._pending_class_resolutions[new_cls.meta_.part_of].append(
-                ("AggregateCls", (new_cls))
-            )
-
-        if element_type == DomainObjects.PROJECTOR and isinstance(
-            new_cls.meta_.projector_for, str
-        ):
-            self._pending_class_resolutions[new_cls.meta_.projector_for].append(
-                ("ProjectionCls", (new_cls))
-            )
-
-        if element_type == DomainObjects.QUERY and isinstance(
-            new_cls.meta_.part_of, str
-        ):
-            self._pending_class_resolutions[new_cls.meta_.part_of].append(
-                ("QueryProjectionCls", (new_cls))
-            )
-
-        if element_type == DomainObjects.QUERY_HANDLER and isinstance(
-            new_cls.meta_.part_of, str
-        ):
-            self._pending_class_resolutions[new_cls.meta_.part_of].append(
-                ("QueryHandlerProjectionCls", (new_cls))
-            )
+        _record_pending_meta_resolutions(
+            self._pending_class_resolutions, element_type, new_cls
+        )
 
         return cast("type[_T]", new_cls)
 
@@ -2842,35 +2730,7 @@ class Domain:
         # --- Merge domain.toml [logging] with explicit kwargs ---
         logging_config = self.config.get("logging", {})
         telemetry_enabled = bool(self.config.get("telemetry", {}).get("enabled"))
-        config_kwargs: dict[str, Any] = {}
-
-        # level: env var overrides config, but explicit kwargs override both.
-        # Only forward config level when the env var is absent.
-        cfg_level = logging_config.get("level", "")
-        if cfg_level and "PROTEAN_LOG_LEVEL" not in os.environ:
-            config_kwargs["level"] = cfg_level
-
-        # Other string keys: empty string means "use default"
-        for key in ("format", "log_dir", "log_file_prefix"):
-            val = logging_config.get(key, "")
-            if val:
-                config_kwargs[key] = val
-
-        # Numeric keys: forward when present (default_config always provides them)
-        for key in ("max_bytes", "backup_count"):
-            val = logging_config.get(key)
-            if val is not None:
-                config_kwargs[key] = int(val)
-
-        # Dict key: forward when non-empty
-        per_logger = logging_config.get("per_logger")
-        if per_logger:
-            config_kwargs["per_logger"] = per_logger
-
-        # List of sensitive keys to redact
-        redact = logging_config.get("redact")
-        if redact:
-            config_kwargs["redact"] = list(redact)
+        config_kwargs = _logging_kwargs_from_config(logging_config)
 
         # Explicit kwargs override config values
         config_kwargs.update(kwargs)
@@ -2891,16 +2751,8 @@ class Domain:
         # Sampling runs against the un-redacted event dict so `status` and
         # `message_type` are still readable; redaction (appended later inside
         # configure_logging) masks what survives.
-        sampling_config = logging_config.get("sampling", {}) or {}
-        sampling_enabled = bool(sampling_config.get("enabled", False))
-        sampling_kwargs: dict[str, Any] = {}
-        if sampling_enabled:
-            sampling_kwargs = {
-                "default_rate": sampling_config.get("default_rate", 0.05),
-                "always_keep_errors": sampling_config.get("always_keep_errors", True),
-                "always_keep_slow": sampling_config.get("always_keep_slow", True),
-                "critical_streams": sampling_config.get("critical_streams", []),
-            }
+        sampling_kwargs = _tail_sampling_kwargs(logging_config)
+        if sampling_kwargs:
             extra.append(TailSamplingProcessor(**sampling_kwargs))
 
         configure_logging(extra_processors=extra, **config_kwargs)
@@ -2921,7 +2773,198 @@ class Domain:
         # Tail sampling filter on the protean.access stdlib logger — covers
         # the primary wide event emission path (access_logger is a stdlib
         # logger so events never reach the structlog processor chain).
-        if sampling_enabled and not any(
+        if sampling_kwargs and not any(
             isinstance(f, TailSamplingFilter) for f in access_logger.filters
         ):
             access_logger.addFilter(TailSamplingFilter(**sampling_kwargs))
+
+
+# ---------------------------------------------------------------------------
+# Domain helpers
+#
+# Module-level functions, so no new private name lands on ``Domain`` where a
+# subclass could override it.
+# ---------------------------------------------------------------------------
+# Element types whose string ``part_of`` waits in the pending resolutions.
+# The resolver resolves it against the kinds ``PART_OF_KINDS`` allows.
+_STRING_PART_OF_TYPES = (
+    DomainObjects.APPLICATION_SERVICE,
+    DomainObjects.ENTITY,
+    DomainObjects.EVENT,
+    DomainObjects.EVENT_HANDLER,
+    DomainObjects.COMMAND,
+    DomainObjects.COMMAND_HANDLER,
+    DomainObjects.DATABASE_MODEL,
+    DomainObjects.REPOSITORY,
+    DomainObjects.EVENT_SOURCED_REPOSITORY,
+    DomainObjects.VALUE_OBJECT,
+)
+
+
+def _record_pending_field_resolutions(
+    pending: defaultdict[str, list[Any]], new_cls: Any
+) -> None:
+    """Record each string class reference in ``new_cls``'s fields in
+    ``pending``, keyed by the class name, for ``domain.init()`` to resolve."""
+    for field_obj in declared_fields(new_cls).values():
+        # Record Association references to resolve later
+        if isinstance(field_obj, (HasOne, HasMany, Reference)) and isinstance(
+            field_obj.to_cls, str
+        ):
+            pending[field_obj.to_cls].append(("Association", (field_obj, new_cls)))
+
+        # Record Value Object references to resolve later
+        if isinstance(field_obj, ValueObject) and isinstance(
+            field_obj.value_object_cls, str
+        ):
+            pending[field_obj.value_object_cls].append(
+                ("ValueObject", (field_obj, new_cls))
+            )
+
+        # Record Value Object references in List fields to resolve later
+        if (
+            isinstance(field_obj, ValueObjectList)
+            and isinstance(field_obj.content_type, ValueObject)
+            and isinstance(field_obj.content_type.value_object_cls, str)
+        ):
+            pending[field_obj.content_type.value_object_cls].append(
+                ("ValueObject", (field_obj.content_type, new_cls))
+            )
+
+    # Also scan FieldSpec metadata for ValueObject descriptors, such
+    # as a List whose content_type is a ValueObject
+    field_meta = getattr(new_cls, "__protean_field_meta__", {})
+    for spec in field_meta.values():
+        ct = getattr(spec, "content_type", None)
+        if isinstance(ct, ValueObject) and isinstance(ct.value_object_cls, str):
+            pending[ct.value_object_cls].append(("ValueObject", (ct, new_cls)))
+
+
+def _record_pending_meta_resolutions(
+    pending: defaultdict[str, list[Any]],
+    element_type: DomainObjects,
+    new_cls: Any,
+) -> None:
+    """Record a string ``part_of`` or ``projector_for`` on ``new_cls``'s meta
+    in ``pending``, keyed by the class name, for ``domain.init()`` to resolve."""
+    if element_type in _STRING_PART_OF_TYPES and isinstance(new_cls.meta_.part_of, str):
+        pending[new_cls.meta_.part_of].append(("AggregateCls", (new_cls)))
+
+    if element_type == DomainObjects.PROJECTOR and isinstance(
+        new_cls.meta_.projector_for, str
+    ):
+        pending[new_cls.meta_.projector_for].append(("ProjectionCls", (new_cls)))
+
+    if element_type == DomainObjects.QUERY and isinstance(new_cls.meta_.part_of, str):
+        pending[new_cls.meta_.part_of].append(("QueryProjectionCls", (new_cls)))
+
+    if element_type == DomainObjects.QUERY_HANDLER and isinstance(
+        new_cls.meta_.part_of, str
+    ):
+        pending[new_cls.meta_.part_of].append(("QueryHandlerProjectionCls", (new_cls)))
+
+
+def _directories_to_traverse(root_dir: Path) -> list[str]:
+    """Return ``root_dir`` and each immediate subdirectory except
+    ``__pycache__`` and any separate domain (one holding its own
+    ``domain.toml``, ``.domain.toml`` or ``pyproject.toml``)."""
+    # Identify subdirectories
+    # Sorted so modules load, and enrichers register, in the same order
+    # on every filesystem. `os.listdir` returns entries in arbitrary order.
+    subdirectories = [
+        name
+        for name in sorted(os.listdir(root_dir))
+        if os.path.isdir(os.path.join(root_dir, name)) and name not in ["__pycache__"]
+    ]
+
+    directories_to_traverse = [str(root_dir)]  # Include root directory
+
+    # Identify subdirectories that have a toml file
+    #   And ignore them from traversal
+    files_to_check = ["domain.toml", ".domain.toml", "pyproject.toml"]
+    for subdirectory in subdirectories:
+        subdirectory_path = os.path.join(root_dir, subdirectory)
+        if not any(
+            file
+            for file in files_to_check
+            if os.path.isfile(os.path.join(subdirectory_path, file))
+        ):
+            directories_to_traverse.append(subdirectory_path)
+
+    return directories_to_traverse
+
+
+def _load_domain_module(directory: str, filename: str, module_name: str) -> None:
+    """Import ``filename`` from ``directory`` as a submodule of ``module_name``
+    (as ``module_name`` itself for ``__init__.py``), unless a module of that
+    name is already loaded."""
+    # Construct the module path to import from
+    if filename != "__init__.py":
+        sub_module_name = os.path.splitext(filename)[0]
+        file_module_name = module_name + "." + sub_module_name
+    else:
+        file_module_name = module_name
+
+    spec = importlib.util.spec_from_file_location(
+        file_module_name, os.path.join(directory, filename)
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    # Register in sys.modules before execution to prevent
+    # duplicate loading if another module imports this one
+    # during execution (e.g., circular or relative imports).
+    if module.__name__ not in sys.modules:
+        sys.modules[module.__name__] = module
+        spec.loader.exec_module(module)
+
+
+def _logging_kwargs_from_config(logging_config: dict[str, Any]) -> dict[str, Any]:
+    """Return the ``configure_logging`` keyword arguments the ``[logging]``
+    section of the domain config sets."""
+    config_kwargs: dict[str, Any] = {}
+
+    # level: env var overrides config. ``Domain.configure_logging`` then
+    # updates these values with its own kwargs, so those override both.
+    # Only forward config level when the env var is absent.
+    cfg_level = logging_config.get("level", "")
+    if cfg_level and "PROTEAN_LOG_LEVEL" not in os.environ:
+        config_kwargs["level"] = cfg_level
+
+    # Other string keys: empty string means "use default"
+    for key in ("format", "log_dir", "log_file_prefix"):
+        val = logging_config.get(key, "")
+        if val:
+            config_kwargs[key] = val
+
+    # Numeric keys: forward when present (default_config always provides them)
+    for key in ("max_bytes", "backup_count"):
+        val = logging_config.get(key)
+        if val is not None:
+            config_kwargs[key] = int(val)
+
+    # Dict key: forward when non-empty
+    per_logger = logging_config.get("per_logger")
+    if per_logger:
+        config_kwargs["per_logger"] = per_logger
+
+    # List of sensitive keys to redact
+    redact = logging_config.get("redact")
+    if redact:
+        config_kwargs["redact"] = list(redact)
+
+    return config_kwargs
+
+
+def _tail_sampling_kwargs(logging_config: dict[str, Any]) -> dict[str, Any]:
+    """Return the tail sampling settings from ``[logging.sampling]``, or an
+    empty dict when sampling is not enabled."""
+    sampling_config = logging_config.get("sampling", {}) or {}
+    if not bool(sampling_config.get("enabled", False)):
+        return {}
+    return {
+        "default_rate": sampling_config.get("default_rate", 0.05),
+        "always_keep_errors": sampling_config.get("always_keep_errors", True),
+        "always_keep_slow": sampling_config.get("always_keep_slow", True),
+        "critical_streams": sampling_config.get("critical_streams", []),
+    }
