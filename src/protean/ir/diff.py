@@ -1052,8 +1052,9 @@ class CompatibilityChange:
     # ``_AVRO_CHANGE_SAFETY`` table default for this change type". They are set
     # only where safety is per-field rather than fixed by the change type:
     # ``field_removed`` / ``field_renamed`` set ``forward_safe`` (depends on the
-    # old field's optionality), and a required-field-add with a *callable*
-    # default sets ``backward_safe=False`` (Avro cannot emit a callable default).
+    # old field's optionality), and a required-field-add sets
+    # ``backward_safe=False`` when Avro cannot emit its default (a callable
+    # default, or a Decimal default the field's Avro decimal type cannot hold).
     backward_safe: bool | None = None
     forward_safe: bool | None = None
     # The name of the field this change is about, for the change types that
@@ -1962,9 +1963,9 @@ def _field_addition_change(
                 f"Required field '{field_name}' added to {element_type} "
                 f"'{fqn}' with a default value"
             ),
-            # A *callable* default cannot be emitted as an Avro schema
-            # default, so a new reader has no value for old data missing
-            # the field — not backward-safe in that case.
+            # A default Avro cannot emit (a callable, or a Decimal the Avro
+            # decimal type cannot hold) leaves a new reader no value for old
+            # data missing the field, so the change is not backward-safe.
             backward_safe=_has_static_default(field_dict),
         )
     return CompatibilityChange(
