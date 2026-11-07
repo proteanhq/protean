@@ -2785,8 +2785,9 @@ class Domain:
 # Module-level functions, so no new private name lands on ``Domain`` where a
 # subclass could override it.
 # ---------------------------------------------------------------------------
-# Element types whose string ``part_of`` is resolved to an aggregate class
-_PART_OF_AGGREGATE_TYPES = (
+# Element types whose string ``part_of`` waits in the pending resolutions.
+# The resolver resolves it against the kinds ``PART_OF_KINDS`` allows.
+_STRING_PART_OF_TYPES = (
     DomainObjects.APPLICATION_SERVICE,
     DomainObjects.ENTITY,
     DomainObjects.EVENT,
@@ -2842,9 +2843,7 @@ def _record_pending_meta_resolutions(
 ) -> None:
     """Record a string ``part_of`` or ``projector_for`` on ``new_cls``'s meta
     in ``pending``, keyed by the class name, for ``domain.init()`` to resolve."""
-    if element_type in _PART_OF_AGGREGATE_TYPES and isinstance(
-        new_cls.meta_.part_of, str
-    ):
+    if element_type in _STRING_PART_OF_TYPES and isinstance(new_cls.meta_.part_of, str):
         pending[new_cls.meta_.part_of].append(("AggregateCls", (new_cls)))
 
     if element_type == DomainObjects.PROJECTOR and isinstance(
