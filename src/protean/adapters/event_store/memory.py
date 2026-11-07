@@ -134,7 +134,7 @@ class MemoryMessageRepository(BaseRepository):
             )
             if stream_name != "$all":
                 # Keep the read to this category's streams (``user`` -> ``user-...``).
-                q = q.filter(stream_name__startswith=f"{stream_name}-")
+                q = q.filter(stream_name__contains=f"{stream_name}-")
         else:
             q = (
                 repo._dao.query.filter(position__gte=position)
@@ -202,7 +202,7 @@ class MemoryEventStore(BaseEventStore):
         if stream_name == "$all" or repo.is_category(stream_name):
             q = repo._dao.query.order_by("-global_position")
             if stream_name != "$all":
-                q = q.filter(stream_name__startswith=f"{stream_name}-")
+                q = q.filter(stream_name__contains=f"{stream_name}-")
         else:
             q = repo._dao.query.filter(stream_name=stream_name).order_by("-position")
 
