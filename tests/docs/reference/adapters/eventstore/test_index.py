@@ -1,15 +1,18 @@
 """Run the example on ``docs/reference/adapters/eventstore/index.md``."""
 
+import re
 from uuid import uuid4
 
 import pytest
 
 from protean import Domain
 from protean.adapters.event_store.message_db import MessageDBStore
-from tests.docs.support import DOCS_SRC, load_example
+from protean.port.event_store import EventStoreCapabilities
+from tests.docs.support import DOCS, DOCS_SRC, load_example
 from tests.shared import MESSAGE_DB_URI
 
 MESSAGE_DB_CONFIG = DOCS_SRC / "adapters/eventstore/index/message_db.toml"
+PAGE = DOCS / "reference/adapters/eventstore/index.md"
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -80,3 +83,31 @@ def test_message_db_configuration_connects(tmp_path, monkeypatch):
 
         assert isinstance(store, MessageDBStore)
         assert [m["data"] for m in store._read(stream)] == [{"n": 1}]
+
+
+def _first_column_of_table_headed(header: str) -> set[str]:
+    lines = PAGE.read_text().splitlines()
+    start = lines.index(header) + 2  # skip the header and the separator row
+    names = set()
+    for line in lines[start:]:
+        if not line.startswith("|"):
+            break
+        names.add(re.match(r"\| `(\w+)` \|", line).group(1))
+    return names
+
+
+def test_flag_table_lists_every_capability_flag():
+    names = _first_column_of_table_headed("| Flag | What the store promises |")
+
+    assert names == {member.name for member in EventStoreCapabilities}
+
+
+def test_set_table_lists_every_named_set():
+    names = _first_column_of_table_headed("| Set | Flags |")
+
+    assert names
+    single = {member.name for member in EventStoreCapabilities}
+    named_sets = {
+        name for name in EventStoreCapabilities.__members__ if name not in single
+    }
+    assert names == named_sets

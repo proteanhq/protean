@@ -44,8 +44,8 @@ durable event storage with SQL-based stream operations.
 ## What each event store guarantees
 
 Each event store declares the guarantees it makes as an `EventStoreCapabilities`
-flag on its `capabilities` property. Check one guarantee with
-`EventStoreCapabilities.DURABLE in domain.event_store.store.capabilities`.
+flag on its `capabilities` property. After `domain.init()`, check one guarantee
+with `EventStoreCapabilities.DURABLE in domain.event_store.store.capabilities`.
 
 | Flag | What the store promises |
 |------|-------------------------|
@@ -59,7 +59,7 @@ flag on its `capabilities` property. Check one guarantee with
 | `DURABLE` | Messages survive a process restart. |
 | `SCHEMA_MANAGEMENT` | It creates and drops its own tables. |
 
-Three named sets group the common combinations:
+Named sets group the common combinations:
 
 | Set | Flags |
 |-----|-------|

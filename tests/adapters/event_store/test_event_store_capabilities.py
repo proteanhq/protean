@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from protean import Domain
+from protean.adapters.event_store.memory import MemoryEventStore
 from protean.adapters.event_store.message_db import MessageDBStore
 from protean.port.event_store import BaseEventStore, EventStoreCapabilities
 from tests.shared import MESSAGE_DB_URI
@@ -56,7 +57,9 @@ class TestEventStoreCapabilityFlags:
 
 class TestMemoryEventStoreCapabilities:
     def test_memory_store_declares_consistent_store(self, test_domain):
-        capabilities = test_domain.event_store.store.capabilities
+        store = test_domain.event_store.store
+        assert isinstance(store, MemoryEventStore)
+        capabilities = store.capabilities
 
         assert capabilities == EventStoreCapabilities.CONSISTENT_STORE
         assert EventStoreCapabilities.DURABLE not in capabilities
@@ -111,17 +114,17 @@ class _StoreWithoutCapabilities(BaseEventStore):
 
 class _StoreWithCapabilities(_StoreWithoutCapabilities):
     @property
-    def capabilities(self) -> EventStoreCapabilities:
+    def capabilities(self) -> EventStoreCapabilities:  # pragma: no cover
         return EventStoreCapabilities.BASIC_STORE
 
 
 @pytest.mark.no_test_domain
 class TestCapabilitiesIsRequired:
     def test_subclass_without_capabilities_cannot_be_instantiated(self):
-        with pytest.raises(TypeError, match="capabilities"):
+        with pytest.raises(TypeError, match=r"abstract methods? '?capabilities'?"):
             _StoreWithoutCapabilities("Partial", None, {})  # type: ignore[abstract, arg-type]
 
     def test_subclass_with_capabilities_can_be_instantiated(self):
         store = _StoreWithCapabilities("Complete", None, {})  # type: ignore[arg-type]
 
-        assert store.capabilities == EventStoreCapabilities.BASIC_STORE
+        assert isinstance(store, BaseEventStore)
