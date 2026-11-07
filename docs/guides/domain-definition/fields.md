@@ -199,8 +199,8 @@ concept (money, an address, a coordinate), promote them to a
 ```
 
 You can pass a `Money(...)` instance or the flattened attributes
-(`balance_currency`, `balance_amount`). Protean reconstitutes the VO in either
-case.
+(`balance_currency`, `balance_amount`). Protean reconstitutes the value object
+in either case.
 
 ---
 

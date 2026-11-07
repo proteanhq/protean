@@ -65,11 +65,10 @@ An MCP client discovers the server from a `.mcp.json` file in the project:
 ```
 
 Run [`protean dx install`](../project/dx.md) to write the `mcpServers.protean`
-entry for you. `protean dx install` writes only the `mcpServers.protean`
-key-path, so every other server in an existing `.mcp.json` stays as you
-configured it. You can also create the file by hand as shown, or point your
-client at the `.mcp.json` shipped at the root of the Protean repository, which
-carries the same entry.
+entry for you. It writes only that key-path, so every other server in an
+existing `.mcp.json` stays as you configured it. You can also create the file
+by hand as shown, or point your client at the `.mcp.json` shipped at the root
+of the Protean repository, which carries the same entry.
 
 ## The tools
 

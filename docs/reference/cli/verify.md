@@ -9,8 +9,7 @@ composes the steps you would otherwise run by hand:
 3. **Tests**: Run the project's own `pytest` suite in the project directory.
 
 Running `verify` is the fastest way to confirm that a freshly scaffolded
-project works. In CI, you can run it as the one check that passes or fails the
-build.
+project works, and a single command to gate CI on.
 
 ```bash
 # Verify the project discovered from the current directory

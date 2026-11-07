@@ -65,7 +65,7 @@ Out[3]:
     Out[3]: ['name', 'id', 'book_id']
     ```
 
-The Repository section explains how Protean persists associations.
+We will further review persistence related aspects around associations in the Repository section.
 <!-- FIXME Link Repository section -->
 
 ## `HasMany`

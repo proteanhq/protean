@@ -54,7 +54,8 @@ instance, the IR treats them as one. Phase 5 linting may detect this pattern
 diagnostic. However, the IR itself will not add sub-context declarations unless
 Protean introduces explicit bounded context partitioning within a `Domain`.
 
-The limit of one bounded context per `Domain` also means that Protean does not support multi-BC abstractions at the framework level.
+The limit of one bounded context per `Domain` also means that Protean does not support
+multi-BC abstractions at the framework level.
 The framework is deliberately opinionated: if you need separate bounded contexts, use
 separate `Domain` instances. This avoids premature sub-context abstraction and keeps the
 `Domain` class focused on a single responsibility.

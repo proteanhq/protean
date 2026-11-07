@@ -96,8 +96,8 @@ ValidationError: {'roles': ['Input should be a valid string', 'Input should be a
 
 A `List` field can even hold a list of `ValueObject` instances. Protean
 persists the content of the `List` as a list of dicts, so for persistence the
-field behaves like `List(Dict())`. However, it will have the added benefit of a
-validation structure of content within the List.
+field behaves like `List(Dict())`. Unlike `List(Dict())`, it also validates each
+item against the value object.
 
 ```python hl_lines="7-12 19"
 --8<-- "guides/domain-definition/fields/container-fields/004.py:full"

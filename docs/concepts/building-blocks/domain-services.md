@@ -9,7 +9,7 @@ the logic genuinely spans aggregate boundaries.
 ## The Problem
 
 Consider placing an order that requires confirming the order and reserving
-inventory. Which element should hold this logic?
+inventory. Where should this logic go?
 
 - **In the `Order` aggregate?** Then `Order` needs to know about `Inventory`,
   which violates aggregate boundaries and creates tight coupling.

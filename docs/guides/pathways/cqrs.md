@@ -3,7 +3,7 @@
 !!! info "Builds on DDD"
     This approach adds Commands, Command Handlers, and Projections on top of
     the [DDD foundation](./ddd.md). If you haven't read the DDD pathway yet,
-    start there, because CQRS extends its concepts.
+    start there, because CQRS builds on those concepts.
 
 ## Overview
 

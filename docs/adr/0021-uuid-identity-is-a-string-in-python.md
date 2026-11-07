@@ -58,8 +58,8 @@ domain identity is an opaque string.
   was declared.
 - Native UUID database columns still work, so the storage and indexing reasons
   for choosing `uuid` over `string` still hold. The two types now differ only
-  in UUID-format validation and in the column type an adapter selects, and the
-  Python type is the same.
+  in UUID-format validation and in the column type an adapter selects. The
+  Python type is `str` for both.
 - `identity_type = "uuid"` no longer yields a native `uuid.UUID` in Python. Code
   that relied on the (previously broken, non-serializable) native-UUID id must
   call `uuid.UUID(id)` explicitly. This is a behavior change, documented in the

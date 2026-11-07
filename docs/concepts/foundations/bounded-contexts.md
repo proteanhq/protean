@@ -43,7 +43,7 @@ In Protean, cross-context communication is supported through domain events and [
 
 ## How to Identify Boundaries
 
-Recognizing where one context ends and another begins is a modeling skill that improves with practice. Three clues help you find a boundary:
+Recognizing where one context ends and another begins is a modeling skill that improves with practice. Three signals help:
 
 - **Language divergence**: When the same word means different things to different people, a boundary likely exists between their contexts.
 - **Organizational boundaries**: Different teams often correspond to different bounded contexts. Conway's Law suggests that system boundaries will mirror communication structures.
