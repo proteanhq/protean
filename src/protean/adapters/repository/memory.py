@@ -83,6 +83,63 @@ class MemoryModel(BaseDatabaseModel):
         return cls._entity_to_dict(entity)
 
 
+def _refuse_stale_versions(
+    live: dict[str, typing.Any], checks: dict[tuple[str, typing.Any], int]
+) -> None:
+    """Refuse a commit when a checked record's live ``_version`` has moved.
+
+    Raises:
+        ExpectedVersionError: A record in ``checks`` no longer holds its
+            expected version in ``live``.
+    """
+    # Compare: every recorded version must still match the live store.
+    for (schema, identifier), expected in checks.items():
+        stored = live.get(schema, {}).get(identifier)
+        stored_version = stored.get("_version") if stored is not None else None
+        if stored_version != expected:
+            if occ_trace.is_active():
+                # Raw conflict observation, taken under the provider lock
+                # (the same lock the compare-and-set holds): the version
+                # this writer read as its base, and the live version that
+                # no longer matches it.
+                occ_trace.record(
+                    stream=f"{schema}:{identifier}",
+                    base=expected,
+                    outcome="conflicted",
+                    version_after=stored_version,
+                )
+            raise ExpectedVersionError(
+                f"Wrong expected version: {expected} "
+                f"(Schema: {schema}, Identifier: {identifier}, "
+                f"Version: {stored_version})"
+            )
+
+
+def _record_committed_versions(
+    live: dict[str, typing.Any], checks: dict[tuple[str, typing.Any], int]
+) -> None:
+    """When OCC tracing is active, record a ``committed`` entry for each
+    checked record still in ``live``."""
+    if occ_trace.is_active():
+        # Every checked record merged cleanly, so this writer committed.
+        # Read the stored version back from the live store after the merge
+        # (raw, still under the lock), rather than assuming ``base + 1``.
+        for (schema, identifier), expected in checks.items():
+            merged = live.get(schema, {}).get(identifier)
+            if merged is None:
+                # The record was version-checked and then deleted in this
+                # same session, so there is no resulting version to record.
+                # A delete is not the version-advancing compare-and-set the
+                # OCC spec models, so it is left out of the trace.
+                continue
+            occ_trace.record(
+                stream=f"{schema}:{identifier}",
+                base=expected,
+                outcome="committed",
+                version_after=merged.get("_version"),
+            )
+
+
 class MemorySession:
     """A session over a private deep copy of the provider's in-memory store.
 
@@ -242,27 +299,7 @@ class MemorySession:
             data = self._db["data"]
             checks = self._db["version_checks"]
 
-            # Compare: every recorded version must still match the live store.
-            for (schema, identifier), expected in checks.items():
-                stored = live.get(schema, {}).get(identifier)
-                stored_version = stored.get("_version") if stored is not None else None
-                if stored_version != expected:
-                    if occ_trace.is_active():
-                        # Raw conflict observation, taken under the provider lock
-                        # (the same lock the compare-and-set holds): the version
-                        # this writer read as its base, and the live version that
-                        # no longer matches it.
-                        occ_trace.record(
-                            stream=f"{schema}:{identifier}",
-                            base=expected,
-                            outcome="conflicted",
-                            version_after=stored_version,
-                        )
-                    raise ExpectedVersionError(
-                        f"Wrong expected version: {expected} "
-                        f"(Schema: {schema}, Identifier: {identifier}, "
-                        f"Version: {stored_version})"
-                    )
+            _refuse_stale_versions(live, checks)
 
             self._drop_rows_whose_key_is_taken(live)
 
@@ -274,24 +311,7 @@ class MemorySession:
                 elif schema in live:  # op == "delete"
                     live[schema].pop(identifier, None)
 
-            if occ_trace.is_active():
-                # Every checked record merged cleanly, so this writer committed.
-                # Read the stored version back from the live store after the merge
-                # (raw, still under the lock), rather than assuming ``base + 1``.
-                for (schema, identifier), expected in checks.items():
-                    merged = live.get(schema, {}).get(identifier)
-                    if merged is None:
-                        # The record was version-checked and then deleted in this
-                        # same session, so there is no resulting version to record.
-                        # A delete is not the version-advancing compare-and-set the
-                        # OCC spec models, so it is left out of the trace.
-                        continue
-                    occ_trace.record(
-                        stream=f"{schema}:{identifier}",
-                        base=expected,
-                        outcome="committed",
-                        version_after=merged.get("_version"),
-                    )
+            _record_committed_versions(live, checks)
 
             # Clear the changeset so a repeated commit is a no-op.
             self._clear_changeset()
@@ -534,6 +554,48 @@ class MemoryProvider(BaseProvider):
 
     def _drop_database_artifacts(self) -> None:
         """Dummy placeholder. Nothing to do."""
+
+
+def _order_key_part(value: typing.Any, is_desc: bool) -> tuple[typing.Any, ...]:
+    """The sort key one ``order_by`` term gives ``value``.
+
+    Nulls sort last in ascending order and first in descending order, the way
+    a database ``ORDER BY`` places them.
+    """
+    # Handle nulls consistently:
+    # - In ASC order: nulls come last
+    # - In DESC order: nulls come first
+    # We use tuples where the first element determines null vs non-null precedence
+    if value is None:
+        if is_desc:
+            # DESC: nulls should come first (smallest sort key)
+            return (0,)
+        # ASC: nulls should come last (largest sort key)
+        return (2,)
+    # Non-null values get precedence 1
+    if is_desc:
+        # For DESC order, negate numeric values or reverse string comparison
+        if isinstance(value, (int, float)):
+            return (1, -value)
+        # For non-numeric values (strings, dates, etc.), use reverse comparison
+        # We'll wrap in a special class that reverses all comparisons
+        return (1, _ReverseCompare(value))
+    # For ASC order, use value directly
+    return (1, value)
+
+
+def _compound_sort_key(
+    item: dict[str, typing.Any], order_by: Sequence[str]
+) -> tuple[typing.Any, ...]:
+    """Create a compound sort key that matches database ORDER BY behavior"""
+    key_parts: list[tuple[typing.Any, ...]] = []
+
+    for o_key in order_by:
+        is_desc = o_key.startswith("-")
+        field_name = o_key[1:] if is_desc else o_key
+        key_parts.append(_order_key_part(item.get(field_name), is_desc))
+
+    return tuple(key_parts)
 
 
 class DictDAO(BaseDAO):
@@ -798,46 +860,7 @@ class DictDAO(BaseDAO):
         # Sort the filtered results based on the order_by clause
         # Use compound sorting to match database behavior
         if order_by:
-
-            def compound_sort_key(
-                item: dict[str, typing.Any],
-            ) -> tuple[typing.Any, ...]:
-                """Create a compound sort key that matches database ORDER BY behavior"""
-                key_parts: list[tuple[typing.Any, ...]] = []
-
-                for o_key in order_by:
-                    is_desc = o_key.startswith("-")
-                    field_name = o_key[1:] if is_desc else o_key
-                    value = item.get(field_name)
-
-                    # Handle nulls consistently:
-                    # - In ASC order: nulls come last
-                    # - In DESC order: nulls come first
-                    # We use tuples where the first element determines null vs non-null precedence
-                    if value is None:
-                        if is_desc:
-                            # DESC: nulls should come first (smallest sort key)
-                            key_parts.append((0,))
-                        else:
-                            # ASC: nulls should come last (largest sort key)
-                            key_parts.append((2,))
-                    else:
-                        # Non-null values get precedence 1
-                        if is_desc:
-                            # For DESC order, negate numeric values or reverse string comparison
-                            if isinstance(value, (int, float)):
-                                key_parts.append((1, -value))
-                            else:
-                                # For non-numeric values (strings, dates, etc.), use reverse comparison
-                                # We'll wrap in a special class that reverses all comparisons
-                                key_parts.append((1, _ReverseCompare(value)))
-                        else:
-                            # For ASC order, use value directly
-                            key_parts.append((1, value))
-
-                return tuple(key_parts)
-
-            items = sorted(items, key=compound_sort_key)
+            items = sorted(items, key=lambda item: _compound_sort_key(item, order_by))
 
         # Apply offset always; when no limit is set, return the rest of the page
         returned = items[offset : offset + limit] if limit else items[offset:]

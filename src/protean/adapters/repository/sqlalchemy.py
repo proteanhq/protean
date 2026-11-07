@@ -409,6 +409,64 @@ def _get_identity_type() -> type[sa_types.TypeEngine[typing.Any]]:
         )
 
 
+def _checked_identity_field(
+    element_cls: typing.Any, provider: BaseProvider
+) -> typing.Any:
+    """The identifier field ``_refuse_unstorable_identity`` checks, or ``None``.
+
+    Returns ``None`` for an abstract element, an element of an event-sourced
+    aggregate, an element with no identifier, an identifier the database
+    assigns, and an element whose custom database model for ``provider``
+    declares the identity column.
+    """
+    meta = element_cls.meta_
+    cluster = getattr(meta, "aggregate_cluster", None) or element_cls
+    if getattr(meta, "abstract", False) or getattr(
+        cluster.meta_, "is_event_sourced", False
+    ):
+        return None
+
+    id_fld = id_field(element_cls)
+    if id_fld is None or getattr(id_fld, "increment", False):
+        return None
+
+    # A custom database model that declares the identity column decides its
+    # type, so the domain mapping this check reasons about does not apply.
+    models = provider.domain._database_models.get(
+        _fully_qualified_name(element_cls), {}
+    )
+    custom_model = models.get(provider.__database__) or models.get(None)
+    attribute_name = id_fld.attribute_name or id_fld.field_name
+    if custom_model is not None and isinstance(
+        vars(custom_model).get(attribute_name), Column
+    ):
+        return None
+
+    return id_fld
+
+
+def _declared_identity_settings(
+    element_cls: typing.Any, id_fld: typing.Any
+) -> tuple[typing.Any, typing.Any] | None:
+    """The ``(identity_type, identity_strategy)`` the identifier field sets.
+
+    Either value is ``None`` when the field leaves it to the domain. Returns
+    ``None`` when the framework does not generate the identity: the field
+    has a default or is neither an ``Identifier`` nor an ``Auto``.
+    """
+    spec = getattr(element_cls, "__protean_field_meta__", {}).get(id_fld.field_name)
+    if spec is not None:
+        if spec.field_kind not in ("identifier", "auto") or spec.default is not _UNSET:
+            return None
+        return (
+            getattr(spec, "_identity_type", None),
+            getattr(spec, "_identity_strategy", None),
+        )
+    if getattr(id_fld, "_auto_generated", False):
+        return None, None
+    return None
+
+
 def _refuse_unstorable_identity(
     element_cls: typing.Any, provider: BaseProvider
 ) -> None:
@@ -432,39 +490,14 @@ def _refuse_unstorable_identity(
         ConfigurationError: The element would get an identity its column
             cannot hold.
     """
-    meta = element_cls.meta_
-    cluster = getattr(meta, "aggregate_cluster", None) or element_cls
-    if getattr(meta, "abstract", False) or getattr(
-        cluster.meta_, "is_event_sourced", False
-    ):
+    id_fld = _checked_identity_field(element_cls, provider)
+    if id_fld is None:
         return
 
-    id_fld = id_field(element_cls)
-    if id_fld is None or getattr(id_fld, "increment", False):
+    declared = _declared_identity_settings(element_cls, id_fld)
+    if declared is None:
         return
-
-    # A custom database model that declares the identity column decides its
-    # type, so the domain mapping this check reasons about does not apply.
-    models = provider.domain._database_models.get(
-        _fully_qualified_name(element_cls), {}
-    )
-    custom_model = models.get(provider.__database__) or models.get(None)
-    attribute_name = id_fld.attribute_name or id_fld.field_name
-    if custom_model is not None and isinstance(
-        vars(custom_model).get(attribute_name), Column
-    ):
-        return
-
-    spec = getattr(element_cls, "__protean_field_meta__", {}).get(id_fld.field_name)
-    if spec is not None:
-        if spec.field_kind not in ("identifier", "auto") or spec.default is not _UNSET:
-            return
-        identity_type = getattr(spec, "_identity_type", None)
-        identity_strategy = getattr(spec, "_identity_strategy", None)
-    elif getattr(id_fld, "_auto_generated", False):
-        identity_type = identity_strategy = None
-    else:
-        return
+    identity_type, identity_strategy = declared
 
     config = provider.domain.config
     domain_type = config["identity_type"]
@@ -525,17 +558,14 @@ def _custom_json_dumps(value: typing.Any) -> str:
     return json.dumps(value, default=_default)
 
 
-def _resolve_python_type(shim: ResolvedField) -> type | None:
-    """Extract the core Python type from a ResolvedField.
+def _union_column_arm(python_type: typing.Any) -> typing.Any:
+    """The arm of an Optional/Union annotation whose column a field gets.
 
-    Unwraps Optional/Union, and normalises generic aliases
-    (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``). A ``Literal`` (the
-    type a field with ``choices`` resolves to) whose values all share one
-    mapped type resolves to that type. Any other ``Literal``, or any other
-    annotation that is not a class, gives ``None``.
+    ``str | None`` gives ``str``. A union with more than one arm besides
+    ``None``, led by a ``Literal``, gives ``None``; ``Literal["a"] | None``
+    gives the ``Literal``. An annotation that is not a union comes back
+    unchanged.
     """
-    python_type = shim._python_type
-
     # Unwrap Optional/Union: str | None → str
     origin = typing.get_origin(python_type)
     if origin is types.UnionType or origin is typing.Union:
@@ -547,17 +577,37 @@ def _resolve_python_type(shim: ResolvedField) -> type | None:
             return None
         if args:
             python_type = args[0]
-            origin = typing.get_origin(python_type)
+    return python_type
 
+
+def _literal_value_type(literal: typing.Any) -> type | None:
+    """The one mapped type every value of ``literal`` has, or ``None``."""
     # Literal["a", "b"] → str. Exact type() matching keeps bool apart from
     # int, so mixed choices such as [True, 1] stay unresolved.
-    if origin is typing.Literal:
-        value_types = {type(v) for v in typing.get_args(python_type)}
-        if len(value_types) == 1:
-            (value_type,) = value_types
-            if value_type in _PYTHON_TYPE_TO_SA:
-                return value_type
+    value_types = {type(v) for v in typing.get_args(literal)}
+    if len(value_types) == 1:
+        (value_type,) = value_types
+        if value_type in _PYTHON_TYPE_TO_SA:
+            return value_type
+    return None
+
+
+def _resolve_python_type(shim: ResolvedField) -> type | None:
+    """Extract the core Python type from a ResolvedField.
+
+    Unwraps Optional/Union, and normalises generic aliases
+    (``list[X]`` → ``list``, ``dict[K,V]`` → ``dict``). A ``Literal`` (the
+    type a field with ``choices`` resolves to) whose values all share one
+    mapped type resolves to that type. Any other ``Literal``, or any other
+    annotation that is not a class, gives ``None``.
+    """
+    python_type = _union_column_arm(shim._python_type)
+    if python_type is None:
         return None
+    origin = typing.get_origin(python_type)
+
+    if origin is typing.Literal:
+        return _literal_value_type(python_type)
 
     # Handle generic aliases: list[X] → list, dict[K, V] → dict
     if origin is list or python_type is list:
@@ -740,6 +790,52 @@ def _partial_index_predicate(
     return ~combined if criteria.negated else combined
 
 
+def _index_dialect_kwargs(
+    index: ProteanIndex,
+    name: str,
+    column_for: Callable[[str], typing.Any],
+    attr_for: dict[str, str],
+    dialect_name: str,
+    owner_name: str,
+) -> dict[str, typing.Any]:
+    """SQLAlchemy ``Index`` kwargs for ``index`` on ``dialect_name``.
+
+    Logs a warning and drops ``where=`` or ``include=`` when the dialect cannot
+    express it.
+    """
+    kwargs: dict[str, typing.Any] = {"unique": index.unique}
+
+    if index.where is not None:
+        if dialect_name in _PARTIAL_INDEX_DIALECTS:
+            kwargs[f"{dialect_name}_where"] = _partial_index_predicate(
+                index.where, column_for
+            )
+        else:
+            logger.warning(
+                "Partial index '%s' on '%s' declares where=, which the '%s' "
+                "dialect does not support; emitting a full index instead.",
+                name,
+                owner_name,
+                dialect_name,
+            )
+
+    if index.include:
+        if dialect_name in _INCLUDE_INDEX_DIALECTS:
+            kwargs[f"{dialect_name}_include"] = [
+                attr_for.get(f, f) for f in index.include
+            ]
+        else:
+            logger.warning(
+                "Index '%s' on '%s' declares include=, which the '%s' dialect "
+                "does not support; emitting an index without covering columns.",
+                name,
+                owner_name,
+                dialect_name,
+            )
+
+    return kwargs
+
+
 def _make_sa_indexes(
     declared: typing.Any,
     column_for: Callable[[str], typing.Any],
@@ -771,36 +867,9 @@ def _make_sa_indexes(
             column_for(f).desc() if f in index.desc else column_for(f)
             for f in index.fields
         ]
-        kwargs: dict[str, typing.Any] = {"unique": index.unique}
-
-        if index.where is not None:
-            if dialect_name in _PARTIAL_INDEX_DIALECTS:
-                kwargs[f"{dialect_name}_where"] = _partial_index_predicate(
-                    index.where, column_for
-                )
-            else:
-                logger.warning(
-                    "Partial index '%s' on '%s' declares where=, which the '%s' "
-                    "dialect does not support; emitting a full index instead.",
-                    name,
-                    owner_name,
-                    dialect_name,
-                )
-
-        if index.include:
-            if dialect_name in _INCLUDE_INDEX_DIALECTS:
-                kwargs[f"{dialect_name}_include"] = [
-                    attr_for.get(f, f) for f in index.include
-                ]
-            else:
-                logger.warning(
-                    "Index '%s' on '%s' declares include=, which the '%s' dialect "
-                    "does not support; emitting an index without covering columns.",
-                    name,
-                    owner_name,
-                    dialect_name,
-                )
-
+        kwargs = _index_dialect_kwargs(
+            index, name, column_for, attr_for, dialect_name, owner_name
+        )
         sa_indexes.append(SAIndex(name, *columns, **kwargs))
 
     return sa_indexes, raw_indexes
@@ -1034,6 +1103,55 @@ def _mysql_identity_key_width() -> int:
     return _MYSQL_FIXED_KEY_WIDTHS[sa_types.Integer]
 
 
+def _mysql_field_key_width(
+    field_name: str,
+    field_obj: typing.Any,
+    unbounded: list[str],
+    json_columns: list[str],
+) -> int:
+    """The InnoDB key width in bytes of one field an index names.
+
+    Appends ``field_name`` to ``unbounded`` when the field is stored as
+    ``TEXT`` or BLOB, and to ``json_columns`` when it is stored as ``JSON``.
+    Such a field, and a field that is not a mapped column, gives 0.
+    """
+    # An identifier, and an association column referencing one, are both
+    # sized from the domain's ``identity_type`` rather than from anything
+    # the field declares. A ``_ReferenceField`` is not a ``ResolvedField``,
+    # so it has to be handled ahead of that check.
+    if type(field_obj) is _ReferenceField or (
+        isinstance(field_obj, ResolvedField) and field_obj.identifier
+    ):
+        return _mysql_identity_key_width()
+
+    # A ``ValueObjectList`` is not a ``ResolvedField`` either. It maps to
+    # JSON, or to a BLOB when ``pickled``, and neither is indexable. The
+    # live path refuses both from the column, so the renderer reads the
+    # same verdict off the field.
+    if isinstance(field_obj, ValueObjectList):
+        if getattr(field_obj, "pickled", False):
+            unbounded.append(field_name)
+        else:
+            json_columns.append(field_name)
+        return 0
+
+    if not isinstance(field_obj, ResolvedField):
+        return 0
+
+    if _resolve_python_type(field_obj) in (dict, list) and not getattr(
+        field_obj, "pickled", False
+    ):
+        json_columns.append(field_name)
+        return 0
+
+    if _resolve_python_type(field_obj) is not str:
+        return _mysql_fixed_field_key_width(field_obj)
+    if field_obj.max_length:
+        return field_obj.max_length * _MYSQL_BYTES_PER_CHAR
+    unbounded.append(field_name)
+    return 0
+
+
 def _mysql_index_key_width(
     index: typing.Any, entity_cls: typing.Any
 ) -> tuple[int, list[str], list[str]]:
@@ -1059,43 +1177,7 @@ def _mysql_index_key_width(
         if isinstance(field_obj, _ShadowField):
             field_obj = field_obj.field_obj
 
-        # An identifier, and an association column referencing one, are both
-        # sized from the domain's ``identity_type`` rather than from anything
-        # the field declares. A ``_ReferenceField`` is not a ``ResolvedField``,
-        # so it has to be handled ahead of that check.
-        if type(field_obj) is _ReferenceField or (
-            isinstance(field_obj, ResolvedField) and field_obj.identifier
-        ):
-            width += _mysql_identity_key_width()
-            continue
-
-        # A ``ValueObjectList`` is not a ``ResolvedField`` either. It maps to
-        # JSON, or to a BLOB when ``pickled``, and neither is indexable. The
-        # live path refuses both from the column, so the renderer reads the
-        # same verdict off the field.
-        if isinstance(field_obj, ValueObjectList):
-            if getattr(field_obj, "pickled", False):
-                unbounded.append(field_name)
-            else:
-                json_columns.append(field_name)
-            continue
-
-        if not isinstance(field_obj, ResolvedField):
-            continue
-
-        if _resolve_python_type(field_obj) in (dict, list) and not getattr(
-            field_obj, "pickled", False
-        ):
-            json_columns.append(field_name)
-            continue
-
-        if _resolve_python_type(field_obj) is not str:
-            width += _mysql_fixed_field_key_width(field_obj)
-            continue
-        if field_obj.max_length:
-            width += field_obj.max_length * _MYSQL_BYTES_PER_CHAR
-        else:
-            unbounded.append(field_name)
+        width += _mysql_field_key_width(field_name, field_obj, unbounded, json_columns)
     return width, unbounded, json_columns
 
 
@@ -1411,244 +1493,344 @@ def _mysql_column_type(
     return sa_type_cls, kwargs
 
 
+def _field_mapping_for(field_obj: typing.Any) -> typing.Any:
+    """Return SQLAlchemy-equivalent type for Protean's field"""
+    # Handle ResolvedField: resolve Python type → SA type
+    if isinstance(field_obj, ResolvedField):
+        if field_obj.increment:
+            return sa_types.Integer
+        if field_obj.identifier:
+            return _get_identity_type()
+        python_type = _resolve_python_type(field_obj)
+        # VO subclass → PickleType
+        if isinstance(python_type, type) and issubclass(python_type, BaseValueObject):
+            return sa_types.PickleType
+        if python_type is None:
+            return sa_types.String
+        return _PYTHON_TYPE_TO_SA.get(python_type, sa_types.String)
+
+    # Association/embedded field descriptors
+    field_cls = type(field_obj)
+    if field_cls is _ReferenceField:
+        return _get_identity_type()
+    if field_cls is ValueObject:
+        return sa_types.PickleType
+    if field_cls is ValueObjectList:
+        return sa_types.PickleType
+    return sa_types.String
+
+
+def _column_resolved_type(field_obj: typing.Any) -> type[typing.Any] | None:
+    """The Python type the dialect checks read off a field.
+
+    A ``ValueObjectList`` counts as ``list``. A field that is neither a
+    ``ResolvedField`` nor a ``ValueObjectList`` has none.
+    """
+    if isinstance(field_obj, ResolvedField):
+        return _resolve_python_type(field_obj)
+    elif isinstance(field_obj, ValueObjectList):
+        return list
+    else:
+        return None
+
+
+def _postgresql_array_item_type(content_type: typing.Any, pickled: bool) -> typing.Any:
+    """The SQLAlchemy type of one element in a PostgreSQL ``ARRAY`` column."""
+    # Treat `ValueObject` differently because it is a field object instance,
+    #   not a field type class
+    #
+    # `ValueObject` instances are essentially treated as `Dict`. If not pickled,
+    #   they are persisted as JSON.
+    _is_vo = isinstance(content_type, ValueObject) or (
+        isinstance(content_type, type) and issubclass(content_type, BaseValueObject)
+    )
+    if _is_vo:
+        if not pickled:
+            return psql.JSON
+        else:
+            return sa_types.PickleType
+    elif isinstance(content_type, FieldSpec):
+        # FieldSpec from Dict() / String() etc.
+        # Resolve the underlying python_type
+        # to pick the right SA column type.
+        ct_type = content_type.python_type
+        # Unwrap Union types (e.g. dict | list
+        # from Dict()) to the first branch.
+        origin = typing.get_origin(ct_type)
+        if origin is types.UnionType or origin is typing.Union:
+            ct_type = typing.get_args(ct_type)[0]
+        return _PYTHON_TYPE_TO_SA.get(ct_type, sa_types.String)
+    elif content_type is not None and isinstance(content_type, type):
+        return _PYTHON_TYPE_TO_SA.get(content_type, sa_types.String)
+    else:
+        return sa_types.String
+
+
+def _postgresql_column_type(
+    sa_type_cls: typing.Any,
+    field_obj: typing.Any,
+    resolved_type: type[typing.Any] | None,
+    pickled: bool,
+) -> tuple[typing.Any, list[typing.Any]]:
+    """Map a dict field to ``JSON`` and a list field to ``ARRAY`` on PostgreSQL.
+
+    Returns the type class and its positional arguments.
+    """
+    type_args: list[typing.Any] = []
+    if resolved_type is dict and not pickled:
+        sa_type_cls = psql.JSON
+
+    if resolved_type is list and not pickled:
+        sa_type_cls = psql.ARRAY
+
+        # Associate Content Type
+        content_type = getattr(field_obj, "content_type", None)
+        if content_type:
+            type_args.append(_postgresql_array_item_type(content_type, pickled))
+        else:
+            type_args.append(sa_types.Text)
+    return sa_type_cls, type_args
+
+
+def _mssql_column_type(
+    sa_type_cls: typing.Any, resolved_type: type[typing.Any] | None, pickled: bool
+) -> tuple[typing.Any, list[typing.Any]]:
+    """Map a dict or list field to ``MSSQLJSON`` on SQL Server.
+
+    Returns the type class and its positional arguments.
+    """
+    type_args: list[typing.Any] = []
+    # SQL Server doesn't have native JSON/Array types, use custom JSON type for JSON-like data
+    if resolved_type is dict and not pickled:
+        sa_type_cls = MSSQLJSON
+        type_args.append(None)  # NVARCHAR(MAX) with JSON serialization
+
+    if resolved_type is list and not pickled:
+        sa_type_cls = MSSQLJSON
+        type_args.append(None)  # Store as JSON string with serialization
+    return sa_type_cls, type_args
+
+
+def _dialect_column_type(
+    sa_type_cls: typing.Any,
+    field_obj: typing.Any,
+    resolved_type: type[typing.Any] | None,
+    dialect_name: str,
+) -> tuple[typing.Any, list[typing.Any]]:
+    """Upgrade a mapped type to the dialect's own type for dict and list fields.
+
+    Returns the type class and its positional arguments.
+    """
+    pickled = getattr(field_obj, "pickled", False)
+    if dialect_name == "postgresql":
+        return _postgresql_column_type(sa_type_cls, field_obj, resolved_type, pickled)
+    elif dialect_name == "mssql":
+        return _mssql_column_type(sa_type_cls, resolved_type, pickled)
+    # MySQL 8 has a real JSON type. It has no array type, so
+    # a list goes to JSON as well — the same call MSSQL makes
+    # through ``MSSQLJSON``. MariaDB's ``JSON`` is an alias
+    # for ``LONGTEXT`` with a CHECK constraint, and both
+    # round-trip a Python list or dict through the engine's
+    # JSON serializer.
+    elif (
+        dialect_name in _MYSQL_DIALECTS
+        and resolved_type in (dict, list)
+        and not pickled
+    ):
+        sa_type_cls = mysql.JSON
+    return sa_type_cls, []
+
+
+def _column_type_kwargs(
+    field_obj: typing.Any,
+    sa_type_cls: typing.Any,
+    resolved_type: type[typing.Any] | None,
+    dialect_name: str,
+) -> dict[str, typing.Any]:
+    """The length, or the precision and scale, of a field's column type."""
+    type_kwargs: dict[str, typing.Any] = {}
+
+    # For identifier fields mapped to String, set the identity
+    # length.
+    #   Without explicit length, we are leaving the decision to the database. And that
+    #   will not work for MSSQL.
+    if field_obj.identifier and sa_type_cls == sa_types.String:
+        type_kwargs["length"] = _IDENTITY_STRING_LENGTH
+    elif (
+        dialect_name in _MYSQL_DIALECTS
+        and type(field_obj) is _ReferenceField
+        and sa_type_cls is sa_types.String
+    ):
+        # An association column holds the referenced aggregate's
+        # identity, so it takes that column's width. Without it
+        # MySQL maps the foreign key to TEXT, which it cannot
+        # index or join on, and the key-width guard then reports
+        # a missing max_length on a column nobody declared.
+        type_kwargs["length"] = _IDENTITY_STRING_LENGTH
+    elif (
+        resolved_type is str
+        and isinstance(field_obj, ResolvedField)
+        and not field_obj.identifier
+    ):
+        # ``_field_mapping_for`` types an identity column, not
+        # the field's own max_length, and an Integer or GUID
+        # column takes no length.
+        type_kwargs["length"] = field_obj.max_length
+    elif resolved_type is decimal.Decimal and isinstance(field_obj, ResolvedField):
+        # NUMERIC(precision, scale); without them the column is
+        # arbitrary-precision (lossless) on backends that support it.
+        if field_obj.precision is not None:
+            type_kwargs["precision"] = field_obj.precision
+        if field_obj.scale is not None:
+            type_kwargs["scale"] = field_obj.scale
+    return type_kwargs
+
+
+def _refuse_mssql_unbounded_key(
+    sa_type_cls: typing.Any,
+    type_kwargs: dict[str, typing.Any],
+    col_args: dict[str, typing.Any],
+    *,
+    is_key_column: bool,
+    attribute_name: str,
+    owner_name: str,
+    dialect_name: str,
+) -> None:
+    """Refuse a SQL Server key column mapped to a ``VARCHAR`` with no length.
+
+    Raises:
+        IncorrectUsageError: The column is a primary key or unique, and has
+            no ``max_length``.
+    """
+    # MSSQL requires explicit length on VARCHAR columns used
+    # as primary keys or in unique constraints.  Raise early
+    # with a clear message instead of letting the DB fail with
+    # a cryptic "invalid for use as a key column" error.
+    if (
+        dialect_name == "mssql"
+        and sa_type_cls == sa_types.String
+        and is_key_column
+        and not type_kwargs.get("length")
+    ):
+        raise IncorrectUsageError(
+            f"Field '{attribute_name}' on "
+            f"'{owner_name}' is mapped to a "
+            f"VARCHAR column and marked as "
+            f"{'primary key' if col_args.get('primary_key') else 'unique'}. "
+            f"MSSQL requires an explicit max_length for "
+            f"indexed/unique string columns "
+            f"(e.g. Field(max_length=255))."
+        )
+
+
+def _build_column(
+    field_obj: typing.Any,
+    attribute_name: str,
+    entity_cls: typing.Any,
+    dialect_name: str,
+) -> Column[typing.Any]:
+    """The ``Column`` that stores ``field_obj`` on ``dialect_name``.
+
+    ``field_obj`` is the field itself, already unwrapped from any
+    ``_ShadowField``, and ``attribute_name`` is the persisted attribute name.
+
+    Raises:
+        IncorrectUsageError: The dialect cannot store the field as a key
+            column.
+    """
+    # Resolve the Python type for Pydantic shims (used in dialect checks)
+    resolved_type = _column_resolved_type(field_obj)
+
+    # Get the SA type, then upgrade to Database-specific Data Types
+    sa_type_cls, type_args = _dialect_column_type(
+        _field_mapping_for(field_obj), field_obj, resolved_type, dialect_name
+    )
+
+    # Default to the text type if no mapping is found
+    if not sa_type_cls:
+        sa_type_cls = sa_types.String
+
+    # Build the column arguments
+    col_args: dict[str, typing.Any] = {
+        "primary_key": field_obj.identifier,
+        "nullable": not field_obj.required,
+        "unique": field_obj.unique,
+    }
+
+    type_kwargs = _column_type_kwargs(
+        field_obj, sa_type_cls, resolved_type, dialect_name
+    )
+
+    is_key_column = bool(col_args.get("primary_key") or col_args.get("unique"))
+
+    _refuse_mssql_unbounded_key(
+        sa_type_cls,
+        type_kwargs,
+        col_args,
+        is_key_column=is_key_column,
+        attribute_name=attribute_name,
+        owner_name=entity_cls.__name__,
+        dialect_name=dialect_name,
+    )
+
+    if dialect_name in _MYSQL_DIALECTS:
+        sa_type_cls, type_kwargs = _mysql_column_type(
+            sa_type_cls,
+            type_kwargs,
+            resolved_type=resolved_type,
+            attribute_name=attribute_name,
+            owner_name=entity_cls.__name__,
+            is_key_column=is_key_column,
+        )
+    # SQL Server's DATETIME rounds to about 3 ms, so two
+    # timestamps written microseconds apart can read back
+    # equal. DATETIME2 defaults to 100 ns precision.
+    elif (
+        dialect_name == "mssql"
+        and resolved_type is _datetime
+        and sa_type_cls is sa_types.DateTime
+    ):
+        sa_type_cls = mssql.DATETIME2
+
+    column_type = _with_utc_storage(
+        sa_type_cls(*type_args, **type_kwargs),
+        dialect_name=dialect_name,
+        resolved_type=resolved_type,
+    )
+    return Column(column_type, **col_args)
+
+
+def _map_entity_columns(model_cls: typing.Any) -> None:
+    """Set a ``Column`` on ``model_cls`` for every field of its entity.
+
+    A field whose attribute ``model_cls`` already declares keeps that
+    declaration.
+    """
+    entity_cls = model_cls.__dict__["meta_"].part_of
+    for field_obj in attributes(entity_cls).values():
+        # ``attribute_name`` is ``None`` only on an unbound Field; the
+        # fields returned by ``attributes()`` are always bound.
+        attribute_name = field_obj.attribute_name or field_obj.field_name
+        assert attribute_name is not None
+
+        # Map the field if not in attributes
+        if attribute_name not in model_cls.__dict__:
+            # Derive field based on field enclosed within ShadowField
+            if isinstance(field_obj, _ShadowField):
+                field_obj = field_obj.field_obj
+
+            dialect_name = model_cls.__dict__["engine"].dialect.name
+            column = _build_column(field_obj, attribute_name, entity_cls, dialect_name)
+            setattr(model_cls, attribute_name, column)  # Set class attribute
+
+
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
     """Model representation for the Sqlalchemy Database"""
 
     def __init_subclass__(cls, **kwargs: typing.Any) -> None:
-        def field_mapping_for(field_obj: typing.Any) -> typing.Any:
-            """Return SQLAlchemy-equivalent type for Protean's field"""
-            # Handle ResolvedField: resolve Python type → SA type
-            if isinstance(field_obj, ResolvedField):
-                if field_obj.increment:
-                    return sa_types.Integer
-                if field_obj.identifier:
-                    return _get_identity_type()
-                python_type = _resolve_python_type(field_obj)
-                # VO subclass → PickleType
-                if isinstance(python_type, type) and issubclass(
-                    python_type, BaseValueObject
-                ):
-                    return sa_types.PickleType
-                if python_type is None:
-                    return sa_types.String
-                return _PYTHON_TYPE_TO_SA.get(python_type, sa_types.String)
-
-            # Association/embedded field descriptors
-            field_cls = type(field_obj)
-            if field_cls is _ReferenceField:
-                return _get_identity_type()
-            if field_cls is ValueObject:
-                return sa_types.PickleType
-            if field_cls is ValueObjectList:
-                return sa_types.PickleType
-            return sa_types.String
-
         # Update the class attrs with the entity attributes
         if "meta_" in cls.__dict__:
-            entity_cls = cls.__dict__["meta_"].part_of
-            for field_obj in attributes(entity_cls).values():
-                # ``attribute_name`` is ``None`` only on an unbound Field; the
-                # fields returned by ``attributes()`` are always bound.
-                attribute_name = field_obj.attribute_name or field_obj.field_name
-                assert attribute_name is not None
-
-                # Map the field if not in attributes
-                if attribute_name not in cls.__dict__:
-                    # Derive field based on field enclosed within ShadowField
-                    if isinstance(field_obj, _ShadowField):
-                        field_obj = field_obj.field_obj
-
-                    # Resolve the Python type for Pydantic shims (used in dialect checks)
-                    resolved_type: type[typing.Any] | None
-                    if isinstance(field_obj, ResolvedField):
-                        resolved_type = _resolve_python_type(field_obj)
-                    elif isinstance(field_obj, ValueObjectList):
-                        resolved_type = list
-                    else:
-                        resolved_type = None
-                    type_args: list[typing.Any] = []
-                    type_kwargs: dict[str, typing.Any] = {}
-
-                    # Get the SA type
-                    sa_type_cls: typing.Any = field_mapping_for(field_obj)
-
-                    # Upgrade to Database-specific Data Types
-                    dialect_name = cls.__dict__["engine"].dialect.name
-                    pickled = getattr(field_obj, "pickled", False)
-                    if dialect_name == "postgresql":
-                        if resolved_type is dict and not pickled:
-                            sa_type_cls = psql.JSON
-
-                        if resolved_type is list and not pickled:
-                            sa_type_cls = psql.ARRAY
-
-                            # Associate Content Type
-                            content_type = getattr(field_obj, "content_type", None)
-                            if content_type:
-                                # Treat `ValueObject` differently because it is a field object instance,
-                                #   not a field type class
-                                #
-                                # `ValueObject` instances are essentially treated as `Dict`. If not pickled,
-                                #   they are persisted as JSON.
-                                _is_vo = isinstance(content_type, ValueObject) or (
-                                    isinstance(content_type, type)
-                                    and issubclass(content_type, BaseValueObject)
-                                )
-                                if _is_vo:
-                                    field_mapping_type: typing.Any
-                                    if not pickled:
-                                        field_mapping_type = psql.JSON
-                                    else:
-                                        field_mapping_type = sa_types.PickleType
-                                elif isinstance(content_type, FieldSpec):
-                                    # FieldSpec from Dict() / String() etc.
-                                    # Resolve the underlying python_type
-                                    # to pick the right SA column type.
-                                    ct_type = content_type.python_type
-                                    # Unwrap Union types (e.g. dict | list
-                                    # from Dict()) to the first branch.
-                                    origin = typing.get_origin(ct_type)
-                                    if (
-                                        origin is types.UnionType
-                                        or origin is typing.Union
-                                    ):
-                                        ct_type = typing.get_args(ct_type)[0]
-                                    field_mapping_type = _PYTHON_TYPE_TO_SA.get(
-                                        ct_type, sa_types.String
-                                    )
-                                elif content_type is not None and isinstance(
-                                    content_type, type
-                                ):
-                                    field_mapping_type = _PYTHON_TYPE_TO_SA.get(
-                                        content_type, sa_types.String
-                                    )
-                                else:
-                                    field_mapping_type = sa_types.String
-                                type_args.append(field_mapping_type)
-                            else:
-                                type_args.append(sa_types.Text)
-                    elif dialect_name == "mssql":
-                        # SQL Server doesn't have native JSON/Array types, use custom JSON type for JSON-like data
-                        if resolved_type is dict and not pickled:
-                            sa_type_cls = MSSQLJSON
-                            type_args.append(
-                                None
-                            )  # NVARCHAR(MAX) with JSON serialization
-
-                        if resolved_type is list and not pickled:
-                            sa_type_cls = MSSQLJSON
-                            type_args.append(
-                                None
-                            )  # Store as JSON string with serialization
-                    elif dialect_name in _MYSQL_DIALECTS:
-                        # MySQL 8 has a real JSON type. It has no array type, so
-                        # a list goes to JSON as well — the same call MSSQL makes
-                        # through ``MSSQLJSON``. MariaDB's ``JSON`` is an alias
-                        # for ``LONGTEXT`` with a CHECK constraint, and both
-                        # round-trip a Python list or dict through the engine's
-                        # JSON serializer.
-                        if resolved_type in (dict, list) and not pickled:
-                            sa_type_cls = mysql.JSON
-
-                    # Default to the text type if no mapping is found
-                    if not sa_type_cls:
-                        sa_type_cls = sa_types.String
-
-                    # Build the column arguments
-                    col_args: dict[str, typing.Any] = {
-                        "primary_key": field_obj.identifier,
-                        "nullable": not field_obj.required,
-                        "unique": field_obj.unique,
-                    }
-
-                    # For identifier fields mapped to String, set the identity
-                    # length.
-                    #   Without explicit length, we are leaving the decision to the database. And that
-                    #   will not work for MSSQL.
-                    if field_obj.identifier and sa_type_cls == sa_types.String:
-                        type_kwargs["length"] = _IDENTITY_STRING_LENGTH
-                    elif (
-                        dialect_name in _MYSQL_DIALECTS
-                        and type(field_obj) is _ReferenceField
-                        and sa_type_cls is sa_types.String
-                    ):
-                        # An association column holds the referenced aggregate's
-                        # identity, so it takes that column's width. Without it
-                        # MySQL maps the foreign key to TEXT, which it cannot
-                        # index or join on, and the key-width guard then reports
-                        # a missing max_length on a column nobody declared.
-                        type_kwargs["length"] = _IDENTITY_STRING_LENGTH
-                    elif (
-                        resolved_type is str
-                        and isinstance(field_obj, ResolvedField)
-                        and not field_obj.identifier
-                    ):
-                        # ``field_mapping_for`` types an identity column, not
-                        # the field's own max_length, and an Integer or GUID
-                        # column takes no length.
-                        type_kwargs["length"] = field_obj.max_length
-                    elif resolved_type is decimal.Decimal and isinstance(
-                        field_obj, ResolvedField
-                    ):
-                        # NUMERIC(precision, scale); without them the column is
-                        # arbitrary-precision (lossless) on backends that support it.
-                        if field_obj.precision is not None:
-                            type_kwargs["precision"] = field_obj.precision
-                        if field_obj.scale is not None:
-                            type_kwargs["scale"] = field_obj.scale
-
-                    is_key_column = bool(
-                        col_args.get("primary_key") or col_args.get("unique")
-                    )
-
-                    # MSSQL requires explicit length on VARCHAR columns used
-                    # as primary keys or in unique constraints.  Raise early
-                    # with a clear message instead of letting the DB fail with
-                    # a cryptic "invalid for use as a key column" error.
-                    if (
-                        dialect_name == "mssql"
-                        and sa_type_cls == sa_types.String
-                        and is_key_column
-                        and not type_kwargs.get("length")
-                    ):
-                        raise IncorrectUsageError(
-                            f"Field '{attribute_name}' on "
-                            f"'{entity_cls.__name__}' is mapped to a "
-                            f"VARCHAR column and marked as "
-                            f"{'primary key' if col_args.get('primary_key') else 'unique'}. "
-                            f"MSSQL requires an explicit max_length for "
-                            f"indexed/unique string columns "
-                            f"(e.g. Field(max_length=255))."
-                        )
-
-                    if dialect_name in _MYSQL_DIALECTS:
-                        sa_type_cls, type_kwargs = _mysql_column_type(
-                            sa_type_cls,
-                            type_kwargs,
-                            resolved_type=resolved_type,
-                            attribute_name=attribute_name,
-                            owner_name=entity_cls.__name__,
-                            is_key_column=is_key_column,
-                        )
-                    # SQL Server's DATETIME rounds to about 3 ms, so two
-                    # timestamps written microseconds apart can read back
-                    # equal. DATETIME2 defaults to 100 ns precision.
-                    elif (
-                        dialect_name == "mssql"
-                        and resolved_type is _datetime
-                        and sa_type_cls is sa_types.DateTime
-                    ):
-                        sa_type_cls = mssql.DATETIME2
-
-                    column_type = _with_utc_storage(
-                        sa_type_cls(*type_args, **type_kwargs),
-                        dialect_name=dialect_name,
-                        resolved_type=resolved_type,
-                    )
-
-                    # Update the attributes of the class
-                    column = Column(column_type, **col_args)
-                    setattr(cls, attribute_name, column)  # Set class attribute
+            _map_entity_columns(cls)
 
         # Translate portable Index declarations into table-level indexes.
         # Must happen before super().__init_subclass__() so the declarative
@@ -1723,6 +1905,45 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                 item_dict[key] = attr_obj.as_dict(value)
 
         return cls(**item_dict)
+
+
+def _refuse_unexpected_version(
+    dao: "SADAO",
+    conn: typing.Any,
+    db_item: typing.Any,
+    identifier: typing.Any,
+    expected_version: int,
+) -> None:
+    """Refuse an update whose stored row is not at ``expected_version``.
+
+    Rolls back a standalone connection before raising.
+
+    Raises:
+        ExpectedVersionError: The stored version differs from
+            ``expected_version``.
+    """
+    stored_version = getattr(db_item, "_version", None)
+    if stored_version != expected_version:
+        # Only a standalone update observes the whole compare-and-set here;
+        # under a UnitOfWork the version-guarded flush is deferred to the UoW
+        # commit, so the outcome resolves there, not in ``_update``. Record
+        # only what this path truthfully sees, so the SQLAlchemy log is a
+        # coherent standalone trace and never a half-observed UoW one.
+        if occ_trace.is_active() and dao._is_standalone:
+            # Raw conflict observation: the version this writer read as its
+            # base, and the row's live version that no longer matches it.
+            occ_trace.record(
+                stream=f"{dao.schema_name}:{identifier}",
+                base=expected_version,
+                outcome="conflicted",
+                version_after=stored_version,
+            )
+        dao._rollback_if_standalone(conn)
+        raise ExpectedVersionError(
+            f"Wrong expected version: {expected_version} "
+            f"(Aggregate: {dao.entity_cls.__name__}({identifier}), "
+            f"Version: {stored_version})"
+        )
 
 
 class SADAO(BaseDAO):
@@ -2065,28 +2286,9 @@ class SADAO(BaseDAO):
             )
 
         if expected_version is not None:
-            stored_version = getattr(db_item, "_version", None)
-            if stored_version != expected_version:
-                # Only a standalone update observes the whole compare-and-set here;
-                # under a UnitOfWork the version-guarded flush is deferred to the UoW
-                # commit, so the outcome resolves there, not in ``_update``. Record
-                # only what this path truthfully sees, so the SQLAlchemy log is a
-                # coherent standalone trace and never a half-observed UoW one.
-                if occ_trace.is_active() and self._is_standalone:
-                    # Raw conflict observation: the version this writer read as its
-                    # base, and the row's live version that no longer matches it.
-                    occ_trace.record(
-                        stream=f"{self.schema_name}:{identifier}",
-                        base=expected_version,
-                        outcome="conflicted",
-                        version_after=stored_version,
-                    )
-                self._rollback_if_standalone(conn)
-                raise ExpectedVersionError(
-                    f"Wrong expected version: {expected_version} "
-                    f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
-                    f"Version: {stored_version})"
-                )
+            _refuse_unexpected_version(
+                self, conn, db_item, identifier, expected_version
+            )
 
         for attribute in attributes(self.entity_cls):
             if attribute != id_attr and getattr(model_obj, attribute) != getattr(
