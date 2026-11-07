@@ -78,13 +78,14 @@ pytestmark = pytest.mark.no_test_domain
 GOLDEN_FILE = Path(__file__).with_name("ddl_golden.json")
 REGENERATE = os.environ.get("PROTEAN_REGEN_DDL_GOLDEN") == "1"
 
-# Dialect name, provider class, URI, and the DBAPI module the provider imports.
+# Dialect name, provider class, URI, and the DBAPI modules the provider can
+# import. The dialect runs when any one of them is installed.
 DIALECTS = [
-    ("sqlite", SqliteProvider, "sqlite://", "sqlite3"),
-    ("postgresql", PostgresqlProvider, POSTGRES_URI, "psycopg2"),
-    ("mssql", MssqlProvider, MSSQL_URI, "pyodbc"),
-    ("mysql", MysqlProvider, MYSQL_URI, "pymysql"),
-    ("mariadb", MysqlProvider, MARIADB_URI, "pymysql"),
+    ("sqlite", SqliteProvider, "sqlite://", ("sqlite3",)),
+    ("postgresql", PostgresqlProvider, POSTGRES_URI, ("psycopg", "psycopg2")),
+    ("mssql", MssqlProvider, MSSQL_URI, ("pyodbc",)),
+    ("mysql", MysqlProvider, MYSQL_URI, ("pymysql",)),
+    ("mariadb", MysqlProvider, MARIADB_URI, ("pymysql",)),
 ]
 
 
@@ -535,7 +536,11 @@ def generate_ddl(dialects):
 def test_emitted_ddl_matches_the_golden_file():
     # A missing DBAPI module skips only its own dialect, so SQLite keeps
     # running wherever the server drivers are not installed.
-    dialects = [d for d in DIALECTS if importlib.util.find_spec(d[3]) is not None]
+    dialects = [
+        d
+        for d in DIALECTS
+        if any(importlib.util.find_spec(module) is not None for module in d[3])
+    ]
     assert dialects, "no dialect has its DBAPI module installed"
 
     ddl = generate_ddl(dialects)
