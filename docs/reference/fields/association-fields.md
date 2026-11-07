@@ -4,13 +4,12 @@
 
 
 Association fields in Protean are designed to represent and manage
-relationships between different domain models. They facilitate the modeling of
-complex relationships, while encapsulating the technical aspects of persisting
-data.
+relationships between different domain models. Association fields model complex
+relationships and hide the details of how Protean persists the related data.
 
-Note that while Aggregates and Entities can manage associations, they can
-never link to another Aggregate directly. Aggregates are transaction boundaries
-and no transaction should span across aggregates. Read more in
+Aggregates and Entities can hold associations, but they can never link to
+another Aggregate directly. Aggregates are transaction boundaries and no
+transaction should span across aggregates. Read more in
 [Aggregate concepts](../../concepts/building-blocks/aggregates.md).
 
 For a comprehensive guide on relationships, see [Expressing Relationships](../../guides/domain-definition/relationships.md).
@@ -28,8 +27,8 @@ with at most one instance of a child entity.
 !!!note
     If you carefully observe the `HasOne` field declaration, the child entity's
     name is a string value. This is the usual way to avoid circular references.
-    It applies to all aspects of Protean that link two entities - the string
-    value will be resolved to the class at runtime.
+    Every part of Protean that links two entities accepts the entity name as a
+    string. Protean resolves the string value to the class at runtime.
 
 The `Author` entity can now be persisted along with the `Book` aggregate:
 
@@ -66,8 +65,7 @@ Out[3]:
     Out[3]: ['name', 'id', 'book_id']
     ```
 
-We will further review persistence related aspects around associations in the
-Repository section.
+We will further review persistence related aspects around associations in the Repository section.
 <!-- FIXME Link Repository section -->
 
 ## `HasMany`
@@ -114,8 +112,8 @@ Out[4]:
  '_version': -1}
 ```
 
-You can also use helper methods that begin with `get_one_from_` and `filter_` to filter
-for specific entities within the instances.
+You can also use helper methods that begin with `get_one_from_` and `filter_`
+to filter for specific child entities in the `HasMany` relationship.
 
 `get_one_from_` returns a single entity. It raises `ObjectNotFoundError` if no matching
 entity for the criteria is found and `TooManyObjectsError` if more than
@@ -145,7 +143,7 @@ Out[4]: {'content': 'Bar', 'rating': 2.5, 'id': '3b7fd92e-be11-4b3b-96e9-1caf027
 
 A `Reference` field establishes the inverse relationship from child entities to their parent aggregate. While `HasOne` and `HasMany` define the forward relationship (parent to child), the `Reference` field enables navigation from child to parent.
 
-Every entity associated with an aggregate automatically gets a `Reference` field created for it, unless explicitly defined. The field name is derived from the aggregate's name (e.g., `Post` becomes `post`).
+Protean automatically adds a `Reference` field to every entity associated with an aggregate, unless you define one explicitly. The field name is derived from the aggregate's name (e.g., `Post` becomes `post`).
 
 ```python hl_lines="10"
 --8<-- "guides/domain-definition/fields/association-fields/003.py:explicit_reference"
@@ -184,4 +182,4 @@ By default, association fields name the foreign key `<aggregate_name>_<identifie
 --8<-- "guides/domain-definition/fields/association-fields/005.py:via"
 ```
 
-Use it when the foreign key has to match a column name in an existing schema. The value stored in the `via` field is still the parent's identifier, and Protean still adds the default `<aggregate_name>_<identifier_name>` field (`product_id` here) next to it.
+When the foreign key has to match a column name in an existing schema, use the `via` parameter. The value stored in the `via` field is still the parent's identifier, and Protean still adds the default `<aggregate_name>_<identifier_name>` field (`product_id` here) next to it.

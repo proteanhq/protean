@@ -8,9 +8,9 @@
 ## Forum
 
 If you've hit a problem with something you're working on and could use some
-help, ask on GitHub Discussions. That is the place for questions: they are
-answered there, and the threads are indexed by search engines, so your question
-makes it easier for the next person with the same problem to find the answer.
+help, ask on GitHub Discussions. GitHub Discussions is the place to ask
+questions and get answers. Search engines index its threads, so your question
+helps the next person with the same problem find the answer.
 
 Keep the issue tracker for bugs and feature requests.
 
@@ -45,9 +45,10 @@ release (a new version) of Protean with bug fixes and new features.
 ## Contributing
 
 Protean is designed and maintained by a single maintainer, from one coherent
-view of the whole framework. This is a deliberate choice that keeps the design
-consistent and the correctness bar high. It does **not** mean the project is
-closed to you: the contributions below are genuinely valued.
+view of the whole framework. The maintainer chose this setup on purpose, to
+keep the design consistent and to hold the code to a high standard of
+correctness. It does **not** mean the project is closed to you: the
+contributions below are genuinely valued.
 
 ### Report bugs
 

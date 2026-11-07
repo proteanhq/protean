@@ -12,9 +12,9 @@ For the conceptual foundations behind these patterns, see
 
 ### [Aggregates](./aggregates.md)
 
-Define your root entities, the coarse-grained building blocks that encapsulate
-business logic, enforce invariants, and define transaction boundaries. Start
-here when modeling a new domain concept.
+Define your aggregates: coarse-grained root entities that encapsulate business
+logic, enforce invariants, and define transaction boundaries. Start here when
+modeling a new domain concept.
 
 ### [Entities](./entities.md)
 
@@ -24,7 +24,7 @@ always accessed through their parent aggregate and share its lifecycle.
 ### [Value Objects](./value-objects.md)
 
 Model immutable descriptive concepts like Money, Email, or Address. Value
-objects are defined by their attributes, not identity, and are embedded
+objects are defined by their attributes and have no identity. You embed them
 within aggregates or entities.
 
 ### [Fields](./fields.md)
@@ -41,7 +41,7 @@ review or migration tooling.
 
 ### [Identity](./identity.md)
 
-Configure how aggregate and entity identifiers are generated, UUIDs, integers,
+Configure how aggregate and entity identifiers are generated: UUIDs, integers,
 user-supplied keys, or a custom function you write yourself.
 
 ### [Relationships](./relationships.md)
@@ -59,7 +59,7 @@ synchronously or asynchronously.
 
 - [Fields Reference](../../reference/fields/index.md): All field types,
   arguments, and definition styles.
-- [Identity Reference](../../reference/domain-elements/identity.md): Full
-  configuration surface for identity strategies and types.
+- [Identity Reference](../../reference/domain-elements/identity.md): Every
+  configuration option for identity strategies and types.
 - [Choosing Element Types](../../concepts/building-blocks/choosing-element-types.md):
   Guidance on when to use an aggregate vs. entity vs. value object.

@@ -9,7 +9,7 @@ the logic genuinely spans aggregate boundaries.
 ## The Problem
 
 Consider placing an order that requires confirming the order and reserving
-inventory. Where does this logic live?
+inventory. Where should this logic go?
 
 - **In the `Order` aggregate?** Then `Order` needs to know about `Inventory`,
   which violates aggregate boundaries and creates tight coupling.
@@ -57,11 +57,12 @@ business functionality. These interfaces describe the operations that the
 service provides, making the service's role and capabilities clear.
 
 ### Domain Services are invoked by application-layer elements. { data-toc-label="Invoked by Handlers" }
-Services in the application layer, [command handlers](./command-handlers.md),
-[application services](./application-services.md), or [event
-handlers](./event-handlers.md), invoke domain services to perform domain
-operations. The handler is responsible for loading aggregates from
-repositories, passing them to the domain service, and persisting the result.
+Elements in the application layer invoke domain services to perform domain
+operations: [command handlers](./command-handlers.md),
+[application services](./application-services.md), or
+[event handlers](./event-handlers.md). The handler is responsible for loading
+aggregates from repositories, passing them to the domain service, and
+persisting the result.
 
 ## When NOT to Use Domain Services
 
@@ -71,9 +72,9 @@ them when:
 - **The logic involves only one aggregate**: If the business rule can be
   expressed as an invariant or method on a single aggregate, it belongs there.
   Domain services require `part_of` to list at least two aggregates.
-- **You need orchestration without business rules**: If you're just loading an
-  aggregate, calling a method, and saving, that's what command handlers and
-  application services are for.
+- **You need orchestration without business rules**: If you only load an
+  aggregate, call a method, and save it, use command handlers and application
+  services for that work.
 - **You want a reusable utility function**: Domain services model business
   operations from the ubiquitous language, not technical utilities.
 

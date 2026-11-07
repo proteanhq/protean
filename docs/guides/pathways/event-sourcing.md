@@ -3,7 +3,7 @@
 !!! info "Builds on CQRS"
     Event Sourcing extends the [CQRS pathway](./cqrs.md) with event replay,
     temporal queries, and full audit trails. If you haven't read the CQRS
-    pathway yet, start there, Event Sourcing builds on those concepts.
+    pathway yet, start there, because Event Sourcing builds on those concepts.
 
 !!! tip "Hands-On Tutorial"
     For a practical, project-based introduction, see the

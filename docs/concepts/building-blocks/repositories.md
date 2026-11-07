@@ -1,13 +1,13 @@
 # Repositories
 
 A repository provides a collection-oriented interface to persist and retrieve
-[aggregates](./aggregates.md). It hides the details of the underlying storage
-technology behind a clean, domain-focused API, so the domain model never knows
-whether its data lives in a relational database, a document store, or an
-in-memory map.
+[aggregates](./aggregates.md). A repository exposes a clean, domain-focused API
+and keeps the details of the storage technology inside it. The domain model
+never knows whether its data is stored in a relational database, a document
+store, or an in-memory map.
 
-Repositories are the sole gateway for aggregate persistence. If you need to
-save or load an aggregate, you go through its repository.
+Repositories are the only way to persist aggregates. If you need to save or
+load an aggregate, you go through its repository.
 
 ## Facts
 
@@ -35,8 +35,8 @@ close to the aggregate it belongs to and makes intent explicit.
 
 ### Repositories are always associated with an aggregate. { data-toc-label="Linked to Aggregate" }
 
-A repository is always bound to exactly one aggregate. This one-to-one
-relationship ensures that each aggregate cluster has a single, well-defined
+A repository is always bound to exactly one aggregate. Because of this
+one-to-one binding, each aggregate cluster has a single, well-defined
 persistence entry point.
 
 ### Repositories return fully-hydrated aggregates. { data-toc-label="Eager Loading" }
@@ -48,10 +48,10 @@ consistent snapshot of the aggregate and its children.
 
 ### Repositories operate within Unit of Work transactions. { data-toc-label="Transactions" }
 
-Every repository operation participates in the enclosing Unit of Work. This
-means that adding or updating an aggregate, raising [domain
-events](./events.md), and any other side effects are all committed atomically,
-or rolled back together if something fails.
+Every repository operation participates in the enclosing Unit of Work. The Unit
+of Work commits added or updated aggregates, raised
+[domain events](./events.md), and any other side effects atomically. If
+something fails, it rolls them all back together.
 
 ### Repositories abstract away storage technology. { data-toc-label="Technology-agnostic" }
 
@@ -77,9 +77,10 @@ scenarios like projection rebuilds, test teardown, and compliance requirements.
 ### Event-sourced aggregates get a different repository. { data-toc-label="Event Sourced" }
 
 When an aggregate is configured with `event_sourced=True`,
-`domain.repository_for()` transparently returns an event-sourced repository
-that reconstructs state by replaying events from the aggregate's stream,
-rather than reading from a database table. The calling code does not change.
+`domain.repository_for()` transparently returns an event-sourced repository.
+The event-sourced repository reconstructs state by replaying events from the
+aggregate's stream instead of reading from a database table. The calling code
+does not change.
 
 ## Best Practices
 

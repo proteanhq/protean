@@ -34,13 +34,14 @@ TimeoutStopSec=30
 WantedBy=multi-user.target
 ```
 
-`TimeoutStopSec=30` gives the engine up to 30 seconds to stop
-subscriptions, drain in-flight handlers (for `server.drain_timeout`, 10
-seconds by default), and close providers, brokers, caches, and the event
-store before systemd escalates to `SIGKILL`. If you raise
+`TimeoutStopSec=30` gives the engine up to 30 seconds to shut down before
+systemd escalates to `SIGKILL`. In that time the engine stops subscriptions,
+drains in-flight handlers (for `server.drain_timeout`, 10 seconds by default),
+and closes providers, brokers, caches, and the event store. If you raise
 `server.drain_timeout` above 25, raise `TimeoutStopSec` above the drain
-window plus 5 seconds too. Messages a stopped worker read and did not handle
-stay pending in Redis. The next start claims the ones last delivered at least
+window plus 5 seconds too. When a worker stops, the messages it read and did
+not handle stay pending in Redis. When the server starts again, it claims the
+pending messages last delivered at least
 [`server.reclaim_idle_seconds`](../../reference/server/hardening.md#serverreclaim_idle_seconds)
 (120 seconds by default) earlier and leaves the rest for a later start. A
 partitioned subscription (`sequential_by`) does not wait for this threshold:
@@ -135,11 +136,11 @@ Hardening reference](../../reference/server/hardening.md#health-checks).
 !!! warning "`replicas: 3` is only safe for stream/broker-backed domains"
 
     The `replicas: 3` above runs three independent server processes against the
-    same event store. That is safe for stream subscriptions and cluster-aware
-    brokers, but a domain with any **event-store** subscription would
-    double-process every event across the replicas, and the per-process
-    `--workers` guard cannot catch it. Set `replicas: 1` for such domains. See
-    [Scaling Considerations](#scaling-considerations) below.
+    same event store. Three replicas are safe for stream subscriptions and
+    cluster-aware brokers. But in a domain with any **event-store**
+    subscription, the replicas would double-process every event, and the
+    per-process `--workers` guard cannot catch it. Set `replicas: 1` for such
+    domains. See [Scaling Considerations](#scaling-considerations) below.
 
 ### FastAPI apps
 
@@ -168,10 +169,11 @@ server is needed.
   every worker reading a stream processes the same events.
 - Because of this, `protean server --workers N` refuses to start with more than
   one worker when any handler resolves to an event-store subscription. The
-  error names the offending handlers and offers three ways forward: run a
-  single worker, switch those handlers to stream subscriptions
-  (`subscription_type = "stream"`), or pass `--allow-event-store-multiworker` to
-  override (you accept that events will be double-processed).
+  error names the handlers that resolve to event-store subscriptions. It offers
+  three options: run a single worker, switch those handlers to stream
+  subscriptions (`subscription_type = "stream"`), or pass
+  `--allow-event-store-multiworker` to override the check (you accept that
+  events will be double-processed).
 - Use it for a single worker, or for projections where idempotency is
   guaranteed; consider StreamSubscription for scalable workloads.
 
@@ -179,19 +181,20 @@ server is needed.
 
     The `--workers` guard only sees the workers inside one `protean server`
     process. It **cannot** detect a second `protean server` running elsewhere.
-    Running two processes, two containers, or two Kubernetes replicas against
-    the same event store, each with the default `--workers 1`, sails past the
-    guard and double-processes every event-store subscription just as surely as
-    `--workers 2` would.
+    If you run two processes, two containers, or two Kubernetes replicas
+    against the same event store, each with the default `--workers 1`, the
+    guard does not stop them. The processes then double-process every
+    event-store subscription, the same as `--workers 2` would.
 
-    Until cluster-wide ownership lands (a database-backed lease, planned for a
-    future release), a domain with any event-store subscription must run as
-    **exactly one process for the whole cluster**: `replicas: 1`, a single
-    worker, no horizontal scaling. To scale horizontally, move those handlers to
-    stream subscriptions (`subscription_type = "stream"`), which coordinate
-    across processes via Redis consumer groups. The Kubernetes example above
-    (`replicas: 3`) is safe only for stream/broker-backed domains; set
-    `replicas: 1` for any domain that keeps event-store subscriptions.
+    Protean plans cluster-wide ownership (a database-backed lease) for a future
+    release. Until that release, a domain with any event-store subscription
+    must run as **exactly one process for the whole cluster**: `replicas: 1`, a
+    single worker, no horizontal scaling. To scale horizontally, move the
+    handlers that use event-store subscriptions to stream subscriptions
+    (`subscription_type = "stream"`), which coordinate across processes via
+    Redis consumer groups. The Kubernetes example above (`replicas: 3`) is safe
+    only for stream/broker-backed domains; set `replicas: 1` for any domain
+    that keeps event-store subscriptions.
 
 For connection pool sizing across workers, DLQ retention, and OTEL
 metric emission, follow the full production checklist in

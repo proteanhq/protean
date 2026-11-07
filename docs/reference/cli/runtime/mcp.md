@@ -2,9 +2,9 @@
 
 The `mcp` command runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server that exposes Protean's framework operations as tools a coding agent can
-call. Every tool answers from the installed framework, so an agent always reasons
-about the version of Protean the project actually runs, not a stale copy of the
-docs.
+call. Every tool answers from the installed framework. An agent therefore
+always reasons about the version of Protean the project actually runs, and
+never about a stale copy of the docs.
 
 The server exposes five tools:
 
@@ -16,7 +16,7 @@ The server exposes five tools:
 
 ## Installation
 
-The server rides on the optional `mcp` extra:
+The server needs the optional `mcp` extra:
 
 ```shell
 pip install "protean[mcp]"
@@ -64,11 +64,11 @@ An MCP client discovers the server from a `.mcp.json` file in the project:
 }
 ```
 
-Run [`protean dx install`](../project/dx.md) to write that entry for you. It
-manages only the `mcpServers.protean` key-path, so an existing `.mcp.json` keeps
-every other server you configured. You can also create the file by hand as shown,
-or point your client at the `.mcp.json` shipped at the root of the Protean
-repository, which carries the same entry.
+Run [`protean dx install`](../project/dx.md) to write the `mcpServers.protean`
+entry for you. It writes only that key-path, so every other server in an
+existing `.mcp.json` stays as you configured it. You can also create the file
+by hand as shown, or point your client at the `.mcp.json` shipped at the root
+of the Protean repository, which carries the same entry.
 
 ## The tools
 
@@ -121,8 +121,8 @@ Plans a new element slice, and writes it only on consent.
   plus `written`, the paths it created.
 
 The write only happens when the tool is called with `apply=true`. MCP clients
-typically surface a tool call's arguments for you to approve before it runs, so
-that flag is your explicit consent to write.
+typically show you a tool call's arguments to approve before the call runs.
+Your approval of `apply=true` is therefore your explicit consent to write.
 
 ## Security
 

@@ -1,9 +1,9 @@
 # Subscribers
 
-Subscribers consume messages from external message brokers. They are the
-entry point for data and signals that originate outside the bounded context,
-events published by other services, webhook payloads relayed through a message
-queue, or any external message that needs to trigger domain logic.
+Subscribers consume messages from external message brokers. Subscribers are the
+entry point for data and signals from outside the bounded context. These
+include events published by other services, webhook payloads relayed through a
+message queue, and any external message that needs to trigger domain logic.
 
 Where [event handlers](./event-handlers.md) react to events raised
 *within* the domain, subscribers react to messages arriving *from outside*.
@@ -27,7 +27,7 @@ and keeps the wiring declarative.
 ### Subscribers implement a call interface. { data-toc-label="Call Interface" }
 
 Each subscriber defines a single processing method that receives the incoming
-message payload. This keeps the contract simple, one subscriber, one stream,
+message payload. This keeps the contract simple: one subscriber, one stream,
 one processing entry point.
 
 ### Subscribers act as an anti-corruption layer. { data-toc-label="Anti-corruption" }
@@ -41,9 +41,10 @@ domain.
 ### Subscribers can trigger domain operations. { data-toc-label="Trigger Domain Logic" }
 
 After parsing and translating an external message, a subscriber typically
-initiates a domain operation, submitting a command, invoking an [application
-service](./application-services.md), or directly interacting with an
-[aggregate](./aggregates.md) through its [repository](./repositories.md).
+starts a domain operation: it submits a command, invokes an
+[application service](./application-services.md), or loads and changes an
+[aggregate](./aggregates.md) directly through its
+[repository](./repositories.md).
 
 ### Subscribers support error handling. { data-toc-label="Error Handling" }
 

@@ -49,9 +49,9 @@ entity's fields, this descriptor derives it at class-body evaluation time.
 --8<-- "guides/domain-definition/fields/container-fields/005.py:place_order"
 ```
 
-This is equivalent to calling `value_object_from_entity(OrderItem)` and
-passing the result to a `ValueObject` field. Use whichever form is clearer
-for your use case.
+The `ValueObjectFromEntity(OrderItem)` field is equivalent to calling
+`value_object_from_entity(OrderItem)` and passing the result to a `ValueObject`
+field. Use whichever form is clearer for your use case.
 
 See [Projecting Entities into Value Objects](../../guides/domain-definition/value-objects.md#projecting-entities-into-value-objects)
 for the full guide including round-trip conversion back to entities.
@@ -67,14 +67,15 @@ such as `String`, `Integer`, `Float`, `Decimal`, `Boolean`, `Date`,
 `DateTime`, `Identifier`, `Text` or `Dict`, or a `ValueObject` field (see
 [List of Value Objects](#list-of-value-objects)). `Auto` raises a
 `ValidationError`. Association fields such as `HasMany` and `Reference` are not
-supported. When you leave it out, the list accepts items of any type.
+supported. When you leave out `content_type`, the list accepts items of any
+type.
 
 ```python hl_lines="10"
 --8<-- "guides/domain-definition/fields/container-fields/001.py:full"
 ```
 
-The value is provided as a `list`, and the values in the `list` are validated
-to be of the right type.
+You provide the value as a `list`. Protean validates that each value in the
+`list` is of the right type.
 
 ```shell hl_lines="6 12"
 In [1]: user = User(email="john.doe@gmail.com", roles=['ADMIN', 'EDITOR'])
@@ -93,10 +94,10 @@ ValidationError: {'roles': ['Input should be a valid string', 'Input should be a
 
 ### List of Value Objects
 
-A `List` field can even hold a list of `ValueObject` instances. The content of
-the `List` will be persisted as a list of dicts, so the field will behave
-essentially like `List(Dict())` when it comes to persistence. However, it will
-have the added benefit of a validation structure of content within the List.
+A `List` field can even hold a list of `ValueObject` instances. Protean
+persists the content of the `List` as a list of dicts, so for persistence the
+field behaves like `List(Dict())`. Unlike `List(Dict())`, it also validates each
+item against the value object.
 
 ```python hl_lines="7-12 19"
 --8<-- "guides/domain-definition/fields/container-fields/004.py:full"
@@ -196,14 +197,16 @@ Out[2]:
 ### Dict of Value Objects
 
 A `Dict` field can hold a string-keyed `code → value object` map with
-`value_type`. Each value is a `ValueObject` instance, reconstructed and validated
-on load and serialized to a plain dict for storage (a single JSON column), just
-like a [list of value objects](#list-of-value-objects):
+`value_type`. Each value is a `ValueObject` instance that Protean reconstructs
+and validates on load. For storage, Protean serializes each value to a plain
+dict (a single JSON column), as it does for a
+[list of value objects](#list-of-value-objects):
 
 ```python
 --8<-- "guides/domain-definition/fields/container-fields/006.py:dict_of_value_objects"
 ```
 
-The values must be value objects; use the untyped `Dict()` for loose JSON of
-primitives. Reach for this when modelling a small, embedded `code → concept` map
-(see the [reference-data pattern](../../patterns/model-reference-data.md)).
+The values must be value objects. For JSON of primitives with no fixed
+structure, use the untyped `Dict()` instead. When you model a small, embedded
+`code → concept` map, use a `Dict` field with `value_type` (see the
+[reference-data pattern](../../patterns/model-reference-data.md)).
