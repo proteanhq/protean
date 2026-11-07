@@ -18,6 +18,7 @@ import importlib.util
 import itertools
 import json
 import os
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -476,6 +477,22 @@ def error_entry(exc):
     return {"error": type(exc).__name__, "message": str(exc)}
 
 
+# The MySQL table options that follow the closing parenthesis of CREATE TABLE.
+_TABLE_OPTION = re.compile(r" (?=(?:CHARSET|COLLATE|COMMENT|ENGINE|ROW_FORMAT)\b)")
+
+
+def sorted_table_options(create_table):
+    """``create_table`` with its trailing MySQL table options in sorted order.
+
+    SQLAlchemy 2.0 collects these options in a set, so their order follows the
+    string hash and changes from one process to the next.
+    """
+    body, _, options = create_table.rpartition("\n)")
+    if not options:
+        return create_table
+    return f"{body}\n){' '.join(sorted(_TABLE_OPTION.split(options)))}"
+
+
 def emitted_ddl(model_cls, dialect):
     """The table, index and raw DDL that creating the model's table emits."""
     statements = []
@@ -487,7 +504,7 @@ def emitted_ddl(model_cls, dialect):
     model_cls.__table__.create(engine, checkfirst=False)
     version_col = getattr(model_cls, "__mapper_args__", {}).get("version_id_col")
     return {
-        "table": statements[0],
+        "table": sorted_table_options(statements[0]),
         # Index creation follows the order of a set, so sort it.
         "indexes": sorted(statements[1:]),
         "version_id_col": None if version_col is None else version_col.name,
