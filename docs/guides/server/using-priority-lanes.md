@@ -113,10 +113,11 @@ been handled. `XLEN` does not tell you this: it counts every entry still
 stored in the stream, read or not.
 
 Zero lag does not mean the batch succeeded. Outbox records may still be waiting
-to be published (see below). When a handler fails, its message moves to the
-dead-letter stream (`crm::customer:backfill:dlq`) and is acknowledged. Treat
-the batch as done only when the outbox has no unpublished records and the
-dead-letter stream holds no batch events.
+to be published (see below). When a handler fails, the subscription retries the
+message up to its retry limit. When the last retry fails, the subscription
+moves the message to the dead-letter stream (`crm::customer:backfill:dlq`) and
+then acknowledges it. Treat the batch as done only when the outbox has no
+unpublished records and the dead-letter stream holds no batch events.
 
 ### Check Outbox Records
 
