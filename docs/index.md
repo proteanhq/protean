@@ -63,9 +63,9 @@ on day one, and that have to grow safely instead of being rewritten.
 
     ---
 
-    Start with in-memory adapters, so there is no database, broker, or setup to
-    deal with. When you're ready, change `domain.toml` to point at PostgreSQL,
-    Redis, Elasticsearch, or MessageDB. Your domain code stays as it is.
+    Start with in-memory adapters, so you need no database, broker, or setup.
+    When you're ready, change `domain.toml` to point at PostgreSQL, Redis,
+    Elasticsearch, or MessageDB. Your domain code stays as it is.
 
 </div>
 
@@ -104,12 +104,12 @@ before it. Start simple and add sophistication as your needs change.
 | :material-history: | [**Event Sourcing**](./guides/pathways/event-sourcing.md) | A full audit trail, temporal queries, and event replay |
 
 If you have no strong reason to choose, start with domain-driven design and
-evolve later. [Choose a path](./guides/pathways/index.md) compares them in
-detail.
+evolve later. [Choose a path](./guides/pathways/index.md) compares the three
+paths in detail.
 
-To work out whether Protean suits your system at all, the
-[Applicability Charter](./reference/applicability.md) states plainly what it is
-built for, and the shapes of systems it is not.
+To check whether Protean suits your system at all, read the
+[Applicability Charter](./reference/applicability.md). It states plainly what
+Protean is built for and which kinds of systems it does not suit.
 
 ---
 

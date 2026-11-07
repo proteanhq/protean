@@ -13,12 +13,13 @@ A domain element whose **method body calls a concrete adapter** under
 `protean.adapters`. `protean check` reports one finding per call-site, naming the
 element, the method, the adapter symbol, and the source line.
 
-This catches runtime coupling one level deeper than `INFRA_IMPORT_IN_DOMAIN`,
-which reads only module-level imports. It reads method bodies through the
-[behavioral analysis substrate](../behavioral-analysis.md). An adapter reached
-through `import protean` attribute
-access (`protean.adapters.broker.inline.InlineBroker(...)`) is a real call-site coupling that the module-level import rule's
-name-prefix check does not see, because the module imports only `protean`.
+This rule finds runtime coupling inside method bodies. `INFRA_IMPORT_IN_DOMAIN`
+reads only module-level imports and does not check method bodies. This rule
+reads method bodies through the [behavioral analysis substrate](../behavioral-analysis.md).
+A method can reach an adapter through `import protean` attribute access
+(`protean.adapters.broker.inline.InlineBroker(...)`), and that call is a real
+call-site coupling. The module imports only `protean`, so the module-level
+import rule's name-prefix check does not see the call.
 
 ## Opt-in
 
@@ -29,12 +30,12 @@ The rule is **off by default**. Turn it on in `domain.toml`:
 check_adapter_calls = true
 ```
 
-It parses method bodies, which is heavier than the module-import scan
-`INFRA_IMPORT_IN_DOMAIN` does, so it stays opt-in per
+The rule parses method bodies, a heavier job than the module-import scan in
+`INFRA_IMPORT_IN_DOMAIN`, so the rule stays opt-in per
 [ADR-0019](../../../adr/0019-check-engine-determinism-boundary-and-behavioral-substrate.md).
-It uses a dedicated
-flag rather than reusing `check_infra_imports`, so each rule is switchable on its
-own, turning on the call-site rule never changes what the import rule does.
+The rule has its own flag and does not reuse `check_infra_imports`. You switch
+each rule on or off by itself, so turning on the call-site rule never changes
+what the import rule does.
 
 ## Scope and limits
 
@@ -42,24 +43,24 @@ The rule walks **every non-internal registered domain element**, aggregates,
 entities, value objects, repositories, handlers, domain services, process
 managers, subscribers, in fqn order, and reads the methods **defined in each
 element's own class body**. It is deliberately **conservative**: it flags a
-call only when the callee **statically resolves** under `protean.adapters`. A call whose
-callee cannot be resolved is **skipped, never guessed at**, keeping the rule on
-the deterministic side of ADR-0019. A callee bound by an import written inside
-the method (`from protean.adapters... import X`) resolves for every use after
-that import, so the rule flags it like one bound at module level. When the
-method body also binds that name in another way (for example an assignment, a
-loop target, a nested `def`, a `del` or a `global` declaration), or imports it a
-second time from a different object, the rule does not resolve such a call, so
-it skips every call through that name. A parameter of the same name counts as
-another binding too, unless the import is a statement of the method body
-itself, outside any `if`, `try`, loop or `with`. That import always runs, so it
-replaces the argument for every later use.
+call only when the callee **statically resolves** under `protean.adapters`.
+When the rule cannot resolve a callee, the call is **skipped, never guessed
+at**, so the rule stays deterministic as ADR-0019 requires. A callee bound by
+an import written inside the method (`from protean.adapters... import X`)
+resolves for every use after that import, so the rule flags it like one bound
+at module level. The method body can also bind that name in another way (for
+example an assignment, a loop target, a nested `def`, a `del` or a `global`
+declaration), or import it a second time from a different object. In that case
+the rule does not resolve the name and skips every call through it. A parameter
+of the same name counts as another binding too, unless the import is
+a statement of the method body itself, outside any `if`, `try`, loop or `with`.
+That import always runs, so it replaces the argument for every later use.
 
-Because it reads only an element's own top-level methods, it does **not** see
-an adapter call that sits in a method inherited from a non-registered base or
-mixin, in a class-attribute default, at module level, or nested inside another
-`def`, `lambda`, or class within a method. Those are conservative, by-design
-misses, not violations the rule certifies absent. In particular, it does not
+The rule reads only an element's own top-level methods. It does **not** see an
+adapter call in a method inherited from a non-registered base or mixin, in a
+class-attribute default, at module level, or nested inside another `def`,
+`lambda`, or class within a method. Those are conservative, by-design misses,
+not violations the rule certifies absent. In particular, it does not
 flag:
 
 - **A class that is not a registered domain element**: Only registered elements
@@ -74,9 +75,9 @@ flag:
 
 Calling into `protean.adapters` from a domain method couples the domain layer to
 a specific adapter at runtime and breaks the ports-and-adapters boundary. The
-domain should depend on abstractions and let the concrete adapter be wired
-through the domain's provider configuration, so infrastructure can be swapped
-(memory for tests, Postgres for production) without editing domain code.
+domain should depend on abstractions, and the domain's provider configuration
+should wire in the concrete adapter. You can then swap infrastructure (memory
+for tests, Postgres for production) without editing domain code.
 
 ## Example
 

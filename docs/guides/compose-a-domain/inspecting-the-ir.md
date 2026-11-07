@@ -1,9 +1,9 @@
 # Inspecting the IR
 
 After you define and initialize a domain, Protean can generate its
-**Intermediate Representation (IR)**, a JSON document that captures the
-complete topology of your domain model: what elements exist, what shape they
-have, and how they connect.
+**Intermediate Representation (IR)**. The IR is a JSON document of the complete
+topology of your domain model: what elements exist, what shape they have, and
+how they connect.
 
 The IR is useful for:
 
@@ -90,7 +90,7 @@ Every IR document has the same shape:
 
 Alongside its structure, the IR records what causes what. An element that owns
 methods can carry a `method_edges` map, keyed by method name. If the domain
-above lives in `ecommerce/ordering.py`, the `Order` aggregate carries:
+above is defined in `ecommerce/ordering.py`, the `Order` aggregate carries:
 
 ```json
 "method_edges": {
@@ -116,14 +116,14 @@ and `OrderCommandHandler` carries:
 - **`invokes`** appears on command handlers, event handlers, projectors, and
   process managers. It lists the element methods a handler method calls, matched
   by name against the methods in scope. The match is receiver-blind: a name
-  shared by more than one method in scope is skipped (so an edge can be
-  missing), and a unique name is recorded even when the real receiver is
-  something else (so an edge can be wrong). A projector or process manager is
-  scoped to aggregate and entity method names, so it rarely carries a real edge.
+  shared by more than one method in scope is skipped, so an edge can be
+  missing. A unique name is recorded even when the real receiver is something
+  else, so an edge can be wrong. A projector or process manager is scoped to
+  aggregate and entity method names, so it rarely carries a real edge.
 
 Both edges are read from the source as written, not proven, so treat them as a
-guide to the domain's behavior. A method with no edge is absent, and an element
-with no edged method carries no `method_edges` key.
+guide to the domain's behavior. A method with no edge is absent from the map.
+An element with no edged method carries no `method_edges` key.
 
 ---
 
@@ -134,10 +134,11 @@ The same domain always produces **byte-identical** IR JSON (excluding the
 and optional attributes with default values are omitted. Lists are sorted,
 except the `enrichers` lists, which keep registration order because enrichers
 run in that order. Domain traversal loads modules in name order, so enrichers
-registered by traversed modules land in the same order on every machine.
+registered by traversed modules appear in the same order on every machine.
 
-This makes the IR safe to commit to source control and diff across versions.
-The `checksum` field (SHA-256 of the canonical JSON) provides a quick staleness
+Because the output is byte-identical, you can safely commit the IR to source
+control and diff it across versions. The `checksum` field (SHA-256 of the
+canonical JSON) provides a quick staleness
 check. If the checksum hasn't changed, the domain structure hasn't changed.
 
 See the [Compatibility Checking](../compatibility-checking.md) guide for
@@ -155,8 +156,8 @@ no network access.
 
 IR files written by earlier releases carry `https://protean.dev/ir/v0.3.0/schema.json`.
 `protean ir check` and `protean ir diff` ignore `$schema`, so the old URL alone
-does not make a baseline stale or show up as a change. It picks up the new URL the next time you
-regenerate it.
+does not make a baseline stale or show up as a change. The baseline gets the
+new URL the next time you regenerate it.
 
 To validate an IR document programmatically:
 
@@ -168,8 +169,7 @@ To validate an IR document programmatically:
 
 ## Compatibility contract for tool authors
 
-If you are building tools that consume IR documents, follow these rules to
-ensure forward compatibility:
+To keep a tool that reads IR documents forward compatible, follow these rules:
 
 **Ignore unknown keys.** Every object in the IR may gain new keys in future
 minor versions. Your tool must skip keys it does not recognize rather than

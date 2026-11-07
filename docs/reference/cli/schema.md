@@ -51,13 +51,14 @@ unions for optionals, so optional fields default to `null`;
 positive `precision` no smaller than its `scale`; nested value objects become
 named records referenced by fullname). `--format protobuf` emits proto3
 `{name}.v{version}.proto` messages with `optional`/`repeated` labels,
-`.google.protobuf.Timestamp` for dates, `string` for a `Decimal` field, and field numbers assigned
-deterministically in sorted field-name order, so re-generating an *unchanged*
-schema is byte-identical. Adding a field renumbers alphabetically-later fields,
-so these numbers are for emission, not wire-compatible evolution. Both are
-compiler backends for schema *emission*; runtime binary encode/decode is out of
-scope, and field-level constraints (choices/enums, min/max) are not carried
-into either format.
+`.google.protobuf.Timestamp` for dates, and `string` for a `Decimal` field.
+Protean assigns field numbers deterministically in sorted field-name order, so
+re-generating an *unchanged* schema is byte-identical. Adding a field renumbers
+alphabetically-later fields, so these numbers are for emission, not
+wire-compatible evolution. The Avro and Protobuf formats are compiler backends
+for schema *emission*, and runtime binary encode/decode is out of scope.
+Protean does not carry field-level constraints (choices/enums, min/max) into
+either format.
 
 **Protobuf imports.** Each value object and entity is defined once, in its own
 file. A file that uses one imports that file by its path under `schemas/` and
@@ -76,10 +77,11 @@ instead of being imported:
 The command fails with an error when two elements would be written to the same
 file, for example two value objects with the same class name in one cluster.
 
-`--format all` emits every format into one `schemas/` tree in a single pass, JSON, Avro, and
-Protobuf files coexist per element (distinct extensions) rather than one
-clobbering the next. Together with [`protean events catalog`](data/events.md), this is the local
-schema-registry on-ramp.
+`--format all` emits every format into one `schemas/` tree in a single pass.
+Each element gets its JSON, Avro, and Protobuf files with distinct extensions,
+so no format overwrites another. Together with
+[`protean events catalog`](data/events.md), `--format all` is the first step
+toward a local schema registry.
 
 **Output structure**
 
@@ -108,10 +110,10 @@ Filenames include the element version for events and commands. Other elements
 default to `v1`. The `schemas/` directory is cleared on each run to remove
 stale files.
 
-The `ir.json` written alongside the schemas is a canonical baseline (the
-volatile `generated_at` timestamp is omitted), byte-identical to
-`protean ir show --canonical`, so a committed `.protean/ir.json` only changes
-when the domain contract changes.
+The `ir.json` written alongside the schemas is a canonical baseline,
+byte-identical to `protean ir show --canonical`. It omits the volatile
+`generated_at` timestamp, so a committed `.protean/ir.json` only changes when
+the domain contract changes.
 
 ---
 
@@ -198,8 +200,8 @@ live `Index` declarations (the `Q` objects), which an IR file does not carry.
 `--dialects` accepts only the dialects the framework renders DDL for:
 `mariadb`, `mssql`, `mysql`, `postgresql`, and `sqlite`. A name outside that set
 (`oracle`, or a typo like `postgres`) exits with an error naming the accepted
-set. There is no compiler for it, so the alternative would be a file named for a
-dialect that nothing rendered.
+set. Protean has no compiler for such a dialect. Accepting the name would
+produce a file named for a dialect that Protean never rendered.
 
 MariaDB is not in the default set. It is accepted when you ask for it, and its
 `CREATE INDEX` output matches MySQL's for the index forms Protean emits.

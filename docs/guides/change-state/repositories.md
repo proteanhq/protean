@@ -135,9 +135,9 @@ layer that talks to the database.
 --8<-- "guides/change-state/repositories/003.py:exists"
 ```
 
-Use `get_or_none()` when a miss is a normal outcome rather than an error, such
-as resolving an optional reference by id (for example, an order's
-`referred_by` customer id that may not exist):
+Use `get_or_none()` when a miss is a normal outcome, such as resolving an
+optional reference by id (for example, an order's `referred_by` customer id
+that may not exist):
 
 ```python
 --8<-- "guides/change-state/repositories/003.py:get_or_none"
@@ -162,10 +162,10 @@ database, so `domain.repository_for(Person)` returns
 --8<-- "guides/change-state/repositories/001.py:reporting"
 ```
 
-When no `database` is specified, the default value is `"ALL"`, which means
-the repository works with whichever provider the aggregate is assigned to
-(via the aggregate's `provider` option, which itself defaults to the
-`"default"` provider).
+When no `database` is specified, the default value is `"ALL"`. With `"ALL"`,
+Protean uses the repository for whichever provider the aggregate's `provider`
+option assigns. The `provider` option itself defaults to the `"default"`
+provider.
 
 !!!note
     Use `database` when an aggregate needs different query code on different
@@ -223,8 +223,8 @@ Repositories intentionally do not provide a `delete()` or `remove()` method.
 In Domain-Driven Design, "deleting" a business entity is almost always a
 **state transition**, not a record erasure. An order is *cancelled*, a user is
 *deactivated*, a subscription is *archived*. These transitions are meaningful
-domain events that should be modeled explicitly (with commands, aggregate
-methods, and events) not hidden behind a database `DELETE`.
+domain events. Model them explicitly with commands, aggregate methods, and
+events, and do not replace them with a database `DELETE`.
 
 For infrastructure-level record removal (projection rebuilds, test teardown,
 GDPR right-to-erasure compliance), you can access the underlying DAO directly:
@@ -233,8 +233,9 @@ GDPR right-to-erasure compliance), you can access the underlying DAO directly:
 --8<-- "guides/change-state/repositories/004.py:dao_delete"
 ```
 
-This is an intentional escape hatch, not a recommended domain operation. Use it
-only when the domain model does not apply (e.g., cleaning up test data).
+This is an intentional escape hatch. Protean does not recommend it as a domain
+operation. Use it only when the domain model does not apply (e.g., cleaning up
+test data).
 
 ## Transactions and Unit of Work
 
@@ -260,7 +261,8 @@ Define a custom repository when you need to:
 
 You do **not** need a custom repository for:
 
-- Basic `add` and `get` operations, the default repository handles these.
+- Basic `add` and `get` operations: the default repository already provides
+  these.
 - One-off queries in command handlers or application services, consider adding
   a named method to a custom repository instead.
 

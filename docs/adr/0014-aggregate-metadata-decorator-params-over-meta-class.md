@@ -6,10 +6,10 @@
 
 ## Context
 
-Protean needs a home for aggregate-level metadata that is neither a field nor a
-method: which provider persists the aggregate, whether it is event-sourced,
-whether fact events are emitted, and now which indexes the persistence layer
-should create (see issue #944).
+Protean needs a place to declare aggregate-level metadata that is neither a
+field nor a method. This metadata says which provider persists the aggregate,
+whether it is event-sourced, whether fact events are emitted, and now which
+indexes the persistence layer should create (see issue #944).
 
 Historically, many DDD and ORM frameworks collect this metadata in an inner
 `class Meta:` block. Protean used to allow `class Meta:` on aggregates but
@@ -49,16 +49,17 @@ class Outbox:
     ...
 ```
 
-We will not reintroduce `class Meta:` for this. Storage-specific index tuning
-that the portable `Index` API cannot model (GIN/BRIN, expression indexes)
-belongs on `@domain.model` via `Index.from_sql(dialect=..., ddl=...)`, keeping
-the aggregate clean and the storage concern in the adapter layer.
+We will not reintroduce `class Meta:` for this. The portable `Index` API cannot
+model some storage-specific index tuning (GIN/BRIN, expression indexes). That
+tuning belongs on `@domain.model` via `Index.from_sql(dialect=..., ddl=...)`,
+which keeps the aggregate clean and the storage concern in the adapter layer.
 
 We revisit the convention only if **four or more** orthogonal aggregate-level
 metadata concerns accumulate (today there are a handful: `provider`,
 `is_event_sourced`, `fact_events`, `indexes`, plus internal options). At that
-point a `Meta` block may earn its place, but it would migrate *all* options at
-once, not split metadata across two homes.
+point a `Meta` block may be worth adding. That change would migrate *all*
+options to the `Meta` block at once, so metadata is never split across two
+locations.
 
 ## Consequences
 
@@ -78,15 +79,16 @@ once, not split metadata across two homes.
 
 ## Alternatives Considered
 
-- **`class Meta: indexes = [...]`**: Rejected. It splits aggregate metadata
-  across two homes and reverses a convention the framework already settled on.
-  The organizational benefit does not yet outweigh the inconsistency.
+- **`class Meta: indexes = [...]`**: Rejected. This option puts aggregate
+  metadata in two locations. It also reverses a convention the framework
+  already adopted. The organizational benefit does not yet outweigh the
+  inconsistency.
 - **`Field(index=True)` only, no composite support**: Rejected. Single-column
   indexes cannot express the composite ordering the outbox polling path needs
-  (`status, priority DESC`). Composite indexes are a first-class requirement.
+  (`status, priority DESC`). Protean must support composite indexes.
 - **Indexes only on `@domain.model`**: Considered. Indexes are a property of the
   persistence representation, so model-level placement is defensible. Rejected
   because the most common indexes (uniqueness on identifiers, composite query
-  ordering) encode business invariants and query patterns that are
-  domain-flavored. Storage-specific indexes still belong on the model via
-  `Index.from_sql`.
+  ordering) encode business invariants and query patterns. Those invariants and
+  query patterns belong to the domain. Storage-specific indexes still belong on
+  the model via `Index.from_sql`.

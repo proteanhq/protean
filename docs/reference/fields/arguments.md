@@ -21,7 +21,7 @@ is not allowed to be blank. Default is `False`.
 --8<-- "guides/domain-definition/fields/options/001.py:full"
 ```
 
-Leaving the field blank or not specifying a value will raise a
+When you leave the field blank or give it no value, Protean raises a
 `ValidationError`:
 
 ```shell hl_lines="3"
@@ -32,8 +32,8 @@ ValidationError: {'name': ['is required']}
 
 ## `identifier`
 
-If True, the field is an identifier for the entity (a la _primary key_
-in RDBMS).
+If True, the field is an identifier for the entity, like a _primary key_ in an
+RDBMS.
 
 ```python hl_lines="9"
 --8<-- "guides/domain-definition/fields/options/002.py:full"
@@ -134,7 +134,7 @@ In [3]: dice.throw()
 Out[3]: 3
 ```
 
-This is a great option when you want to pass parameters to a function.
+Use a lambda when the default needs to call a function with parameters.
 
 ## `unique`
 
@@ -145,9 +145,9 @@ this field's value is validated to be unique among all entities.
 --8<-- "guides/domain-definition/fields/options/006.py:full"
 ```
 
-Obviously, this field's integrity is enforced at the database layer when an
-entity is persisted. If an entity instance specifies a duplicate value in a
-field marked `unique`, a `ValidationError` will be raised:
+The database layer enforces this field's integrity when the repository persists
+an entity. If an entity instance specifies a duplicate value in a field marked
+`unique`, a `ValidationError` will be raised:
 
 ```shell hl_lines="11"
 In [1]: p1 = Person(name='John Doe', email='john.doe@example.com')
@@ -229,8 +229,8 @@ attributes.
 --8<-- "guides/domain-definition/fields/options/010.py:full"
 ```
 
-If the value fails to satisfy the validation, a `ValidationError` will be
-thrown with the custom error message.
+If the field value fails a validator, Protean raises a `ValidationError` with
+the validator's custom error message.
 
 ```shell hl_lines="8"
 In [1]: e = Employee(email="john@mydomain.com")
@@ -272,13 +272,12 @@ renamed field without an upcaster.
 --8<-- "guides/domain-definition/fields/options/012.py:renamed_from"
 ```
 
-A stored `OrderPlaced` payload carrying the old `name` key loads into
-`customer_name`; the current name always wins if both are present, and any
-stale alias keys are dropped. The rename is also emitted into the IR, so
-`protean ir diff` reports a safe `field_renamed` change instead of a
-breaking remove + add, and the generated Avro schema carries an `aliases` entry
-so an external Avro consumer resolves the old name on the wire. See
-[Evolving Events Over Time](../../guides/evolving-events.md) for the end-to-end
-workflow and
-[Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
+When a stored `OrderPlaced` payload carries the old `name` key, Protean loads
+the value into `customer_name`. If a payload carries both keys, Protean keeps
+the value under the current name. Protean drops any stale alias keys. Protean
+also writes the rename into the IR, so `protean ir diff` reports a safe
+`field_renamed` change instead of a breaking remove + add. The generated Avro
+schema carries an `aliases` entry, so an external Avro consumer resolves the
+old name on the wire. See [Evolving Events Over Time](../../guides/evolving-events.md)
+for the end-to-end workflow and [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
 for the strategies behind it.

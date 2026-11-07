@@ -1,10 +1,10 @@
 # Why Protean?
 
 You work out the model on a whiteboard: aggregates, events, bounded contexts.
-Then you open your editor and the code stops matching the drawing. The ORM wants
-tables, so the aggregate becomes rows. Validation is something you remember to
-call. Infrastructure details work their way into the business logic. A few months
-later the drawing and the code describe different systems.
+Then you open your editor and the code stops matching the drawing. The ORM
+wants tables, so the aggregate becomes rows. Validation is something you
+remember to call. Infrastructure details work their way into the business
+logic. A few months later the drawing and the code describe different systems.
 
 Protean starts somewhere else: **your domain model is the architecture.** You
 write it in Python as you drew it, and the framework takes care of the rest.
@@ -20,8 +20,8 @@ API schemas. Protean treats them as a **complete, inspectable specification** of
 your system.
 
 When you define aggregates, entities, value objects, commands, events, and
-handlers, Protean builds an Intermediate Representation (IR): a portable JSON
-structure that captures your whole domain topology, including element types,
+handlers, Protean builds an Intermediate Representation (IR). The IR is a
+portable JSON structure of your whole domain topology: element types,
 relationships, field schemas, event flows, handler wiring, and cluster
 boundaries.
 
@@ -148,8 +148,8 @@ provider = "message_db"
 database_uri = "${MESSAGE_DB_URL}"
 ```
 
-Your domain logic, tests, and business rules stay untouched. The framework
-handles the wiring.
+Your domain logic, tests, and business rules stay untouched. Protean connects
+your domain elements to the database, broker, and event store you configure.
 
 | Port | Available adapters |
 |------|-------------------|

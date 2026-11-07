@@ -4,8 +4,8 @@
 
 In event-driven systems, a single user action can trigger a chain of commands
 and events that cascade across multiple aggregates and handlers. **Message
-tracing** lets you follow the full causal chain (from the initial request
-through every command and event it spawns) using two identifiers that Protean
+tracing** lets you follow the full causal chain, from the initial request
+through every command and event it spawns. It uses two identifiers that Protean
 attaches to every message automatically:
 
 - **`correlation_id`**: A constant identifier shared by *every* message in the
@@ -13,15 +13,17 @@ attaches to every message automatically:
 - **`causation_id`**: The `headers.id` of the *immediate parent* message. It
   answers: "What directly caused this message?"
 
-Together, they let you reconstruct the full tree of messages for any request,
-which is invaluable for debugging, auditing, and understanding system behavior.
+With the `correlation_id` and the `causation_id`, you can rebuild the full tree
+of messages for any request to debug it, audit it, or see how the system
+behaved.
 
 ## How It Works
 
 When you submit a command via `domain.process()`, Protean generates a
-`correlation_id` (a UUID4 hex string, 32 characters) and sets `causation_id`
-to `None` (since this is the root of the chain). As the command triggers events
-and those events trigger further commands, both IDs are propagated automatically:
+`correlation_id`, a UUID4 hex string of 32 characters. Protean sets
+`causation_id` to `None`, because this command is the root of the chain. As the
+command triggers events and those events trigger further commands, both IDs are
+propagated automatically:
 
 ```
 PlaceOrder (correlation=a1b2c3d4, causation=None)         <-- root
@@ -50,7 +52,8 @@ dashes).
 
 ## Where Trace IDs Are Stored
 
-Both IDs live in `DomainMeta`, the domain-specific section of message metadata:
+Protean stores the `correlation_id` and the `causation_id` in `DomainMeta`, the
+domain-specific section of message metadata:
 
 ```json
 {
@@ -90,9 +93,9 @@ The trace context flows through all message construction paths:
 | Command handler raises event | Inherited from command | Command's `headers.id` |
 | Event handler processes new command | Inherited from event | Event's `headers.id` |
 
-The propagation happens through Protean's global context (`g.message_in_context`),
-which the engine sets before invoking each handler. The `correlation_id` carries
-through in both synchronous and asynchronous processing modes. The
+Protean passes the IDs on through its global context (`g.message_in_context`),
+which the engine sets before invoking each handler. The `correlation_id`
+carries through in both synchronous and asynchronous processing modes. The
 `causation_id` of a command sent from an event handler differs between them.
 With asynchronous processing it is the event's `headers.id`, as the table
 shows. With synchronous processing the event handler runs inside the original
@@ -108,7 +111,7 @@ Protean maintains two distinct tracing layers:
 | **Domain tracing** | `DomainMeta.correlation_id` + `causation_id` | Protean-internal causation chain | Flexible strings |
 | **Distributed tracing** | `MessageHeaders.traceparent` | External tool integration (Jaeger, Zipkin) | W3C hex format |
 
-`correlation_id` bridges both layers. It identifies the same business operation
+`correlation_id` links both layers. It identifies the same business operation
 whether you're looking at Protean's domain metadata or a W3C trace.
 `causation_id`, however, is domain-layer only because Protean's message IDs
 (like `"myapp::order-abc123-0.1"`) are intentionally human-readable and cannot
@@ -231,7 +234,8 @@ between releases:
 --8<-- "guides/domain-behavior/message-tracing/002.py:outbox"
 ```
 
-This is useful for operational dashboards and debugging delivery issues.
+Querying the outbox by `correlation_id` and `causation_id` helps you build
+operational dashboards and debug delivery issues.
 
 ---
 

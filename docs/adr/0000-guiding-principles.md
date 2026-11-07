@@ -25,14 +25,15 @@ logic itself is opaque to the framework.
 
 ## 2. Declare, don't detect
 
-When the framework needs information that isn't naturally introspectable from
-Python's type system or class structure, the answer is explicit developer
-declaration via decorator options or `Meta` attributes, never static analysis
-of source code, never inference from naming conventions.
+Some information cannot be read from Python's type system or class structure.
+The developer declares that information explicitly through decorator options or
+`Meta` attributes. The framework never gets that information by analysing
+source code or by inferring it from naming conventions.
 
-**Example:** Whether an event crosses bounded context boundaries is not something the framework
-can infer. Rather than scanning handler bodies for external API calls, we added the `published`
-option to `@domain.event(published=True)`. The developer declares intent; the framework acts
+**Example:** The framework cannot infer whether an event crosses bounded
+context boundaries. Rather than scanning handler bodies for external API calls,
+we added the `published` option to `@domain.event(published=True)`. The
+developer declares intent; the framework acts
 on it.
 
 ## 3. Explicit over automatic
@@ -70,8 +71,8 @@ model declarations.
 **Example:** The `FieldSpec` architecture translates `String(max_length=100)` into
 Pydantic-compatible annotations during class creation. The FieldSpec carries
 enough metadata for any adapter to map the field to its native storage type
-(`Text` maps to a `TEXT` column in SQL and a `text` field in Elasticsearch) but
-the developer never writes adapter-specific declarations. The domain model is
+(`Text` maps to a `TEXT` column in SQL and a `text` field in Elasticsearch).
+The developer never writes adapter-specific declarations. The domain model is
 infrastructure-agnostic by construction.
 
 ## 6. Aggregate-centric, flow-aware
@@ -79,8 +80,9 @@ infrastructure-agnostic by construction.
 The primary organizational unit is the aggregate cluster, an aggregate and
 everything that belongs to it (entities, value objects, commands, events,
 handlers, repositories). Cross-cutting concerns (domain services, process
-managers, subscribers) are not forced into clusters but get explicit treatment
-where their multi-aggregate nature is first-class.
+managers, subscribers) are not tied to a single aggregate. The framework does
+not force them into clusters and treats each one as an element in its own
+right.
 
 **Example:** During `domain.init()`, `ElementResolver.assign_aggregate_clusters()` groups
 entities, commands, and events under their root aggregate by traversing

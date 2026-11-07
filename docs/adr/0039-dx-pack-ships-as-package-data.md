@@ -13,11 +13,11 @@ knowledge lives apart from the framework, the two drift: an agent reads guidance
 for one version while the code runs another, and the model reasons about an API
 that is no longer there.
 
-The developer-experience epic ships a body of agent-facing knowledge: an
-AGENTS.md source and a set of skills. It needs a home that couples it to the
-framework version by construction, a runtime read path that works whether the
-package is installed unpacked or zipped, and a guard that the data actually
-reaches the built wheel.
+In the developer-experience epic, Protean ships a body of agent-facing
+knowledge: an AGENTS.md source and a set of skills. This knowledge needs a
+location in the package that ties it to the framework version by construction.
+It also needs a runtime read path for both unpacked and zipped installs, and a
+check that the built wheel contains the data.
 
 Two existing data trees set the precedent. The `template/` copier tree and the
 IR JSON schemas under `ir/schema/` already ship as package data inside
@@ -28,11 +28,11 @@ whatever its git status.
 ## Decision
 
 We ship the pack as package data inside the `protean` wheel, under
-`src/protean/dx/pack/`. The pack travels in the same distribution as the code,
-so its version is the framework version and the two cannot drift.
+`src/protean/dx/pack/`. The pack ships in the same distribution as the code, so
+the pack version is always the framework version.
 
-We read the pack through `importlib.resources`. The accessor lives in
-`protean.dx.pack` and is re-exported from `protean.dx`, so
+We read the pack through `importlib.resources`. The accessor is defined in
+`protean.dx.pack` and re-exported from `protean.dx`, so
 `protean.dx.load_agents_source()` and `protean.dx.pack_files()` reach the data.
 `importlib.resources` is the standard read path for package data and keeps
 working when `protean` is installed zipped. The accessor mirrors the shape of
@@ -70,15 +70,16 @@ uncommitted file drops out of that wheel with no error at build time. The
 clean-venv CI check catches that, and a deleted or moved file too, because it
 reads the pack from the installed wheel rather than the source tree.
 
-The wheel grows with the pack. The skills corpus is text, so the cost is small,
-and the coupling it buys is the point of the epic.
+The wheel grows with the pack. The skills corpus is text, so the added wheel
+size is small. That small cost is acceptable, because tying the pack to the
+framework version is the goal of the developer-experience epic.
 
 ## Alternatives Considered
 
 **A separate `protean-skills` distribution.** Publishing the pack as its own
-package on PyPI reintroduces the split it was meant to close: a user can install
-a skills version that does not match their framework version, and the drift is
-back. Shipping inside `protean` couples them by construction.
+package on PyPI separates the pack from the framework again. A user can then
+install a skills version that does not match their framework version. Shipping
+inside `protean` couples them by construction.
 
 **Reading with `Path(__file__).parent`.** The repo reads `ir/schema/` this way
 today, and it works for an unpacked install. It breaks when the package is

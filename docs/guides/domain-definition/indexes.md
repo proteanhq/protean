@@ -39,8 +39,9 @@ descending order:
 --8<-- "guides/domain-definition/indexes/002.py:aggregate"
 ```
 
-This backs a query that filters on `status` and returns the highest `priority`
-first, a single index serves both the filter and the sort.
+This index supports a query that filters on `status` and returns the highest
+`priority` first. The database uses the one index for both the filter and the
+sort.
 
 ---
 
@@ -55,9 +56,9 @@ query are a small slice of the table, this keeps the index tiny. Pass a
 ```
 
 Only `pending` and `failed` rows are indexed, not the (usually far larger)
-completed archive. Partial indexes are honored on PostgreSQL and SQLite; on
-other backends the predicate is dropped (with a warning) and a full index is
-created instead, so your declaration stays portable.
+completed archive. Partial indexes are honored on PostgreSQL and SQLite. On
+other backends, Protean drops the predicate with a warning and creates a full
+index instead, so your declaration stays portable.
 
 ---
 
@@ -143,20 +144,21 @@ This writes `<schema_name>.indexes.<dialect>.sql` files under
 [`protean schema render`](../../reference/cli/schema.md#protean-schema-render).
 
 The memory provider does not render DDL, but it does enforce declared unique
-indexes (`Index(..., unique=True)`): a duplicate insert or update that violates
-a single-column or composite unique index raises `ValidationError`, the same
-error Protean raises for a field-level `unique=True`. (A SQL backend rejects the
-same duplicate at the database instead.) NULLs are treated as distinct, following
+indexes (`Index(..., unique=True)`). On the memory provider, a duplicate insert
+or update against a single-column or composite unique index raises
+`ValidationError`, the same error Protean raises for a field-level
+`unique=True`. (A SQL backend rejects the same duplicate at the database
+instead.) NULLs are treated as distinct, following
 PostgreSQL/SQLite semantics. Non-unique indexes remain inert on the memory
 provider, so you can develop against it and move to a SQL backend without
 changing the domain.
 
 !!! note "Validation"
 
-    Index declarations are checked when the domain initializes. Referencing a
-    field that does not exist (or a `desc`/`include` field that is not part of
-    the index) raises an error at `Domain.init()`, so mistakes surface at
-    startup rather than at query time.
+    Index declarations are checked when the domain initializes. `Domain.init()`
+    raises an error when an index references a field that does not exist, or a
+    `desc`/`include` field outside the index, so you see the mistake at
+    startup.
 
 ---
 
