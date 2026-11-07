@@ -68,6 +68,7 @@ class TestMemoryEventStoreCapabilities:
 
 
 @pytest.mark.message_db
+@pytest.mark.no_test_domain
 class TestMessageDBStoreCapabilities:
     def test_message_db_store_declares_production_store(self):
         domain = Domain(name="Message DB Capabilities")
