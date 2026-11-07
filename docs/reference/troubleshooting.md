@@ -49,7 +49,9 @@ expects immediate side effects, configure sync processing:
 --8<-- "reference/troubleshooting/001.py:sync_config"
 ```
 
-Or use the `DomainFixture`, which configures sync processing automatically.
+`DomainFixture` does not change these settings. Set them before you call
+its `setup()`, as the `conftest.py` in
+[Fixtures and patterns](../guides/testing/fixtures-and-patterns.md) does.
 
 ---
 
