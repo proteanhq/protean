@@ -7,7 +7,7 @@ import psycopg2
 from message_db.client import MessageDB
 
 from protean.exceptions import ConfigurationError, ExpectedVersionError
-from protean.port.event_store import BaseEventStore
+from protean.port.event_store import BaseEventStore, EventStoreCapabilities
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -70,6 +70,13 @@ class MessageDBStore(BaseEventStore):
         self._pool_kwargs: dict[str, Any] = {
             key: value for key, value in conn_info.items() if key in self._POOL_KEYS
         }
+
+    @property
+    def capabilities(self) -> EventStoreCapabilities:
+        # No CONSUMER_GROUPS: the client's category read accepts a group member
+        # and a group size, but ``_read`` does not pass them. No
+        # SCHEMA_MANAGEMENT: Message DB's own scripts install the schema.
+        return EventStoreCapabilities.PRODUCTION_STORE
 
     @property
     def client(self) -> MessageDB:
