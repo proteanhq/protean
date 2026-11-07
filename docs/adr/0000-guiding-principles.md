@@ -27,8 +27,8 @@ logic itself is opaque to the framework.
 
 Some information cannot be read from Python's type system or class structure.
 The developer declares that information explicitly through decorator options or
-`Meta` attributes. The framework never analyses source code and never infers it
-from naming conventions.
+`Meta` attributes. The framework never gets that information by analysing
+source code or by inferring it from naming conventions.
 
 **Example:** The framework cannot infer whether an event crosses bounded
 context boundaries. Rather than scanning handler bodies for external API calls,
