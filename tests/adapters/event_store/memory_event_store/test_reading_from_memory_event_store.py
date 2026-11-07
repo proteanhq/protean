@@ -147,3 +147,39 @@ def test_read_last_message_past_the_read_page_limit(test_domain):
     assert message is not None
     assert message["position"] == total - 1
     assert message["data"]["watermark"] == total - 1
+
+
+def test_category_read_excludes_a_category_that_ends_with_the_same_name(test_domain):
+    store = test_domain.event_store.store
+    store._write(
+        "user-1", "Event1", {"foo": "user"}, _create_test_metadata("user-1", "Event1")
+    )
+    store._write(
+        "superuser-1",
+        "Event1",
+        {"foo": "superuser"},
+        _create_test_metadata("superuser-1", "Event1"),
+    )
+
+    messages = store._read("user")
+
+    assert [message["stream_name"] for message in messages] == ["user-1"]
+
+
+def test_read_last_message_of_a_category_excludes_a_category_that_ends_with_the_same_name(
+    test_domain,
+):
+    store = test_domain.event_store.store
+    store._write(
+        "user-1", "Event1", {"foo": "user"}, _create_test_metadata("user-1", "Event1")
+    )
+    store._write(
+        "superuser-1",
+        "Event1",
+        {"foo": "superuser"},
+        _create_test_metadata("superuser-1", "Event1"),
+    )
+
+    message = store._read_last_message("user")
+
+    assert message["stream_name"] == "user-1"
