@@ -1,8 +1,8 @@
 """What each cache adapter declares through `CacheCapabilities`.
 
-The conformance suite gates its tests on these flags, so a tier that gains or
-loses a flag, or an adapter that declares the wrong tier, changes which tests
-run against it.
+The tests pin each tier to its exact set of flags and each adapter to its
+tier, so a tier that gains or loses a flag, or an adapter that declares the
+wrong tier, fails here.
 """
 
 from typing import Any
