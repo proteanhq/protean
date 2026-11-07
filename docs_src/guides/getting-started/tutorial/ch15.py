@@ -145,7 +145,7 @@ if __name__ == "__main__":
 
         # Read fact events from the event store
         fact_stream = f"{Book.meta_.stream_category}-fact-{gatsby.id}"
-        fact_messages = domain.event_store.store.read(fact_stream)
+        fact_messages = list(domain.event_store.store.read_all(fact_stream))
         print(f"\nFact events in stream: {len(fact_messages)}")
         for msg in fact_messages:
             event = msg.to_domain_object()

@@ -634,7 +634,7 @@ if __name__ == "__main__":
 
         # Verify fact events exist in the event store
         fact_stream = f"{Account.meta_.stream_category}-fact-{alice_id}"
-        fact_messages = domain.event_store.store.read(fact_stream)
+        fact_messages = list(domain.event_store.store.read_all(fact_stream))
         print(f"\nFact events for Alice: {len(fact_messages)}")
         last_fact = fact_messages[-1].to_domain_object()
         print(

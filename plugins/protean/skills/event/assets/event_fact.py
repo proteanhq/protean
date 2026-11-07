@@ -20,7 +20,7 @@ Usage:
         domain.repository_for(Order).add(order)
 
         stream = f"{Order.meta_.stream_category}-fact-{order.id}"
-        fact = domain.event_store.store.read(stream)[-1].to_domain_object()
+        fact = domain.event_store.store.read_last_message(stream).to_domain_object()
         # fact is an OrderFactEvent carrying every Order field
 """
 
@@ -167,7 +167,7 @@ if __name__ == "__main__":
         repo.add(order)  # writes OrderShipped and a second OrderFactEvent
 
         stream = f"{Order.meta_.stream_category}-fact-{order.id}"
-        messages = domain.event_store.store.read(stream)
+        messages = list(domain.event_store.store.read_all(stream))
         print(f"Fact events in {stream}: {len(messages)}")
 
         latest = messages[-1].to_domain_object()

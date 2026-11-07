@@ -185,7 +185,7 @@ def relay_last_order_event() -> None:
     you would deploy.
     """
     with sales.domain_context():
-        message = sales.event_store.store.read(Order.meta_.stream_category)[-1]
+        message = sales.event_store.store.read_last_message(Order.meta_.stream_category)
 
     with fulfilment.domain_context():
         # `events` on both sides, the broker sales dispatches to and fulfilment

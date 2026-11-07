@@ -11,11 +11,16 @@ Covers:
 import json
 import time
 from collections import defaultdict
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
+from protean.core.process_manager import BaseProcessManager
+from protean.fields import Identifier, String
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.processes import (
     _build_summary,
@@ -31,6 +36,7 @@ from protean.server.observatory.routes.processes import (
     get_pm_instances,
     merge_pm_subscription_status,
 )
+from protean.utils.mixins import handle
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -45,6 +51,88 @@ def observatory(test_domain):
 @pytest.fixture
 def client(observatory):
     return TestClient(observatory.app)
+
+
+def _register_fulfillment(domain):
+    """Register an order-fulfillment process manager on ``domain`` and init it.
+
+    The process manager listens to the ``order`` and ``shipment`` streams. It
+    starts on ``OrderPlaced`` and completes on ``OrderShipped``.
+    """
+
+    class Order(BaseAggregate):
+        customer_id = Identifier()
+
+    class Shipment(BaseAggregate):
+        order_id = Identifier()
+
+    class OrderPlaced(BaseEvent):
+        order_id = Identifier(required=True)
+
+    class OrderShipped(BaseEvent):
+        order_id = Identifier(required=True)
+
+    class OrderFulfillment(BaseProcessManager):
+        order_id = Identifier()
+        status = String(default="new")
+
+        @handle(OrderPlaced, start=True, correlate="order_id")
+        def on_placed(self, event):
+            self.order_id = event.order_id
+            self.status = "started"
+
+        @handle(OrderShipped, end=True, correlate="order_id")
+        def on_shipped(self, event):
+            self.status = "shipped"
+
+    domain.register(Order)
+    domain.register(Shipment)
+    domain.register(OrderPlaced, part_of=Order)
+    domain.register(OrderShipped, part_of=Shipment)
+    domain.register(OrderFulfillment, stream_categories=["order", "shipment"])
+    domain.init(traverse=False)
+
+    return SimpleNamespace(
+        domain=domain,
+        pm=OrderFulfillment,
+        Order=Order,
+        Shipment=Shipment,
+        OrderPlaced=OrderPlaced,
+        OrderShipped=OrderShipped,
+    )
+
+
+def _deliver_latest(app, aggregate_cls, aggregate):
+    """Save the aggregate, then hand its newest stored event to the process
+    manager, the way the engine delivers it."""
+    domain = app.domain
+    with domain.domain_context():
+        domain.repository_for(aggregate_cls).add(aggregate)
+        store = domain.event_store.store
+        stream = f"{aggregate_cls.meta_.stream_category}-{aggregate.id}"
+        message = store.read(stream)[-1]
+        app.pm._handle(message)
+
+
+def _start_order(app):
+    """Start one process-manager instance and return its correlation id."""
+    order = app.Order(customer_id="c1")
+    order.raise_(app.OrderPlaced(order_id=order.id))
+    _deliver_latest(app, app.Order, order)
+    return order.id
+
+
+def _ship_order(app, order_id):
+    """Complete the process-manager instance for ``order_id``."""
+    shipment = app.Shipment(order_id=order_id)
+    shipment.raise_(app.OrderShipped(order_id=order_id))
+    _deliver_latest(app, app.Shipment, shipment)
+
+
+@pytest.fixture
+def fulfillment(test_domain):
+    """The test domain with the order-fulfillment process manager registered."""
+    return _register_fulfillment(test_domain)
 
 
 def _make_mock_pm_cls(
@@ -565,7 +653,7 @@ class TestGetPMInstances:
         domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
         domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
         domain.event_store.store._stream_identifiers.return_value = ["id1"]
-        domain.event_store.store.read.return_value = [msg1, msg2]
+        domain.event_store.store.read_all.return_value = [msg1, msg2]
 
         result = get_pm_instances(domain, cls)
         assert len(result) == 1
@@ -575,6 +663,25 @@ class TestGetPMInstances:
         assert inst["is_complete"] is True
         assert inst["state"] == {"status": "completed"}
         assert inst["event_count"] == 2
+
+    def test_reads_the_whole_stream_past_one_read_page(
+        self, fulfillment, test_domain, small_read_page
+    ):
+        """An instance whose stream is longer than one read page shows its
+        last state and counts every transition."""
+        order_id = _start_order(fulfillment)
+        with test_domain.domain_context():
+            pm = fulfillment.pm._load_or_create(order_id, is_start=False)
+            for _ in range(2 * small_read_page):
+                fulfillment.pm._persist_transition(pm, "on_placed")
+        _ship_order(fulfillment, order_id)
+
+        result = get_pm_instances(test_domain, fulfillment.pm)
+        assert len(result) == 1
+        inst = result[0]
+        assert inst["state"]["status"] == "shipped"
+        assert inst["is_complete"] is True
+        assert inst["event_count"] == 2 * small_read_page + 2
 
     def test_empty_stream(self):
         cls = MagicMock()
@@ -586,7 +693,7 @@ class TestGetPMInstances:
         domain.domain_context.return_value.__enter__ = MagicMock(return_value=None)
         domain.domain_context.return_value.__exit__ = MagicMock(return_value=False)
         domain.event_store.store._stream_identifiers.return_value = ["id1"]
-        domain.event_store.store.read.return_value = []
+        domain.event_store.store.read_all.return_value = []
 
         result = get_pm_instances(domain, cls)
         assert result == []
@@ -607,7 +714,7 @@ class TestGetPMInstances:
         domain.event_store.store._stream_identifiers.return_value = [
             f"id{i}" for i in range(10)
         ]
-        domain.event_store.store.read.return_value = [msg]
+        domain.event_store.store.read_all.return_value = [msg]
 
         result = get_pm_instances(domain, cls, limit=3)
         assert len(result) == 3
@@ -771,7 +878,7 @@ class TestProcessesInstancesEndpoint:
         msg = MagicMock()
         msg.data = {"state": {"status": "active"}, "is_complete": False}
         msg.time = "2024-01-01T00:00:00Z"
-        domain.event_store.store.read.return_value = [msg]
+        domain.event_store.store.read_all.return_value = [msg]
 
         obs = Observatory(domains=[domain])
         c = TestClient(obs.app)
@@ -1140,7 +1247,7 @@ class TestGetPMInstancesStreamReadFails:
         domain.event_store.store._stream_identifiers.return_value = ["id1", "id2"]
 
         # First read fails, second succeeds
-        domain.event_store.store.read.side_effect = [
+        domain.event_store.store.read_all.side_effect = [
             Exception("stream corrupted"),
             [msg],
         ]

@@ -210,7 +210,7 @@ def _assert_round_trip(
     store = domain.event_store.store
     assert store is not None, "the domain has no configured event store"
     fact_stream = f"{subject.meta_.stream_category}-fact-{instance.id}"
-    messages = store.read(fact_stream)
+    messages = list(store.read_all(fact_stream))
     assert len(messages) > 0, (
         "expected a fact event on persistence but the stream was empty"
     )

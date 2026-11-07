@@ -97,7 +97,7 @@ with domain.domain_context():
     domain.repository_for(Customer).add(customer)
 
     stream = f"{Customer.meta_.stream_category}-fact-{customer.id}"
-    fact = domain.event_store.store.read(stream)[-1].to_domain_object()
+    fact = domain.event_store.store.read_last_message(stream).to_domain_object()
     print(type(fact).__name__)  # CustomerFactEvent
     print(fact.full_name, fact.primary_address.city)  # John Doe San Francisco
 ```
@@ -185,8 +185,8 @@ with domain.domain_context():
 
     store = domain.event_store.store
     category = Order.meta_.stream_category
-    delta = [type(m.to_domain_object()).__name__ for m in store.read(f"{category}-{order.id}")]
-    facts = [m.to_domain_object().status for m in store.read(f"{category}-fact-{order.id}")]
+    delta = [type(m.to_domain_object()).__name__ for m in store.read_all(f"{category}-{order.id}")]
+    facts = [m.to_domain_object().status for m in store.read_all(f"{category}-fact-{order.id}")]
     print(delta)  # ['OrderPlaced', 'OrderShipped']
     print(facts)  # ['placed', 'shipped']
 ```
@@ -206,7 +206,7 @@ with domain.domain_context():
     repo.add(customer)
 
     stream = f"{Customer.meta_.stream_category}-fact-{customer.id}"
-    messages = domain.event_store.store.read(stream)
+    messages = list(domain.event_store.store.read_all(stream))
     latest = messages[-1].to_domain_object()
     print(len(messages), type(latest).__name__)  # 2 CustomerFactEvent
     print(latest.account_type, latest.loyalty_tier)  # premium gold
@@ -226,7 +226,7 @@ with domain.domain_context():
     repo.add(customer)  # no changes, so no new fact event
 
     stream = f"{Customer.meta_.stream_category}-fact-{customer.id}"
-    print(len(domain.event_store.store.read(stream)))  # 1
+    print(len(list(domain.event_store.store.read_all(stream))))  # 1
 ```
 
 ## Best Practices
