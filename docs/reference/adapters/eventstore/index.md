@@ -41,6 +41,42 @@ durable event storage with SQL-based stream operations.
 - Persistent, durable storage
 - Suitable for production use
 
+## What each event store guarantees
+
+Each event store declares the guarantees it makes as an `EventStoreCapabilities`
+flag on its `capabilities` property. After `domain.init()`, check one guarantee
+with `EventStoreCapabilities.DURABLE in domain.event_store.store.capabilities`.
+
+| Flag | What the store promises |
+|------|-------------------------|
+| `WRITE` | It appends a message and returns the message's position in the stream. |
+| `READ_STREAM` | It reads one stream by stream position. |
+| `READ_CATEGORY` | It reads every stream of a category by global position, from the given position inclusive ([ADR-0024](../../../adr/0024-event-store-read-position-contract.md)). |
+| `READ_ALL` | It reads the whole store by global position, from the given position inclusive. |
+| `EXPECTED_VERSION` | A write with a stale expected version raises `ExpectedVersionError` and writes nothing. |
+| `CATEGORY_COMMIT_ORDER` | Writes to one category become visible in global-position order ([ADR-0025](../../../adr/0025-all-subscription-gap-safety.md)). |
+| `CONSUMER_GROUPS` | It can split a category read across the members of a consumer group. |
+| `DURABLE` | Messages survive a process restart. |
+| `SCHEMA_MANAGEMENT` | It creates and drops its own tables. |
+
+Named sets group the common combinations:
+
+| Set | Flags |
+|-----|-------|
+| `BASIC_STORE` | `WRITE`, `READ_STREAM`, `READ_CATEGORY`, `READ_ALL` |
+| `CONSISTENT_STORE` | `BASIC_STORE` plus `EXPECTED_VERSION` and `CATEGORY_COMMIT_ORDER` |
+| `PRODUCTION_STORE` | `CONSISTENT_STORE` plus `DURABLE` |
+
+The built-in stores declare:
+
+- **Memory**: `CONSISTENT_STORE`. It keeps messages in process memory, so it
+  does not declare `DURABLE`.
+- **Message DB**: `PRODUCTION_STORE`. See [Message DB](./message-db.md#what-message-db-guarantees)
+  for the flags it leaves out.
+
+An event store written outside Protean must define `capabilities`. Creating an
+instance of a subclass that does not define it raises `TypeError`.
+
 ## Configuration
 
 Event stores are configured in the `[event_store]` section of your domain
