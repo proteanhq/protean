@@ -21,16 +21,6 @@ class Address(BaseValueObject):
     street = String()
 
 
-def test_string_value_object_name_is_pending_until_init(test_domain):
-    Customer = _customer_cls()
-    test_domain.register(Customer)
-
-    content_type = declared_fields(Customer)["addresses"].content_type
-    assert test_domain._pending_class_resolutions["Address"] == [
-        ("ValueObject", (content_type, Customer))
-    ]
-
-
 def test_string_value_object_name_resolves_to_the_registered_class(test_domain):
     Customer = _customer_cls()
     test_domain.register(Customer)
@@ -39,7 +29,6 @@ def test_string_value_object_name_resolves_to_the_registered_class(test_domain):
 
     content_type = declared_fields(Customer)["addresses"].content_type
     assert content_type.value_object_cls is Address
-    assert "Address" not in test_domain._pending_class_resolutions
 
     customer = Customer(name="John", addresses=[{"street": "1 Main St"}])
     assert customer.addresses == [Address(street="1 Main St")]

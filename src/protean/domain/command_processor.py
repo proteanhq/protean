@@ -147,8 +147,12 @@ def raise_if_expired(
 
 class _CommandLineage(NamedTuple):
     """The origin stream, correlation ID, causation ID and deadline a command
-    is enriched with: each comes from the caller or from the message being
-    handled, if any."""
+    takes from its caller and from the message in context.
+
+    The origin stream and causation ID come only from the message in context.
+    The correlation ID and deadline come from the caller when given, and
+    otherwise from that message. A correlation ID that is still ``None`` is
+    filled in later from the request header or generated."""
 
     origin_stream: str | None
     correlation_id: str | None

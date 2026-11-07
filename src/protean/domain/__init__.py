@@ -412,7 +412,7 @@ class Domain:
         self.teardown_domain_context_functions: list[Callable[..., Any]] = []
 
         # Placeholder array for resolving classes referenced by domain elements
-        self._pending_class_resolutions: dict[str, Any] = defaultdict(list)
+        self._pending_class_resolutions: defaultdict[str, list[Any]] = defaultdict(list)
 
         # Partition-per-key routing map (ADR-0028): stream_category ->
         # partition-key field name. Built by ``HandlerConfigurator`` during
@@ -2801,7 +2801,9 @@ _STRING_PART_OF_TYPES = (
 )
 
 
-def _record_pending_field_resolutions(pending: dict[str, Any], new_cls: Any) -> None:
+def _record_pending_field_resolutions(
+    pending: defaultdict[str, list[Any]], new_cls: Any
+) -> None:
     """Record each string class reference in ``new_cls``'s fields in
     ``pending``, keyed by the class name, for ``domain.init()`` to resolve."""
     for field_obj in declared_fields(new_cls).values():
@@ -2839,7 +2841,9 @@ def _record_pending_field_resolutions(pending: dict[str, Any], new_cls: Any) -> 
 
 
 def _record_pending_meta_resolutions(
-    pending: dict[str, Any], element_type: DomainObjects, new_cls: Any
+    pending: defaultdict[str, list[Any]],
+    element_type: DomainObjects,
+    new_cls: Any,
 ) -> None:
     """Record a string ``part_of`` or ``projector_for`` on ``new_cls``'s meta
     in ``pending``, keyed by the class name, for ``domain.init()`` to resolve."""

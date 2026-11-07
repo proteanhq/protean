@@ -6,7 +6,7 @@ import inspect
 
 import pytest
 
-from protean.fields import association, base, containers, resolved, spec
+from protean.fields import association, base, containers, mixins, resolved, spec
 
 HELPERS = {
     association: [
@@ -40,15 +40,31 @@ HELPERS = {
     ],
 }
 
-FIELD_CLASSES = [
-    base.Field,
-    association.Association,
-    association.HasOne,
-    association.HasMany,
-    association.Reference,
-    resolved.ResolvedField,
-    spec.FieldSpec,
-]
+
+def _field_classes() -> list[type]:
+    """Every class in ``protean.fields`` that derives from a field root."""
+    roots = [
+        base.FieldBase,
+        spec.FieldSpec,
+        resolved.ResolvedField,
+        mixins.FieldCacheMixin,
+        mixins.FieldDescriptorMixin,
+    ]
+    seen: set[type] = set()
+    pending = list(roots)
+    while pending:
+        cls = pending.pop()
+        if cls in seen:
+            continue
+        seen.add(cls)
+        pending.extend(cls.__subclasses__())
+    return sorted(
+        (cls for cls in seen if cls.__module__.startswith("protean.fields.")),
+        key=lambda cls: cls.__qualname__,
+    )
+
+
+FIELD_CLASSES = _field_classes()
 
 CASES = [(module, name) for module, names in HELPERS.items() for name in names]
 

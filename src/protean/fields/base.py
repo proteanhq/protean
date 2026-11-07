@@ -338,9 +338,8 @@ def _load_empty_value(field: Field, value: Any) -> tuple[bool, Any]:
         field.fail("required")
 
     # A None value is returned as is, as we do not want to run validations
-    # against it. Any other empty value goes on to the cast.
-    # Because of this behavior, we preserve the data sanctity for int and float objects,
-    # and return 0 or 0.0, as need be.
+    # against it. Any other empty value goes on to the choice check, the cast
+    # and the validators.
     elif value is None:
         return True, value
 
