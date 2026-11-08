@@ -641,7 +641,8 @@ def full_text_client(test_domain, monkeypatch):
     ]
     broker_pools = [("default", 3, 2, 10)]
     # The subscription and projection fakes return rows only for the domains
-    # the Observatory serves. The pool fakes return rows for any domain list.
+    # the Observatory serves. The pool fakes return fixed rows for any
+    # non-empty domain list.
     monkeypatch.setattr(
         metrics,
         "_collect_subscription_statuses",
