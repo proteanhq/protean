@@ -387,8 +387,8 @@ three:
 - **Version polling** for critical state transitions (payment confirmation,
   shipping status)
 
-Eventual consistency is a property of CQRS. The gap between write and read is
-by design. It enables independent scaling, failure isolation, and read-side
+When projections update asynchronously, the gap between write and read is by
+design. It enables independent scaling, failure isolation, and read-side
 optimization. Bridge the gap in the UI layer with explicit strategies. Do not
 hide it with sleeps, force synchronous processing, or pretend it does
 not exist.
