@@ -101,8 +101,9 @@ transactions, and ensuring data consistency.
 
 The Session provides a context for performing database operations,
 ensuring that all database interactions within a transaction are properly
-managed and that resources are released appropriately. The Session keeps each
-transaction intact and rolls the transaction back when an error occurs.
+managed and that resources are released appropriately. The Unit of Work uses
+the Session to keep each transaction intact and to roll it back when an error
+occurs.
 
 The Session object is usually constructed and provided by the database orm
 or technology package. For example, `PostgreSQL` adapter depends on the

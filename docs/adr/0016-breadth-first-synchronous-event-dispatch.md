@@ -71,8 +71,9 @@ Positive:
 - Multi-step process managers work identically under sync and async dispatch.
 - Projector create-before-update ordering is restored; the `ObjectNotFoundError`
   class of failure disappears.
-- Synchronous and asynchronous processing follow the same causal ordering, so
-  code that works async does not break under sync in tests and dev setups.
+- Synchronous and asynchronous processing follow the same causal ordering. This
+  removes one way for code that works async to break under sync in tests and
+  dev setups.
 - Trace causation/correlation is unchanged.
 
 Negative (Tier-2 behavioral change):

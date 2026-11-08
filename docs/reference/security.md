@@ -127,5 +127,5 @@ every interface.
   `mkdocs serve --dev-addr=127.0.0.1:8000`. See
   [`protean docs preview`](cli/project/docs.md#protean-docs-preview).
 
-If one of the four services listens on anything wider than loopback, put it
-behind an authenticating reverse proxy on a trusted network.
+If one of these services listens on anything wider than loopback, put it behind
+an authenticating reverse proxy on a trusted network.
