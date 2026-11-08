@@ -427,6 +427,7 @@ class TestMetricsErrorPaths:
         self, test_domain, monkeypatch, caplog
     ):
         """A failing subscription collection drops only the subscription section."""
+        _use_fake_redis(test_domain, monkeypatch, _fake_redis())
         monkeypatch.setattr(metrics, "_collect_subscription_statuses", _fail)
         client = TestClient(Observatory(domains=[test_domain]).app)
 
@@ -444,6 +445,7 @@ class TestMetricsErrorPaths:
         self, test_domain, monkeypatch, caplog
     ):
         """A failing broker pool collection drops only the broker pool section."""
+        _use_fake_redis(test_domain, monkeypatch, _fake_redis())
         monkeypatch.setattr(metrics, "_collect_broker_pool_stats", _fail)
         client = TestClient(Observatory(domains=[test_domain]).app)
 

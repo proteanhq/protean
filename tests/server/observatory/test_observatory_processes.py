@@ -1059,6 +1059,33 @@ class TestProcessesEndpointTraceMetricsException:
             assert data["processes"][0]["metrics"] is None
         assert collect.called
 
+    def test_processes_endpoint_without_redis(self, fulfillment, client):
+        """Without a Redis client the endpoint skips trace metrics and still
+        lists each PM with its instance count."""
+        _start_order(fulfillment)
+
+        with (
+            patch(
+                "protean.server.observatory.routes.processes._get_redis",
+                return_value=None,
+            ),
+            patch(
+                "protean.server.observatory.routes.processes.collect_pm_trace_metrics"
+            ) as collect,
+        ):
+            resp = client.get("/api/processes")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["processes"]) == 1
+        assert data["processes"][0]["name"] == "OrderFulfillment"
+        assert data["processes"][0]["metrics"] is None
+        assert data["processes"][0]["instance_count"] == 1
+        assert data["summary"]["total"] == 1
+        assert data["summary"]["total_instances"] == 1
+        assert data["summary"]["total_processed"] == 0
+        collect.assert_not_called()
+
     def test_processes_endpoint_when_instance_count_raises(self, fulfillment, client):
         """get_pm_instance_count raises for a PM."""
         _start_order(fulfillment)

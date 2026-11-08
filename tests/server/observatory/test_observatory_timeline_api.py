@@ -1217,6 +1217,34 @@ class TestCorrelationEndpoint:
         assert len(tree["children"]) == 1
         assert tree["children"][0]["message_id"] == "msg-evt-registered"
 
+    def test_causation_cycle_lists_each_message_once(self, timeline_domain):
+        """Two messages that each name the other as their cause still give
+        a tree that holds each message once."""
+        store = timeline_domain.event_store.store
+        for msg_id, cause_id in (("msg-a", "msg-b"), ("msg-b", "msg-a")):
+            store._write(
+                "test::cycle-1",
+                "Test.Cycle.v1",
+                {},
+                metadata={
+                    "headers": {"id": msg_id, "type": "Test.Cycle.v1"},
+                    "domain": {
+                        "kind": "EVENT",
+                        "correlation_id": "corr-cycle",
+                        "causation_id": cause_id,
+                    },
+                },
+            )
+        client = TestClient(Observatory(domains=[timeline_domain]).app)
+
+        response = client.get("/api/timeline/correlation/corr-cycle")
+
+        assert response.status_code == 200
+        tree = response.json()["tree"]
+        assert tree["message_id"] == "msg-a"
+        assert [c["message_id"] for c in tree["children"]] == ["msg-b"]
+        assert tree["children"][0]["children"] == []
+
     def test_returns_404_for_unknown(self, correlated_client):
         response = correlated_client.get("/api/timeline/correlation/nonexistent")
         assert response.status_code == 404
