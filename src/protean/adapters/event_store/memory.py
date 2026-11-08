@@ -7,7 +7,7 @@ from pydantic import Field
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.exceptions import ExpectedVersionError
-from protean.port.event_store import BaseEventStore
+from protean.port.event_store import BaseEventStore, EventStoreCapabilities
 from protean.utils import OptionalStdlibDatetime
 from protean.utils.eventing import Metadata
 from protean.utils.globals import _domain_now, current_domain
@@ -160,6 +160,16 @@ class MemoryEventStore(BaseEventStore):
         self.domain.providers._register_repository(
             MemoryMessage, MemoryMessageRepository
         )
+
+    @property
+    def capabilities(self) -> EventStoreCapabilities:
+        # EXPECTED_VERSION and CATEGORY_COMMIT_ORDER hold while one Unit of
+        # Work writes at a time. The write lock covers the version check and
+        # the append to the session. The version check cannot see rows that
+        # another Unit of Work has not committed yet, so two overlapping Units
+        # of Work can both pass it and commit out of global-position order. Events live in process memory
+        # and are lost on exit, so the store is not DURABLE.
+        return EventStoreCapabilities.CONSISTENT
 
     def _write(
         self,

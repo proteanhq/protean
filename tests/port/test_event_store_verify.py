@@ -17,6 +17,7 @@ import pytest
 
 from protean.port.event_store import (
     BaseEventStore,
+    EventStoreCapabilities,
     IntegrityReport,
     IntegrityViolation,
 )
@@ -33,6 +34,10 @@ class _ListStore(BaseEventStore):
     def __init__(self, messages: list[dict[str, Any]]) -> None:
         # Store-wide order is by global_position, matching the read contract.
         self._messages = sorted(messages, key=lambda m: m["global_position"])
+
+    @property
+    def capabilities(self) -> EventStoreCapabilities:  # pragma: no cover
+        return EventStoreCapabilities.BASIC
 
     def _read(
         self,

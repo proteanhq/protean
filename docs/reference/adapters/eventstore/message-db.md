@@ -18,6 +18,21 @@ Message DB is designed for:
 It stores events in a PostgreSQL database using a dedicated schema optimized
 for append-only stream operations.
 
+## What Message DB guarantees
+
+Message DB declares `EventStoreCapabilities.PRODUCTION`: it writes and
+reads streams, categories and the whole store, checks expected versions, makes
+category writes visible in global-position order, and keeps messages across restarts.
+See [What each event store guarantees](./index.md#what-each-event-store-guarantees)
+for each flag.
+
+It does not declare two flags:
+
+- `CONSUMER_GROUPS`: the `message-db-py` client can split a category read
+  across group members, but Protean's adapter does not pass the member and
+  group size to it.
+- `SCHEMA_MANAGEMENT`: Message DB's own install scripts create its schema.
+
 ## Installation
 
 ```bash
