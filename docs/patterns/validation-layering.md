@@ -219,8 +219,9 @@ above:
 --8<-- "patterns/validation-layering/003.py:in_action"
 ```
 
-Each layer catches a different kind of error, and each layer runs later in the
-processing pipeline than the one before it.
+Each layer catches a different kind of error. The layer numbers do not set the
+order in which the checks run: the handler above checks its Layer 4 credit
+guard before it builds the Layer 2 `Money` value object.
 
 ---
 
