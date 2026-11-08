@@ -105,7 +105,7 @@ def _build_brokers(
         for broker_name, conn_info in configured_brokers.items():
             current = existing_brokers.get(broker_name)
             if current is not None and current.conn_info == conn_info:
-                # Configuration unchanged — reuse the live instance so we
+                # Configuration unchanged: reuse the live instance so we
                 # never disturb a connection the Engine may be actively
                 # consuming. Note the broker enriches ``conn_info`` in place
                 # (e.g. adds ``IS_ASYNC``), and it holds the same dict object

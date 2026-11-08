@@ -1794,7 +1794,7 @@ def _retry_read_after_nogroup(
 ) -> list[tuple[str, dict[str, Any]]]:
     """Recreate the missing consumer group on ``stream`` and retry the
     new-message read once. A failed retry is logged and returns no messages."""
-    # Consumer group doesn't exist — invalidate cache and recreate.
+    # Consumer group doesn't exist: invalidate cache and recreate.
     # Use a single retry to avoid infinite recursion if the group
     # cannot be created (e.g. stream was flushed while engine runs).
     group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"

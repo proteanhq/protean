@@ -139,7 +139,7 @@ class EventStore:
             # stream categories for handlers that match the event's __type__.
             return set.union(_external_event_handlers(self, event), all_stream_handlers)
 
-        # Fast path: internal event — look up by aggregate stream category
+        # Fast path for an internal event: look up by aggregate stream category
         stream_handlers = self._event_streams.get(stream_category, set())
         configured_stream_handlers = set()
         for stream_handler in stream_handlers:

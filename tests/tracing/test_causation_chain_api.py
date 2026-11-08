@@ -626,7 +626,7 @@ class TestTraceEffectsEdgeCases:
 class TestBuildCausationTreeEdgeCases:
     """Tests for edge cases in build_causation_tree."""
 
-    def test_build_node_with_malformed_metadata_string(self, test_domain):
+    def test_tree_with_malformed_metadata_string(self, test_domain):
         """The tree handles metadata that is a string, not a dict."""
         store = test_domain.event_store.store
 
@@ -650,7 +650,7 @@ class TestBuildCausationTreeEdgeCases:
         finally:
             store._load_correlation_group = original
 
-    def test_build_node_with_malformed_headers_string(self, test_domain):
+    def test_tree_with_malformed_headers_string(self, test_domain):
         """The tree handles headers that is a string, not a dict."""
         store = test_domain.event_store.store
 
@@ -672,7 +672,7 @@ class TestBuildCausationTreeEdgeCases:
         finally:
             store._load_correlation_group = original
 
-    def test_build_node_with_malformed_domain_string(self, test_domain):
+    def test_tree_with_malformed_domain_string(self, test_domain):
         """The tree handles domain that is a string, not a dict."""
         store = test_domain.event_store.store
 

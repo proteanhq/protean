@@ -1385,7 +1385,7 @@ def _scan_for_group(store: BaseEventStore, message_id: str) -> list[dict[str, An
     Raises:
         ValueError: No message in the store has that ID.
     """
-    # String ID — single pass to find the target and its group
+    # String ID: single pass to find the target and its group
     all_messages = store._read("$all", no_of_messages=1_000_000)
     target_correlation_id: str | None = None
     for m in all_messages:
@@ -1446,7 +1446,7 @@ def _pick_roots(
     """Return the root candidates of the causation tree, sorted by
     ``global_position``. The list is never empty for a non-empty group."""
     if not roots:
-        # All messages have causation_id set — pick the one whose
+        # All messages have causation_id set: pick the one whose
         # causation_id points outside the group
         root_candidates = [
             m for m in group if store._extract_causation_id(m) not in by_id

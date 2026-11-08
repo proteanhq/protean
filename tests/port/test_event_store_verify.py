@@ -438,6 +438,22 @@ def test_non_monotonic_violation_is_reported_before_the_malformed_one():
     ]
 
 
+def test_duplicate_id_is_reported_before_the_position_gap_on_one_row():
+    store = _ListStore(
+        [
+            _msg(1, "test::user-abc", 0, id="dup"),
+            _msg(2, "test::user-abc", 2, id="dup"),  # duplicate id and a gap
+        ]
+    )
+
+    report = store.verify()
+
+    assert [v.kind for v in report.violations] == [
+        BaseEventStore.VERIFY_DUPLICATE_MESSAGE_ID,
+        BaseEventStore.VERIFY_POSITION_GAP,
+    ]
+
+
 @pytest.mark.parametrize("missing_key", [False, True], ids=["null", "absent"])
 def test_message_with_null_data_is_flagged_malformed(missing_key):
     # Message DB allows a NULL body. The row is reported, not skipped, and it
