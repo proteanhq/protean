@@ -1,53 +1,5 @@
 [
   {
-    "path": "src/protean/adapters/broker/__init__.py",
-    "file_name": "__init__.py",
-    "functions": [
-      {
-        "name": "Brokers::_initialize",
-        "complexity": 23
-      }
-    ]
-  },
-  {
-    "path": "src/protean/adapters/broker/inline.py",
-    "file_name": "inline.py",
-    "functions": [
-      {
-        "name": "InlineBroker::_cleanup_stale_messages",
-        "complexity": 16
-      }
-    ]
-  },
-  {
-    "path": "src/protean/adapters/broker/redis.py",
-    "file_name": "redis.py",
-    "functions": [
-      {
-        "name": "RedisBroker::_cleanup_stale_consumers",
-        "complexity": 18
-      },
-      {
-        "name": "RedisBroker::_read_blocking_streams",
-        "complexity": 24
-      },
-      {
-        "name": "RedisBroker::_read_blocking",
-        "complexity": 37
-      }
-    ]
-  },
-  {
-    "path": "src/protean/adapters/event_store/__init__.py",
-    "file_name": "__init__.py",
-    "functions": [
-      {
-        "name": "EventStore::handlers_for",
-        "complexity": 23
-      }
-    ]
-  },
-  {
     "path": "src/protean/core/aggregate.py",
     "file_name": "aggregate.py",
     "functions": [
@@ -206,48 +158,6 @@
       {
         "name": "value_object_from_entity",
         "complexity": 41
-      }
-    ]
-  },
-  {
-    "path": "src/protean/port/broker.py",
-    "file_name": "broker.py",
-    "functions": [
-      {
-        "name": "BaseBroker::publish",
-        "complexity": 20
-      }
-    ]
-  },
-  {
-    "path": "src/protean/port/dao.py",
-    "file_name": "dao.py",
-    "functions": [
-      {
-        "name": "BaseDAO::_claim",
-        "complexity": 33
-      }
-    ]
-  },
-  {
-    "path": "src/protean/port/event_store.py",
-    "file_name": "event_store.py",
-    "functions": [
-      {
-        "name": "BaseEventStore::_resolve_and_load_group",
-        "complexity": 17
-      },
-      {
-        "name": "BaseEventStore::_load_aggregate_at_version",
-        "complexity": 19
-      },
-      {
-        "name": "BaseEventStore::verify",
-        "complexity": 19
-      },
-      {
-        "name": "BaseEventStore::build_causation_tree",
-        "complexity": 27
       }
     ]
   },

@@ -627,7 +627,7 @@ class TestBuildCausationTreeEdgeCases:
     """Tests for edge cases in build_causation_tree."""
 
     def test_build_node_with_malformed_metadata_string(self, test_domain):
-        """_build_node handles metadata that is a string, not a dict."""
+        """The tree handles metadata that is a string, not a dict."""
         store = test_domain.event_store.store
 
         # Monkey-patch _load_correlation_group to return malformed data
@@ -651,7 +651,7 @@ class TestBuildCausationTreeEdgeCases:
             store._load_correlation_group = original
 
     def test_build_node_with_malformed_headers_string(self, test_domain):
-        """_build_node handles headers that is a string, not a dict."""
+        """The tree handles headers that is a string, not a dict."""
         store = test_domain.event_store.store
 
         original = store._load_correlation_group
@@ -673,7 +673,7 @@ class TestBuildCausationTreeEdgeCases:
             store._load_correlation_group = original
 
     def test_build_node_with_malformed_domain_string(self, test_domain):
-        """_build_node handles domain that is a string, not a dict."""
+        """The tree handles domain that is a string, not a dict."""
         store = test_domain.event_store.store
 
         original = store._load_correlation_group
@@ -735,7 +735,69 @@ class TestBuildCausationTreeEdgeCases:
             assert root.message_id == "root-msg"
             # The orphan child has no headers.id so _extract_message_id returns
             # None (falsy) — it's skipped by the `if child_id and ...` guard
-            # in _build_node. The root has no children.
+            # in the node builder. The root has no children.
             assert len(root.children) == 0
+        finally:
+            store._load_correlation_group = original
+
+    def test_root_is_the_earliest_message_caused_outside_the_group(self, test_domain):
+        """When every message has a causation ID, the root is the earliest
+        message whose causation ID points outside the group."""
+        store = test_domain.event_store.store
+
+        def raw(message_id, causation_id, position):
+            return {
+                "type": "SomeEvent",
+                "stream_name": "test-stream",
+                "global_position": position,
+                "metadata": {
+                    "headers": {"id": message_id},
+                    "domain": {"kind": "EVENT", "causation_id": causation_id},
+                },
+            }
+
+        original = store._load_correlation_group
+        store._load_correlation_group = lambda cid: [
+            raw("late", "outside-1", 5),
+            raw("early", "outside-2", 3),
+            raw("child", "early", 4),
+        ]
+
+        try:
+            root = store.build_causation_tree("external-roots-corr")
+            assert root is not None
+            assert root.message_id == "early"
+            assert [child.message_id for child in root.children] == ["child"]
+        finally:
+            store._load_correlation_group = original
+
+    def test_causation_cycle_roots_at_the_first_message(self, test_domain):
+        """When the causation IDs form a cycle inside the group, the root is
+        the first message of the group and the cycle stops at it."""
+        store = test_domain.event_store.store
+
+        def raw(message_id, causation_id, position):
+            return {
+                "type": "SomeEvent",
+                "stream_name": "test-stream",
+                "global_position": position,
+                "metadata": {
+                    "headers": {"id": message_id},
+                    "domain": {"kind": "EVENT", "causation_id": causation_id},
+                },
+            }
+
+        original = store._load_correlation_group
+        store._load_correlation_group = lambda cid: [
+            raw("first", "second", 2),
+            raw("second", "first", 1),
+        ]
+
+        try:
+            root = store.build_causation_tree("cycle-corr")
+            assert root is not None
+            assert root.message_id == "first"
+            assert [child.message_id for child in root.children] == ["second"]
+            assert root.children[0].children == []
         finally:
             store._load_correlation_group = original

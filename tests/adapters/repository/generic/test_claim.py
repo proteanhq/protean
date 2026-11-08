@@ -484,6 +484,17 @@ HOLD_BACK_CASES = [
         id="held-backlog-past-the-limit-does-not-starve-other-keys",
     ),
     pytest.param(
+        [
+            _row("k1-0", 0, "k1", "failed"),
+            _row("k1-1", 1, "k1"),
+            *_key_rows("k2", range(2, 5)),
+        ],
+        HOLD_BY_KEY,
+        2,
+        ["k2-2", "k2-3"],
+        id="limit-reached-partway-through-a-page",
+    ),
+    pytest.param(
         [_row("k1-0", 0, "k1", "failed"), *_key_rows("k1", range(1, 102))],
         HOLD_BY_KEY,
         101,

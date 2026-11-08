@@ -66,62 +66,10 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
         logger.debug("Initializing brokers...")
 
         existing_brokers = self._brokers
-        broker_objects: dict[str, BaseBroker] = {}
-        newly_created: list[BaseBroker] = []
-
-        try:
-            for broker_name, conn_info in configured_brokers.items():
-                current = existing_brokers.get(broker_name)
-                if current is not None and current.conn_info == conn_info:
-                    # Configuration unchanged — reuse the live instance so we
-                    # never disturb a connection the Engine may be actively
-                    # consuming. Note the broker enriches ``conn_info`` in place
-                    # (e.g. adds ``IS_ASYNC``), and it holds the same dict object
-                    # the config does; replacing the config entry with a new dict
-                    # is therefore what signals a real change and forces a rebuild.
-                    broker_objects[broker_name] = current
-                else:
-                    provider = conn_info["provider"]
-                    broker_cls = registry.get(provider)
-                    broker = broker_cls(broker_name, self.domain, conn_info)
-                    broker_objects[broker_name] = broker
-                    newly_created.append(broker)
-        except Exception:
-            # A construction failure partway through (e.g. an unreachable broker
-            # on a re-init tick) must not leak the connections already opened
-            # this pass. Roll back only the brokers created here; reused live
-            # instances are left untouched.
-            for broker in newly_created:
-                try:
-                    broker.close()
-                # a close failure must not mask the original error; logged
-                except Exception:
-                    logger.exception("broker.reinit.rollback_close_failed")
-            raise
-
-        # Close brokers that are being replaced (config changed) or dropped
-        # (no longer configured). Reused instances are left untouched.
-        for broker_name, broker in existing_brokers.items():
-            if broker_objects.get(broker_name) is not broker:
-                try:
-                    broker.close()
-                # one failed close must not block the new brokers; logged
-                except Exception:
-                    logger.exception("Error closing broker '%s'", broker_name)
-
+        broker_objects = _build_brokers(self, configured_brokers, existing_brokers)
+        _close_replaced_brokers(existing_brokers, broker_objects)
         self._brokers = broker_objects
-
-        # Initialize subscribers for Brokers
-        for subscriber_record in self.domain.registry.subscribers.values():
-            subscriber_cls = subscriber_record.cls
-            broker_name = subscriber_cls.meta_.broker
-
-            if broker_name not in self._brokers:
-                raise ConfigurationError(
-                    f"Broker `{broker_name}` has not been configured."
-                )
-
-            self._brokers[broker_name].register(subscriber_cls)
+        _register_subscribers(self)
 
     def publish(self, stream: str, message: dict[str, Any]) -> None:
         """Publish a message payload to the default broker.
@@ -138,6 +86,86 @@ class Brokers(collections.abc.MutableMapping[str, BaseBroker]):
             )
 
             self._brokers["default"].publish(stream, message)
+
+
+def _build_brokers(
+    brokers: "Brokers",
+    configured_brokers: dict[str, Any],
+    existing_brokers: dict[str, BaseBroker],
+) -> dict[str, BaseBroker]:
+    """Return a broker for each configured name, reusing an unchanged one.
+
+    When a construction fails, closes the brokers created in this call and
+    re-raises the error.
+    """
+    broker_objects: dict[str, BaseBroker] = {}
+    newly_created: list[BaseBroker] = []
+
+    try:
+        for broker_name, conn_info in configured_brokers.items():
+            current = existing_brokers.get(broker_name)
+            if current is not None and current.conn_info == conn_info:
+                # Configuration unchanged — reuse the live instance so we
+                # never disturb a connection the Engine may be actively
+                # consuming. Note the broker enriches ``conn_info`` in place
+                # (e.g. adds ``IS_ASYNC``), and it holds the same dict object
+                # the config does; replacing the config entry with a new dict
+                # is therefore what signals a real change and forces a rebuild.
+                broker_objects[broker_name] = current
+            else:
+                provider = conn_info["provider"]
+                broker_cls = registry.get(provider)
+                broker = broker_cls(broker_name, brokers.domain, conn_info)
+                broker_objects[broker_name] = broker
+                newly_created.append(broker)
+    except Exception:
+        # A construction failure partway through (e.g. an unreachable broker
+        # on a re-init tick) must not leak the connections already opened
+        # this pass. Roll back only the brokers created here; reused live
+        # instances are left untouched.
+        for broker in newly_created:
+            try:
+                broker.close()
+            # a close failure must not mask the original error; logged
+            except Exception:
+                logger.exception("broker.reinit.rollback_close_failed")
+        raise
+
+    return broker_objects
+
+
+def _close_replaced_brokers(
+    existing_brokers: dict[str, BaseBroker], broker_objects: dict[str, BaseBroker]
+) -> None:
+    """Close each existing broker that ``broker_objects`` replaced or dropped.
+
+    A broker is replaced when its configuration changed and dropped when it
+    is no longer configured. Reused instances are left untouched. A failed
+    close is logged, and the other brokers are still closed.
+    """
+    for broker_name, broker in existing_brokers.items():
+        if broker_objects.get(broker_name) is not broker:
+            try:
+                broker.close()
+            # one failed close must not block the new brokers; logged
+            except Exception:
+                logger.exception("Error closing broker '%s'", broker_name)
+
+
+def _register_subscribers(brokers: "Brokers") -> None:
+    """Register each domain subscriber with the broker it names.
+
+    Raises:
+        ConfigurationError: A subscriber names a broker that is not configured.
+    """
+    for subscriber_record in brokers.domain.registry.subscribers.values():
+        subscriber_cls = subscriber_record.cls
+        broker_name = subscriber_cls.meta_.broker
+
+        if broker_name not in brokers._brokers:
+            raise ConfigurationError(f"Broker `{broker_name}` has not been configured.")
+
+        brokers._brokers[broker_name].register(subscriber_cls)
 
 
 # No exports - this module only provides internal domain infrastructure

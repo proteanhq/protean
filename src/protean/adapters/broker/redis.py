@@ -519,17 +519,10 @@ class RedisBroker(BaseBroker):
 
         block: int | None = None
         try:
-            # redis-py sends BLOCK only when ``block`` is not None, and Redis
-            # reads ``BLOCK 0`` as "wait forever". So a zero timeout passes None
-            # to skip the wait. Positive timeouts are capped at 1000 ms, so a
-            # caller's poll loop re-checks for shutdown at least once a second
-            # and the wait stays under redis-py's default 5 s socket timeout.
-            # The new-message read and the NOGROUP retry share this value. It is
+            # The new-message read and the NOGROUP retry share ``block``. It is
             # computed inside the ``try`` so a bad ``timeout_ms`` is logged like
             # any other read failure.
-            if timeout_ms < 0:
-                raise ValueError(f"timeout_ms must be non-negative, got {timeout_ms}")
-            block = None if timeout_ms == 0 else min(timeout_ms, 1000)
+            block = _block_for(timeout_ms)
 
             # First, try to read pending messages (messages that were delivered but not ACKed)
             # Use "0" to read pending messages for this consumer
@@ -542,17 +535,11 @@ class RedisBroker(BaseBroker):
                 # other than ">".
             )
 
-            # If we got pending messages, return them
-            if response:
-                messages = []
-                for _stream_name, stream_messages in response:
-                    for message_id, fields in stream_messages:
-                        if fields:  # Pending messages might have None fields if they've been claimed
-                            redis_id_str = self._decode_if_bytes(message_id)
-                            message = self._deserialize_message(fields)
-                            messages.append((redis_id_str, message))
-                if messages:
-                    return messages
+            # If we got pending messages, return them. Pending messages might
+            # have None fields if they've been claimed.
+            messages = _decode_reply(self, response, skip_empty=True)
+            if messages:
+                return messages
 
             # No pending messages, now read new messages, waiting up to ``block``
             response = self._client.xreadgroup(
@@ -562,49 +549,14 @@ class RedisBroker(BaseBroker):
                 count=count,
                 block=block,
             )
-
-            if not response:
-                # Timeout occurred, no messages available
-                return []
-
-            # Extract messages from response
-            messages = []
-            for _stream_name, stream_messages in response:
-                for message_id, fields in stream_messages:
-                    redis_id_str = self._decode_if_bytes(message_id)
-                    message = self._deserialize_message(fields)
-                    messages.append((redis_id_str, message))
-
-            return messages
+            # An empty reply means the wait timed out with no messages.
+            return _decode_reply(self, response, skip_empty=False)
 
         except redis.ResponseError as e:
             if "NOGROUP" in str(e):
-                # Consumer group doesn't exist — invalidate cache and recreate.
-                # Use a single retry to avoid infinite recursion if the group
-                # cannot be created (e.g. stream was flushed while engine runs).
-                group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
-                self._created_groups_set.discard(group_key)
-                self._ensure_group(consumer_group, stream)
-                try:
-                    response = self._client.xreadgroup(
-                        consumer_group,
-                        consumer_name,
-                        {stream: NEW_MESSAGES_MARK},
-                        count=count,
-                        block=block,
-                    )
-                    if not response:
-                        return []
-                    messages = []
-                    for _stream_name, stream_messages in response:
-                        for message_id, fields in stream_messages:
-                            redis_id_str = self._decode_if_bytes(message_id)
-                            message = self._deserialize_message(fields)
-                            messages.append((redis_id_str, message))
-                    return messages
-                except Exception:  # the retry returns no messages; logged
-                    logger.exception("broker.redis.nogroup_retry_failed")
-                    return []
+                return _retry_read_after_nogroup(
+                    self, stream, consumer_group, consumer_name, count, block
+                )
             logger.exception("broker.redis.read_blocking_failed")
             return []
         except Exception as e:
@@ -652,11 +604,8 @@ class RedisBroker(BaseBroker):
 
         block: int | None = None
         try:
-            # Same BLOCK rules as ``_read_blocking``: None skips the wait, since
-            # Redis reads ``BLOCK 0`` as "wait forever".
-            if timeout_ms < 0:
-                raise ValueError(f"timeout_ms must be non-negative, got {timeout_ms}")
-            block = None if timeout_ms == 0 else min(timeout_ms, 1000)
+            # Same BLOCK rules as ``_read_blocking``.
+            block = _block_for(timeout_ms)
 
             # Pending messages on every stream, in one call and without BLOCK
             response = self._client.xreadgroup(
@@ -681,25 +630,9 @@ class RedisBroker(BaseBroker):
 
         except redis.ResponseError as e:
             if "NOGROUP" in str(e):
-                # A group is missing on at least one stream (for example, the
-                # stream was flushed). Invalidate the cache for every stream,
-                # recreate the groups, and retry the new-message read once.
-                for stream in streams:
-                    group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
-                    self._created_groups_set.discard(group_key)
-                    self._ensure_group(consumer_group, stream)
-                try:
-                    response = self._client.xreadgroup(
-                        consumer_group,
-                        consumer_name,
-                        dict.fromkeys(streams, NEW_MESSAGES_MARK),
-                        count=count,
-                        block=block,
-                    )
-                    return self._group_stream_reply(streams, response)
-                except Exception:  # the retry returns empty streams; logged
-                    logger.exception("broker.redis.nogroup_retry_failed")
-                    return {stream: [] for stream in streams}
+                return _retry_streams_after_nogroup(
+                    self, streams, consumer_group, consumer_name, count, block
+                )
             logger.exception("broker.redis.read_blocking_failed")
             return {stream: [] for stream in streams}
         except Exception as e:
@@ -1101,39 +1034,13 @@ class RedisBroker(BaseBroker):
                 stream, group_name
             )
             for c in consumers_info:
-                if not isinstance(c, dict):
-                    continue
-                try:
-                    name = self._get_field_value(c, "name")
-                except UnicodeDecodeError as e:
-                    # Another client can name a consumer with bytes that are not UTF-8.
-                    logger.debug(f"Skipping a consumer with an undecodable name: {e}")
-                    continue
-                if name is None or name == current_consumer_name:
-                    continue
-
-                # Same class-hostname-pid prefix but different random hex?
-                name_last_dash = name.rfind("-")
-                if name_last_dash == -1 or name[:name_last_dash] != current_prefix:
-                    continue
-
-                pending = self._get_field_value(c, "pending", convert_to_int=True) or 0
-                if pending > 0:
-                    logger.debug(
-                        f"Skipping stale consumer {name} "
-                        f"with {pending} pending message(s)"
-                    )
-                    continue
-
-                try:
-                    # redis-stubs leaves xgroup_delconsumer untyped (stub gap).
-                    self._client.xgroup_delconsumer(  # type: ignore[no-untyped-call]
-                        stream, group_name, name
-                    )
+                name = _stale_consumer_name(
+                    self, c, current_consumer_name, current_prefix
+                )
+                if name is not None and _delete_consumer(
+                    self, stream, group_name, name
+                ):
                     removed += 1
-                    logger.debug(f"Removed stale consumer {name} from {group_name}")
-                except redis.RedisError as e:
-                    logger.warning(f"Failed to remove stale consumer {name}: {e}")
         except redis.RedisError as e:
             logger.warning(
                 f"Error cleaning stale consumers for {group_name} on {stream}: {e}"
@@ -1843,6 +1750,154 @@ class RedisBroker(BaseBroker):
             self._group_creation_times.clear()
         except Exception:  # a failed test reset must not break teardown; logged
             logger.exception("broker.redis.data_reset_failed")
+
+
+def _block_for(timeout_ms: int) -> int | None:
+    """Return the XREADGROUP ``block`` value for a read timeout.
+
+    Raises:
+        ValueError: ``timeout_ms`` is negative.
+    """
+    # redis-py sends BLOCK only when ``block`` is not None, and Redis
+    # reads ``BLOCK 0`` as "wait forever". So a zero timeout passes None
+    # to skip the wait. Positive timeouts are capped at 1000 ms, so a
+    # caller's poll loop re-checks for shutdown at least once a second
+    # and the wait stays under redis-py's default 5 s socket timeout.
+    if timeout_ms < 0:
+        raise ValueError(f"timeout_ms must be non-negative, got {timeout_ms}")
+    return None if timeout_ms == 0 else min(timeout_ms, 1000)
+
+
+def _decode_reply(
+    broker: RedisBroker, response: Any, *, skip_empty: bool
+) -> list[tuple[str, dict[str, Any]]]:
+    """Return the ``(identifier, message)`` pairs of an XREADGROUP reply,
+    in reply order. ``skip_empty`` leaves out entries with no fields."""
+    messages = []
+    for _stream_name, stream_messages in response or []:
+        for message_id, fields in stream_messages:
+            if skip_empty and not fields:
+                continue
+            redis_id_str = broker._decode_if_bytes(message_id)
+            message = broker._deserialize_message(fields)
+            messages.append((redis_id_str, message))
+    return messages
+
+
+def _retry_read_after_nogroup(
+    broker: RedisBroker,
+    stream: str,
+    consumer_group: str,
+    consumer_name: str,
+    count: int,
+    block: int | None,
+) -> list[tuple[str, dict[str, Any]]]:
+    """Recreate the missing consumer group on ``stream`` and retry the
+    new-message read once. A failed retry is logged and returns no messages."""
+    # Consumer group doesn't exist — invalidate cache and recreate.
+    # Use a single retry to avoid infinite recursion if the group
+    # cannot be created (e.g. stream was flushed while engine runs).
+    group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+    broker._created_groups_set.discard(group_key)
+    broker._ensure_group(consumer_group, stream)
+    try:
+        response = broker._client.xreadgroup(
+            consumer_group,
+            consumer_name,
+            {stream: NEW_MESSAGES_MARK},
+            count=count,
+            block=block,
+        )
+        return _decode_reply(broker, response, skip_empty=False)
+    except Exception:  # the retry returns no messages; logged
+        logger.exception("broker.redis.nogroup_retry_failed")
+        return []
+
+
+def _retry_streams_after_nogroup(
+    broker: RedisBroker,
+    streams: Sequence[str],
+    consumer_group: str,
+    consumer_name: str,
+    count: int,
+    block: int | None,
+) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+    """Recreate the consumer group on every stream and retry the new-message
+    read once. A failed retry is logged and returns an empty list per stream."""
+    # A group is missing on at least one stream (for example, the
+    # stream was flushed). Invalidate the cache for every stream,
+    # recreate the groups, and retry the new-message read once.
+    for stream in streams:
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        broker._created_groups_set.discard(group_key)
+        broker._ensure_group(consumer_group, stream)
+    try:
+        response = broker._client.xreadgroup(
+            consumer_group,
+            consumer_name,
+            dict.fromkeys(streams, NEW_MESSAGES_MARK),
+            count=count,
+            block=block,
+        )
+        return broker._group_stream_reply(streams, response)
+    except Exception:  # the retry returns empty streams; logged
+        logger.exception("broker.redis.nogroup_retry_failed")
+        return {stream: [] for stream in streams}
+
+
+def _stale_consumer_name(
+    broker: RedisBroker,
+    consumer: Any,
+    current_consumer_name: str,
+    current_prefix: str,
+) -> str | None:
+    """Return the name of ``consumer`` when it is a stale consumer to delete.
+
+    A stale consumer shares ``current_prefix`` with the current consumer, has
+    a different name and has no pending messages. Returns ``None`` for any
+    other consumer, including one whose name does not decode.
+    """
+    if not isinstance(consumer, dict):
+        return None
+    try:
+        name = broker._get_field_value(consumer, "name")
+    except UnicodeDecodeError as e:
+        # Another client can name a consumer with bytes that are not UTF-8.
+        logger.debug(f"Skipping a consumer with an undecodable name: {e}")
+        return None
+    if name is None or name == current_consumer_name:
+        return None
+
+    # Same class-hostname-pid prefix but different random hex?
+    name_last_dash = name.rfind("-")
+    if name_last_dash == -1 or name[:name_last_dash] != current_prefix:
+        return None
+
+    pending = broker._get_field_value(consumer, "pending", convert_to_int=True) or 0
+    if pending > 0:
+        logger.debug(
+            f"Skipping stale consumer {name} with {pending} pending message(s)"
+        )
+        return None
+
+    return name
+
+
+def _delete_consumer(
+    broker: RedisBroker, stream: str, group_name: str, name: str
+) -> bool:
+    """Delete consumer ``name`` from the group and return whether it worked.
+    A failure is logged as a warning."""
+    try:
+        # redis-stubs leaves xgroup_delconsumer untyped (stub gap).
+        broker._client.xgroup_delconsumer(  # type: ignore[no-untyped-call]
+            stream, group_name, name
+        )
+    except redis.RedisError as e:
+        logger.warning(f"Failed to remove stale consumer {name}: {e}")
+        return False
+    logger.debug(f"Removed stale consumer {name} from {group_name}")
+    return True
 
 
 # Self-registration function for entry point
