@@ -365,6 +365,37 @@ class TestBuildPMGraphs:
         assert pm["transitions"][0]["source"] == "initial"
         assert pm["transitions"][0]["target"] == "completed"
 
+    def test_completed_state_added_once_for_several_end_handlers(self):
+        """A start+end handler and a separate end handler share one completed state."""
+        flows = {
+            "process_managers": {
+                "app.TwoEnds": {
+                    "name": "TwoEnds",
+                    "handlers": {
+                        "Order.OrderPlaced.v1": {
+                            "start": True,
+                            "end": True,
+                            "methods": ["handle_placed"],
+                            "correlate": "order_id",
+                        },
+                        "Order.OrderCancelled.v1": {
+                            "start": False,
+                            "end": True,
+                            "methods": ["handle_cancelled"],
+                            "correlate": "order_id",
+                        },
+                    },
+                    "stream_categories": [],
+                }
+            }
+        }
+        result = _build_pm_graphs(flows, {})
+        pm = result[0]
+        completed = [s for s in pm["states"] if s["id"] == "completed"]
+        assert completed == [{"id": "completed", "label": "Completed", "type": "end"}]
+        to_completed = [t for t in pm["transitions"] if t["target"] == "completed"]
+        assert len(to_completed) == 2
+
 
 # ---------------------------------------------------------------------------
 # Stats Tests
