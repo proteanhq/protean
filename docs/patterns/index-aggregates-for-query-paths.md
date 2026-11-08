@@ -141,11 +141,11 @@ backend understands.
 - **Write-heavy, read-rare aggregates** pay the index write cost on every
   insert for a query that almost never runs. Weigh the read benefit against the
   extra cost on every write.
-- **The memory provider** ignores indexes (they are advisory there), so the
-  benefit only materializes on a real SQL backend. The memory provider ignores
-  indexes on purpose, so that development against memory needs no index setup.
-  As a result, you do not exercise index quality until you run against
-  PostgreSQL or SQLite.
+- **The memory provider** enforces unique indexes and treats non-unique indexes
+  as advisory. An index speeds up queries only on a real SQL backend. The
+  memory provider works this way on purpose, so development against memory
+  needs no index setup. As a result, you do not exercise index quality until
+  you run against PostgreSQL or SQLite.
 - **Event-sourced aggregates** are reconstructed from their event stream, not
   queried as tables, so table indexes on them do not apply.
 
