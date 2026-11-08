@@ -56,8 +56,10 @@ alone whether or not it already has files in it, and `--force` does not clear
 it under a dry run.
 - `--force`, `-f`: Forces the command to run even if it would overwrite
 existing files. The target directory has to be inside the output directory. If
-`<output-dir>/<name>` is a symlink to another location, the command refuses to
-run and so never clears files outside the output directory.
+`<output-dir>/<name>` is a symlink whose resolved path is not directly inside
+the output directory, the command refuses to run, so it never clears files
+outside the output directory. A symlink to a sibling directory inside the
+output directory is accepted, and `--force` clears that sibling's files.
 
 ## Generated Project Structure
 
