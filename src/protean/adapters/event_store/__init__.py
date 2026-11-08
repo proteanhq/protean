@@ -198,7 +198,8 @@ def _external_event_handlers(event_store: EventStore, event: Any) -> set[Any]:
         # `$any` is deliberately NOT honoured here: a `$any` handler
         # scoped to an aggregate (part_of) belongs to that aggregate's
         # stream and must not fire for unrelated external events.
-        # `handlers_for` adds the `$any` handlers on the `$all` stream.
+        # `handlers_for` adds every handler on the `$all` stream,
+        # `$any` handlers included.
         for handlers_set in event_store._event_streams.values():
             for handler in handlers_set:
                 if event_type in handler._handlers:
