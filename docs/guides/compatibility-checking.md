@@ -302,8 +302,8 @@ change still counts as a breaking change.
 
 The verdict is **informational**. The command prints the verdict, and under
 `--format json` includes it in a `compatibility` block with the full classified
-report. The exit code still depends on `strictness` and the breaking-change
-classification.
+report. The exit code still depends on `strictness` and the
+breaking-change classification.
 
 For the full CLI reference, see [`protean ir`](../reference/cli/ir.md).
 

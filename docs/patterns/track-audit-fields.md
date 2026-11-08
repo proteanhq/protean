@@ -65,8 +65,8 @@ outbox rows. The `hasattr` check skips any aggregate without audit fields.
 ### Supplying the acting user
 
 The enricher reads `current_user` from the domain context, so set it where a
-request enters your application (an HTTP middleware, a CLI entry point, a
-worker):
+request enters your application (an HTTP middleware, a CLI entry point,
+a worker):
 
 ```python
 --8<-- "patterns/track-audit-fields/001.py:supply"

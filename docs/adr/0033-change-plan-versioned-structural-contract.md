@@ -18,12 +18,12 @@ The change is also a **contract between producers and a consumer that ship on
 different schedules**. The `add` engine and versioned upgrades both emit plans,
 and an applier (a later epic) executes them. Code written against one version
 of the contract may read a plan written to another version. That code has to
-fail loudly instead of misreading the plan, so the plan's shape carries a
-version.
+fail loudly instead of misreading the plan, so the plan's shape carries
+a version.
 
 The `add`/change code is part of neither the IR nor the CLI, so it gets its own
-package, `protean.scaffold`. Later scaffolding work adds its code to that
-package.
+package, `protean.scaffold`. Later scaffolding work adds its code to
+that package.
 
 ## Decision
 
@@ -56,8 +56,8 @@ raises a clear `ValueError` for a `plan_version` it does not understand, a
 non-object entry in `operations`, an unknown operation `kind`, or any missing
 or wrongly-typed required field. `load_config` and `load_stored_ir` reject
 malformed input the same way. `to_json` sorts its keys, so the same plan always
-serializes to the same bytes and previews and stored plans diff
-cleanly.
+serializes to the same bytes and previews and stored plans
+diff cleanly.
 
 Preview is read-only and separate from an operation's representation. A
 `render_preview(plan)` function builds a human-readable summary as pure strings: a
@@ -97,5 +97,5 @@ dependency that writes `domain.toml` is added later, with the config applier.
   pydantic is reserved for domain elements.
 - **One combined "file operation" covering create and edit.** Rejected: a
   create carries whole content and an edit carries a diff, so they are
-  different shapes. A discriminated union lets each shape require its own
-  fields.
+  different shapes. A discriminated union lets each shape require its
+  own fields.

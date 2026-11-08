@@ -40,8 +40,8 @@ to stored events: an upcaster transforms an old event payload to the new
 version, or the event becomes a new type when no value can be supplied.
 Commands are versioned the same way, but
 they are not replayed, so they carry no upcaster. The framework validates the
-`__version__` integer at class creation time in
-`BaseMessageType.__init_subclass__()`:
+`__version__` integer at class creation time
+in `BaseMessageType.__init_subclass__()`:
 
 ```python
 class UserRegistered(BaseEvent):
@@ -68,8 +68,8 @@ uses the `__type__` string for runtime routing and event store lookups.
 The schema-evolution ladder (ADR-0040) defines the compatibility semantics:
 whether v2 is backward-compatible with v1, and how to convert between them.
 Under the ladder, each change goes to weak schema (`renamed_from`, lenient
-mode), an upcaster, or a new event type. The version number stays an identity
-marker.
+mode), an upcaster, or a new event type. The version number stays an
+identity marker.
 
 ## Consequences
 

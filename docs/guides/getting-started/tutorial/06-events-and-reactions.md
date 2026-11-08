@@ -9,8 +9,8 @@ Chapter 5.
     Domain events and event handlers are a core DDD concept, so they are used
     in **both** the DDD and CQRS approaches. The difference is in how events
     get triggered: in CQRS, commands flow through handlers that invoke
-    aggregate methods; in pure DDD, Application Services do the same job
-    directly.
+    aggregate methods; in pure DDD, Application Services do the same
+    job directly.
 
 ## Defining Events
 

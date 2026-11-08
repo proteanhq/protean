@@ -10,8 +10,8 @@ see the [Server Hardening reference](../../reference/server/hardening.md).
 ## Raise connection pool limits
 
 The SQLAlchemy default pool settings (`pool_size = 5`, `max_overflow = 10`) are
-sized for a single worker against a small database. Bump them before you go
-live:
+sized for a single worker against a small database. Bump them before you
+go live:
 
 ```toml
 [databases.default]
@@ -64,8 +64,8 @@ is the more common failure than under-sizing Protean's pool.
 
 The engine embeds a lightweight HTTP server on port `8080` by default. The
 server binds loopback (`127.0.0.1`), but a Kubernetes liveness/readiness check
-connects over the pod network. To reach the probes from that check, set
-`host = "0.0.0.0"`:
+connects over the pod network. To reach the probes from that check,
+set `host = "0.0.0.0"`:
 
 ```toml
 [server.health]
@@ -141,8 +141,8 @@ Any exception it raises is caught and logged. A broken alert handler will not
 stall the engine.
 
 When a subscription needs different SLAs, override retention or alerting per
-handler, for example for an auditing handler that must keep 30 days of
-failures:
+handler, for example for an auditing handler that must keep 30 days
+of failures:
 
 ```python
 --8<-- "guides/server/hardening/003.py:imports"

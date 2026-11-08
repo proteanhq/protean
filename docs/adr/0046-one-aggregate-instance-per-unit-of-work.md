@@ -59,8 +59,8 @@ A Unit of Work holds one instance of each aggregate for the whole transaction.
   each event without the state change that the event records. At commit, the
   Unit of Work does not save events raised on an aggregate that was only read,
   and it gives no warning. The first version of this decision kept the earlier
-  rule, under which a state-based aggregate's events committed once it was
-  read.*
+  rule, under which a state-based aggregate's events committed once it
+  was read.*
 - A read through a DAO set to work outside the Unit of Work (`outside_uow()`)
   and a temporal query (`at_version` or `as_of`) do not use the map.
 

@@ -104,8 +104,8 @@ Negative / boundaries (documented, not hidden):
   while its event can still be redelivered, so pruning past that window is safe.
   Because `handler` is `module.Class.method`, renaming a projector method
   orphans its old markers (the cleanup eventually removes them). The rename
-  also opens a brief double-apply window for in-flight redeliveries across that
-  deploy.
+  also opens a brief double-apply window for in-flight redeliveries across
+  that deploy.
 - This does not make Protean exactly-once across stores; it is exactly-once only
   *within one transactional provider*.
 

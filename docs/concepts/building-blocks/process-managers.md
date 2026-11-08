@@ -19,8 +19,8 @@ multi-step workflows that span multiple aggregates:
 
 These workflows share a common structure: each step produces an event, and
 that event determines what the *next* step should be. If a step fails, earlier
-steps may need to be reversed. The workflow needs to record which step it has
-reached.
+steps may need to be reversed. The workflow needs to record which step it
+has reached.
 
 Event handlers cannot do this. They are stateless. They don't know which step
 they're on, what happened before, or what should happen next. You need a

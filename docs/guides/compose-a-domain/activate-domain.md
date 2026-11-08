@@ -34,8 +34,8 @@ domain context for the duration of the task.
 You activate a domain by pushing up its context to the top of the domain stack:
 
 ### With Context Manager
-Protean provides a context manager. You run the domain operations inside its
-block.
+Protean provides a context manager. You run the domain operations inside
+its block.
 
 ```python hl_lines="18-20"
 --8<-- "guides/compose-a-domain/018.py:full"
@@ -102,5 +102,5 @@ file connection open for the lifetime of a domain call:
 ```
 
 Now, every call to `get_log()` during the domain call returns the same file
-object. The teardown handler closes the file object automatically at the end of
-processing.
+object. The teardown handler closes the file object automatically at the end
+of processing.

@@ -88,8 +88,8 @@ fails with its own message about a column being invalid as a key:
 `String()` has a default `max_length` of 255, so it is a valid key column.
 Protean raises `IncorrectUsageError` for a column with no length, such as
 `max_length=None`. A column with no length is fine on MSSQL as an ordinary
-column. Protean raises only when that column is a primary key or is
-`unique=True`.
+column. Protean raises only when that column is a primary key or
+is `unique=True`.
 
 ## Date and time columns
 

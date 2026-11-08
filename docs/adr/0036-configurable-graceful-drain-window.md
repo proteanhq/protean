@@ -87,8 +87,8 @@ it, so this ADR does not restate it.
   config and the supervisor warning reduce this risk. Protean sets no hard cap.
 - The reloader and the supervisor size their worker-termination budgets from
   the configured window. With a longer window, a `--reload` restart or a
-  supervised shutdown waits longer before it kills a worker that has not
-  exited.
+  supervised shutdown waits longer before it kills a worker that has
+  not exited.
 
 ## Alternatives Considered
 
