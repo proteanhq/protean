@@ -175,8 +175,8 @@ expression:
 
     If you want a convenience wrapper, create a base class or helper. The
     helper below returns a query that is already filtered to the current
-    tenant, so callers can add more filters, such
-    as `tenant_query(Order).filter(status="placed").all()`:
+    tenant, so callers can add more filters, such as
+    `tenant_query(Order).filter(status="placed").all()`:
 
     ```python
     --8<-- "patterns/multi-tenancy/001.py:tenant_query"

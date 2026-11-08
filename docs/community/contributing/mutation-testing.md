@@ -56,9 +56,9 @@ temporary `setup.cfg` it writes for mutmut's config) when it finishes.
 
 ### Adding a target
 
-`scripts/mutation.sh` defines the targets in a `case` block. Each maps a name
-to a module and the fast test subset that exercises it. Pick the smallest set
-of tests that covers the module's behaviour; a broad subset only slows the run
+Targets live in a `case` block in `scripts/mutation.sh`. Each maps a name to a
+module and the fast test subset that exercises it. Pick the smallest set of
+tests that covers the module's behaviour; a broad subset only slows the run
 without finding more survivors. Drop a test file the module never runs. mutmut
 runs each mutant only against the tests that call the mutated function, so such
 a file does not slow the per-mutant runs. It does add time to mutmut's two
@@ -138,7 +138,7 @@ for these targets:
   tests would reach survives.
 
 `observatory-metrics` scores low because of the last two facts above: the
-skipped Redis-marked tests and the gauge code that returns early. Of its 1,029
+gauge code that returns early and the skipped Redis-marked tests. Of its 1,029
 survivors, 414 are in `_hand_rolled_metrics`, which the skipped Redis-marked
 tests check, and 445 are in `_register_infrastructure_gauges`, which returns
 early.

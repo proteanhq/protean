@@ -165,10 +165,10 @@ apply its side effects again, because it dispatches out-of-band and never
 consults the idempotency store. An exhausted command also never recorded a
 success, so the idempotency store has nothing to deduplicate against. The
 prompt names the target (an event handler, a projector, a process manager, or a
-command with or without an idempotency key) so the
-operator knows what is being re-run. Replaying a projector position re-applies
-its projection writes, and replaying a process manager position can issue its
-commands again. An idempotency key helps only when the handler itself uses it to
+command with or without an idempotency key) so the operator knows what is being
+re-run. Replaying a projector position re-applies its projection writes, and
+replaying a process manager position can issue its commands again. An
+idempotency key helps only when the handler itself uses it to
 stay idempotent.
 Replay refuses a command past its deadline, because the engine would skip an
 expired command. Purge that position instead. The deadline is checked again

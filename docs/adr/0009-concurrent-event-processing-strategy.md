@@ -87,8 +87,8 @@ We considered adding `idempotent_by` on event handlers with a
 framework-managed idempotency store, but decided against it because:
 
 - Idempotency is inherently a business-logic concern, because the "right"
-  deduplication strategy depends on the operation (set-based,
-  dedup-tracked, upsert)
+  deduplication strategy depends on the operation (set-based, dedup-tracked,
+  upsert)
 - Protean already has comprehensive pattern documentation for
   idempotent event handlers (600+ lines covering three strategies)
 - Command idempotency via `IdempotencyStore` is already built for the

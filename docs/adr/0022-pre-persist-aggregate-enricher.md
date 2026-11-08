@@ -153,9 +153,9 @@ carry audit data in their events, so the DAO lifecycle does not apply.
 Before this amendment, the `auto_now` stamping and the aggregate enricher both
 assigned through `__setattr__`, so every stamped field ran the aggregate's
 `@invariant.pre` checks against the new state. A common pre-invariant is "a
-closed account cannot be modified". `close()` passes,
-because the check runs before `status` is assigned. Then the `updated_at` stamp
-counted as a modification of a closed account, and the save failed (#1663).
+closed account cannot be modified". `close()` passes, because the check runs
+before `status` is assigned. Then the `updated_at` stamp counted as a
+modification of a closed account, and the save failed (#1663).
 
 **Amended decision:**
 

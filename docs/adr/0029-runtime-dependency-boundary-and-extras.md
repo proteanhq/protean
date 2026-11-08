@@ -39,10 +39,10 @@ sanitization uses it. But `String()` and `Text()` default to `sanitize=True`.
 Nearly every domain has a string field, so bleach runs for nearly every domain.
 Moving bleach behind an extra would make that extra a de-facto requirement, and
 anyone who missed the extra would silently lose sanitizing. `werkzeug` was a
-genuine import-time need (it backed `current_domain`/
-`current_uow`). `bleach` and `werkzeug` both stayed in core at the time. (Each
-of `werkzeug`, `cffi`, and `greenlet` was later reviewed and moved out; see the
-amendments in Consequences.)
+genuine import-time need (it backed `current_domain`/ `current_uow`). `bleach`
+and `werkzeug` both stayed in core at the time. (Each of `werkzeug`, `cffi`,
+and `greenlet` was later reviewed and moved out; see the amendments in
+Consequences.)
 
 Moving a package out of `[project].dependencies` is a Tier-1 breaking change
 under [ADR-0004](0004-release-workflow-and-breaking-change-policy.md): code that
@@ -169,10 +169,10 @@ change in the 0.18 migration guide. The actionable error plus the `all` extra
   security-relevant behavioral break (string fields silently stop
   HTML-escaping) that does not belong in a packaging change. bleach stays in
   core; if that default ever flips, revisit this choice. (The default did flip
-  to `False` in 0.18.0 via issue #1455, decided on its own
-  merits, not as a packaging change. bleach still stays in core: a field or
-  domain that opts back in must not hit a missing-package error at runtime, so
-  the packaging conclusion here is unchanged.)
+  to `False` in 0.18.0 via issue #1455, decided on its own merits, not as a
+  packaging change. bleach still stays in core: a field or domain that opts
+  back in must not hit a missing-package error at runtime, so the packaging
+  conclusion here is unchanged.)
 - **Detect the missing package from `ImportError.name` instead of
   `find_spec`.** This is simpler, but wrong for the case that matters most: an
   installed but broken package raises an `ImportError` naming itself, so a name

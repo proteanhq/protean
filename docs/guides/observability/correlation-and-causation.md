@@ -21,8 +21,8 @@ both IDs:
   It answers: "What directly caused this message?"
 
 Take a small order domain. The command handler for `PlaceOrder` raises
-`OrderPlaced`. An event handler reacts to `OrderPlaced` by
-dispatching `ConfirmOrder`:
+`OrderPlaced`. An event handler reacts to `OrderPlaced` by dispatching
+`ConfirmOrder`:
 
 ```python
 --8<-- "guides/observability/correlation-and-causation/001.py:model"

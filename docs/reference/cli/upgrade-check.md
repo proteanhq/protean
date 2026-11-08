@@ -130,10 +130,9 @@ matched only when it comes from `sqlalchemy`. The middleware detector matches a
 `add_middleware` call that names something outside the framework's own
 middlewares and the standard Starlette and FastAPI ones. The queue-status
 detector reads a `status` or `state` field and needs at least two
-queue-vocabulary choices before it fires.
-Detector findings are advisory (`info`) and do not
-change the exit code. The one exception is `CHECK_FAILED`: if a detector cannot
-complete, that is a `warning`, and any warning exits `1`.
+queue-vocabulary choices before it fires. Detector findings are advisory
+(`info`) and do not change the exit code. The one exception is `CHECK_FAILED`:
+if a detector cannot complete, that is a `warning`, and any warning exits `1`.
 
 ### The pinned version
 

@@ -184,8 +184,8 @@ selection](./production-configuration.md#adapter-selection).
 
 The main purpose of the port-and-adapter architecture is to make adapter choice
 a deployment decision that needs no code change. When you switch from `memory`
-to `postgresql`, you should change exactly one thing: the
-overlay in `domain.toml`.
+to `postgresql`, you should change exactly one thing: the overlay in
+`domain.toml`.
 
 ```toml
 # Base: memory for dev

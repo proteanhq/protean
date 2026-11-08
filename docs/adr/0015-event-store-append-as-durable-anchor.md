@@ -70,8 +70,8 @@ sequence, and make the relational commit and outbox follow it.
    so the append is part of the relational commit and is no longer a separate
    durable anchor. As a result, reconciliation has no window to repair. This
    decision applies unchanged to every event store that commits each append on
-   its own connection, including a SQL event store configured
-   with `database_uri`.*
+   its own connection, including a SQL event store configured with
+   `database_uri`.*
 
 2. **Idempotent on retry**: Because a commit can be retried after a partial
    failure (the append succeeds, the relational commit fails), the append must be

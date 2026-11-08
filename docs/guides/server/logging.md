@@ -93,7 +93,7 @@ JSON:
 }
 ```
 
-When a handler fails, Protean raises the level to `error`, sets `status` to
+When a handler fails, Protean sets the level to `error`, sets `status` to
 `"failed"`, and keeps the traceback:
 
 ```json
@@ -330,8 +330,8 @@ manually:
 
 Attach the correlation filter to each handler on the root logger. A filter on a
 logger runs only for records logged on that logger, so a filter on the root
-logger misses records from child loggers such
-as `logging.getLogger("myapp.orders")`.
+logger misses records from child loggers such as
+`logging.getLogger("myapp.orders")`.
 
 `Domain.init()` also detects a pre-configured root logger (handlers already
 attached) and skips its auto-configuration in that case, so in many

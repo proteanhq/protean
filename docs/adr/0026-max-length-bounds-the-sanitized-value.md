@@ -66,8 +66,8 @@ set, so a value accepted on write always round-trips.** Two changes:
    (`"String has N characters after sanitization, exceeding max_length of M"` /
    `"... below min_length of M"`). So the field never stores a value that it
    rejects on re-validation. The core constraints still run first on the raw
-   input (so plain out-of-bounds input keeps its standard
-   error) and still drive the JSON Schema and database column length.
+   input (so plain out-of-bounds input keeps its standard error) and still
+   drive the JSON Schema and database column length.
 
 2. **`choices` fields are not sanitized**: When `choices` is set, the field
    skips sanitization entirely, because the value must match a declared choice
@@ -131,8 +131,8 @@ input, so the bounds already apply to what is stored.
 - **Run sanitization as a `BeforeValidator` so the core constraints see the
   stored value.** The core constraints would then be the only length check.
   Rejected: a `BeforeValidator` runs before type coercion, so it would sanitize
-  the raw input before it is a string. A `bytes` value would
-  be decoded to `str` by the core *after* sanitization and never get sanitized,
+  the raw input before it is a string. A `bytes` value would be decoded to
+  `str` by the core *after* sanitization and never get sanitized,
   a security regression. The chosen design runs sanitization after coercion and
   re-checks the bounds, so a `bytes` value is still sanitized. The
   `BeforeValidator` option would also lose the diagnostic error message and

@@ -8,8 +8,8 @@ category stream, so when you restore a backup taken between the two writes, the
 checkpoint names a position the restored store no longer holds. A subscription
 with a stale checkpoint would skip every event between the restored head and
 that checkpoint. `--verify-checkpoints` reports those subscriptions so you can
-reset them before starting the engine, and
-`--reset-beyond-head` snaps each one back to the stream head for you.
+reset them before starting the engine, and `--reset-beyond-head` snaps each one
+back to the stream head for you.
 
 The same restore can leave an event-store subscription's recovery pass tracking
 failed positions the restored store no longer holds. The recovery pass keeps a
@@ -126,9 +126,9 @@ stream head. A checkpoint at or below the head is left alone, and so is an
 observed during verification. As a result, the reset only ever moves a
 checkpoint back and never moves a subscription forward past events it has not
 processed. The run reports what it changed and exits `0`; a later
-`--verify-checkpoints` run then finds those
-subscriptions consistent. When the restored stream is empty the head is `-1`,
-and the checkpoint is reset to the start of the stream.
+`--verify-checkpoints` run then finds those subscriptions consistent. When the
+restored stream is empty the head is `-1`, and the checkpoint is reset to the
+start of the stream.
 
 If a reset write itself fails (the store is down, for example), the run resets
 the reachable checkpoints, reports the ones it could not, and exits `2`. Each
@@ -303,14 +303,14 @@ whose message is gone. `status` is `fail` (exit `1`) when a stale entry is
 present without `--reset-beyond-head`; an `unknown` entry alone keeps `status`
 `pass`. With `--reset-beyond-head` the envelope also gains a
 `data.recovery_reset` list (each with `name`, `handler_name`,
-`stream_category`, and the `cleared_positions`
-removed), a `data.recovery_reset_failures` list of any that could not be written,
+`stream_category`, and the `cleared_positions` removed), a
+`data.recovery_reset_failures` list of any that could not be written,
 and `summary.recovery_reset` / `summary.recovery_reset_failed` counts. A run
 with no recovery finding at all (neither stale nor unknown) carries none of
 these keys and keeps the exact shape above. An `unknown`-only finding still
 adds the `data.recovery` keys. Under `--reset-beyond-head`, an `unknown`-only
-finding also adds empty `data.recovery_reset` /
-`data.recovery_reset_failures` lists.
+finding also adds empty `data.recovery_reset` / `data.recovery_reset_failures`
+lists.
 
 ## See also
 

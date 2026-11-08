@@ -57,8 +57,8 @@ with this ADR; the whole-file mode was added for the per-editor renderers (#1474
 **A state file at `.protean/dx-state.json` remembers what was written.** The
 state file is in the same folder as `project.json` (ADR-0034) and `ir.json`.
 Per target path it records the pack version stamp and two hashes: the hash of
-the whole file the writer last wrote, and
-the hash of the managed slice it last wrote.
+the whole file the writer last wrote, and the hash of the managed slice it last
+wrote.
 
 **The slice hash alone decides what happens.** The writer compares three values
 (the slice on disk, the slice the state file last recorded, and the slice just

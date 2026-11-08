@@ -266,8 +266,8 @@ synchronously. Such a handler does not retry and ignores its own `retries` and
 re-runs the whole chain in a fresh Unit of Work when its own policy covers the
 exception. Otherwise the exception reaches the caller. Protean retries only the
 exceptions that count as transient, which by default are `ConnectionError`,
-`TimeoutError`, and `SendError`. Narrow or widen the set
-with `retry_exceptions`:
+`TimeoutError`, and `SendError`. Narrow or widen the set with
+`retry_exceptions`:
 
 ```python
 --8<-- "guides/change-state/command-handlers/005.py:handler"

@@ -76,8 +76,8 @@ bare annotation (`finfo.annotation`), which for a custom type is the raw class
 with no schema. The fact-event builder now re-attaches the field's Pydantic
 metadata for custom fields (`Annotated[annotation, *finfo.metadata]`), so the
 validators and serializers carry onto the fact event. Built-in fields are
-unaffected: they have a native schema, so
-their metadata is still left off the fact event as before.
+unaffected: they have a native schema, so their metadata is still left off the
+fact event as before.
 
 The escape hatch is unchanged. A custom type that needs no Protean machinery is
 declared as a raw `Annotated[CustomType, Field(...)]` and passed through to Pydantic

@@ -230,8 +230,8 @@ enough to serve as an audit trail; abandoned and discarded rows are kept
 long enough to investigate. An abandoned row with a partition key is
 never purged: it holds its key's later rows, so it stays until someone
 retries or discards it. You can configure the retention windows for published
-rows and for abandoned and discarded rows separately.
-See [Outbox Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
+rows and for abandoned and discarded rows separately. See
+[Outbox Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
 
 ## Multi-Worker Support
 

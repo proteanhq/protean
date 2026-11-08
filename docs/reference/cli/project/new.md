@@ -175,9 +175,9 @@ tests/
 Every project gets `test_smoke.py`, which asserts the domain boots, so `pytest`
 collects and passes at least one test even when you opt out of the example.
 With the example included, two more tests ship: one drives the command/event
-write path, the other asserts the projection reflects the
-created aggregate. `pytest` runs green on a fresh project, so you have a
-working test to copy from on day one.
+write path, the other asserts the projection reflects the created aggregate.
+`pytest` runs green on a fresh project, so you have a working test to copy from
+on day one.
 
 ### CI/CD Configuration
 

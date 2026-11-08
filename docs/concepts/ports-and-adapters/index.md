@@ -142,8 +142,8 @@ by supplying an explicit hand-crafted model class for your entity.
 Lookups in Protean are mechanisms used to query the database based on certain
 criteria. Each lookup is a custom implementation of one type of filter. With
 lookups, you can run complex queries without writing raw SQL. Lookups are
-typically used in the DAO layer to fetch records that match
-specific conditions.
+typically used in the DAO layer to fetch records that match specific
+conditions.
 
 Refer to the section on
 [querying](../../guides/change-state/retrieve-aggregates.md#filtering-criteria)

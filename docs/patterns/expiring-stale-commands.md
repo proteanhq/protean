@@ -32,11 +32,10 @@ model at all.
 
 The difference between a delivery policy and a domain rule matters for how you
 reason about expiry. A `CommandExpiredError` is not the same kind of thing as a
-business-rule failure like `InsufficientStock`. The
-latter says "the model refused this change"; the former says "this change never
-got a chance to be attempted." Don't model expiry as a domain event or put it
-in aggregate logic. Leave expiry at the delivery boundary, in
-`domain.process()` and the engine.
+business-rule failure like `InsufficientStock`. The latter says "the model
+refused this change"; the former says "this change never got a chance to be
+attempted." Don't model expiry as a domain event or put it in aggregate logic.
+Leave expiry at the delivery boundary, in `domain.process()` and the engine.
 
 The real risk expiry introduces is **lost intent**: the requested change won't
 happen, and *something* may need to know. Whether that "something" is the

@@ -173,8 +173,8 @@ It prunes any file a removed skill left behind. `--check` is the drift guard:
 it re-renders in memory, compares byte for byte against the committed tree,
 writes nothing, and exits `1` when a file is missing, stale, or orphaned. The
 framework version in `plugin.json` moves with a release (through a
-`.bumpversion.toml` entry), so the committed tree
-stays in step and the drift check does not fail on a version bump.
+`.bumpversion.toml` entry), so the committed tree stays in step and the drift
+check does not fail on a version bump.
 
 ### Installing it in Claude Code
 

@@ -93,8 +93,8 @@ embedders can call directly.
   of an abrupt cancel. Aggregates and event logs stay in agreement
   across rolling deploys.
 - `Domain.close()` is a public API. Tests and tooling that create domains on
-  demand can tear them down cleanly. The test
-  suite no longer has to bypass adapter lifecycles.
+  demand can tear them down cleanly. The test suite no longer has to bypass
+  adapter lifecycles.
 - Socket, file-descriptor, and thread leaks are eliminated by
   default. Every adapter now has a real `close()` hook.
 - Load balancers pull pods out of rotation before handlers are

@@ -35,8 +35,8 @@ even when using different technical stacks.
 * **Clear Communication:**  The technology-agnostic nature of the model fosters
 clear communication across the team. Domain experts can focus on discussing
 business functionalities, while developers translate those functionalities into
-code. The two groups can talk about the domain without
-technology-specific jargon.
+code. The two groups can talk about the domain without technology-specific
+jargon.
 
 ## Analysis Model vs. Code Model
 
