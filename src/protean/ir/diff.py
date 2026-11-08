@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import contextlib
 import re
-from collections.abc import Collection, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, Literal
 
 from protean.exceptions import ConfigurationError
@@ -293,6 +294,20 @@ def _diff_method_edges(
     return _prune_empty({"added": added, "removed": removed, "changed": changed})
 
 
+# The element sections diffed by a dedicated differ, in output order. Every key
+# here is also skipped by the scalar attribute diff in ``_diff_element``.
+_ELEMENT_SECTION_DIFFERS: tuple[
+    tuple[str, Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]]], ...
+] = (
+    ("fields", _diff_fields),
+    ("options", _diff_flat_dict),
+    ("invariants", _diff_invariants),
+    ("handlers", _diff_handlers),  # command/event handlers, projectors
+    ("apply_handlers", _diff_flat_dict),  # ES aggregates
+    ("method_edges", _diff_method_edges),  # raise/invoke derivation
+)
+
+
 def _diff_element(
     left_el: dict[str, Any],
     right_el: dict[str, Any],
@@ -300,69 +315,32 @@ def _diff_element(
     """Diff a single domain element (aggregate, entity, command, etc.)."""
     delta: dict[str, Any] = {}
 
-    # Fields
-    left_fields = left_el.get("fields", {})
-    right_fields = right_el.get("fields", {})
-    if left_fields != right_fields:
-        fields_diff = _diff_fields(left_fields, right_fields)
-        if fields_diff:
-            delta["fields"] = fields_diff
-
-    # Options
-    left_opts = left_el.get("options", {})
-    right_opts = right_el.get("options", {})
-    if left_opts != right_opts:
-        opts_diff = _diff_flat_dict(left_opts, right_opts)
-        if opts_diff:
-            delta["options"] = opts_diff
-
-    # Invariants
-    left_inv = left_el.get("invariants", {})
-    right_inv = right_el.get("invariants", {})
-    if left_inv != right_inv:
-        inv_diff = _diff_invariants(left_inv, right_inv)
-        if inv_diff:
-            delta["invariants"] = inv_diff
-
-    # Handlers (for command/event handlers, projectors)
-    left_handlers = left_el.get("handlers", {})
-    right_handlers = right_el.get("handlers", {})
-    if left_handlers != right_handlers:
-        h_diff = _diff_handlers(left_handlers, right_handlers)
-        if h_diff:
-            delta["handlers"] = h_diff
-
-    # Apply handlers (ES aggregates)
-    left_apply = left_el.get("apply_handlers", {})
-    right_apply = right_el.get("apply_handlers", {})
-    if left_apply != right_apply:
-        a_diff = _diff_flat_dict(left_apply, right_apply)
-        if a_diff:
-            delta["apply_handlers"] = a_diff
-
-    # Method edges (raise/invoke derivation)
-    left_edges = left_el.get("method_edges", {})
-    right_edges = right_el.get("method_edges", {})
-    if left_edges != right_edges:
-        edges_diff = _diff_method_edges(left_edges, right_edges)
-        if edges_diff:
-            delta["method_edges"] = edges_diff
+    for key, differ in _ELEMENT_SECTION_DIFFERS:
+        section_diff = _diff_element_section(left_el, right_el, key, differ)
+        if section_diff:
+            delta[key] = section_diff
 
     # Scalar attributes
-    skip = {
-        "fields",
-        "options",
-        "invariants",
-        "handlers",
-        "apply_handlers",
-        "method_edges",
-        "subscription",
-    }
+    skip = {key for key, _ in _ELEMENT_SECTION_DIFFERS} | {"subscription"}
     scalar_diff = _diff_flat_dict(left_el, right_el, skip_keys=skip)
     if scalar_diff.get("changed"):
         delta["attributes"] = scalar_diff
 
     return delta
+
+
+def _diff_element_section(
+    left_el: dict[str, Any],
+    right_el: dict[str, Any],
+    key: str,
+    differ: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]],
+) -> dict[str, Any]:
+    """Return *differ*'s diff of section *key*, or ``{}`` when it is unchanged."""
+    left_section = left_el.get(key, {})
+    right_section = right_el.get(key, {})
+    if left_section == right_section:
+        return {}
+    return differ(left_section, right_section)
 
 
 # ------------------------------------------------------------------
@@ -589,6 +567,15 @@ def _classify_removal(
     return "premature_removal"
 
 
+@dataclass
+class _ContractChanges:
+    """The change lists ``_diff_contracts`` collects, in report order."""
+
+    breaking: list[dict[str, Any]] = field(default_factory=list)
+    expected_removals: list[dict[str, Any]] = field(default_factory=list)
+    renamed_fields: list[dict[str, Any]] = field(default_factory=list)
+
+
 def _diff_contracts(
     left_contracts: dict[str, Any],
     right_contracts: dict[str, Any],
@@ -616,253 +603,311 @@ def _diff_contracts(
     added = [right_by_fqn[f] for f in sorted(right_fqns - left_fqns)]
     removed = [left_by_fqn[f] for f in sorted(left_fqns - right_fqns)]
 
-    breaking: list[dict[str, Any]] = []
-    expected_removals: list[dict[str, Any]] = []
-    renamed_fields: list[dict[str, Any]] = []
+    changes = _ContractChanges()
 
     # Removed published events — classify by deprecation status
     for event in removed:
-        event_label = event.get("type", event["fqn"])
-        deprecated = event.get("deprecated")
-        classification = _classify_removal(deprecated, current_version)
-
-        if classification == "expected_removal":
-            expected_removals.append(
-                {
-                    "type": "contract_event_removed",
-                    "classification": "expected_removal",
-                    "event": event_label,
-                    "fqn": event["fqn"],
-                    "deprecated": deprecated,
-                    "message": (
-                        f"Published event '{event_label}' was removed "
-                        f"(deprecated since v{deprecated['since']}, "
-                        f"removal expected in v{deprecated.get('removal', '?')})"
-                    ),
-                }
-            )
-        else:
-            entry: dict[str, Any] = {
-                "type": "contract_event_removed",
-                "classification": classification,
-                "event": event_label,
-                "fqn": event["fqn"],
-                "message": f"Published event '{event_label}' was removed",
-            }
-            if deprecated:
-                entry["deprecated"] = deprecated
-                entry["message"] += f" (deprecated since v{deprecated['since']}"
-                if deprecated.get("removal"):
-                    entry["message"] += (
-                        f", scheduled for removal in v{deprecated['removal']}"
-                    )
-                entry["message"] += "; removed prematurely)"
-            breaking.append(entry)
+        _classify_removed_contract_event(event, current_version, changes)
 
     # Check events present in both for type/version/field changes
     for event_fqn in sorted(left_fqns & right_fqns):
-        left_evt = left_by_fqn[event_fqn]
-        right_evt = right_by_fqn[event_fqn]
-
-        # type string change is breaking
-        left_type = left_evt.get("type", "")
-        right_type = right_evt.get("type", "")
-        if left_type != right_type:
-            breaking.append(
-                {
-                    "type": "contract_type_changed",
-                    "fqn": event_fqn,
-                    "left": left_type,
-                    "right": right_type,
-                    "message": (
-                        f"type changed for published event: "
-                        f"'{left_type}' → '{right_type}'"
-                    ),
-                }
-            )
-
-        # Field-level changes — classify removed fields by deprecation
-        left_fields = left_evt.get("fields", {})
-        right_fields = right_evt.get("fields", {})
-        removed_fields = set(left_fields.keys()) - set(right_fields.keys())
-
-        # A removed field claimed by a `renamed_from` on a surviving field is a
-        # safe rename (the alias resolves old payloads), not a breaking removal.
-        added_fields = {
-            name: right_fields[name]
-            for name in sorted(right_fields.keys() - left_fields.keys())
-        }
-        contract_renames = _detect_field_renames(added_fields, removed_fields)
-        for old_name, new_name in contract_renames.items():
-            old_field = left_fields[old_name]
-            new_field = right_fields[new_name]
-            old_type = old_field.get("type")
-            new_type = new_field.get("type")
-            change = _field_change_kind(old_field, new_field)
-            if change == "type":
-                # A rename that also changes type breaks old payloads.
-                breaking.append(
-                    {
-                        "type": "contract_field_type_changed",
-                        "fqn": event_fqn,
-                        "field": old_name,
-                        "renamed_to": new_name,
-                        "left": old_type,
-                        "right": new_type,
-                        "message": (
-                            f"Field '{old_name}' renamed to '{new_name}' with a "
-                            f"type change from '{old_type}' to '{new_type}' in "
-                            f"published event '{left_type}'"
-                        ),
-                    }
-                )
-            elif change == "decimal_breaking":
-                breaking.append(
-                    {
-                        "type": "contract_field_type_changed",
-                        "fqn": event_fqn,
-                        "field": old_name,
-                        "renamed_to": new_name,
-                        "left": old_type,
-                        "right": new_type,
-                        "message": (
-                            f"Field '{old_name}' renamed to '{new_name}' with a "
-                            f"Decimal shape change "
-                            f"({_decimal_shape_delta(old_field, new_field)}) in "
-                            f"published event '{left_type}'"
-                        ),
-                    }
-                )
-            elif change == "content_type":
-                breaking.append(
-                    {
-                        "type": "contract_field_type_changed",
-                        "fqn": event_fqn,
-                        "field": old_name,
-                        "renamed_to": new_name,
-                        "left": old_type,
-                        "right": new_type,
-                        "message": (
-                            f"Field '{old_name}' renamed to '{new_name}' with a "
-                            f"value type change "
-                            f"{_content_type_delta(old_field, new_field)} in "
-                            f"published event '{left_type}'"
-                        ),
-                    }
-                )
-            else:
-                renamed_fields.append(
-                    {
-                        "type": "contract_field_renamed",
-                        "fqn": event_fqn,
-                        "field": old_name,
-                        "renamed_to": new_name,
-                        "message": (
-                            f"Field '{old_name}' renamed to '{new_name}' in "
-                            f"published event '{left_type}'"
-                        ),
-                    }
-                )
-
-        for field_name in sorted(left_fields.keys() & right_fields.keys()):
-            old_field = left_fields[field_name]
-            new_field = right_fields[field_name]
-            change = _field_change_kind(old_field, new_field)
-            if change == "type":
-                message = (
-                    f"Field '{field_name}' type changed from "
-                    f"'{old_field.get('type')}' to '{new_field.get('type')}' in "
-                    f"published event '{left_type}'"
-                )
-            elif change == "decimal_breaking":
-                message = (
-                    f"Field '{field_name}' Decimal shape changed "
-                    f"({_decimal_shape_delta(old_field, new_field)}) in "
-                    f"published event '{left_type}'"
-                )
-            elif change == "content_type":
-                message = (
-                    f"Field '{field_name}' value type changed "
-                    f"{_content_type_delta(old_field, new_field)} in "
-                    f"published event '{left_type}'"
-                )
-            else:
-                continue
-            breaking.append(
-                {
-                    "type": "contract_field_type_changed",
-                    "fqn": event_fqn,
-                    "field": field_name,
-                    "left": old_field.get("type"),
-                    "right": new_field.get("type"),
-                    "message": message,
-                }
-            )
-
-        renamed_new = set(contract_renames.values())
-        for field_name, field_dict in added_fields.items():
-            if field_name in renamed_new or not _is_breaking_addition(field_dict):
-                continue
-            breaking.append(
-                {
-                    "type": "contract_required_field_added",
-                    "fqn": event_fqn,
-                    "field": field_name,
-                    "message": (
-                        f"Required field '{field_name}' added to published event "
-                        f"'{left_type}' without a default value"
-                    ),
-                }
-            )
-
-        for field_name in sorted(removed_fields):
-            if field_name in contract_renames:
-                continue
-            field_deprecated = left_fields[field_name].get("deprecated")
-            field_classification = _classify_removal(field_deprecated, current_version)
-
-            if field_classification == "expected_removal":
-                expected_removals.append(
-                    {
-                        "type": "contract_field_removed",
-                        "classification": "expected_removal",
-                        "fqn": event_fqn,
-                        "field": field_name,
-                        "deprecated": field_deprecated,
-                        "message": (
-                            f"Field '{field_name}' removed from published "
-                            f"event '{left_type}' (expected removal)"
-                        ),
-                    }
-                )
-            else:
-                f_entry: dict[str, Any] = {
-                    "type": "contract_field_removed",
-                    "classification": field_classification,
-                    "fqn": event_fqn,
-                    "field": field_name,
-                    "message": (
-                        f"Field '{field_name}' removed from published event "
-                        f"'{left_type}'"
-                    ),
-                }
-                if field_deprecated:
-                    f_entry["deprecated"] = field_deprecated
-                breaking.append(f_entry)
+        _diff_contract_event(
+            event_fqn,
+            left_by_fqn[event_fqn],
+            right_by_fqn[event_fqn],
+            current_version,
+            changes,
+        )
 
     result: dict[str, Any] = {}
     if added:
         result["added"] = added
     if removed:
         result["removed"] = removed
-    if breaking:
-        result["breaking_changes"] = breaking
-    if expected_removals:
-        result["expected_removals"] = expected_removals
-    if renamed_fields:
-        result["renamed_fields"] = renamed_fields
+    if changes.breaking:
+        result["breaking_changes"] = changes.breaking
+    if changes.expected_removals:
+        result["expected_removals"] = changes.expected_removals
+    if changes.renamed_fields:
+        result["renamed_fields"] = changes.renamed_fields
 
     return result
+
+
+def _classify_removed_contract_event(
+    event: dict[str, Any],
+    current_version: str | None,
+    changes: _ContractChanges,
+) -> None:
+    """Record a removed published event as an expected or a breaking removal."""
+    event_label = event.get("type", event["fqn"])
+    deprecated: Any = event.get("deprecated")
+    classification = _classify_removal(deprecated, current_version)
+
+    if classification == "expected_removal":
+        changes.expected_removals.append(
+            {
+                "type": "contract_event_removed",
+                "classification": "expected_removal",
+                "event": event_label,
+                "fqn": event["fqn"],
+                "deprecated": deprecated,
+                "message": (
+                    f"Published event '{event_label}' was removed "
+                    f"(deprecated since v{deprecated['since']}, "
+                    f"removal expected in v{deprecated.get('removal', '?')})"
+                ),
+            }
+        )
+        return
+
+    entry: dict[str, Any] = {
+        "type": "contract_event_removed",
+        "classification": classification,
+        "event": event_label,
+        "fqn": event["fqn"],
+        "message": f"Published event '{event_label}' was removed",
+    }
+    if deprecated:
+        entry["deprecated"] = deprecated
+        entry["message"] += f" (deprecated since v{deprecated['since']}"
+        if deprecated.get("removal"):
+            entry["message"] += f", scheduled for removal in v{deprecated['removal']}"
+        entry["message"] += "; removed prematurely)"
+    changes.breaking.append(entry)
+
+
+def _diff_contract_event(
+    event_fqn: str,
+    left_evt: dict[str, Any],
+    right_evt: dict[str, Any],
+    current_version: str | None,
+    changes: _ContractChanges,
+) -> None:
+    """Record the changes to a published event present on both sides."""
+    # type string change is breaking
+    left_type = left_evt.get("type", "")
+    right_type = right_evt.get("type", "")
+    if left_type != right_type:
+        changes.breaking.append(
+            {
+                "type": "contract_type_changed",
+                "fqn": event_fqn,
+                "left": left_type,
+                "right": right_type,
+                "message": (
+                    f"type changed for published event: '{left_type}' → '{right_type}'"
+                ),
+            }
+        )
+
+    # Field-level changes — classify removed fields by deprecation
+    left_fields = left_evt.get("fields", {})
+    right_fields = right_evt.get("fields", {})
+    removed_fields = set(left_fields.keys()) - set(right_fields.keys())
+
+    # A removed field claimed by a `renamed_from` on a surviving field is a
+    # safe rename (the alias resolves old payloads), not a breaking removal.
+    added_fields = {
+        name: right_fields[name]
+        for name in sorted(right_fields.keys() - left_fields.keys())
+    }
+    contract_renames = _detect_field_renames(added_fields, removed_fields)
+    for old_name, new_name in contract_renames.items():
+        _classify_contract_rename(
+            event_fqn,
+            left_type,
+            old_name,
+            new_name,
+            left_fields[old_name],
+            right_fields[new_name],
+            changes,
+        )
+
+    for field_name in sorted(left_fields.keys() & right_fields.keys()):
+        _classify_contract_field_change(
+            event_fqn,
+            left_type,
+            field_name,
+            left_fields[field_name],
+            right_fields[field_name],
+            changes,
+        )
+
+    renamed_new = set(contract_renames.values())
+    for field_name, field_dict in added_fields.items():
+        if field_name in renamed_new or not _is_breaking_addition(field_dict):
+            continue
+        changes.breaking.append(
+            {
+                "type": "contract_required_field_added",
+                "fqn": event_fqn,
+                "field": field_name,
+                "message": (
+                    f"Required field '{field_name}' added to published event "
+                    f"'{left_type}' without a default value"
+                ),
+            }
+        )
+
+    for field_name in sorted(removed_fields):
+        if field_name in contract_renames:
+            continue
+        _classify_contract_field_removal(
+            event_fqn,
+            left_type,
+            field_name,
+            left_fields[field_name].get("deprecated"),
+            current_version,
+            changes,
+        )
+
+
+def _rename_change_detail(
+    change: str | None, old_field: dict[str, Any], new_field: dict[str, Any]
+) -> str | None:
+    """Describe a rename's breaking shape change, or ``None`` when it has none.
+
+    The text follows "renamed to '<new>' with a" in the change message.
+    """
+    if change == "type":
+        return (
+            f"type change from '{old_field.get('type')}' to '{new_field.get('type')}'"
+        )
+    if change == "decimal_breaking":
+        return f"Decimal shape change ({_decimal_shape_delta(old_field, new_field)})"
+    if change == "content_type":
+        return f"value type change {_content_type_delta(old_field, new_field)}"
+    return None
+
+
+def _field_change_detail(
+    change: str | None, old_field: dict[str, Any], new_field: dict[str, Any]
+) -> str | None:
+    """Describe a field's breaking shape change, or ``None`` when it has none.
+
+    The text follows "Field '<name>'" in the change message. A widened Decimal
+    is not breaking, so it gets ``None``.
+    """
+    if change == "type":
+        return (
+            f"type changed from '{old_field.get('type')}' to '{new_field.get('type')}'"
+        )
+    if change == "decimal_breaking":
+        return f"Decimal shape changed ({_decimal_shape_delta(old_field, new_field)})"
+    if change == "content_type":
+        return f"value type changed {_content_type_delta(old_field, new_field)}"
+    return None
+
+
+def _classify_contract_rename(
+    event_fqn: str,
+    left_type: str,
+    old_name: str,
+    new_name: str,
+    old_field: dict[str, Any],
+    new_field: dict[str, Any],
+    changes: _ContractChanges,
+) -> None:
+    """Record a field rename as breaking when its shape changed, else as safe."""
+    change = _field_change_kind(old_field, new_field)
+    detail = _rename_change_detail(change, old_field, new_field)
+    if detail is not None:
+        changes.breaking.append(
+            {
+                "type": "contract_field_type_changed",
+                "fqn": event_fqn,
+                "field": old_name,
+                "renamed_to": new_name,
+                "left": old_field.get("type"),
+                "right": new_field.get("type"),
+                "message": (
+                    f"Field '{old_name}' renamed to '{new_name}' with a {detail} "
+                    f"in published event '{left_type}'"
+                ),
+            }
+        )
+        return
+
+    changes.renamed_fields.append(
+        {
+            "type": "contract_field_renamed",
+            "fqn": event_fqn,
+            "field": old_name,
+            "renamed_to": new_name,
+            "message": (
+                f"Field '{old_name}' renamed to '{new_name}' in "
+                f"published event '{left_type}'"
+            ),
+        }
+    )
+
+
+def _classify_contract_field_change(
+    event_fqn: str,
+    left_type: str,
+    field_name: str,
+    old_field: dict[str, Any],
+    new_field: dict[str, Any],
+    changes: _ContractChanges,
+) -> None:
+    """Record a field present on both sides when its shape changed."""
+    detail = _field_change_detail(
+        _field_change_kind(old_field, new_field), old_field, new_field
+    )
+    if detail is None:
+        return
+    changes.breaking.append(
+        {
+            "type": "contract_field_type_changed",
+            "fqn": event_fqn,
+            "field": field_name,
+            "left": old_field.get("type"),
+            "right": new_field.get("type"),
+            "message": (
+                f"Field '{field_name}' {detail} in published event '{left_type}'"
+            ),
+        }
+    )
+
+
+def _classify_contract_field_removal(
+    event_fqn: str,
+    left_type: str,
+    field_name: str,
+    field_deprecated: Mapping[str, str] | None,
+    current_version: str | None,
+    changes: _ContractChanges,
+) -> None:
+    """Record a removed field as an expected or a breaking removal."""
+    field_classification = _classify_removal(field_deprecated, current_version)
+
+    if field_classification == "expected_removal":
+        changes.expected_removals.append(
+            {
+                "type": "contract_field_removed",
+                "classification": "expected_removal",
+                "fqn": event_fqn,
+                "field": field_name,
+                "deprecated": field_deprecated,
+                "message": (
+                    f"Field '{field_name}' removed from published "
+                    f"event '{left_type}' (expected removal)"
+                ),
+            }
+        )
+        return
+
+    f_entry: dict[str, Any] = {
+        "type": "contract_field_removed",
+        "classification": field_classification,
+        "fqn": event_fqn,
+        "field": field_name,
+        "message": f"Field '{field_name}' removed from published event '{left_type}'",
+    }
+    if field_deprecated:
+        f_entry["deprecated"] = field_deprecated
+    changes.breaking.append(f_entry)
 
 
 def _diff_diagnostics(
@@ -1007,8 +1052,9 @@ class CompatibilityChange:
     # ``_AVRO_CHANGE_SAFETY`` table default for this change type". They are set
     # only where safety is per-field rather than fixed by the change type:
     # ``field_removed`` / ``field_renamed`` set ``forward_safe`` (depends on the
-    # old field's optionality), and a required-field-add with a *callable*
-    # default sets ``backward_safe=False`` (Avro cannot emit a callable default).
+    # old field's optionality), and a required-field-add sets
+    # ``backward_safe=False`` when Avro cannot emit its default (a callable
+    # default, or a Decimal default the field's Avro decimal type cannot hold).
     backward_safe: bool | None = None
     forward_safe: bool | None = None
     # The name of the field this change is about, for the change types that
@@ -1314,52 +1360,87 @@ def _apply_upcaster_mitigation(
         left_entry = left_events.get(event_fqn)
         if left_entry is None:
             continue
-        left_v = left_entry.get("__version__")
-        right_v = right_entry.get("__version__")
-        if not isinstance(left_v, int) or not isinstance(right_v, int):
-            continue
-        if right_v <= left_v:
-            continue
-        # Keyed by event base name (matching the `Domain.Name` type string and
-        # `_diagnose_upcaster_gap`). Two events sharing a class name across
-        # aggregates would pool edges, a limitation of the name-based key.
-        # TODO(#1985): key by the event's qualified name.
-        edges = [
-            (e["from_version"], e["to_version"])
-            for e in upcasters.get(right_entry.get("name", ""), [])
-        ]
-        # Every stored version has to reach right_v, not only left_v. The old
-        # IR's version is the newest payload in the store, not the only one: v1
-        # payloads written before an earlier bump are still there. An event
-        # bumped v2->v3 whose v1->v2 edge was deleted strands every stored v1
-        # payload, and a change riding on that bump is not earned-safe. This is
-        # the same rule the build-time ``UPCASTER_GAP`` diagnostic applies, so
-        # the two agree about the same domain.
-        if missing_upcaster_source_versions(edges, right_v):
-            continue
-        # The chain is keyed by the type string's base, not by the event class.
-        # ``TypeManager`` registers every chain under
-        # ``f"{domain.camel_case_name}.{event_name}"``, and a stored message is
-        # looked up by the base of the type string it was written with. Move
-        # that base (rename the domain, rename the event class) and a stored
-        # ``Ordering.OrderPlaced.v1`` message reaches neither a chain nor a
-        # class, whatever upcasters are registered under the new base. The bump
-        # earns nothing then.
-        if _type_string_base(left_entry) != _type_string_base(right_entry):
-            continue
-        mitigation[event_fqn] = (
-            f"upcaster {right_entry.get('name', '')} v{left_v}->v{right_v}"
-        )
+        citation = _upcaster_citation(left_entry, right_entry, upcasters)
+        if citation is not None:
+            mitigation[event_fqn] = citation
 
     if not mitigation:
         return
 
+    _downgrade_mitigated(report, partial(_upcaster_mitigation_for, mitigation))
+
+
+def _upcaster_mitigation_for(
+    mitigation: Mapping[str, str], change: CompatibilityChange
+) -> str | None:
+    """Return the upcaster citation for *change*, or ``None`` to keep it breaking."""
+    # Only downgrade schema-transformation changes the upcaster actually
+    # performs; leave orthogonal changes (e.g. a visibility flip) breaking.
+    if change.change_type not in _UPCASTER_MITIGATABLE:
+        return None
+    return mitigation.get(change.element_fqn)
+
+
+def _upcaster_citation(
+    left_entry: dict[str, Any],
+    right_entry: dict[str, Any],
+    upcasters: dict[str, Any],
+) -> str | None:
+    """Name the upcaster chain that covers an event's version bump, if one does.
+
+    Returns ``None`` when either ``__version__`` is not an int, when the
+    version did not rise, when the chain misses a stored version, or when the
+    type string's base moved.
+    """
+    left_v = left_entry.get("__version__")
+    right_v = right_entry.get("__version__")
+    if not isinstance(left_v, int) or not isinstance(right_v, int):
+        return None
+    if right_v <= left_v:
+        return None
+    # Keyed by event base name (matching the `Domain.Name` type string and
+    # `_diagnose_upcaster_gap`). Two events sharing a class name across
+    # aggregates would pool edges, a limitation of the name-based key. The
+    # matching TODO in the IR builder tracks keying by the qualified name.
+    edges = [
+        (e["from_version"], e["to_version"])
+        for e in upcasters.get(right_entry.get("name", ""), [])
+    ]
+    # Every stored version has to reach right_v, not only left_v. The old
+    # IR's version is the newest payload in the store, not the only one: v1
+    # payloads written before an earlier bump are still there. An event
+    # bumped v2->v3 whose v1->v2 edge was deleted strands every stored v1
+    # payload, and a change riding on that bump is not earned-safe. This is
+    # the same rule the build-time ``UPCASTER_GAP`` diagnostic applies, so
+    # the two agree about the same domain.
+    if missing_upcaster_source_versions(edges, right_v):
+        return None
+    # The chain is keyed by the type string's base, not by the event class.
+    # ``TypeManager`` registers every chain under
+    # ``f"{domain.camel_case_name}.{event_name}"``, and a stored message is
+    # looked up by the base of the type string it was written with. Move
+    # that base (rename the domain, rename the event class) and a stored
+    # ``Ordering.OrderPlaced.v1`` message reaches neither a chain nor a
+    # class, whatever upcasters are registered under the new base. The bump
+    # earns nothing then.
+    if _type_string_base(left_entry) != _type_string_base(right_entry):
+        return None
+    return f"upcaster {right_entry.get('name', '')} v{left_v}->v{right_v}"
+
+
+def _downgrade_mitigated(
+    report: CompatibilityReport,
+    citation_for: Callable[[CompatibilityChange], str | None],
+) -> None:
+    """Move each breaking change *citation_for* cites to ``safe_changes``.
+
+    A moved change gets ``severity="safe"`` and the citation as
+    ``mitigated_by``. Both lists keep their relative order.
+    """
     still_breaking: list[CompatibilityChange] = []
     for change in report.breaking_changes:
-        citation = mitigation.get(change.element_fqn)
-        # Only downgrade schema-transformation changes the upcaster actually
-        # performs; leave orthogonal changes (e.g. a visibility flip) breaking.
-        if citation is None or change.change_type not in _UPCASTER_MITIGATABLE:
+        citation = citation_for(change)
+        if citation is None:
             still_breaking.append(change)
             continue
         change.severity = "safe"
@@ -1396,33 +1477,46 @@ def _apply_reserved_mitigation(
         left_cluster = left_clusters.get(fqn)
         if left_cluster is None:
             continue
-        left_agg = left_cluster.get("aggregate", {})
-        right_agg = right_cluster.get("aggregate", {})
-        left_es = bool(left_agg.get("options", {}).get("is_event_sourced"))
-        right_es = bool(right_agg.get("options", {}).get("is_event_sourced"))
-        if not (left_es and right_es):
-            continue
-        reserved = right_agg.get("options", {}).get("reserved") or []
+        reserved = _reserved_names(left_cluster, right_cluster)
         if reserved:
-            reserved_by_aggregate[fqn] = set(reserved)
+            reserved_by_aggregate[fqn] = reserved
 
     if not reserved_by_aggregate:
         return
 
-    still_breaking: list[CompatibilityChange] = []
-    for change in report.breaking_changes:
-        reserved = reserved_by_aggregate.get(change.element_fqn)
-        if (
-            change.change_type == "field_removed"
-            and reserved is not None
-            and change.field_name in reserved
-        ):
-            change.severity = "safe"
-            change.mitigated_by = "reserved"
-            report.safe_changes.append(change)
-        else:
-            still_breaking.append(change)
-    report.breaking_changes = still_breaking
+    _downgrade_mitigated(
+        report, partial(_reserved_mitigation_for, reserved_by_aggregate)
+    )
+
+
+def _reserved_names(
+    left_cluster: dict[str, Any], right_cluster: dict[str, Any]
+) -> set[str]:
+    """Return the names the aggregate reserves, or an empty set.
+
+    The set is empty unless the aggregate is event-sourced in both snapshots.
+    """
+    left_agg = left_cluster.get("aggregate", {})
+    right_agg = right_cluster.get("aggregate", {})
+    left_es = bool(left_agg.get("options", {}).get("is_event_sourced"))
+    right_es = bool(right_agg.get("options", {}).get("is_event_sourced"))
+    if not (left_es and right_es):
+        return set()
+    return set(right_agg.get("options", {}).get("reserved") or [])
+
+
+def _reserved_mitigation_for(
+    reserved_by_aggregate: Mapping[str, set[str]], change: CompatibilityChange
+) -> str | None:
+    """Return ``"reserved"`` when *change* removes a reserved field, else ``None``."""
+    reserved = reserved_by_aggregate.get(change.element_fqn)
+    if (
+        change.change_type == "field_removed"
+        and reserved is not None
+        and change.field_name in reserved
+    ):
+        return "reserved"
+    return None
 
 
 def _classify_replay_hazards(
@@ -1456,114 +1550,151 @@ def _classify_replay_hazards(
         if left_cluster is None:
             # A newly added aggregate has no history to strand.
             continue
-        left_aggregate = left_cluster.get("aggregate", {})
-        right_aggregate = right_cluster.get("aggregate", {})
-        left_options = left_aggregate.get("options", {})
-        right_options = right_aggregate.get("options", {})
-        left_es = bool(left_options.get("is_event_sourced"))
-        right_es = bool(right_options.get("is_event_sourced"))
-        if not left_es and not right_es:
-            # Classic on both sides: it is a table, and its field changes are
-            # already classified. Nothing here applies.
-            continue
-
-        if left_es != right_es:
-            direction = (
-                "classic to event-sourced" if right_es else "event-sourced to classic"
+        report.breaking_changes.extend(
+            _aggregate_replay_hazards(
+                fqn,
+                left_cluster.get("aggregate", {}),
+                right_cluster.get("aggregate", {}),
+                removed_events,
             )
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="event_sourcing_changed",
-                    message=(
-                        f"AGGREGATE '{fqn}' changed from {direction}; "
-                        f"existing state cannot be read the new way"
-                    ),
-                )
-            )
-            # The remaining checks compare two event-sourced snapshots. With the
-            # storage mode itself moving there is no like-for-like stream to ask
-            # about, and the change above already says the rebuild is broken.
-            continue
+        )
 
-        left_category = left_options.get("stream_category")
-        right_category = right_options.get("stream_category")
-        if left_category != right_category:
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="stream_category_changed",
-                    message=(
-                        f"Stream category changed for AGGREGATE '{fqn}': "
-                        f"'{left_category}' → '{right_category}'; existing "
-                        f"events stay under the old category"
-                    ),
-                )
-            )
 
-        left_identity = left_aggregate.get("identity_field")
-        right_identity = right_aggregate.get("identity_field")
-        if left_identity != right_identity:
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="identity_field_changed",
-                    message=(
-                        f"Identity field changed for AGGREGATE '{fqn}': "
-                        f"'{left_identity}' → '{right_identity}'; existing "
-                        f"events are keyed by the old field's value"
-                    ),
-                )
-            )
+def _aggregate_replay_hazards(
+    fqn: str,
+    left_aggregate: dict[str, Any],
+    right_aggregate: dict[str, Any],
+    removed_events: set[str],
+) -> list[CompatibilityChange]:
+    """Return the replay hazards of one aggregate present in both IRs."""
+    left_options = left_aggregate.get("options", {})
+    right_options = right_aggregate.get("options", {})
+    left_es = bool(left_options.get("is_event_sourced"))
+    right_es = bool(right_options.get("is_event_sourced"))
+    if not left_es and not right_es:
+        # Classic on both sides: it is a table, and its field changes are
+        # already classified. Nothing here applies.
+        return []
 
-        right_apply_handlers = right_aggregate.get("apply_handlers", {})
-        for event_fqn in left_aggregate.get("apply_handlers", {}):
-            # Not when this diff deleted the event itself. Removing an event
-            # class and its `@apply` method together is one act, and
-            # `element_removed` on the event is the report for it; a second
-            # entry here would say the same thing twice. Any other shape still
-            # reports, including a handler naming an event neither snapshot
-            # registers, where nothing else would.
-            if (
-                event_fqn not in right_apply_handlers
-                and event_fqn not in removed_events
-            ):
-                report.breaking_changes.append(
-                    CompatibilityChange(
-                        severity="breaking",
-                        element_fqn=fqn,
-                        change_type="apply_handler_removed",
-                        message=(
-                            f"AGGREGATE '{fqn}' dropped its @apply handler for "
-                            f"'{event_fqn}'; stored events of that type stop "
-                            f"the rebuild"
-                        ),
-                    )
-                )
-
-        # A name dropped from `reserved` takes back the field removal that
-        # declaration earned. Reported per name, so an aggregate that drops one
-        # reservation and keeps another names the one it dropped.
-        left_reserved = set(left_options.get("reserved") or ())
-        right_reserved = set(right_options.get("reserved") or ())
-        for name in sorted(left_reserved - right_reserved):
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="reservation_removed",
-                    message=(
-                        f"AGGREGATE '{fqn}' no longer reserves '{name}'; replay "
-                        f"stops dropping an assignment to that name or a call "
-                        f"to its add_/remove_ helper, which a retained @apply "
-                        f"handler for a retired event can still make"
-                    ),
-                    field_name=name,
-                )
+    if left_es != right_es:
+        direction = (
+            "classic to event-sourced" if right_es else "event-sourced to classic"
+        )
+        # The remaining checks compare two event-sourced snapshots. With the
+        # storage mode itself moving there is no like-for-like stream to ask
+        # about, and this change already says the rebuild is broken.
+        return [
+            CompatibilityChange(
+                severity="breaking",
+                element_fqn=fqn,
+                change_type="event_sourcing_changed",
+                message=(
+                    f"AGGREGATE '{fqn}' changed from {direction}; "
+                    f"existing state cannot be read the new way"
+                ),
             )
+        ]
+
+    return [
+        *_stream_hazards(fqn, left_aggregate, right_aggregate),
+        *_apply_handler_hazards(fqn, left_aggregate, right_aggregate, removed_events),
+        *_reservation_hazards(fqn, left_options, right_options),
+    ]
+
+
+def _stream_hazards(
+    fqn: str, left_aggregate: dict[str, Any], right_aggregate: dict[str, Any]
+) -> list[CompatibilityChange]:
+    """Return the stream category and identity field changes, in that order."""
+    hazards: list[CompatibilityChange] = []
+    left_category = left_aggregate.get("options", {}).get("stream_category")
+    right_category = right_aggregate.get("options", {}).get("stream_category")
+    if left_category != right_category:
+        hazards.append(
+            CompatibilityChange(
+                severity="breaking",
+                element_fqn=fqn,
+                change_type="stream_category_changed",
+                message=(
+                    f"Stream category changed for AGGREGATE '{fqn}': "
+                    f"'{left_category}' → '{right_category}'; existing "
+                    f"events stay under the old category"
+                ),
+            )
+        )
+
+    left_identity = left_aggregate.get("identity_field")
+    right_identity = right_aggregate.get("identity_field")
+    if left_identity != right_identity:
+        hazards.append(
+            CompatibilityChange(
+                severity="breaking",
+                element_fqn=fqn,
+                change_type="identity_field_changed",
+                message=(
+                    f"Identity field changed for AGGREGATE '{fqn}': "
+                    f"'{left_identity}' → '{right_identity}'; existing "
+                    f"events are keyed by the old field's value"
+                ),
+            )
+        )
+    return hazards
+
+
+def _apply_handler_hazards(
+    fqn: str,
+    left_aggregate: dict[str, Any],
+    right_aggregate: dict[str, Any],
+    removed_events: set[str],
+) -> list[CompatibilityChange]:
+    """Return one change per dropped ``@apply`` handler, in the old IR's order."""
+    right_apply_handlers = right_aggregate.get("apply_handlers", {})
+    # Not when this diff deleted the event itself. Removing an event
+    # class and its `@apply` method together is one act, and
+    # `element_removed` on the event is the report for it; a second
+    # entry here would say the same thing twice. Any other shape still
+    # reports, including a handler naming an event neither snapshot
+    # registers, where nothing else would.
+    return [
+        CompatibilityChange(
+            severity="breaking",
+            element_fqn=fqn,
+            change_type="apply_handler_removed",
+            message=(
+                f"AGGREGATE '{fqn}' dropped its @apply handler for "
+                f"'{event_fqn}'; stored events of that type stop "
+                f"the rebuild"
+            ),
+        )
+        for event_fqn in left_aggregate.get("apply_handlers", {})
+        if event_fqn not in right_apply_handlers and event_fqn not in removed_events
+    ]
+
+
+def _reservation_hazards(
+    fqn: str, left_options: dict[str, Any], right_options: dict[str, Any]
+) -> list[CompatibilityChange]:
+    """Return one change per name dropped from ``reserved``, sorted by name."""
+    # A name dropped from `reserved` takes back the field removal that
+    # declaration earned. Reported per name, so an aggregate that drops one
+    # reservation and keeps another names the one it dropped.
+    left_reserved = set(left_options.get("reserved") or ())
+    right_reserved = set(right_options.get("reserved") or ())
+    return [
+        CompatibilityChange(
+            severity="breaking",
+            element_fqn=fqn,
+            change_type="reservation_removed",
+            message=(
+                f"AGGREGATE '{fqn}' no longer reserves '{name}'; replay "
+                f"stops dropping an assignment to that name or a call "
+                f"to its add_/remove_ helper, which a retained @apply "
+                f"handler for a retired event can still make"
+            ),
+            field_name=name,
+        )
+        for name in sorted(left_reserved - right_reserved)
+    ]
 
 
 def _classify_clusters(
@@ -1571,25 +1702,7 @@ def _classify_clusters(
     report: CompatibilityReport,
     current_version: str | None = None,
 ) -> None:
-    for fqn in clusters_diff.get("added", {}):
-        report.safe_changes.append(
-            CompatibilityChange(
-                severity="safe",
-                element_fqn=fqn,
-                change_type="element_added",
-                message=f"AGGREGATE '{fqn}' was added",
-            )
-        )
-
-    for fqn in clusters_diff.get("removed", {}):
-        report.breaking_changes.append(
-            CompatibilityChange(
-                severity="breaking",
-                element_fqn=fqn,
-                change_type="element_removed",
-                message=f"AGGREGATE '{fqn}' was removed",
-            )
-        )
+    _classify_added_and_removed(clusters_diff, "AGGREGATE", report)
 
     for cluster_fqn, cluster_delta in clusters_diff.get("changed", {}).items():
         agg_delta = cluster_delta.get("aggregate", {})
@@ -1603,31 +1716,36 @@ def _classify_clusters(
             if not section_diff:
                 continue
             element_type = _SECTION_TO_ELEMENT_TYPE[section]
-
-            for fqn in section_diff.get("added", {}):
-                report.safe_changes.append(
-                    CompatibilityChange(
-                        severity="safe",
-                        element_fqn=fqn,
-                        change_type="element_added",
-                        message=f"{element_type} '{fqn}' was added",
-                    )
-                )
-
-            for fqn in section_diff.get("removed", {}):
-                report.breaking_changes.append(
-                    CompatibilityChange(
-                        severity="breaking",
-                        element_fqn=fqn,
-                        change_type="element_removed",
-                        message=f"{element_type} '{fqn}' was removed",
-                    )
-                )
-
+            _classify_added_and_removed(section_diff, element_type, report)
             for fqn, element_delta in section_diff.get("changed", {}).items():
                 _classify_element_delta(
                     element_delta, fqn, element_type, report, current_version
                 )
+
+
+def _classify_added_and_removed(
+    section_diff: dict[str, Any], element_type: str, report: CompatibilityReport
+) -> None:
+    """Record each added element as safe, then each removed one as breaking."""
+    for fqn in section_diff.get("added", {}):
+        report.safe_changes.append(
+            CompatibilityChange(
+                severity="safe",
+                element_fqn=fqn,
+                change_type="element_added",
+                message=f"{element_type} '{fqn}' was added",
+            )
+        )
+
+    for fqn in section_diff.get("removed", {}):
+        report.breaking_changes.append(
+            CompatibilityChange(
+                severity="breaking",
+                element_fqn=fqn,
+                change_type="element_removed",
+                message=f"{element_type} '{fqn}' was removed",
+            )
+        )
 
 
 def _classify_projections(
@@ -1733,225 +1851,211 @@ def _classify_field_changes(
     renames = _detect_field_renames(added, removed)
     renamed_new = set(renames.values())
     for old_name, new_name in renames.items():
-        old_type = removed[old_name].get("type")
-        new_type = added[new_name].get("type")
-        change = _field_change_kind(removed[old_name], added[new_name])
-        if change == "decimal_breaking":
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="field_type_changed",
-                    message=(
-                        f"Field '{old_name}' renamed to '{new_name}' with a "
-                        f"Decimal shape change "
-                        f"({_decimal_shape_delta(removed[old_name], added[new_name])})"
-                        f" in {element_type} '{fqn}'"
-                    ),
-                    field_name=old_name,
-                )
-            )
-        elif change == "content_type":
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="field_type_changed",
-                    message=(
-                        f"Field '{old_name}' renamed to '{new_name}' with a value "
-                        f"type change "
-                        f"{_content_type_delta(removed[old_name], added[new_name])}"
-                        f" in {element_type} '{fqn}'"
-                    ),
-                    field_name=old_name,
-                )
-            )
-        elif change == "type":
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="field_type_changed",
-                    message=(
-                        f"Field '{old_name}' renamed to '{new_name}' with a type "
-                        f"change from '{old_type}' to '{new_type}' in "
-                        f"{element_type} '{fqn}'"
-                    ),
-                    field_name=old_name,
-                )
-            )
-        else:
-            report.safe_changes.append(
-                CompatibilityChange(
-                    severity="safe",
-                    element_fqn=fqn,
-                    change_type="field_renamed",
-                    message=(
-                        f"Field '{old_name}' renamed to '{new_name}' in "
-                        f"{element_type} '{fqn}'"
-                    ),
-                    # Backward-safe via the emitted Avro ``aliases``; forward
-                    # safety depends on whether an old reader can fill the
-                    # now-absent old name (optional or defaulted).
-                    forward_safe=_removal_forward_safe(removed[old_name]),
-                )
-            )
-            if change == "decimal_widened":
-                report.safe_changes.append(
-                    _precision_widened_change(
-                        new_name, removed[old_name], added[new_name], fqn, element_type
-                    )
-                )
+        _classify_field_rename(
+            old_name,
+            new_name,
+            removed[old_name],
+            added[new_name],
+            fqn,
+            element_type,
+            report,
+        )
 
     for field_name, field_dict in added.items():
         if field_name in renamed_new:
             continue
-        if _is_breaking_addition(field_dict):
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="required_field_added",
-                    message=(
-                        f"Required field '{field_name}' added to {element_type} "
-                        f"'{fqn}' without a default value"
-                    ),
-                    field_name=field_name,
-                )
-            )
-        elif field_dict.get("required", False):
-            report.safe_changes.append(
-                CompatibilityChange(
-                    severity="safe",
-                    element_fqn=fqn,
-                    change_type="required_field_with_default_added",
-                    message=(
-                        f"Required field '{field_name}' added to {element_type} "
-                        f"'{fqn}' with a default value"
-                    ),
-                    # A *callable* default cannot be emitted as an Avro schema
-                    # default, so a new reader has no value for old data missing
-                    # the field — not backward-safe in that case.
-                    backward_safe=_has_static_default(field_dict),
-                )
-            )
-        else:
-            report.safe_changes.append(
-                CompatibilityChange(
-                    severity="safe",
-                    element_fqn=fqn,
-                    change_type="optional_field_added",
-                    message=(
-                        f"Optional field '{field_name}' added to {element_type} '{fqn}'"
-                    ),
-                )
-            )
+        _record_change(
+            report, _field_addition_change(field_name, field_dict, fqn, element_type)
+        )
 
     for field_name in removed:
         if field_name in renames:
             continue
-        # Deprecation-aware removal: a field deprecated and past its removal
-        # version is a safe (expected) removal. This applies to every
-        # persisted element, including internal and event-sourced events.
-        deprecated = removed[field_name].get("deprecated")
-        classification = _classify_removal(deprecated, current_version)
-        forward_safe = _removal_forward_safe(removed[field_name])
-        if classification == "expected_removal":
-            report.safe_changes.append(
-                CompatibilityChange(
-                    severity="safe",
-                    element_fqn=fqn,
-                    change_type="field_removed",
-                    message=(
-                        f"Field '{field_name}' removed from {element_type} '{fqn}' "
-                        f"(expected removal, deprecated since "
-                        f"v{deprecated['since']})"
-                    ),
-                    field_name=field_name,
-                    forward_safe=forward_safe,
-                )
-            )
-        else:
-            # Breaking (premature/unexpected). State the deprecation facts
-            # rather than asserting the removal is "before its removal version"
-            # — which cannot be known without a removal version and a
-            # current_version (which the `ir diff` CLI does not yet supply).
-            message = f"Field '{field_name}' removed from {element_type} '{fqn}'"
-            if deprecated:
-                removal = deprecated.get("removal")
-                if removal:
-                    message += (
-                        f" (deprecated since v{deprecated['since']}, "
-                        f"scheduled for removal in v{removal})"
-                    )
-                else:
-                    message += (
-                        f" (deprecated since v{deprecated['since']}, "
-                        f"no removal version set)"
-                    )
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="field_removed",
-                    message=message,
-                    field_name=field_name,
-                    forward_safe=forward_safe,
-                )
-            )
+        _record_change(
+            report,
+            _field_removal_change(
+                field_name, removed[field_name], fqn, element_type, current_version
+            ),
+        )
 
     for field_name, field_changes in fields_diff.get("changed", {}).items():
-        # The delta holds only the keys that differ; a key left out is equal on
-        # both sides, so comparing the delta alone gives the same answer as
-        # comparing the full fields.
-        left = {k: v.get("left") for k, v in field_changes.items()}
-        right = {k: v.get("right") for k, v in field_changes.items()}
-        change = _field_change_kind(left, right)
-        if change == "type":
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="field_type_changed",
-                    message=(
-                        f"Field '{field_name}' type changed from '{left['type']}' to "
-                        f"'{right['type']}' in {element_type} '{fqn}'"
-                    ),
-                    field_name=field_name,
-                )
+        change = _field_delta_change(field_name, field_changes, fqn, element_type)
+        if change is not None:
+            _record_change(report, change)
+
+
+def _record_change(report: CompatibilityReport, change: CompatibilityChange) -> None:
+    """Append *change* to the breaking or the safe list of *report*, by severity."""
+    if change.severity == "breaking":
+        report.breaking_changes.append(change)
+    else:
+        report.safe_changes.append(change)
+
+
+def _classify_field_rename(
+    old_name: str,
+    new_name: str,
+    old_field: dict[str, Any],
+    new_field: dict[str, Any],
+    fqn: str,
+    element_type: str,
+    report: CompatibilityReport,
+) -> None:
+    """Record a declared rename as breaking when its shape changed, else as safe."""
+    change = _field_change_kind(old_field, new_field)
+    detail = _rename_change_detail(change, old_field, new_field)
+    if detail is not None:
+        report.breaking_changes.append(
+            CompatibilityChange(
+                severity="breaking",
+                element_fqn=fqn,
+                change_type="field_type_changed",
+                message=(
+                    f"Field '{old_name}' renamed to '{new_name}' with a {detail} "
+                    f"in {element_type} '{fqn}'"
+                ),
+                field_name=old_name,
             )
-        elif change == "content_type":
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="field_type_changed",
-                    message=(
-                        f"Field '{field_name}' value type changed "
-                        f"{_content_type_delta(left, right)} "
-                        f"in {element_type} '{fqn}'"
-                    ),
-                    field_name=field_name,
-                )
+        )
+        return
+
+    report.safe_changes.append(
+        CompatibilityChange(
+            severity="safe",
+            element_fqn=fqn,
+            change_type="field_renamed",
+            message=(
+                f"Field '{old_name}' renamed to '{new_name}' in {element_type} '{fqn}'"
+            ),
+            # Backward-safe via the emitted Avro ``aliases``; forward
+            # safety depends on whether an old reader can fill the
+            # now-absent old name (optional or defaulted).
+            forward_safe=_removal_forward_safe(old_field),
+        )
+    )
+    if change == "decimal_widened":
+        report.safe_changes.append(
+            _precision_widened_change(new_name, old_field, new_field, fqn, element_type)
+        )
+
+
+def _field_addition_change(
+    field_name: str, field_dict: dict[str, Any], fqn: str, element_type: str
+) -> CompatibilityChange:
+    """Rate an added field: breaking when required with no default, else safe."""
+    if _is_breaking_addition(field_dict):
+        return CompatibilityChange(
+            severity="breaking",
+            element_fqn=fqn,
+            change_type="required_field_added",
+            message=(
+                f"Required field '{field_name}' added to {element_type} "
+                f"'{fqn}' without a default value"
+            ),
+            field_name=field_name,
+        )
+    if field_dict.get("required", False):
+        return CompatibilityChange(
+            severity="safe",
+            element_fqn=fqn,
+            change_type="required_field_with_default_added",
+            message=(
+                f"Required field '{field_name}' added to {element_type} "
+                f"'{fqn}' with a default value"
+            ),
+            # A default Avro cannot emit (a callable, or a Decimal the Avro
+            # decimal type cannot hold) leaves a new reader no value for old
+            # data missing the field, so the change is not backward-safe.
+            backward_safe=_has_static_default(field_dict),
+        )
+    return CompatibilityChange(
+        severity="safe",
+        element_fqn=fqn,
+        change_type="optional_field_added",
+        message=f"Optional field '{field_name}' added to {element_type} '{fqn}'",
+    )
+
+
+def _field_removal_change(
+    field_name: str,
+    old_field: dict[str, Any],
+    fqn: str,
+    element_type: str,
+    current_version: str | None,
+) -> CompatibilityChange:
+    """Rate a removed field by its deprecation status."""
+    # Deprecation-aware removal: a field deprecated and past its removal
+    # version is a safe (expected) removal. This applies to every
+    # persisted element, including internal and event-sourced events.
+    deprecated: Any = old_field.get("deprecated")
+    classification = _classify_removal(deprecated, current_version)
+    forward_safe = _removal_forward_safe(old_field)
+    if classification == "expected_removal":
+        return CompatibilityChange(
+            severity="safe",
+            element_fqn=fqn,
+            change_type="field_removed",
+            message=(
+                f"Field '{field_name}' removed from {element_type} '{fqn}' "
+                f"(expected removal, deprecated since "
+                f"v{deprecated['since']})"
+            ),
+            field_name=field_name,
+            forward_safe=forward_safe,
+        )
+
+    # Breaking (premature/unexpected). State the deprecation facts
+    # rather than asserting the removal is "before its removal version"
+    # — which cannot be known without a removal version and a
+    # current_version (which the `ir diff` CLI does not yet supply).
+    message = f"Field '{field_name}' removed from {element_type} '{fqn}'"
+    if deprecated:
+        removal = deprecated.get("removal")
+        if removal:
+            message += (
+                f" (deprecated since v{deprecated['since']}, "
+                f"scheduled for removal in v{removal})"
             )
-        elif change == "decimal_widened":
-            report.safe_changes.append(
-                _precision_widened_change(field_name, left, right, fqn, element_type)
+        else:
+            message += (
+                f" (deprecated since v{deprecated['since']}, no removal version set)"
             )
-        elif change == "decimal_breaking":
-            report.breaking_changes.append(
-                CompatibilityChange(
-                    severity="breaking",
-                    element_fqn=fqn,
-                    change_type="field_type_changed",
-                    message=(
-                        f"Field '{field_name}' Decimal shape changed "
-                        f"({_decimal_shape_delta(left, right)}) "
-                        f"in {element_type} '{fqn}'"
-                    ),
-                    field_name=field_name,
-                )
-            )
+    return CompatibilityChange(
+        severity="breaking",
+        element_fqn=fqn,
+        change_type="field_removed",
+        message=message,
+        field_name=field_name,
+        forward_safe=forward_safe,
+    )
+
+
+def _field_delta_change(
+    field_name: str, field_changes: dict[str, Any], fqn: str, element_type: str
+) -> CompatibilityChange | None:
+    """Rate a changed field from its attribute delta.
+
+    Returns a breaking change, a safe change for a widened Decimal, or
+    ``None`` when the delta needs no entry in the report.
+    """
+    # The delta holds only the keys that differ; a key left out is equal on
+    # both sides, so comparing the delta alone gives the same answer as
+    # comparing the full fields.
+    left = {k: v.get("left") for k, v in field_changes.items()}
+    right = {k: v.get("right") for k, v in field_changes.items()}
+    change = _field_change_kind(left, right)
+    if change == "decimal_widened":
+        return _precision_widened_change(field_name, left, right, fqn, element_type)
+    detail = _field_change_detail(change, left, right)
+    if detail is None:
+        return None
+    return CompatibilityChange(
+        severity="breaking",
+        element_fqn=fqn,
+        change_type="field_type_changed",
+        message=f"Field '{field_name}' {detail} in {element_type} '{fqn}'",
+        field_name=field_name,
+    )
 
 
 def _field_change_kind(left: dict[str, Any], right: dict[str, Any]) -> str | None:

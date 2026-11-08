@@ -117,24 +117,11 @@ def load_config(protean_dir: Path | str = ".protean") -> CompatConfig:
 
 def _parse_config(data: dict[str, Any]) -> CompatConfig:
     """Build a ``CompatConfig`` from parsed TOML data."""
-    compat = data.get("compatibility", {})
-    if not isinstance(compat, dict):
-        raise ValueError(
-            "compatibility must be a TOML table, not " + type(compat).__name__
-        )
-
-    staleness = data.get("staleness", {})
-    if not isinstance(staleness, dict):
-        raise ValueError(
-            "staleness must be a TOML table, not " + type(staleness).__name__
-        )
-
-    deprecation = compat.get("deprecation", {})
-    if not isinstance(deprecation, dict):
-        raise ValueError(
-            "compatibility.deprecation must be a TOML table, not "
-            + type(deprecation).__name__
-        )
+    compat = _require_table(data.get("compatibility", {}), "compatibility")
+    staleness = _require_table(data.get("staleness", {}), "staleness")
+    deprecation = _require_table(
+        compat.get("deprecation", {}), "compatibility.deprecation"
+    )
 
     kwargs: dict[str, Any] = {}
 
@@ -142,41 +129,57 @@ def _parse_config(data: dict[str, Any]) -> CompatConfig:
         kwargs["strictness"] = compat["strictness"]
 
     if "exclude" in compat:
-        exclude = compat["exclude"]
-        if not isinstance(exclude, list) or not all(
-            isinstance(e, str) for e in exclude
-        ):
-            raise ValueError("compatibility.exclude must be a list of strings")
-        kwargs["exclude"] = tuple(exclude)
+        kwargs["exclude"] = _parse_exclude(compat["exclude"])
 
     if "min_versions_before_removal" in deprecation:
-        val = deprecation["min_versions_before_removal"]
-        if not isinstance(val, int) or val < 1:
-            raise ValueError(
-                "compatibility.deprecation.min_versions_before_removal "
-                "must be a positive integer"
-            )
-        kwargs["min_versions_before_removal"] = val
+        kwargs["min_versions_before_removal"] = _parse_min_versions(
+            deprecation["min_versions_before_removal"]
+        )
 
     if "enabled" in staleness:
-        val = staleness["enabled"]
-        if not isinstance(val, bool):
-            raise ValueError("staleness.enabled must be a boolean")
-        kwargs["staleness_enabled"] = val
+        kwargs["staleness_enabled"] = _parse_staleness_enabled(staleness["enabled"])
 
     # Parse [domains] section — maps logical names to module paths
-    domains_raw = data.get("domains", {})
-    if not isinstance(domains_raw, dict):
-        raise ValueError(
-            "domains must be a TOML table, not " + type(domains_raw).__name__
-        )
-    if domains_raw:
-        if not all(
-            isinstance(k, str) and isinstance(v, str) for k, v in domains_raw.items()
-        ):
-            raise ValueError(
-                'domains entries must be string key-value pairs (name = "module.path")'
-            )
-        kwargs["domains"] = dict(domains_raw)
+    domains = _parse_domains(data.get("domains", {}))
+    if domains:
+        kwargs["domains"] = domains
 
     return CompatConfig(**kwargs)
+
+
+def _require_table(value: Any, name: str) -> dict[str, Any]:
+    """Return *value* if it is a TOML table, else raise ``ValueError``."""
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} must be a TOML table, not " + type(value).__name__)
+    return value
+
+
+def _parse_exclude(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(e, str) for e in value):
+        raise ValueError("compatibility.exclude must be a list of strings")
+    return tuple(value)
+
+
+def _parse_min_versions(value: Any) -> int:
+    if not isinstance(value, int) or value < 1:
+        raise ValueError(
+            "compatibility.deprecation.min_versions_before_removal "
+            "must be a positive integer"
+        )
+    return value
+
+
+def _parse_staleness_enabled(value: Any) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError("staleness.enabled must be a boolean")
+    return value
+
+
+def _parse_domains(value: Any) -> dict[str, str]:
+    """Return a copy of the ``[domains]`` table, or raise ``ValueError``."""
+    domains = _require_table(value, "domains")
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in domains.items()):
+        raise ValueError(
+            'domains entries must be string key-value pairs (name = "module.path")'
+        )
+    return dict(domains)

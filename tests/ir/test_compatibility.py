@@ -264,6 +264,40 @@ class TestClassifyClusterAddedRemoved:
         assert "app.Order" in breaking_fqns
         assert "app.Product" in safe_fqns
 
+    def test_added_and_removed_cluster_messages_name_the_aggregate(self):
+        left = _minimal_ir(clusters={"app.Order": _make_cluster("Order")})
+        right = _minimal_ir(clusters={"app.Product": _make_cluster("Product")})
+        report = _run(left, right)
+        assert [c.message for c in report.safe_changes] == [
+            "AGGREGATE 'app.Product' was added"
+        ]
+        assert [c.message for c in report.breaking_changes] == [
+            "AGGREGATE 'app.Order' was removed"
+        ]
+
+    def test_added_and_removed_cluster_element_messages_name_the_element_type(self):
+        cancel = _make_command("CancelOrder", "app.CancelOrder")
+        place = _make_command("PlaceOrder", "app.PlaceOrder")
+        left = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster("Order", commands={"app.PlaceOrder": place})
+            }
+        )
+        right = _minimal_ir(
+            clusters={
+                "app.Order": _make_cluster(
+                    "Order", commands={"app.CancelOrder": cancel}
+                )
+            }
+        )
+        report = _run(left, right)
+        assert [c.message for c in report.safe_changes] == [
+            "COMMAND 'app.CancelOrder' was added"
+        ]
+        assert [c.message for c in report.breaking_changes] == [
+            "COMMAND 'app.PlaceOrder' was removed"
+        ]
+
 
 # ------------------------------------------------------------------
 # Aggregate field changes
