@@ -19,15 +19,15 @@ therefore stays read-only in practice, and no one can use it as a shared
 artifact. #1338 adds a layer that keeps human notes outside the generated
 output and merges them back in on render.
 
-The notes go in a file that people commit and hand-edit, so the file's shape is
-a contract. ADR-0030 records the generated project layout for the same reason.
+The notes live in a file that people commit and hand-edit, so the file's shape
+is a contract. ADR-0030 records the generated project layout for the same reason.
 The renderer code that reads the file ships in #1338. This ADR records the
 file's shape, so a reviewer of that code, or of a project's committed notes,
 has a fixed reference to check against.
 
 ## Decision
 
-Human annotations for the event model go in `.protean/annotations.toml`, a TOML
+Human annotations for the event model live in `.protean/annotations.toml`, a TOML
 file keyed by element FQN.
 
 **Location.** The file sits in `.protean/`, the project-state directory that already

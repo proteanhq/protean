@@ -98,7 +98,7 @@ The rules that make this a contract, not a suggestion:
    `Domain` instance. Its directory is the discovery root. One `Domain` is one bounded
    context is one IR document (ADR-0003).
 
-2. **Config sits at the domain root**: `domain.toml` is next to `domain.py` in
+2. **Config sits at the domain root**: `domain.toml` lives next to `domain.py` in
    `src/<package>/`, where `load_from_path` finds it first.
 
 3. **Element modules live at most one directory below the domain root, one

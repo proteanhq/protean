@@ -45,8 +45,8 @@ Make synchronous dispatch **breadth-first** using a chain-scoped FIFO queue
    `(event, handler)` pairs and calls the drain. Only the *outermost* drain runs;
    a nested call (a handler's own commit re-entering) returns immediately, and
    the events it enqueued are processed by the outer drain. The queue and the
-   re-entrancy flag are stored on the domain-context `g`, so they survive
-   nested UnitOfWork commits and re-entrant `process()` calls.
+   re-entrancy flag live on the domain-context `g`, so they survive nested
+   UnitOfWork commits and re-entrant `process()` calls.
 
 2. **Each handler commits before the next runs**: The drain processes the queue
    in FIFO order, so a process manager's transition for the current step is

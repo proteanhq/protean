@@ -25,10 +25,9 @@ that from happening.
 
 ## Decision
 
-The manifest is stored at `.protean/project.json`, in the same directory as
-`ir.json` and `config.toml`. It is written by
-`protean.scaffold.manifest.write_manifest`, which `protean new` calls after the
-template is copied. The manifest writer is the first
+The manifest lives at `.protean/project.json`, a sibling of `ir.json` and
+`config.toml`. It is written by `protean.scaffold.manifest.write_manifest`, which
+`protean new` calls after the template is copied. The manifest writer is the first
 thing to create `.protean/`, and it does not touch a pre-existing `config.toml` or
 `ir.json`. `--dry-run` writes nothing.
 
