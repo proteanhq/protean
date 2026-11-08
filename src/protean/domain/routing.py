@@ -1,4 +1,4 @@
-"""Route messages to the handlers and projectors registered on a domain."""
+"""Find the handlers registered for a message, and the projectors for a projection."""
 
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class MessageRouter:
-    """Look up the handlers, projectors and process managers for a message.
+    """Find the handlers registered for a message, and the projectors for a projection.
 
     The router builds its lookup tables from the registry once, at
     construction. A router built without a registry has empty tables:
@@ -74,7 +74,7 @@ class MessageRouter:
 
         stream_category = _stream_category_of(event)
         if stream_category is None:
-            # Slow path: external event (no part_of) — scan all registered
+            # Slow path: an external event has no part_of, so scan all registered
             # stream categories for handlers that match the event's __type__.
             return set.union(_external_event_handlers(self, event), all_stream_handlers)
 
@@ -91,13 +91,10 @@ class MessageRouter:
         return set.union(configured_stream_handlers, all_stream_handlers)
 
     def projectors_for(self, projection_cls: "type[BaseProjection]") -> set[Any]:
-        """Return Projectors listening to a specific projection
+        """Return the projector classes registered for the projection.
 
-        Args:
-            projection_cls (type[BaseProjection]): Projection to be consumed
-
-        Returns:
-            List[BaseProjector]: Projectors that have registered to consume the projection
+        The returned set is the router's own table entry; callers must not
+        change it.
         """
         return self._projectors.get(fqn(projection_cls), set())
 

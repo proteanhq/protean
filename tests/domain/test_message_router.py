@@ -190,7 +190,7 @@ class TestEventRouting:
 
         router = test_domain._router
         assert router.handlers_for(Registered()) == {UserEventHandler, OnboardingPM}
-        assert OnboardingPM not in router.handlers_for(Sent())
+        assert router.handlers_for(Sent()) == {EmailEventHandler}
 
     def test_domain_handlers_for_reads_the_router(self, test_domain):
         test_domain.register(UserMetrics, part_of=User)
@@ -275,6 +275,22 @@ class TestReinitialization:
         assert after.handlers_for(Registered()) == {UserEventHandler, UserMetrics}
         # The old router was not changed in place.
         assert before.handlers_for(Registered()) == {UserEventHandler}
+
+    def test_reinit_drops_a_route_that_left_the_registry(self, test_domain):
+        test_domain.register(UserMetrics, part_of=User)
+        test_domain.init(traverse=False)
+        assert test_domain.handlers_for(Registered()) == {
+            UserEventHandler,
+            UserMetrics,
+        }
+
+        test_domain.registry._reset()
+        test_domain.register(User, event_sourced=True)
+        test_domain.register(Registered, part_of=User)
+        test_domain.register(UserEventHandler, part_of=User)
+        test_domain.init(traverse=False)
+
+        assert test_domain.handlers_for(Registered()) == {UserEventHandler}
 
 
 class TestEventSourcedRepository:
