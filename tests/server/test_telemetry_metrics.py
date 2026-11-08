@@ -881,6 +881,22 @@ class TestGaugeCallbacks:
             200
         ]
 
+    def test_broker_gauges_report_zero_without_a_default_broker(
+        self, test_domain, telemetry
+    ):
+        _, metric_reader = telemetry
+        del test_domain.brokers["default"]
+
+        data = _register_gauges_and_collect(test_domain, metric_reader)
+
+        for name in (
+            "protean_broker_up",
+            "protean_broker_memory_bytes",
+            "protean_broker_connected_clients",
+            "protean_broker_ops_per_sec",
+        ):
+            assert [p.value for p in _points_in(data, name)] == [0]
+
     def test_broker_gauges_report_zero_when_health_check_raises(
         self, test_domain, telemetry, monkeypatch
     ):

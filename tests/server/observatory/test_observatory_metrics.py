@@ -423,6 +423,44 @@ class TestMetricsErrorPaths:
         assert "protean_outbox_pending_count" in body
         assert "protean_broker_up" not in body
 
+    def test_metrics_when_subscription_collection_fails(
+        self, test_domain, monkeypatch, caplog
+    ):
+        """A failing subscription collection drops only the subscription section."""
+        monkeypatch.setattr(metrics, "_collect_subscription_statuses", _fail)
+        client = TestClient(Observatory(domains=[test_domain]).app)
+
+        with caplog.at_level(logging.DEBUG, logger=metrics.__name__):
+            response = client.get("/metrics")
+
+        assert response.status_code == 200
+        assert "protean_outbox_pending_count{" in response.text
+        assert "protean_subscription_" not in response.text
+        assert "Metrics: subscription status failed: collection failed" in (
+            caplog.messages
+        )
+
+    def test_metrics_when_broker_pool_collection_fails(
+        self, test_domain, monkeypatch, caplog
+    ):
+        """A failing broker pool collection drops only the broker pool section."""
+        monkeypatch.setattr(metrics, "_collect_broker_pool_stats", _fail)
+        client = TestClient(Observatory(domains=[test_domain]).app)
+
+        with caplog.at_level(logging.DEBUG, logger=metrics.__name__):
+            response = client.get("/metrics")
+
+        assert response.status_code == 200
+        assert "protean_outbox_pending_count{" in response.text
+        assert "protean_broker_pool_active_connections" not in response.text
+        assert "Metrics: broker pool stats failed: collection failed" in (
+            caplog.messages
+        )
+
+
+def _fail(domains):
+    raise RuntimeError("collection failed")
+
 
 # --- The full hand-rolled text, with every section holding rows ---
 #
@@ -538,11 +576,16 @@ def _fake_redis_with_consumers():
         "not-a-dict",
         {"name": ""},
     ]
-    fake.xinfo_consumers.return_value = [
-        {"name": "worker-1", "pending": 4, "idle": 1500},
-        {b"name": b"worker-2", b"pending": None, b"idle": 0},
-        "not-a-dict",
-    ]
+    consumers = {
+        ("orders::order", "OrderHandler"): [
+            {"name": "worker-1", "pending": 4, "idle": 1500},
+            {b"name": b"worker-2", b"pending": None, b"idle": 0},
+            "not-a-dict",
+        ]
+    }
+    fake.xinfo_consumers.side_effect = lambda name, group: consumers.get(
+        (name, group), []
+    )
     fake.connection_pool = redis.ConnectionPool()
     return fake
 
@@ -582,19 +625,24 @@ def full_text_client(test_domain, monkeypatch):
         ("default", "POSTGRESQL", {"size": 5, "checked_out": 2, "overflow": 1}),
     ]
     broker_pools = [("default", 3, 2, 10)]
+    # Each fake returns rows only for the domains the Observatory serves.
     monkeypatch.setattr(
         metrics,
         "_collect_subscription_statuses",
-        lambda domains: [(test_domain, s) for s in subscriptions],
+        lambda domains: [(d, s) for d in domains for s in subscriptions],
     )
     monkeypatch.setattr(
         metrics,
         "_collect_projection_statuses",
-        lambda domains: [(test_domain, p) for p in projections],
+        lambda domains: [(d, p) for d in domains for p in projections],
     )
-    monkeypatch.setattr(metrics, "_collect_pool_stats", lambda domains: pools)
     monkeypatch.setattr(
-        metrics, "_collect_broker_pool_stats", lambda domains: broker_pools
+        metrics, "_collect_pool_stats", lambda domains: pools if domains else []
+    )
+    monkeypatch.setattr(
+        metrics,
+        "_collect_broker_pool_stats",
+        lambda domains: broker_pools if domains else [],
     )
     return TestClient(Observatory(domains=[test_domain]).app)
 
@@ -604,3 +652,30 @@ def test_hand_rolled_metrics_full_text(full_text_client):
 
     assert response.status_code == 200
     assert response.text.split("\n") == [*FULL_TEXT_LINES, ""]
+
+
+# --- The shared pool collectors read the domain's own adapters ---
+
+
+def test_pool_stats_list_each_provider_that_reports_a_pool(test_domain, monkeypatch):
+    provider = test_domain.providers["default"]
+    monkeypatch.setattr(provider, "pool_stats", lambda: {"size": 5, "checked_out": 2})
+
+    assert metrics._collect_pool_stats([test_domain]) == [
+        ("default", provider.__database__, {"size": 5, "checked_out": 2})
+    ]
+
+
+def test_pool_stats_skip_a_provider_without_a_pool(test_domain):
+    assert metrics._collect_pool_stats([test_domain]) == []
+
+
+def test_broker_pool_stats_read_the_redis_connection_pool(test_domain, monkeypatch):
+    pool = redis.ConnectionPool(max_connections=10)
+    pool._created_connections = 3
+    pool._available_connections = [object()]
+    fake = MagicMock()
+    fake.connection_pool = pool
+    monkeypatch.setattr(test_domain.brokers["default"], "redis_instance", fake)
+
+    assert metrics._collect_broker_pool_stats([test_domain]) == [("default", 2, 1, 10)]

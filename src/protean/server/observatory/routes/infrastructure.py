@@ -46,24 +46,34 @@ def sanitize_config(config: Any) -> Any:
     - Keys containing 'password', 'secret', 'token' are replaced with '***'
     """
     if isinstance(config, dict):
-        sanitized: dict[str, Any] = {}
-        for key, value in config.items():
-            lower_key = str(key).lower()
-            if any(s in lower_key for s in ("password", "secret", "token", "api_key")):
-                sanitized[key] = "***"
-            else:
-                sanitized[key] = sanitize_config(value)
-        return sanitized
+        return _sanitize_mapping(config)
     elif isinstance(config, str):
-        match = _URI_PATTERN.match(config)
-        if match:
-            scheme, _creds, host_path = match.groups()
-            return f"{scheme}***@{host_path}" if _creds else config
-        return config
+        return _mask_uri_credentials(config)
     elif isinstance(config, (list, tuple)):
         return [sanitize_config(item) for item in config]
     else:
         return config
+
+
+def _sanitize_mapping(config: dict[Any, Any]) -> dict[str, Any]:
+    """Mask the values of sensitive keys and sanitize the rest recursively."""
+    sanitized: dict[str, Any] = {}
+    for key, value in config.items():
+        lower_key = str(key).lower()
+        if any(s in lower_key for s in ("password", "secret", "token", "api_key")):
+            sanitized[key] = "***"
+        else:
+            sanitized[key] = sanitize_config(value)
+    return sanitized
+
+
+def _mask_uri_credentials(value: str) -> str:
+    """Replace the credentials of a URI with ``***``, or return *value* unchanged."""
+    match = _URI_PATTERN.match(value)
+    if match:
+        scheme, _creds, host_path = match.groups()
+        return f"{scheme}***@{host_path}" if _creds else value
+    return value
 
 
 def _server_info(domains: list[Domain]) -> dict[str, Any]:
