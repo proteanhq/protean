@@ -10,9 +10,12 @@ OTel-generated Prometheus text (via ``PrometheusMetricReader``) combined with
 infrastructure gauges registered as ``ObservableGauge`` callbacks.
 
 When OTel is not installed (or telemetry is disabled), the endpoint falls back
-to a hand-rolled text format. The fallback emits the same infrastructure
-gauges, plus the stream and per-consumer gauges that the OTel path does not
-register. It emits none of the OTel counters and histograms.
+to a hand-rolled text format. The fallback emits the outbox, broker,
+subscription, pool and projection gauges, plus the stream and per-consumer
+gauges that the OTel path does not register. It emits none of the OTel
+counters and histograms. When the domain has no default broker, or the
+broker's health check raises, the fallback leaves out the broker, stream and
+per-consumer gauges, and the OTel broker callbacks observe 0.
 
 **Naming convention:**
 
@@ -84,8 +87,9 @@ class _ScrapeCache:
 
     OTEL observable gauge callbacks fire sequentially during a single
     Prometheus scrape.  Without caching, each callback independently
-    calls the same collection helper. For example, each subscription gauge
-    callback would query ``_collect_subscription_statuses()`` again.
+    runs the same collection. For example, each subscription gauge
+    callback would call ``collect_subscription_statuses()`` for every
+    domain again.
 
     This cache stores the result for ``ttl_seconds`` (default 2 s) so
     all callbacks in the same scrape share one collection.

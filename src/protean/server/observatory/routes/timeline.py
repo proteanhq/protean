@@ -266,10 +266,7 @@ def _timeline_messages(
 
 
 def _read_timeline_messages(domains: list[Domain]) -> list[tuple[dict[str, Any], str]]:
-    """Read ``(raw_msg, domain_name)`` pairs from every unique event store.
-
-    A store that fails keeps the messages read from it before the failure.
-    """
+    """Read ``(raw_msg, domain_name)`` pairs from every unique event store."""
     all_events: list[tuple[dict[str, Any], str]] = []
 
     for domain in _unique_store_domains(domains):
