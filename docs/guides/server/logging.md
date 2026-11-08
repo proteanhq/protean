@@ -93,7 +93,7 @@ JSON:
 }
 ```
 
-When a handler fails, Protean sets the level to `error`, sets `status` to
+When a handler fails, Protean sets the level to `error` and `status` to
 `"failed"`, and keeps the traceback:
 
 ```json
