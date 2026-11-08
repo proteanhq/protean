@@ -9,3 +9,9 @@ concrete adapter configuration.
 ::: protean.port.cache.BaseCache
     options:
       show_root_heading: false
+
+## CacheCapabilities
+
+::: protean.port.cache.CacheCapabilities
+    options:
+      show_root_heading: false

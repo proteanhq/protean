@@ -50,8 +50,9 @@ for a complete guide with a worked Kafka example, including:
 ## Event Store and Cache Adapters
 
 Event store adapters extend `BaseEventStore` and implement stream write/read
-operations. Cache adapters extend `BaseCache` and implement key-value
-operations with TTL support. These follow the same entry-point registration
+operations. Cache adapters extend `BaseCache`, implement key-value
+operations with TTL support, and declare their capabilities through
+`CacheCapabilities`. These follow the same entry-point registration
 pattern as database and broker adapters.
 
 ## Conformance Testing
