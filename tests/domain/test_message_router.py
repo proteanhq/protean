@@ -242,6 +242,8 @@ class TestCommandRouting:
 
 class TestEmptyRouter:
     def test_router_without_registry_has_no_routes(self, test_domain):
+        # Messages need a `__type__` to be constructed; `init()` is not called.
+        test_domain._set_and_record_event_and_command_type()
         router = MessageRouter()
 
         assert router.handlers_for(Registered()) == set()
@@ -256,6 +258,8 @@ class TestEmptyRouter:
         domain.register(Register, part_of=User)
         domain.register(UserEventHandler, part_of=User)
         domain.register(UserCommandHandler, part_of=User)
+        # Messages need a `__type__` to be constructed; `init()` is not called.
+        domain._set_and_record_event_and_command_type()
 
         assert domain._router.handlers_for(Registered()) == set()
         assert domain._router.command_handler_for(Register()) is None
