@@ -55,10 +55,10 @@ A Unit of Work holds one instance of each aggregate for the whole transaction.
 
   *Amended (October 2026): a state-based aggregate's events also commit only
   once `add()` has saved it in the transaction. Only `add()` saves its field
-  changes. For an aggregate read but never passed to `add()`, Protean stored
-  each event without the state change that the event records. At commit, the
-  Unit of Work does not save events raised on an aggregate that was only read,
-  and it gives no warning. The first version of this decision kept the earlier
+  changes. Under the earlier rule, Protean stored the events of an aggregate
+  that was only read, without the state change each event records. At commit,
+  the Unit of Work does not save events raised on an aggregate that was only
+  read, and it gives no warning. The first version of this decision kept the earlier
   rule, under which a state-based aggregate's events committed once it
   was read.*
 - A read through a DAO set to work outside the Unit of Work (`outside_uow()`)
