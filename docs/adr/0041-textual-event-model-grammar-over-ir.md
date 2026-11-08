@@ -197,8 +197,8 @@ when omitted, the generator derives a default projection that mirrors the event'
 fields (the `<slug>_id` becoming the `Identifier` key) and a projector that consumes
 the event, so a write-side-only model still passes `protean verify`. The derived-code
 mechanics (the command handler, the generation-gap seam of ADR-0035,
-`Meta.stream_name`, and the per-field declaration forms the generator writes) are
-#1472's contract, gated by that verify.
+`Meta.stream_name`, and the per-field declaration forms the generator writes)
+are #1472's contract, gated by that verify.
 
 ### The vocabulary map
 
@@ -230,7 +230,7 @@ flag). Automations and multi-slice models are a later grammar.
 The grammar stays aligned with the renderer's vocabulary through a structural round
 trip, run as a build-time test, with no live sync between the two.
 
-#1471 adds an **emitter** that reads a full IR and a cluster FQN, resolving the
+Issue #1471 adds an **emitter** that reads a full IR and a cluster FQN, resolving the
 slice's read side through the top-level `projections` map, and produces grammar text
 for the covered subset: the participants' names, their authored fields, and the
 wiring (`for`, `consumes`). Parsing that text produces an IR fragment. The

@@ -274,7 +274,7 @@ residual is at-least-once re-execution of the one in-flight event, which is the
 universal delivery caveat, not an ordering break. An ordering guarantee whose
 correctness depends on processing time staying under a timeout is not acceptable.
 
-#831 must implement the full ownership layer (lease with generation, the
+Issue #831 must implement the full ownership layer (lease with generation, the
 lease-checked read/ack guard, and `XCLAIM`-based reclaim). We are not shipping a
 single-instance-only interim: a guarantee that holds only until you add a second
 instance is a guarantee that fails the first time it matters, and ADR-0009 deferred
@@ -335,8 +335,8 @@ broker in tests.
 
 ## Mapping each guarantee to the test #831 must pass
 
-#831 closes on a two-instance Redis integration test whose assertions map to the
-guarantees above. With two engine instances running one handler declared
+Issue #831 closes on a two-instance Redis integration test whose assertions map
+to the guarantees above. With two engine instances running one handler declared
 `sequential_by="client_id"`, and interleaved events published for at least two
 keys (`client-A`, `client-B`):
 

@@ -6,10 +6,10 @@
 
 ## Context
 
-The event-model renderer (`protean docs generate --type=event-model`, added under
-#1442) draws the domain as an EventModeling slice timeline: one slice per aggregate
-cluster, each reading command -> aggregate -> event -> consumer. Each node
-stands for a domain element. The IR identifies every element by its
+The event-model renderer (`protean docs generate --type=event-model`, added
+under #1442) draws the domain as an EventModeling slice timeline: one slice per
+aggregate cluster, each reading command -> aggregate -> event -> consumer. Each
+node stands for a domain element. The IR identifies every element by its
 fully-qualified name (FQN).
 
 The render carries structure. It does not carry the business context a person adds:
