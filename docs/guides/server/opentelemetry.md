@@ -384,9 +384,9 @@ is installed:
 
 When OTel is **not** enabled, the endpoint falls back to the original
 hand-rolled Prometheus implementation. It serves the same infrastructure
-gauges, plus stream totals and per-consumer gauges that the OTel path does not
-register, and none of the OTel counters and histograms. No configuration
-change is needed. The convergence is automatic.
+gauges. It also serves the stream and per-consumer gauges, which the OTel path
+does not register. It serves none of the OTel counters and histograms. No
+configuration change is needed. The convergence is automatic.
 
 ---
 

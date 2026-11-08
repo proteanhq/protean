@@ -465,9 +465,10 @@ def _fail(domains):
 # --- The full hand-rolled text, with every section holding rows ---
 #
 # The test domain runs without OpenTelemetry, so /metrics serves the
-# hand-rolled text. The fixture fakes the raw Redis client and the shared
-# collectors so that every section has rows with known values, and the test
-# compares the whole body, line order included.
+# hand-rolled text. The fixture fakes the raw Redis client, the broker's
+# health details and the shared collectors so that every section has rows
+# with known, distinct values, and the test compares the whole body, line
+# order included.
 
 
 FULL_TEXT_LINES = [
@@ -489,23 +490,23 @@ FULL_TEXT_LINES = [
     "",
     "# HELP protean_broker_ops_per_sec Broker operations per second",
     "# TYPE protean_broker_ops_per_sec gauge",
-    "protean_broker_ops_per_sec 0",
+    "protean_broker_ops_per_sec 9",
     "",
     "# HELP protean_stream_messages_total Total messages in streams",
     "# TYPE protean_stream_messages_total gauge",
-    "protean_stream_messages_total 0",
+    "protean_stream_messages_total 11",
     "",
     "# HELP protean_stream_pending Pending (in-flight) messages",
     "# TYPE protean_stream_pending gauge",
-    "protean_stream_pending 0",
+    "protean_stream_pending 6",
     "",
     "# HELP protean_streams_count Number of active streams",
     "# TYPE protean_streams_count gauge",
-    "protean_streams_count 0",
+    "protean_streams_count 1",
     "",
     "# HELP protean_consumer_groups_count Number of consumer groups",
     "# TYPE protean_consumer_groups_count gauge",
-    "protean_consumer_groups_count 0",
+    "protean_consumer_groups_count 2",
     "",
     "# HELP protean_subscription_consumer_lag Messages behind stream head",
     "# TYPE protean_subscription_consumer_lag gauge",
@@ -558,7 +559,7 @@ FULL_TEXT_LINES = [
     'protean_db_pool_size{provider_name="default",database_type="POSTGRESQL"} 5',
     'protean_db_pool_checked_out{provider_name="default",database_type="POSTGRESQL"} 2',
     'protean_db_pool_overflow{provider_name="default",database_type="POSTGRESQL"} 1',
-    'protean_db_pool_checked_in{provider_name="default",database_type="POSTGRESQL"} 0',
+    'protean_db_pool_checked_in{provider_name="default",database_type="POSTGRESQL"} 4',
     "",
     "# HELP protean_broker_pool_active_connections Active broker pool connections",
     "# TYPE protean_broker_pool_active_connections gauge",
@@ -566,10 +567,20 @@ FULL_TEXT_LINES = [
 ]
 
 
+HEALTH_DETAILS = {
+    "healthy": True,
+    "used_memory": 2048,
+    "connected_clients": 3,
+    "instantaneous_ops_per_sec": 9,
+    "message_counts": {"total_messages": 11, "in_flight": 6},
+    "streams": {"count": 1},
+    "consumer_groups": {"count": 2},
+}
+
+
 def _fake_redis_with_consumers():
     fake = MagicMock()
     fake.ping.return_value = True
-    fake.info.return_value = {"used_memory": 2048, "connected_clients": 3}
     fake.scan.return_value = (0, [b"orders::order"])
     fake.xinfo_groups.return_value = [
         {"name": "OrderHandler", "pending": 4, "lag": 2},
@@ -592,9 +603,9 @@ def _fake_redis_with_consumers():
 
 @pytest.fixture
 def full_text_client(test_domain, monkeypatch):
-    monkeypatch.setattr(
-        test_domain.brokers["default"], "redis_instance", _fake_redis_with_consumers()
-    )
+    broker = test_domain.brokers["default"]
+    monkeypatch.setattr(broker, "redis_instance", _fake_redis_with_consumers())
+    monkeypatch.setattr(broker, "_health_stats", lambda: dict(HEALTH_DETAILS))
     subscriptions = [
         SimpleNamespace(
             handler_name="OrderHandler",
@@ -622,10 +633,15 @@ def full_text_client(test_domain, monkeypatch):
         SimpleNamespace(projection_name="ShipSummary", staleness_seconds=None),
     ]
     pools = [
-        ("default", "POSTGRESQL", {"size": 5, "checked_out": 2, "overflow": 1}),
+        (
+            "default",
+            "POSTGRESQL",
+            {"size": 5, "checked_out": 2, "overflow": 1, "checked_in": 4},
+        ),
     ]
     broker_pools = [("default", 3, 2, 10)]
-    # Each fake returns rows only for the domains the Observatory serves.
+    # The subscription and projection fakes return rows only for the domains
+    # the Observatory serves. The pool fakes return rows for any domain list.
     monkeypatch.setattr(
         metrics,
         "_collect_subscription_statuses",
@@ -652,6 +668,20 @@ def test_hand_rolled_metrics_full_text(full_text_client):
 
     assert response.status_code == 200
     assert response.text.split("\n") == [*FULL_TEXT_LINES, ""]
+
+
+@pytest.mark.parametrize(
+    "connected, healthy, expected",
+    [(True, True, 1), (True, False, 0), (False, True, 0), (False, False, 0)],
+)
+def test_broker_up_needs_a_connected_and_healthy_broker(connected, healthy, expected):
+    lines: list[str] = []
+
+    metrics._append_broker_health_lines(
+        lines, {"connected": connected, "details": {"healthy": healthy}}
+    )
+
+    assert f"protean_broker_up {expected}" in lines
 
 
 # --- The shared pool collectors read the domain's own adapters ---

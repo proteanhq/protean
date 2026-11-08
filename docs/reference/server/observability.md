@@ -505,7 +505,8 @@ protean_projection_staleness_seconds{domain="identity",projection="UserDirectory
 
 The endpoint emits these gauges unless OpenTelemetry is on and the
 `opentelemetry-exporter-prometheus` package is installed. In that case it
-returns the OpenTelemetry metrics instead; see
+returns the OpenTelemetry metrics, which include most of these gauges but not
+the stream and per-consumer gauges; see
 [OpenTelemetry integration](#opentelemetry-integration).
 
 | Metric | Type | Description |
