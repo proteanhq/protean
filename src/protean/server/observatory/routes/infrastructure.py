@@ -47,7 +47,12 @@ def sanitize_config(config: Any) -> Any:
       with '***'
     """
     if isinstance(config, dict):
-        return _sanitize_mapping(config)
+        # The recursion stays in this function so that each nested level
+        # costs one stack frame.
+        return {
+            key: "***" if _is_sensitive_key(key) else sanitize_config(value)
+            for key, value in config.items()
+        }
     elif isinstance(config, str):
         return _mask_uri_credentials(config)
     elif isinstance(config, (list, tuple)):
@@ -56,16 +61,10 @@ def sanitize_config(config: Any) -> Any:
         return config
 
 
-def _sanitize_mapping(config: dict[Any, Any]) -> dict[str, Any]:
-    """Mask the values of sensitive keys and sanitize the rest recursively."""
-    sanitized: dict[str, Any] = {}
-    for key, value in config.items():
-        lower_key = str(key).lower()
-        if any(s in lower_key for s in ("password", "secret", "token", "api_key")):
-            sanitized[key] = "***"
-        else:
-            sanitized[key] = sanitize_config(value)
-    return sanitized
+def _is_sensitive_key(key: Any) -> bool:
+    """Return whether *key* names a value that must be masked for display."""
+    lower_key = str(key).lower()
+    return any(s in lower_key for s in ("password", "secret", "token", "api_key"))
 
 
 def _mask_uri_credentials(value: str) -> str:
