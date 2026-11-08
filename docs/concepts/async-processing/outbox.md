@@ -73,8 +73,7 @@ awareness of the outbox, it's an implementation detail of the publisher side.
 
 The three steps are reliable because step 1 is transactional with the aggregate
 save. Steps 2 and 3 are eventually consistent but never lossy. The processor
-publishes each row written in the outbox exactly once, with at-least-once
-semantics from the consumer's perspective.
+publishes each row written in the outbox at least once.
 
 One outbox processor runs per managed database provider that an
 aggregate is stored in. A provider configured with `managed = false` gets

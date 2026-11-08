@@ -135,8 +135,8 @@ worked example.
 
 - **DDD philosophy preserved**: Creation logic stays in the domain layer.
   Coordination logic stays in Process Managers. The framework guides developers
-  toward correct patterns and offers no database-level operations that bypass
-  the domain layer.
+  toward correct patterns and adds no database-level shortcuts such as
+  `find_or_create`.
 
 - **Existing OCC gets stronger**: The atomic fix in 5.1 (issue #793) closes the
   last real gap in version checking.

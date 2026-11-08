@@ -118,7 +118,7 @@ associated with processing entire aggregates.
 Delta events are a good choice when composing internal state via Event Sourcing
 or notifying external consumers of selected events, like `LowInventoryAlert`.
 They are also appropriate for composing a custom projection of the state based
-on events (for example in Command Query Resource Separation).
+on events (for example in Command Query Responsibility Segregation).
 
 #### Multiple Event Types
 

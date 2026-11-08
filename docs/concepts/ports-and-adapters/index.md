@@ -65,8 +65,8 @@ specific database technology. It contains the configuration and setup needed
 to connect to the database, and it provides methods for interacting with the
 database at a high level.
 
-The Provider connects the application to the database: it opens the connections
-the application needs and keeps them open. It also implements the behavior
+The Provider connects the application to the database: it opens and manages the
+connections the application needs. It also implements the behavior
 specific to its database, such as connection pooling, transaction management,
 and query optimization.
 
