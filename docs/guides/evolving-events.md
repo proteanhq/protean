@@ -146,10 +146,10 @@ the compatibility checker's deprecation-aware removal rules read it.
 
 By default Protean is **strict**: it raises a `DeserializationError` on a
 stored payload that carries a field the current event class no longer has. That
-is the right default, a silent field drop hides typos. To deliberately read old
-payloads with fields you have since removed, opt into lenient deserialization.
-It ignores unknown fields and records what it dropped in event metadata
-for observability.
+is the right default, because a silent field drop hides typos. To deliberately
+read old payloads with fields you have since removed, opt into lenient
+deserialization. It ignores unknown fields and records what it dropped in
+event metadata for observability.
 
 Turn it on for the whole domain via the `lenient_deserialization` config key in
 `domain.toml`:

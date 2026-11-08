@@ -4,8 +4,8 @@ In DDD, changing the state of the system is a critical operation that is
 carefully controlled and structured. This section outlines the principles and
 practices that govern how state transitions occur within an application.
 
-You need them to keep the integrity and consistency of your domain model while
-your application processes user-driven changes reliably and at scale.
+These principles keep your domain model consistent while your application
+processes user-driven changes reliably and at scale.
 
 ## The Domain Model is protected
 

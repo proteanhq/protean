@@ -65,9 +65,9 @@ embedders can call directly.
 - Order: `event_store → brokers → caches → providers`. Dependents close
   before dependencies, so a handler completing a commit during close
   does not find its repository's connection pool gone.
-- Errors stay isolated per adapter: each `close()` is wrapped in `try/except`.
-  Exceptions are logged but do not propagate, and do not prevent subsequent
-  adapters from closing.
+- Per-adapter error isolation: each `close()` is wrapped in
+  `try/except`. Exceptions are logged but do not propagate, and do not
+  prevent subsequent adapters from closing.
 - Idempotence: each registry guards against double-close internally,
   but individual adapter behaviour on repeated `close()` is
   adapter-defined. Callers should not call `Domain.close()` more than

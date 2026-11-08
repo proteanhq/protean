@@ -58,7 +58,7 @@ newest version available.** Concretely:
   runs one extra leg on the newest Python with
   `uv sync --resolution lowest-direct`. That command installs Protean's own
   dependencies at their declared floors and keeps transitive dependencies at
-  latest. The worst case a downstream application can present. The
+  latest. This is the worst case a downstream application can present. The
   floor-proving leg runs the full suite. When a floor stops resolving, loses
   its newest-Python wheel, or is no longer API-compatible with Protean's code,
   the floor-proving leg fails CI, so the broken floor does not go unnoticed.

@@ -60,7 +60,7 @@ This subscriber design causes five problems:
 - **Taxonomy coupling**: The Fulfillment domain must know about every granular
   event type the Customer domain publishes. When the Customer domain adds
   `CustomerPreferredLanguageSet`, the Fulfillment domain must decide whether to
-  handle it. Even if it doesn't care. When the Fulfillment domain misses one
+  handle it, even if it doesn't care. When the Fulfillment domain misses one
   event, its local state stops matching the customer's current state.
 
 - **State reconstruction from deltas**: The subscriber must process events in
