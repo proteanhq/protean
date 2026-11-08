@@ -445,8 +445,8 @@ collapsing every key onto a single worker.
   reject-unsafe-keys rule keeps them from colliding with lane and DLQ streams
   without a scheme change.
 - Discovery is exact and stays off the keyspace-scan path the codebase avoids.
-- #830 and #831 each have a ratified contract to cite for their partition scheme,
-  key handling, and ordering guarantee, and are unblocked.
+- Issues #830 and #831 each have a ratified contract to cite for their
+  partition scheme, key handling, and ordering guarantee, and are unblocked.
 
 ### Negative
 
