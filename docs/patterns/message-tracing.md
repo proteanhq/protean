@@ -99,10 +99,10 @@ domain-level `correlation_id` and `causation_id` serve a different purpose:
 | **Format** | Flexible strings | W3C 32-hex / 16-hex |
 | **Required** | Always present | Optional integration |
 
-The same `correlation_id` value can serve both domain tracing and distributed
-tracing. It identifies the same operation. But you cannot store `causation_id`
-in `TraceParent.parent_id`, because Protean's message IDs are human-readable
-strings and `TraceParent.parent_id` takes a 16-hex-char span ID.
+Both layers carry the `correlation_id`. It identifies the same operation. But
+you cannot store `causation_id` in `TraceParent.parent_id`, because Protean's
+message IDs are human-readable strings and `TraceParent.parent_id` takes a
+16-hex-char span ID.
 
 ## Protean's Implementation
 

@@ -72,7 +72,7 @@ The command creates a complete project structure with the following components:
   writes. It composes the packaged pack guidance with the error-level Protean
   diagnostic rules. [`protean dx`](dx.md) writes and maintains `AGENTS.md`.
   After you upgrade Protean, refresh it with `protean dx refresh`.
-- `CLAUDE.md`: A one-line file (`@AGENTS.md`) that tells Claude to read the
+- `CLAUDE.md`: A one-line bridge (`@AGENTS.md`) that tells Claude to read the
   `AGENTS.md` guidance. Also maintained by `protean dx`.
 - `Makefile`: Common development tasks
 - `.gitignore`: Git ignore patterns

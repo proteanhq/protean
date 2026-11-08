@@ -96,8 +96,7 @@ the event and the unique identity of the aggregate that generated the event.
 
 ### Events are written into streams.  { data-toc-label="Event Streams" }
 Events are written to and read from streams. Review the section on
-[Streams](../foundations/streams.md) for a detailed explanation of how
-streams work.
+[Streams](../foundations/streams.md) for a detailed explanation.
 
 ## Event Types
 
