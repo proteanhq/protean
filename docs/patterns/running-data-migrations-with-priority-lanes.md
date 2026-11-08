@@ -14,7 +14,7 @@ You need to backfill a `loyalty_tier` field onto 500,000 existing customer
 records. The migration script loads each customer, sets the tier, and saves,
 producing 500,000 `LoyaltyTierAssigned` events.
 
-Those events are published to the same Redis Stream as the real-time customer
+Those events flood the same Redis Stream as the real-time customer
 registration, order placement, and payment confirmation events. The Engine
 processes them in FIFO order (first in, first out). Production events now wait
 until the Engine has processed half a million migration events. A customer who
