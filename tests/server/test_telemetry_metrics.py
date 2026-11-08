@@ -881,6 +881,26 @@ class TestGaugeCallbacks:
             200
         ]
 
+    @pytest.mark.parametrize(
+        "connected, healthy, expected",
+        [(True, True, 1), (True, False, 0), (False, True, 0), (False, False, 0)],
+    )
+    def test_broker_up_needs_a_connected_and_healthy_broker(
+        self, test_domain, telemetry, monkeypatch, connected, healthy, expected
+    ):
+        _, metric_reader = telemetry
+        with test_domain.domain_context():
+            broker = test_domain.brokers.get("default")
+        monkeypatch.setattr(
+            broker,
+            "health_stats",
+            lambda: {"connected": connected, "details": {"healthy": healthy}},
+        )
+
+        data = _register_gauges_and_collect(test_domain, metric_reader)
+
+        assert [p.value for p in _points_in(data, "protean_broker_up")] == [expected]
+
     def test_broker_gauges_report_zero_without_a_default_broker(
         self, test_domain, telemetry
     ):

@@ -380,6 +380,19 @@ class TestMergePMSubscriptionStatus:
         assert pms[0]["subscription"]["status"] == "unknown"
         assert pms[0]["subscription"]["lag"] == 5
 
+    def test_unknown_read_first_stays_unknown(self, fulfillment, test_domain):
+        """An unknown stream read before a lagging one keeps the status unknown."""
+        pm_cls = fulfillment.pm
+        _order, shipment = pm_cls.meta_.stream_categories
+        fake = _FakeRedisStreams(groups={shipment: [_group(pm_cls, lag=5)]})
+        pms = collect_pm_metadata([test_domain])
+
+        with _use_redis(test_domain, fake):
+            merge_pm_subscription_status(pms, [test_domain])
+
+        assert pms[0]["subscription"]["status"] == "unknown"
+        assert pms[0]["subscription"]["lag"] == 5
+
     def test_lag_seconds_is_max_not_sum(self, test_domain):
         """Seconds-lag aggregates as the worst (max) stream staleness, not a sum."""
         app = _register_fulfillment(test_domain, subscription_type="event_store")
@@ -745,6 +758,55 @@ class TestProcessesInstancesEndpoint:
         assert data["process"] == "OrderFulfillment"
         assert len(data["instances"]) == 1
         assert data["instances"][0]["instance_id"] == order_id
+        assert data["total"] == 1
+
+    def test_skips_a_process_manager_with_another_name(self, fulfillment, test_domain):
+        billing = Domain(name="Billing")
+
+        class Invoice(BaseAggregate):
+            order_id = Identifier()
+
+        class InvoiceRaised(BaseEvent):
+            order_id = Identifier(required=True)
+
+        class BillingFlow(BaseProcessManager):
+            order_id = Identifier()
+
+            @handle(InvoiceRaised, start=True, end=True, correlate="order_id")
+            def on_raised(self, event):
+                self.order_id = event.order_id
+
+        billing.register(Invoice)
+        billing.register(InvoiceRaised, part_of=Invoice)
+        billing.register(BillingFlow, stream_categories=["invoice"])
+        billing.init(traverse=False)
+        order_id = _start_order(fulfillment)
+        client = TestClient(Observatory(domains=[billing, test_domain]).app)
+
+        resp = client.get("/api/processes/OrderFulfillment/instances")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["process"] == "OrderFulfillment"
+        assert [i["instance_id"] for i in data["instances"]] == [order_id]
+        assert data["total"] == 1
+
+    def test_total_falls_back_to_the_instances_listed(
+        self, fulfillment, test_domain, client
+    ):
+        """When the count read fails after the instances were read, the total is
+        the number of instances listed."""
+        order_id = _start_order(fulfillment)
+        with patch.object(
+            test_domain.event_store.store,
+            "_stream_identifiers",
+            side_effect=[[order_id], RuntimeError("store down")],
+        ):
+            resp = client.get("/api/processes/OrderFulfillment/instances")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["instances"]) == 1
         assert data["total"] == 1
 
     def test_handles_instance_exception(self, fulfillment, test_domain, client):

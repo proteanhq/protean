@@ -366,10 +366,9 @@ class TestBuildFlowGraph:
         )
 
         # Check start/end lifecycle annotations
-        start_edges = [e for e in pm_edges if e.get("start")]
-        end_edges = [e for e in pm_edges if e.get("end")]
-        assert len(start_edges) >= 1, "PM should have at least one start edge"
-        assert len(end_edges) >= 1, "PM should have at least one end edge"
+        lifecycles = {(e["start"], e["end"]) for e in pm_edges}
+        assert (True, False) in lifecycles, "PM should have a start edge"
+        assert (False, True) in lifecycles, "PM should have an end edge"
 
     def test_projector_node(self, rich_flow_graph):
         """Projector should appear as a node with projection name."""
@@ -584,7 +583,8 @@ class TestFlowGraphEdgeCases:
         assert len(proj_edges) == 0
 
     def test_duplicate_node_ids_are_deduplicated(self):
-        """_add_node should skip if node ID already exists."""
+        """An event listed under two clusters becomes one node, in the first
+        cluster that lists it."""
         ir = {
             "clusters": {
                 "app.Order": self._minimal_cluster(
@@ -604,6 +604,12 @@ class TestFlowGraphEdgeCases:
                 # Second cluster also has an event handler for the same event
                 "app.Inventory": self._minimal_cluster(
                     aggregate={"name": "Inventory", "options": {}},
+                    events={
+                        "app.OrderPlaced": {
+                            "__type__": "Order.OrderPlaced.v1",
+                            "is_fact_event": False,
+                        },
+                    },
                     event_handlers={
                         "app.InvEH": {
                             "handlers": {"Order.OrderPlaced.v1": ["on_placed"]},
@@ -618,7 +624,7 @@ class TestFlowGraphEdgeCases:
         graph = _build_flow_graph(ir)
         # OrderPlaced event node should appear exactly once
         evt_nodes = [n for n in graph["nodes"] if n["id"] == "app.OrderPlaced"]
-        assert len(evt_nodes) == 1
+        assert [n["cluster"] for n in evt_nodes] == ["app.Order"]
 
         # Both event handler edges should exist
         event_edges = [e for e in graph["edges"] if e["type"] == "event"]
