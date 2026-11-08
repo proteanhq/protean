@@ -93,8 +93,9 @@ and a FastAPI `TestClient` wired to that domain.
 --8<-- "guides/fastapi/testing-endpoints/001.py:client"
 ```
 
-That's it. The root `conftest.py` handles domain lifecycle and per-test cleanup
-(via `DomainFixture`). The API-specific `conftest.py` provides the client.
+These two `conftest.py` files are the whole setup. The root `conftest.py` uses
+`DomainFixture` to set up the domain and to clean up its data after each test.
+The API-specific `conftest.py` provides the client.
 Every test starts with a clean slate, no leftover data from previous tests.
 
 !!! tip "Why a separate `tests/api/conftest.py`?"
