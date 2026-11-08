@@ -707,6 +707,23 @@ def test_no_default_broker_leaves_out_the_broker_and_consumer_sections(
     ]
 
 
+def test_failing_broker_health_check_keeps_the_consumer_section(
+    full_text_client, test_domain, monkeypatch
+):
+    """The per-consumer gauges read Redis directly, so a broker health check
+    that raises drops only the broker and stream gauges."""
+    broker = test_domain.brokers["default"]
+    monkeypatch.setattr(broker, "health_stats", _fail)
+
+    response = full_text_client.get("/metrics")
+
+    assert response.status_code == 200
+    assert response.text.split("\n") == [
+        *_without_section("protean_broker_up", "protean_subscription_consumer_lag"),
+        "",
+    ]
+
+
 def test_a_section_that_fails_part_way_keeps_the_lines_it_wrote(
     full_text_client, monkeypatch
 ):

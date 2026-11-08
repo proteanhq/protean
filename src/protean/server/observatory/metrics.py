@@ -9,13 +9,16 @@ When OpenTelemetry is installed and telemetry is enabled, the endpoint serves
 OTel-generated Prometheus text (via ``PrometheusMetricReader``) combined with
 infrastructure gauges registered as ``ObservableGauge`` callbacks.
 
-When OTel is not installed (or telemetry is disabled), the endpoint falls back
-to a hand-rolled text format. The fallback emits the outbox, broker,
-subscription, pool and projection gauges, plus the stream and per-consumer
-gauges that the OTel path does not register. It emits none of the OTel
-counters and histograms. When the domain has no default broker, or the
-broker's health check raises, the fallback leaves out the broker, stream and
-per-consumer gauges, and the OTel broker callbacks observe 0.
+When telemetry is disabled, or the ``opentelemetry-exporter-prometheus``
+package is not installed, the endpoint falls back to a hand-rolled text
+format. The fallback emits the outbox, broker, subscription, pool and
+projection gauges, plus the stream and per-consumer gauges that the OTel path
+does not register. It emits none of the OTel counters and histograms. When the
+domain has no default broker, or the broker's health check raises, the
+fallback leaves out the broker and stream gauges, and the OTel broker
+callbacks observe 0. The fallback reads the per-consumer gauges from the first
+domain with a Redis broker, so it leaves them out only when no domain has one
+or Redis cannot be read.
 
 **Naming convention:**
 
@@ -610,14 +613,14 @@ def _projection_staleness_observations(
 
 
 # ---------------------------------------------------------------------------
-# Hand-rolled fallback (used when OTel is not installed)
+# Hand-rolled fallback (used when OTel is not serving Prometheus text)
 # ---------------------------------------------------------------------------
 
 
 def _hand_rolled_metrics(domains: list[Domain]) -> str:
     """Generate Prometheus text exposition using hand-rolled formatting.
 
-    Used when OTel is not installed or telemetry is disabled.
+    Used when telemetry is disabled or the Prometheus exporter is not installed.
     """
     lines: list[str] = []
 

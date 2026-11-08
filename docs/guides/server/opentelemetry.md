@@ -382,16 +382,19 @@ is installed:
    pools, broker pools and projection staleness) are registered as
    `ObservableGauge` callbacks on the OTel meter
 
-When OTel is **not** enabled, the endpoint falls back to the original
-hand-rolled Prometheus implementation. It serves the outbox, broker,
+When telemetry is disabled, or the `opentelemetry-exporter-prometheus` package
+is not installed, the endpoint falls back to the original hand-rolled
+Prometheus implementation. It serves the outbox, broker,
 subscription, pool and projection gauges. It also serves the stream and
 per-consumer gauges, which the OTel path does not register. It serves none of
 the OTel counters and histograms. The two paths differ on broker gauges in two
 places. The OTel exporter adds the unit to the operations gauge and names it
 `protean_broker_ops_per_sec_per_second`. When the domain has no default
 broker, or the broker's health check raises an error, the OTel broker gauges
-report 0. The fallback then leaves out the broker, stream and per-consumer
-gauges. No configuration change is needed. The convergence is automatic.
+report 0. The fallback then leaves out the broker and stream gauges. The
+fallback reads the per-consumer gauges from the first domain with a Redis
+broker, so it leaves them out only when no domain has one or Redis cannot be
+read. No configuration change is needed. The convergence is automatic.
 
 ---
 
