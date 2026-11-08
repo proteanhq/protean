@@ -62,11 +62,12 @@ That costs you in four ways:
   line items and prices them correctly means building a command, setting up a
   repository, and running the handler inside a unit of work.
 
-- **Handlers get fat.** What should be three lines, load, call, save, becomes 20
-  or 40, because the handler is doing assembly work that is not its job.
+- **Handlers get fat.** A handler should take three lines: load, call, save. It
+  grows to 20 or 40 lines because it also does assembly work that is not
+  its job.
 
-All four come from the same thing: the knowledge of how to build a valid Order
-sits in the handlers, where the domain model should be holding it.
+All four costs have one cause: the knowledge of how to build a valid Order is
+in the handlers, but the domain model should hold it.
 
 ---
 
@@ -92,18 +93,18 @@ Each classmethod is one testable place that holds everything needed to build a
 valid aggregate from one set of inputs. The handler calls it and saves what comes
 back.
 
-This is Eric Evans' Factory Method pattern from the Blue Book. Evans described
-two forms:
+This is the Factory Method pattern from Eric Evans' book *Domain-Driven
+Design*, known as the Blue Book. Evans described two forms:
 
 | Form | What it is | When to use |
 |------|-----------|-------------|
 | **Factory Method** | A classmethod on the aggregate | Construction belongs conceptually to the aggregate |
 | **Standalone Factory** | A separate class dedicated to creation | Construction needs external data or doesn't belong to the aggregate |
 
-**Start with classmethods on the aggregate.** They are simpler, easier to find,
-and they keep the knowledge next to the thing it builds. Move to a standalone
-factory class only when a classmethod stops being enough, which the section
-below covers.
+**Start with classmethods on the aggregate.** They are simpler and easier to
+find, and they keep the knowledge in the aggregate it builds. Move to a
+standalone factory class only when a classmethod stops being enough, which the
+section below covers.
 
 ---
 
@@ -162,8 +163,8 @@ class OrderCommandHandler(BaseCommandHandler):
 ```
 
 The renewal handler copies the placement handler and gets pricing wrong: it
-reuses the previous order's prices when it should look up current ones. Spread
-the assembly across handlers and a bug like this has somewhere to hide.
+reuses the previous order's prices when it should look up current ones. When
+each handler does its own assembly, a bug like this is easy to miss.
 
 ### After: factory classmethods on the aggregate
 
@@ -173,8 +174,8 @@ the assembly across handlers and a bug like this has somewhere to hide.
 ```
 
 Each handler is now 4-5 lines: load inputs, call a factory classmethod, persist.
-The construction knowledge lives in the aggregate, where it can be tested
-directly, reused across handlers, and maintained in one place.
+The construction knowledge is in the aggregate, where you can test it directly,
+reuse it across handlers, and maintain it in one place.
 
 ---
 
@@ -329,8 +330,9 @@ schema you edit the factory, and `Payment` and its invariants stay as they are.
 | Construction logic is 40+ lines and dominates the aggregate | Standalone factory class |
 | Single simple creation path | No factory needed, inline in handler |
 
-The progression is **inline, then classmethod, then standalone class**. Start at
-the simplest one and move along it only when the work makes you.
+The progression is **inline, then classmethod, then standalone class**. Start
+with inline construction, and move to the next form only when the current one
+stops being enough.
 
 ---
 
@@ -370,7 +372,7 @@ answers "how do I apply a rule that spans several things which already exist?"
 ## Why this is not a framework element
 
 Evans listed Factories next to Aggregates and Repositories as DDD lifecycle
-patterns, which raises a fair question: should Protean ship a `@domain.factory`
+patterns. That raises a fair question: should Protean ship a `@domain.factory`
 decorator and a `BaseFactory`, making factories registered elements the way
 command handlers and repositories are?
 
@@ -378,13 +380,14 @@ It deliberately does not, for three reasons:
 
 - **A factory has no lifecycle to manage.** Repositories need database adapters,
   event handlers need message routing, command handlers need dispatch and a unit
-  of work. A factory builds an object, and when it needs a repository it reaches
-  for the same `current_domain.repository_for()` any code can call. Registering
+  of work. A factory builds an object, and when it needs a repository it calls
+  the same `current_domain.repository_for()` that any code can use. Registering
   it would buy nothing.
 
-- **Factories take too many shapes.** A constructor, a classmethod, a method on
-  another aggregate, a standalone class. One `BaseFactory` would be either too
-  thin to earn its place or too narrow to fit them all.
+- **Factories take too many shapes.** A factory can be a constructor, a
+  classmethod, a method on another aggregate, or a standalone class. One
+  `BaseFactory` would be either too thin to earn its place or too narrow to fit
+  them all.
 
 - **Python already has the tools.** A classmethod is the natural form of a
   factory method, and a standalone factory is a class. Neither needs registering
@@ -418,7 +421,7 @@ classmethod needs a repository, has to translate outside data, or grows too big.
     **Patterns:**
 
     - [Encapsulate State Changes](encapsulate-state-changes.md): Named methods for state changes complement factory methods for creation.
-    - [Thin Handlers, Rich Domain](thin-handlers-rich-domain.md): Factories are one way handlers shed construction weight.
+    - [Thin Handlers, Rich Domain](thin-handlers-rich-domain.md): Factories are one way to move construction code out of handlers.
     - [Consuming Events from Other Domains](consuming-events-from-other-domains.md): Standalone factories serve as anti-corruption layers for external data.
 
     **Concepts:**

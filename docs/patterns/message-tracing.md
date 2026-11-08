@@ -35,7 +35,7 @@ Attach two identifiers to every command and event:
   When an event handler dispatches a new command during asynchronous
   processing, the command's `causation_id` is the event's message ID.
 
-Together, they form a **causation tree**:
+Together, the two identifiers form a **causation tree**:
 
 ```
 PlaceOrder [corr=X, cause=None]              <-- root command
@@ -99,9 +99,10 @@ domain-level `correlation_id` and `causation_id` serve a different purpose:
 | **Format** | Flexible strings | W3C 32-hex / 16-hex |
 | **Required** | Always present | Optional integration |
 
-The `correlation_id` bridges both layers. It identifies the same operation. But
-`causation_id` cannot live in `TraceParent.parent_id` because Protean's message
-IDs are human-readable strings, not 16-hex-char span IDs.
+The same `correlation_id` value can serve both domain tracing and distributed
+tracing. It identifies the same operation. But you cannot store `causation_id`
+in `TraceParent.parent_id`, because Protean's message IDs are human-readable
+strings and `TraceParent.parent_id` takes a 16-hex-char span ID.
 
 ## Protean's Implementation
 
@@ -198,14 +199,15 @@ receives the published message as a `dict`:
 --8<-- "patterns/message-tracing/001.py:subscriber"
 ```
 
-This stitches the causal chain across service boundaries. When the Engine
-delivers a broker message, it already puts the message's `correlation_id` in
-context before it calls the subscriber, so a command the subscriber processes
-picks it up. Passing it explicitly keeps the link when the subscriber runs some
-other way, such as a direct call in a test or a script. The Engine looks for
-the ID at `metadata.domain.correlation_id`, then `metadata.correlation_id`,
-then a top-level `correlation_id`. A message with none of these starts a new
-chain with a generated ID.
+With the forwarded `correlation_id`, you can follow one causal chain across
+service boundaries. When the Engine delivers a broker message, it already puts
+the message's `correlation_id` in context before it calls the subscriber. So a
+command the subscriber processes picks up that `correlation_id`. Passing it
+explicitly keeps the link when the subscriber runs some other way, such as a
+direct call in a test or a script. The Engine looks for the ID at
+`metadata.domain.correlation_id`, then `metadata.correlation_id`, then a
+top-level `correlation_id`. A message with none of these starts a new chain
+with a generated ID.
 
 ## Testing Trace Propagation
 
@@ -228,7 +230,7 @@ explicitly:
 - **`correlation_id`** groups all messages from one business operation.
   Generate early, propagate everywhere.
 - **`causation_id`** links each message to its direct parent, forming a tree.
-- Protean handles propagation automatically. You only need to supply an
+- Protean propagates both IDs automatically. You only need to supply an
   external `correlation_id` at the entry point if you have one.
 - Use `trace_causation()`, `trace_effects()`, and `build_causation_tree()` to
   traverse chains programmatically.

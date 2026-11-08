@@ -84,10 +84,10 @@ A clean report leaves three gaps:
   on a name imported from one of them. A call named `publish`, `send_email`,
   `sendmail`, `send_message` or `urlopen` also counts. `upgrade-check` counts it
   on any receiver. `protean check` counts it only when the call resolves to an
-  imported name, so it misses one held on `self` or on a local. A method with
-  another name on an injected port or adapter (`self.gateway.charge()`) is not
-  flagged, and neither is a call into a client library outside that list, such
-  as `stripe` or `boto3`.
+  imported name. It therefore misses a call on an object held on `self` or in a
+  local variable. A method with another name on an injected port or adapter
+  (`self.gateway.charge()`) is not flagged, and neither is a call into a client
+  library outside that list, such as `stripe` or `boto3`.
 
 ## Generated SQL
 
@@ -122,14 +122,15 @@ protean upgrade-check --opportunities --domain=my_app --pinned-version=0.15
 protean upgrade-check --opportunities --domain=my_app --format=json
 ```
 
-Every detector is **deterministic**: it reads your source and matches on
-structure, its imports, call shapes, and the literal choices in a field, so it
-gives the same findings every run. The raw-SQL detector is import-gated: `text`
-is matched only when it comes from `sqlalchemy`. The middleware detector matches
-a `BaseHTTPMiddleware` subclass or a `dispatch` method, and an `add_middleware`
-call that names something outside the framework's own middlewares and the
-standard Starlette and FastAPI ones. The queue-status detector reads a `status`
-or `state` field and needs at least two queue-vocabulary choices before it fires.
+Every detector is **deterministic**, so it gives the same findings every run.
+It reads your source and matches on its structure: imports, call shapes, and
+the literal choices in a field. The raw-SQL detector is import-gated: `text` is
+matched only when it comes from `sqlalchemy`. The middleware detector matches a
+`BaseHTTPMiddleware` subclass or a `dispatch` method. It also matches an
+`add_middleware` call that names something outside the framework's own
+middlewares and the standard Starlette and FastAPI ones. The queue-status
+detector reads a `status` or `state` field and needs at least two
+queue-vocabulary choices before it fires.
 Detector findings are advisory (`info`) and do not
 change the exit code. The one exception is `CHECK_FAILED`: if a detector cannot
 complete, that is a `warning`, and any warning exits `1`.
@@ -165,17 +166,17 @@ verdict every run. Most of them report a capability the domain hand-rolls that
 the framework now ships. `SANITIZE_DEFAULT_CHANGED` is the exception: it reports
 a behaviour change, the 0.18.0 sanitize-default flip, whose effect is silent at
 runtime. It works the same way, a deterministic source scan gated on the
-release. Judgment-heavy advice ("this orchestration is really a process
-manager") stays out of OSS; that is the commercial Domain Assessment surface, on
-the non-deterministic side of the open-core boundary.
+release. Protean's open-source release leaves out advice that needs judgment
+("this orchestration is really a process manager"). Under the open-core model,
+that advice belongs to the commercial Domain Assessment, whose findings are
+not deterministic.
 
 !!! warning "A warning exit is easier to hit from 0.17"
 
     `NESTED_UNIT_OF_WORK` and `IO_INSIDE_UNIT_OF_WORK` are both warnings, and
     both read your source rather than your config. A domain that exited `0` on
     0.16 can exit non-zero on 0.17 with nothing changed. On 0.17 and 0.18 a
-    warning exits `2`. From 0.19 it exits `1`, and `2` means the run itself
-    failed; see
-    [`upgrade-check` exits 1 for warnings and 2 for errors](../migration/v0-19.md#upgrade-check-exits-1-for-warnings-and-2-for-errors).
+    warning exits `2`. From 0.19 a warning exits `1` and a failed run exits
+    `2`. See [`upgrade-check` exits 1 for warnings and 2 for errors](../migration/v0-19.md#upgrade-check-exits-1-for-warnings-and-2-for-errors).
     See [the 0.17 migration guide](../migration/v0-17.md#the-unit-of-work-is-a-real-transaction)
     for what the two findings mean.

@@ -10,12 +10,13 @@ and decide what to do next, you need a process manager.
 
 Process managers coordinate multi-step business processes that span multiple
 aggregates. They react to domain events from different streams, maintain their
-own state, and issue commands to drive other aggregates forward.
+own state, and issue commands to other aggregates to move the workflow to its
+next step.
 
 ## The Event Chain: How Steps Connect
 
-Before looking at the API, it's important to understand *how* a process manager
-chains steps together. The mechanism is a **command-event loop**:
+A process manager chains steps together through commands and events. The
+mechanism is a **command-event loop**:
 
 1. An event arrives at the PM from an aggregate's stream.
 2. The PM handler processes the event and issues a command to another aggregate.
@@ -100,7 +101,7 @@ lifecycle management and event correlation.
 
 ## Issuing Commands
 
-Process managers drive other aggregates forward by issuing commands:
+Process managers advance a workflow by issuing commands to other aggregates:
 
 ```python
 --8<-- "guides/consume-state/process-managers/003.py:full"
@@ -277,7 +278,7 @@ See [Server → Configuration](../../reference/server/configuration.md) for deta
 ## Handling Events from Other Domains
 
 Process managers often coordinate workflows that span multiple bounded
-contexts, for example, an order fulfillment PM that reacts to events from
+contexts. For example, an order fulfillment PM reacts to events from the
 Billing and Inventory domains in addition to its own Order domain.
 
 When multiple domains are **co-located in the same repository** and share
@@ -304,9 +305,8 @@ ends the process whatever its state, so `end=True` fits it.
 When domains are **distributed as independent services**, use subscribers
 instead. The subscriber acts as an anti-corruption layer, translating raw
 broker payloads into internal commands or events that your PM can react to.
-See [Multi-Domain Applications, Cross-domain
-communication](../../guides/multi-domain-applications.md#cross-domain-communication)
-for guidance on choosing between the two approaches.
+See [Multi-Domain Applications, Cross-domain communication](../../guides/multi-domain-applications.md#cross-domain-communication)
+for guidance on choosing between `register_external_event()` and subscribers.
 
 ## Error Handling
 

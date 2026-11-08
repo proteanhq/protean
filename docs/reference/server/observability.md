@@ -77,9 +77,9 @@ the message processing pipeline. Each trace event captures:
 | `outbox.published` | OutboxProcessor | After a message is published to the broker |
 | `outbox.failed` | OutboxProcessor | When outbox publishing fails |
 
-The `correlation_id` and `causation_id` fields enable grouping and filtering
-trace events by business operation in the Observatory dashboard. For a
-complete guide on how these IDs propagate through the system, see
+In the Observatory dashboard, you can group and filter trace events by business
+operation with the `correlation_id` and `causation_id` fields. For a complete
+guide on how these IDs propagate through the system, see
 [Correlation and Causation IDs](../../guides/observability/correlation-and-causation.md).
 
 ## Trace persistence and retention
@@ -120,8 +120,8 @@ listening and persistence is disabled:
    is logged at DEBUG level and swallowed. Tracing never affects message
    processing.
 
-When persistence is enabled (the default), the Stream write always occurs
-regardless of whether any SSE clients are connected. The Pub/Sub broadcast
+When persistence is enabled (the default), the emitter always writes to the
+Stream. It writes even when no SSE clients are connected. The Pub/Sub broadcast
 is still conditional on subscriber count.
 
 ## Protean Observatory
@@ -160,10 +160,10 @@ An embedded HTML dashboard that connects to the SSE stream and displays
 real-time message flow. Open `http://localhost:9000` in your browser.
 
 The dashboard includes a **DLQ tab** alongside Messages, Events, and Errors.
-The DLQ tab provides a filterable list of failed messages with buttons to
-inspect, replay, or purge entries, the same operations available through the
-[`protean dlq`](../cli/data/dlq.md) CLI commands and the `/api/dlq/*` REST endpoints documented
-below.
+The DLQ tab provides a filterable list of failed messages, with buttons to
+inspect, replay, or purge entries. These are the same operations available
+through the [`protean dlq`](../cli/data/dlq.md) CLI commands and the
+`/api/dlq/*` REST endpoints documented below.
 
 #### SSE stream: `GET /stream`
 
@@ -331,8 +331,8 @@ The `error_rate` is the percentage of trace events that are error types
 #### Subscriptions: `GET /api/subscriptions`
 
 Subscription lag status for all domains. Returns per-subscription lag,
-pending count, DLQ depth, and summary aggregation. Works without the engine
-running, queries infrastructure directly.
+pending count, DLQ depth, and summary aggregation. The endpoint queries
+infrastructure directly, so it works without the engine running.
 
 ```bash
 curl http://localhost:9000/api/subscriptions
@@ -559,9 +559,9 @@ can customize the allowed origins:
 
 The observability system requires **Redis** as the message broker. The
 TraceEmitter uses Redis Pub/Sub (channel `protean:trace`) as the transport
-between the engine and the Observatory. When using the `InlineBroker` (the
-default for development), the TraceEmitter gracefully no-ops, no errors, no
-overhead.
+between the engine and the Observatory. When you use the `InlineBroker` (the
+default for development), the TraceEmitter does nothing. It raises no errors
+and adds no overhead.
 
 The Observatory server requires the `fastapi` and `uvicorn` packages:
 
@@ -574,8 +574,8 @@ pip install fastapi uvicorn
 For production APM environments, Protean supports native OpenTelemetry
 distributed tracing and metrics alongside the Observatory. When OTel is
 enabled, spans cover every layer of the stack (commands, handlers, UoW,
-repositories, event store, server, outbox) and the `/metrics` endpoint
-automatically converges on OTel-powered Prometheus exposition.
+repositories, event store, server, outbox). The `/metrics` endpoint then
+switches automatically to OTel-powered Prometheus exposition.
 
 See [OpenTelemetry Integration](../../guides/server/opentelemetry.md) for
 configuration, span and metric catalogs, APM setup guides, and TraceParent

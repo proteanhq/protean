@@ -9,8 +9,8 @@
 Multi-tenant SaaS applications serve many customers from a single deployment.
 Every request, every command, every event, and every query must be scoped to a
 tenant. Miss one filter and you have a data leak. Forget to propagate tenant
-context through an async pipeline and a background handler operates in a vacuum
--- unable to tell which tenant's data it should touch.
+context through an async pipeline and a background handler runs without a
+tenant, unable to tell which tenant's data it should touch.
 
 In a traditional request-response application, tenant isolation is relatively
 straightforward: extract the tenant from the auth token, add a WHERE clause to
@@ -34,9 +34,9 @@ no longer exists. The event handler needs to know which tenant the order
 belongs to, but the event payload should not carry infrastructure concerns like
 tenant IDs. That would pollute the domain model.
 
-The core tension: **tenant context is a cross-cutting infrastructure concern
-that must survive the boundary between synchronous request handling and
-asynchronous event processing, without leaking into the domain model.**
+**Tenant context is a cross-cutting infrastructure concern. It must stay
+available from synchronous request handling through asynchronous event
+processing, and it must stay out of the domain model.**
 
 There are three classic approaches to multi-tenant data isolation:
 
@@ -49,8 +49,8 @@ There are three classic approaches to multi-tenant data isolation:
 **Row-level isolation** is the natural fit for Protean today. It works with
 every adapter (memory, SQLAlchemy, Elasticsearch), requires no infrastructure
 changes, and scales to thousands of tenants. The `tenant_id` is a regular field
-on your aggregates, and Protean's existing primitives (`g`, enrichers, `metadata.extensions`)
-handle context propagation end-to-end.
+on your aggregates. Protean's existing primitives (`g`, enrichers,
+`metadata.extensions`) propagate the tenant context end-to-end.
 
 Schema-per-tenant and database-per-tenant are covered [later in this
 document](#beyond-row-level-schema-per-tenant) as future directions.
@@ -96,9 +96,9 @@ Request Phase                        Async Processing Phase
                                      └──────────────────────┘
 ```
 
-The result: tenant context flows transparently from the original HTTP request,
-through the event store, to every async handler, without any handler needing to
-extract it manually.
+As a result, the enrichers and the server carry tenant context from the
+original HTTP request, through the event store, to every async handler. No
+handler has to extract it manually.
 
 ---
 
@@ -144,17 +144,17 @@ defined in Step 3.
 
 ### Step 3: Model Tenant ID on Aggregates
 
-The `tenant_id` field on aggregates is a **domain modeling decision**, not an
-infrastructure hack. It's how you ensure data belongs to the right tenant:
+The `tenant_id` field on aggregates is a **domain modeling decision**. It's how
+you ensure data belongs to the right tenant:
 
 ```python
 --8<-- "patterns/multi-tenancy/001.py:aggregate"
 ```
 
-Notice: `place()` does not mention tenants. The enricher handles
-`metadata.extensions`. The aggregate's `tenant_id` field is for storage and
-query filtering, set once when the aggregate is created, never touched by
-business methods.
+Notice: `place()` does not mention tenants. The tenant enricher writes the
+tenant ID into `metadata.extensions`. The aggregate's `tenant_id` field is for
+storage and query filtering, set once when the aggregate is created, never
+touched by business methods.
 
 ### Step 4: Filter Queries by Tenant
 
@@ -173,9 +173,10 @@ expression:
     conscious design choice. Automatic scoping hides behavior and makes
     debugging harder. The developer is responsible for correct filtering.
 
-    If you want a convenience wrapper, create a base class or helper. This one
-    returns a query that is already filtered to the current tenant, so callers
-    can add more filters, such as `tenant_query(Order).filter(status="placed").all()`:
+    If you want a convenience wrapper, create a base class or helper. The
+    helper below returns a query that is already filtered to the current
+    tenant, so callers can add more filters, such
+    as `tenant_query(Order).filter(status="placed").all()`:
 
     ```python
     --8<-- "patterns/multi-tenancy/001.py:tenant_query"
@@ -245,8 +246,8 @@ Here is the complete lifecycle for a multi-tenant order placement:
 ## Testing
 
 Because enrichers read from `g`, tests that need tenant context must set it up.
-Tests that only care about business logic can ignore tenants, enrichers produce
-`None` values, which is harmless:
+Tests that only care about business logic can ignore tenants. Without a tenant
+in `g`, enrichers produce `None` values, which do no harm:
 
 ```python
 --8<-- "patterns/multi-tenancy/001.py:tests"
@@ -488,11 +489,11 @@ demand it.
 | Domain model purity | Business payload clean; tenant in extensions |
 | Testing | Set `g.tenant_id` in test; enrichers produce `None` without it |
 
-Tenant identity is a cross-cutting concern that travels in
-`metadata.extensions`, not in event payloads. Enrichers inject it automatically
-from ambient context. The server restores it during async processing. The
-domain model carries `tenant_id` as a field for data integrity, but domain
-logic never reaches into `g` itself.
+Tenant identity is a cross-cutting concern. Messages carry it in
+`metadata.extensions` and never in event payloads. Enrichers inject it
+automatically from ambient context. The server restores it during async
+processing. The domain model carries `tenant_id` as a field for data integrity,
+but domain logic never reaches into `g` itself.
 
 ---
 

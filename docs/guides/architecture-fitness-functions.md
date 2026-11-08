@@ -2,10 +2,10 @@
 
 Architecture fitness functions are automated, objective, repeatable checks that
 enforce your architectural decisions on every commit. Protean runs them with
-`protean check`: it builds your domain's [Intermediate Representation
-(IR)](compose-a-domain/inspecting-the-ir.md) (the complete structural snapshot
-of the domain) and reports every place the model drifts from sound
-Domain-Driven Design.
+`protean check`. The command builds your domain's
+[Intermediate Representation (IR)](compose-a-domain/inspecting-the-ir.md), the
+complete structural snapshot of the domain. It then reports every place where
+the model departs from sound Domain-Driven Design.
 
 Here is how to run the checks, tune severity, suppress findings while you
 adopt them gradually, wire them into CI, and write your own rules. For
@@ -165,11 +165,10 @@ Per-element `suppress_checks` takes precedence over the config allow-list.
 !!! note "There is no global disable"
 
     Protean has no `disabled_rules` config key and no `--save-baseline` flag.
-    The two layers above are the supported way to silence findings; the
-    allow-list is the gradual-adoption path a baseline would otherwise serve.
-    Two `info` rules are threshold-tunable
-    (`[lint].aggregate_size_limit`, `[lint].handler_breadth_limit`) and
-    `INFRA_IMPORT_IN_DOMAIN` is opt-in
+    The two layers above are the supported way to silence findings. For gradual
+    adoption, the allow-list does the job a baseline would otherwise do. Two
+    `info` rules are threshold-tunable (`[lint].aggregate_size_limit`,
+    `[lint].handler_breadth_limit`) and `INFRA_IMPORT_IN_DOMAIN` is opt-in
     (`[lint].check_infra_imports`). `COMMAND_NOT_IMPERATIVE` accepts your
     project's own verbs when you list them in `[lint].command_verbs`.
 
@@ -177,7 +176,7 @@ Per-element `suppress_checks` takes precedence over the config allow-list.
 
 ## Strictness and CI gating
 
-Severity has two independent knobs, do not confuse them:
+Two independent settings control severity, and each does a different job:
 
 - **`--level`** (CLI, default `info`) filters what is *displayed*. It never
   changes the exit code and never filters the machine formats.
@@ -204,8 +203,8 @@ domain is clean.
 
 ## CI integration
 
-`protean check` speaks two machine formats. Both emit the **unfiltered** set of
-findings regardless of `--level`.
+`protean check` can write its findings in two machine-readable formats. Both
+emit the **unfiltered** set of findings regardless of `--level`.
 
 ### SARIF → GitHub Code Scanning
 
@@ -272,9 +271,9 @@ machinery as built-in rules.
 
 Run `protean check` locally on every commit alongside the
 [IR compatibility hooks](compatibility-checking.md#step-3-add-pre-commit-hooks).
-The pre-commit hook wiring is documented in the
-[compatibility-checking guide](compatibility-checking.md); point the hook at
-`protean check` to fail commits that introduce new violations.
+The [compatibility-checking guide](compatibility-checking.md) shows how to set
+up the pre-commit hook. Point the hook at `protean check` to fail commits that
+introduce new violations.
 
 ---
 

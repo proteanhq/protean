@@ -19,13 +19,14 @@ persistence-path primitives that hot-path consumers depend on:
 
 Each primitive shipped with tests against one or two adapters (in-memory plus a
 SQL backend, or an adapter-specific file). That left two gaps. First, adapter
-divergence was invisible: nothing asserted that the in-memory, SQLAlchemy, and
-Elasticsearch backends agree on these primitives, so a backend could quietly
+divergence was invisible: no test asserted that the in-memory, SQLAlchemy, and
+Elasticsearch backends agree on these primitives. So a backend could quietly
 diverge (a missing lookup, a different empty-result shape) without a test going
-red. Second, the adapter-author self-check tool, `protean test test-adapter
---provider=X`, collects tests only from `tests/adapters/repository/generic/`, and
-that directory had no coverage of these primitives, so the capability report an
-adapter author relies on said nothing about them.
+red. Second, the adapter-author self-check tool,
+`protean test test-adapter --provider=X`, collects tests only from
+`tests/adapters/repository/generic/`. That directory had no tests for these
+primitives, so the tool's capability report for adapter authors said nothing
+about them.
 
 Protean already has a capability-marker system for exactly this purpose. Each
 database provider declares the capabilities it supports (`basic_storage`,
@@ -68,33 +69,32 @@ implemented, so the adapter fails loudly rather than diverging silently. `F` is
 therefore supported by exactly the in-memory and SQL backends. Those are also
 exactly the adapters that carry the `transactional` capability (Elasticsearch
 does not), so `transactional` is the marker that selects "in-memory + SQL, not
-Elasticsearch." The alignment is by coincidence of the current adapter set, not
-because `F` needs transactions; the marker is being used as the available
-"not-Elasticsearch, real-store" selector. This is the same mechanism already
-used to gate `_claim` correctness. Elasticsearch's loud-fail contract for `F` is
-covered separately by an adapter-specific test, so the full contract (works on
-in-memory + SQL, fails loudly on Elasticsearch) remains verified.
+Elasticsearch." `F` itself does not need transactions. The current adapters
+happen to split the same way, so the `transactional` marker serves as the
+available "not-Elasticsearch, real-store" selector. This is the same mechanism
+already used to gate `_claim` correctness. Elasticsearch's loud-fail contract
+for `F` is covered separately by an adapter-specific test, so the full contract
+(works on in-memory + SQL, fails loudly on Elasticsearch) remains verified.
 
-**`_claim` follows ADR-0013 and is split across two tiers.** Single-worker
-correctness (claimed rows returned in post-claim state, `limit`/`order_by`
-honoured, durability, no re-claim of already-claimed rows) is verified at the
-`transactional` tier on in-memory and SQL. No-double-claim under concurrent
-workers requires real database-level atomicity, so it is verified at the
-`atomic_transactions` tier, which SQL backends carry and the in-memory store
-does not. Relational backends uphold no-double-claim by one of three mechanisms:
-`FOR UPDATE SKIP LOCKED` (the PostgreSQL fast path), serialized writers (SQLite),
-or the portable guarded `UPDATE ... WHERE` re-evaluated under row-lock contention
-(MSSQL), so each row is claimed exactly once. Elasticsearch is exempt from
-`_claim` conformance
-entirely: it carries neither tier, and its document-versioning surfaces a lost
-race as a version conflict rather than a graceful skip, so it is not a supported
-concurrent claim store.
+**`_claim` follows ADR-0013 and is split across two tiers.** The
+`transactional`-tier tests verify single-worker correctness on in-memory and
+SQL: claimed rows returned in post-claim state, `limit`/`order_by` honoured,
+durability, and no re-claim of already-claimed rows. No-double-claim under
+concurrent workers requires real database-level atomicity, so it is verified at
+the `atomic_transactions` tier, which SQL backends carry and the in-memory
+store does not. Relational backends uphold no-double-claim by one of three
+mechanisms: `FOR UPDATE SKIP LOCKED` (the PostgreSQL fast path), serialized
+writers (SQLite), or the portable guarded `UPDATE ... WHERE` re-evaluated under
+row-lock contention (MSSQL), so each row is claimed exactly once. Elasticsearch
+is exempt from `_claim` conformance entirely, because it carries neither tier.
+Its document-versioning reports a lost race as a version conflict instead of a
+graceful skip, so Elasticsearch is not a supported concurrent claim store.
 
-The generic conformance coverage that the outbox epic had added under
-`tests/repository/` (for `count`, `isnull`, `only`, `_delete_top`) is
-consolidated into `tests/adapters/repository/generic/` so a single cross-adapter
-suite is the one source of truth and the `test-adapter` runner reports on it.
-There is no second parallel set.
+The outbox epic had added generic conformance coverage under
+`tests/repository/` (for `count`, `isnull`, `only`, `_delete_top`). We
+consolidate that coverage into `tests/adapters/repository/generic/`, so a
+single cross-adapter suite is the one source of truth and the `test-adapter`
+runner reports on it. There is no second parallel set.
 
 ## Consequences
 
@@ -104,17 +104,18 @@ There is no second parallel set.
   tiers the adapter declares.
 - Memory-versus-SQL-versus-Elasticsearch divergence on these primitives fails a
   test rather than reaching production silently.
-- The contract stays inside the existing capability vocabulary. No new marker,
-  no new taxonomy, nothing extra for an adapter author to learn.
+- The contract uses only the existing capability vocabulary. No new marker, no
+  new taxonomy, nothing extra for an adapter author to learn.
 - The cost is a documented semantic overload: `transactional` is doubling as the
   "in-memory + SQL, not Elasticsearch" selector for `F` even though `F` does not
   depend on transactions. If a future adapter supports transactions but not `F`
-  (or the reverse), this marker would misclassify it and the assignment would
-  need revisiting (most likely by giving `F` its own capability at that point).
+  (or the reverse), the `transactional` marker would misclassify it. The
+  assignment would then need revisiting, most likely by giving `F` its own
+  capability at that point.
 - `_claim`'s concurrent test runs on SQLite as well as PostgreSQL/MSSQL. SQLite
-  upholds no-double-claim by serializing writers; for the small contended
-  workload the test uses, serialization completes well within SQLite's busy
-  timeout, so the test is stable there.
+  upholds no-double-claim by serializing writers. The test's contended workload
+  is small, so serialization completes well within SQLite's busy timeout and
+  the test is stable on SQLite.
 
 ## Alternatives Considered
 

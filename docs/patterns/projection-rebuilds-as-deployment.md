@@ -4,7 +4,7 @@
 
 In an event-sourced CQRS system, projections *can* be rebuilt from scratch. The
 event store holds the complete history, and replaying those events through a
-projector produces a fresh, correct read model. This is one of the great
+projector produces a fresh, correct read model. This is one of the main
 operational advantages of event sourcing: read models are disposable.
 
 But teams rarely plan for this operationally.
@@ -18,8 +18,8 @@ separately:
 --8<-- "patterns/projection-rebuilds-as-deployment/001.py:before"
 ```
 
-The developer's instinct (trained by years of traditional database migrations)
-is to reach for `ALTER TABLE`:
+A developer trained by years of traditional database migrations usually writes
+an `ALTER TABLE` first:
 
 ```sql
 ALTER TABLE order_summary ADD COLUMN subtotal FLOAT;
@@ -35,8 +35,8 @@ subtotal, tax, and shipping data (or those values can be derived via
 upcasters). A rebuild would produce the correct projection with no manual data
 fixups.
 
-The reason teams reach for `ALTER TABLE` instead of a rebuild is that they have
-not treated rebuilds as a deployment operation in its own right. They do not know:
+Teams reach for `ALTER TABLE` instead of a rebuild because they have not
+treated rebuilds as a deployment operation in its own right. They do not know:
 
 - **How long a rebuild takes**: Without measurement, a rebuild feels risky.
   Will it take 10 seconds or 10 hours?
@@ -49,14 +49,13 @@ not treated rebuilds as a deployment operation in its own right. They do not kno
   rebuild exercises the entire upcaster chain. If that chain has never been
   tested end-to-end, the rebuild is the worst time to find out.
 
-- **How to run rebuilds without hurting production**: A rebuild that replays
-  500,000 events reads the whole event store and rewrites the projection's
-  table, on the same databases that production traffic uses.
+- **How to run rebuilds without hurting production**: A rebuild of 500,000
+  events reads the whole event store and rewrites the projection's table. It
+  runs on the same databases as production traffic.
 
-The result: projections become as rigid as traditional database tables, schema
-changes accumulate technical debt, and the team loses the ability to freely
-evolve read models, the very capability that justified event sourcing in the
-first place.
+As a result, projections become as rigid as traditional database tables and
+schema changes accumulate technical debt. The team can no longer change read
+models freely, and that capability is what justified event sourcing.
 
 ---
 
@@ -73,9 +72,9 @@ The core principles:
    rebuild the projection from events. Reserve `ALTER TABLE` for cases where
    a rebuild is genuinely impractical (billions of events, hours-long replay).
 
-2. **Test rebuilds in staging first**: A rebuild exercises every upcaster in the
-   chain, every projector handler, and every event version since the beginning
-   of time. Staging catches transformation errors before production.
+2. **Test rebuilds in staging first**: A rebuild exercises every upcaster in
+   the chain, every projector handler, and every event version in the event
+   store. Staging catches transformation errors before production.
 
 3. **Use blue-green deployment for zero-downtime rebuilds**: Deploy a new
    projection class with a different `schema_name`, rebuild it in the
@@ -173,8 +172,8 @@ During the rebuild, the old `OrderSummary` continues serving traffic. The new
 `order_summary_v2` table fills from the event store.
 
 A rebuild empties the projection's table, reads the events, and then replays
-them. If the Engine is processing events for the same projection at that time,
-the rebuild can erase a row the Engine just wrote for an event it did not read.
+them. The Engine may write a row for the same projection during the rebuild,
+from an event the rebuild did not read. The rebuild can then erase that row.
 That is why `protean projection rebuild` asks you to stop the server first.
 Stop the Engine for the rebuild, or rebuild before the Engine starts with the
 new projector. Reads do not go through the Engine, so the old projection keeps
@@ -200,8 +199,8 @@ be a feature flag, a configuration change, or a code deployment.
 
 **Step 5: Clean up.**
 
-After the switch is confirmed stable, remove the old `OrderSummary` class,
-its projector, and drop the `order_summary` table. Optionally rename
+After you confirm the switch is stable, remove the old `OrderSummary` class and
+its projector. Then drop the `order_summary` table. Optionally rename
 `OrderSummaryV2` to `OrderSummary` and set `schema_name="order_summary_v2"`
 explicitly to preserve the table name.
 
@@ -313,11 +312,11 @@ ssh production-server
 protean projection rebuild --domain=my_app.ordering --projection=OrderSummary
 ```
 
-A rebuild replays every event since the beginning of time. If you added an
-event four months ago but never registered an upcaster for its old schema, the
-rebuild will fail (or worse, silently skip events). If a projector handler has
-a bug that only manifests with old event data, the rebuild surfaces it in
-production.
+A rebuild replays every event, starting from the first one in the event store.
+If you added an event four months ago but never registered an upcaster for its
+old schema, the rebuild will fail (or worse, silently skip events). If a
+projector handler has a bug that only manifests with old event data, the
+rebuild surfaces it in production.
 
 **Instead:** Always rebuild in staging first. Staging should have a
 representative event store (a snapshot or anonymized copy of production).
@@ -365,7 +364,7 @@ If you deploy a projector that populates new fields but do not rebuild, only
 still have the old shape. The read model is inconsistent. Some rows have
 `subtotal`, `tax`, and `shipping`; others do not.
 
-**Instead:** Always rebuild after deploying projector changes that affect the
+**Instead:** Always rebuild after deploying projector changes to the
 projection's schema or data mapping.
 
 ---
@@ -386,8 +385,9 @@ projection's schema or data mapping.
 | **Idempotency** | Depends on script | Always, truncate and replay |
 
 Projections are derived data. They can always be reconstructed from events.
-Treat the rebuild as a deployment operation (test it, monitor it, automate it)
-and you free yourself from the constraints of traditional schema migration.
+Treat the rebuild as a deployment operation (test it, monitor it, automate it),
+and you can change a projection's schema without a traditional
+schema migration.
 
 ---
 

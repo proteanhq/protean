@@ -1,15 +1,16 @@
 # Mutation Testing
 
 Line and branch coverage tell you which code ran during the tests. They do not
-tell you whether a test would *notice* if that code were wrong. Mutation testing
-closes that gap: it makes small, deliberate changes to the source (a "mutant",
-for example flipping `<` to `<=` or `+ 1` to `- 1`) and re-runs the tests. If a
-mutant makes no test fail, it "survived", which means that line is executed but
-under-asserted. Every surviving mutant is a candidate for a new test.
+tell you whether a test would *notice* if that code were wrong. Mutation
+testing checks whether a test would notice. It makes small, deliberate changes
+to the source (a "mutant", for example flipping `<` to `<=` or `+ 1` to `- 1`)
+and re-runs the tests. If a mutant makes no test fail, it "survived". A
+surviving mutant means the tests execute that line but do not assert enough
+about it. Every surviving mutant is a candidate for a new test.
 
 Protean runs mutation testing as a periodic, targeted pass over the framework's
-own core rather than as a CI gate. The goal is to harden the test suite module
-by module, not to chase a global percentage.
+own core rather than as a CI gate. The goal is to add the missing tests one
+module at a time. A global percentage is not the target.
 
 ## Running it
 
@@ -30,8 +31,8 @@ subscription), and five targets for the IR and the Observatory: `ir-builder`,
 `checkpoint` mutates a large module (`event_store_subscription.py`), so it is
 one of the slower targets: mutmut mutates the whole file. `MUT_FILTER` does not change
 that. It narrows the printed **survivor list** to the checkpoint methods so
-they are easy to pick out of the report (see "Reading the report" below). What
-keeps the run tractable is the tight test subset the target already uses.
+they are easy to pick out of the report (see "Reading the report" below). The
+small test subset the target already uses keeps the run time manageable.
 
 ```shell
 MUT_FILTER="update_read_position|update_current_position_to_store|_gap_safe_batch|_write_recovery_checkpoint" \
@@ -55,14 +56,14 @@ temporary `setup.cfg` it writes for mutmut's config) when it finishes.
 
 ### Adding a target
 
-Targets live in a `case` block in `scripts/mutation.sh`. Each maps a name to a
-module and the fast test subset that exercises it. Pick the smallest set of tests
-that covers the module's behaviour; a broad subset only slows the run without
-finding more survivors. Drop a test file the module never runs. mutmut runs
-each mutant against only the tests that call the mutated function, so such a
-file does not slow the per-mutant runs, but it adds time to mutmut's two
-whole-subset runs at the start (the run that records which tests call which
-function, and the clean run on unmutated code). To check a file, run it alone in
+`scripts/mutation.sh` defines the targets in a `case` block. Each maps a name
+to a module and the fast test subset that exercises it. Pick the smallest set
+of tests that covers the module's behaviour; a broad subset only slows the run
+without finding more survivors. Drop a test file the module never runs. mutmut
+runs each mutant only against the tests that call the mutated function, so such
+a file does not slow the per-mutant runs. It does add time to mutmut's two
+whole-subset runs at the start: the run that records which tests call which
+function, and the clean run on unmutated code. To check a file, run it alone in
 `.venv-mutation` under coverage and read the module's line in the report:
 
 ```shell
@@ -99,27 +100,29 @@ Linux.
 
 One file was left out to keep the runs short. Adding
 `tests/server/observatory/test_causation_enrichment.py` to
-`observatory-timeline` raises its coverage to about 99%. Add it when the extra
-run time is worth it, and re-measure the counts.
+`observatory-timeline` raises its coverage to about 99%. When the extra run
+time is worth it, add the file. Then re-measure the counts.
 
-A few things about this environment shape the results for these targets:
+Five facts about mutmut and the `.venv-mutation` environment change the results
+for these targets:
 
 - **Decorated functions get no mutants.** mutmut 3 skips any function that
   has a decorator other than `@staticmethod` or `@classmethod`, along with its
-  body. The FastAPI route handlers in `api.py` and `timeline.py` are
-  decorated route handlers (`@router.get(...)`, `@router.post(...)`,
-  `@router.delete(...)`), so mutmut mutates only the module-level helpers
-  those handlers call. That is why `observatory-api` produces fewer than 200
-  mutants from a module of over 1,300 lines.
+  body. The FastAPI route handlers in `api.py` and `timeline.py` carry route
+  decorators (`@router.get(...)`, `@router.post(...)`, `@router.delete(...)`).
+  mutmut therefore mutates only the module-level helpers those handlers call.
+  That is why `observatory-api` produces fewer than 200 mutants from a module
+  of over 1,300 lines.
 - **The environment installs the `server` and `redis` extras.** The
   Observatory tests import FastAPI, and their test domain configures the Redis
   broker, which needs the `redis` client package. A running Redis server is not
-  needed. If one is listening on `127.0.0.1:56379` (the port `docker-compose.yml`
-  maps), the teardown of every test that uses the shared test domain sends
-  `FLUSHDB` to the test broker's database, so a mutation run wipes that
-  database over and over for as long as it runs. Do not run it while another
-  test run or worktree is using that Redis. The `observatory-timeline` tests
-  are marked `no_test_domain`, so that target never flushes it.
+  needed. When a Redis server listens on `127.0.0.1:56379` (the port
+  `docker-compose.yml` maps), each test on the shared test domain sends
+  `FLUSHDB` to the test broker's database in its teardown. A mutation run then
+  wipes that database over and over for as long as it runs. While another test
+  run or worktree is using that Redis, do not start a mutation run. The
+  `observatory-timeline` tests are marked `no_test_domain`, so that target
+  never flushes it.
 - **The environment does not install the `telemetry` extra.** Without the
   OpenTelemetry SDK, `metrics.py` serves its hand-written Prometheus text.
 - **The OpenTelemetry gauge code is not exercised.**
@@ -134,7 +137,8 @@ A few things about this environment shape the results for these targets:
   Prometheus output line by line are among them, so a mutant that only these
   tests would reach survives.
 
-`observatory-metrics` scores low for both of the last two reasons. Of its 1,029
+`observatory-metrics` scores low because of the last two facts above: the
+skipped Redis-marked tests and the gauge code that returns early. Of its 1,029
 survivors, 414 are in `_hand_rolled_metrics`, which the skipped Redis-marked
 tests check, and 445 are in `_register_infrastructure_gauges`, which returns
 early.
@@ -168,17 +172,18 @@ For each survivor, decide which of three buckets it falls into:
 - **An equivalent mutant**: A change that cannot alter observable behaviour, so
   no test can kill it. The classic case in Protean is a `<` to `<=` flip on a
   `datetime.now()` comparison: the two differ only at the exact boundary
-  instant, which a wall-clock test can never hit. These are killable only by
-  freezing the clock to that instant (see the boundary tests in
-  `tests/outbox/test_outbox_aggregate.py`), and are worth a test only when the
-  boundary semantics are meaningful.
+  instant, which a wall-clock test can never hit. Only a test that freezes the
+  clock to that instant can kill these mutants (see the boundary tests in
+  `tests/outbox/test_outbox_aggregate.py`). Such a test is worth writing only
+  when the boundary semantics are meaningful.
 - **Low value**: Pinning a constant default (for example that a page size is
   exactly 50) is brittle and catches no realistic bug. Skip these deliberately
   rather than writing a test that only restates the literal.
 
 Prefer killing behavioural survivors (wrong comparison, dropped filter,
-off-by-one, swapped branch) over cosmetic ones. When you skip a survivor, a
-one-line note in the PR description on *why* keeps the next pass honest.
+off-by-one, swapped branch) over cosmetic ones. When you skip a survivor, add a
+one-line note on *why* to the PR description. Whoever runs the next pass then
+knows the reason.
 
 !!! warning "Clear `__pycache__` if you hand-edit the real source to check a mutant"
 
@@ -187,28 +192,30 @@ one-line note in the PR description on *why* keeps the next pass honest.
     directly (flip the operator, run the test, restore it), clear `__pycache__`
     afterward: `find src tests -name __pycache__ -type d -exec rm -rf {} +`.
     CPython's default `.pyc` validation is timestamp-based (source mtime + size).
-    A same-size flip such as `==` to `!=` restored within the same filesystem
-    mtime-second leaves a `.pyc` whose recorded `(mtime, size)` still matches the
-    restored source, so Python keeps running the *mutant* bytecode. The symptom is
-    a broad, baffling set of failures (here: every sync inline-dispatch test) that
-    vanish the moment you touch the file, with `git diff` showing nothing.
+    A same-size flip such as `==` to `!=`, restored within the same filesystem
+    mtime-second, leaves a `.pyc` whose recorded `(mtime, size)` still matches
+    the restored source. Python then keeps running the *mutant* bytecode. The
+    symptom is a broad, baffling set of failures (here: every sync
+    inline-dispatch test) that vanish the moment you touch the file, with
+    `git diff` showing nothing.
 
 ## Cadence
 
-Treat this as a **quarterly pass**: pick one or two core modules, drive their
-score up by adding the missing tests, and land the tests (never a lowered
+Treat this as a **quarterly pass**: pick one or two core modules, raise their
+score by adding the missing tests, and merge the tests (never a lowered
 threshold). `utils/outbox.py` and `core/upcaster.py` have had a full measured
 pass driven to completion.
 
-`core/unit_of_work.py` (the transaction boundary), `utils/sync_dispatch.py`
-(breadth-first dispatch), and the checkpoint path in
-`server/subscription/event_store_subscription.py` now have their own targets, and
-tests that pin the highest-value behavioural mutants on each (the sync/async
+Three code paths now have their own targets: `core/unit_of_work.py` (the
+transaction boundary), `utils/sync_dispatch.py` (breadth-first dispatch), and
+the checkpoint path in `server/subscription/event_store_subscription.py`. Each
+has tests that pin its highest-value behavioural mutants (the sync/async
 commit-dispatch guard, the fan-out drain and `None`-context branch, the two
-position-write cadence decisions). Running each target to completion and driving
-down whatever survivors remain, `sync-dispatch` is close; `unit-of-work` and `checkpoint` still have uncovered
-regions (partition-key routing, the recovery-checkpoint writer, `_gap_safe_batch`), is a good
-next quarterly pass.
+position-write cadence decisions). A good next quarterly pass runs each of
+these targets to completion and reduces the survivors that remain.
+`sync-dispatch` is close to done, while `unit-of-work` and `checkpoint` still
+have uncovered regions (partition-key routing, the recovery-checkpoint
+writer, `_gap_safe_batch`).
 
 Some survivors in these paths are deliberately left alive because no test can
 kill them without restating a literal or freezing the clock to a single instant:
@@ -225,11 +232,11 @@ kill them without restating a literal or freezing the clock to a single instant:
 ## Why a separate Python 3.12 environment
 
 The tool runs in a dedicated `.venv-mutation` at **Python 3.12**, not the
-project's Python 3.14, and this is deliberate. Python 3.14 is currently too
-bleeding-edge for reliable mutation testing of Protean's compiled dependencies
-(SQLAlchemy's C extensions, greenlet, and friends): under 3.14, mutmut's forked
-workers segfault on roughly a fifth of mutants, so the results are incomplete.
-Python 3.12 runs the whole set cleanly, and because the mutated logic is
-version-independent the results are representative of every supported version.
-Keeping the tool in its own environment also means `import protean` never pulls
+project's Python 3.14, and this is deliberate. Python 3.14 is currently too new
+for reliable mutation testing of Protean's compiled dependencies (SQLAlchemy's
+C extensions, greenlet, and others). Under 3.14, mutmut's forked workers
+segfault on roughly a fifth of mutants, so the results are incomplete. Python
+3.12 runs the whole set cleanly. The mutated logic does not depend on the
+Python version, so the results represent every supported version. Keeping the
+tool in its own environment also means `import protean` never pulls
 in the mutation-only dependency for normal development.

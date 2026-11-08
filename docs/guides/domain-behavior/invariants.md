@@ -4,9 +4,10 @@
 
 [Field-level validations](validations.md) catch type errors, missing values,
 and range violations, but they cannot express rules that span multiple fields
-or depend on the aggregate's overall state. For example, "an order's total must
-equal the sum of its items" or "a shipment can only be dispatched if the order
-is confirmed" are business rules that no single field constraint can enforce.
+or depend on the aggregate's overall state. For example, no single field
+constraint can enforce business rules such as "an order's total must equal the
+sum of its items" or "a shipment can only be dispatched if the order
+is confirmed".
 
 Invariants fill this gap. They are business rules or constraints that must
 **always** be true within a domain concept. Protean treats invariants as
@@ -95,10 +96,9 @@ An `atomic_change` block is rolled back as a whole: when the check at its end
 fails, the aggregate and its child entities go back to their state from block
 entry, including association changes (see below). Events raised inside the
 block are discarded too. An exception raised by the code inside the block does
-not roll it back. On an event-sourced aggregate,
-`raise_()` runs the `@apply` handler inside `atomic_change`, so when a check
-fails after the handler, `raise_()` undoes the handler's field changes and
-also discards the event.
+not roll it back. On an event-sourced aggregate, `raise_()` runs the `@apply`
+handler inside `atomic_change`. So when a check fails after the handler runs,
+`raise_()` undoes the handler's field changes and also discards the event.
 
 !!!note
     `pre` invariants are not applicable when aggregates and entities are being
@@ -112,9 +112,8 @@ also discards the event.
 ## When Invariants Run
 
 Invariant validations are triggered throughout the lifecycle of domain objects.
-The aggregate is the root of the triggering mechanism. Validations are
-conducted recursively, starting with the aggregate and trickling down into
-enclosed entities.
+The aggregate is the root of the triggering mechanism. Protean runs validations
+recursively: first on the aggregate, then on each enclosed entity.
 
 ### Post-Initialization
 
@@ -143,8 +142,8 @@ ValidationError: {'_entity': ['Total should be sum of item prices']}
 ### Attribute Changes
 
 Every attribute change in an aggregate or its enclosed entities triggers
-invariant validation throughout the aggregate cluster. This ensures that any
-modification maintains the consistency of the domain model.
+invariant validation throughout the aggregate cluster. As a result, any
+modification keeps the domain model consistent.
 
 ```shell hl_lines="15 17"
 In [1]: from datetime import date
@@ -166,8 +165,8 @@ In [3]: order.total_amount = 140.0
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
 
-This happens because `__setattr__` intercepts every field assignment and runs
-the full pre-check → validate → post-check cycle. See
+Validation runs on every assignment because `__setattr__` intercepts every
+field assignment and runs the full pre-check → validate → post-check cycle. See
 [Aggregate Mutation](aggregate-mutation.md#how-it-works) for the complete
 mechanism.
 
@@ -190,7 +189,7 @@ In [4]: order.add_items(OrderItem(product_id="3", quantity=2, price=10.0, subtot
 ValidationError: {'_entity': ['Total should be sum of item prices']}
 ```
 
-Adding an item changes the sum of item subtotals, which no longer matches
+Adding an item changes the sum of item subtotals. The new sum no longer matches
 `total_amount`, so the post-invariant fires immediately.
 
 When adding or removing entities requires coordinated changes (like updating
@@ -199,9 +198,9 @@ a total), use `atomic_change` to batch the mutations.
 
 ## Atomic Changes
 
-There may be times when multiple attributes need to be changed together, and
-validations should not trigger until the entire operation is complete.
-The `atomic_change` context manager can be used to achieve this.
+Sometimes you need to change multiple attributes together. In that case,
+validations should not trigger until the entire operation is complete. The
+`atomic_change` context manager can be used to achieve this.
 
 Within the `atomic_change` context manager, the cycle works as follows:
 
@@ -239,9 +238,9 @@ In [4]: order.total_amount, len(order.items)
 Out[4]: (120.0, 3)
 ```
 
-Making the same two updates one after another, outside `atomic_change`, fails
-at the first one. On a fresh order with the same two items, setting the total
-alone breaks the post-invariant:
+If you make the same two updates one after another, outside `atomic_change`,
+the first update fails. On a fresh order with the same two items, setting the
+total alone breaks the post-invariant:
 
 ```shell hl_lines="14"
 In [5]: order = Order(

@@ -33,9 +33,9 @@ runs the same tests against both memory and real infrastructure in CI.
 
 ## Database
 
-The database persists aggregate state. Every Protean application needs
-exactly one `default` database; you can register additional named
-databases for aggregates that should live elsewhere (search indices,
+The database persists aggregate state. Every Protean application needs exactly
+one `default` database. You can register additional named databases for
+aggregates that you want to store in a different database (search indices,
 reporting stores).
 
 | Provider | Best for | Trade-offs |
@@ -90,10 +90,9 @@ provider = "redis"
 URI = "${REDIS_URL}"
 ```
 
-The [outbox pattern](../server/outbox.md) is the supported way to
-publish domain events to brokers, StreamSubscription reads from the outbox via
-the broker, which is why Redis Streams (with DLQ support) is the standard
-choice.
+The [outbox pattern](../server/outbox.md) is the supported way to publish
+domain events to brokers. StreamSubscription reads from the outbox via the
+broker, so Redis Streams (with DLQ support) is the standard choice.
 
 !!! note "Brokers vs. event stores"
     Protean uses an **event store** (not a broker) for intra-domain
@@ -126,9 +125,9 @@ provider = "message_db"
 database_uri = "postgresql://message_store@localhost:5433/message_store"
 ```
 
-If you're not event-sourcing any aggregates, leave the event store on
-`memory`, Protean still uses it internally for event-handler delivery in sync mode,
-but no persistence is needed.
+If you're not event-sourcing any aggregates, leave the event store on `memory`.
+Protean still uses it internally for event-handler delivery in sync mode, but
+no persistence is needed.
 
 ---
 
@@ -183,9 +182,9 @@ selection](./production-configuration.md#adapter-selection).
 
 ## Switching adapters without code changes
 
-The whole point of the port-and-adapter architecture is that adapter
-choice is a deployment decision, not a code decision. When you switch
-from `memory` to `postgresql`, you should change exactly one thing: the
+The main purpose of the port-and-adapter architecture is to make adapter choice
+a deployment decision that needs no code change. When you switch from `memory`
+to `postgresql`, you should change exactly one thing: the
 overlay in `domain.toml`.
 
 ```toml
@@ -211,8 +210,8 @@ happening:
 - **You skipped `protean db setup`** after switching. Memory adapters
   don't need schema setup; relational ones do.
 
-Add `pytest` in dual-mode to your CI to catch this drift continuously, see
-[Dual-Mode Testing](../../patterns/dual-mode-testing.md).
+To catch drift between memory and real adapters continuously, add `pytest` in
+dual-mode to your CI. See [Dual-Mode Testing](../../patterns/dual-mode-testing.md).
 
 ---
 

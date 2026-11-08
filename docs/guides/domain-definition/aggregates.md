@@ -4,16 +4,16 @@
 
 DDD emphasizes on representing domain concepts as closely as possible in code.
 To accomplish this, DDD outlines a set of tactical patterns that we could use
-to model the domain. When you want to model domain concepts that have a unique
-identity and that change continuously over a long period of time, you
-represent them as [Aggregates](#aggregates) and [Entities](./entities.md).
+to model the domain. Some domain concepts have a unique identity and change
+continuously over a long period of time. You represent such concepts as
+[Aggregates](#aggregates) and [Entities](./entities.md).
 
 Aggregates are fundamental, coarse-grained building blocks of a domain model.
 They are conceptual wholes - they enclose all behaviors and data of a distinct
 domain concept. Aggregates are often composed of one or more Aggregate
 Elements, that work together to codify the concept.
 
-Traditional DDD refers to such entities as **Aggregate Roots** because they
+Traditional DDD refers to aggregates as **Aggregate Roots** because they
 compose and manage a cluster of objects. In Protean, the term ***Aggregate***
 and ***Aggregate Root*** are synonymous.
 
@@ -44,13 +44,13 @@ Here, `Post` aggregate has two fields:
 - `name`, a `String` field
 - `created_on`, a `Date` field
 
-You can finely configure each field with various options (like `max_length` in
-`String`'s case), add validations (like `required` to indicate that a field is
-mandatory), and also fine-tune how it is persisted (like a database column
-name in `referenced_as`).
+You can configure each field with options, such as `max_length` on a `String`
+field. You can add validations, such as `required` to mark a field as
+mandatory. You can also set how Protean persists the field, such as a database
+column name in `referenced_as`.
 
-The full list of available fields in Protean and their options is available in
-[Data Fields](../../reference/fields/index.md) section.
+The [Data Fields](../../reference/fields/index.md) section lists every field
+Protean offers, with its options.
 
 ## Initialization
 
@@ -90,7 +90,7 @@ creation event whose `@apply` handler populates the remaining state:
 --8<-- "guides/domain-definition/aggregates/001.py:aggregate"
 ```
 
-This ensures the creation event's `@apply` handler is the single source of
+As a result, the creation event's `@apply` handler is the single source of
 truth for setting initial state. The same handler runs during both live
 creation and event replay. See the [Event Sourcing
 pathway](../pathways/event-sourcing.md) for a complete walkthrough.
@@ -245,14 +245,15 @@ objects all support this hook.
 
 ## Associations
 
-Protean provides multiple options for Aggregates to weave object graphs with enclosed Entities. Associations define relationships between the aggregate and its child entities, establishing clear parent-child hierarchies within aggregate boundaries.
+Protean provides multiple options for linking an Aggregate to the Entities it encloses. Associations define relationships between the aggregate and its child entities, establishing clear parent-child hierarchies within aggregate boundaries.
 
 For comprehensive documentation on relationships, see [Expressing Relationships](./relationships.md).
 
 ### `HasOne`
 
-A HasOne field establishes a has-one relation with the entity. In the example
-below, `Post` has exactly one `Statistic` record associated with it.
+A HasOne field on an aggregate establishes a has-one relation with a child
+entity. In the example below, `Post` has exactly one `Statistic` record
+associated with it.
 
 ```python hl_lines="18 22-26"
 --8<-- "guides/domain-definition/008.py:full"

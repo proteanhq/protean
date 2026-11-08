@@ -3,10 +3,10 @@
 <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
 In event-driven systems, every event and command often needs cross-cutting
-metadata that has nothing to do with the event's business payload, who
+metadata that has nothing to do with the event's business payload: who
 performed the action, which tenant it belongs to, the originating IP address,
-or custom audit context. Without a central mechanism, developers must sprinkle
-this logic into every `raise_()` call, which is repetitive and easy to forget.
+or custom audit context. Without a central mechanism, developers must add this
+logic to every `raise_()` call, which is repetitive and easy to forget.
 
 **Message enrichment hooks** solve this by letting you register callables on
 the domain that automatically add custom metadata to every event and command.
@@ -92,10 +92,10 @@ def enricher(command: BaseCommand) -> dict[str, Any]:
 
 Event and command enrichers write to `metadata.extensions`. When you instead
 need to stamp fields **on the aggregate itself** (audit columns like
-`updated_by`, or lifecycle timestamps) register an **aggregate enricher**. It
-runs in the persistence path just before an aggregate is saved (on both create
-and update), and unlike the enrichers above it **mutates the aggregate in
-place** rather than returning a dict:
+`updated_by`, or lifecycle timestamps) register an **aggregate enricher**. An
+aggregate enricher runs in the persistence path just before an aggregate is
+saved (on both create and update). Unlike event and command enrichers, it
+**mutates the aggregate in place** and does not return a dict:
 
 ```python
 --8<-- "guides/domain-behavior/message-enrichment/003.py:stamp_audit"
@@ -114,22 +114,22 @@ The aggregate's `@invariant.pre` checks do not run on an enricher's writes,
 because stamping an audit field is not a business change. So a closed aggregate
 whose pre-invariant rejects changes can still be saved. The `@invariant.post`
 checks run once after each enricher, and the status-transition rules still
-apply to a status field it changes. When one of them fails, the enricher's
-writes are undone and the save is aborted with a `ValidationError` whose
-`location` names the enricher, for example
-`aggregate enricher myapp.audit.stamp_audit on Account`. `auto_now` and `auto_now_add`
-stamping works the same way, and its `location` names the stamped fields.
-An enricher that raises has its writes undone too, and its own exception
-reaches the caller.
+apply to a status field it changes. When one of these checks fails, Protean
+undoes the enricher's writes and aborts the save with a `ValidationError`. The
+error's `location` names the enricher, for example
+`aggregate enricher myapp.audit.stamp_audit on Account`. `auto_now` and
+`auto_now_add` stamping works the same way, and its `location` names the
+stamped fields. An enricher that raises has its writes undone too, and its own
+exception reaches the caller.
 
 Aggregate enrichers never fire for the records Protean saves for itself, such
 as outbox rows. The example skips an aggregate without `updated_by`, so the same
 enricher works in a domain where some aggregates have no audit fields.
 
-Keep them to cross-cutting lifecycle/audit metadata; they are not a hook for
-business logic or for raising events. For the complete recipe (an abstract audit
-base with `auto_now`/`auto_now_add` timestamps plus `created_by`/`updated_by`),
-see [Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md).
+Keep aggregate enrichers to cross-cutting lifecycle/audit metadata; they are
+not a hook for business logic or for raising events. For the complete recipe
+(an abstract audit base with `auto_now`/`auto_now_add` timestamps plus
+`created_by`/`updated_by`), see [Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md).
 
 ## Accessing Extensions
 

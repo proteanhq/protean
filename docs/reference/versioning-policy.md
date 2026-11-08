@@ -72,9 +72,9 @@ One rule is fixed, and it is the one the contract rests on:
 > A removal is never in the same release as its deprecation.
 
 So a removal is always preceded by at least one released version that warned you
-and told you which release to be ready for. How much runway you get beyond that
-depends on how widely the API is used, which is a judgement we make per
-deprecation rather than a number we apply to all of them.
+and told you which release to be ready for. We decide for each deprecation how
+many more releases you get beyond that one. The number depends on how widely
+the API is used, and no fixed number applies to all deprecations.
 
 !!! warning "If you skip releases, run `protean check`"
 
@@ -86,29 +86,27 @@ deprecation rather than a number we apply to all of them.
 
 ### How this compares to SQLAlchemy
 
-If you already know SQLAlchemy's scheme, this will be familiar: they also use a
-"modified semantic versioning scheme" and the same warning-driven upgrade path,
-where an application that runs clean under the deprecation warnings is ready for
-the next series. Protean uses per-version warning classes for the same reason
-they do.
+SQLAlchemy also uses a "modified semantic versioning scheme" and the same
+warning-driven upgrade path. In both projects, an application that runs clean
+under the deprecation warnings is ready for the next series. Protean uses
+per-version warning classes for the same reason they do.
 
-The shape is the same: patches are inert, the minor position is where breaking
-change lands, majors are reserved for a categorical shift, and neither project
-fixes a deprecation window.
+Both projects follow the same pattern. Patches change no API, breaking changes
+arrive in minor versions, majors are kept for a categorical shift, and neither
+project fixes a deprecation window.
 
-One difference worth knowing. SQLAlchemy allows "some risk of non-backwards
-compatibility" in a minor even outside previously-deprecated APIs. Protean does
-not: a minor may remove a deprecated API, but it may not break code that was
-running warning-free. That is the whole point of the contract at the top of this
-page.
+Protean differs from SQLAlchemy in one way. SQLAlchemy allows "some risk of
+non-backwards compatibility" in a minor even outside previously-deprecated
+APIs. Protean does not: a minor may remove a deprecated API, but it may not
+break code that was running warning-free. That is the whole point of the
+contract at the top of this page.
 
 ### Majors are eras, not accumulated breakage
 
-A major version does not mean "we saved up breaking changes." It means the
-boundary of what the framework does has moved: a change in the security posture
-(what Protean holds and protects for you), or a change in the concurrency and
-deployment model. Those are shifts you need to think about rather than
-mechanically patch.
+A major version does not mean "we saved up breaking changes." It means
+Protean's scope has changed: a change in the security posture (what Protean
+holds and protects for you), or a change in the concurrency and deployment
+model. Those are shifts you need to think about rather than mechanically patch.
 
 A renamed parameter will never cost you a major upgrade. Nor will it be left
 permanently wrong to avoid one.
@@ -120,20 +118,22 @@ permanently wrong to avoid one.
 Strict SemVer says breaking changes only in majors. For a framework, that
 produces one of two outcomes, and neither is good for you.
 
-Either majors get burned on trivia, so the version number stops carrying
-information: 4.0 might be a rearchitecture or a renamed keyword argument, and
-you cannot tell which without reading the notes. Or, far more commonly, majors
-become so expensive that nothing is ever corrected, and early mistakes calcify
-into permanent API.
+Either the project spends majors on trivial changes, so the version number
+stops carrying information. A 4.0 release might be a rearchitecture or a
+renamed keyword argument, and you cannot tell which without reading the notes.
+Or, far more commonly, majors become so expensive that nobody corrects
+anything. Early mistakes then stay in the API permanently.
 
-The deprecation-managed model splits the two questions SemVer runs together:
+The deprecation-managed model separates two questions that SemVer answers with
+one number:
 
 - **"Is this safe to upgrade?"** is answered continuously, by your own warning
   log, per release.
-- **"Has this project changed shape?"** is answered by the major version.
+- **"Has this project changed what it does?"** is answered by the
+  major version.
 
-You get a mechanical, checkable answer to the first question, and a meaningful
-signal from the second.
+You get a mechanical, checkable answer to the first question, and a major
+version that carries real information for the second.
 
 The full reasoning is in
 [ADR-0004](https://github.com/proteanhq/protean/blob/main/docs/adr/0004-release-workflow-and-breaking-change-policy.md).
@@ -142,14 +142,13 @@ The full reasoning is in
 
 ## What the contract covers
 
-The promise applies to the **Stable** tier of Protean's public surface. That
-surface is enumerated, not implied: see [Stable surface](stable-surface.md) for
-exactly which imports, decorators, options, config keys, and CLI commands are
-covered, which are **Provisional** (usable and documented, may change in a minor
-with a changelog notice), and which are **Internal** and carry no promise at
-all.
+The promise applies to the **Stable** tier of Protean's public surface.
+[Stable surface](stable-surface.md) lists exactly which imports, decorators,
+options, config keys, and CLI commands are covered. It also lists which are
+**Provisional** (usable and documented, may change in a minor with a changelog
+notice), and which are **Internal** and carry no promise at all.
 
-Two things worth knowing:
+Two further points define what the promise covers:
 
 - **Documented guarantees are part of the API**: Weakening a guarantee in
   [Consistency & delivery guarantees](guarantees.md) is a breaking change even
@@ -171,9 +170,9 @@ When a break is unavoidable, it is classified and mitigated by type:
 | **Structural** | Persistence format, event schema, serialization | A versioned schema and a shipped migration, plus upgrade notes |
 
 Behavioral changes get the most ceremony because they are the most dangerous:
-your code keeps running and produces different results. You always get a
-release where the new behavior is opt-in, and a release where not having chosen
-warns you, before any default moves.
+your code keeps running and produces different results. Before any default
+changes, you always get a release where the new behavior is opt-in. You then
+get a release that warns you if you have not chosen a behavior.
 
 There are two deliberate exceptions, both documented in ADR-0004: operational
 defaults (timeouts, pool sizes, retry counts) may change in a minor with a

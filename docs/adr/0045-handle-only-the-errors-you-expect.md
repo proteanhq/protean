@@ -60,11 +60,12 @@ Two cases do not need an `except` at all:
   the domain config calls `has_domain_context()` first and does not catch the
   failure of reading without one.
 - When an empty result is a normal outcome, ask for a default. Use
-  `next(iterator, None)` and test the result with `is not None`. Ruff's `SIM105`
-  suggests `contextlib.suppress(StopIteration)` for a `try`/`except
-  StopIteration: pass` block, but that form still treats "no match" as an
-  error, and it also hides a `StopIteration` raised by any later line in the
-  block. For a dictionary key that may be missing, use `dict.get()`.
+  `next(iterator, None)` and test the result with `is not None`. Ruff's
+  `SIM105` suggests `contextlib.suppress(StopIteration)` for a
+  `try`/`except StopIteration: pass` block. But that form still treats "no
+  match" as an error, and it also hides a `StopIteration` raised by any later
+  line in the block. For a dictionary key that may be missing,
+  use `dict.get()`.
 
 `BLE001`, `S110` and `S112` stay on for `src/`. No new `per-file-ignores` entry
 or project-wide `ignore` entry is added for them. `tests/` and `docs_src/` keep
@@ -73,9 +74,9 @@ assertion, and an example on a page catches it to stay short.
 
 ## Consequences
 
-An error outside the case a path was written for now reaches the caller or the
-log. A bug in user configuration or in framework code shows up where it
-happens.
+Each path was written for one case. An error outside that case now reaches the
+caller or the log. A bug in user configuration or in framework code shows up
+where it happens.
 
 This is a behavior change. Code that hit one of these paths with some other
 error used to get the fallback value in silence, and now gets the exception.
@@ -86,8 +87,8 @@ migration guide lists each path, the case it still handles, and what happens
 in that case.
 
 Ruff flags a new blind or silent `except`. It cannot tell whether a
-`# noqa: BLE001` site is a genuine catch-all point, so that judgment stays with
-the reviewer, and the reason on the `noqa` line is what the reviewer checks.
+`# noqa: BLE001` site is a genuine catch-all point, so the reviewer makes that
+judgment by checking the reason on the `noqa` line.
 
 Each site that logs needs a test that checks the log record, and each narrowed
 `except` needs a test that raises the exception it now catches. That adds test

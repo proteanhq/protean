@@ -39,10 +39,11 @@ Run the **same test suite** in two modes:
 | **Real** | PostgreSQL, Redis, Message DB | Final CI validation, debugging infrastructure-specific issues |
 
 The key insight is that Protean's memory adapters implement the **same interface**
-as real adapters. A test that creates an aggregate, processes a command, and
-verifies a projection works identically whether the aggregate is stored in a
-Python dictionary or a PostgreSQL table. By switching adapters at the
-configuration level, you get two modes from one test suite with zero code changes.
+as real adapters. Consider a test that creates an aggregate, processes a
+command, and verifies a projection. The test works identically whether the
+aggregate is stored in a Python dictionary or a PostgreSQL table. By switching
+adapters at the configuration level, you get two modes from one test suite with
+zero code changes.
 
 ```
                  ┌─────────────────┐
@@ -247,8 +248,8 @@ src/
 ```
 
 Since `--protean-env memory` sets a single `PROTEAN_ENV` environment variable,
-all domains pick up their respective `[memory]` overlays automatically. No
-per-domain switching logic is needed.
+every domain loads its own `[memory]` overlay automatically. No per-domain
+switching logic is needed.
 
 ---
 

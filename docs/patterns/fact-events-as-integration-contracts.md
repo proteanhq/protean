@@ -55,12 +55,13 @@ class CustomerEventSubscriber(BaseSubscriber):
     # ... and so on for every event type
 ```
 
-This creates a cascade of problems:
+This subscriber design causes five problems:
 
 - **Taxonomy coupling**: The Fulfillment domain must know about every granular
   event type the Customer domain publishes. When the Customer domain adds
   `CustomerPreferredLanguageSet`, the Fulfillment domain must decide whether to
-  handle it. Even if it doesn't care. Miss one event and local state drifts.
+  handle it. Even if it doesn't care. When the Fulfillment domain misses one
+  event, its local state stops matching the customer's current state.
 
 - **State reconstruction from deltas**: The subscriber must process events in
   order and incrementally update its local model. If events arrive out of order,
@@ -182,7 +183,7 @@ the current state and replaces its local copy.
 When the Customer domain later adds `preferred_language` to the aggregate,
 the fact event automatically includes it. The Fulfillment subscriber can
 choose to map it to a local field or ignore it. No new event type
-to handle. No risk of silent drift.
+to handle. The local copy cannot silently go out of date.
 
 ### Multiple external consumers
 
@@ -265,9 +266,10 @@ class CustomerInternalHandler(BaseEventHandler):
 ```
 
 Fact events carry **what the state is**, not **what happened**. Internal
-consumers that need to react to specific operations should use delta events
-that carry semantic meaning: `CustomerTierUpgraded` tells the handler exactly
-what happened; a fact event requires the handler to diff state.
+consumers that need to react to specific operations should use delta events,
+because delta events carry semantic meaning. `CustomerTierUpgraded` tells the
+handler exactly what happened, while a fact event requires the handler to
+diff state.
 
 **Fix:** Use delta events for internal reactions. Use fact events for
 external state transfer.

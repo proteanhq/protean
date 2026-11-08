@@ -18,16 +18,16 @@ It writes two sets of files into a target project. The canonical set:
 - `.mcp.json`: the registration a client reads to launch Protean's MCP server
   (`protean mcp`). It is a structured JSON merge scoped to the
   `mcpServers.protean` key-path, so an existing `.mcp.json` keeps every other
-  server you configured; `install` writes and reconciles only its own entry.
+  server you configured. `install` writes and reconciles only its own entry.
 
 The per-editor set, one file each for Cursor, Copilot, and opencode:
 
 - `.cursor/rules/protean.mdc`: Cursor's rule file. It carries MDC frontmatter
-  (with `globs: "**/*.py"`, so the rule applies to Python files) and the same
-  composed guidance `AGENTS.md` carries. Cursor reads `AGENTS.md` natively for the
-  always-on layer, so this rule is scoped to code. Protean owns the whole file,
-  since the MDC frontmatter must start at line 1 and leaves no room for a marker
-  above it.
+  with `globs: "**/*.py"`, which applies the rule to Python files. It also
+  carries the same composed guidance as `AGENTS.md`. Cursor reads `AGENTS.md`
+  natively for the always-on layer, so this rule is scoped to code. Protean
+  owns the whole file, since the MDC frontmatter must start at line 1 and
+  leaves no room for a marker above it.
 - `.github/copilot-instructions.md`: Copilot's instructions, the composed guidance
   in an HTML-comment managed block, so the file stays co-owned with your own
   Copilot instructions.
@@ -59,22 +59,23 @@ file for the Cursor rule. Commit the state file so the conflict check works acro
 machines. The design is recorded in
 [ADR-0037](../../../adr/0037-idempotent-file-projection.md).
 
-For any managed-block Markdown file (`AGENTS.md`, `CLAUDE.md`, and
-`.github/copilot-instructions.md`), `install` refuses a pre-existing file that has
-no `PROTEAN` markers and writes nothing to it, so it never overwrites a file you
-wrote by hand. This covers a `.github/copilot-instructions.md` you already keep, an
-`AGENTS.md` you wrote yourself, and the marker-less `AGENTS.md` a `protean new`
-before 0.18 wrote. It reports an error until you remove or rename that file and run
-`install`, which then writes the managed version.
+`install` refuses any pre-existing managed-block Markdown file (`AGENTS.md`,
+`CLAUDE.md`, and `.github/copilot-instructions.md`) that has no `PROTEAN`
+markers. It writes nothing to that file, so it never overwrites a file you
+wrote by hand. This covers a `.github/copilot-instructions.md` you already
+keep, an `AGENTS.md` you wrote yourself, and the marker-less `AGENTS.md` a
+`protean new` before 0.18 wrote. It reports an error until you remove or rename
+that file and run `install`, which then writes the managed version.
 
 A project made with `protean new` from 0.18 on needs none of this. `protean new`
 writes the same managed `AGENTS.md` and `CLAUDE.md` bridge that `install` writes, at
 the same version, and records them in `.protean/dx-state.json`. So a fresh project is
 already dx-managed: `install`, `refresh`, and `check` all work on it with no manual
 step. `protean new` writes only this baseline; `.mcp.json` and the per-editor files
-stay `install` choices, since you pick your own editors. `refresh` keeps it that way:
-it re-renders what the project already has and never adds an optional file, so
-upgrading a scaffolded project leaves it baseline-only until you run `install`.
+stay `install` choices, since you pick your own editors. `refresh` keeps the
+project that way. It re-renders what the project already has and never adds an
+optional file, so upgrading a scaffolded project leaves the project
+baseline-only until you run `install`.
 
 ## Verbs
 
@@ -88,14 +89,14 @@ protean dx build-plugin  # render the packaged skills into the Claude Code plugi
 
 `install` creates a missing file and refreshes a stale managed region, across every
 target. It is the verb that opts a project into `.mcp.json` and the per-editor
-files. `refresh` is the same idempotent apply, run after upgrading Protean, scoped
-to what the project already has: the required baseline plus every optional target
-already installed. So `refresh` updates a project without adding a file you did not
-choose. `diff` and `check` write nothing: `diff` is the preview, printing a unified
-diff of each pending change, and `check` is the CI gate. `build-plugin` is described
-in [Building the Claude Code plugin](#building-the-claude-code-plugin) below; unlike
-the other verbs, it renders Protean's own committed plugin tree rather than files
-in your project.
+files. You run `refresh` after upgrading Protean. It is the same idempotent
+apply, scoped to what the project already has: the required baseline plus every
+optional target already installed. So `refresh` updates a project without
+adding a file you did not choose. `diff` and `check` write nothing: `diff` is
+the preview, printing a unified diff of each pending change, and `check` is the
+CI gate. Unlike the other verbs, `build-plugin` renders Protean's own committed
+plugin tree and writes no files in your project. It is described in
+[Building the Claude Code plugin](#building-the-claude-code-plugin) below.
 
 A target has drifted when it is missing, its managed region is stale against the
 installed version, or you edited inside that region. `check` reports each verified
@@ -140,10 +141,11 @@ protean dx check
 
 ## Building the Claude Code plugin
 
-`build-plugin` renders Protean's teaching skills into a Claude Code plugin. It is
-a maintainer command for the Protean repository itself, not a project verb: it
-projects the packaged skills at `src/protean/dx/pack/skills/` into a committed
-plugin tree that a Claude Code user can install.
+`build-plugin` renders Protean's teaching skills into a Claude Code plugin. It
+is a maintainer command for the Protean repository itself, and you do not run
+it in your own project. It renders the packaged skills at
+`src/protean/dx/pack/skills/` into a committed plugin tree that a Claude Code
+user can install.
 
 It writes two manifests and the skill tree:
 
@@ -154,11 +156,11 @@ It writes two manifests and the skill tree:
   the skills carry.
 - `plugins/protean/skills/<name>/` holds each skill's `SKILL.md` and any `assets/`
   and `references/`, copied byte for byte from the pack.
-- `plugins/protean/references/` holds the pack's shared reference pages, the ones
+- `plugins/protean/references/` holds the pack's shared reference pages that
   the skills link to from their own subtree, so those links still open in an
   installed plugin.
 
-This cut carries skills only: no commands, agents, or hooks, and the MCP server
+The plugin carries skills only: no commands, agents, or hooks. The MCP server
 registration stays with the `.mcp.json` file that `install` writes.
 
 ```shell
@@ -166,11 +168,12 @@ protean dx build-plugin           # write (or regenerate) the committed tree
 protean dx build-plugin --check   # exit non-zero when the tree has drifted; write nothing
 ```
 
-The bare verb writes the tree so it matches the render exactly, pruning any file a
-removed skill left behind. `--check` is the drift guard: it re-renders in memory,
-compares byte for byte against the committed tree, writes nothing, and exits `1`
-when a file is missing, stale, or orphaned. The framework version in `plugin.json`
-moves with a release (through a `.bumpversion.toml` entry), so the committed tree
+Without `--check`, `build-plugin` writes the tree to match its render exactly.
+It prunes any file a removed skill left behind. `--check` is the drift guard:
+it re-renders in memory, compares byte for byte against the committed tree,
+writes nothing, and exits `1` when a file is missing, stale, or orphaned. The
+framework version in `plugin.json` moves with a release (through a
+`.bumpversion.toml` entry), so the committed tree
 stays in step and the drift check does not fail on a version bump.
 
 ### Installing it in Claude Code

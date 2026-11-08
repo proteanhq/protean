@@ -49,7 +49,8 @@ nothing about the domain changed.
 Pass `--canonical` to omit `generated_at`. The `$schema`, `ir_version`,
 `checksum`, and `elements` keys are retained (they are content-derived or
 version markers, and are ignored by `ir diff`/`ir check` alike). A canonical
-baseline therefore changes **only** when the domain contract changes.
+baseline therefore changes **only** when the domain contract or the
+`ir_version` changes.
 
 `--canonical` has no effect with `--format=summary`, which never prints the
 timestamp.
@@ -115,27 +116,28 @@ protean ir diff --left baseline.json --right current.json
 **Model diff (`--format=event-model`).** The default `text` and `json` formats
 report changes in IR vocabulary: elements, fields, handlers, contracts.
 `--format=event-model` renders the same diff in EventModeling slice vocabulary
-instead, so a pull-request reviewer reads it as slices: an added command is a
-new slice, a removed projection is a removed read model, a projection that
-gained a field is a changed slice. It reports only the participants the event
-model draws (commands, the aggregate, non-fact events, read models and
-automations); a change confined to anything else prints `No model changes.`.
+instead, so a pull-request reviewer reads it as slices. An added command is a
+new slice, a removed projection is a removed read model, and a projection that
+gained a field is a changed slice. The event-model format reports only the
+participants the event model draws: commands, the aggregate, non-fact events,
+read models, and automations. For a change confined to anything else, it
+prints `No model changes.`.
 
-Each side is judged against the snapshot it lives in. A removed event counts
-only if it was a non-fact event on the left, and a consumer (a projector, event
-handler, or process manager) counts only where its handlers match a non-fact
-event, so a handler wired to nothing or to a fact event is left out the same way
+The diff judges each side against its own snapshot. A removed event counts only
+if it was a non-fact event on the left. A consumer (a projector, event handler,
+or process manager) counts only where its handlers match a non-fact event. So
+the diff leaves out a handler wired to nothing or to a fact event, the same way
 the diagram leaves its node out. An event that gains or loses its fact flag is
 drawn on one side only, so it reads as added or removed with the reason in
 parentheses.
 
-A consumer's node comes and goes with the events around it. When the event a
-projector or a handler matches is removed, or turns into a fact event, that
-consumer's node goes with it, and the diff reports it as removed even though
-the consumer itself never changed. The reverse reads as added. The same rule
-runs the other way: adding or dropping a route to an event no slice draws (a
-fact event, or a type no cluster raises) leaves the diagram as it was, so it is
-not a model change.
+A consumer's node comes and goes with the events around it. When the event that
+a projector or a handler matches is removed or turns into a fact event, the
+diagram drops that consumer's node. The diff then reports the consumer as
+removed, even though the consumer itself never changed. The reverse reads as
+added. The same rule runs the other way: adding or dropping a route to an event
+no slice draws (a fact event, or a type no cluster raises) leaves the diagram
+as it was, so it is not a model change.
 
 The exit code is the same as `--format=text` for the same inputs, so a CI gate
 can switch format without changing what it blocks on. The exit code always
@@ -172,8 +174,9 @@ protean ir diff --left baseline.json --right current.json --format=event-model
 The command checks its options before it reads `.protean/config.toml`, and it
 loads both sides before it acts on `strictness`. So a bad command line or an IR
 file that cannot be found or parsed exits 2 under every `strictness`, including
-`"off"`. Under `"off"` the comparison does not run, so an IR whose only fault
-is one the comparison finds, such as a malformed `deprecated` block, exits 0.
+`"off"`. Under `"off"` the comparison does not run. So the command exits 0 when
+the comparison is the only check that would catch the IR's fault, such as a
+malformed `deprecated` block.
 
 **Avro compatibility verdict.** Alongside the breaking/safe classification, the
 diff reports an Avro-style verdict (`BACKWARD`, `FORWARD`, `FULL`, or `NONE`)
@@ -208,7 +211,7 @@ per-subject) and the full classified report. The verdict covers the classified
 schema changes; it is informational. The exit code is still governed by
 `[compatibility] strictness` and the breaking-change classification.
 
-Respects `.protean/config.toml` settings. See
+`protean ir diff` reads its settings from `.protean/config.toml`. See
 [Compatibility Checking](../../guides/compatibility-checking.md) for
 configuration details.
 
@@ -241,7 +244,7 @@ protean ir check --domain my_app.domain --format json
 A version mismatch (code 3) means the stored baseline's `ir_version` differs
 from the current schema version, so its checksum is not comparable. The `json`
 output reports `stored_version` and `current_version`. Regenerate the baseline
-against the current schema to clear it.
+against the current schema to clear the version mismatch.
 
 ## Programmatic access
 

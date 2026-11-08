@@ -4,10 +4,10 @@
 
 Some business operations naturally span two or more aggregates. For example,
 placing an order requires confirming the order *and* reserving inventory. The
-two aggregates must be validated together. If you put this logic in the
-`Order` aggregate, it needs to know about `Inventory`; if you put it in the
-command handler, business rules leak into the application layer. Domain
-services solve this: they encapsulate **cross-aggregate business logic** in the
+two aggregates must be validated together. If you put this logic in the `Order`
+aggregate, it needs to know about `Inventory`; if you put it in the command
+handler, the application layer holds business rules. Domain services solve
+this: they encapsulate **cross-aggregate business logic** in the
 domain layer, where it belongs.
 
 For background on when and why to use domain services, see
@@ -27,17 +27,15 @@ For background on when and why to use domain services, see
 A Domain Service is defined with the `Domain.domain_service` decorator, and
 associated with at least two aggregates with the `part_of` option. The
 `part_of` option is **required** and must be a list of **two or more**
-aggregates, a domain service that operates on a single aggregate should be
-logic on the aggregate itself.
+aggregates, because logic for a single aggregate goes on the aggregate itself.
 
 The service methods in a Domain Service can be structured in three flavors:
 
 ### 1. Class with class methods
 
-If you don't have any invariants to be managed by the Domain Service, each
-method in the Domain Service can be a class method, that receives all
-the input necessary for performing the business function. The method checks
-the stock itself and returns the order.
+If the Domain Service has no invariants, each of its methods can be a class
+method. Each class method receives all the input the business function needs.
+The method checks the stock itself and returns the order.
 
 ```python hl_lines="2-3"
 # fragment
@@ -72,8 +70,8 @@ method performs a distinct business function.
 --8<-- "guides/domain-behavior/007.py:service"
 ```
 
-You would then instantiate the Domain Service, passing the relevant aggregates
-and invoke the methods on the instance.
+You then instantiate the Domain Service with the relevant aggregates and invoke
+the methods on the instance.
 
 ```python
 # fragment
@@ -144,9 +142,8 @@ pattern.
 
 ## Typical Workflow
 
-Let us consider an example `OrderPlacementService` that checks inventory
-stock and confirms an order. The typical workflow of a Domain Service is
-below:
+The example `OrderPlacementService` checks inventory stock and confirms an
+order. The typical workflow of a Domain Service is below:
 
 ```mermaid
 sequenceDiagram
@@ -164,10 +161,9 @@ sequenceDiagram
 The handler loads the necessary aggregates through repositories, invokes the
 domain service to perform the cross-aggregate operation, and then persists
 only the primary aggregate. `OrderConfirmed` carries the ordered items. An
-event handler in the order's cluster reacts to it and issues a command to
-each inventory, and the inventory's command handler reserves the stock in
-its own transaction.
-[Chapter 13 of the tutorial](../getting-started/tutorial/13-domain-services.md)
+event handler in the order's cluster reacts to `OrderConfirmed` and issues a
+command to each inventory. The inventory's command handler reserves the stock
+in its own transaction. [Chapter 13 of the tutorial](../getting-started/tutorial/13-domain-services.md)
 builds the whole flow, including the event handler and the inventory command.
 
 ### Handler Integration Example
@@ -181,8 +177,8 @@ builds the whole flow, including the event handler and the inventory command.
 
 Just like Aggregates and Entities, Domain Services can also have invariants.
 These invariants validate the state of the aggregates passed to the service
-method. Unlike in Aggregates, invariants in Domain Services typically deal
-with validations that **span across multiple aggregates**.
+method. Unlike in Aggregates, invariants in Domain Services typically check
+rules that **span across multiple aggregates**.
 
 `pre` invariants check the state of the aggregates before the service
 changes the primary aggregate, while `post` invariants check the state after
@@ -190,10 +186,9 @@ the change. When a pre-invariant fails, a `ValidationError` is raised and the
 change never happens.
 
 !!!note
-   It is a good practice to step back and review the business logic placed in
-   the Domain Service now and then. If an invariant does not use multiple
-   aggregates, it is likely that it belongs within an aggregate and not in the
-   service.
+   Review the business logic in the Domain Service from time to time. An
+   invariant that does not use multiple aggregates likely belongs within
+   an aggregate.
 
 ## A Full-Blown Example
 

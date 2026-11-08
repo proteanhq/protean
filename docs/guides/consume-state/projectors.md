@@ -4,8 +4,8 @@
 
 Projectors are specialized event handlers responsible for maintaining
 [projections](./projections.md) by listening to domain events and updating
-projection data accordingly. They bridge your domain events and read models,
-ensuring projections stay synchronized with changes in your domain.
+projection data accordingly. They apply your domain events to your read models,
+so each projection reflects the latest changes in your domain.
 
 ## How Projectors Work
 
@@ -51,11 +51,12 @@ associated with a specific projection via `projector_for`:
 --8<-- "guides/consume-state/002.py:inventory_projector"
 ```
 
-You must also specify which events to listen to, via either `aggregates` (a
-list of aggregate classes, Protean derives the [stream
-categories](../../concepts/async-processing/stream-categories.md)
-automatically) or `stream_categories` (a list of stream category names for more fine-grained
-control). When both are specified, `stream_categories` takes precedence.
+You must also specify which events to listen to, with either `aggregates` or
+`stream_categories`. `aggregates` takes a list of aggregate classes and Protean
+derives the [stream categories](../../concepts/async-processing/stream-categories.md)
+automatically, while `stream_categories` takes a list of stream category names
+for more fine-grained control. When both are specified, `stream_categories`
+takes precedence.
 
 !!! note "Required: `projector_for`"
     Every projector must specify `projector_for`, the projection class it
@@ -171,11 +172,11 @@ Keep three boundaries in mind:
   `protean db setup` (or your migration tool) before deploying, or the first
   delivery fails querying a missing table.
 - **Markers accumulate**: One row is written per `(message_id, handler)`. Prune
-  markers older than your redelivery/recovery window by running `protean
-  idempotency cleanup` periodically (from cron); the retention window and batch
-  size come from `[consume_idempotency.cleanup]` (default 7 days / 5000 rows).
-  Renaming a projector method changes its `handler` identity, orphaning its old
-  markers, which the same cleanup eventually removes.
+  markers older than your redelivery/recovery window by running
+  `protean idempotency cleanup` periodically (from cron). The retention window
+  and batch size come from `[consume_idempotency.cleanup]` (default 7 days /
+  5000 rows). Renaming a projector method changes its `handler` identity,
+  orphaning its old markers, which the same cleanup eventually removes.
 
 ## Transient-failure retries
 
@@ -195,18 +196,20 @@ projector, exactly as on [event handlers](event-handlers.md#transient-failure-re
 ```
 
 Each attempt runs in a fresh Unit of Work, so a partial read-model write from a
-failed attempt is rolled back before the next one begins. This is the natural
-fix for a concurrency race where a level-triggered event is delivered twice and
-both runs take the create path for the same read-model key: the loser hits a
-primary-key conflict (a `TransactionError`, which the version/OCC retry does
-*not* cover). Adding `TransactionError` to `retry_exceptions` lets the losing
-run retry instead of aborting the command under `event_processing=sync`.
+failed attempt is rolled back before the next one begins. This retry is the
+natural fix for a concurrency race in which a level-triggered event is
+delivered twice and both runs take the create path for the same read-model key.
+The losing run hits a primary-key conflict (a `TransactionError`, which the
+version/OCC retry does *not* cover). Adding `TransactionError` to
+`retry_exceptions` lets the losing run retry instead of aborting the command
+under `event_processing=sync`.
 
-The retry re-runs the *same* handler, so convergence is only automatic if the
-handler re-checks existence each time, write it as an idempotent upsert
-(get-or-create, as under [Idempotency](#idempotency) above) rather than an
-unconditional `repo.add(...)`. On the retry the winning run's record is now visible, so the
-handler takes the update path and commits cleanly.
+The retry re-runs the *same* handler, so the runs converge automatically only
+if the handler re-checks existence each time. Write the handler as an
+idempotent upsert (get-or-create, as under [Idempotency](#idempotency) above)
+instead of an unconditional `repo.add(...)`. On the retry the winning run's
+record is now visible, so the handler takes the update path and
+commits cleanly.
 
 The behaviour is identical to event and command handlers: it is opt-in and
 disabled unless `retries` is set or `server.transient_retry` is enabled. See
@@ -240,7 +243,8 @@ customer at the same time. See
 
 ## Error Handling
 
-Projectors should handle errors gracefully to ensure system resilience:
+A projector should catch the errors it expects, such as `ObjectNotFoundError`,
+and log and re-raise any other error:
 
 ??? example "The elements this example uses"
 
@@ -274,8 +278,8 @@ records than that, call `.limit(None)` before `delete()`.
 
 ## Complete Example
 
-Below is a comprehensive example showing projections and projectors working
-together to maintain multiple read models from a single aggregate:
+In the example below, two projectors maintain two read models from a
+single aggregate:
 
 ```python hl_lines="65-75 77-85 88-117 120-147"
 --8<-- "guides/consume-state/002.py:full"

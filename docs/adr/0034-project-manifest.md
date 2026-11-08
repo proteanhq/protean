@@ -25,9 +25,10 @@ that from happening.
 
 ## Decision
 
-The manifest lives at `.protean/project.json`, a sibling of `ir.json` and
-`config.toml`. It is written by `protean.scaffold.manifest.write_manifest`, which
-`protean new` calls after the template is copied. The manifest writer is the first
+The manifest is stored at `.protean/project.json`, in the same directory as
+`ir.json` and `config.toml`. It is written by
+`protean.scaffold.manifest.write_manifest`, which `protean new` calls after the
+template is copied. The manifest writer is the first
 thing to create `.protean/`, and it does not touch a pre-existing `config.toml` or
 `ir.json`. `--dry-run` writes nothing.
 
@@ -56,9 +57,10 @@ mislead, because nothing consults it as truth.
 **Drift check.** `check_manifest_drift(project_root)` loads the stored manifest,
 recomputes the manifest from disk, and compares field by field. It returns `MATCH`,
 `DRIFTED` with a per-field list of `(field, stored, recomputed)` divergences, or
-`NO_MANIFEST` when no file exists. It mutates nothing. Because the recomputed value
-always comes from disk, a hand-edited manifest that disagrees with the code is
-reported as drift, and the code's value is what the check reports as authoritative.
+`NO_MANIFEST` when no file exists. It mutates nothing. Because the check always
+recomputes the value from disk, it reports a hand-edited manifest that
+disagrees with the code as drift. In that report, the code's value is the
+authoritative one.
 
 ## Consequences
 
@@ -91,6 +93,7 @@ introduces.
 
 **Put the manifest under `src/protean/ir/`.** The manifest reuses the shapes of
 `ir/staleness.py` (a frozen result, a status enum, a mutation-free check, a
-`load_stored_*` helper) but none of its code, and it reasons about project layout, not
-the IR. A separate `src/protean/scaffold/` package keeps the project-shape concern out
-of the IR package, and the rest of this epic grows into the same package.
+`load_stored_*` helper) but none of its code. The manifest describes project
+layout, which the IR does not cover. A separate `src/protean/scaffold/` package
+keeps the project-shape code out of the IR package, and the rest of this epic
+adds its code to the same package.

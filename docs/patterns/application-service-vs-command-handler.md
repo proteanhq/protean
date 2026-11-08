@@ -59,7 +59,8 @@ def create_user(payload: CreateUserRequest):
 
 The code processes the command synchronously and then immediately queries for
 the result. Two round-trips where one should suffice. The `asynchronous=False`
-flag fights the command handler's natural purpose.
+flag removes the main reason to use a command handler, which is to process the
+command in the background.
 
 Meanwhile, another developer on the same team uses an application service for
 processing incoming webhook events from a payment provider:
@@ -352,9 +353,9 @@ pipeline. Calling an application service introduces a nested `UnitOfWork`
 (from `@use_case`) inside the event handler's own UoW. That nested UoW joins the
 handler's transaction rather than opening its own (see
 [Nested Units of Work](../guides/change-state/unit-of-work.md#nested-units-of-work)),
-so the two collapse into one transaction. It works, but it hides the coordination
-inside a service built for a different purpose; put the logic in the handler
-instead.
+so the two collapse into one transaction. Calling the application service from
+the handler works, but it hides the coordination inside a service built for a
+different purpose. Put the logic in the handler instead.
 
 **Fix:** Put the coordination logic directly in the event handler:
 

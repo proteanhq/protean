@@ -33,8 +33,8 @@ Mixing these creates problems:
 - **Validation at the wrong time**: A command with clearly invalid data
   (missing required fields, wrong types) travels through the system, gets
   deserialized, processed by a handler, applied to an aggregate, all before the
-  aggregate's invariant catches the error. The error surface is broad and the
-  feedback is delayed.
+  aggregate's invariant catches the error. Every one of those steps runs on the
+  invalid data, and the error appears only at the end.
 
 The root cause: **all validation is treated the same, regardless of its nature,
 urgency, or scope**.
@@ -219,7 +219,7 @@ above:
 --8<-- "patterns/validation-layering/003.py:in_action"
 ```
 
-Each layer catches different kinds of errors at progressively deeper levels
+Each layer catches a different kind of error, and each one runs at a later step
 of the processing pipeline.
 
 ---

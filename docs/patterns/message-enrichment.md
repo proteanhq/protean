@@ -90,10 +90,10 @@ The enrichment layer sits between the domain model and the message store:
    or aggregate state. This keeps the domain model unaware of operational
    concerns.
 
-3. **Enriched data lands in `metadata.extensions`**, a dict on the message's
-   metadata that is persisted alongside headers, envelope, and domain meta.
-   Extensions survive serialization, round-trip through the event store, and
-   are available to every downstream handler.
+3. **Protean merges enriched data into `metadata.extensions`**, a dict on the
+   message's metadata that is persisted alongside headers, envelope, and domain
+   meta. Extensions survive serialization, round-trip through the event store,
+   and are available to every downstream handler.
 
 4. **Downstream handlers access extensions via `message.metadata.extensions`**
    or `event._metadata.extensions`. They never see cross-cutting data mixed
@@ -176,9 +176,9 @@ This is useful when different event types need different extensions:
 ### Combining Enrichers with Correlation IDs
 
 Message enrichment complements Protean's built-in
-[message tracing](message-tracing.md). Correlation and causation IDs live in
-`metadata.domain` and are managed automatically. Extensions hold *additional*
-context that the framework does not manage:
+[message tracing](message-tracing.md). Protean stores correlation and causation
+IDs in `metadata.domain` and sets them automatically. Extensions hold
+*additional* context that the framework does not manage:
 
 ```python
 --8<-- "patterns/message-enrichment/004.py:tracing"
@@ -374,8 +374,7 @@ request in middleware and store it in `g`.
 Event and command payloads carry business facts. Operational context (tenancy,
 audit, tracing, feature flags) belongs in `metadata.extensions`, injected
 automatically by enrichers that read from ambient context. The domain model
-never knows, and never needs to know, about the infrastructure that surrounds
-it.
+never knows, and never needs to know, about the infrastructure.
 
 ---
 

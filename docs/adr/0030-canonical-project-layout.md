@@ -8,10 +8,11 @@
 
 `protean new` stamps a project from `src/protean/template/`. That project's shape is
 not arbitrary: element discovery and, downstream of it, the IR both assume a specific
-directory layout. Until now that assumption lived only in the template files and in the
-discovery code, never written down. Every later piece of this work (the additive `add`
-engine, the renderer, a project manifest) would otherwise re-guess where the domain root
-is, where element modules live, where tests go, and which subtrees discovery must skip.
+directory layout. Until now the template files and the discovery code encoded
+that assumption, and no document stated it. Every later piece of this work (the
+additive `add` engine, the renderer, a project manifest) would otherwise
+re-guess where the domain root is, where element modules live, where tests go,
+and which subtrees discovery must skip.
 
 The layout is a contract because of how discovery works. `Domain.init(traverse=True)`
 calls `_traverse()` (`src/protean/domain/__init__.py`), which:
@@ -41,12 +42,13 @@ implied.
 
 The IR is the other half of the contract. `Domain.to_ir()` builds the IR's structural view
 (clusters, contracts, flows, projections, the elements index, and config-derived domain
-metadata) from the initialized in-memory domain, not from files on disk. It then runs an
-advisory `diagnostics` pass that does re-parse source files, but that layer only annotates;
-it derives no structure. So the layout's whole job is to make traversal deterministic: init
-the canonical layout and the domain holds exactly the elements the developer wrote, and
-nothing spurious (no test doubles, no re-export duplicates). The structural IR is a
-projection of that domain.
+metadata) from the initialized in-memory domain, not from files on disk. It
+then runs an advisory `diagnostics` pass that does re-parse source files, but
+that pass only adds annotations and derives no structure. So the canonical
+layout exists to make traversal deterministic. When `init` traverses the
+canonical layout, the domain holds exactly the elements the developer wrote and
+nothing spurious (no test doubles, no re-export duplicates). The structural IR
+is a projection of that domain.
 
 ## Decision
 
@@ -96,21 +98,23 @@ The rules that make this a contract, not a suggestion:
    `Domain` instance. Its directory is the discovery root. One `Domain` is one bounded
    context is one IR document (ADR-0003).
 
-2. **Config sits at the domain root**: `domain.toml` lives next to `domain.py` in
+2. **Config sits at the domain root**: `domain.toml` is next to `domain.py` in
    `src/<package>/`, where `load_from_path` finds it first.
 
-3. **Element modules live at most one directory below the domain root, one concept per
-   module.** A module directly in `src/<package>/`, or directly in an immediate subpackage
-   of it (here `example/` and `shared/`), is imported during traversal and registers via
-   decorators. Discovery scans one level deep only, so a module nested deeper (for example
-   `example/handlers/foo.py`) is silently not discovered. Modules import the domain with
-   `from <package>.domain import <domain>` and siblings with relative imports.
+3. **Element modules live at most one directory below the domain root, one
+   concept per module.** Traversal imports any module directly in
+   `src/<package>/` or directly in an immediate subpackage of it (here
+   `example/` and `shared/`). Each imported module then registers its elements
+   via decorators. Discovery scans one level deep only, so a module nested
+   deeper (for example `example/handlers/foo.py`) is silently not discovered.
+   Modules import the domain with `from <package>.domain import <domain>` and
+   siblings with relative imports.
 
 4. **Package `__init__.py` files are side-effect free**: They carry a docstring at most.
    They do not re-export from submodules. Re-exports run during traversal and create
    partially initialized module cycles, which is exactly what broke `init(traverse=True)`
-   in #1316. Discovery finds elements by importing each module directly, so the re-exports
-   buy nothing and cost correctness.
+   in #1316. Discovery finds elements by importing each module directly. So the
+   re-exports add nothing that discovery needs, and they can break traversal.
 
 5. **Tests live outside the domain root**: `tests/` is a sibling of `src/`, so no test
    module is ever imported as domain code during traversal. Tests boot the domain
@@ -123,26 +127,29 @@ The rules that make this a contract, not a suggestion:
 
 ## Consequences
 
-Later work builds against a written layout instead of re-reading the template. The `add`
-engine knows to drop a new element module directly in `src/<package>/` or in an immediate
-slice subpackage (one level deep, so discovery finds it) and to leave `__init__.py` alone. A manifest knows the domain root is the directory of the
-domain file and that `tests/` is out of scope for discovery. The IR-derivation boundary is
-explicit: the IR reflects the registered domain, so scaffold correctness is a discovery
-question, not an IR question.
+Later work builds against a written layout instead of re-reading the template.
+The `add` engine places a new element module directly in `src/<package>/` or in
+an immediate slice subpackage (one level deep, so discovery finds it). It does
+not change `__init__.py`. A project manifest can record the domain root as the
+directory of the domain file. It can also mark `tests/` as out of scope for
+discovery. The IR-derivation boundary is explicit: the IR reflects the
+registered domain, so scaffold correctness is a discovery question, not an
+IR question.
 
 The generated project is opinionated about structure. A `src/`-layout package, a single
 composition root, config beside the domain file, and tests as a sibling tree are all
-fixed. A user who wants a flat layout or tests interleaved with source has to move away
-from the scaffold and take responsibility for keeping discovery working (for example by
-passing `root_path` explicitly or dropping a config file to fence off a subtree). That is
-the intended trade: the default is correct by construction, and deviation is possible but
+fixed. A user who wants a flat layout or tests mixed in with source has to
+leave the scaffold's layout and keep discovery working themselves (for example
+by passing `root_path` explicitly or adding a config file to exclude a subtree
+from discovery). That is the intended trade: the default is correct by
+construction, and deviation is possible but
 manual.
 
 The `__init__.py`-must-stay-empty rule is easy to violate by habit, since re-exporting
 from a package initializer is idiomatic Python elsewhere. Anyone hand-editing a generated
-project, or writing a code generator that touches these files, has to know the rule. This
-ADR is where it is written down, and the scaffold's `example/__init__.py` docstring states
-it inline.
+project, or writing a code generator that touches these files, has to know the
+rule. The rule is written down in this ADR. The scaffold's
+`example/__init__.py` docstring also states it inline.
 
 ## Alternatives Considered
 
@@ -152,8 +159,9 @@ IR is computed from the registered domain model, not from files, so no shipped f
 duplicates it. The Python element modules are the domain model the IR is built from, and the
 rest is deployment scaffolding the IR never represents. (The one stranded file,
 `logging.toml`, was an orphan that no adapter read, not an IR duplicate, and was removed
-under #1315.) So the pruning half was dropped. Keeping the scope honest avoids deleting a
-load-bearing file to satisfy a rule that does not apply.
+under #1315.) So the pruning half was dropped. With the pruning dropped, we do
+not delete a file the project needs in order to satisfy a rule that does
+not apply.
 
 **A flat layout (no `src/`, modules beside `domain.py` at the project root).** This works
 for discovery but blurs the packaging boundary and makes it easy for `tests/` or tooling
@@ -170,7 +178,8 @@ but it is the direct cause of #1316: re-exports execute during traversal and cre
 partially initialized module cycles. Discovery does not need them, so the cost has no
 matching benefit.
 
-**Config only in `pyproject.toml`.** `load_from_path` supports it, but a dedicated
-`domain.toml` beside `domain.py` keeps domain config next to the composition root and out
-of the packaging file, and reads first in the lookup order. A generated project uses the
-dedicated file; `pyproject.toml` config stays available for users who prefer it.
+**Config only in `pyproject.toml`.** `load_from_path` supports it, but a
+dedicated `domain.toml` beside `domain.py` keeps domain config next to the
+composition root and out of the packaging file. `load_from_path` also reads
+`domain.toml` first in the lookup order. A generated project uses the dedicated
+file; `pyproject.toml` config stays available for users who prefer it.

@@ -84,14 +84,16 @@ deleting an event somebody still needs:
 - **Two or more consumer groups**: The stream is trimmed to the slowest group's
   read position, and **`retention_maxlen` is ignored**. Consumer progress bounds
   the stream, not your number. A stream with several handlers on it therefore
-  grows as large as the slowest one lets it, and the fix for an oversized stream
-  is to find the handler that is behind, not to lower this setting.
+  grows as large as the slowest handler lets it. To shrink an oversized stream,
+  find the handler that is behind, because lowering `retention_maxlen` has no
+  effect here.
 - **One consumer group, or none**: The stream is capped at `retention_maxlen`.
-  This one is a hard size ceiling, and it is *not* progress-safe: if the single
+  This cap is a hard size ceiling. It is *not* progress-safe: if the single
   reader falls more than `retention_maxlen` behind, the oldest **unread**
-  entries are dropped. That happens during an initial catch-up on a pre-existing
-  stream, after an outage, or under a producer faster than the handler. Size it
-  above the largest backlog you expect, not at the steady-state length.
+  entries are dropped. That happens during an initial catch-up on a
+  pre-existing stream, after an outage, or under a producer faster than the
+  handler. Set `retention_maxlen` above the largest backlog you expect. A value
+  at the steady-state length is too small.
 
 Trimming is approximate in both cases (Redis's `~`), so the stream settles
 slightly above the target. Exact trimming costs far more for a bound that did
@@ -121,8 +123,8 @@ What you will observe when it trips:
 1. **Open**: Reads stop. Messages stay in the stream and the pending list, so
    nothing is lost, and they are redelivered later.
 2. **Half-open**: After the reset window, one probe message is allowed through.
-3. **Closed** if the probe succeeds, or back to open if it fails, restarting the
-   timer.
+3. **Closed** if the probe succeeds. If the probe fails, the breaker goes back
+   to open and restarts the timer.
 
 The breaker counts *consecutive* failures, so a single success resets the count.
 A subscription paused by its breaker does not make the engine unready: `/readyz`
@@ -189,9 +191,9 @@ curl -s localhost:8080/readyz | jq '.checks.subscriptions'
 Both read the same source as the `protean.subscription.consumer_lag` and
 `protean.subscription.pending_messages` metrics, so the three never disagree.
 Alert on the metrics; use the probe and the CLI when you are already looking at
-a specific pod. The
-[hardening reference](../../reference/server/hardening.md) covers the block's
-staleness fields and the cases it does not yet cover.
+a specific pod. The [hardening reference](../../reference/server/hardening.md)
+covers the staleness fields of the `subscriptions` block in `/readyz` and the
+cases that block does not yet cover.
 
 ---
 

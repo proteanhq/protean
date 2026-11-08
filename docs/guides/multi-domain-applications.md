@@ -171,8 +171,8 @@ process in any state, so it uses `end=True`.
   and can be coordinated in a single pull request.
 - Typed events give you IDE support, static analysis, and deserialization
   validation, no parsing raw dicts.
-- The PM subscribes to external streams directly, keeping the coordination
-  logic concise and traceable.
+- The process manager subscribes to external streams directly, keeping the
+  coordination logic concise and traceable.
 
 **Important:** The external event class is defined *in your domain*, not
 imported from the other domain's package. You own the class; the type
@@ -187,8 +187,8 @@ you can also use event handlers with `stream_category`:
 
 ### Distributed domains: Subscribers as anti-corruption layers
 
-When domains run as independent services with separate brokers (or when you
-consume events from external systems you don't control) use subscribers.
+When domains run as independent services with separate brokers, or when you
+consume events from external systems you don't control, use subscribers.
 Subscribers receive raw `dict` payloads and translate them into your domain's
 language, acting as an anti-corruption layer. Here the subscriber turns a
 customer payload into a `CreateRecipient` command, and a command handler
@@ -207,7 +207,8 @@ stores the recipient:
   concepts are mapped to your domain's language before entering the
   domain.
 - **Independent evolution**: The upstream can deploy schema changes
-  without coordinating with you. The subscriber absorbs the difference.
+  without coordinating with you. The subscriber maps the changed schema to your
+  domain's language.
 
 Key principles:
 

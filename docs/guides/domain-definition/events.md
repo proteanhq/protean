@@ -2,15 +2,15 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-Most applications have a definite state - they reflect past user input and
-interactions in their current state. It is advantageous to model these past
-changes as a series of discrete events. Domain events happen to be those
-activities that domain experts care about and represent what happened as-is.
+Most applications have a definite state. Their current state reflects past user
+input and interactions. It helps to model these past changes as a series of
+discrete events. Domain events are the activities that domain experts care
+about. Each domain event represents what happened as-is.
 
 In Protean, an `Event` is an immutable object that represents a significant
-occurrence or change in the domain. Events are raised by aggregates to signal
-that something noteworthy has happened, allowing other parts of the system to
-react - and sync - to these changes in a decoupled manner.
+occurrence or change in the domain. Aggregates raise events to signal that
+something noteworthy has happened. Other parts of the system can then react to
+these changes, and sync with them, in a decoupled manner.
 
 ## Defining Events
 
@@ -249,8 +249,8 @@ See the [Stream Categories](../../concepts/async-processing/stream-categories.md
 
 #### `origin_stream`
 
-Name of the stream that originated this event or command. `origin_stream` comes
-handy when correlating related events or understanding causality.
+Name of the stream that originated this event or command. Use `origin_stream`
+to correlate related events or to understand causality.
 
 #### `time`
 
@@ -376,8 +376,7 @@ ecosystem, they are versioned to signal changes to contract.
 
 Events have a default version of **1**.
 
-You can override and customize the version with the `__version__` class
-attribute:
+You can set the version with the `__version__` class attribute:
 
 ```python hl_lines="3"
 --8<-- "guides/domain-definition/events/007.py:event"
@@ -393,16 +392,13 @@ other options rather than inside the class body:
 Use whichever reads better; declaring the version both ways on the same class
 raises an `IncorrectUsageError`. Commands accept the same `version=` option.
 
-When event schemas evolve you have a full toolkit: add defaulted fields, rename a
-field in place with
-[`renamed_from`](../../reference/fields/arguments.md#renamed_from), retire an event
-with the `deprecated` and `superseded_by` decorator options, and register
-**upcasters** that transform old payloads to the current schema during
-deserialization. See the [Evolving Events Over Time](../evolving-events.md) guide
-for the end-to-end workflow, the
-[Event Upcasting guide](../consume-state/event-upcasting.md) for the upcaster
-mechanism, and the
-[Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
+When event schemas evolve, you can add defaulted fields, rename a field in
+place with [`renamed_from`](../../reference/fields/arguments.md#renamed_from),
+retire an event with the `deprecated` and `superseded_by` decorator options,
+and register **upcasters** that transform old payloads to the current schema
+during deserialization. See the [Evolving Events Over Time](../evolving-events.md)
+guide for the end-to-end workflow, the [Event Upcasting guide](../consume-state/event-upcasting.md)
+for the upcaster mechanism, and the [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
 pattern for broader versioning strategies.
 
 The configured version is reflected in `version` and `type` attributes of the
@@ -439,13 +435,12 @@ describe the fact in the context of your business. You can think of a fact
 event similarly to how you may think of a row in a database: a complete set of
 data pertaining to the row at that point in time.
 
-Fact events enable a pattern known as **Event-carried State Transfer**, which is
-one of the best ways to asynchronously distribute immutable state to all
-consumers who need it. With fact events, consumers do not have to build up the
-state themselves from multiple delta event types, which can be risky and
-error-prone, especially as data schemas evolve and change over time. Instead,
-they rely on the owning service to compute and produce a fully detailed fact
-event.
+Fact events enable a pattern known as **Event-carried State Transfer**, which
+distributes immutable state asynchronously to all consumers who need it. With
+fact events, consumers do not have to build the state themselves from multiple
+delta event types, which can be risky and error-prone, especially as data
+schemas evolve over time. Instead, they rely on the owning service to compute
+and produce a fully detailed fact event.
 
 Fact events are generated automatically by the framework with the
 `fact_events=True` option in the `domain.aggregate` decorator. The

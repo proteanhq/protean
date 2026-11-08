@@ -220,7 +220,7 @@ payload in the contract's shape. Neither test needs shared code.
 
 ### Intentional Shared Kernel
 
-DDD recognizes the **Shared Kernel** pattern: two bounded contexts explicitly
+In DDD, the **Shared Kernel** pattern means two bounded contexts explicitly
 agree to share a subset of their domain model. This is appropriate when:
 
 - Both contexts are owned by the same team
@@ -252,9 +252,9 @@ and IDE support:
 --8<-- "patterns/sharing-event-classes-across-domains/005.py:external_event"
 ```
 
-This gives you the benefits of typed events (validation, autocomplete,
-handler signatures) while keeping the shared contract at the schema
-level (the type string), not the code level (a shared import).
+`register_external_event()` gives you the benefits of typed events (validation,
+autocomplete, handler signatures), while the domains share the contract only as
+a schema (the type string) and share no import.
 
 See [Multi-Domain Applications, Cross-domain
 communication](../guides/multi-domain-applications.md#cross-domain-communication)
@@ -262,9 +262,9 @@ for the full guidance on when to use this approach vs. subscribers.
 
 ### Protobuf / Avro Definitions
 
-When using schema-first serialization formats (Protocol Buffers, Avro), the
-schema itself generates code for each domain. Both domains use generated
-classes derived from the same schema definition, which is a form of
+When you use schema-first serialization formats (Protocol Buffers, Avro), a
+code generator builds each domain's classes from the schema. Both domains use
+generated classes derived from the same schema definition, which is a form of
 schema-sharing, not code-sharing.
 
 ---

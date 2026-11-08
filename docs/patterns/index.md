@@ -11,9 +11,8 @@ diagnoses a problem, prescribes a principle, provides worked examples and
 anti-patterns, and states when *not* to apply it.
 
 These patterns **span multiple domain elements** and represent good practices
-that Protean supports but does not enforce. They are the architectural wisdom
-that separates a well-designed DDD system from one that merely uses DDD
-terminology.
+that Protean supports but does not enforce. A well-designed DDD system follows
+them, while a system that only uses DDD terminology does not.
 
 ## Reading Paths
 
@@ -183,9 +182,9 @@ If you are new to these patterns, these sequences build on each other:
 
 - **[Model Reference Data as Domain Concepts](model-reference-data.md)**:
   Avoid the One True Lookup Table. Model each kind of reference data as its own
-  type. An enumeration value object when it is closed and static, an aggregate
-  keyed by its natural code when it is editable. And treat any shared storage
-  table as an adapter detail, never a domain model.
+  type. Use an enumeration value object when the data is closed and static. Use
+  an aggregate keyed by its natural code when the data is editable. And treat
+  any shared storage table as an adapter detail, never a domain model.
 
 - **[Track Audit and Lifecycle Fields](track-audit-fields.md)**: Keep
   `created_at`/`updated_at` and `created_by`/`updated_by` off your business
@@ -307,7 +306,7 @@ If you are new to these patterns, these sequences build on each other:
 ---
 
 !!! note "Related how-to guides"
-    Procedural guides for testing and infrastructure live in the
+    Procedural guides for testing and infrastructure are in the
     **Guides** section:
 
     - [Testing Guide](../guides/testing/index.md): Overview of Protean's testing strategy and tools.

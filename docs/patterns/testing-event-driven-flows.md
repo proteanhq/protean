@@ -114,7 +114,7 @@ along the way are processed too. No `time.sleep()` guesswork.
 
 Test mode stops waiting after about a second if some subscription keeps
 finding work, for example while it retries a failing handler. A partitioned
-stream subscription cannot report that it is idle, so with one present test
+stream subscription cannot report that it is idle, so when one is present, test
 mode always waits the full second.
 
 Test mode does not wait for a broker to redeliver a failed message. A broker
@@ -236,8 +236,8 @@ back to sync afterwards:
 Level 3 is essential for testing `handle_error()` overrides. A decorator
 registers a handler on its domain when the module is imported, and pytest
 imports every test module before it runs any test. So a handler that fails on
-purpose goes on a small domain of its own, built in its test module. The
-shared domain never sees it:
+purpose goes on a small domain of its own, built in its test module. The shared
+domain never registers the failing handler:
 
 ```python
 # fragment
