@@ -10,7 +10,9 @@ OTel-generated Prometheus text (via ``PrometheusMetricReader``) combined with
 infrastructure gauges registered as ``ObservableGauge`` callbacks.
 
 When OTel is not installed (or telemetry is disabled), the endpoint falls back
-to a hand-rolled text format producing equivalent Prometheus metrics.
+to a hand-rolled text format. The fallback emits the same infrastructure
+gauges, plus the stream and per-consumer gauges that the OTel path does not
+register. It emits none of the OTel counters and histograms.
 
 **Naming convention:**
 
@@ -947,12 +949,11 @@ def create_metrics_endpoint(
     When OTel telemetry is enabled on at least one domain **and** the
     ``opentelemetry-exporter-prometheus`` package is installed, the endpoint
     serves OTel-generated Prometheus text.  Infrastructure metrics
-    (outbox, broker, subscriptions) are exposed as ``ObservableGauge``
-    callbacks so they appear alongside the domain-operation counters and
-    histograms.
+    (outbox, broker, subscriptions, database pools, broker pools and
+    projection staleness) are exposed as ``ObservableGauge`` callbacks so
+    they appear alongside the domain-operation counters and histograms.
 
-    Otherwise, the endpoint falls back to the original hand-rolled
-    implementation with zero behavioral change.
+    Otherwise, the endpoint serves the hand-rolled Prometheus text.
 
     Gauge registration is deferred to the first request so that the meter
     provider has time to be fully initialized after domain activation.

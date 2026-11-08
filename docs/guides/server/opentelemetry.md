@@ -378,11 +378,14 @@ is installed:
 1. A `PrometheusMetricReader` is attached to the domain's `MeterProvider`
 2. All OTel counters, histograms, and infrastructure gauges are served via
    `prometheus_client.generate_latest()`
-3. Infrastructure metrics (outbox, broker health, subscription lag) are
-   registered as `ObservableGauge` callbacks on the OTel meter
+3. Infrastructure metrics (outbox, broker health, subscription lag, database
+   pools, broker pools and projection staleness) are registered as
+   `ObservableGauge` callbacks on the OTel meter
 
 When OTel is **not** enabled, the endpoint falls back to the original
-hand-rolled Prometheus implementation with identical behavior. No configuration
+hand-rolled Prometheus implementation. It serves the same infrastructure
+gauges, plus stream totals and per-consumer gauges that the OTel path does not
+register, and none of the OTel counters and histograms. No configuration
 change is needed. The convergence is automatic.
 
 ---

@@ -312,7 +312,7 @@ def _subscription_dict(s: SubscriptionStatus) -> dict[str, Any]:
 def _merge_command_handler_status(
     h: dict[str, Any], command_stream_status: dict[str, SubscriptionStatus]
 ) -> None:
-    """Set a command handler's subscription from its first stream's dispatcher.
+    """Set a command handler's subscription from its first stream category with a dispatcher status.
 
     Leaves ``h`` unchanged when no stream category has a dispatcher status.
     """
