@@ -31,10 +31,10 @@ during initialization and on every state change.
 
 ### Status Transitions
 
-Most aggregates are state machines. The `Status` field lets you declare which
-state-to-state moves are allowed, right in the field declaration, and Protean
-raises `ValidationError` on any move you did not allow. A state with no
-outgoing transitions is terminal, and `can_transition_to()` lets you check a
+Most aggregates are state machines. The `Status` field lets you declare the
+allowed state-to-state moves right in the field declaration. Protean raises
+`ValidationError` on any move you did not allow. A state with no outgoing
+transitions is terminal, and `can_transition_to()` lets you check a
 move without raising.
 
 [Learn more about status transitions →](status-transitions.md)
@@ -43,17 +43,17 @@ move without raising.
 
 Aggregates hold the state and behaviour of your domain, and mutating that
 state is how you implement a business operation. Write each operation as a
-named method that says what it does, and Protean validates the result against
-the aggregate's invariants.
+named method that says what it does. Protean validates the result against the
+aggregate's invariants.
 
 [Learn more about aggregate mutation →](aggregate-mutation.md)
 
 ### Raising Events
 
 Domain events record state changes worth telling the rest of the system about.
-An aggregate raises a delta event when it mutates, any entity in the cluster
-can raise one too, and Protean dispatches them for you or lets you publish
-them by hand.
+An aggregate raises a delta event when it mutates, and any entity in the
+cluster can raise one too. Protean dispatches these events for you, or you can
+publish them by hand.
 
 [Learn more about raising events →](raising-events.md)
 
@@ -62,9 +62,9 @@ them by hand.
 Protean tracks causal chains across commands and events, propagating
 correlation and causation IDs through each command-to-event chain. You can
 walk up to the root command, down to all its effects, or build the full
-causation tree in code. Enrichment hooks let you attach your own metadata,
-such as user context, tenant ID, or audit data, to every message, and it is
-persisted in a `metadata.extensions` dict in the event store.
+causation tree in code. Enrichment hooks let you attach your own metadata, such
+as user context, tenant ID, or audit data, to every message. The event store
+persists this metadata in a `metadata.extensions` dict.
 
 [Learn more about message tracing →](message-tracing.md) &nbsp;|&nbsp; [Learn more about message enrichment →](message-enrichment.md)
 

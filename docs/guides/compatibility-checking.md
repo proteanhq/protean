@@ -25,10 +25,10 @@ protean ir show --domain myapp.domain --canonical > .protean/ir.json
 ```
 
 Commit `.protean/ir.json` to version control. It serves as the baseline for
-detecting changes between releases. Because a canonical baseline excludes the
-materialization timestamp, regenerating it produces a git diff **only** when
-the domain contract actually changes, keeping baseline diffs reviewable instead
-of drowning in per-file timestamp churn. The `--fix` staleness hook writes the same
+detecting changes between releases. Without the materialization timestamp, a
+regenerated canonical baseline produces a git diff **only** when the domain
+contract actually changes. Your baseline diffs stay reviewable and carry no
+per-file timestamp changes. The `--fix` staleness hook writes the same
 canonical output.
 
 ### Multi-domain projects
@@ -59,8 +59,8 @@ ordering = "ordering.domain"
 
 ## Step 2: Configure strictness
 
-Create `.protean/config.toml` to customize behavior. All settings are
-optional, sensible defaults apply when the file is absent:
+Create `.protean/config.toml` to customize behavior. All settings are optional.
+When the file is absent, Protean applies sensible defaults:
 
 ```toml
 [compatibility]
@@ -121,8 +121,9 @@ file with `git add`, and exits 0, allowing the commit to proceed.
 
 `--fix` writes the **canonical** baseline (sorted keys, no volatile
 `generated_at`), byte-identical to `protean ir show --canonical`. So it is safe
-to use alongside a committed canonical baseline: the two never fight, and a
-regeneration produces a diff only when the domain contract actually changes.
+to use `--fix` alongside a committed canonical baseline. Both hold the same
+canonical output, so a regeneration produces a diff only when the domain
+contract actually changes.
 
 ```yaml
 # Auto-fix mode -- never blocks on stale IR
@@ -163,10 +164,10 @@ abbreviated below):
 ```
 
 `resolving_operation` is the structured form an agent runs directly: `command`
-plus `args`, supplying its own `--domain`/`--dir` context, with `display` the
-same command as a human would read it. Running it regenerates the baseline and
-clears the diagnostic. A diagnostic whose failure no command resolves omits the
-field, and the prose fix stands.
+plus `args`, with the agent supplying its own `--domain`/`--dir` context. Its
+`display` field holds the same command as a human would read it. Running it
+regenerates the baseline and clears the diagnostic. When no command resolves
+the failure, the diagnostic omits the field and you follow the prose fix.
 
 ### `protean-check-compat`
 
@@ -217,7 +218,7 @@ Add a compatibility check step to your CI workflow:
 
 The command exits with code 1 on breaking changes, which fails the CI step.
 It exits 3 when it finds only non-breaking changes, which also fails the step.
-Allow exit code 3 if safe changes should pass.
+If safe changes should pass, allow exit code 3.
 
 ### pytest warning filters
 
@@ -289,19 +290,20 @@ Avro compatibility: FORWARD
   breaks BACKWARD: Required field 'amount' added to EVENT 'app.OrderPlaced' without a default value
 ```
 
-The verdict folds every change together: adding an optional field is `FULL`;
-adding a required field with no default is not `BACKWARD`; removing a required
-field is not `FORWARD`; a type change is `NONE`. A registered upcaster that
-covers the version bump makes an otherwise-incompatible change `BACKWARD`, a
-**Protean-specific** rule, since Protean rewrites old payloads at read time and
-a plain schema registry (which knows nothing of upcasters) would still report
-the underlying change. Visibility flips are payload-neutral for the verdict but
-still count as breaking changes.
+The verdict combines every change into one result. Adding an optional field is
+`FULL`, adding a required field with no default is not `BACKWARD`, removing a
+required field is not `FORWARD`, and a type change is `NONE`. When a registered
+upcaster covers the version bump, Protean reports an otherwise-incompatible
+change as `BACKWARD`. This rule is **Protean-specific**: Protean rewrites old
+payloads at read time, and a plain schema registry (which knows nothing of
+upcasters) would still report the underlying change. A change to an element's
+visibility changes no payload field, so the verdict ignores it. The visibility
+change still counts as a breaking change.
 
-The verdict is **informational**. It is printed (and, under `--format json`,
-included in a `compatibility` block with the full classified report), but the
-exit code stays governed by `strictness` and the breaking-change
-classification.
+The verdict is **informational**. The command prints the verdict, and under
+`--format json` includes it in a `compatibility` block with the full classified
+report. The exit code still depends on `strictness` and the
+breaking-change classification.
 
 For the full CLI reference, see [`protean ir`](../reference/cli/ir.md).
 

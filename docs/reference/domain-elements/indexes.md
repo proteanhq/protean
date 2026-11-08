@@ -13,10 +13,11 @@ indexes.)
 --8<-- "reference/domain-elements/indexes/001.py:aggregate"
 ```
 
-For the design rationale (why indexes are decorator parameters rather than a
-`class Meta:` block, and the split between portable indexes on the aggregate and
-storage-specific tuning on the model) see
-[ADR-0014](../../adr/0014-aggregate-metadata-decorator-params-over-meta-class.md).
+For the design rationale, see the decision record on decorator parameters
+([ADR-0014](../../adr/0014-aggregate-metadata-decorator-params-over-meta-class.md)).
+It explains why indexes are decorator parameters instead of a `class Meta:`
+block, and why portable indexes go on the aggregate while storage-specific
+tuning goes on the model.
 
 ---
 
@@ -50,8 +51,8 @@ When `name` is omitted, the index name is derived as
 | `Index("status", "priority")` | `ix_order_status_priority` |
 | `Index("email", unique=True)` | `uq_order_email` |
 
-Provide an explicit `name=` when you need a stable, well-known identifier (for
-example to reference it from a migration or a monitoring query).
+When you need a stable, well-known identifier (for example to reference it from
+a migration or a monitoring query), provide an explicit `name=`.
 
 ---
 
@@ -62,10 +63,10 @@ example to reference it from a migration or a monitoring query).
 Index.from_sql(dialect, ddl, name=None) -> RawIndex
 ```
 
-An escape hatch for dialect-specific DDL the portable `Index` API cannot model
-(GIN/GiST/BRIN, expression indexes, dialect-only options). The schema generator
-and the SQLAlchemy adapter emit the verbatim `ddl` **only** when the configured
-dialect matches `dialect`.
+`Index.from_sql` declares dialect-specific DDL that the portable `Index` API
+cannot model (GIN/GiST/BRIN, expression indexes, dialect-only options). The
+schema generator and the SQLAlchemy adapter emit the verbatim `ddl` **only**
+when the configured dialect matches `dialect`.
 
 ```python
 --8<-- "reference/domain-elements/indexes/002.py:from_sql"
@@ -92,10 +93,10 @@ through `Index.from_sql`.
 ## Dialect support
 
 The portable subset (composite, descending, unique, naming) is honored
-everywhere indexes apply. The opt-in features (`where`, `include`) are honored
-only where the dialect supports them, and otherwise degrade to a full index
-with a logged warning, declarations never fail because of an unsupported
-opt-in.
+everywhere indexes apply. Protean honors the opt-in features (`where`,
+`include`) only where the dialect supports them, and elsewhere builds a full
+index with a logged warning. A declaration never fails because of an
+unsupported opt-in.
 
 | Feature | PostgreSQL | SQLite | SQL Server | MySQL | Memory | Elasticsearch |
 |---------|:----------:|:------:|:----------:|:-----:|:------:|:-------------:|
@@ -104,20 +105,19 @@ opt-in.
 | `include` (covering columns) | ✅ | ⚠️ falls back | ✅ | ⚠️ falls back | advisory | — |
 | `Index.from_sql` | matched dialect only | matched dialect only | matched dialect only | matched dialect only | — | — |
 
-The MySQL column above covers MariaDB too: one provider serves both, and
-SQLAlchemy names their dialects `mysql` and `mariadb`, so `Index.from_sql`
-matches on whichever the connection URI selects.
+The MySQL column above covers MariaDB too, because one provider serves both.
+`Index.from_sql` matches the connection URI's dialect, which SQLAlchemy names
+`mysql` or `mariadb`.
 
 - **SQLAlchemy providers (PostgreSQL, SQLite, SQL Server, MySQL)** translate
   declarations into SQLAlchemy `Index` constructs at table-build time, emitted
   by `create_all()` / `protean db setup`. Unsupported `where`/`include` log a
   warning and fall back to a full index.
 - **MySQL** additionally caps an indexed string: InnoDB allows 3072 bytes per
-  index key, which is 768 `utf8mb4` characters across the **whole** index, so a
-  declaration whose string columns exceed that raises `IncorrectUsageError`
+  index key, or 768 `utf8mb4` characters across the **whole** index. A
+  declaration with string columns over that limit raises `IncorrectUsageError`
   naming the index and its fields. A composite index is the sum of its columns.
-  See the
-  [MySQL provider page](../adapters/database/mysql.md#string-columns-used-as-keys).
+  See the [MySQL provider page](../adapters/database/mysql.md#string-columns-used-as-keys).
 - **Memory** validates declarations for shape and enforces **unique** indexes:
   a duplicate insert or update that violates a single-column or composite
   `Index(..., unique=True)` raises `ValidationError` (NULLs treated as distinct,
@@ -151,10 +151,10 @@ resolution), raising `IncorrectUsageError` on:
 - a `RawIndex` whose `dialect` is not one the framework renders DDL for
   (`mariadb`, `mssql`, `mysql`, `postgresql`, `sqlite`).
 
-A `RawIndex`'s DDL string stays opaque: only its `dialect` is checked. A name
-outside the rendered set (a typo like `postgres`, or a dialect with no
-renderer) would be silently dropped at every call site, so validation rejects
-it here instead.
+A `RawIndex`'s DDL string stays opaque: only its `dialect` is checked.
+Validation rejects a name outside the rendered set (a typo like `postgres`, or
+a dialect with no renderer) here, because every call site would otherwise drop
+it silently.
 
 ---
 

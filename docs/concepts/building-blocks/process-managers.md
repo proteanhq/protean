@@ -19,13 +19,14 @@ multi-step workflows that span multiple aggregates:
 
 These workflows share a common structure: each step produces an event, and
 that event determines what the *next* step should be. If a step fails, earlier
-steps may need to be reversed. The workflow needs to remember where it is.
+steps may need to be reversed. The workflow needs to record which step it
+has reached.
 
 Event handlers cannot do this. They are stateless. They don't know which step
-they're on, what happened before, or what should happen next. You need
-something that tracks the progress of the entire process, correlates events
-from different aggregates to the same running instance, and decides what to do
-next at each step. That is a process manager.
+they're on, what happened before, or what should happen next. You need a
+component that tracks the progress of the entire process. The component also
+correlates events from different aggregates to the same running instance, and
+picks the next action at each step. That is a process manager.
 
 ## When to Use a Process Manager vs. an Event Handler
 
@@ -51,9 +52,9 @@ ones."
 ## How the Event Chain Works
 
 The core mechanism of a process manager is the **command-event loop**. The PM
-doesn't call aggregate methods directly. Instead, it issues commands, and the
-aggregates that process those commands raise events, which flow back to the PM
-through its stream subscriptions.
+doesn't call aggregate methods directly. Instead, the PM issues commands. The
+aggregates process those commands and raise events. The PM receives those
+events through its stream subscriptions.
 
 Here is the complete round-trip for one step in an order fulfillment workflow:
 
@@ -95,7 +96,7 @@ Here is the complete round-trip for one step in an order fulfillment workflow:
                     └─────────────┘ └─────────────┘
 ```
 
-Walking through the chain step by step:
+The chain runs in six steps:
 
 1. **`OrderPlaced` event** is raised by the `Order` aggregate and written to
    the `ecommerce::order` stream.
@@ -192,10 +193,10 @@ routing.
 ### Process managers run within a Unit of Work. { data-toc-label="Transactions" }
 
 Each handler executes inside its own Unit of Work. If the handler fails, the
-PM's transition is rolled back. A command the handler issued before the failure
-is discarded on the memory event store, but Message-DB writes it on its own
-connection, so there it survives. Keep issued commands idempotent so re-issuing
-one is safe.
+PM's transition is rolled back. On the memory event store, the rollback also
+discards any command the handler issued before the failure. Message-DB writes
+such a command on its own connection, so the command survives the rollback.
+Keep issued commands idempotent so re-issuing one is safe.
 
 ## Best Practices
 

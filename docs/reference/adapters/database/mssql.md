@@ -19,11 +19,11 @@ pyodbc is a binding, not a driver. Install
 separately through your operating system's package manager.
 
 If pyodbc cannot be imported, `domain.init()` raises a `ConfigurationError`
-that names the extra to install. This covers a `database_uri` that names pyodbc
-(`mssql+pyodbc://`) and one that names no driver (`mssql://`). pyodbc
-installed without the unixODBC system library fails to import, so it fails the
-same way. A `database_uri` that names another driver, such as
-`mssql+pymssql://`, goes to SQLAlchemy as written.
+that names the extra to install. This covers a `database_uri` with pyodbc as
+its driver (`mssql+pyodbc://`) and one with no driver (`mssql://`). pyodbc
+installed without the unixODBC system library also fails to import, and
+`domain.init()` raises the same error. A `database_uri` that names another
+driver, such as `mssql+pymssql://`, goes to SQLAlchemy as written.
 So does a database config with a `module` key, which hands SQLAlchemy
 the DBAPI module to use in place of the URL's driver.
 
@@ -45,9 +45,9 @@ database_uri = "mssql+pyodbc://sa:${MSSQL_PASSWORD}@localhost:1433/appdb?driver=
 
 The `driver` query parameter is required: pyodbc has no default driver, and
 omitting it fails at connection time rather than at `domain.init()`.
-`MARS_Connection=yes` lets one connection hold several active result sets,
-which the provider relies on when a repository iterates one query while issuing
-another.
+`MARS_Connection=yes` lets one connection hold several active result sets. The
+provider needs them when a repository issues one query in the middle of
+iterating another.
 
 ## Capabilities
 
@@ -66,8 +66,8 @@ another.
 
 ## Indexes
 
-MSSQL honors part of the [`Index`](../../domain-elements/indexes.md) surface,
-emitted during `protean db setup`:
+MSSQL supports some of the [`Index`](../../domain-elements/indexes.md) options,
+and `protean db setup` creates the indexes:
 
 - Composite, descending (`desc=`), and unique (`unique=`) indexes.
 - Covering columns (`include=`), which map to SQL Server's `INCLUDE` clause.
@@ -77,18 +77,19 @@ emitted during `protean db setup`:
 ## String columns used as keys
 
 SQL Server rejects an unbounded `VARCHAR` in a primary key or a unique
-constraint. Protean catches this at schema-generation time and raises
-`IncorrectUsageError` naming the field, instead of letting the database fail
-with its own message about a column being invalid as a key:
+constraint. Protean catches this when it generates the schema and raises
+`IncorrectUsageError` with the field's name. Without this check, the database
+fails with its own message about a column being invalid as a key:
 
 ```python
 --8<-- "adapters/database/mssql/002.py:key_columns"
 ```
 
-`String()` has a default `max_length` of 255, so it is a valid key column. The
-error comes from a column with no length, such as `max_length=None`. A column
-with no length is fine on MSSQL as an ordinary column. Protean raises only when
-that column is a primary key or is `unique=True`.
+`String()` has a default `max_length` of 255, so it is a valid key column.
+Protean raises `IncorrectUsageError` for a column with no length, such as
+`max_length=None`. A column with no length is fine on MSSQL as an ordinary
+column. Protean raises only when that column is a primary key or
+is `unique=True`.
 
 ## Date and time columns
 
@@ -109,9 +110,9 @@ not change an existing table. See
 [SQL Server stores `DateTime` as `DATETIME2`](../../migration/v0-19.md#sql-server-stores-datetime-as-datetime2)
 for the statements that convert them.
 
-A `DATETIME2` column holds no UTC offset, so Protean converts each value to
-UTC before it writes it or compares it in a filter, and reads a naive value as
-UTC. A load returns a UTC-aware `datetime`. A filter value in any offset then
+Because a `DATETIME2` column holds no UTC offset, Protean converts each value
+to UTC on write and in filter comparisons. Protean reads a naive value as UTC.
+A load returns a UTC-aware `datetime`. A filter value in any offset then
 matches the same instant. Rows written before 0.18.1 hold the wall-clock time
 they were saved with; see
 [Datetimes are compared and stored as UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc)

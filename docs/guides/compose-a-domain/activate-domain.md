@@ -19,10 +19,10 @@ domain around to each method, or referring to a domain directly, you can use
 the `current_domain` proxy instead. The `current_domain` proxy,
 which points to the domain handling the current activity.
 
-The `DomainContext` helps manage the active domain object for the duration of a
-thread's execution. The domain context keeps track of the domain-level data
-during the lifetime of a domain object, and is used while processing handlers,
-CLI commands, or other activities.
+The `DomainContext` holds the active domain object for the duration of a
+thread's execution. The domain context tracks the domain-level data during the
+lifetime of a domain object. Protean uses the domain context while it processes
+handlers, CLI commands, or other activities.
 
 ## Activating the Domain Context
 
@@ -34,19 +34,19 @@ domain context for the duration of the task.
 You activate a domain by pushing up its context to the top of the domain stack:
 
 ### With Context Manager
-Protean provides a helpful context manager to nest the domain operations
-under.
+Protean provides a context manager. You run the domain operations inside
+its block.
 
 ```python hl_lines="18-20"
 --8<-- "guides/compose-a-domain/018.py:full"
 ```
 
 Subsequent calls to `current_domain` will return the currently active domain.
-Once the task has been completed, the domain stack is reset to its original
-state after popping the context.
+When the task completes, the context manager pops the context and resets the
+domain stack to its original state.
 
-This is a convenient pattern to use in conjunction with most API frameworks.
-The domain’s context is pushed up at the beginning of a request and popped out
+This is a convenient pattern to use with most API frameworks. The domain’s
+context is pushed up at the beginning of a request and popped out
 once the request is processed.
 
 ### Manually
@@ -59,8 +59,8 @@ methods of the domain context:
 ```
 
 !!! warning
-    If you do activate context manually, ensure you call context.pop() once the
-    task has been completed to prevent context leakage across threads.
+    When you activate the context manually, call context.pop() after the task
+    completes. Otherwise, the context can leak across threads.
 
 ### Check whether a domain is active
 
@@ -86,19 +86,21 @@ namespace object that has the same lifetime as an domain context.
     ends, and it is not an appropriate place to store data between domain
     calls. Use a session or a database to store data across domain model calls.
 
-A common use for g is to manage resources during a domain call.
+A common use for g is to create a resource once and close it at the end of a
+domain call.
 
 1. `get_X()` creates resource X if it does not exist, caching it as g.X.
 
 2. `teardown_X()` closes or otherwise deallocates the resource if it exists.
 It is registered as a `teardown_domain_context()` handler.
 
-Using this pattern, you can, for example, manage a file connection for the
-lifetime of a domain call:
+With the `get_X()` and `teardown_X()` pattern, you can, for example, keep a
+file connection open for the lifetime of a domain call:
 
 ```python
 --8<-- "guides/compose-a-domain/activate-domain/002.py:g-resource"
 ```
 
-Now, every call to `get_log()` during the domain call will return the same file
-object, and it will be closed automatically at the end of processing.
+Now, every call to `get_log()` during the domain call returns the same file
+object. The teardown handler closes the file object automatically at the end
+of processing.

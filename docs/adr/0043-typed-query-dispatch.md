@@ -20,7 +20,7 @@ Only the generic base is visible to a plain type checker. `__result__` and the d
 
 ## Decision
 
-`BaseQuery` becomes `Generic[TResult]`. `TResult` is a phantom type parameter: it never appears in a field and has no runtime effect. `TResult` records the type the query's handler returns. `TResult` defaults to `Any` (PEP 696), so a bare `BaseQuery` subclass still passes the check under `disallow_any_generics`. The default comes from `typing_extensions.TypeVar`, because `typing.TypeVar` only took parameter defaults in Python 3.13 and Protean supports 3.11 up. A query declares its result type by subscripting the base:
+`BaseQuery` becomes `Generic[TResult]`. `TResult` is a phantom type parameter: it never appears in a field and has no runtime effect. It records the type the query's handler returns. The parameter defaults to `Any` (PEP 696), so a bare `BaseQuery` subclass still passes the check under `disallow_any_generics`. The default comes from `typing_extensions.TypeVar`, because `typing.TypeVar` only took parameter defaults in Python 3.13 and Protean supports 3.11 up. A query declares its result type by subscripting the base:
 
 ```python
 class GetOrderSummary(BaseQuery[OrderSummary]):

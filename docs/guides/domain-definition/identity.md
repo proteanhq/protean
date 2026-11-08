@@ -9,10 +9,10 @@ without being asked. Here is how to accept that default, name the identifier
 field, choose a different type, plug in your own generator, and use natural
 keys that come from your users.
 
-For the design rationale. Why identity is generated on construction and why
-composite keys aren't supported, see
-[Identity](../../concepts/foundations/identity.md) and the [Creating Identities
-Early](../../patterns/creating-identities-early.md) pattern.
+To learn why Protean generates identity on construction and does not support
+composite keys, see [Identity](../../concepts/foundations/identity.md) and the
+[Creating Identities Early](../../patterns/creating-identities-early.md)
+pattern.
 
 ## Accept the defaults
 
@@ -104,9 +104,9 @@ in Configuration for the complete listing.
 
 ## Use a custom identity function
 
-When UUIDs don't fit. You need epoch-millisecond IDs, snowflake IDs, a prefixed
-business key, or anything else, switch the strategy to `function` and supply a
-callable.
+If UUIDs don't fit because you need epoch-millisecond IDs, snowflake IDs, a
+prefixed business key, or anything else, switch the strategy to `function` and
+supply a callable.
 
 ### At the domain level
 
@@ -130,8 +130,8 @@ string while `identity_type="integer"` gives the aggregate a string `id`.
 
 ### Per aggregate
 
-To override the default for one aggregate (for example, to mint a prefixed key)
-set the strategy and function directly on the field:
+To override the default for one aggregate (for example, to create a prefixed
+key), set the strategy and function directly on the field:
 
 ```python
 --8<-- "guides/domain-definition/identity/005.py:aggregate"
@@ -200,10 +200,10 @@ This only works when:
   or equivalent. Protean does not create the sequence for you.
 
 Because the id isn't available until the aggregate is saved, this mode
-trades away the "identity at creation" guarantee. Once you persist the
-aggregate with `repository.add()`, the generated id is reflected back
-onto the same instance, so you can reference or re-fetch it afterwards.
-This holds whether the add runs on its own or inside a `UnitOfWork`.
+trades away the "identity at creation" guarantee. When you persist the
+aggregate with `repository.add()`, the repository writes the generated id back
+onto the same instance. You can then reference or re-fetch the aggregate by
+that id. This holds whether the add runs on its own or inside a `UnitOfWork`.
 Prefer `uuid` or a custom function unless you have a strong reason to
 defer identity generation to the database.
 
@@ -229,7 +229,7 @@ defer identity generation to the database.
 
     **Reference:**
 
-    - [Identity Reference](../../reference/domain-elements/identity.md): Full configuration surface, strategies, and types.
+    - [Identity Reference](../../reference/domain-elements/identity.md): All configuration options, strategies, and types.
     - [`Auto` field](../../reference/fields/simple-fields.md#auto): Options for auto-generated identifiers.
     - [`Identifier` field](../../reference/fields/simple-fields.md#identifier): Options for user-supplied identifiers.
     - [`identity_function` parameter](../../reference/domain-elements/domain-constructor.md#identity_function): Passing a generator to the Domain constructor.
