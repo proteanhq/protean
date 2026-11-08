@@ -82,9 +82,8 @@ Protean adds metadata such as timestamps, unique event identifiers, and version
 numbers to each event, so consumers can track and process events precisely.
 
 ### Events are **versioned**. { data-toc-label="Versioning" }
-Each event is assigned a version number, ensuring that consumers can handle
-them in the correct order and manage compatibility between event producers and
-consumers.
+Each event carries a schema version number, so producers and consumers can
+manage compatibility as the event's structure changes.
 
 ### Events are **timestamped**. { data-toc-label="Timestamp" }
 Each event carries a timestamp indicating when the event occurred, which is

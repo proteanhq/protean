@@ -17,7 +17,7 @@ Redis Streams does not have this problem. Its nack leaves the message pending an
 
 ## Decision
 
-The subscription is the single place that counts retries and publishes to the DLQ.
+The subscription is the single place that counts retries toward the DLQ and publishes to the DLQ.
 
 - For a stream consumed by a subscription, the InlineBroker's nack becomes hold-and-redeliver with no independent ceiling, matching how Redis Streams already behaves. The broker no longer moves a subscription-consumed message to its native DLQ. Its stale-in-flight timeout sweep also holds and redelivers such a message instead of dead-lettering it.
 - There is one dead-letter destination for these streams: the `{stream}:dlq` stream the subscription publishes. The broker's native `_dead_letter_queue` is not a second destination for them.

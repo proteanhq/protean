@@ -108,9 +108,9 @@ multiple entities. The write side returns one aggregate; the list needs many.
 ### 3. Version polling (coordination strategy)
 
 The write endpoint returns the aggregate's version alongside the entity
-data. The frontend passes this version to the read endpoint, which polls the
-projection until its version matches or exceeds the expected version, or until
-a timeout.
+data. The frontend passes this version to the read endpoint and polls it until
+the projection's version matches or exceeds the expected version, or until a
+timeout.
 
 **Best for:** critical transitions where the UI must show the confirmed
 read-side state (e.g., payment confirmation page, shipping status).

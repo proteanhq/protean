@@ -122,6 +122,7 @@ After the aggregate has mutated, the changes need to be persisted to ensure
 that the system's state is durable and consistent. Repositories save aggregates
 back to the persistence store or event store.
 
-Repositories not only persist the changes but also handle the publication of
-events raised by the aggregate. These events are stored in the event store,
-providing a detailed history of how the system's state has evolved over time.
+Repositories persist the changes and register the aggregate with the unit of
+work. When the unit of work commits, it gathers the events the aggregate raised
+and publishes them. These events are stored in the event store, providing a
+detailed history of how the system's state has evolved over time.

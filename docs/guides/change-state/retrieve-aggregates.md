@@ -19,8 +19,9 @@ Out[1]: <Person: Person object (id: 1)>
 `get` raises `ObjectNotFoundError` if no aggregate is found with the given
 identity.
 
-Finding an aggregate by a field value is also possible, but requires a custom
-repository to be defined with a business-oriented method. See the
+To find an aggregate by a field value, use `find_by`, described in the next
+section. For a lookup that the built-in methods do not cover, define a
+business-oriented method on a custom repository. See the
 [Repositories](./repositories.md) guide for details on defining custom
 repositories.
 

@@ -67,8 +67,8 @@ that slip through one layer are caught by the next.
 **What it validates:** Data types, formats, ranges, required-ness, and
 choices at the individual field level.
 
-**Where it lives:** Field declarations on aggregates, entities, value objects,
-commands, and events.
+**Where it is defined:** Field declarations on aggregates, entities, value
+objects, commands, and events.
 
 **When it runs:** At object construction, when a value is assigned to a field.
 
@@ -101,7 +101,7 @@ field definition, and enforced automatically by Protean.
 **What it validates:** Rules intrinsic to a domain concept, format patterns,
 internal consistency, and constraints that define what makes a concept valid.
 
-**Where it lives:** Invariants on value objects.
+**Where it is defined:** Invariants on value objects.
 
 **When it runs:** At value object construction (which triggers during aggregate
 construction or field assignment).
@@ -133,7 +133,7 @@ not, regardless of which aggregate it's in or who is setting it.
 **What it validates:** Business rules that depend on the aggregate's state,
 cross-field consistency, state machine rules, and domain-specific constraints.
 
-**Where it lives:** Invariants on aggregates and entities.
+**Where it is defined:** Invariants on aggregates and entities.
 
 **When it runs:** After aggregate methods are called (post-invariants) or
 before specific operations (pre-invariants).
@@ -166,8 +166,8 @@ or a reservation enforceable.
 **What it validates:** Contextual rules that depend on the current operation,
 the caller's identity, external state, or cross-aggregate conditions.
 
-**Where it lives:** Command handlers, application services, event handlers,
-and domain services.
+**Where it is defined:** Command handlers, application services, event
+handlers, and domain services.
 
 **When it runs:** Before the aggregate method is called, in the handler or
 service.
