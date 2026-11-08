@@ -296,8 +296,10 @@ _GAUGES_REGISTERED_KEY = "_otel_infra_gauges_registered"
 def _register_infrastructure_gauges(domains: list[Domain]) -> None:
     """Register ``ObservableGauge`` callbacks on the first domain with an active meter.
 
-    These callbacks are invoked on every Prometheus scrape and yield
-    the same infrastructure metrics the hand-rolled endpoint produced.
+    These callbacks are invoked on every Prometheus scrape and yield the
+    outbox, broker, subscription, pool, broker pool and projection gauges.
+    The stream and per-consumer gauges of the hand-rolled endpoint are not
+    registered.
     """
     if not domains:
         return

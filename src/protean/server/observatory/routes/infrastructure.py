@@ -43,7 +43,8 @@ def sanitize_config(config: Any) -> Any:
     """Strip sensitive values (URIs, passwords) from config for display.
 
     - URIs have credentials masked (``user:pass@host`` → ``***@host``)
-    - Keys containing 'password', 'secret', 'token' are replaced with '***'
+    - Keys containing 'password', 'secret', 'token' or 'api_key' are replaced
+      with '***'
     """
     if isinstance(config, dict):
         return _sanitize_mapping(config)

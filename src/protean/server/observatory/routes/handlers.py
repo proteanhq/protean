@@ -199,7 +199,7 @@ def collect_handler_metadata(domains: list[Domain]) -> list[dict[str, Any]]:
 
     Returns a list of handler dicts with keys:
         name, qualname, type, domain, aggregate, stream_categories,
-        handled_messages
+        handled_messages, subscription, metrics (the last two set to None)
     """
     handlers: list[dict[str, Any]] = []
 
