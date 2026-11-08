@@ -124,6 +124,27 @@ class TestClaimContract:
         claimed = dao._claim(_ready(), CLAIM, limit=10)
         assert claimed == []
 
+    def test_stale_candidates_already_claimed_are_not_claimed_again(
+        self, test_domain, dao, monkeypatch
+    ):
+        """A worker that read its candidates before another worker claimed
+        them gets none of them: each row's update re-checks ``criteria``."""
+        _seed(test_domain, 3)
+        stale = dao._claim_candidates(_ready(), 10, 0, None, None)
+        assert len(stale) == 3
+
+        assert len(dao._claim(_ready(), CLAIM, limit=10)) == 3
+
+        # Hand the second claim the candidate list read before the first claim.
+        monkeypatch.setattr(dao, "_claim_candidates", lambda *args, **kwargs: stale)
+        second = dao._claim(
+            _ready(), {"status": "claimed", "locked_by": "worker-B"}, limit=10
+        )
+
+        assert second == []
+        repo = test_domain.repository_for(Job)
+        assert {repo.get(job.id).locked_by for job in stale} == {"worker-A"}
+
 
 class TestClaimConcurrency:
     def test_no_double_claim_under_contention(self, test_domain):

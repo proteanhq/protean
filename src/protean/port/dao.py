@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from functools import reduce
+from functools import partial, reduce
 from typing import TYPE_CHECKING, Any, ClassVar, get_args
 
 from protean._deprecation import deprecated_from_registry
@@ -172,6 +172,107 @@ def _pre_persist_hook(
         defer_checks=root._disable_invariant_checks,
     ):
         yield
+
+
+def _try_claim(
+    dao: "BaseDAO",
+    id_name: str,
+    criteria: Q,
+    claim_fields: dict[str, Any],
+    entity: Any,
+) -> bool:
+    """Claim one candidate row, and on success apply ``claim_fields`` to it."""
+    # Re-assert the eligibility criteria in the update so a row claimed
+    # by another worker between the read and this write is skipped.
+    guard = Q(**{id_name: getattr(entity, id_name)}) & criteria
+    if dao._update_all(guard, dict(claim_fields)) > 0:
+        for attr, value in claim_fields.items():
+            setattr(entity, attr, value)
+        return True
+    return False
+
+
+def _claim_held_back(
+    dao: "BaseDAO",
+    criteria: Q,
+    limit: int,
+    order_by: str | list[str] | None,
+    hold_back: HoldBack,
+    try_claim: Callable[[Any], bool],
+) -> list[BaseEntity]:
+    """Claim up to ``limit`` rows page by page, keeping back each grouped row
+    whose group has an earlier holding row this call did not claim."""
+    claimed: list[BaseEntity] = []
+    # A row is claimed only after every earlier holding row of its group
+    # is, so the rows a group has claimed here all sort before any of its
+    # rows still to be checked.
+    claimed_in_group: Counter[tuple[Any, ...]] = Counter()
+    lanes: tuple[Q, ...] = hold_back.lanes or (Q(),)
+    rows_read = 0
+    # Read a page of ``limit`` candidates at a time until ``limit`` rows are
+    # claimed or none remain, so held rows never use up the batch. Claimed
+    # rows stop matching ``criteria``, which shifts the next page's offset
+    # back by the rows claimed. Pages are not capped: a cap would let a held
+    # group fill every batch and starve the other groups. The default
+    # ``_claim_candidates`` reads held rows too, so a large held backlog
+    # costs one page read per ``limit`` held rows on every call.
+    while len(claimed) < limit:
+        page = dao._claim_candidates(
+            criteria, limit, rows_read - len(claimed), order_by, hold_back
+        )
+        if not page:
+            break
+        rows_read += len(page)
+
+        for entity in page:
+            if len(claimed) >= limit:
+                break
+            if _try_claim_in_group(
+                dao, entity, hold_back, lanes, claimed_in_group, try_claim
+            ):
+                claimed.append(entity)
+
+    return claimed
+
+
+def _try_claim_in_group(
+    dao: "BaseDAO",
+    entity: Any,
+    hold_back: HoldBack,
+    lanes: tuple[Q, ...],
+    claimed_in_group: Counter[tuple[Any, ...]],
+    try_claim: Callable[[Any], bool],
+) -> bool:
+    """Claim ``entity`` unless an earlier holding row of its group is unclaimed.
+
+    A successful claim of a grouped row adds one to its group's count in
+    ``claimed_in_group``.
+    """
+    lane_index = hold_back.lane_of(entity)
+    if lane_index is None:
+        return try_claim(entity)
+
+    same_group: dict[str, Any] = {
+        column: getattr(entity, column) for column in hold_back.group_by
+    }
+    group = (*same_group.values(), lane_index)
+    earlier = (
+        Q(**same_group)
+        & hold_back.applies
+        & lanes[lane_index]
+        & hold_back.holds
+        & _earlier_than(entity, hold_back.order)
+    )
+    # The rows this call claimed in the group are all earlier than
+    # this row and still hold, so a larger count means an earlier
+    # row this call did not claim. One count per row binds the same
+    # parameters however large the batch is.
+    held = dao._count(earlier) > claimed_in_group[group]
+    if held or not try_claim(entity):
+        return False
+
+    claimed_in_group[group] += 1
+    return True
 
 
 class BaseDAO(metaclass=ABCMeta):
@@ -568,74 +669,13 @@ class BaseDAO(metaclass=ABCMeta):
         # The portable default: read candidates, then re-assert ``criteria`` in
         # a guarded update per row (1 + N round trips). Adapters that can claim
         # in one statement override ``_claim``.
-        def read_candidates(offset: int) -> list[Any]:
-            return self._claim_candidates(criteria, limit, offset, order_by, hold_back)
-
-        def try_claim(entity: Any) -> bool:
-            # Re-assert the eligibility criteria in the update so a row claimed
-            # by another worker between the read and this write is skipped.
-            guard = Q(**{id_name: getattr(entity, id_name)}) & criteria
-            if self._update_all(guard, dict(claim_fields)) > 0:
-                for attr, value in claim_fields.items():
-                    setattr(entity, attr, value)
-                return True
-            return False
+        try_claim = partial(_try_claim, self, id_name, criteria, claim_fields)
 
         if hold_back is None:
-            return [entity for entity in read_candidates(0) if try_claim(entity)]
+            candidates = self._claim_candidates(criteria, limit, 0, order_by, hold_back)
+            return [entity for entity in candidates if try_claim(entity)]
 
-        claimed: list[BaseEntity] = []
-        # A row is claimed only after every earlier holding row of its group
-        # is, so the rows a group has claimed here all sort before any of its
-        # rows still to be checked.
-        claimed_in_group: Counter[tuple[Any, ...]] = Counter()
-        lanes: tuple[Q, ...] = hold_back.lanes or (Q(),)
-        rows_read = 0
-        # Read a page of ``limit`` candidates at a time until ``limit`` rows are
-        # claimed or none remain, so held rows never use up the batch. Claimed
-        # rows stop matching ``criteria``, which shifts the next page's offset
-        # back by the rows claimed. Pages are not capped: a cap would let a held
-        # group fill every batch and starve the other groups. The default
-        # ``_claim_candidates`` reads held rows too, so a large held backlog
-        # costs one page read per ``limit`` held rows on every call.
-        while len(claimed) < limit:
-            page = read_candidates(rows_read - len(claimed))
-            if not page:
-                break
-            rows_read += len(page)
-
-            for entity in page:
-                if len(claimed) >= limit:
-                    break
-                lane_index = hold_back.lane_of(entity)
-                if lane_index is None:
-                    if try_claim(entity):
-                        claimed.append(entity)
-                    continue
-
-                same_group: dict[str, Any] = {
-                    column: getattr(entity, column) for column in hold_back.group_by
-                }
-                group = (*same_group.values(), lane_index)
-                earlier = (
-                    Q(**same_group)
-                    & hold_back.applies
-                    & lanes[lane_index]
-                    & hold_back.holds
-                    & _earlier_than(entity, hold_back.order)
-                )
-                # The rows this call claimed in the group are all earlier than
-                # this row and still hold, so a larger count means an earlier
-                # row this call did not claim. One count per row binds the same
-                # parameters however large the batch is.
-                held = self._count(earlier) > claimed_in_group[group]
-                if held or not try_claim(entity):
-                    continue
-
-                claimed.append(entity)
-                claimed_in_group[group] += 1
-
-        return claimed
+        return _claim_held_back(self, criteria, limit, order_by, hold_back, try_claim)
 
     def _claim_candidates(
         self,
