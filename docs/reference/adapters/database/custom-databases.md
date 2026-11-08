@@ -1,6 +1,7 @@
 # Custom Database Adapters
 
-A custom database adapter lets Protean work with any persistence technology.
+Learn how to create custom database adapters for Protean to integrate with any
+persistence technology.
 
 ## Overview
 

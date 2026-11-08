@@ -5,11 +5,12 @@ rewrites them), but the code that reads them keeps changing. A field gets
 renamed, a new attribute is added, an old event is retired. Months later your service still has to decode events written by last
 year's code, and a downstream consumer still expects last year's shape.
 
-Protean gives you the tools to change an event from `v1` to `vN` without
-breaking the events already on disk or the consumers already running. We follow
-**one running example**, an `OrderPlaced` event that changes in two rounds, and
-show the Protean tool for each change. Everything here is real output from the
-domain shown; you can follow along without writing a line of code.
+Protean gives you a complete toolkit for evolving an event safely from `v1` to
+`vN` without breaking the events already on disk or the consumers already
+running. This guide walks the whole lifecycle with **one running example** (an
+`OrderPlaced` event that grows up over two rounds of change) and shows the
+tooling at each step. Everything here is real output from the domain shown; you
+can follow along without writing a line of code.
 
 ## The example: an `OrderPlaced` that grows up
 

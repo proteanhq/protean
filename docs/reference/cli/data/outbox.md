@@ -43,7 +43,7 @@ another domain's events in a shared store, commands, process manager transition
 events, and events of aggregates on other providers. A rebuilt row carries the
 same `partition_key` the original commit would have set. `reconcile` is the
 manual form of the [automatic startup sweep](#automatic-startup-sweep). Run it
-after a suspected crash, or from a cron job as a periodic check.
+after a suspected crash, or from a cron job as a periodic safety net.
 
 ```bash
 # Reconcile the default provider's outbox
