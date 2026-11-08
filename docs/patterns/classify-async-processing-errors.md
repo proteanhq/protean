@@ -376,8 +376,8 @@ on the subscription, or turn on `transient_retry`, instead.
 The default `handle_error` is a no-op by design. It keeps the engine running.
 In production, override it in every handler to classify failures, route to the
 right recovery path, and ensure that no error goes unnoticed. Transient errors
-clear up on their own. Data errors need human inspection. Logic errors need
-code fixes. Treating them all the same way produces silent data drift.
+heal themselves. Data errors need human inspection. Logic errors need code
+fixes. Treating them all the same way produces silent data drift.
 
 ---
 
