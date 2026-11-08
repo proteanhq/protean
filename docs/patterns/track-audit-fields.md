@@ -110,8 +110,8 @@ there is no single place to audit. `auto_now` removes the need entirely.
 
 The pre-persist enricher *can* mutate any field or raise an exception. Keep it
 to cross-cutting lifecycle/audit metadata. Business state changes belong in the
-aggregate's own named methods, where they can raise
-events and be tested in isolation. Use the enricher only for audit bookkeeping.
+aggregate's own named methods, where they can raise events and be tested in
+isolation.
 
 ### Modeling the acting user inside the domain
 
