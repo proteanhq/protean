@@ -163,7 +163,8 @@ domain service to perform the cross-aggregate operation, and then persists
 only the primary aggregate. `OrderConfirmed` carries the ordered items. An
 event handler in the order's cluster reacts to `OrderConfirmed` and issues a
 command to each inventory. The inventory's command handler reserves the stock
-in its own transaction. [Chapter 13 of the tutorial](../getting-started/tutorial/13-domain-services.md)
+in its own transaction.
+[Chapter 13 of the tutorial](../getting-started/tutorial/13-domain-services.md)
 builds the whole flow, including the event handler and the inventory command.
 
 ### Handler Integration Example

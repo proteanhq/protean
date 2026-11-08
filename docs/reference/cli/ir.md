@@ -49,8 +49,7 @@ nothing about the domain changed.
 Pass `--canonical` to omit `generated_at`. The `$schema`, `ir_version`,
 `checksum`, and `elements` keys are retained (they are content-derived or
 version markers, and are ignored by `ir diff`/`ir check` alike). A canonical
-baseline therefore changes **only** when the domain contract or the
-`ir_version` changes.
+baseline therefore changes **only** when the domain contract changes.
 
 `--canonical` has no effect with `--format=summary`, which never prints the
 timestamp.

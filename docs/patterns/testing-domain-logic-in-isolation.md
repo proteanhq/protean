@@ -278,8 +278,8 @@ they test the most important code with the least overhead.
 
 Domain logic is the most important code in your system. Test it directly,
 without infrastructure, in isolation. Construct aggregates, call their methods,
-and assert the results. Save integration tests for verifying the handler and
-repository pipeline.
+and assert the results. Save integration tests for verifying the infrastructure
+wiring.
 
 !!! tip "Run all test layers in both modes"
     Domain unit tests already use in-memory adapters. Integration tests can use

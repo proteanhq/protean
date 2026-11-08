@@ -7,9 +7,9 @@ Integration tests that touch real databases are essential for verifying that you
 - **Data leaks between tests**: A test that creates an `Order` leaves that order in the database for the next test to find. Tests that pass in isolation start failing when run together, and the failures change depending on execution order.
 
 - **Missing schema**: The first test runs against a database that has no
-  tables. Without explicit schema setup, a test fails with a "table not found"
-  error, or worse, passes silently because some code catches the exception and
-  swallows it.
+  tables. Without explicit schema setup, every test fails with a "table not
+  found" error, or worse, passes silently because some code catches the
+  exception and swallows it.
 
 - **Stale schema**: After adding a new field to an aggregate, the database tables still reflect the old schema. Tests pass locally because the developer remembered to recreate the tables, but fail in CI where the database is fresh.
 

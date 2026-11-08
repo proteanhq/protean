@@ -211,7 +211,8 @@ happening:
   don't need schema setup; relational ones do.
 
 To catch drift between memory and real adapters continuously, add `pytest` in
-dual-mode to your CI. See [Dual-Mode Testing](../../patterns/dual-mode-testing.md).
+dual-mode to your CI. See
+[Dual-Mode Testing](../../patterns/dual-mode-testing.md).
 
 ---
 

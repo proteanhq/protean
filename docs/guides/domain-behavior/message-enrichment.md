@@ -129,7 +129,8 @@ enricher works in a domain where some aggregates have no audit fields.
 Keep aggregate enrichers to cross-cutting lifecycle/audit metadata; they are
 not a hook for business logic or for raising events. For the complete recipe
 (an abstract audit base with `auto_now`/`auto_now_add` timestamps plus
-`created_by`/`updated_by`), see [Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md).
+`created_by`/`updated_by`), see
+[Track Audit and Lifecycle Fields](../../patterns/track-audit-fields.md).
 
 ## Accessing Extensions
 

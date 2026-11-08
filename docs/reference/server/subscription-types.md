@@ -163,12 +163,12 @@ How the trim behaves depends on the consumer topology:
 - **More than one consumer group** (for example a projector plus an event
   handler): Protean trims by `MINID` at the slowest group's last-delivered
   position, so nothing a slow group has not yet read is ever removed.
-  `retention_maxlen` is ignored here, consumer progress bounds the stream. The
-  same rule has a cost. A group whose last-delivered position stays at `0-0` (a
-  dead consumer, or a handler you removed without deleting its group) is always
-  the slowest group, so Protean trims nothing and the stream keeps growing
-  until you delete that group. Retention is progress-bounded, not size-bounded,
-  whenever multiple groups exist.
+  `retention_maxlen` is ignored here, because consumer progress bounds the
+  stream. The same rule has a cost. A group whose last-delivered position stays
+  at `0-0` (a dead consumer, or a handler you removed without deleting its
+  group) is always the slowest group, so Protean trims nothing and the stream
+  keeps growing until you delete that group. Retention is progress-bounded, not
+  size-bounded, whenever multiple groups exist.
 - **At most one consumer group:** Protean caps the stream at `retention_maxlen`
   with a plain `MAXLEN` trim. This cap has a fixed size and ignores how far the
   handler has read. If the single handler falls more than `retention_maxlen`

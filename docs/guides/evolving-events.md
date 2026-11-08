@@ -72,8 +72,7 @@ union (Avro's mechanism for "may be absent").
 
 A plain rename breaks compatibility in both directions, because it looks like
 "remove the old field, add a new one". Declare the rename instead, with
-`renamed_from`, and Protean treats it as a
-operation:
+`renamed_from`, and Protean treats it as a rename:
 
 ```python
 # fragment

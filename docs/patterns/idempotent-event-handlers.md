@@ -254,9 +254,9 @@ requires explicit deduplication.
 --8<-- "patterns/idempotent-event-handlers/002.py:loyalty"
 ```
 
-The idempotency logic runs in the aggregate's `award_points` method. The
-handler is thin. The aggregate checks its `point_transactions` to
-detect duplicates.
+The idempotency logic runs in the aggregate's `award_points` method, not in
+the handler. The handler is thin. The aggregate checks its `point_transactions`
+to detect duplicates.
 
 ### Example 2: Inventory Reservation (Cross-Aggregate Side Effect)
 

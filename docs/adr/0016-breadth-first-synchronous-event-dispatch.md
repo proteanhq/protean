@@ -9,8 +9,8 @@
 With `event_processing = "sync"`, `UnitOfWork._do_commit` consumed the events
 raised in the transaction by calling `handler_cls._handle(event)` immediately,
 in-stack, at commit time. This is **depth-first, re-entrant** dispatch: Protean
-processes an event raised *inside* a running handler at once, nested in that
-handler. The nested event runs before Protean persists the current handler's
+processed an event raised *inside* a running handler at once, nested in that
+handler. The nested event ran before Protean persisted the current handler's
 side effects, including a process manager's transition.
 
 Two failures follow directly from that ordering:
@@ -102,9 +102,8 @@ def on_placed(self, event):
 Move such assertions/reads out of the handler to after the top-level
 `process()`/`add()` call returns. The final state after the whole chain settles
 is unchanged; only mid-handler visibility of downstream effects differs.
-Process managers, event handlers, and projectors that do not read downstream
-effects mid-handler require no changes. They benefit from the
-fix automatically.
+Process managers, event handlers, and projectors require no changes. They
+benefit from the fix automatically.
 
 ## Alternatives Considered
 

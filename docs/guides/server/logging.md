@@ -282,7 +282,7 @@ for why tail sampling beats head sampling.
     Setting `always_keep_errors = false` or `always_keep_slow = false`
     combined with a low `default_rate` will silently drop the events you
     most want to see. The safety defaults stop sampling from dropping errors
-    and slow requests.
+    and slow events.
 
 ---
 

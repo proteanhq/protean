@@ -35,15 +35,15 @@ aggregate however you like before save" escape hatch.
 
 We add two complementary mechanisms.
 
-**1. Declare timestamps on the field.** `DateTime` and `Date` fields gain
-Django-parity `auto_now_add` (stamp on the create save) and `auto_now` (stamp
-on every save) flags. The flags are carried as `FieldSpec` metadata and read
+**1. Declarative timestamps.** `DateTime` and `Date` fields gain Django-parity
+`auto_now_add` (stamp on the create save) and `auto_now` (stamp on every save)
+flags. The flags are carried as `FieldSpec` metadata and read
 back on the resolved field; the persistence layer stamps them. The two are
 mutually exclusive, are rejected on non-temporal or required fields at
 declaration time, and only apply to the `Repository.add` → `save` write path
 (see Consequences).
 
-**2. Register a pre-persist aggregate enricher.** Domains gain
+**2. A registered pre-persist aggregate enricher.** Domains gain
 `register_aggregate_enricher(fn)` and the `@domain.aggregate_enricher`
 decorator, symmetric with the existing `register_event_enricher` /
 `register_command_enricher`. Both new mechanisms fire in `BaseDAO.save`.

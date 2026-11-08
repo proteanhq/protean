@@ -115,7 +115,7 @@ A new `HANDLER_CREATES_FOREIGN_AGGREGATE` lint rule (WARNING level) will
 detect event handlers that handle events from a different cluster than
 the one they belong to (`part_of`). This is a structural smell that often
 indicates a Process Manager would be more appropriate. The rule is IR-based (no
-AST analysis needed) and is part of 3.5.4 (handler completeness rules).
+AST analysis needed) and belongs in 3.5.4 (handler completeness rules).
 
 ### 6. Connective pattern documentation
 

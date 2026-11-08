@@ -2,7 +2,7 @@
 
 <span class="pathway-tag pathway-tag-ddd">DDD</span> <span class="pathway-tag pathway-tag-cqrs">CQRS</span> <span class="pathway-tag pathway-tag-es">ES</span>
 
-DDD emphasizes on representing domain concepts as closely as possible in code.
+DDD emphasizes representing domain concepts as closely as possible in code.
 To accomplish this, DDD outlines a set of tactical patterns that we could use
 to model the domain. Some domain concepts have a unique identity and change
 continuously over a long period of time. You represent such concepts as
@@ -23,7 +23,7 @@ Aggregates are defined with the `Domain.aggregate` decorator:
 --8<-- "guides/domain-definition/001.py:full"
 ```
 
-In the example above, `Post` is defined to as an Aggregate with two fields,
+In the example above, `Post` is defined as an Aggregate with two fields,
 `name` and `created_on`, and registered with the `publishing` domain.
 
 Read more about
@@ -107,7 +107,7 @@ attributes in a base aggregate and inherit it in concrete classes:
 
 Notice that the `TimeStamped` class has been marked `abstract=True`. This is
 optional, but considered good practice, because in this example, `TimeStamped`
-will not be instantiated by itself. It's explicit purpose is to serve as a base
+will not be instantiated by itself. Its explicit purpose is to serve as a base
 class for other aggregates.
 
 !!!note

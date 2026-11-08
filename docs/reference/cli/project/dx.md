@@ -160,8 +160,8 @@ It writes two manifests and the skill tree:
   the skills link to from their own subtree, so those links still open in an
   installed plugin.
 
-The plugin carries skills only: no commands, agents, or hooks. The MCP server
-registration stays with the `.mcp.json` file that `install` writes.
+This version of the plugin carries skills only: no commands, agents, or hooks.
+The MCP server registration stays with the `.mcp.json` file that `install` writes.
 
 ```shell
 protean dx build-plugin           # write (or regenerate) the committed tree

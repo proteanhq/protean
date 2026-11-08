@@ -89,7 +89,7 @@ the API is used, and no fixed number applies to all deprecations.
 SQLAlchemy also uses a "modified semantic versioning scheme" and the same
 warning-driven upgrade path. In both projects, an application that runs clean
 under the deprecation warnings is ready for the next series. Protean uses
-per-version warning classes for the same reason they do.
+per-version warning classes for the same reason SQLAlchemy does.
 
 Both projects follow the same pattern. Patches change no API, breaking changes
 arrive in minor versions, majors are kept for a categorical shift, and neither

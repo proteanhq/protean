@@ -252,7 +252,7 @@ failed, how many retries were attempted, and which consumer group was processing
 them. Protean provides two interfaces for inspecting and acting on DLQ
 messages:
 
-**CLI**, The [`protean dlq`](../../reference/cli/data/dlq.md) commands let you list,
+**CLI**: The [`protean dlq`](../../reference/cli/data/dlq.md) commands let you list,
 inspect, replay, and purge DLQ messages from the terminal:
 
 ```bash
@@ -272,10 +272,10 @@ protean dlq replay-all --subscription=order --domain=my_app
 protean dlq purge --subscription=order --domain=my_app
 ```
 
-**Observatory**, The [Observatory dashboard](../../reference/server/observability.md)
-includes a DLQ tab that provides the same capabilities through a web interface.
-Observatory also offers REST API endpoints at `/api/dlq/*` for
-programmatic access.
+**Observatory**: The [Observatory
+dashboard](../../reference/server/observability.md) includes a DLQ tab that
+provides the same capabilities through a web interface. Observatory also
+offers REST API endpoints at `/api/dlq/*` for programmatic access.
 
 
 ## Where to go next

@@ -182,8 +182,8 @@ the current state and replaces its local copy.
 
 When the Customer domain later adds `preferred_language` to the aggregate,
 the fact event automatically includes it. The Fulfillment subscriber can
-choose to map it to a local field or ignore it. No new event type
-to handle. The local copy cannot silently go out of date.
+choose to map it to a local field or ignore it. The subscriber has no new event
+type to handle. The local copy cannot silently go out of date.
 
 ### Multiple external consumers
 

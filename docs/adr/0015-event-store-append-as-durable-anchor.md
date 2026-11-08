@@ -108,8 +108,7 @@ sequence, and make the relational commit and outbox follow it.
    relational commit therefore self-heals on restart only for event-sourced
    aggregates. On a provider without transactions, such as Elasticsearch, a
    state-based aggregate's saved change whose outbox row was lost stays
-   unpublished. The commit order above is
-   unchanged.*
+   unpublished. The commit order above is unchanged.*
 
 ## Consequences
 
@@ -161,8 +160,8 @@ relational commit the single atomic boundary and is the most robust end state.
 We deferred it because it is a substantially larger build (a new pending-writes
 store, a processor, ordering and version guarantees) and makes the event store
 eventually consistent. Read-your-own-writes then breaks for event-sourced
-aggregates unless the read path also consults the pending writes. We record it
-as the likely future direction beyond this decision.
+aggregates unless the read path also consults the pending writes. We record the
+write-ahead approach as the likely future direction beyond this decision.
 
 **Same-transaction append when the stores coincide.** When the event store is
 backed by the same relational database as the aggregate, the append can join the

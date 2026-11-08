@@ -164,7 +164,8 @@ flags indicating which features the adapter supports. This enables:
 
 Database capabilities are independent of each other, so a provider can declare
 any combination of them. Broker capabilities, by contrast, are organized into
-hierarchical tiers. See [Database Capabilities](../../reference/adapters/database/index.md#database-capabilities)
+hierarchical tiers. See
+[Database Capabilities](../../reference/adapters/database/index.md#database-capabilities)
 and [Broker Capabilities](../../reference/adapters/broker/index.md#broker-capabilities)
 for full details.
 

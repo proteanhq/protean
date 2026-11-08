@@ -396,9 +396,11 @@ When event schemas evolve, you can add defaulted fields, rename a field in
 place with [`renamed_from`](../../reference/fields/arguments.md#renamed_from),
 retire an event with the `deprecated` and `superseded_by` decorator options,
 and register **upcasters** that transform old payloads to the current schema
-during deserialization. See the [Evolving Events Over Time](../evolving-events.md)
-guide for the end-to-end workflow, the [Event Upcasting guide](../consume-state/event-upcasting.md)
-for the upcaster mechanism, and the [Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
+during deserialization. See the
+[Evolving Events Over Time](../evolving-events.md) guide for the end-to-end
+workflow, the [Event Upcasting guide](../consume-state/event-upcasting.md) for
+the upcaster mechanism, and the
+[Event Versioning and Evolution](../../patterns/event-versioning-and-evolution.md)
 pattern for broader versioning strategies.
 
 The configured version is reflected in `version` and `type` attributes of the

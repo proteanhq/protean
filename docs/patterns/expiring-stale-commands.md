@@ -92,8 +92,7 @@ decision.
 ## Deadlines Bound Staleness, Not Failure
 
 A deadline answers "is this still worth doing?". It does **not** make
-processing more reliable on its own. Reliable processing needs
-three mechanisms:
+processing more reliable on its own. A full setup combines three mechanisms:
 
 - **Deadline**: Don't execute work that is no longer valid.
 - **[Retry with backoff](../guides/change-state/command-handlers.md#error-handling)**:
@@ -124,7 +123,7 @@ When you do want a deadline, opt in at the narrowest scope that fits:
    for an aggregate shares a latency budget.
 3. **Per domain**: `command_default_timeout` as a last-resort safety net.
 
-Set the narrowest one that expresses the real rule. A domain-wide default is a
+Set the narrowest one that expresses the real rule. A domain-wide default is
 too coarse on its own; let specific commands and handlers refine it.
 
 ---

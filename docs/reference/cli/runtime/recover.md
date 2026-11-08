@@ -140,8 +140,8 @@ found. For each such subscription, the reset writes a fresh
 `recovery-checkpoint` record. The record holds the rebuilt unresolved set with
 the missing-message positions removed, and a watermark past the
 `failed-positions` records the run read. The next restart then rebuilds a set
-without those positions, and the recovery pass stops retrying them. It reports
-what it cleared:
+without those positions, and the recovery pass stops retrying them. The run
+reports what it cleared:
 
 ```
 Cleared 1 stale recovery-tracking entry(ies) whose message the restore removed:

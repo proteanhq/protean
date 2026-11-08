@@ -21,9 +21,9 @@ output and merges them back in on render.
 
 The notes go in a file that people commit and hand-edit, so the file's shape is
 a contract. ADR-0030 records the generated project layout for the same reason.
-#1338 ships the renderer code that reads the file. This ADR records the file's
-shape, so a reviewer of that code, or of a project's committed notes, has a
-fixed reference to check against.
+The renderer code that reads the file ships in #1338. This ADR records the
+file's shape, so a reviewer of that code, or of a project's committed notes,
+has a fixed reference to check against.
 
 ## Decision
 

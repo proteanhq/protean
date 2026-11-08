@@ -3,8 +3,8 @@
 Protean endpoints are thin adapters. They translate HTTP into domain commands
 and let `domain.process()` handle the rest. An endpoint test checks that the
 HTTP layer dispatches the right command and returns the right response, while
-the domain runs the business logic. This separation makes endpoint tests
-surprisingly straightforward.
+the domain runs the business logic. This separation keeps endpoint
+tests simple.
 
 ## What You're Actually Testing
 

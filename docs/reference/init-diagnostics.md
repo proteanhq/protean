@@ -6,8 +6,8 @@ Protean raises these failures as exceptions, each with a stable **code**
 alongside its prose message. So an operator or an agent that catches one gets
 the same machine-readable rationale and fix as a `protean check` finding.
 
-These are the `kind = "raise"` codes. They are distinct from the
-[Fitness Function Catalog](fitness-functions.md), which lists the
+The codes on these exceptions are the `kind = "raise"` codes. They are distinct
+from the [Fitness Function Catalog](fitness-functions.md), which lists the
 `kind = "lint"` codes that `protean check` reports at design time. Both sets
 are in one registry, `protean.ir.diagnostics`, so a code is a public identifier
 you can rely on: renaming or removing one is a breaking change.

@@ -4,13 +4,13 @@
 
 **Date:** August 2026
 
-> **Changed in 0.18.0:** The String/Text `sanitize` default flipped from `True`
-to `False` (issue #1455). Since then `bleach` runs only where a field opts in,
-and no longer runs for nearly every domain by default. `bleach` still ships in
-core (it > is not behind an extra), because a field that sets `sanitize=True`
-or a domain > that sets `[field_defaults] sanitize = true` must not hit a
-missing-package > error at runtime. The present-tense "sanitize by default"
-claims below are > historical.
+> **Update (0.18.0):** the String/Text `sanitize` default flipped from `True`
+> to `False` (issue #1455). Since then `bleach` runs only where a field opts
+> in, and no longer runs for nearly every domain by default. `bleach` still
+> ships in core (it is not behind an extra), because a field that sets
+> `sanitize=True` or a domain that sets `[field_defaults] sanitize = true`
+> must not hit a missing-package error at runtime. The present-tense
+> "sanitize by default" claims below are historical.
 
 ## Context
 
@@ -187,4 +187,5 @@ change in the 0.18 migration guide. The actionable error plus the `all` extra
   unrelated correctness risk. Deferred to its own issue.
 - **A staged Tier-1 deprecation (warn in 0.18, move in 0.19)**: Rejected: with the
   imports already lazy there is no natural code path to warn on, and the fix is a
-  one-word extra. The staged deprecation would add a release cycle without protecting anyone.
+  one-word extra. The staged deprecation would add a release cycle without
+  protecting anyone.

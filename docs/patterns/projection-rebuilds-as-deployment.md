@@ -364,7 +364,7 @@ If you deploy a projector that populates new fields but do not rebuild, only
 still have the old shape. The read model is inconsistent. Some rows have
 `subtotal`, `tax`, and `shipping`; others do not.
 
-**Instead:** Always rebuild after deploying projector changes to the
+**Instead:** Always rebuild after deploying projector changes that affect the
 projection's schema or data mapping.
 
 ---

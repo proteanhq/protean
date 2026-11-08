@@ -142,8 +142,7 @@ fixed. A user who wants a flat layout or tests mixed in with source has to
 leave the scaffold's layout and keep discovery working themselves (for example
 by passing `root_path` explicitly or adding a config file to exclude a subtree
 from discovery). That is the intended trade: the default is correct by
-construction, and deviation is possible but
-manual.
+construction, and deviation is possible but manual.
 
 The `__init__.py`-must-stay-empty rule is easy to violate by habit, since re-exporting
 from a package initializer is idiomatic Python elsewhere. Anyone hand-editing a generated
@@ -159,9 +158,8 @@ IR is computed from the registered domain model, not from files, so no shipped f
 duplicates it. The Python element modules are the domain model the IR is built from, and the
 rest is deployment scaffolding the IR never represents. (The one stranded file,
 `logging.toml`, was an orphan that no adapter read, not an IR duplicate, and was removed
-under #1315.) So the pruning half was dropped. With the pruning dropped, we do
-not delete a file the project needs in order to satisfy a rule that does
-not apply.
+under #1315.) So the pruning half was dropped. Dropping it means we do not
+delete a file the project needs for the sake of a rule that does not apply.
 
 **A flat layout (no `src/`, modules beside `domain.py` at the project root).** This works
 for discovery but blurs the packaging boundary and makes it easy for `tests/` or tooling

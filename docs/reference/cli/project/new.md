@@ -132,9 +132,9 @@ src/
 
 The example is a minimal walking skeleton. One command creates the aggregate,
 the aggregate raises one event, and a projector turns that event into one read
-model. It shows the write path and the read path end to end with nothing to
-trim before you start. Once you have your own aggregates, delete the `example/`
-folder (or pass `--data include_example=false`).
+model. The example shows the write path and the read path end to end with
+nothing to trim before you start. Once you have your own aggregates, delete
+the `example/` folder (or pass `--data include_example=false`).
 
 Key structural decisions:
 

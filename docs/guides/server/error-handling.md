@@ -109,8 +109,8 @@ enable_dlq = true
 ### OutboxProcessor
 
 Handles **outgoing** messages (domain &rarr; broker). Uses exponential backoff
-with jitter. Failed messages stay in the outbox table with a retry status, no
-DLQ is needed because the outbox table itself is durable.
+with jitter. Failed messages stay in the outbox table with a retry status. No
+DLQ is needed, because the outbox table itself is durable.
 
 ---
 
