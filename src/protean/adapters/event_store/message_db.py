@@ -76,7 +76,7 @@ class MessageDBStore(BaseEventStore):
         # No CONSUMER_GROUPS: the client's category read accepts a group member
         # and a group size, but ``_read`` does not pass them. No
         # SCHEMA_MANAGEMENT: Message DB's own scripts install the schema.
-        return EventStoreCapabilities.PRODUCTION_STORE
+        return EventStoreCapabilities.PRODUCTION
 
     @property
     def client(self) -> MessageDB:

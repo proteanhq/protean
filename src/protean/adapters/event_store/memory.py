@@ -169,7 +169,7 @@ class MemoryEventStore(BaseEventStore):
         # another Unit of Work has not committed yet, so two overlapping Units
         # of Work can both pass it and commit out of global-position order. Events live in process memory
         # and are lost on exit, so the store is not DURABLE.
-        return EventStoreCapabilities.CONSISTENT_STORE
+        return EventStoreCapabilities.CONSISTENT
 
     def _write(
         self,

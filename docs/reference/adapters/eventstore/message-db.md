@@ -20,7 +20,7 @@ for append-only stream operations.
 
 ## What Message DB guarantees
 
-Message DB declares `EventStoreCapabilities.PRODUCTION_STORE`: it writes and
+Message DB declares `EventStoreCapabilities.PRODUCTION`: it writes and
 reads streams, categories and the whole store, checks expected versions, makes
 category writes visible in global-position order, and keeps messages across restarts.
 See [What each event store guarantees](./index.md#what-each-event-store-guarantees)

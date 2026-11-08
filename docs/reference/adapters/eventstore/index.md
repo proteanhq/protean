@@ -63,18 +63,18 @@ Named sets group the common combinations:
 
 | Set | Flags |
 |-----|-------|
-| `BASIC_STORE` | `WRITE`, `READ_STREAM`, `READ_CATEGORY`, `READ_ALL` |
-| `CONSISTENT_STORE` | `BASIC_STORE` plus `EXPECTED_VERSION` and `CATEGORY_COMMIT_ORDER` |
-| `PRODUCTION_STORE` | `CONSISTENT_STORE` plus `DURABLE` |
+| `BASIC` | `WRITE`, `READ_STREAM`, `READ_CATEGORY`, `READ_ALL` |
+| `CONSISTENT` | `BASIC` plus `EXPECTED_VERSION` and `CATEGORY_COMMIT_ORDER` |
+| `PRODUCTION` | `CONSISTENT` plus `DURABLE` |
 
 The built-in stores declare:
 
-- **Memory**: `CONSISTENT_STORE`. It keeps messages in process memory, so it
-  does not declare `DURABLE`. `EXPECTED_VERSION` and `CATEGORY_COMMIT_ORDER`
-  hold while one Unit of Work writes at a time. Two Units of Work that are open
-  at the same time can both pass the expected-version check and commit out of
-  global-position order.
-- **Message DB**: `PRODUCTION_STORE`. See [Message DB](./message-db.md#what-message-db-guarantees)
+- **Memory**: `CONSISTENT`. The memory store keeps messages in process memory,
+  so it does not declare `DURABLE`. Its `EXPECTED_VERSION` and
+  `CATEGORY_COMMIT_ORDER` guarantees hold only while one Unit of Work writes at
+  a time. Two overlapping Units of Work can both pass the expected-version
+  check and commit out of global-position order.
+- **Message DB**: `PRODUCTION`. See [Message DB](./message-db.md#what-message-db-guarantees)
   for the flags it leaves out.
 
 An event store written outside Protean must define `capabilities`. Creating an

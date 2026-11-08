@@ -37,7 +37,7 @@ class _ListStore(BaseEventStore):
 
     @property
     def capabilities(self) -> EventStoreCapabilities:  # pragma: no cover
-        return EventStoreCapabilities.BASIC_STORE
+        return EventStoreCapabilities.BASIC
 
     def _read(
         self,
