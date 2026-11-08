@@ -365,6 +365,37 @@ class TestBuildPMGraphs:
         assert pm["transitions"][0]["source"] == "initial"
         assert pm["transitions"][0]["target"] == "completed"
 
+    def test_completed_state_added_once_for_several_end_handlers(self):
+        """A start+end handler and a separate end handler share one completed state."""
+        flows = {
+            "process_managers": {
+                "app.TwoEnds": {
+                    "name": "TwoEnds",
+                    "handlers": {
+                        "Order.OrderPlaced.v1": {
+                            "start": True,
+                            "end": True,
+                            "methods": ["handle_placed"],
+                            "correlate": "order_id",
+                        },
+                        "Order.OrderCancelled.v1": {
+                            "start": False,
+                            "end": True,
+                            "methods": ["handle_cancelled"],
+                            "correlate": "order_id",
+                        },
+                    },
+                    "stream_categories": [],
+                }
+            }
+        }
+        result = _build_pm_graphs(flows, {})
+        pm = result[0]
+        completed = [s for s in pm["states"] if s["id"] == "completed"]
+        assert completed == [{"id": "completed", "label": "Completed", "type": "end"}]
+        to_completed = [t for t in pm["transitions"] if t["target"] == "completed"]
+        assert len(to_completed) == 2
+
 
 # ---------------------------------------------------------------------------
 # Stats Tests
@@ -456,6 +487,55 @@ class TestPMGraphAPI:
     def test_ir_endpoint_stats_has_diagnostics(self, multi_agg_client):
         data = multi_agg_client.get("/api/domain/ir").json()
         assert "diagnostics" in data["stats"]
+
+    def test_ir_endpoint_lists_the_completed_state_once(self):
+        """A start handler that also ends the process and a later end handler
+        both lead to the one "completed" state."""
+        from fastapi.testclient import TestClient
+
+        from protean import Domain
+        from protean.core.aggregate import BaseAggregate
+        from protean.core.event import BaseEvent
+        from protean.fields import Identifier
+        from protean.server.observatory import Observatory
+        from protean.utils.mixins import handle
+
+        domain = Domain(name="OneShotDomain")
+
+        @domain.aggregate
+        class Order(BaseAggregate):
+            customer_id = Identifier()
+
+        @domain.event(part_of=Order)
+        class OrderPlaced(BaseEvent):
+            order_id = Identifier(required=True)
+
+        @domain.event(part_of=Order)
+        class OrderCancelled(BaseEvent):
+            order_id = Identifier(required=True)
+
+        @domain.process_manager(stream_categories=["order"])
+        class OrderFlow:
+            order_id = Identifier(required=True)
+
+            @handle(OrderPlaced, start=True, end=True, correlate="order_id")
+            def on_placed(self, event):
+                self.order_id = event.order_id
+
+            @handle(OrderCancelled, end=True, correlate="order_id")
+            def on_cancelled(self, event):
+                pass
+
+        domain.init(traverse=False)
+        client = TestClient(Observatory(domains=[domain]).app)
+
+        (pm,) = client.get("/api/domain/ir").json()["pm_graphs"]
+
+        assert [s["id"] for s in pm["states"]] == ["initial", "completed"]
+        assert [(t["source"], t["target"]) for t in pm["transitions"]] == [
+            ("initial", "completed"),
+            ("initial", "completed"),
+        ]
 
 
 # ---------------------------------------------------------------------------

@@ -596,6 +596,22 @@ class TestMergeSubscriptionStatus:
         assert sub["lag"] == 2
 
     @pytest.mark.no_test_domain
+    def test_projector_unknown_read_first_stays_unknown(self):
+        """An unknown stream read before a lagging one keeps the status unknown."""
+        fake = _FakeRedis()
+        domain, ns = _build_domain(redis=fake)
+        fake.groups["handlers::payment"] = [
+            _group(fqn(ns.OrderSummaryProjector), lag=3)
+        ]
+
+        handlers = collect_handler_metadata([domain])
+        merge_subscription_status(handlers, [domain])
+
+        sub = _by_name(handlers)["OrderSummaryProjector"]["subscription"]
+        assert sub["status"] == "unknown"
+        assert sub["lag"] == 3
+
+    @pytest.mark.no_test_domain
     def test_event_handler_carries_lag_seconds(self):
         domain, ns = _build_domain(event_store_subscriptions=True)
         written_at = _seed_event_store_lag(

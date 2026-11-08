@@ -7,13 +7,14 @@ so they need no infrastructure.
 
 import contextlib
 import logging
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 import redis
 from fastapi.testclient import TestClient
 
-from protean.server.observatory import Observatory
+from protean.server.observatory import Observatory, metrics
 from protean.server.observatory.metrics import _scrape_cache, _ScrapeCache
 
 
@@ -421,3 +422,440 @@ class TestMetricsErrorPaths:
         # Should have outbox HELP/TYPE headers but no broker metrics
         assert "protean_outbox_pending_count" in body
         assert "protean_broker_up" not in body
+
+
+def _fail(domains):
+    raise RuntimeError("collection failed")
+
+
+# --- The full hand-rolled text, with every section holding rows ---
+#
+# The test domain runs without OpenTelemetry, so /metrics serves the
+# hand-rolled text. The fixture fakes the raw Redis client, the broker's
+# health details and the shared collectors so that every section has rows
+# with known, distinct values, and the test compares the whole body, line
+# order included.
+
+
+FULL_TEXT_LINES = [
+    "# HELP protean_outbox_pending_count Current pending outbox messages",
+    "# TYPE protean_outbox_pending_count gauge",
+    'protean_outbox_pending_count{domain="Observatory Tests"} 0',
+    "",
+    "# HELP protean_broker_up Broker health (1=up, 0=down)",
+    "# TYPE protean_broker_up gauge",
+    "protean_broker_up 1",
+    "",
+    "# HELP protean_broker_memory_bytes Broker memory usage in bytes",
+    "# TYPE protean_broker_memory_bytes gauge",
+    "protean_broker_memory_bytes 2048",
+    "",
+    "# HELP protean_broker_connected_clients Number of connected broker clients",
+    "# TYPE protean_broker_connected_clients gauge",
+    "protean_broker_connected_clients 3",
+    "",
+    "# HELP protean_broker_ops_per_sec Broker operations per second",
+    "# TYPE protean_broker_ops_per_sec gauge",
+    "protean_broker_ops_per_sec 9",
+    "",
+    "# HELP protean_stream_messages_total Total messages in streams",
+    "# TYPE protean_stream_messages_total gauge",
+    "protean_stream_messages_total 11",
+    "",
+    "# HELP protean_stream_pending Pending (in-flight) messages",
+    "# TYPE protean_stream_pending gauge",
+    "protean_stream_pending 6",
+    "",
+    "# HELP protean_streams_count Number of active streams",
+    "# TYPE protean_streams_count gauge",
+    "protean_streams_count 1",
+    "",
+    "# HELP protean_consumer_groups_count Number of consumer groups",
+    "# TYPE protean_consumer_groups_count gauge",
+    "protean_consumer_groups_count 2",
+    "",
+    "# HELP protean_subscription_consumer_lag Messages behind stream head",
+    "# TYPE protean_subscription_consumer_lag gauge",
+    "",
+    "# HELP protean_subscription_pending_messages Unacknowledged messages",
+    "# TYPE protean_subscription_pending_messages gauge",
+    "",
+    "# HELP protean_subscription_dlq_depth Dead letter queue depth",
+    "# TYPE protean_subscription_dlq_depth gauge",
+    "",
+    "# HELP protean_subscription_status Subscription health (1=ok, 0=not ok)",
+    "# TYPE protean_subscription_status gauge",
+    "",
+    "# HELP protean_subscription_lag_seconds Seconds since a subscription's last processed position",
+    "# TYPE protean_subscription_lag_seconds gauge",
+    'protean_subscription_consumer_lag{domain="Observatory Tests",handler="OrderHandler",stream="orders::order",type="stream"} 7',
+    'protean_subscription_lag_seconds{domain="Observatory Tests",handler="OrderHandler",stream="orders::order",type="stream"} 1.5',
+    'protean_subscription_pending_messages{domain="Observatory Tests",handler="OrderHandler",stream="orders::order",type="stream"} 2',
+    'protean_subscription_dlq_depth{domain="Observatory Tests",handler="OrderHandler",stream="orders::order",type="stream"} 1',
+    'protean_subscription_status{domain="Observatory Tests",handler="OrderHandler",stream="orders::order",type="stream"} 1',
+    'protean_subscription_pending_messages{domain="Observatory Tests",handler="ShipHandler",stream="ships::ship",type="event_store"} 0',
+    'protean_subscription_dlq_depth{domain="Observatory Tests",handler="ShipHandler",stream="ships::ship",type="event_store"} 0',
+    'protean_subscription_status{domain="Observatory Tests",handler="ShipHandler",stream="ships::ship",type="event_store"} 0',
+    "",
+    "# HELP protean_projection_staleness_seconds Seconds a projection is behind its source events",
+    "# TYPE protean_projection_staleness_seconds gauge",
+    'protean_projection_staleness_seconds{domain="Observatory Tests",projection="OrderSummary"} 12.5',
+    "",
+    "# HELP protean_consumer_pending Per-consumer unacknowledged messages",
+    "# TYPE protean_consumer_pending gauge",
+    "",
+    "# HELP protean_consumer_idle_ms Per-consumer idle time in milliseconds",
+    "# TYPE protean_consumer_idle_ms gauge",
+    'protean_consumer_pending{consumer="worker-1",group="OrderHandler",stream="orders::order"} 4',
+    'protean_consumer_idle_ms{consumer="worker-1",group="OrderHandler",stream="orders::order"} 1500',
+    'protean_consumer_pending{consumer="worker-2",group="OrderHandler",stream="orders::order"} 5',
+    'protean_consumer_idle_ms{consumer="worker-2",group="OrderHandler",stream="orders::order"} 250',
+    "",
+    "# HELP protean_db_pool_size Database connection pool size",
+    "# TYPE protean_db_pool_size gauge",
+    "",
+    "# HELP protean_db_pool_checked_out Checked out database connections",
+    "# TYPE protean_db_pool_checked_out gauge",
+    "",
+    "# HELP protean_db_pool_overflow Overflow database connections",
+    "# TYPE protean_db_pool_overflow gauge",
+    "",
+    "# HELP protean_db_pool_checked_in Available database connections",
+    "# TYPE protean_db_pool_checked_in gauge",
+    'protean_db_pool_size{provider_name="orders_db",database_type="POSTGRESQL"} 5',
+    'protean_db_pool_checked_out{provider_name="orders_db",database_type="POSTGRESQL"} 2',
+    'protean_db_pool_overflow{provider_name="orders_db",database_type="POSTGRESQL"} 1',
+    'protean_db_pool_checked_in{provider_name="orders_db",database_type="POSTGRESQL"} 4',
+    "",
+    "# HELP protean_broker_pool_active_connections Active broker pool connections",
+    "# TYPE protean_broker_pool_active_connections gauge",
+    'protean_broker_pool_active_connections{broker_name="events"} 3',
+]
+
+
+HEALTH_DETAILS = {
+    "healthy": True,
+    "used_memory": 2048,
+    "connected_clients": 3,
+    "instantaneous_ops_per_sec": 9,
+    "message_counts": {"total_messages": 11, "in_flight": 6},
+    "streams": {"count": 1},
+    "consumer_groups": {"count": 2},
+}
+
+
+def _fake_redis_with_consumers():
+    fake = MagicMock()
+    fake.ping.return_value = True
+    fake.scan.return_value = (0, [b"orders::order"])
+    fake.xinfo_groups.return_value = [
+        {"name": "OrderHandler", "pending": 4, "lag": 2},
+        "not-a-dict",
+        {"name": ""},
+    ]
+    consumers = {
+        ("orders::order", "OrderHandler"): [
+            {"name": "worker-1", "pending": 4, "idle": 1500},
+            {b"name": b"worker-2", b"pending": 5, b"idle": 250},
+            "not-a-dict",
+        ]
+    }
+    fake.xinfo_consumers.side_effect = lambda name, group: consumers.get(
+        (name, group), []
+    )
+    fake.connection_pool = redis.ConnectionPool()
+    return fake
+
+
+@pytest.fixture
+def full_text_client(test_domain, monkeypatch):
+    broker = test_domain.brokers["default"]
+    monkeypatch.setattr(broker, "redis_instance", _fake_redis_with_consumers())
+    monkeypatch.setattr(broker, "_health_stats", lambda: dict(HEALTH_DETAILS))
+    subscriptions = [
+        SimpleNamespace(
+            handler_name="OrderHandler",
+            stream_category="orders::order",
+            subscription_type="stream",
+            lag=7,
+            lag_seconds=1.5,
+            pending=2,
+            dlq_depth=1,
+            status="ok",
+        ),
+        SimpleNamespace(
+            handler_name="ShipHandler",
+            stream_category="ships::ship",
+            subscription_type="event_store",
+            lag=None,
+            lag_seconds=None,
+            pending=0,
+            dlq_depth=0,
+            status="lagging",
+        ),
+    ]
+    projections = [
+        SimpleNamespace(projection_name="OrderSummary", staleness_seconds=12.5),
+        SimpleNamespace(projection_name="ShipSummary", staleness_seconds=None),
+    ]
+    pools = [
+        (
+            "orders_db",
+            "POSTGRESQL",
+            {"size": 5, "checked_out": 2, "overflow": 1, "checked_in": 4},
+        ),
+    ]
+    broker_pools = [("events", 3, 2, 10)]
+    # The subscription and projection fakes return rows only for the domains
+    # the Observatory serves. The pool fakes return fixed rows for any
+    # non-empty domain list.
+    monkeypatch.setattr(
+        metrics,
+        "_collect_subscription_statuses",
+        lambda domains: [(d, s) for d in domains for s in subscriptions],
+    )
+    monkeypatch.setattr(
+        metrics,
+        "_collect_projection_statuses",
+        lambda domains: [(d, p) for d in domains for p in projections],
+    )
+    monkeypatch.setattr(
+        metrics, "_collect_pool_stats", lambda domains: pools if domains else []
+    )
+    monkeypatch.setattr(
+        metrics,
+        "_collect_broker_pool_stats",
+        lambda domains: broker_pools if domains else [],
+    )
+    return TestClient(Observatory(domains=[test_domain]).app)
+
+
+def test_hand_rolled_metrics_full_text(full_text_client):
+    response = full_text_client.get("/metrics")
+
+    assert response.status_code == 200
+    assert response.text.split("\n") == [*FULL_TEXT_LINES, ""]
+
+
+def _without_section(first_gauge, next_gauge=None, lines=FULL_TEXT_LINES):
+    """Return *lines* without the lines from *first_gauge*'s section up to
+    *next_gauge*'s, counting the blank line before each."""
+
+    def _start(gauge):
+        return (
+            lines.index(
+                next(line for line in lines if line.startswith(f"# HELP {gauge} "))
+            )
+            - 1
+        )
+
+    end = len(lines) if next_gauge is None else _start(next_gauge)
+    return lines[: _start(first_gauge)] + lines[end:]
+
+
+def test_failing_subscription_collection_drops_only_the_subscription_section(
+    full_text_client, monkeypatch, caplog
+):
+    monkeypatch.setattr(metrics, "_collect_subscription_statuses", _fail)
+
+    with caplog.at_level(logging.DEBUG, logger=metrics.__name__):
+        response = full_text_client.get("/metrics")
+
+    assert response.status_code == 200
+    assert response.text.split("\n") == [
+        *_without_section(
+            "protean_subscription_consumer_lag", "protean_projection_staleness_seconds"
+        ),
+        "",
+    ]
+    assert "Metrics: subscription status failed: collection failed" in (caplog.messages)
+
+
+def test_failing_broker_pool_collection_drops_only_the_broker_pool_section(
+    full_text_client, monkeypatch, caplog
+):
+    monkeypatch.setattr(metrics, "_collect_broker_pool_stats", _fail)
+
+    with caplog.at_level(logging.DEBUG, logger=metrics.__name__):
+        response = full_text_client.get("/metrics")
+
+    assert response.status_code == 200
+    assert response.text.split("\n") == [
+        *_without_section("protean_broker_pool_active_connections"),
+        "",
+    ]
+    assert "Metrics: broker pool stats failed: collection failed" in (caplog.messages)
+
+
+def test_no_default_broker_leaves_out_the_broker_and_consumer_sections(
+    full_text_client, test_domain, monkeypatch
+):
+    test_domain.brokers["default"]  # the registry fills on first access
+    monkeypatch.delitem(test_domain.brokers._brokers, "default")
+
+    response = full_text_client.get("/metrics")
+
+    assert response.status_code == 200
+    without_broker = _without_section(
+        "protean_broker_up", "protean_subscription_consumer_lag"
+    )
+    assert response.text.split("\n") == [
+        *_without_section(
+            "protean_consumer_pending", "protean_db_pool_size", lines=without_broker
+        ),
+        "",
+    ]
+
+
+def test_failing_broker_health_check_keeps_the_consumer_section(
+    full_text_client, test_domain, monkeypatch
+):
+    """The per-consumer gauges read Redis directly, so a broker health check
+    that raises drops only the broker and stream gauges."""
+    broker = test_domain.brokers["default"]
+    monkeypatch.setattr(broker, "health_stats", _fail)
+
+    response = full_text_client.get("/metrics")
+
+    assert response.status_code == 200
+    assert response.text.split("\n") == [
+        *_without_section("protean_broker_up", "protean_subscription_consumer_lag"),
+        "",
+    ]
+
+
+def test_a_section_that_fails_part_way_keeps_the_lines_it_wrote(
+    full_text_client, monkeypatch
+):
+    """A subscription without a ``pending`` value stops the subscription rows
+    at that subscription. The rows before it and the sections after it stay."""
+    order = SimpleNamespace(
+        handler_name="OrderHandler",
+        stream_category="orders::order",
+        subscription_type="stream",
+        lag=7,
+        lag_seconds=1.5,
+        pending=2,
+        dlq_depth=1,
+        status="ok",
+    )
+    broken = SimpleNamespace(
+        handler_name="ShipHandler",
+        stream_category="ships::ship",
+        subscription_type="event_store",
+        lag=None,
+        lag_seconds=None,
+    )
+    monkeypatch.setattr(
+        metrics,
+        "_collect_subscription_statuses",
+        lambda domains: [(d, s) for d in domains for s in (order, broken)],
+    )
+
+    response = full_text_client.get("/metrics")
+
+    assert response.text.split("\n") == [
+        *(line for line in FULL_TEXT_LINES if 'handler="ShipHandler"' not in line),
+        "",
+    ]
+
+
+@pytest.mark.parametrize(
+    "connected, healthy, expected",
+    [(True, True, 1), (True, False, 0), (False, True, 0), (False, False, 0)],
+)
+def test_broker_up_needs_a_connected_and_healthy_broker(
+    full_text_client, test_domain, monkeypatch, connected, healthy, expected
+):
+    monkeypatch.setattr(
+        test_domain.brokers["default"],
+        "health_stats",
+        lambda: {"connected": connected, "details": {"healthy": healthy}},
+    )
+
+    response = full_text_client.get("/metrics")
+
+    assert f"protean_broker_up {expected}" in response.text.split("\n")
+
+
+# --- The shared pool collectors read the domain's own adapters ---
+
+
+def test_pool_stats_list_each_provider_that_reports_a_pool(test_domain, monkeypatch):
+    provider = test_domain.providers["default"]
+    monkeypatch.setattr(provider, "pool_stats", lambda: {"size": 5, "checked_out": 2})
+
+    assert metrics._collect_pool_stats([test_domain]) == [
+        ("default", provider.__database__, {"size": 5, "checked_out": 2})
+    ]
+
+
+def test_pool_stats_skip_a_provider_without_a_pool(test_domain):
+    assert metrics._collect_pool_stats([test_domain]) == []
+
+
+def test_broker_pool_stats_read_the_redis_connection_pool(test_domain, monkeypatch):
+    pool = redis.ConnectionPool(max_connections=10)
+    pool._created_connections = 3
+    pool._available_connections = [object()]
+    fake = MagicMock()
+    fake.connection_pool = pool
+    monkeypatch.setattr(test_domain.brokers["default"], "redis_instance", fake)
+
+    assert metrics._collect_broker_pool_stats([test_domain]) == [("default", 2, 1, 10)]
+
+
+class _RaisingPoolAdapter:
+    """A provider or broker whose pool lookup raises."""
+
+    def pool_stats(self):
+        raise RuntimeError("pool down")
+
+    @property
+    def redis_instance(self):
+        raise RuntimeError("pool down")
+
+
+@contextlib.contextmanager
+def _extra_entries(registry, **entries):
+    """Add *entries* to *registry* and remove them before the test domain's
+    teardown walks the registry."""
+    registry.update(entries)
+    try:
+        yield
+    finally:
+        for name in entries:
+            del registry[name]
+
+
+def test_pool_stats_keep_the_rows_before_a_provider_that_raises(
+    test_domain, monkeypatch
+):
+    provider = test_domain.providers["default"]
+    monkeypatch.setattr(provider, "pool_stats", lambda: {"size": 5})
+    analytics = SimpleNamespace(__database__="SQLITE", pool_stats=lambda: {"size": 2})
+
+    with _extra_entries(
+        test_domain.providers._providers,
+        analytics=analytics,
+        broken=_RaisingPoolAdapter(),
+    ):
+        collected = metrics._collect_pool_stats([test_domain])
+
+    assert collected == [
+        ("default", provider.__database__, {"size": 5}),
+        ("analytics", "SQLITE", {"size": 2}),
+    ]
+
+
+def test_broker_pool_stats_keep_the_rows_before_a_broker_that_raises(test_domain):
+    pool = redis.ConnectionPool(max_connections=10)
+    pool._created_connections = 3
+    events = SimpleNamespace(redis_instance=MagicMock(connection_pool=pool))
+
+    with _extra_entries(
+        test_domain.brokers._brokers, events=events, broken=_RaisingPoolAdapter()
+    ):
+        collected = metrics._collect_broker_pool_stats([test_domain])
+
+    assert ("events", 3, 0, 10) in collected

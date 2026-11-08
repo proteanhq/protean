@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Path, Query
@@ -145,6 +146,21 @@ def merge_pm_subscription_status(
     Aggregates lag/pending/dlq across multiple stream subscriptions
     per PM (same pattern as handlers.py for projectors).
     """
+    all_statuses = _collect_all_statuses(domains)
+
+    status_by_handler: dict[str, list[Any]] = defaultdict(list)
+    for s in all_statuses:
+        status_by_handler[s.handler_name].append(s)
+
+    for pm in pms:
+        name = pm["name"]
+        statuses = status_by_handler.get(name, [])
+        if statuses:
+            pm["subscription"] = _aggregate_statuses(statuses)
+
+
+def _collect_all_statuses(domains: list[Domain]) -> list[Any]:
+    """Collect all subscription statuses across domains."""
     all_statuses = []
     for domain in domains:
         try:
@@ -155,52 +171,69 @@ def merge_pm_subscription_status(
                 "Failed to collect subscription statuses for %s: %r", domain.name, exc
             )
             continue
+    return all_statuses
 
-    status_by_handler: dict[str, list[Any]] = defaultdict(list)
-    for s in all_statuses:
-        status_by_handler[s.handler_name].append(s)
 
-    for pm in pms:
-        name = pm["name"]
-        statuses = status_by_handler.get(name, [])
-        if statuses:
-            total_lag = 0
-            total_pending = 0
-            total_dlq = 0
-            total_consumers = 0
-            # Seconds-lag aggregates as the worst (max) staleness, not a sum: it
-            # is a wall-clock gap, so the oldest stream is what matters.
-            max_lag_seconds: float | None = None
-            worst_status = "ok"
-            sub_type = statuses[0].subscription_type
+def _aggregate_statuses(statuses: list[Any]) -> dict[str, Any]:
+    """Aggregate a non-empty list of stream subscription statuses into one."""
+    total_lag = 0
+    total_pending = 0
+    total_dlq = 0
+    total_consumers = 0
+    # Seconds-lag aggregates as the worst (max) staleness, not a sum: it
+    # is a wall-clock gap, so the oldest stream is what matters.
+    max_lag_seconds: float | None = None
+    worst_status = "ok"
+    sub_type = statuses[0].subscription_type
 
-            for s in statuses:
-                if s.lag is not None:
-                    total_lag += s.lag
-                if s.lag_seconds is not None:
-                    max_lag_seconds = (
-                        s.lag_seconds
-                        if max_lag_seconds is None
-                        else max(max_lag_seconds, s.lag_seconds)
-                    )
-                total_pending += s.pending
-                total_dlq += s.dlq_depth
-                total_consumers = max(total_consumers, s.consumer_count)
+    for s in statuses:
+        if s.lag is not None:
+            total_lag += s.lag
+        if s.lag_seconds is not None:
+            max_lag_seconds = (
+                s.lag_seconds
+                if max_lag_seconds is None
+                else max(max_lag_seconds, s.lag_seconds)
+            )
+        total_pending += s.pending
+        total_dlq += s.dlq_depth
+        total_consumers = max(total_consumers, s.consumer_count)
 
-                if s.status == "unknown":
-                    worst_status = "unknown"
-                elif s.status == "lagging" and worst_status != "unknown":
-                    worst_status = "lagging"
+        if s.status == "unknown":
+            worst_status = "unknown"
+        elif s.status == "lagging" and worst_status != "unknown":
+            worst_status = "lagging"
 
-            pm["subscription"] = {
-                "status": worst_status,
-                "lag": total_lag,
-                "lag_seconds": max_lag_seconds,
-                "pending": total_pending,
-                "dlq_depth": total_dlq,
-                "consumer_count": total_consumers,
-                "subscription_type": sub_type,
-            }
+    return {
+        "status": worst_status,
+        "lag": total_lag,
+        "lag_seconds": max_lag_seconds,
+        "pending": total_pending,
+        "dlq_depth": total_dlq,
+        "consumer_count": total_consumers,
+        "subscription_type": sub_type,
+    }
+
+
+def _parse_pm_trace(
+    fields: Mapping[Any, Any], pm_names: set[str]
+) -> tuple[dict[str, Any], str, str] | None:
+    """Decode one trace stream entry into ``(trace, handler_name, event_type)``.
+
+    Returns ``None`` when the entry does not decode, its handler is not one of
+    ``pm_names``, or its event type is not a string.
+    """
+    trace = decode_trace(fields)
+    if trace is None:
+        return None
+
+    handler_name = trace.get("handler")
+    event_type = trace.get("event", "")
+    if not isinstance(handler_name, str) or handler_name not in pm_names:
+        return None
+    if not isinstance(event_type, str):
+        return None
+    return trace, handler_name, event_type
 
 
 def collect_pm_trace_metrics(
@@ -228,16 +261,10 @@ def collect_pm_trace_metrics(
     stats: dict[str, dict[str, Any]] = {}
 
     for _stream_id, fields in raw_entries:
-        trace = decode_trace(fields)
-        if trace is None:
+        parsed = _parse_pm_trace(fields, pm_names)
+        if parsed is None:
             continue
-
-        handler_name = trace.get("handler")
-        event_type = trace.get("event", "")
-        if not isinstance(handler_name, str) or handler_name not in pm_names:
-            continue
-        if not isinstance(event_type, str):
-            continue
+        trace, handler_name, event_type = parsed
 
         if handler_name not in stats:
             stats[handler_name] = {
@@ -259,7 +286,11 @@ def collect_pm_trace_metrics(
         elif event_type in _ERROR_EVENTS:
             entry["failed"] += 1
 
-    # Compute derived metrics
+    return _derive_pm_metrics(stats)
+
+
+def _derive_pm_metrics(stats: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Compute error rate and average latency from accumulated PM stats."""
     result: dict[str, dict[str, Any]] = {}
     for pm_name, entry in stats.items():
         processed = entry["processed"]
@@ -444,6 +475,106 @@ def _serialize_pm(pm: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in pm.items() if not k.startswith("_")}
 
 
+def _list_processes_response(domains: list[Domain], window: str) -> JSONResponse:
+    """Build the response of ``GET /processes``."""
+    window_ms = _WINDOW_MS.get(window)
+    if window_ms is None:
+        valid = ", ".join(_WINDOW_MS.keys())
+        return JSONResponse(
+            content={"error": f"Invalid window: {window}. Use {valid}."},
+            status_code=400,
+        )
+
+    # 1. Collect metadata from domain registry
+    pms = collect_pm_metadata(domains)
+
+    # 2. Merge subscription status
+    try:
+        merge_pm_subscription_status(pms, domains)
+    except Exception:  # status is optional; the list still renders; logged
+        logger.debug("Failed to merge PM subscription status", exc_info=True)
+
+    # 3. Merge trace metrics
+    redis_conn = _get_redis(domains)
+    if redis_conn:
+        _merge_pm_trace_metrics(pms, redis_conn, window_ms)
+
+    # 4. Get instance counts
+    _merge_pm_instance_counts(pms)
+
+    # 5. Build summary
+    summary = _build_summary(pms)
+
+    return JSONResponse(
+        content={
+            "processes": [_serialize_pm(pm) for pm in pms],
+            "summary": summary,
+            "window": window,
+        }
+    )
+
+
+def _merge_pm_trace_metrics(
+    pms: list[dict[str, Any]], redis_conn: Any, window_ms: int
+) -> None:
+    """Set each PM dict's ``metrics`` from the trace stream, in place."""
+    pm_names = {pm["name"] for pm in pms}
+    try:
+        trace_metrics = collect_pm_trace_metrics(redis_conn, pm_names, window_ms)
+        for pm in pms:
+            pm["metrics"] = trace_metrics.get(pm["name"])
+    except Exception:  # metrics are optional; the list still renders; logged
+        logger.debug("Failed to collect PM trace metrics", exc_info=True)
+
+
+def _merge_pm_instance_counts(pms: list[dict[str, Any]]) -> None:
+    """Set each PM dict's ``instance_count`` from the event store, in place."""
+    for pm in pms:
+        try:
+            pm["instance_count"] = get_pm_instance_count(pm["_domain"], pm["_cls"])
+        except Exception:  # one failed count must not break the list; logged
+            logger.debug(
+                "Failed to get instance count for %s", pm["name"], exc_info=True
+            )
+
+
+def _process_instances_response(
+    domains: list[Domain], name: str, limit: int
+) -> JSONResponse:
+    """Build the response of ``GET /processes/{name}/instances``."""
+    # Find the PM by name
+    pms = collect_pm_metadata(domains)
+    target = None
+    for pm in pms:
+        if pm["name"] == name:
+            target = pm
+            break
+
+    if target is None:
+        return JSONResponse(
+            content={"error": f"Process manager '{name}' not found"},
+            status_code=404,
+        )
+
+    # Get instances from event store
+    try:
+        instances = get_pm_instances(target["_domain"], target["_cls"], limit=limit)
+    except Exception:  # the detail view still answers, with no instances; logged
+        logger.debug("Failed to get instances for %s", name, exc_info=True)
+        instances = []
+
+    # Get total count
+    total = get_pm_instance_count(target["_domain"], target["_cls"])
+
+    return JSONResponse(
+        content={
+            "process": name,
+            "instances": instances,
+            "total": total if total is not None else len(instances),
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # Router factory
 # ---------------------------------------------------------------------------
@@ -458,55 +589,7 @@ def create_processes_router(domains: list[Domain]) -> APIRouter:
         window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
     ) -> JSONResponse:
         """All PM types with summary data."""
-        window_ms = _WINDOW_MS.get(window)
-        if window_ms is None:
-            valid = ", ".join(_WINDOW_MS.keys())
-            return JSONResponse(
-                content={"error": f"Invalid window: {window}. Use {valid}."},
-                status_code=400,
-            )
-
-        # 1. Collect metadata from domain registry
-        pms = collect_pm_metadata(domains)
-
-        # 2. Merge subscription status
-        try:
-            merge_pm_subscription_status(pms, domains)
-        except Exception:  # status is optional; the list still renders; logged
-            logger.debug("Failed to merge PM subscription status", exc_info=True)
-
-        # 3. Merge trace metrics
-        redis_conn = _get_redis(domains)
-        if redis_conn:
-            pm_names = {pm["name"] for pm in pms}
-            try:
-                trace_metrics = collect_pm_trace_metrics(
-                    redis_conn, pm_names, window_ms
-                )
-                for pm in pms:
-                    pm["metrics"] = trace_metrics.get(pm["name"])
-            except Exception:  # metrics are optional; the list still renders; logged
-                logger.debug("Failed to collect PM trace metrics", exc_info=True)
-
-        # 4. Get instance counts
-        for pm in pms:
-            try:
-                pm["instance_count"] = get_pm_instance_count(pm["_domain"], pm["_cls"])
-            except Exception:  # one failed count must not break the list; logged
-                logger.debug(
-                    "Failed to get instance count for %s", pm["name"], exc_info=True
-                )
-
-        # 5. Build summary
-        summary = _build_summary(pms)
-
-        return JSONResponse(
-            content={
-                "processes": [_serialize_pm(pm) for pm in pms],
-                "summary": summary,
-                "window": window,
-            }
-        )
+        return _list_processes_response(domains, window)
 
     @router.get("/processes/{name}/instances")
     async def process_instances(
@@ -514,36 +597,6 @@ def create_processes_router(domains: list[Domain]) -> APIRouter:
         limit: int = Query(50, description="Maximum number of instances to return"),
     ) -> JSONResponse:
         """Instances for a specific PM type."""
-        # Find the PM by name
-        pms = collect_pm_metadata(domains)
-        target = None
-        for pm in pms:
-            if pm["name"] == name:
-                target = pm
-                break
-
-        if target is None:
-            return JSONResponse(
-                content={"error": f"Process manager '{name}' not found"},
-                status_code=404,
-            )
-
-        # Get instances from event store
-        try:
-            instances = get_pm_instances(target["_domain"], target["_cls"], limit=limit)
-        except Exception:  # the detail view still answers, with no instances; logged
-            logger.debug("Failed to get instances for %s", name, exc_info=True)
-            instances = []
-
-        # Get total count
-        total = get_pm_instance_count(target["_domain"], target["_cls"])
-
-        return JSONResponse(
-            content={
-                "process": name,
-                "instances": instances,
-                "total": total if total is not None else len(instances),
-            }
-        )
+        return _process_instances_response(domains, name, limit)
 
     return router

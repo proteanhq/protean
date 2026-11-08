@@ -140,6 +140,75 @@ def _build_nodes(clusters: dict[str, Any]) -> list[dict[str, Any]]:
     return nodes
 
 
+def _append_link(
+    links: list[dict[str, Any]],
+    seen: set[tuple[str, str, str]],
+    key: tuple[str, str, str],
+    link: dict[str, Any],
+) -> None:
+    """Append ``link`` unless a link with the same ``key`` is already present."""
+    if key not in seen:
+        seen.add(key)
+        links.append(link)
+
+
+def _add_event_handler_links(
+    clusters: dict[str, Any],
+    event_to_agg: dict[str, str],
+    links: list[dict[str, Any]],
+    seen: set[tuple[str, str, str]],
+) -> None:
+    # Cross-aggregate event handlers: handler belongs to agg B but
+    # listens to events from agg A (via source_stream or handler map)
+    for agg_fqn, cluster in clusters.items():
+        for eh in cluster.get("event_handlers", {}).values():
+            for type_key in eh.get("handlers", {}):
+                source_agg = event_to_agg.get(type_key)
+                if source_agg and source_agg != agg_fqn:
+                    _append_link(
+                        links,
+                        seen,
+                        (source_agg, agg_fqn, type_key),
+                        {
+                            "source": source_agg,
+                            "target": agg_fqn,
+                            "type": "event",
+                            "label": _event_name_from_type(type_key),
+                        },
+                    )
+
+
+def _add_process_manager_links(
+    flows: dict[str, Any],
+    event_to_agg: dict[str, str],
+    links: list[dict[str, Any]],
+    seen: set[tuple[str, str, str]],
+) -> None:
+    # Process managers span multiple aggregates — create undirected edges
+    # between all aggregate pairs the PM touches (sorted alphabetically,
+    # since PM event flow is non-directional from the IR's perspective).
+    for pm_fqn, pm in flows.get("process_managers", {}).items():
+        pm_aggs: set[str] = set()
+        for type_key in pm.get("handlers", {}):
+            source_agg = event_to_agg.get(type_key)
+            if source_agg:
+                pm_aggs.add(source_agg)
+        agg_list = sorted(pm_aggs)
+        for i, src in enumerate(agg_list):
+            for tgt in agg_list[i + 1 :]:
+                _append_link(
+                    links,
+                    seen,
+                    (src, tgt, f"pm:{pm_fqn}"),
+                    {
+                        "source": src,
+                        "target": tgt,
+                        "type": "process_manager",
+                        "label": pm.get("name", ""),
+                    },
+                )
+
+
 def _build_links(
     clusters: dict[str, Any],
     flows: dict[str, Any],
@@ -153,50 +222,215 @@ def _build_links(
     links: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
 
-    # Cross-aggregate event handlers: handler belongs to agg B but
-    # listens to events from agg A (via source_stream or handler map)
-    for agg_fqn, cluster in clusters.items():
-        for eh in cluster.get("event_handlers", {}).values():
-            for type_key in eh.get("handlers", {}):
-                source_agg = event_to_agg.get(type_key)
-                if source_agg and source_agg != agg_fqn:
-                    key = (source_agg, agg_fqn, type_key)
-                    if key not in seen:
-                        seen.add(key)
-                        links.append(
-                            {
-                                "source": source_agg,
-                                "target": agg_fqn,
-                                "type": "event",
-                                "label": _event_name_from_type(type_key),
-                            }
-                        )
-
-    # Process managers span multiple aggregates — create undirected edges
-    # between all aggregate pairs the PM touches (sorted alphabetically,
-    # since PM event flow is non-directional from the IR's perspective).
-    for pm_fqn, pm in flows.get("process_managers", {}).items():
-        pm_aggs: set[str] = set()
-        for type_key in pm.get("handlers", {}):
-            source_agg = event_to_agg.get(type_key)
-            if source_agg:
-                pm_aggs.add(source_agg)
-        agg_list = sorted(pm_aggs)
-        for i, src in enumerate(agg_list):
-            for tgt in agg_list[i + 1 :]:
-                key = (src, tgt, f"pm:{pm_fqn}")
-                if key not in seen:
-                    seen.add(key)
-                    links.append(
-                        {
-                            "source": src,
-                            "target": tgt,
-                            "type": "process_manager",
-                            "label": pm.get("name", ""),
-                        }
-                    )
+    _add_event_handler_links(clusters, event_to_agg, links, seen)
+    _add_process_manager_links(flows, event_to_agg, links, seen)
 
     return links
+
+
+def _add_flow_node(
+    nodes: list[dict[str, Any]],
+    node_ids: set[str],
+    node_id: str,
+    name: str,
+    node_type: str,
+    cluster: str = "",
+    **extra: Any,
+) -> None:
+    """Append a flow-graph node unless ``node_id`` is already in ``node_ids``."""
+    if node_id in node_ids:
+        return
+    node_ids.add(node_id)
+    node: dict[str, Any] = {
+        "id": node_id,
+        "name": name,
+        "type": node_type,
+        "cluster": cluster,
+    }
+    node.update(extra)
+    nodes.append(node)
+
+
+def _add_cluster_flow_nodes(
+    agg_fqn: str,
+    cluster_data: dict[str, Any],
+    nodes: list[dict[str, Any]],
+    node_ids: set[str],
+    evt_fqn_to_cluster: dict[str, str],
+) -> None:
+    """Add one cluster's nodes and record each of its events in ``evt_fqn_to_cluster``.
+
+    Fact events are recorded in the index but get no node.
+    """
+    agg = cluster_data.get("aggregate", {})
+    agg_name = agg.get("name", short_name(agg_fqn))
+    _add_flow_node(nodes, node_ids, agg_fqn, agg_name, "aggregate", cluster=agg_fqn)
+
+    for cmd_fqn in cluster_data.get("commands", {}):
+        _add_flow_node(
+            nodes, node_ids, cmd_fqn, short_name(cmd_fqn), "command", cluster=agg_fqn
+        )
+
+    for evt_fqn, evt in cluster_data.get("events", {}).items():
+        evt_fqn_to_cluster[evt_fqn] = agg_fqn
+        if evt.get("is_fact_event"):
+            continue
+        _add_flow_node(
+            nodes,
+            node_ids,
+            evt_fqn,
+            short_name(evt_fqn),
+            "event",
+            cluster=agg_fqn,
+            published=evt.get("published", False),
+        )
+
+    for ch_fqn in cluster_data.get("command_handlers", {}):
+        _add_flow_node(
+            nodes,
+            node_ids,
+            ch_fqn,
+            short_name(ch_fqn),
+            "command_handler",
+            cluster=agg_fqn,
+        )
+
+    for eh_fqn in cluster_data.get("event_handlers", {}):
+        _add_flow_node(
+            nodes,
+            node_ids,
+            eh_fqn,
+            short_name(eh_fqn),
+            "event_handler",
+            cluster=agg_fqn,
+        )
+
+
+def _collect_flow_nodes(
+    clusters: dict[str, Any],
+    flows: dict[str, Any],
+    projections: dict[str, Any],
+    nodes: list[dict[str, Any]],
+    node_ids: set[str],
+) -> dict[str, str]:
+    """Add every flow-graph node and return the event FQN to cluster index."""
+    evt_fqn_to_cluster: dict[str, str] = {}
+
+    for agg_fqn, cluster_data in clusters.items():
+        _add_cluster_flow_nodes(
+            agg_fqn, cluster_data, nodes, node_ids, evt_fqn_to_cluster
+        )
+
+    for pm_fqn, pm in flows.get("process_managers", {}).items():
+        _add_flow_node(
+            nodes,
+            node_ids,
+            pm_fqn,
+            pm.get("name", short_name(pm_fqn)),
+            "process_manager",
+        )
+
+    for proj_group in projections.values():
+        for projector_fqn, projector in proj_group.get("projectors", {}).items():
+            _add_flow_node(
+                nodes,
+                node_ids,
+                projector_fqn,
+                short_name(projector_fqn),
+                "projector",
+                projection=short_name(projector.get("projector_for", projector_fqn)),
+            )
+
+    return evt_fqn_to_cluster
+
+
+def _add_command_handler_edges(
+    agg_fqn: str,
+    cluster_data: dict[str, Any],
+    node_ids: set[str],
+    cmd_type_to_fqn: dict[str, str],
+    edges: list[dict[str, Any]],
+) -> None:
+    for ch_fqn, ch in cluster_data.get("command_handlers", {}).items():
+        for type_key in ch.get("handlers", {}):
+            cmd_fqn = cmd_type_to_fqn.get(type_key)
+            if cmd_fqn and cmd_fqn in node_ids:
+                edges.append({"source": cmd_fqn, "target": ch_fqn, "type": "command"})
+        edges.append({"source": ch_fqn, "target": agg_fqn, "type": "handler_to_agg"})
+
+
+def _add_raises_edges(
+    agg_fqn: str,
+    cluster_data: dict[str, Any],
+    edges: list[dict[str, Any]],
+) -> None:
+    for evt_fqn, evt in cluster_data.get("events", {}).items():
+        if evt.get("is_fact_event"):
+            continue
+        edges.append({"source": agg_fqn, "target": evt_fqn, "type": "raises"})
+
+
+def _add_event_handler_edges(
+    agg_fqn: str,
+    cluster_data: dict[str, Any],
+    node_ids: set[str],
+    evt_type_to_fqn: dict[str, str],
+    evt_fqn_to_cluster: dict[str, str],
+    edges: list[dict[str, Any]],
+) -> None:
+    for eh_fqn, eh in cluster_data.get("event_handlers", {}).items():
+        for type_key in eh.get("handlers", {}):
+            evt_fqn = evt_type_to_fqn.get(type_key)
+            if evt_fqn and evt_fqn in node_ids:
+                edges.append(
+                    {
+                        "source": evt_fqn,
+                        "target": eh_fqn,
+                        "type": "event",
+                        "cross_aggregate": (evt_fqn_to_cluster.get(evt_fqn) != agg_fqn),
+                    }
+                )
+
+
+def _add_process_manager_edges(
+    flows: dict[str, Any],
+    node_ids: set[str],
+    evt_type_to_fqn: dict[str, str],
+    edges: list[dict[str, Any]],
+) -> None:
+    for pm_fqn, pm in flows.get("process_managers", {}).items():
+        for type_key, handler_info in pm.get("handlers", {}).items():
+            evt_fqn = evt_type_to_fqn.get(type_key)
+            if evt_fqn and evt_fqn in node_ids:
+                edges.append(
+                    {
+                        "source": evt_fqn,
+                        "target": pm_fqn,
+                        "type": "event",
+                        "start": handler_info.get("start", False),
+                        "end": handler_info.get("end", False),
+                    }
+                )
+
+
+def _add_projector_edges(
+    projections: dict[str, Any],
+    node_ids: set[str],
+    evt_type_to_fqn: dict[str, str],
+    edges: list[dict[str, Any]],
+) -> None:
+    for proj_group in projections.values():
+        for projector_fqn, projector in proj_group.get("projectors", {}).items():
+            for type_key in projector.get("handlers", {}):
+                evt_fqn = evt_type_to_fqn.get(type_key)
+                if evt_fqn and evt_fqn in node_ids:
+                    edges.append(
+                        {
+                            "source": evt_fqn,
+                            "target": projector_fqn,
+                            "type": "projection",
+                        }
+                    )
 
 
 def _build_flow_graph(ir: dict[str, Any]) -> dict[str, Any]:
@@ -220,134 +454,177 @@ def _build_flow_graph(ir: dict[str, Any]) -> dict[str, Any]:
     edges: list[dict[str, Any]] = []
     node_ids: set[str] = set()
 
-    def _add_node(
-        node_id: str,
-        name: str,
-        node_type: str,
-        cluster: str = "",
-        **extra: Any,
-    ) -> None:
-        if node_id in node_ids:
-            return
-        node_ids.add(node_id)
-        node: dict[str, Any] = {
-            "id": node_id,
-            "name": name,
-            "type": node_type,
-            "cluster": cluster,
-        }
-        node.update(extra)
-        nodes.append(node)
-
     # --- Pass 1: Collect all nodes + build event→cluster index ---
 
-    evt_fqn_to_cluster: dict[str, str] = {}
-
-    for agg_fqn, cluster_data in clusters.items():
-        agg = cluster_data.get("aggregate", {})
-        agg_name = agg.get("name", short_name(agg_fqn))
-        _add_node(agg_fqn, agg_name, "aggregate", cluster=agg_fqn)
-
-        for cmd_fqn in cluster_data.get("commands", {}):
-            _add_node(cmd_fqn, short_name(cmd_fqn), "command", cluster=agg_fqn)
-
-        for evt_fqn, evt in cluster_data.get("events", {}).items():
-            evt_fqn_to_cluster[evt_fqn] = agg_fqn
-            if evt.get("is_fact_event"):
-                continue
-            _add_node(
-                evt_fqn,
-                short_name(evt_fqn),
-                "event",
-                cluster=agg_fqn,
-                published=evt.get("published", False),
-            )
-
-        for ch_fqn in cluster_data.get("command_handlers", {}):
-            _add_node(ch_fqn, short_name(ch_fqn), "command_handler", cluster=agg_fqn)
-
-        for eh_fqn in cluster_data.get("event_handlers", {}):
-            _add_node(eh_fqn, short_name(eh_fqn), "event_handler", cluster=agg_fqn)
-
-    for pm_fqn, pm in flows.get("process_managers", {}).items():
-        _add_node(pm_fqn, pm.get("name", short_name(pm_fqn)), "process_manager")
-
-    for proj_group in projections.values():
-        for projector_fqn, projector in proj_group.get("projectors", {}).items():
-            _add_node(
-                projector_fqn,
-                short_name(projector_fqn),
-                "projector",
-                projection=short_name(projector.get("projector_for", projector_fqn)),
-            )
+    evt_fqn_to_cluster = _collect_flow_nodes(
+        clusters, flows, projections, nodes, node_ids
+    )
 
     # --- Pass 2: Create edges ---
 
     for agg_fqn, cluster_data in clusters.items():
-        # Command Handler edges
-        for ch_fqn, ch in cluster_data.get("command_handlers", {}).items():
-            for type_key in ch.get("handlers", {}):
-                cmd_fqn = cmd_type_to_fqn.get(type_key)
-                if cmd_fqn and cmd_fqn in node_ids:
-                    edges.append(
-                        {"source": cmd_fqn, "target": ch_fqn, "type": "command"}
-                    )
-            edges.append(
-                {"source": ch_fqn, "target": agg_fqn, "type": "handler_to_agg"}
-            )
+        _add_command_handler_edges(
+            agg_fqn, cluster_data, node_ids, cmd_type_to_fqn, edges
+        )
+        _add_raises_edges(agg_fqn, cluster_data, edges)
+        _add_event_handler_edges(
+            agg_fqn,
+            cluster_data,
+            node_ids,
+            evt_type_to_fqn,
+            evt_fqn_to_cluster,
+            edges,
+        )
 
-        # Aggregate → Event edges
-        for evt_fqn, evt in cluster_data.get("events", {}).items():
-            if evt.get("is_fact_event"):
-                continue
-            edges.append({"source": agg_fqn, "target": evt_fqn, "type": "raises"})
-
-        # Event handler edges
-        for eh_fqn, eh in cluster_data.get("event_handlers", {}).items():
-            for type_key in eh.get("handlers", {}):
-                evt_fqn = evt_type_to_fqn.get(type_key)
-                if evt_fqn and evt_fqn in node_ids:
-                    edges.append(
-                        {
-                            "source": evt_fqn,
-                            "target": eh_fqn,
-                            "type": "event",
-                            "cross_aggregate": (
-                                evt_fqn_to_cluster.get(evt_fqn) != agg_fqn
-                            ),
-                        }
-                    )
-
-    # Process manager edges
-    for pm_fqn, pm in flows.get("process_managers", {}).items():
-        for type_key, handler_info in pm.get("handlers", {}).items():
-            evt_fqn = evt_type_to_fqn.get(type_key)
-            if evt_fqn and evt_fqn in node_ids:
-                edges.append(
-                    {
-                        "source": evt_fqn,
-                        "target": pm_fqn,
-                        "type": "event",
-                        "start": handler_info.get("start", False),
-                        "end": handler_info.get("end", False),
-                    }
-                )
-
-    # Projector edges
-    for proj_group in projections.values():
-        for projector_fqn, projector in proj_group.get("projectors", {}).items():
-            for type_key in projector.get("handlers", {}):
-                evt_fqn = evt_type_to_fqn.get(type_key)
-                if evt_fqn and evt_fqn in node_ids:
-                    edges.append(
-                        {
-                            "source": evt_fqn,
-                            "target": projector_fqn,
-                            "type": "projection",
-                        }
-                    )
+    _add_process_manager_edges(flows, node_ids, evt_type_to_fqn, edges)
+    _add_projector_edges(projections, node_ids, evt_type_to_fqn, edges)
 
     return {"nodes": nodes, "edges": edges}
+
+
+_PMHandlerEntry = tuple[str, dict[str, Any]]
+
+
+def _classify_pm_handlers(
+    handlers: dict[str, Any],
+    event_to_agg: dict[str, str],
+) -> tuple[
+    list[_PMHandlerEntry], list[_PMHandlerEntry], list[_PMHandlerEntry], set[str]
+]:
+    """Split a PM's handlers into start, end and mid lists, sorted by type key.
+
+    Also returns the set of aggregate FQNs that raise the handled events.
+    """
+    agg_set: set[str] = set()
+    start_events: list[_PMHandlerEntry] = []
+    end_events: list[_PMHandlerEntry] = []
+    mid_events: list[_PMHandlerEntry] = []
+
+    for type_key, handler_info in sorted(handlers.items()):
+        is_start = handler_info.get("start", False)
+        is_end = handler_info.get("end", False)
+        entry = (type_key, handler_info)
+        if is_start:
+            start_events.append(entry)
+        elif is_end:
+            end_events.append(entry)
+        else:
+            mid_events.append(entry)
+
+        agg_fqn = event_to_agg.get(type_key)
+        if agg_fqn:
+            agg_set.add(agg_fqn)
+
+    return start_events, end_events, mid_events, agg_set
+
+
+def _add_pm_state(
+    states: list[dict[str, Any]],
+    state_ids: set[str],
+    sid: str,
+    label: str,
+    state_type: str,
+) -> None:
+    if sid not in state_ids:
+        state_ids.add(sid)
+        states.append({"id": sid, "label": label, "type": state_type})
+
+
+def _add_pm_start_transitions(
+    start_events: list[_PMHandlerEntry],
+    states: list[dict[str, Any]],
+    state_ids: set[str],
+    transitions: list[dict[str, Any]],
+) -> None:
+    for type_key, handler_info in start_events:
+        if handler_info.get("end", False):
+            _add_pm_state(states, state_ids, "completed", "Completed", "end")
+            transitions.append(
+                _make_transition("initial", "completed", type_key, handler_info)
+            )
+        else:
+            target_id = f"after:{type_key}"
+            _add_pm_state(
+                states,
+                state_ids,
+                target_id,
+                _state_label_from_event(type_key),
+                "intermediate",
+            )
+            transitions.append(
+                _make_transition("initial", target_id, type_key, handler_info)
+            )
+
+
+def _build_pm_graph(
+    pm_fqn: str,
+    pm: dict[str, Any],
+    event_to_agg: dict[str, str],
+) -> dict[str, Any]:
+    """Build the state machine graph for one process manager."""
+    handlers = pm.get("handlers", {})
+    if not handlers:
+        return {
+            "fqn": pm_fqn,
+            "name": pm.get("name", short_name(pm_fqn)),
+            "stream_categories": pm.get("stream_categories", []),
+            "states": [],
+            "transitions": [],
+            "aggregates": [],
+        }
+
+    states: list[dict[str, Any]] = []
+    transitions: list[dict[str, Any]] = []
+    state_ids: set[str] = set()
+
+    # Classify handlers by lifecycle
+    start_events, end_events, mid_events, agg_set = _classify_pm_handlers(
+        handlers, event_to_agg
+    )
+
+    _add_pm_state(states, state_ids, "initial", "Initial", "start")
+
+    # Build transitions from start events
+    _add_pm_start_transitions(start_events, states, state_ids, transitions)
+
+    # Build transitions for mid events — chains from the last
+    # start state(s) through each mid-event sequentially.
+    prev_states = [f"after:{tk}" for tk, hi in start_events if not hi.get("end", False)]
+    if not prev_states:
+        prev_states = ["initial"]
+
+    for type_key, handler_info in mid_events:
+        target_id = f"after:{type_key}"
+        _add_pm_state(
+            states,
+            state_ids,
+            target_id,
+            _state_label_from_event(type_key),
+            "intermediate",
+        )
+        transitions.extend(
+            _make_transition(prev, target_id, type_key, handler_info)
+            for prev in prev_states
+        )
+        prev_states = [target_id]
+
+    # Build transitions for end events
+    if end_events:
+        _add_pm_state(states, state_ids, "completed", "Completed", "end")
+        for type_key, handler_info in end_events:
+            transitions.extend(
+                _make_transition(src, "completed", type_key, handler_info)
+                for src in prev_states
+            )
+
+    return {
+        "fqn": pm_fqn,
+        "name": pm.get("name", short_name(pm_fqn)),
+        "stream_categories": pm.get("stream_categories", []),
+        "states": states,
+        "transitions": transitions,
+        "aggregates": sorted(short_name(a) for a in agg_set),
+    }
 
 
 def _build_pm_graphs(
@@ -372,121 +649,9 @@ def _build_pm_graphs(
     if not pms:
         return []
 
-    pm_graphs: list[dict[str, Any]] = []
-
-    for pm_fqn, pm in sorted(pms.items()):
-        handlers = pm.get("handlers", {})
-        if not handlers:
-            pm_graphs.append(
-                {
-                    "fqn": pm_fqn,
-                    "name": pm.get("name", short_name(pm_fqn)),
-                    "stream_categories": pm.get("stream_categories", []),
-                    "states": [],
-                    "transitions": [],
-                    "aggregates": [],
-                }
-            )
-            continue
-
-        states: list[dict[str, Any]] = []
-        transitions: list[dict[str, Any]] = []
-        state_ids: set[str] = set()
-        agg_set: set[str] = set()
-
-        # Classify handlers by lifecycle
-        start_events: list[tuple[str, dict[str, Any]]] = []
-        end_events: list[tuple[str, dict[str, Any]]] = []
-        mid_events: list[tuple[str, dict[str, Any]]] = []
-
-        for type_key, handler_info in sorted(handlers.items()):
-            is_start = handler_info.get("start", False)
-            is_end = handler_info.get("end", False)
-            entry = (type_key, handler_info)
-            if is_start:
-                start_events.append(entry)
-            elif is_end:
-                end_events.append(entry)
-            else:
-                mid_events.append(entry)
-
-            agg_fqn = event_to_agg.get(type_key)
-            if agg_fqn:
-                agg_set.add(agg_fqn)
-
-        def _add_state(
-            sid: str,
-            label: str,
-            state_type: str = "intermediate",
-            state_ids: set[str] = state_ids,
-            states: list[dict[str, Any]] = states,
-        ) -> None:
-            if sid not in state_ids:
-                state_ids.add(sid)
-                states.append({"id": sid, "label": label, "type": state_type})
-
-        _add_state("initial", "Initial", "start")
-
-        # Build transitions from start events
-        for type_key, handler_info in start_events:
-            if handler_info.get("end", False):
-                _add_state("completed", "Completed", "end")
-                transitions.append(
-                    _make_transition("initial", "completed", type_key, handler_info)
-                )
-            else:
-                target_id = f"after:{type_key}"
-                _add_state(
-                    target_id,
-                    _state_label_from_event(type_key),
-                    "intermediate",
-                )
-                transitions.append(
-                    _make_transition("initial", target_id, type_key, handler_info)
-                )
-
-        # Build transitions for mid events — chains from the last
-        # start state(s) through each mid-event sequentially.
-        prev_states = [
-            f"after:{tk}" for tk, hi in start_events if not hi.get("end", False)
-        ]
-        if not prev_states:
-            prev_states = ["initial"]
-
-        for type_key, handler_info in mid_events:
-            target_id = f"after:{type_key}"
-            _add_state(
-                target_id,
-                _state_label_from_event(type_key),
-                "intermediate",
-            )
-            transitions.extend(
-                _make_transition(prev, target_id, type_key, handler_info)
-                for prev in prev_states
-            )
-            prev_states = [target_id]
-
-        # Build transitions for end events
-        if end_events:
-            _add_state("completed", "Completed", "end")
-            for type_key, handler_info in end_events:
-                transitions.extend(
-                    _make_transition(src, "completed", type_key, handler_info)
-                    for src in prev_states
-                )
-
-        pm_graphs.append(
-            {
-                "fqn": pm_fqn,
-                "name": pm.get("name", short_name(pm_fqn)),
-                "stream_categories": pm.get("stream_categories", []),
-                "states": states,
-                "transitions": transitions,
-                "aggregates": sorted(short_name(a) for a in agg_set),
-            }
-        )
-
-    return pm_graphs
+    return [
+        _build_pm_graph(pm_fqn, pm, event_to_agg) for pm_fqn, pm in sorted(pms.items())
+    ]
 
 
 def _event_name_from_type(type_key: str) -> str:

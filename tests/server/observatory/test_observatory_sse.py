@@ -247,6 +247,32 @@ class TestSSEStreamingLogic:
         assert len(keepalives) >= 1
 
     @pytest.mark.asyncio
+    async def test_a_non_message_poll_result_is_a_keepalive(self, redis_domain):
+        """A pub/sub result that is not a ``message`` sends no trace event."""
+        trace = {"event": "handler.started"}
+        domain, _ = redis_domain([{"type": "subscribe", "data": json.dumps(trace)}])
+
+        events = await self._run_sse([domain], max_events=1)
+
+        assert events == [": keepalive\n\n"]
+
+    @pytest.mark.asyncio
+    async def test_a_non_string_event_never_matches_the_filter(self, redis_domain):
+        wrong = {"event": 5}
+        right = {"event": "handler.completed"}
+        domain, _ = redis_domain(
+            [
+                {"type": "message", "data": json.dumps(wrong)},
+                {"type": "message", "data": json.dumps(right)},
+            ]
+        )
+
+        events = await self._run_sse([domain], disconnect_after=3, event="*")
+
+        assert any("handler.completed" in e for e in events)
+        assert not any('"event": 5' in e for e in events)
+
+    @pytest.mark.asyncio
     async def test_json_decode_error_skipped(self, redis_domain):
         """event_generator skips invalid JSON and continues."""
         valid = {"event": "handler.completed"}

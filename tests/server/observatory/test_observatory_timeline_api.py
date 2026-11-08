@@ -592,6 +592,12 @@ class TestTimelineEventsEndpoint:
         assert data2["count"] == 1
         assert data2["next_cursor"] is None
 
+    def test_no_next_cursor_when_the_page_holds_every_event(self, client_with_events):
+        response = client_with_events.get("/api/timeline/events?limit=3")
+        data = response.json()
+        assert data["count"] == 3
+        assert data["next_cursor"] is None
+
     def test_desc_order(self, client_with_events):
         response = client_with_events.get("/api/timeline/events?order=desc")
         data = response.json()
@@ -1110,6 +1116,37 @@ class TestBuildCausationTreeFromGroup:
         assert tree.message_id == "orphan-1"
         assert len(tree.children) == 1
 
+    def test_orders_children_by_global_position(self, correlated_domain):
+        domain, _, _, _ = correlated_domain
+        store = domain.event_store.store
+        group = [
+            _raw_caused_message("root", None, 1),
+            _raw_caused_message("late-child", "root", 3),
+            _raw_caused_message("early-child", "root", 2),
+        ]
+
+        tree = _build_causation_tree_from_group(store, group)
+
+        assert tree is not None
+        assert [c.message_id for c in tree.children] == ["early-child", "late-child"]
+
+
+def _raw_caused_message(message_id, causation_id, global_position):
+    """A raw event-store row in correlation ``corr-order`` with the given IDs."""
+    return {
+        "type": "Test.Caused.v1",
+        "stream_name": f"test::caused-{message_id}",
+        "global_position": global_position,
+        "metadata": {
+            "headers": {"id": message_id},
+            "domain": {
+                "kind": "EVENT",
+                "causation_id": causation_id,
+                "correlation_id": "corr-order",
+            },
+        },
+    }
+
 
 class TestBuildCorrelationResponse:
     def test_returns_correlation_chain(self, correlated_domain):
@@ -1216,6 +1253,34 @@ class TestCorrelationEndpoint:
         assert tree["message_id"] == "msg-root-cmd"
         assert len(tree["children"]) == 1
         assert tree["children"][0]["message_id"] == "msg-evt-registered"
+
+    def test_causation_cycle_lists_each_message_once(self, timeline_domain):
+        """Two messages that each name the other as their cause still give
+        a tree that holds each message once."""
+        store = timeline_domain.event_store.store
+        for msg_id, cause_id in (("msg-a", "msg-b"), ("msg-b", "msg-a")):
+            store._write(
+                "test::cycle-1",
+                "Test.Cycle.v1",
+                {},
+                metadata={
+                    "headers": {"id": msg_id, "type": "Test.Cycle.v1"},
+                    "domain": {
+                        "kind": "EVENT",
+                        "correlation_id": "corr-cycle",
+                        "causation_id": cause_id,
+                    },
+                },
+            )
+        client = TestClient(Observatory(domains=[timeline_domain]).app)
+
+        response = client.get("/api/timeline/correlation/corr-cycle")
+
+        assert response.status_code == 200
+        tree = response.json()["tree"]
+        assert tree["message_id"] == "msg-a"
+        assert [c["message_id"] for c in tree["children"]] == ["msg-b"]
+        assert tree["children"][0]["children"] == []
 
     def test_returns_404_for_unknown(self, correlated_client):
         response = correlated_client.get("/api/timeline/correlation/nonexistent")

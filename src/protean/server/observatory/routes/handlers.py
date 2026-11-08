@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Path, Query
@@ -29,6 +30,7 @@ from protean.server.tracing import TRACE_STREAM, decode_trace, trace_number
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.domain.registry import DomainRecord
 
 logger = logging.getLogger(__name__)
 
@@ -157,12 +159,47 @@ def _infer_stream_categories(handler_cls: type, class_type: str) -> list[str]:
     return []
 
 
+def _handler_record_metadata(
+    record: DomainRecord, class_type: str, domain_name: str
+) -> dict[str, Any]:
+    """Build the metadata dict of one registered handler."""
+    handler_cls = record.cls
+    handler_type = _handler_type_label(class_type)
+
+    # Handled messages
+    if class_type == "SUBSCRIBER":
+        # Subscribers use __call__, no _handlers dict
+        stream = getattr(handler_cls.meta_, "stream", None)
+        handled = [stream] if stream else []
+    else:
+        handled = _extract_handled_messages(handler_cls)
+
+    # Stream categories
+    if class_type == "SUBSCRIBER":
+        stream = getattr(handler_cls.meta_, "stream", None)
+        stream_cats = [stream] if stream else []
+    else:
+        stream_cats = _infer_stream_categories(handler_cls, class_type)
+
+    return {
+        "name": record.name,
+        "qualname": record.qualname,
+        "type": handler_type,
+        "domain": domain_name,
+        "aggregate": _infer_aggregate(handler_cls),
+        "stream_categories": stream_cats,
+        "handled_messages": handled,
+        "subscription": None,
+        "metrics": None,
+    }
+
+
 def collect_handler_metadata(domains: list[Domain]) -> list[dict[str, Any]]:
     """Walk domain registries, extract per-handler metadata (no Redis needed).
 
     Returns a list of handler dicts with keys:
         name, qualname, type, domain, aggregate, stream_categories,
-        handled_messages
+        handled_messages, subscription, metrics (the last two set to None)
     """
     handlers: list[dict[str, Any]] = []
 
@@ -177,38 +214,10 @@ def collect_handler_metadata(domains: list[Domain]) -> list[dict[str, Any]]:
         domain_name = domain.name
         for attr, class_type in registry_attrs:
             registry_dict = getattr(domain.registry, attr, {})
-            for record in registry_dict.values():
-                handler_cls = record.cls
-                handler_type = _handler_type_label(class_type)
-
-                # Handled messages
-                if class_type == "SUBSCRIBER":
-                    # Subscribers use __call__, no _handlers dict
-                    stream = getattr(handler_cls.meta_, "stream", None)
-                    handled = [stream] if stream else []
-                else:
-                    handled = _extract_handled_messages(handler_cls)
-
-                # Stream categories
-                if class_type == "SUBSCRIBER":
-                    stream = getattr(handler_cls.meta_, "stream", None)
-                    stream_cats = [stream] if stream else []
-                else:
-                    stream_cats = _infer_stream_categories(handler_cls, class_type)
-
-                handlers.append(
-                    {
-                        "name": record.name,
-                        "qualname": record.qualname,
-                        "type": handler_type,
-                        "domain": domain_name,
-                        "aggregate": _infer_aggregate(handler_cls),
-                        "stream_categories": stream_cats,
-                        "handled_messages": handled,
-                        "subscription": None,
-                        "metrics": None,
-                    }
-                )
+            handlers.extend(
+                _handler_record_metadata(record, class_type, domain_name)
+                for record in registry_dict.values()
+            )
 
     return handlers
 
@@ -227,7 +236,29 @@ def merge_subscription_status(
     For command handlers: all handlers sharing a stream get the shared
     CommandDispatcher subscription status.
     """
-    # Collect all subscription statuses across domains
+    all_statuses = _collect_all_statuses(domains)
+    status_by_handler, command_stream_status = _index_statuses(all_statuses)
+
+    for h in handlers:
+        name = h["name"]
+        handler_type = h["type"]
+
+        if handler_type == "command_handler":
+            _merge_command_handler_status(h, command_stream_status)
+        elif handler_type in ("projector", "process_manager"):
+            # Aggregate across multiple stream subscriptions
+            statuses = status_by_handler.get(name, [])
+            if statuses:
+                h["subscription"] = _aggregate_statuses(statuses)
+        else:
+            # Event handlers, subscribers — direct 1:1 match
+            statuses = status_by_handler.get(name, [])
+            if statuses:
+                h["subscription"] = _subscription_dict(statuses[0])
+
+
+def _collect_all_statuses(domains: list[Domain]) -> list[SubscriptionStatus]:
+    """Collect all subscription statuses across domains."""
     all_statuses: list[SubscriptionStatus] = []
     for domain in domains:
         try:
@@ -238,7 +269,16 @@ def merge_subscription_status(
                 "Failed to collect subscription statuses for %s: %r", domain.name, exc
             )
             continue
+    return all_statuses
 
+
+def _index_statuses(
+    all_statuses: list[SubscriptionStatus],
+) -> tuple[dict[str, list[SubscriptionStatus]], dict[str, SubscriptionStatus]]:
+    """Index statuses by handler name, and command dispatcher statuses by stream.
+
+    Returns ``(status_by_handler, command_stream_status)``.
+    """
     # Build lookup: handler_name → list of SubscriptionStatus
     status_by_handler: dict[str, list[SubscriptionStatus]] = defaultdict(list)
 
@@ -253,80 +293,104 @@ def merge_subscription_status(
         else:
             status_by_handler[s.handler_name].append(s)
 
-    for h in handlers:
-        name = h["name"]
-        handler_type = h["type"]
+    return status_by_handler, command_stream_status
 
-        if handler_type == "command_handler":
-            # Command handlers share a dispatcher subscription by stream
-            for cat in h.get("stream_categories", []):
-                if cat in command_stream_status:
-                    s = command_stream_status[cat]
-                    h["subscription"] = {
-                        "status": s.status,
-                        "lag": s.lag,
-                        "lag_seconds": s.lag_seconds,
-                        "pending": s.pending,
-                        "dlq_depth": s.dlq_depth,
-                        "consumer_count": s.consumer_count,
-                        "subscription_type": s.subscription_type,
-                    }
-                    break
-        elif handler_type in ("projector", "process_manager"):
-            # Aggregate across multiple stream subscriptions
-            statuses = status_by_handler.get(name, [])
-            if statuses:
-                total_lag = 0
-                total_pending = 0
-                total_dlq = 0
-                total_consumers = 0
-                # Seconds-lag aggregates as the worst (max) staleness, not a sum:
-                # it is a wall-clock gap, so the oldest stream is what matters.
-                max_lag_seconds: float | None = None
-                worst_status = "ok"
-                sub_type = statuses[0].subscription_type
 
-                for s in statuses:
-                    if s.lag is not None:
-                        total_lag += s.lag
-                    if s.lag_seconds is not None:
-                        max_lag_seconds = (
-                            s.lag_seconds
-                            if max_lag_seconds is None
-                            else max(max_lag_seconds, s.lag_seconds)
-                        )
-                    total_pending += s.pending
-                    total_dlq += s.dlq_depth
-                    total_consumers = max(total_consumers, s.consumer_count)
+def _subscription_dict(s: SubscriptionStatus) -> dict[str, Any]:
+    """Return the subscription fields of one status as a handler dict entry."""
+    return {
+        "status": s.status,
+        "lag": s.lag,
+        "lag_seconds": s.lag_seconds,
+        "pending": s.pending,
+        "dlq_depth": s.dlq_depth,
+        "consumer_count": s.consumer_count,
+        "subscription_type": s.subscription_type,
+    }
 
-                    if s.status == "unknown":
-                        worst_status = "unknown"
-                    elif s.status == "lagging" and worst_status != "unknown":
-                        worst_status = "lagging"
 
-                h["subscription"] = {
-                    "status": worst_status,
-                    "lag": total_lag,
-                    "lag_seconds": max_lag_seconds,
-                    "pending": total_pending,
-                    "dlq_depth": total_dlq,
-                    "consumer_count": total_consumers,
-                    "subscription_type": sub_type,
-                }
-        else:
-            # Event handlers, subscribers — direct 1:1 match
-            statuses = status_by_handler.get(name, [])
-            if statuses:
-                s = statuses[0]
-                h["subscription"] = {
-                    "status": s.status,
-                    "lag": s.lag,
-                    "lag_seconds": s.lag_seconds,
-                    "pending": s.pending,
-                    "dlq_depth": s.dlq_depth,
-                    "consumer_count": s.consumer_count,
-                    "subscription_type": s.subscription_type,
-                }
+def _merge_command_handler_status(
+    h: dict[str, Any], command_stream_status: dict[str, SubscriptionStatus]
+) -> None:
+    """Set a command handler's subscription from its first stream category with a dispatcher status.
+
+    Leaves ``h`` unchanged when no stream category has a dispatcher status.
+    """
+    # Command handlers share a dispatcher subscription by stream
+    for cat in h.get("stream_categories", []):
+        if cat in command_stream_status:
+            h["subscription"] = _subscription_dict(command_stream_status[cat])
+            break
+
+
+def _aggregate_statuses(statuses: list[SubscriptionStatus]) -> dict[str, Any]:
+    """Aggregate a non-empty list of stream subscription statuses into one."""
+    total_lag = 0
+    total_pending = 0
+    total_dlq = 0
+    total_consumers = 0
+    # Seconds-lag aggregates as the worst (max) staleness, not a sum:
+    # it is a wall-clock gap, so the oldest stream is what matters.
+    max_lag_seconds: float | None = None
+    worst_status = "ok"
+    sub_type = statuses[0].subscription_type
+
+    for s in statuses:
+        if s.lag is not None:
+            total_lag += s.lag
+        if s.lag_seconds is not None:
+            max_lag_seconds = (
+                s.lag_seconds
+                if max_lag_seconds is None
+                else max(max_lag_seconds, s.lag_seconds)
+            )
+        total_pending += s.pending
+        total_dlq += s.dlq_depth
+        total_consumers = max(total_consumers, s.consumer_count)
+
+        if s.status == "unknown":
+            worst_status = "unknown"
+        elif s.status == "lagging" and worst_status != "unknown":
+            worst_status = "lagging"
+
+    return {
+        "status": worst_status,
+        "lag": total_lag,
+        "lag_seconds": max_lag_seconds,
+        "pending": total_pending,
+        "dlq_depth": total_dlq,
+        "consumer_count": total_consumers,
+        "subscription_type": sub_type,
+    }
+
+
+def _parse_handler_trace(
+    fields: Mapping[Any, Any],
+) -> tuple[dict[str, Any], str, str] | None:
+    """Decode one trace stream entry into ``(trace, handler_name, event_type)``.
+
+    Returns ``None`` when the entry does not decode, has no handler name, or
+    its handler name or event type is not a string.
+    """
+    trace = decode_trace(fields)
+    if trace is None:
+        return None
+
+    handler_name = trace.get("handler")
+    event_type = trace.get("event", "")
+    if not handler_name or not isinstance(handler_name, str):
+        return None
+    if not isinstance(event_type, str):
+        return None
+    return trace, handler_name, event_type
+
+
+def _record_latency(entry: dict[str, Any], trace: dict[str, Any]) -> None:
+    """Add a trace's numeric ``duration_ms``, if any, to the latency totals."""
+    duration = trace_number(trace.get("duration_ms"))
+    if duration is not None:
+        entry["latency_sum"] += duration
+        entry["latency_count"] += 1
 
 
 def collect_per_handler_trace_metrics(
@@ -359,16 +423,10 @@ def collect_per_handler_trace_metrics(
     stats: dict[str, dict[str, Any]] = {}
 
     for stream_id, fields in raw_entries:
-        trace = decode_trace(fields)
-        if trace is None:
+        parsed = _parse_handler_trace(fields)
+        if parsed is None:
             continue
-
-        handler_name = trace.get("handler")
-        event_type = trace.get("event", "")
-        if not handler_name or not isinstance(handler_name, str):
-            continue
-        if not isinstance(event_type, str):
-            continue
+        trace, handler_name, event_type = parsed
 
         if handler_name not in stats:
             stats[handler_name] = {
@@ -383,10 +441,7 @@ def collect_per_handler_trace_metrics(
 
         if event_type == "handler.completed":
             entry["processed"] += 1
-            duration = trace_number(trace.get("duration_ms"))
-            if duration is not None:
-                entry["latency_sum"] += duration
-                entry["latency_count"] += 1
+            _record_latency(entry, trace)
 
             # Bucket into throughput sparkline
             sid = _decode_stream_id(stream_id)
@@ -398,7 +453,13 @@ def collect_per_handler_trace_metrics(
         elif event_type in _ERROR_EVENTS:
             entry["failed"] += 1
 
-    # Compute derived metrics
+    return _derive_handler_metrics(stats)
+
+
+def _derive_handler_metrics(
+    stats: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Compute error rate and average latency from accumulated handler stats."""
     result: dict[str, dict[str, Any]] = {}
     for handler_name, entry in stats.items():
         processed = entry["processed"]
@@ -495,6 +556,118 @@ def _build_summary(handlers: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _invalid_window_response(window: str) -> JSONResponse:
+    """Return the 400 response for a window not in ``_WINDOW_MS``."""
+    valid = ", ".join(_WINDOW_MS.keys())
+    return JSONResponse(
+        content={"error": f"Invalid window: {window}. Use {valid}."},
+        status_code=400,
+    )
+
+
+def _list_handlers_response(domains: list[Domain], window: str) -> JSONResponse:
+    """Build the response of ``GET /handlers``."""
+    window_ms = _WINDOW_MS.get(window)
+    if window_ms is None:
+        return _invalid_window_response(window)
+
+    # 1. Collect metadata from domain registry (always works)
+    handlers = collect_handler_metadata(domains)
+
+    # 2. Merge subscription status (degrades gracefully)
+    try:
+        merge_subscription_status(handlers, domains)
+    except Exception:  # status is optional; the list still renders, logged
+        logger.debug("Failed to merge subscription status", exc_info=True)
+
+    # 3. Merge trace metrics (requires Redis)
+    redis_conn = _get_redis(domains)
+    if redis_conn:
+        try:
+            trace_metrics = collect_per_handler_trace_metrics(redis_conn, window_ms)
+            for h in handlers:
+                h["metrics"] = trace_metrics.get(h["name"])
+        except Exception:  # metrics are optional; the list still renders, logged
+            logger.debug("Failed to collect trace metrics", exc_info=True)
+
+    # 4. Build summary
+    summary = _build_summary(handlers)
+
+    return JSONResponse(
+        content={
+            "handlers": handlers,
+            "summary": summary,
+            "window": window,
+        }
+    )
+
+
+def _merge_handler_redis_data(
+    handler: dict[str, Any],
+    redis_conn: Any,
+    name: str,
+    window_ms: int,
+    message_count: int,
+) -> None:
+    """Merge trace metrics and recent messages from Redis into ``handler``."""
+    try:
+        trace_metrics = collect_per_handler_trace_metrics(redis_conn, window_ms)
+        handler["metrics"] = trace_metrics.get(name)
+    except Exception:  # metrics are optional; the handler still renders, logged
+        logger.debug("Failed to collect trace metrics", exc_info=True)
+
+    try:
+        handler["recent_messages"] = collect_recent_messages(
+            redis_conn, name, count=message_count
+        )
+    except Exception:  # recent messages fall back to an empty list; logged
+        logger.debug("Failed to collect recent messages", exc_info=True)
+        handler["recent_messages"] = []
+
+
+def _handler_detail_response(
+    domains: list[Domain], name: str, window: str, message_count: int
+) -> JSONResponse:
+    """Build the response of ``GET /handlers/{name}``."""
+    window_ms = _WINDOW_MS.get(window)
+    if window_ms is None:
+        return _invalid_window_response(window)
+
+    # Find the handler by name
+    handlers = collect_handler_metadata(domains)
+    handler = None
+    for h in handlers:
+        if h["name"] == name:
+            handler = h
+            break
+
+    if handler is None:
+        return JSONResponse(
+            content={"error": f"Handler '{name}' not found"},
+            status_code=404,
+        )
+
+    # Merge subscription status
+    try:
+        merge_subscription_status([handler], domains)
+    except Exception:  # status is optional; the handler still renders, logged
+        logger.debug("Failed to merge subscription status", exc_info=True)
+
+    # Merge trace metrics + recent messages
+    redis_conn = _get_redis(domains)
+    if redis_conn:
+        _merge_handler_redis_data(handler, redis_conn, name, window_ms, message_count)
+    else:
+        handler["recent_messages"] = []
+
+    return JSONResponse(
+        content={
+            "handler": handler,
+            "window": window,
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # Router factory
 # ---------------------------------------------------------------------------
@@ -509,43 +682,7 @@ def create_handlers_router(domains: list[Domain]) -> APIRouter:
         window: str = Query("5m", description="Time window: 5m, 15m, 1h, 24h, or 7d"),
     ) -> JSONResponse:
         """All handlers with aggregated metrics and subscription status."""
-        window_ms = _WINDOW_MS.get(window)
-        if window_ms is None:
-            valid = ", ".join(_WINDOW_MS.keys())
-            return JSONResponse(
-                content={"error": f"Invalid window: {window}. Use {valid}."},
-                status_code=400,
-            )
-
-        # 1. Collect metadata from domain registry (always works)
-        handlers = collect_handler_metadata(domains)
-
-        # 2. Merge subscription status (degrades gracefully)
-        try:
-            merge_subscription_status(handlers, domains)
-        except Exception:  # status is optional; the list still renders, logged
-            logger.debug("Failed to merge subscription status", exc_info=True)
-
-        # 3. Merge trace metrics (requires Redis)
-        redis_conn = _get_redis(domains)
-        if redis_conn:
-            try:
-                trace_metrics = collect_per_handler_trace_metrics(redis_conn, window_ms)
-                for h in handlers:
-                    h["metrics"] = trace_metrics.get(h["name"])
-            except Exception:  # metrics are optional; the list still renders, logged
-                logger.debug("Failed to collect trace metrics", exc_info=True)
-
-        # 4. Build summary
-        summary = _build_summary(handlers)
-
-        return JSONResponse(
-            content={
-                "handlers": handlers,
-                "summary": summary,
-                "window": window,
-            }
-        )
+        return _list_handlers_response(domains, window)
 
     @router.get("/handlers/{name}")
     async def handler_detail(
@@ -554,58 +691,6 @@ def create_handlers_router(domains: list[Domain]) -> APIRouter:
         message_count: int = Query(20, description="Number of recent messages"),
     ) -> JSONResponse:
         """Single handler detail with recent messages."""
-        window_ms = _WINDOW_MS.get(window)
-        if window_ms is None:
-            valid = ", ".join(_WINDOW_MS.keys())
-            return JSONResponse(
-                content={"error": f"Invalid window: {window}. Use {valid}."},
-                status_code=400,
-            )
-
-        # Find the handler by name
-        handlers = collect_handler_metadata(domains)
-        handler = None
-        for h in handlers:
-            if h["name"] == name:
-                handler = h
-                break
-
-        if handler is None:
-            return JSONResponse(
-                content={"error": f"Handler '{name}' not found"},
-                status_code=404,
-            )
-
-        # Merge subscription status
-        try:
-            merge_subscription_status([handler], domains)
-        except Exception:  # status is optional; the handler still renders, logged
-            logger.debug("Failed to merge subscription status", exc_info=True)
-
-        # Merge trace metrics + recent messages
-        redis_conn = _get_redis(domains)
-        if redis_conn:
-            try:
-                trace_metrics = collect_per_handler_trace_metrics(redis_conn, window_ms)
-                handler["metrics"] = trace_metrics.get(name)
-            except Exception:  # metrics are optional; the handler still renders, logged
-                logger.debug("Failed to collect trace metrics", exc_info=True)
-
-            try:
-                handler["recent_messages"] = collect_recent_messages(
-                    redis_conn, name, count=message_count
-                )
-            except Exception:  # recent messages fall back to an empty list; logged
-                logger.debug("Failed to collect recent messages", exc_info=True)
-                handler["recent_messages"] = []
-        else:
-            handler["recent_messages"] = []
-
-        return JSONResponse(
-            content={
-                "handler": handler,
-                "window": window,
-            }
-        )
+        return _handler_detail_response(domains, name, window, message_count)
 
     return router

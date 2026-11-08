@@ -30,7 +30,11 @@ The Observatory exposes:
 
 ## Key metrics
 
-Monitor these metrics in production (available at `/metrics`):
+Monitor these metrics in production (available at `/metrics`). The two
+`protean_stream_*` gauges appear only when telemetry is disabled or the
+`opentelemetry-exporter-prometheus` package is not installed. With OpenTelemetry, the exporter names the operations
+gauge `protean_broker_ops_per_sec_per_second`. See
+[OpenTelemetry Integration](./opentelemetry.md) for what each path emits.
 
 | Metric | Description |
 |--------|-------------|

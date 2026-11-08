@@ -23,7 +23,8 @@ from __future__ import annotations
 import logging
 import time as _time
 from collections import defaultdict
-from dataclasses import asdict
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -224,6 +225,48 @@ def collect_all_events(
         Tuple of (events, next_cursor). next_cursor is None when there are
         no more results.
     """
+    all_events = _read_timeline_messages(domains)
+
+    # Sort by global_position (ascending)
+    all_events.sort(key=lambda x: x[0].get("global_position", 0))
+
+    all_events = _apply_cursor(all_events, cursor, order)
+
+    if order == "desc":
+        all_events.reverse()
+
+    # Apply content filters
+    filtered: list[dict[str, Any]] = []
+    for msg, domain_name in all_events:
+        if _matches_event_filters(msg, stream_category, event_type, aggregate_id, kind):
+            filtered.append(_serialize_message(msg, domain_name))
+
+    # Apply pagination limit
+    page = filtered[:limit]
+
+    return page, _next_cursor(filtered, page, limit, order)
+
+
+def _is_snapshot(stream: str, msg: dict[str, Any]) -> bool:
+    return ":snapshot-" in stream or msg.get("type") == "SNAPSHOT"
+
+
+def _timeline_messages(
+    raw_messages: list[dict[str, Any]], domain_name: str
+) -> Iterator[tuple[dict[str, Any], str]]:
+    """Yield each non-snapshot message with the domain it belongs to."""
+    for msg in raw_messages:
+        # Exclude snapshot messages from the timeline
+        stream = msg.get("stream_name", "")
+        if _is_snapshot(stream, msg):
+            continue
+        # Derive domain from stream prefix so events from a
+        # shared MessageDB get the correct domain attribution
+        yield msg, _domain_from_stream(stream) or domain_name
+
+
+def _read_timeline_messages(domains: list[Domain]) -> list[tuple[dict[str, Any], str]]:
+    """Read ``(raw_msg, domain_name)`` pairs from every unique event store."""
     all_events: list[tuple[dict[str, Any], str]] = []
 
     for domain in _unique_store_domains(domains):
@@ -233,64 +276,62 @@ def collect_all_events(
                 if store is None:
                     continue
                 raw_messages = store._read("$all", no_of_messages=1_000_000)
-
-                for msg in raw_messages:
-                    # Exclude snapshot messages from the timeline
-                    stream = msg.get("stream_name", "")
-                    if ":snapshot-" in stream or msg.get("type") == "SNAPSHOT":
-                        continue
-                    # Derive domain from stream prefix so events from a
-                    # shared MessageDB get the correct domain attribution
-                    msg_domain = _domain_from_stream(stream) or domain.name
-                    all_events.append((msg, msg_domain))
+                all_events.extend(_timeline_messages(raw_messages, domain.name))
         except Exception:  # one unreadable store must not empty the timeline; logged
             logger.debug("Failed to read events from %s", domain.name, exc_info=True)
 
-    # Sort by global_position (ascending)
-    all_events.sort(key=lambda x: x[0].get("global_position", 0))
+    return all_events
 
-    # Apply cursor filter based on order direction
+
+def _apply_cursor(
+    all_events: list[tuple[dict[str, Any], str]], cursor: int, order: str
+) -> list[tuple[dict[str, Any], str]]:
+    """Drop the messages on the far side of ``cursor`` for the given order."""
     if cursor > 0:
         if order == "desc":
-            all_events = [
+            return [
                 (msg, dn)
                 for msg, dn in all_events
                 if msg.get("global_position", 0) <= cursor
             ]
-        else:
-            all_events = [
-                (msg, dn)
-                for msg, dn in all_events
-                if msg.get("global_position", 0) >= cursor
-            ]
+        return [
+            (msg, dn)
+            for msg, dn in all_events
+            if msg.get("global_position", 0) >= cursor
+        ]
+    return all_events
 
-    if order == "desc":
-        all_events.reverse()
 
-    # Apply content filters
-    filtered: list[dict[str, Any]] = []
-    for msg, domain_name in all_events:
-        if stream_category and _extract_stream_category(msg) != stream_category:
-            continue
-        if event_type and _extract_event_type(msg) != event_type:
-            continue
-        if aggregate_id and _extract_aggregate_id(msg) != aggregate_id:
-            continue
-        if kind and _extract_kind(msg) != kind.upper():
-            continue
-        filtered.append(_serialize_message(msg, domain_name))
+def _matches_event_filters(
+    msg: dict[str, Any],
+    stream_category: str | None,
+    event_type: str | None,
+    aggregate_id: str | None,
+    kind: str | None,
+) -> bool:
+    """Return True when the message passes every filter that is set."""
+    if stream_category and _extract_stream_category(msg) != stream_category:
+        return False
+    if event_type and _extract_event_type(msg) != event_type:
+        return False
+    if aggregate_id and _extract_aggregate_id(msg) != aggregate_id:
+        return False
+    return not kind or _extract_kind(msg) == kind.upper()
 
-    # Apply pagination limit
-    page = filtered[:limit]
 
-    # Determine next cursor based on order direction
+def _next_cursor(
+    filtered: list[dict[str, Any]],
+    page: list[dict[str, Any]],
+    limit: int,
+    order: str,
+) -> int | None:
+    """Return the cursor of the next page, or None when ``page`` is the last."""
     next_cursor: int | None = None
     if len(filtered) > limit and page:
         last_pos = page[-1].get("global_position")
         if last_pos is not None:
             next_cursor = last_pos - 1 if order == "desc" else last_pos + 1
-
-    return page, next_cursor
+    return next_cursor
 
 
 def find_event_by_id(domains: list[Domain], message_id: str) -> dict[str, Any] | None:
@@ -322,11 +363,7 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
         Dict with total_events, last_event_time, active_streams,
         events_per_minute.
     """
-    total_events = 0
-    active_streams: set[str] = set()
-    last_event_time: str | None = None
-    last_event_datetime: datetime | None = None
-    first_event_datetime: datetime | None = None
+    stats = _TimelineStats()
 
     for domain in _unique_store_domains(domains):
         try:
@@ -337,64 +374,91 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
                 raw_messages = store._read("$all", no_of_messages=1_000_000)
 
                 for msg in raw_messages:
-                    # Exclude snapshot messages from stats
-                    stream = msg.get("stream_name", "")
-                    if ":snapshot-" in stream or msg.get("type") == "SNAPSHOT":
-                        continue
-
-                    total_events += 1
-
-                    if stream:
-                        active_streams.add(stream)
-
-                    raw_time = msg.get("time")
-                    if raw_time:
-                        raw_time_str: str
-                        if isinstance(raw_time, datetime):
-                            msg_dt = raw_time
-                            raw_time_str = raw_time.isoformat()
-                        elif isinstance(raw_time, str):
-                            try:
-                                msg_dt = datetime.fromisoformat(raw_time)
-                            except ValueError:
-                                logger.debug(
-                                    "Skipping the time of a message in %s: %r is not ISO 8601",
-                                    stream,
-                                    raw_time,
-                                )
-                                continue
-                            raw_time_str = raw_time
-                        else:
-                            continue
-
-                        if last_event_datetime is None or msg_dt > last_event_datetime:
-                            last_event_datetime = msg_dt
-                            last_event_time = raw_time_str
-
-                        if (
-                            first_event_datetime is None
-                            or msg_dt < first_event_datetime
-                        ):
-                            first_event_datetime = msg_dt
+                    _record_stats_message(stats, msg)
         except Exception:  # stats skip a failing store instead of failing; logged
             logger.debug("Failed to collect stats from %s", domain.name, exc_info=True)
 
-    # Calculate events per minute
+    return {
+        "total_events": stats.total_events,
+        "last_event_time": stats.last_event_time,
+        "active_streams": len(stats.active_streams),
+        "events_per_minute": _events_per_minute(stats),
+    }
+
+
+@dataclass
+class _TimelineStats:
+    """Running totals that ``collect_timeline_stats`` builds message by message."""
+
+    total_events: int = 0
+    active_streams: set[str] = field(default_factory=set)
+    last_event_time: str | None = None
+    last_event_datetime: datetime | None = None
+    first_event_datetime: datetime | None = None
+
+
+def _message_time(msg: dict[str, Any], stream: str) -> tuple[datetime, str] | None:
+    """Return the message time as a datetime and as its original string.
+
+    Returns None when the message has no time or the time cannot be parsed.
+    """
+    raw_time = msg.get("time")
+    if not raw_time:
+        return None
+    if isinstance(raw_time, datetime):
+        return raw_time, raw_time.isoformat()
+    if isinstance(raw_time, str):
+        try:
+            msg_dt = datetime.fromisoformat(raw_time)
+        except ValueError:
+            logger.debug(
+                "Skipping the time of a message in %s: %r is not ISO 8601",
+                stream,
+                raw_time,
+            )
+            return None
+        return msg_dt, raw_time
+    return None
+
+
+def _record_stats_message(stats: _TimelineStats, msg: dict[str, Any]) -> None:
+    """Add one raw message to ``stats``, skipping snapshot messages."""
+    # Exclude snapshot messages from stats
+    stream = msg.get("stream_name", "")
+    if _is_snapshot(stream, msg):
+        return
+
+    stats.total_events += 1
+
+    if stream:
+        stats.active_streams.add(stream)
+
+    parsed = _message_time(msg, stream)
+    if parsed is None:
+        return
+    msg_dt, raw_time_str = parsed
+
+    if stats.last_event_datetime is None or msg_dt > stats.last_event_datetime:
+        stats.last_event_datetime = msg_dt
+        stats.last_event_time = raw_time_str
+
+    if stats.first_event_datetime is None or msg_dt < stats.first_event_datetime:
+        stats.first_event_datetime = msg_dt
+
+
+def _events_per_minute(stats: _TimelineStats) -> float | None:
+    """Return the event rate between the first and last message, if measurable."""
     events_per_minute: float | None = None
-    if first_event_datetime and last_event_datetime and total_events > 1:
+    first_event_datetime = stats.first_event_datetime
+    last_event_datetime = stats.last_event_datetime
+    if first_event_datetime and last_event_datetime and stats.total_events > 1:
         # Normalize both to comparable datetimes
         first = first_event_datetime.replace(tzinfo=None)
         last = last_event_datetime.replace(tzinfo=None)
         duration = (last - first).total_seconds()
         if duration > 0:
-            events_per_minute = round(total_events / (duration / 60), 2)
-
-    return {
-        "total_events": total_events,
-        "last_event_time": last_event_time,
-        "active_streams": len(active_streams),
-        "events_per_minute": events_per_minute,
-    }
+            events_per_minute = round(stats.total_events / (duration / 60), 2)
+    return events_per_minute
 
 
 # ---------------------------------------------------------------------------
@@ -424,6 +488,32 @@ def _build_causation_tree_from_group(
 
     traces = traces_by_message_id or {}
 
+    by_id, children_map, roots = _index_group(store, group)
+
+    visited: set[str] = set()
+
+    if not roots:
+        root_candidates = [
+            m for m in group if store._extract_causation_id(m) not in by_id
+        ]
+        roots = root_candidates if root_candidates else [group[0]]
+
+    roots.sort(key=lambda m: m.get("global_position", 0))
+    return _build_causation_node(store, roots[0], None, children_map, traces, visited)
+
+
+def _index_group(
+    store: Any, group: list[dict[str, Any]]
+) -> tuple[
+    dict[str, dict[str, Any]],
+    dict[str, list[dict[str, Any]]],
+    list[dict[str, Any]],
+]:
+    """Index a correlation group by message ID and by causation ID.
+
+    Returns the messages by their ID, the children of each message sorted by
+    global position, and the messages that have no causation ID.
+    """
     by_id: dict[str, dict[str, Any]] = {}
     children_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
     roots: list[dict[str, Any]] = []
@@ -441,85 +531,102 @@ def _build_causation_tree_from_group(
     for children in children_map.values():
         children.sort(key=lambda m: m.get("global_position", 0))
 
-    visited: set[str] = set()
+    return by_id, children_map, roots
 
-    def _parse_time_ms(time_val: Any) -> float | None:
-        """Convert a time value to epoch milliseconds for delta computation."""
-        if time_val is None:
-            return None
-        if isinstance(time_val, datetime):
-            return time_val.timestamp() * 1000
-        if isinstance(time_val, str) and time_val:
-            try:
-                dt = datetime.fromisoformat(time_val)
-                return dt.timestamp() * 1000
-            except (ValueError, TypeError):
-                return None
+
+def _parse_time_ms(time_val: Any) -> float | None:
+    """Convert a time value to epoch milliseconds for delta computation."""
+    if time_val is None:
         return None
+    if isinstance(time_val, datetime):
+        return time_val.timestamp() * 1000
+    if isinstance(time_val, str) and time_val:
+        try:
+            dt = datetime.fromisoformat(time_val)
+            return dt.timestamp() * 1000
+        except (ValueError, TypeError):
+            return None
+    return None
 
-    def _build_node(
-        raw_msg: dict[str, Any], parent_time_ms: float | None = None
-    ) -> CausationNode:
-        hid = store._extract_message_id(raw_msg) or "?"
-        visited.add(hid)
 
-        metadata = raw_msg.get("metadata", {})
-        if not isinstance(metadata, dict):
-            metadata = {}
-        headers = metadata.get("headers", {})
-        if not isinstance(headers, dict):
-            headers = {}
-        domain_meta = metadata.get("domain", {})
-        if not isinstance(domain_meta, dict):
-            domain_meta = {}
+def _node_time_str(time_val: Any) -> str | None:
+    time_str: str | None
+    if time_val and hasattr(time_val, "isoformat"):
+        time_str = time_val.isoformat()
+    elif time_val:
+        time_str = str(time_val)
+    else:
+        time_str = None
+    return time_str
 
-        time_val = raw_msg.get("time")
-        time_str: str | None
-        if time_val and hasattr(time_val, "isoformat"):
-            time_str = time_val.isoformat()
-        elif time_val:
-            time_str = str(time_val)
-        else:
-            time_str = None
 
-        # Compute delta_ms from parent timestamp
-        node_time_ms = (
-            _parse_time_ms(time_val) if time_val else _parse_time_ms(time_str)
-        )
-        delta_ms: float | None = None
-        if parent_time_ms is not None and node_time_ms is not None:
-            delta_ms = round(node_time_ms - parent_time_ms, 2)
+def _headers_and_domain_meta(
+    raw_msg: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return the ``headers`` and ``domain`` metadata, each as a dict."""
+    metadata = raw_msg.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    headers = metadata.get("headers", {})
+    if not isinstance(headers, dict):
+        headers = {}
+    domain_meta = metadata.get("domain", {})
+    if not isinstance(domain_meta, dict):
+        domain_meta = {}
+    return headers, domain_meta
 
-        # Enrich from trace data
-        trace = traces.get(hid, {})
 
-        node = CausationNode(
-            message_id=hid,
-            message_type=raw_msg.get("type", headers.get("type", "?")),
-            kind=domain_meta.get("kind", "?"),
-            stream=raw_msg.get("stream_name", headers.get("stream", "?")),
-            time=time_str,
-            global_position=raw_msg.get("global_position"),
-            handler=trace.get("handler"),
-            duration_ms=trace.get("duration_ms"),
-            delta_ms=delta_ms,
-        )
+def _build_causation_node(
+    store: Any,
+    raw_msg: dict[str, Any],
+    parent_time_ms: float | None,
+    children_map: dict[str, list[dict[str, Any]]],
+    traces: dict[str, dict[str, Any]],
+    visited: set[str],
+) -> CausationNode:
+    """Build the node for ``raw_msg`` and, recursively, its unvisited children.
 
-        for child_msg in children_map.get(hid, []):
-            child_id = store._extract_message_id(child_msg)
-            if child_id and child_id not in visited:
-                node.children.append(_build_node(child_msg, node_time_ms))
+    Adds the ID of every node built to ``visited``.
+    """
+    hid = store._extract_message_id(raw_msg) or "?"
+    visited.add(hid)
 
-        return node
+    headers, domain_meta = _headers_and_domain_meta(raw_msg)
 
-    if not roots:
-        root_candidates = [
-            m for m in group if store._extract_causation_id(m) not in by_id
-        ]
-        roots = root_candidates if root_candidates else [group[0]]
+    time_val = raw_msg.get("time")
+    time_str = _node_time_str(time_val)
 
-    roots.sort(key=lambda m: m.get("global_position", 0))
-    return _build_node(roots[0])
+    # Compute delta_ms from parent timestamp
+    node_time_ms = _parse_time_ms(time_val) if time_val else _parse_time_ms(time_str)
+    delta_ms: float | None = None
+    if parent_time_ms is not None and node_time_ms is not None:
+        delta_ms = round(node_time_ms - parent_time_ms, 2)
+
+    # Enrich from trace data
+    trace = traces.get(hid, {})
+
+    node = CausationNode(
+        message_id=hid,
+        message_type=raw_msg.get("type", headers.get("type", "?")),
+        kind=domain_meta.get("kind", "?"),
+        stream=raw_msg.get("stream_name", headers.get("stream", "?")),
+        time=time_str,
+        global_position=raw_msg.get("global_position"),
+        handler=trace.get("handler"),
+        duration_ms=trace.get("duration_ms"),
+        delta_ms=delta_ms,
+    )
+
+    for child_msg in children_map.get(hid, []):
+        child_id = store._extract_message_id(child_msg)
+        if child_id and child_id not in visited:
+            node.children.append(
+                _build_causation_node(
+                    store, child_msg, node_time_ms, children_map, traces, visited
+                )
+            )
+
+    return node
 
 
 def _load_traces_for_correlation(
@@ -561,6 +668,19 @@ def _load_traces_for_correlation(
     except Exception:  # trace enrichment is optional; events show without it, logged
         logger.debug("Failed to read trace stream for enrichment", exc_info=True)
         return traces
+
+    return _handler_traces_by_message(raw_entries, correlation_id)
+
+
+def _handler_traces_by_message(
+    raw_entries: list[tuple[Any, dict[Any, Any]]], correlation_id: str
+) -> dict[str, dict[str, Any]]:
+    """Map message IDs to the handler and duration of their latest trace.
+
+    Keeps only ``handler.completed`` and ``handler.failed`` entries for
+    ``correlation_id``.
+    """
+    traces: dict[str, dict[str, Any]] = {}
 
     for _stream_id, fields in raw_entries:
         trace = decode_trace(fields)
@@ -618,31 +738,9 @@ def build_correlation_response(
                 if not group:
                     continue
 
-                # Serialize the flat event list
-                events = [_serialize_message(msg, domain.name) for msg in group]
-                events.sort(key=lambda e: e.get("global_position") or 0)
-
-                # Load trace data for enrichment (graceful fallback)
-                traces = _load_traces_for_correlation(domains, correlation_id)
-
-                # Build the causation tree from the already-loaded group
-                tree_root = _build_causation_tree_from_group(
-                    store, group, traces_by_message_id=traces
+                return _correlation_response_from_group(
+                    domains, correlation_id, store, group, domain.name
                 )
-                tree = asdict(tree_root) if tree_root else None
-
-                total_duration_ms: float | None = None
-                if tree_root:
-                    total = _sum_tree_duration(tree_root)
-                    total_duration_ms = round(total, 2) if total > 0 else None
-
-                return {
-                    "correlation_id": correlation_id,
-                    "events": events,
-                    "tree": tree,
-                    "total_duration_ms": total_duration_ms,
-                    "event_count": len(events),
-                }
         except Exception:  # try the next store instead of failing the endpoint; logged
             logger.debug(
                 "Failed to build correlation chain from %s",
@@ -651,6 +749,41 @@ def build_correlation_response(
             )
 
     return None
+
+
+def _correlation_response_from_group(
+    domains: list[Domain],
+    correlation_id: str,
+    store: Any,
+    group: list[dict[str, Any]],
+    domain_name: str,
+) -> dict[str, Any]:
+    """Build the ``build_correlation_response`` body from a loaded group."""
+    # Serialize the flat event list
+    events = [_serialize_message(msg, domain_name) for msg in group]
+    events.sort(key=lambda e: e.get("global_position") or 0)
+
+    # Load trace data for enrichment (graceful fallback)
+    traces = _load_traces_for_correlation(domains, correlation_id)
+
+    # Build the causation tree from the already-loaded group
+    tree_root = _build_causation_tree_from_group(
+        store, group, traces_by_message_id=traces
+    )
+    tree = asdict(tree_root) if tree_root else None
+
+    total_duration_ms: float | None = None
+    if tree_root:
+        total = _sum_tree_duration(tree_root)
+        total_duration_ms = round(total, 2) if total > 0 else None
+
+    return {
+        "correlation_id": correlation_id,
+        "events": events,
+        "tree": tree,
+        "total_duration_ms": total_duration_ms,
+        "event_count": len(events),
+    }
 
 
 def collect_aggregate_history(
@@ -739,14 +872,10 @@ def _group_by_correlation(
                     continue
                 raw_messages = store._read("$all", no_of_messages=1_000_000)
 
-                for msg in raw_messages:
-                    stream = msg.get("stream_name", "")
-                    if ":snapshot-" in stream or msg.get("type") == "SNAPSHOT":
-                        continue
-                    cid = _extract_correlation_id(msg)
-                    if cid:
-                        msg_domain = _domain_from_stream(stream) or domain.name
-                        groups[cid].append((msg, msg_domain))
+                for cid, msg, msg_domain in _correlated_messages(
+                    raw_messages, domain.name
+                ):
+                    groups[cid].append((msg, msg_domain))
         except Exception:  # one unreadable store must not break grouping; logged
             logger.debug(
                 "Failed to read events from %s for grouping",
@@ -759,6 +888,22 @@ def _group_by_correlation(
         group.sort(key=lambda x: x[0].get("global_position", 0))
 
     return groups
+
+
+def _correlated_messages(
+    raw_messages: list[dict[str, Any]], domain_name: str
+) -> Iterator[tuple[str, dict[str, Any], str]]:
+    """Yield ``(correlation_id, raw_msg, domain_name)`` for each correlated message.
+
+    Skips snapshot messages and messages without a correlation ID.
+    """
+    for msg in raw_messages:
+        stream = msg.get("stream_name", "")
+        if _is_snapshot(stream, msg):
+            continue
+        cid = _extract_correlation_id(msg)
+        if cid:
+            yield cid, msg, _domain_from_stream(stream) or domain_name
 
 
 def _build_trace_summary(
@@ -875,26 +1020,7 @@ def search_traces(
         if not grp:
             continue
 
-        match = False
-        for msg, _ in grp:
-            if aggregate_id and _extract_aggregate_id(msg) == aggregate_id:
-                match = True
-                break
-            if event_type and _extract_event_type(msg) == event_type:
-                match = True
-                break
-            if (
-                command_type
-                and _extract_event_type(msg) == command_type
-                and _extract_kind(msg) == "COMMAND"
-            ):
-                match = True
-                break
-            if stream_category and _extract_stream_category(msg) == stream_category:
-                match = True
-                break
-
-        if match:
+        if _chain_matches(grp, aggregate_id, event_type, command_type, stream_category):
             matching.append(_build_trace_summary(cid, grp))
 
     matching.sort(key=lambda s: s.get("_root_global_position", 0), reverse=True)
@@ -902,6 +1028,30 @@ def search_traces(
     for s in result:
         s.pop("_root_global_position", None)
     return result
+
+
+def _chain_matches(
+    grp: list[tuple[dict[str, Any], str]],
+    aggregate_id: str | None,
+    event_type: str | None,
+    command_type: str | None,
+    stream_category: str | None,
+) -> bool:
+    """Return True when any message in the chain matches any filter that is set."""
+    for msg, _ in grp:
+        if aggregate_id and _extract_aggregate_id(msg) == aggregate_id:
+            return True
+        if event_type and _extract_event_type(msg) == event_type:
+            return True
+        if (
+            command_type
+            and _extract_event_type(msg) == command_type
+            and _extract_kind(msg) == "COMMAND"
+        ):
+            return True
+        if stream_category and _extract_stream_category(msg) == stream_category:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------

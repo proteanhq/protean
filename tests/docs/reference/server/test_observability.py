@@ -75,8 +75,10 @@ def test_metrics_table_lists_every_metric_the_fallback_endpoint_emits():
     # metrics instead, which the OTel guide lists.
     page = (DOCS / "reference/server/observability.md").read_text()
     table = set(re.findall(r"^\| `(protean_\w+)` \| gauge \|", page, re.MULTILINE))
-    emitted = set(
-        re.findall(r"# HELP (protean_\w+)", Path(metrics_module.__file__).read_text())
+    # A gauge's HELP line is either written out or built by the header helper.
+    source = Path(metrics_module.__file__).read_text()
+    emitted = set(re.findall(r"# HELP (protean_\w+)", source)) | set(
+        re.findall(r'_append_gauge_header\(\s*lines,\s*"(protean_\w+)"', source)
     )
 
     assert table

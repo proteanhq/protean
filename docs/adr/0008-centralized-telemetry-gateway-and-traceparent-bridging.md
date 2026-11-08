@@ -182,8 +182,13 @@ exposition is preserved unchanged.
   traceparent propagation.
 - Zero overhead when telemetry is disabled: no-ops are trivial objects
   with empty methods; OTEL packages are never imported.
-- The `/metrics` endpoint works identically whether OTEL is installed
-  or not, no behavioral change for existing Observatory users.
+- The `/metrics` endpoint keeps working whether OTEL is installed or
+  not. The output differs between the two paths: without OTEL it adds
+  the stream and per-consumer gauges and has no OTEL counters or
+  histograms, and with OTEL the exporter names the operations gauge
+  `protean_broker_ops_per_sec_per_second`. The
+  [observability reference](../reference/server/observability.md)
+  lists what each path emits.
 
 **Negative:**
 

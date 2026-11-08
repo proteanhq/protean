@@ -43,27 +43,37 @@ def sanitize_config(config: Any) -> Any:
     """Strip sensitive values (URIs, passwords) from config for display.
 
     - URIs have credentials masked (``user:pass@host`` → ``***@host``)
-    - Keys containing 'password', 'secret', 'token' are replaced with '***'
+    - Keys containing 'password', 'secret', 'token' or 'api_key' are replaced
+      with '***'
     """
     if isinstance(config, dict):
-        sanitized: dict[str, Any] = {}
-        for key, value in config.items():
-            lower_key = str(key).lower()
-            if any(s in lower_key for s in ("password", "secret", "token", "api_key")):
-                sanitized[key] = "***"
-            else:
-                sanitized[key] = sanitize_config(value)
-        return sanitized
+        # The recursion stays in this function so that each nested level
+        # costs one stack frame.
+        return {
+            key: "***" if _is_sensitive_key(key) else sanitize_config(value)
+            for key, value in config.items()
+        }
     elif isinstance(config, str):
-        match = _URI_PATTERN.match(config)
-        if match:
-            scheme, _creds, host_path = match.groups()
-            return f"{scheme}***@{host_path}" if _creds else config
-        return config
+        return _mask_uri_credentials(config)
     elif isinstance(config, (list, tuple)):
         return [sanitize_config(item) for item in config]
     else:
         return config
+
+
+def _is_sensitive_key(key: Any) -> bool:
+    """Return whether *key* names a value that must be masked for display."""
+    lower_key = str(key).lower()
+    return any(s in lower_key for s in ("password", "secret", "token", "api_key"))
+
+
+def _mask_uri_credentials(value: str) -> str:
+    """Replace the credentials of a URI with ``***``, or return *value* unchanged."""
+    match = _URI_PATTERN.match(value)
+    if match:
+        scheme, _creds, host_path = match.groups()
+        return f"{scheme}***@{host_path}" if _creds else value
+    return value
 
 
 def _server_info(domains: list[Domain]) -> dict[str, Any]:
