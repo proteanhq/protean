@@ -84,8 +84,8 @@ class _ScrapeCache:
 
     OTEL observable gauge callbacks fire sequentially during a single
     Prometheus scrape.  Without caching, each callback independently
-    calls the same collection helper — e.g., 4 subscription gauge
-    callbacks would query ``collect_subscription_statuses()`` 4 times.
+    calls the same collection helper — e.g., the 5 subscription gauge
+    callbacks would query ``collect_subscription_statuses()`` 5 times.
 
     This cache stores the result for ``ttl_seconds`` (default 2 s) so
     all callbacks in the same scrape share one collection.
