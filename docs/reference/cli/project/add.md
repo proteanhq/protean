@@ -63,19 +63,20 @@ your own code (see
 (`aggregate_base.py`) holds the structure and wiring, and `add` refreshes it on
 every re-run. The hand-owned subclass (`aggregate.py`) holds your invariants and
 behavior, and `add` writes it once and never overwrites it. Every planned file
-records an `ownership` marker, `generated` or `hand_owned`; the preview shows it
-next to each path (as `generated` or `hand-owned`), so you can see which files a
-re-run would refresh and which it would leave alone. `add` still only previews
-the plan today; the applier that honors the marker on disk comes in a later
-release.
+records an `ownership` marker, `generated` or `hand_owned`. The preview shows
+the marker next to each path (as `generated` or `hand-owned`), so you can see
+which files a re-run would refresh and which it would leave alone. `add` writes
+the plan today, but its applier only creates files: it stops when any planned
+file already exists, and it does not read the marker. An applier that honors
+the marker on a re-run comes in a later release.
 
 ## How the name is used
 
 `add` splits `NAME` into words on underscores and on case changes, then builds
-two things from them: the class name is the PascalCase join, and the slug (the
-directory name, the local variable, and the id-field prefix) is the snake_case
-one. So `OrderItem`, `orderItem` and `order_item` all plan the same slice:
-`class OrderItem` in `src/<package>/order_item/`.
+two names from those words. The class name is the PascalCase join. The slug
+(the directory name, the local variable, and the id-field prefix) is the
+snake_case join. So `OrderItem`, `orderItem` and `order_item` all plan the same
+slice: `class OrderItem` in `src/<package>/order_item/`.
 
 A run of capitals counts as one word, so `HTTPServer` stays `HTTPServer` and its
 slug is `http_server`.
@@ -142,7 +143,7 @@ generator derives the default projection and projector from the event, so the
 slice still passes `protean verify`.
 
 The generator refuses a fragment it cannot render correctly, and `add` reports
-each of these as a usage error (exit `2`). It refuses:
+each refusal as a usage error (exit `2`). It refuses:
 
 **Names it cannot use.**
 
@@ -150,8 +151,8 @@ each of these as a usage error (exit `2`). It refuses:
   not a string, or is a string that is not a usable Python name.
 - Two of the slice's classes sharing a name, counting the read side the
   generator derives.
-- A name that collides, in a module that carries it, with a symbol that module
-  imports, or with a local the generated methods read back.
+- A name that collides with a symbol imported by a module that carries it, or
+  with a local the generated methods read back.
 - A field name the framework or the generated code already uses.
 - A project whose composition root binds the domain to a name the generated code
   uses.
@@ -160,8 +161,8 @@ each of these as a usage error (exit `2`). It refuses:
 
 - An unsupported field type.
 - A field whose `kind` and `type` do not pair the way ADR-0041 pairs them.
-- A `max_length` that is not a positive integer, or that sits on a type that
-  takes no bound.
+- A `max_length` that is not a positive integer, or a `max_length` on a type
+  that takes no bound.
 - A field whose required flag is not the one ADR-0041 gives it. Every authored
   field is required; the projection's key is not.
 
@@ -169,8 +170,9 @@ each of these as a usage error (exit `2`). It refuses:
 
 - An event whose `<slug>_id` cannot hold the aggregate's id, or that bounds it
   while the aggregate declares its own `id`. In that case the id comes from the
-  caller, and one longer than the bound is rejected when the event is raised.
-- An aggregate that declares the `<slug>_id` the event takes from its id.
+  caller. An id longer than the bound is rejected when the event is raised.
+- An aggregate that declares `<slug>_id`, the field the event takes from the
+  aggregate's id.
 - An aggregate that declares `id` in a shape that cannot reach the event's
   surfaced reference, which holds a string.
 - An integer identity key marked outside a projection.
@@ -189,16 +191,16 @@ each of these as a usage error (exit `2`). It refuses:
 
 `SliceFragment.from_mapping` reads the nested mapping the `protean new
 --from-model` parser returns, so a parsed text event model promotes through this
-same generator. It refuses a key it cannot read at every level of that mapping,
-down to the keys of a field entry, rather than dropping it or reading it as a
-name it is not.
+same generator. At every level of that mapping, down to the keys of a field
+entry, `SliceFragment.from_mapping` refuses an unreadable key. It does not drop
+the key or read it as a different name.
 
 `SliceFragment` takes an optional `slug`, so a caller that has already
 normalized the aggregate name passes the slug it computed.
 
-The parser derives the aggregate's slug from the normalized class name the
-fragment carries, which is the slug the generator derives from it too. It
-rejects the few aggregate names where that slug differs from the one `add`
-derives from the name as authored: `aB` gives the class `AB`, whose slug is
-`ab`, where `add aB` gives `a_b`. The same name therefore writes the same slice
-whichever surface authored it.
+The parser derives the aggregate's slug from the normalized class name in the
+fragment. The generator derives the same slug from that class name. The parser
+rejects the few aggregate names whose class-name slug differs from the slug
+`add` derives from the authored name. For example, `aB` gives the class `AB`
+with the slug `ab`, while `add aB` gives `a_b`. The same name therefore gives
+the same slice, whichever surface authored it.

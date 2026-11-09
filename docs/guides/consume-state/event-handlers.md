@@ -55,9 +55,9 @@ runs inside the event handler's unit of work and commits with it. With async
 command processing, the command runs later in its own transaction.
 
 3. The command carries the order id taken from the event. Events are delivered
-at least once, so the same `OrderShipped` can arrive twice. `Inventory`
-records the order ids it has applied, and the command handler returns without
-changes when it has already seen this one.
+at least once, so the same `OrderShipped` can arrive twice. `Inventory` records
+the order ids it has applied. The command handler returns without changes when
+it has already seen this order id.
 
 4. The command handler calls the `reduce_stock()` domain method, so
 `Inventory` changes its own state.
@@ -163,22 +163,22 @@ If more than one method fails while handling the same event, the failures are
 raised together as an `ExceptionGroup`. A single failure propagates as itself.
 
 The same holds across handler *classes*. Two handler classes subscribing to one
-event are independent reactions too: under asynchronous processing each has its
-own subscription, and under synchronous (`event_processing="sync"`) processing one
-failing no longer stops the other.
+event are independent reactions too. Under asynchronous processing, each class
+has its own subscription. Under synchronous (`event_processing="sync"`)
+processing, one class failing no longer stops the other.
 
 A separate handler class also gets its own subscription and its own checkpoint,
 which is what makes it fully independent when it touches a different aggregate.
-When two classes both mutate the *same* aggregate, that independence turns into
-contention: they run concurrently and collide on the aggregate's version, driving
-version-conflict retries. Keep those reactions as sibling methods on one class,
-where they run in sequence and each sees the previous commit. When the
-reactions depend on each other's writes, put them in one method instead. When
-those writes land on another aggregate, that method is a command handler method
-on that aggregate. [Calling External Systems from
-Handlers](../../patterns/calling-external-systems-from-handlers.md) shows that
-recipe for a multi-facet sync, and how to split a method that both persists and
-calls out.
+When two classes both mutate the *same* aggregate, that independence causes
+contention: the two classes run concurrently and conflict on the aggregate's
+version, which triggers version-conflict retries. Keep those reactions as
+sibling methods on one class, where they run in sequence and each sees the
+previous commit. When the reactions depend on each other's writes, put them in
+one method instead. When those writes change another aggregate, that method is
+a command handler method on that aggregate.
+[Calling External Systems from Handlers](../../patterns/calling-external-systems-from-handlers.md)
+shows that recipe for a multi-facet sync. It also shows how to split a method
+that both persists data and calls an external system.
 
 !!! note "One event class per method"
     Each `@handle` method accepts exactly one event class. To handle multiple
@@ -201,7 +201,7 @@ for that aggregate, and only those. It fires under both synchronous
 
 ## Return Values from Event Handlers
 
-Event handlers in Protean follow the standard CQRS pattern where event handlers do not return values to the caller. This deliberate design choice ensures:
+Event handlers in Protean follow the standard CQRS pattern where event handlers do not return values to the caller. Protean follows this pattern for three reasons:
 
 1. **Decoupling**: The publisher of events remains completely decoupled from the consumers.
 2. **Asynchronous Processing**: Events can be processed in the background without blocking.
@@ -239,16 +239,16 @@ idempotent subscriber's `provider` (see
 - **`stream_category`**: The event handler listens to events on this [stream
 category](../../concepts/async-processing/stream-categories.md). The stream category defaults to the category of the aggregate associated with the handler.
 
-    Keep the default when the handler reacts to its own aggregate's events.
-    To change another aggregate, do not point `stream_category` at the other
+    When the handler reacts to its own aggregate's events, keep the default. To
+    change another aggregate, do not point `stream_category` at the other
     aggregate's stream: `check` reports that handler as
     `EVENT_HANDLER_FOREIGN_EVENT`. Put the handler in the aggregate that owns
     the event and issue a command, as in the example above. Learn more in the
     [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
 - **`source_stream`**: When specified, the event handler only consumes events
-whose `origin_stream` matches this value. This filters events based on what
-originally triggered them, useful when the same event type can be raised from
+whose `origin_stream` matches this value. This option filters events by what
+originally triggered them. Use it when the same event type can be raised from
 different contexts and you only want to react to a specific trigger.
 
     ```python
@@ -266,8 +266,9 @@ subscription-level retry. See [Transient-failure retries](#transient-failure-ret
 
 ### Subscription Options
 
-Event handlers can be configured with subscription options that control how
-messages are consumed when running the [Protean server](../../concepts/async-processing/index.md):
+You can set subscription options on an event handler. These options control how
+the [Protean server](../../concepts/async-processing/index.md)
+consumes messages:
 
 - **`subscription_type`**: Type of subscription to use:
     - `"stream"`: Uses Redis Streams with consumer groups (recommended for
@@ -309,7 +310,7 @@ automatic retries and dead-letter queuing for failed messages:
 - **`enable_dlq`** (default: `True`): Messages that exhaust their retry
   budget are moved to a separate dead-letter stream (`<stream>:dlq`). You
   can inspect and reprocess DLQ messages manually or with a scheduled job.
-  Set it to `False` to drop them instead.
+  Set `enable_dlq` to `False` to drop those messages instead.
 
 ```python
 --8<-- "guides/consume-state/event-handlers/002.py:dlq"
@@ -322,7 +323,7 @@ automatic retries and dead-letter queuing for failed messages:
     to `max_retries` (default 3), set under
     `[server.event_store_subscription]`. A position that still fails is marked
     exhausted and skipped. The exhausted positions are the event store's
-    dead-letter queue, which you manage with
+    dead-letter queue. You list, inspect, replay, and purge them with
     [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md).
 
 See [Server → Configuration](../../reference/server/configuration.md) for detailed
@@ -342,10 +343,10 @@ ever re-delivered or routed to the DLQ:
 Each attempt runs in a fresh Unit of Work. Only genuinely transient exceptions
 are retried; by default `ConnectionError`, `TimeoutError`, and `SendError`,
 overridable with `retry_exceptions`. The behaviour is identical to
-[command handlers](../change-state/command-handlers.md#retrying-transient-failures);
-it is opt-in and disabled unless `retries` is set or `server.transient_retry`
-is enabled. This is distinct from the version-conflict (OCC) retry that handles
-`ExpectedVersionError`. See
+[command handlers](../change-state/command-handlers.md#retrying-transient-failures).
+The retry is opt-in and disabled unless `retries` is set or
+`server.transient_retry` is enabled. This is distinct from the version-conflict
+(OCC) retry that handles `ExpectedVersionError`. See
 [`server.transient_retry`](../../reference/configuration/index.md) for
 domain-wide defaults.
 
@@ -372,7 +373,7 @@ You can add a `handle_error` class method to your event handler to implement cus
 
 ### Error Handler Failures
 
-If an exception occurs within the `handle_error` method itself, the Protean Engine will catch and log that exception as well, ensuring that the event processing pipeline continues to function. This provides an additional layer of resilience:
+If an exception occurs within the `handle_error` method itself, the Protean Engine catches and logs that exception as well, so the event processing pipeline keeps running. This provides an additional layer of resilience:
 
 ```python
 # fragment
@@ -399,7 +400,7 @@ def handle_error(cls, exc: Exception, message):
 
     **Patterns:**
 
-    - [Calling External Systems from Handlers](../../patterns/calling-external-systems-from-handlers.md): Splitting a method that persists from one that calls out, and the multi-facet fan-out recipe.
+    - [Calling External Systems from Handlers](../../patterns/calling-external-systems-from-handlers.md): Splitting a method that persists from one that calls an external system, and the recipe for syncing several facets of one aggregate from one external snapshot.
     - [Idempotent Event Handlers](../../patterns/idempotent-event-handlers.md): Ensuring handlers produce correct results even with duplicate delivery.
     - [Thin Handlers, Rich Domain](../../patterns/thin-handlers-rich-domain.md): Keeping handlers thin by delegating to domain logic.
     - [Testing Event-Driven Flows](../../patterns/testing-event-driven-flows.md): Strategies for testing event handlers with pytest.

@@ -1,8 +1,9 @@
 # Field system
 
 Protean's field system lets you define domain model attributes using a
-domain-friendly vocabulary (`String(max_length=100)`, `Float(min_value=0)`, `HasMany("Product")`) while Pydantic v2 handles
-validation, serialization, and JSON Schema generation underneath.
+domain-friendly vocabulary (`String(max_length=100)`, `Float(min_value=0)`,
+`HasMany("Product")`) while Pydantic v2 handles validation, serialization, and
+JSON Schema generation.
 
 Three pieces make that work: the `FieldSpec` abstraction, the translation
 from Protean's vocabulary into Pydantic's, and the reasoning behind supporting
@@ -69,8 +70,8 @@ model:
 --8<-- "concepts/internals/field-system/002.py:what_pydantic_sees"
 ```
 
-Pydantic has no awareness that FieldSpec ever existed. This is by design,
-FieldSpec is a compile-time translation layer, not a runtime abstraction. After
+Pydantic has no awareness that FieldSpec ever existed, by design: FieldSpec
+is a compile-time translation layer, not a runtime abstraction. After
 resolution, Protean domain elements ARE Pydantic models with full access to
 validation, serialization, JSON Schema generation, and the broader Pydantic
 ecosystem.
@@ -96,17 +97,17 @@ This is the recommended style. Fields are declared as type annotations:
 name: String(max_length=50)
 ```
 
-This reads as "name IS a String", a declaration of what the attribute is, which
-aligns with how domain modelers think about structure. It is also where Python
-is heading as a language: PEP 526 (variable annotations), PEP 593 (`Annotated`), and
-PEP 649 (deferred evaluation) all invest in annotations as the mechanism for
-declarative metadata.
+This reads as "name IS a String", a declaration of what the attribute is.
+Domain modelers think about structure in the same way. Python also keeps
+extending annotations as the mechanism for declarative metadata: PEP 526
+(variable annotations), PEP 593 (`Annotated`), and PEP 649 (deferred
+evaluation) all build on them.
 
-From an implementation perspective, annotation style works *with* Pydantic
-rather than against it. Pydantic discovers fields through `__annotations__`,
-so fields declared as annotations are already where Pydantic expects them.
-The metaclass replaces the FieldSpec with a resolved `Annotated[...]` type
-and lets Pydantic proceed normally.
+From an implementation perspective, annotation style also matches how Pydantic
+works. Pydantic discovers fields through `__annotations__`, so fields declared
+as annotations are already where Pydantic expects them. The metaclass replaces
+the FieldSpec with a resolved `Annotated[...]` type and lets Pydantic
+proceed normally.
 
 ### Assignment style
 
@@ -164,9 +165,9 @@ Pydantic are available when they make sense.
 ## Protean-specific metadata
 
 Pydantic has no concept of `unique`, `identifier`, or `referenced_as`. These
-are Protean concerns, `unique` informs database schema generation, `identifier` marks the
-identity field for repository operations, `referenced_as` controls persistence column
-naming.
+are Protean concerns. Protean reads `unique` when it generates the database
+schema, `identifier` to find the identity field for repository operations, and
+`referenced_as` to name the persistence column.
 
 These values are stored in Pydantic's `json_schema_extra` parameter, a dictionary that Pydantic
 attaches to the field's JSON Schema output but otherwise ignores for
@@ -174,10 +175,10 @@ validation. This is the standard extension point for framework-specific
 metadata.
 
 Protean's adapter layers (database adapters, serializers, relationship
-resolvers) read this metadata from the model's schema. New Protean concepts
-can be added in the future by extending FieldSpec's constructor and storing
-the new values in `json_schema_extra`, without modifying Pydantic or the
-user-facing syntax.
+resolvers) read this metadata from the model's schema. Protean can add new
+concepts in the future by extending FieldSpec's constructor and storing the new
+values in `json_schema_extra`. Neither Pydantic nor the user-facing syntax has
+to change.
 
 ---
 
@@ -264,13 +265,16 @@ of truth for field discovery.
 
 Annotation-style field definitions are incompatible with PEP 563 deferred
 evaluation. When `from __future__ import annotations` is active, Python
-stringifies all annotations at definition time, `String(max_length=50)` becomes the string `"String(max_length=50)"`. The
-metaclass never sees the FieldSpec instance, so resolution cannot happen.
+stringifies all annotations at definition time, so `String(max_length=50)`
+becomes the string `"String(max_length=50)"`. The metaclass never sees the
+FieldSpec instance, so resolution cannot happen.
 
 This is a fundamental limitation of placing callable objects in annotation
 positions under deferred evaluation. PEP 649 (deferred evaluation of
 annotations) resolves this in Python 3.14+ by lazily evaluating annotations
-rather than stringifying them.
+rather than stringifying them. On Python 3.14, a module that keeps
+`from __future__ import annotations` still gets strings, so the limitation
+stays for that module.
 
 **Workaround:** Use assignment style (`name = String(max_length=50)`) or raw
 Pydantic style in modules that require `from __future__ import annotations`.
@@ -286,7 +290,7 @@ report `reportInvalidTypeForm` errors since a FieldSpec is not a type in the
 traditional sense. It is a compile-time descriptor that the metaclass resolves
 before Pydantic ever sees the class.
 
-A `pyrightconfig.json` at the project root suppresses this:
+To suppress these errors, add a `pyrightconfig.json` at the project root:
 
 ```json
 {
@@ -312,8 +316,8 @@ plugins = ["protean.ext.mypy_plugin"]
 ## Association fields are not data fields
 
 Association fields (`HasOne`, `HasMany`) are not data fields. They declare
-relationships between domain elements and are resolved at the repository
-layer, not at the validation layer. The metaclass intercepts them, removes
+relationships between domain elements. Protean resolves them in the repository
+layer and leaves them out of validation. The metaclass intercepts them, removes
 them from the class before Pydantic processes it, and stores them separately
 in `__protean_associations__`.
 

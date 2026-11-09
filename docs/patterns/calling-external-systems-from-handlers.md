@@ -20,8 +20,8 @@ The `@handle` decorator wraps every handler method in a Unit of Work, and since
 [ADR-0027](../adr/0027-unit-of-work-is-a-real-transaction.md) that Unit of Work
 is one real database transaction. The transaction opens at the first repository
 access and stays open until the method returns. So the `httpx.post` runs inside
-the transaction, and while it waits on the partner it holds the row locks and the
-pooled connection that `repo.get` and `repo.add` acquired.
+the transaction. While the call waits on the partner, it holds the row locks
+and the pooled connection acquired by `repo.get` and `repo.add`.
 
 Two things go wrong from there. A slow partner holds locks for the length of the
 call, and under load the connection pool drains while every handler waits on the
@@ -32,7 +32,8 @@ retry re-posts to the partner. The webhook fires twice for one order.
 
 ## The Pattern
 
-A handler method either persists or talks to the outside world. Not both.
+A handler method either persists or talks to the outside world, and never
+does both.
 
 Split the work into two methods:
 
@@ -124,9 +125,10 @@ repository access, so it runs before the transaction opens.
 --8<-- "patterns/calling-external-systems-from-handlers/001.py:fetch"
 ```
 
-Because the fetch precedes the persist, the call holds no lock, and `protean
-check` does not flag it: the rule fires only on a call that comes after a
-repository access. A retry re-runs the fetch, a safe repeat for a read.
+Because the fetch comes before the persist, the call holds no lock.
+`protean check` does not flag the fetch, because the check fires only on a call
+made after a repository access. A retry re-runs the fetch, a safe repeat for
+a read.
 
 `ProfileFetch` is part of `Subscriber`, yet it adds a `ProfileSnapshot`. It
 creates a new record and changes no existing one, so no other writer competes
@@ -193,8 +195,9 @@ to the `RecordDispatchResult` command with `asynchronous=True`:
 The domain uses sync command processing. The `@handle` decorator opens a Unit
 of Work around `send`, so `domain.process` stores the command with that Unit of
 Work and returns `None`. The command runs after the Unit of Work commits, in its
-own Unit of Work with its own version retry. A version conflict on the
-`Notification` retries the record step alone, and the channel sends once.
+own Unit of Work with its own version retry. After a version conflict on the
+`Notification`, Protean retries only the record step, so the channel
+sends once.
 
 When the record step fails for good, the commit raises `TransactionError` with
 the failure as its cause, or with an `ExceptionGroup` as its cause when more
@@ -236,11 +239,12 @@ re-issues the call. Pass the remote system's idempotency key so the repeat is
 harmless. Protean builds no mechanism for this; the idempotency key is what makes
 the retry safe.
 
-When the call itself needs a value you can only read from the aggregate first (a
-stored token, the current balance), the call has to sit between the read and the
-write, inside the transaction the read opened. `protean check` reports that method
-as HANDLER_PERSISTS_AND_CALLS_OUT. Keep the call short, pass the idempotency key,
-and silence the check on that handler with `suppress_checks`.
+Sometimes the call itself needs a value that you can only read from the
+aggregate first (a stored token, the current balance). Then the call has to run
+between the read and the write, inside the transaction that the read opened.
+`protean check` reports that method as HANDLER_PERSISTS_AND_CALLS_OUT. Keep the
+call short, pass the idempotency key, and silence the check on that handler
+with `suppress_checks`.
 
 ---
 

@@ -1,15 +1,15 @@
 # Event Upcasting Internals
 
 Upcasting turns an old event into its current shape as it is read, so a
-stream written months ago still deserializes into today's classes. The data
-structures, algorithms, and integration points that make that happen during
-deserialization are below.
+stream written months ago still deserializes into today's classes. Protean
+upcasts events during deserialization, using the data structures, algorithms,
+and integration points described below.
 
 For usage-level documentation, see the [Event Upcasting guide](../../guides/consume-state/event-upcasting.md).
 
 ## Architecture Overview
 
-Upcasting sits between two existing systems:
+Upcasting works with two existing systems:
 
 1. **The event store**: Stores raw event dicts with a versioned type string
    (e.g. `"MyDomain.OrderPlaced.v1"`)
@@ -51,25 +51,25 @@ Like every other element, `@domain.upcaster(...)` routes through
 - has a `UPCASTER` entry in the `DomainObjects` enum,
 - is stored in the `_DomainRegistry` (the general element registry),
 - appears in the IR elements index (so `protean ir show` lists it), and
-- is validated by `domain.check()`: a malformed registration (a duplicate,
-  cyclic, or non-convergent chain, or an `event_type` string that names no
-  registered event) is reported as a structured error instead of crashing
-  `protean check` with a traceback.
+- is validated by `domain.check()`, which reports a malformed registration as a
+  structured error instead of crashing `protean check` with a traceback. A
+  malformed registration is a duplicate, cyclic, or non-convergent chain, or an
+  `event_type` string that names no registered event.
 
 Upcasters remain **infrastructure helpers** for schema migration, so the
-lifecycle steps that only apply to business elements do not touch them:
-`_register_element`'s association resolution no-ops (an upcaster has no fields),
-and the element-type-scoped `_prepare` steps (aggregate cluster assignment,
-fact-event generation) never enumerate upcasters.
+lifecycle steps that only apply to business elements do nothing to them.
+`_register_element`'s association resolution no-ops on an upcaster (an upcaster
+has no fields), and the element-type-scoped `_prepare` steps (aggregate cluster
+assignment, fact-event generation) never enumerate upcasters.
 
 Registration flow:
 
 1. `@domain.upcaster(...)` calls `_register_element(DomainObjects.UPCASTER, ...)`,
    which runs `upcaster_factory()` for validation and stores the class in the registry.
 2. During `domain.init()`, `_build_upcaster_chains()` reads the registered
-   upcasters from the registry and builds the chain (fail-fast: a malformed
-   chain raises `ConfigurationError`, and so does an `event_type` string that
-   names no registered event).
+   upcasters from the registry and builds the chain. The build fails fast: a
+   malformed chain raises `ConfigurationError`, and so does an `event_type`
+   string that names no registered event.
 3. `domain.check()` runs the same chain build under the collecting validator
    (`DomainValidator.validate_all()`), surfacing a malformed chain as an error
    (exit code 1) rather than raising.
@@ -296,8 +296,8 @@ The `rpartition(".")` call splits on the **last** dot:
 - `"MyDomain.OrderPlaced.v1"` → `base_type="MyDomain.OrderPlaced"`,
   `from_version=1` (the `v` prefix is stripped and the rest parsed as an int)
 
-This handles event names that contain dots correctly (though Protean event
-names conventionally don't).
+Splitting on the last dot parses an event name that contains dots correctly,
+though Protean event names conventionally contain none.
 
 ### Chain Application
 
@@ -332,10 +332,10 @@ This means `metadata.headers.type` still contains the old type string
 current version. That header tells you which version was actually stored.
 
 `metadata.domain.version` is different. `BaseEvent.__init__` rebuilds the
-domain metadata and sets `version` from the event class, so on the
-constructed event it reads the current version (`3` for a `v1` message
-upcast to `v3`). The stored version stays on the `Message` that was read
-(`message.metadata.domain.version`).
+domain metadata and sets `version` from the event class. On the constructed
+event, `metadata.domain.version` therefore reads the current version (`3` for a
+`v1` message upcast to `v3`). The stored version stays on the `Message` that
+was read (`message.metadata.domain.version`).
 
 ## All Deserialization Paths
 

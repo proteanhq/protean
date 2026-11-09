@@ -37,8 +37,9 @@ uv run python scripts/metrics.py
 ```
 
 `tests/test_metrics_are_single_sourced.py` keeps the policy honest: it fails if
-any other page states an exact count. The counts move with every PR, so they are
-not pinned; what is pinned is that there is only **one place to change**.
+any other page states an exact count. The counts change with every PR, so the
+test does not check their values. Instead, it checks that the counts have only
+**one place to change**.
 
 ### Test Breakdown
 
@@ -129,13 +130,14 @@ snapshot like this:
 - A new function above 15 fails the check. A listed function that is renamed
   or moved to another file counts as new, so it fails too.
 - A listed function that becomes less complex gets its lower value in the
-  snapshot, and one split to 15 or less drops out of it. Every passing run
-  rewrites the file, so the change commits the rewritten file with it. CI
-  fails when the committed snapshot differs from the rewritten one.
+  snapshot, and one split down to a complexity of 15 or less drops out of it.
+  Every passing run rewrites the file, so you commit the rewritten file with
+  your change. CI fails when the committed snapshot differs from the
+  rewritten one.
 
 The check counts a function marked `# noqa: complexipy` or
-`# complexipy: ignore` like any other. Split a function that fails along what
-it does, and leave the limit and the snapshot as they are.
+`# complexipy: ignore` like any other. When a function fails the check, split
+it along what it does. Leave the limit and the snapshot as they are.
 
 ### Maintainability Index
 
@@ -205,12 +207,12 @@ between per-PR CI and a nightly run:
     - MySQL 8.4
     - MariaDB 11.4
 
-Each pull request runs the in-memory core suite on every stable version, and
-the PostgreSQL and Redis adapters plus any adapter the pull request changes. A
-push to `main` adds the full adapter suite on the newest stable Python, and the
-nightly run exercises the full adapter suite across all five versions. The
-stable versions gate every merge; the 3.15 prerelease leg runs nightly as a
-non-blocking early-warning check while 3.15 is a prerelease.
+Each pull request runs the in-memory core suite on every stable version. It
+also runs the PostgreSQL and Redis adapters, plus any adapter the pull request
+changes. A push to `main` adds the full adapter suite on the newest stable
+Python, and the nightly run exercises the full adapter suite across all five
+versions. The stable versions gate every merge; the 3.15 prerelease leg runs
+nightly as a non-blocking early-warning check while 3.15 is a prerelease.
 
 ### Pipeline Steps
 
@@ -253,7 +255,7 @@ Protean maintains a lean dependency footprint:
 | Dev dependencies | 7 |
 | Test dependencies | 8 |
 
-All database and message broker drivers are **optional extras**, the core
+All database and message broker drivers are **optional extras**, so the core
 framework installs only what's needed for in-memory development. Infrastructure
 dependencies are added when you're ready to deploy:
 
@@ -295,4 +297,4 @@ pip install protean[elasticsearch] # Adds the elasticsearch client
 
 ---
 
-*The Test Suite figures (the total, the Test Breakdown, the test-to-code ratio, and the Core vs. Integration and Infrastructure Coverage tables) were last updated in October 2026, all from `scripts/metrics.py`. Code Quality and Codebase Structure are from March 2026.*
+*`scripts/metrics.py` produced the Test Suite figures, last updated in October 2026. These figures are the total, the Test Breakdown, the test-to-code ratio, and the Core vs. Integration and Infrastructure Coverage tables. Code Quality and Codebase Structure are from March 2026.*

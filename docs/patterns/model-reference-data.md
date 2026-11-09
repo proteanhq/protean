@@ -4,9 +4,8 @@
 
 Every application accumulates **reference data**: the slowly-changing,
 enumerable values that other records point at: currencies, countries, order
-statuses, product categories, tax codes, units of measure. A common instinct,
-inherited from database-first thinking, is to store all of it in one shared
-table:
+statuses, product categories, tax codes, units of measure. Developers used to
+database-first design often store all of it in one shared table:
 
 ```python
 # fragment
@@ -21,22 +20,24 @@ class MasterData:
     extra: Dict()                        # a grab-bag for the fields that don't fit
 ```
 
-One table, every lookup. It feels economical. Then it rots:
+One table, every lookup. It feels economical. Over time, it causes
+these problems:
 
 - **Type safety evaporates**: A `Currency` row and an `OrderStatus` row are the
   same Python type. Nothing stops a handler from assigning a country code where
-  a currency was expected. The compiler can't help; only runtime data can tell
-  them apart.
+  a currency was expected. A type checker can't catch the mistake; only code
+  that inspects the data at runtime can tell them apart.
 
 - **Invariants degrade into deferred lookups**: "An order's status must be one
   of the valid statuses" can no longer be a domain rule. It becomes a query
-  against `MasterData WHERE category='ORDER_STATUS'`, executed at runtime, far
-  from the aggregate that depends on it.
+  against `MasterData WHERE category='ORDER_STATUS'` that runs at runtime, in
+  code outside the aggregate that depends on the rule.
 
 - **Every consumer reinvents the lookup**: There is no `Currency` concept to
   import. So every module that needs currencies writes its own
   `filter(category="CURRENCY")`, its own caching, its own "is this code valid?"
-  check. The logic is copy-pasted and drifts.
+  check. Developers copy this logic between modules, and the copies stop
+  matching over time.
 
 - **The schema becomes a lowest common denominator**: A currency needs a
   `symbol`. A country needs an ISO-3 code and a dialing prefix. A tax code needs
@@ -45,13 +46,13 @@ One table, every lookup. It feels economical. Then it rots:
 
 - **The surrogate key leaks everywhere**: Because the table has its own
   `master_id`, foreign keys point at that opaque integer instead of the natural
-  `code`. Now reading raw data requires a join just to discover that row `4471`
-  means `"USD"`.
+  `code`. When you read raw data, you now need a join to find out that row
+  `4471` means `"USD"`.
 
 This is the **One True Lookup Table** anti-pattern (also called MUCK, the
-*Massively Unified Code-Key* table). It collapses a dozen unrelated domain
-concepts into a single storage shape and, in doing so, imports a persistence
-convenience straight into the heart of the domain model.
+*Massively Unified Code-Key* table). It forces a dozen unrelated domain
+concepts into a single storage shape and, in doing so, makes a persistence
+convenience part of the domain model.
 
 The root cause: **a single physical table has been mistaken for a single domain
 concept.**
@@ -90,13 +91,13 @@ Closed & static (known at design time)        Open & dynamic (admin-managed)
   constraint for a bare code, or an **enumeration value object** when the value
   carries a label or behavior.
 
-- **Open and dynamic**: Operators add and retire values at runtime. The kind
-  earns its own **aggregate**, with the natural `code` as its identity. A
-  repository loads it; a cache-backed projection or a catalog service makes it
-  available across the application.
+- **Open and dynamic**: Operators add and retire values at runtime. Model each
+  such kind of reference data as its own **aggregate**, with the natural `code`
+  as its identity. A repository loads it; a cache-backed projection or a
+  catalog service makes it available across the application.
 
-Either way, the concept has a name, a type, and a home. Consumers import
-`Currency`, not `MasterData WHERE category='CURRENCY'`.
+Either way, the concept has its own name and its own type, defined in one
+place. Consumers import `Currency`, not `MasterData WHERE category='CURRENCY'`.
 
 ---
 
@@ -144,8 +145,8 @@ projector when the underlying aggregate changes.
 ### Closed set: enumeration value object
 
 Order statuses are known at design time. They never get added by an operator.
-Model them as a value object with a registry, so the set lives in the type
-system and participates in aggregate invariants:
+Model them as a value object with a registry, so the set is part of the type
+system and aggregate invariants can check it:
 
 **Before: a row in the lookup table**
 
@@ -168,8 +169,9 @@ and an aggregate holds it as a field:
 --8<-- "patterns/model-reference-data/002.py:aggregate"
 ```
 
-The validity of an order status is now part of the *always-valid* guarantee,
-caught at construction, instead of a foreign-key check deferred to the database.
+Protean now checks an order status when the value object is constructed, as
+part of the *always-valid* guarantee, instead of leaving a foreign-key check to
+the database.
 
 ### Editable reference: aggregate keyed by code
 
@@ -243,10 +245,10 @@ snake case (`CurrencyOption` becomes `currency_option`). Renaming the class
 changes the key the projector must remove.
 
 The read side is now a fast, cache-resident `code → option` catalog, decoupled
-from the write model, with a single invalidation point (the projector). When the
-catalog must also be queried by attributes or joined into reports, back the same
-projection with a database provider instead of a cache; the shape of the
-pattern is unchanged.
+from the write model, with a single invalidation point (the projector). When
+consumers must also query the catalog by attributes or join it into reports,
+back the same projection with a database provider instead of a cache. The rest
+of the pattern stays the same.
 
 ---
 
@@ -280,9 +282,9 @@ class MasterData:
     label: String()
 ```
 
-This is the One True Lookup Table wearing a decorator. `MasterData` is not a
-concept anyone in the business talks about; `Currency` and `Country` are. Model
-the concepts, not the table.
+This is the One True Lookup Table, declared as an aggregate with
+`@domain.aggregate`. `MasterData` is not a concept anyone in the business talks
+about; `Currency` and `Country` are. Model the concepts, not the table.
 
 ### The discriminator as a domain field
 
@@ -296,7 +298,7 @@ class Currency:
 ```
 
 A `Currency` is always a currency. A `category` field that exists only to
-distinguish rows in a shared table is a persistence concern that has leaked into
+distinguish rows in a shared table brings a persistence concern into
 the domain.
 
 ### Scattering raw lookups through domain logic
@@ -337,9 +339,9 @@ its own, and a missing currency is obvious instead of a dangling integer.
   benefit.
 
 - **Static vs. dynamic is a judgement call that can change**: A set that starts
-  closed (shipping carriers, say) may later need runtime administration. Starting
-  with an enumeration value object and migrating to an aggregate is a deliberate
-  refactor; model for what you know now, not a hypothetical future.
+  closed (shipping carriers, say) may later need runtime administration.
+  Starting with an enumeration value object and migrating to an aggregate is a
+  deliberate refactor, so model for what you know now.
 
 - **The cache is a freshness trade-off**: A cache-backed catalog is fast but
   eventually consistent: a newly added currency appears once the projector runs.

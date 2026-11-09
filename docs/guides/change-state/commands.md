@@ -10,10 +10,9 @@ routed, processed asynchronously, retried, and audited, all without the caller
 knowing the details.
 
 Commands represent actions or operations that change the state of the system.
-They encapsulate the intent to perform a specific task, containing the data
-necessary for the action, and are processed by
-[command handlers](./command-handlers.md) to ensure business rules and
-invariants are upheld.
+A command carries the intent to perform a specific task and the data the task
+needs. [Command handlers](./command-handlers.md) process commands and uphold
+business rules and invariants.
 
 For background on what commands are and how they fit the architecture,
 see [Commands concept](../../concepts/building-blocks/commands.md).
@@ -41,9 +40,9 @@ the same module.
 
 ## Submitting Commands
 
-Since a Protean domain constructs and manages the object graph of all
-domain elements, you don't need to identify the appropriate Command Handler
-for your commands.
+A Protean domain constructs the object graph of all domain elements and routes
+each command to its Command Handler. You don't need to find the
+handler yourself.
 
 You can submit the command to the domain for processing with
 `domain.process()`:
@@ -101,11 +100,11 @@ token that identifies the specific request:
 
 If the same idempotency key is submitted again, `domain.process()` returns the
 cached result from the first processing without invoking the handler again.
-This makes retries safe, a client that re-sends a request due to a timeout gets
-the same response regardless of whether the original succeeded.
+Retries are therefore safe. A client can re-send a request due to a timeout and
+get the same response, whether or not the original succeeded.
 
 The idempotency key is stored in the command's metadata headers, not in the
-command payload. This keeps the command's domain data clean:
+command payload. As a result, the command's payload holds only domain data:
 
 ```python
 --8<-- "guides/change-state/commands/001.py:handler"
@@ -119,7 +118,7 @@ command payload. This keeps the command's domain data clean:
 
 ### Duplicate Behavior
 
-By default, duplicate submissions are silently acknowledged, the caller
+By default, Protean silently acknowledges a duplicate submission. The caller
 receives the same result as the first submission. When explicit feedback is
 needed, use `raise_on_duplicate=True`:
 
@@ -181,15 +180,14 @@ In code:
 
 By default, Protean sets `command_processing` to `async` in the domain configuration.
 
-When `command_processing` is `"sync"`, Protean handles every command itself,
-even one submitted with `asynchronous=True`. Such a command is handled at once,
-unless a Unit of Work is active. Inside a handler, a `@use_case` method or a
-`with UnitOfWork():` block, `process` stores a command that has a registered
-handler and returns `None`, and the command runs after the caller commits. A
-command with no registered handler goes to the engine, and `process` returns
-its event store position. See
-[Calling external systems from
-handlers](../../patterns/calling-external-systems-from-handlers.md#recording-the-result-of-a-call).
+With `command_processing` set to `"sync"`, Protean itself handles every command
+that has a registered handler, even one submitted with `asynchronous=True`.
+Such a command is handled at once, unless a Unit of Work is active. Inside a
+handler, a `@use_case` method or a `with UnitOfWork():` block, `process` stores
+a command with a registered handler and returns `None`. The command runs after
+the caller commits. A command with no registered handler goes to the engine,
+and `process` returns its event store position. See [Calling external systems
+from handlers](../../patterns/calling-external-systems-from-handlers.md#recording-the-result-of-a-call).
 Passing `asynchronous=False` handles a command at once in an `"async"` domain.
 
 ### When to use each mode
@@ -264,10 +262,10 @@ The behavior differs by processing mode, a deliberate asymmetry:
 An expired command **changes no state**, no aggregate is loaded, no invariant
 is evaluated, no event is raised. Expiry is a delivery-layer policy, not a
 domain-rule violation. The risk it introduces is *lost intent*: in the async
-case the caller has already moved on, so expiries are surfaced via the
-`protean.command.expired` metric (labelled by `command_type`) and the
-`handler.skipped` trace. Alert on that metric if dropped commands matter to
-your business.
+case, the caller is no longer waiting for the result. Protean therefore reports
+expiries through the `protean.command.expired` metric (labelled by
+`command_type`) and the `handler.skipped` trace. If dropped commands matter to
+your business, alert on that metric.
 
 ### Propagation through the causal chain
 
@@ -281,8 +279,9 @@ bound by the original deadline unless a downstream call overrides it:
 
 ### Default deadlines
 
-For blanket protection you can configure a default validity window instead of
-passing one on every call. Resolution precedence (highest wins):
+To cover commands without an explicit deadline, you can configure a default
+validity window instead of passing one on every call. Protean resolves the
+deadline from these sources in order, and the highest one wins:
 
 1. Explicit `deadline`/`timeout` on `domain.process()`
 2. Deadline inherited from the parent message in the causal chain
@@ -300,9 +299,9 @@ command_default_timeout = 30
 ```
 
 Both defaults are **disabled** by default, so existing applications are
-unaffected. A default deadline bounds *staleness*, not *failure*, pair it with
-[retry/backoff](command-handlers.md#error-handling) and a dead-letter strategy
-for a complete resilience story.
+unaffected. A default deadline bounds *staleness* and does nothing about
+*failure*. To recover from failures, pair it with
+[retry/backoff](command-handlers.md#error-handling) and a dead-letter strategy.
 
 For the design rationale (why deadlines are opt-in, the sync/async trade-off,
 and how this fits DDD) see the [Expiring Stale
@@ -316,9 +315,9 @@ request to the API, the controller receives this request and translates the
 incoming data into the appropriate command object.
 
 In Protean, the API controller submits the command to the `domain` object,
-which then dispatches the command to the appropriate command handler. We will
-explore how the domain identifies the command handler in the
-[Command Handlers](./command-handlers.md) section.
+which then dispatches the command to the appropriate command handler. The
+[Command Handlers](./command-handlers.md) section explains how the domain
+identifies the command handler.
 
 The workflow differs slightly depending on whether synchronous or asynchronous processing is used:
 
@@ -377,13 +376,13 @@ IncorrectUsageError: 'Command Objects are immutable and cannot be modified once 
 Protean offers a similar configuration option for events: the
 `event_processing` domain configuration setting.
 
-Events and commands in Protean follow the same processing patterns, enabling you to build consistent, predictable workflows. You can configure both to suit your specific domain needs:
+Protean processes events and commands with the same patterns, so you can build consistent, predictable workflows. You can configure both to suit your specific domain needs:
 
 ```python
 --8<-- "guides/change-state/commands/004.py:config"
 ```
 
-This flexibility allows you to implement various architectural patterns like CQRS, Event Sourcing, and Workflow-driven architectures within your Protean applications.
+With both settings, you can implement architectural patterns like CQRS, Event Sourcing, and Workflow-driven architectures within your Protean applications.
 
 ---
 

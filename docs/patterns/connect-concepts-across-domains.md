@@ -37,8 +37,7 @@ context**, **identity correlation**, and **event-driven state propagation**.
 
 ## Two Variations
 
-Before diving into solutions, it's important to distinguish two scenarios that
-look similar but require different approaches:
+Two scenarios look similar but need different approaches:
 
 ### Different Concepts, Same Name
 
@@ -246,8 +245,8 @@ systems and translate them into the local domain's language:
 
 The subscriber is the **anti-corruption layer**. It prevents the Sales
 context's schema from leaking into the Shipping domain. If Sales changes how it
-structures customer events, only the subscriber needs to change, the `Recipient`
-aggregate and the rest of the Shipping domain remain untouched.
+structures customer events, only the subscriber needs to change. The
+`Recipient` aggregate and the rest of the Shipping domain remain untouched.
 
 A registration creates a recipient with a name and no address. The address
 comes with `CustomerAddressUpdated`. A subscriber can also receive the same
@@ -429,8 +428,8 @@ Sharing a class couples their evolution paths.
 
 Events are facts, not requests. A publishing context should not expect or
 depend on a consuming context's reaction. The publisher raises
-`CustomerRegistered` and moves on. Whether Billing creates an account, Support
-creates a contact, or no one reacts at all. The publisher doesn't know and
+`CustomerRegistered` and moves on. It doesn't know whether Billing creates
+an account, Support creates a contact, or no one reacts at all, and it
 doesn't care.
 
 If you need a guaranteed response from another context, use a command-based
@@ -453,8 +452,9 @@ integration (e.g., an API call or a command sent through a broker), not events.
 
 The pattern is rooted in a core DDD principle: **bounded contexts are
 autonomous**. They own their models, their data, and their rules. The only thing
-they share is identity and events. This keeps contexts loosely coupled while
-ensuring they stay synchronized on the real-world concepts they all model.
+they share is identity and events. Sharing only identity and events keeps the
+contexts loosely coupled, and the shared events keep them synchronized on the
+real-world concepts they all model.
 
 ---
 
