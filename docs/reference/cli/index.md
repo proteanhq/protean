@@ -28,6 +28,7 @@ follow the standard today.
 | [`protean db drop`](data/database.md)        | Drop all database tables           |
 | [`protean db truncate`](data/database.md)    | Delete all data, preserve schema   |
 | [`protean db setup-outbox`](data/database.md)| Create only outbox tables          |
+| [`protean db init`](data/database.md)        | Create a migrations folder         |
 | [`protean snapshot create`](data/snapshot.md)| Create snapshots for ES aggregates |
 | [`protean projection rebuild`](data/projection.md) | Rebuild projections from events |
 | [`protean events read`](data/events.md)     | Read and display events from a stream |

@@ -2,13 +2,16 @@
 
 [alembic]
 script_location = %(here)s
+# Alembic 1.16 and later read this key; older versions ignore it.
 path_separator = os
 
 # The domain and the provider these migrations belong to. Protean's commands
-# take the domain from --domain; a plain `alembic` run reads it from here. A
-# relative domain path is resolved from the directory `alembic` runs in.
+# take the domain from --domain. A plain `alembic` run reads it from here,
+# unless the PROTEAN_DOMAIN environment variable is set, and resolves a
+# relative path from protean_root, the folder `protean db init` ran in.
 protean_domain = $domain
 protean_provider = $provider
+protean_root = $root
 
 [loggers]
 keys = root,sqlalchemy,alembic

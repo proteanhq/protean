@@ -1,6 +1,8 @@
 """Tests for ``protean db init``, which creates a provider's migrations folder."""
 
 import configparser
+import os
+import sqlite3
 import subprocess
 import sys
 import textwrap
@@ -9,13 +11,30 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from protean.adapters.repository.sqlalchemy import SqliteProvider
 from protean.cli import app
+from protean.port.provider import BaseProvider
 
 pytestmark = [pytest.mark.sqlite, pytest.mark.no_test_domain]
 
 runner = CliRunner()
 
 MIGRATOR_MODULE = "protean.adapters.repository.schema_migrator.alembic_migrator"
+
+
+class _AlembicNotInstalled:
+    """A meta path finder that fails ``import alembic`` as an install without it does."""
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "alembic" or fullname.startswith("alembic."):
+            raise ModuleNotFoundError("No module named 'alembic'", name="alembic")
+
+
+def block_alembic(monkeypatch) -> None:
+    for name in [n for n in sys.modules if n == "alembic" or n.startswith("alembic.")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.delitem(sys.modules, MIGRATOR_MODULE, raising=False)
+    monkeypatch.setattr(sys, "meta_path", [_AlembicNotInstalled(), *sys.meta_path])
 
 
 def write_domain(directory: Path, databases: dict) -> None:
@@ -59,15 +78,50 @@ def read_ini(path: Path) -> configparser.ConfigParser:
     return parser
 
 
-def run_alembic(cwd: Path, *args: str) -> subprocess.CompletedProcess:
+def run_alembic(
+    cwd: Path, *args: str, ini: str = "migrations/alembic.ini"
+) -> subprocess.CompletedProcess:
+    env = {**os.environ, "PROTEAN_NO_AUTO_LOGGING": "1"}
+    env.pop("PROTEAN_DOMAIN", None)
     return subprocess.run(
-        [sys.executable, "-m", "alembic", "-c", "migrations/alembic.ini", *args],
+        [sys.executable, "-m", "alembic", "-c", ini, *args],
         check=False,
         cwd=cwd,
         capture_output=True,
         text=True,
-        env={"PROTEAN_NO_AUTO_LOGGING": "1", "PATH": ""},
+        env=env,
     )
+
+
+def add_revision(migrations: Path, revision: str = "0001") -> None:
+    """Write a migration script that changes nothing."""
+    (migrations / "versions" / f"{revision}_start.py").write_text(
+        textwrap.dedent(
+            f"""
+            revision = "{revision}"
+            down_revision = None
+            branch_labels = None
+            depends_on = None
+
+
+            def upgrade():
+                pass
+
+
+            def downgrade():
+                pass
+            """
+        ),
+        encoding="utf-8",
+    )
+
+
+def stamped_versions(database: Path) -> list[tuple[str]]:
+    connection = sqlite3.connect(database)
+    try:
+        return connection.execute("SELECT version_num FROM alembic_version").fetchall()
+    finally:
+        connection.close()
 
 
 @pytest.fixture(autouse=True)
@@ -120,18 +174,54 @@ class TestInitWritesTheFolder:
         )
 
     def test_plain_alembic_commands_load_the_domain(self, project):
-        write_domain(project, {"default": sqlite(project / "shop.db")})
+        write_domain(
+            project,
+            {"default": {"provider": "sqlite", "database_uri": "sqlite:///shop.db"}},
+        )
         assert (
             runner.invoke(app, ["db", "init", "--domain", "domain.py"]).exit_code == 0
         )
+        add_revision(project / "migrations")
+        # ``init`` loads the domain, which creates the SQLite file. Remove it, so
+        # only env.py loading the domain's provider can create it again.
+        (project / "shop.db").unlink()
 
         for command in (["history"], ["current"], ["stamp", "head"]):
             completed = run_alembic(project, *command)
             assert completed.returncode == 0, completed.stderr
 
-        # ``current`` and ``stamp`` connect to the provider's database, so the
-        # SQLite file exists only when env.py found the domain's provider.
-        assert (project / "shop.db").exists()
+        assert stamped_versions(project / "shop.db") == [("0001",)]
+
+    @pytest.mark.parametrize("where", ["elsewhere", "migrations"])
+    def test_plain_alembic_works_from_another_folder(self, project, where):
+        write_domain(
+            project,
+            {"default": {"provider": "sqlite", "database_uri": "sqlite:///shop.db"}},
+        )
+        assert runner.invoke(app, ["db", "init"]).exit_code == 0
+        add_revision(project / "migrations")
+        cwd = project / where
+        cwd.mkdir(exist_ok=True)
+
+        completed = run_alembic(
+            cwd, "stamp", "head", ini=str(project / "migrations" / "alembic.ini")
+        )
+
+        assert completed.returncode == 0, completed.stderr
+        # The relative SQLite URL resolves from the project, not from ``cwd``.
+        assert stamped_versions(project / "shop.db") == [("0001",)]
+        assert not (cwd / "shop.db").exists()
+
+    def test_records_the_domain_from_protean_domain(self, project, monkeypatch):
+        (project / "shop").mkdir()
+        write_domain(project / "shop", {"default": sqlite(project / "shop.db")})
+        monkeypatch.setenv("PROTEAN_DOMAIN", "shop/domain.py")
+
+        result = runner.invoke(app, ["db", "init"])
+
+        assert result.exit_code == 0, result.output
+        ini = read_ini(project / "migrations" / "alembic.ini")
+        assert ini["alembic"]["protean_domain"] == "shop/domain.py"
 
     def test_an_existing_empty_folder_is_used(self, project):
         write_domain(project, {"default": sqlite(project / "shop.db")})
@@ -242,12 +332,49 @@ class TestInitRefuses:
 
     def test_alembic_not_installed(self, project, monkeypatch):
         write_domain(project, {"default": sqlite(project / "shop.db")})
-        monkeypatch.setitem(sys.modules, "alembic", None)
-        monkeypatch.delitem(sys.modules, "alembic.config", raising=False)
-        monkeypatch.delitem(sys.modules, MIGRATOR_MODULE, raising=False)
+        block_alembic(monkeypatch)
 
         result = runner.invoke(app, ["db", "init", "--domain", "domain.py"])
 
         assert result.exit_code != 0
         assert 'pip install "protean[sqlite]"' in result.output
         assert not (project / "migrations").exists()
+
+    def test_provider_that_declares_the_flag_without_a_migrator(
+        self, project, monkeypatch
+    ):
+        write_domain(project, {"default": sqlite(project / "shop.db")})
+        monkeypatch.setattr(
+            SqliteProvider, "_schema_migrator", BaseProvider._schema_migrator
+        )
+
+        result = runner.invoke(app, ["db", "init", "--domain", "domain.py"])
+
+        assert result.exit_code != 0
+        assert "does not implement schema migrations" in result.output
+        assert "Traceback" not in result.output
+        assert not (project / "migrations").exists()
+
+    def test_unwritable_folder(self, project):
+        write_domain(project, {"default": sqlite(project / "shop.db")})
+        (project / "taken").write_text("a file")
+
+        result = runner.invoke(
+            app, ["db", "init", "--domain", "domain.py", "--directory", "taken/m"]
+        )
+
+        assert result.exit_code != 0
+        assert "Cannot create migrations in 'taken/m'" in result.output
+        assert "Traceback" not in result.output
+
+
+class TestInitOutput:
+    def test_success_message_keeps_square_brackets(self, project):
+        write_domain(project, {"default": sqlite(project / "shop.db")})
+
+        result = runner.invoke(
+            app, ["db", "init", "--domain", "domain.py", "--directory", "db/[x]"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "in db/[x]." in result.output

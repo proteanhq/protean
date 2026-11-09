@@ -1,18 +1,15 @@
 """CLI commands for database lifecycle management."""
 
+import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 import typer
 from rich import print
 
+from protean.adapters.repository.schema_migrator import migration_provider
 from protean.cli._helpers import handle_cli_exceptions, load_domain
-from protean.exceptions import ConfigurationError
-from protean.port.provider import DatabaseCapabilities
-
-if TYPE_CHECKING:
-    from protean.domain import Domain
-    from protean.port.provider import BaseProvider
+from protean.exceptions import ConfigurationError, NotSupportedError
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -96,50 +93,6 @@ def setup_outbox(
     print("Outbox tables created successfully.")
 
 
-def _migration_provider(domain: "Domain", provider_name: str) -> "BaseProvider":
-    """Return the provider the migration commands run against.
-
-    Raises:
-        ConfigurationError: ``provider_name`` is not configured, the provider
-            does not declare ``SCHEMA_MIGRATIONS``, or its ``managed`` setting
-            is ``false``.
-    """
-    configured = sorted(domain.providers)
-    if provider_name not in domain.providers:
-        raise ConfigurationError(
-            f"Provider '{provider_name}' is not configured. "
-            f"Configured providers: {', '.join(configured)}."
-        )
-
-    provider = domain.providers[provider_name]
-    if not provider.has_capability(DatabaseCapabilities.SCHEMA_MIGRATIONS):
-        capable = [
-            name
-            for name in configured
-            if domain.providers[name].has_capability(
-                DatabaseCapabilities.SCHEMA_MIGRATIONS
-            )
-        ]
-        alternatives = (
-            f"Providers that declare it: {', '.join(capable)}."
-            if capable
-            else "No configured provider declares it."
-        )
-        raise ConfigurationError(
-            f"Provider '{provider_name}' ({provider.__database__}) does not "
-            "support schema migrations. Migration commands need a provider "
-            f"that declares SCHEMA_MIGRATIONS. {alternatives}"
-        )
-
-    if not provider.managed:
-        raise ConfigurationError(
-            f"Provider '{provider_name}' has managed = false, so Protean does not "
-            "change its schema. Set managed = true to use migrations."
-        )
-
-    return provider
-
-
 @app.command(name="init")
 @handle_cli_exceptions("db init")
 def init(
@@ -153,14 +106,17 @@ def init(
 ) -> None:
     """Create a migrations folder for one database provider."""
     derived_domain = load_domain(domain)
+    # Record the path the domain was loaded from, which is PROTEAN_DOMAIN when
+    # it is set, so a plain ``alembic`` run loads the same domain.
+    domain_path = os.environ.get("PROTEAN_DOMAIN") or domain
     try:
         with derived_domain.domain_context():
-            migration_provider = _migration_provider(derived_domain, provider)
-            migration_provider.schema_migrator(Path(directory)).init(domain)
-    except ConfigurationError as exc:
+            checked = migration_provider(derived_domain, provider)
+            checked.schema_migrator(Path(directory)).init(domain_path)
+    except (ConfigurationError, NotSupportedError) as exc:
         # typer.echo, not rich's print: rich would read "[sqlite]" in an
         # install hint such as "protean[sqlite]" as markup and drop it.
         typer.echo(f"Error: {exc.args[0]}")
         raise typer.Abort() from exc
 
-    print(f"Created migrations for provider '{provider}' in {directory}.")
+    typer.echo(f"Created migrations for provider '{provider}' in {directory}.")

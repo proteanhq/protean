@@ -98,7 +98,7 @@ command exits with an error.
 Creates the folder that holds the schema migrations of one database provider.
 A migration is a versioned script that changes the schema. Protean runs them
 through [Alembic](https://alembic.sqlalchemy.org/), which the `postgresql`,
-`sqlite`, `mssql` and `mysql` extras install.
+`postgresql-psycopg2`, `sqlite`, `mssql` and `mysql` extras install.
 
 ```bash
 protean db init --domain=my_domain
@@ -108,7 +108,7 @@ The command writes these files into the folder:
 
 | Path | Content |
 |------|---------|
-| `alembic.ini` | Alembic's settings. `protean_domain` records the `--domain` value and `protean_provider` the provider name. |
+| `alembic.ini` | Alembic's settings. `protean_domain` records the domain path, `protean_provider` the provider name and `protean_root` the folder the command ran in. |
 | `env.py` | Two lines that call Protean's `run_migrations`. It loads the domain and runs the migrations on the provider's database. |
 | `script.py.mako` | The template for new migration scripts. |
 | `versions/` | An empty folder for the migration scripts. |
@@ -120,10 +120,14 @@ alembic -c migrations/alembic.ini current
 alembic -c migrations/alembic.ini stamp head
 ```
 
-Alembic resolves a relative `protean_domain` from the folder you run it in.
-Run `alembic` from the folder you ran `protean db init` in, which is usually
-the project root. When the `PROTEAN_DOMAIN` environment variable is set, its
-value is used in place of `protean_domain`.
+The commands work from any folder. Protean resolves a relative
+`protean_domain`, and a relative SQLite database URL, from `protean_root`.
+`protean_domain` records the `--domain` value, or the `PROTEAN_DOMAIN`
+environment variable when it is set. When `PROTEAN_DOMAIN` is set during a
+plain `alembic` run, its value is used in place of `protean_domain`.
+
+A plain `alembic` run makes the same checks on the provider as
+`protean db init`.
 
 The command refuses, and writes nothing, when:
 
@@ -132,11 +136,13 @@ The command refuses, and writes nothing, when:
   providers that do.
 - The provider sets `managed = false`. Protean does not change the schema of
   an unmanaged database.
-- The folder exists and is not empty. An existing empty folder is used.
+- The folder exists and is not empty, or a file sits at its path. An existing
+  empty folder is used.
 
 It also stops when `--provider` names a provider the domain does not
-configure, and when Alembic is not installed. The second message names the
-extra to install.
+configure, when Alembic is not installed, and when the folder cannot be
+written. The message for a missing Alembic names the extra to install. When a
+write fails part-way, the command removes the files it wrote.
 
 **Options**
 

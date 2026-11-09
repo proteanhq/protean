@@ -433,7 +433,7 @@ def capabilities(self) -> DatabaseCapabilities:
 !!!warning
     Only declare capabilities you actually implement. The conformance test
     suite will verify that your adapter correctly supports every declared
-    capability.
+    capability except `SCHEMA_MIGRATIONS`.
 
 ### Supporting schema migrations (optional)
 
@@ -458,7 +458,8 @@ Callers use `provider.schema_migrator(directory)`. It raises
 `NotSupportedError` when the provider does not declare the flag. An adapter
 that declares the flag and does not override `_schema_migrator` gets the
 `BaseProvider` version, which raises the same error. An adapter that leaves
-the flag out needs neither method. The conformance suite does not test this flag yet.
+the flag out needs neither method. The conformance suite does not check
+`SCHEMA_MIGRATIONS`, so test the migrator in the adapter's own tests.
 
 ## Testing Your Adapter
 
