@@ -49,9 +49,9 @@ field-removal row, read attributes only an aggregate has, so they are checked on
 event-sourced aggregates and nowhere else. The last row, `field_number_changed`,
 is checked on events only, and only on an event's own fields. A field change
 inside a value object the event holds can move the numbers in that value
-object's nested message, and the check does not report it. Fact events are not
-checked, because the framework defines them and nobody can bump their
-`__version__`. The check runs whether or not the project generates Protobuf
+object's nested message, and the check does not report it. Events the
+framework generates, such as fact events and process-manager transition
+events, are not checked, because nobody can bump their `__version__`. The check runs whether or not the project generates Protobuf
 schemas. A field added, removed or renamed on a command, aggregate,
 entity, value object or projection can still move that element's Protobuf field
 numbers, and the check does not report it.
@@ -145,8 +145,8 @@ exceptions:
   `protean ir diff` and the `protean-check-compat` hook still print it.
 - A change that moves an event's Protobuf field number within one
   `__version__`: the report flags it as `field_number_changed` for every event
-  not listed in `exclude`, published or not, and the contract check has no
-  matching entry.
+  you define and do not list in `exclude`, published or not, and the contract
+  check has no matching entry.
 
 The contract check writes these field entries. In the table, the List column
 names the key under `contracts` that holds each entry:

@@ -329,8 +329,9 @@ payloads at read time, and a plain schema registry (which knows nothing of
 upcasters) would still report the underlying change. A change to an element's
 visibility changes no payload field, so the verdict ignores it. A moved
 Protobuf field number (`field_number_changed`) does not change Avro bytes, so
-the verdict ignores it too. Both still count as breaking changes, so the
-verdict can read `FULL` while the command fails.
+the verdict ignores it too. A move from public to internal and a moved field
+number still count as breaking changes, so the verdict can read `FULL` while
+the command fails.
 
 The verdict is **informational**. The command prints the verdict, and under
 `--format json` includes it in a `compatibility` block with the full classified

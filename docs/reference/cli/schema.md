@@ -58,10 +58,11 @@ field can move the numbers of the fields that sort after it. Renaming a field
 can move its own number and the numbers of the fields between its old and new
 name. Within one `__version__`, `protean ir diff` reports a change that moves an
 event's own field number as breaking (`field_number_changed`). It does not
-check fact events, the nested messages of value objects an event holds, or
-other elements, so their numbers can move when their fields change. The Avro
-and Protobuf formats are compiler backends
-for schema *emission*, and runtime binary encode/decode is out of scope.
+check events the framework generates, such as fact events, the nested
+messages of value objects an event holds, or other elements, so their numbers
+can move when their fields change. The Avro and Protobuf formats are compiler
+backends for schema *emission*, and runtime binary encode/decode is out of
+scope.
 Protean does not carry field-level constraints (choices/enums, min/max) into
 either format.
 
