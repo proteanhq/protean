@@ -309,8 +309,7 @@ sequenceDiagram
 ```
 
 With this pattern, each aggregate is always persisted in its own transaction. A
-failed transaction therefore cannot leave a partial update across
-two aggregates.
+failed transaction therefore cannot leave one aggregate partly updated.
 
 ## Multi-provider sessions
 
