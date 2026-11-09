@@ -11,6 +11,59 @@ Run `protean --version` to check your installed version.
 
 <div class="pt-changelog-release" markdown="1">
 <div class="pt-changelog-meta" markdown="1">
+## 0.18.1 { #v0-18-1 }
+<p class="pt-changelog-date">November 9, 2026</p>
+</div>
+<div class="pt-changelog-body" markdown="1">
+
+<p class="pt-changelog-group">Upgrade Notes</p>
+
+Read the [0.18 migration guide](https://docs.proteanhq.com/reference/migration/v0-18/) before you upgrade. These changes can need action, in the order the guide covers them:
+
+- [`eventstore verify` exits 2 when it cannot connect](https://docs.proteanhq.com/reference/migration/v0-18/#eventstore-verify-exits-2-when-it-cannot-connect) (#1910)
+- [Value objects compare their field values](https://docs.proteanhq.com/reference/migration/v0-18/#value-objects-compare-their-field-values) (#1928)
+- [`eventstore verify` reports a message whose body is not a JSON object](https://docs.proteanhq.com/reference/migration/v0-18/#eventstore-verify-reports-a-message-whose-body-is-not-a-json-object) (#1909)
+- [A nested handler's conflict reaches the enclosing handler or the caller](https://docs.proteanhq.com/reference/migration/v0-18/#a-nested-handlers-conflict-reaches-the-enclosing-handler-or-the-caller) (#1914)
+- [Event-store subscriptions report their exhausted positions as DLQ depth](https://docs.proteanhq.com/reference/migration/v0-18/#event-store-subscriptions-report-their-exhausted-positions-as-dlq-depth) (#1921)
+- [Outbox reconciliation repairs only event-sourced aggregates' events](https://docs.proteanhq.com/reference/migration/v0-18/#outbox-reconciliation-repairs-only-event-sourced-aggregates-events) (#1908)
+- [An outer commit after a nested failure raises](https://docs.proteanhq.com/reference/migration/v0-18/#an-outer-commit-after-a-nested-failure-raises) (#1631)
+- [A shutdown finishes the batch in hand, and a start claims what stopped workers left](https://docs.proteanhq.com/reference/migration/v0-18/#a-shutdown-finishes-the-batch-in-hand-and-a-start-claims-what-stopped-workers-left) (#1929)
+- [A process manager's dates, datetimes and decimals keep their type after a reload](https://docs.proteanhq.com/reference/migration/v0-18/#a-process-managers-dates-datetimes-and-decimals-keep-their-type-after-a-reload) (#1892)
+- [Outbox reconciliation repairs every lost row in its window](https://docs.proteanhq.com/reference/migration/v0-18/#outbox-reconciliation-repairs-every-lost-row-in-its-window) (#1907)
+- [Datetimes are compared and stored as UTC](https://docs.proteanhq.com/reference/migration/v0-18/#datetimes-are-compared-and-stored-as-utc) (#1900)
+
+<p class="pt-changelog-group">Changed</p>
+
+- <span class="pt-changelog-area">Handlers</span> **Breaking.** When a nested `UnitOfWork` fails and the outermost one then commits, `commit()` now rolls back and raises the nested failure, or `TransactionError`, instead of logging a warning and returning. (#1631)
+- <span class="pt-changelog-area">Database</span> **Breaking.** A `DateTime` filter now compares UTC instants on every provider, and SQLite, MySQL, MariaDB and SQL Server now store `DateTime` values as UTC and load them as UTC-aware. (#1900)
+- <span class="pt-changelog-area">CLI</span> **Breaking.** `protean eventstore verify` now exits 2 when it cannot connect to the event store, and under `--json` it prints one error envelope. (#1910)
+- <span class="pt-changelog-area">Handlers</span> **Breaking.** A handler that runs inside an active Unit of Work no longer retries a version conflict or a transient error in place, so the error reaches the outermost `@handle` handler's retry or the caller. (#1914)
+- <span class="pt-changelog-area">Server</span> **Breaking.** On `SIGTERM` the engine now finishes the batch it has read within `server.drain_timeout`, and a starting subscription claims the messages that stopped workers left pending in Redis. (#1929)
+- <span class="pt-changelog-area">Fields</span> A process manager's `Decimal` field no longer fails the transition save, and its `Date`, `DateTime` and `Decimal` fields keep their type after a reload instead of holding the stored string. (#1892)
+
+<p class="pt-changelog-group">Fixed</p>
+
+<details class="pt-changelog-fold" markdown="1">
+<summary>10 changes</summary>
+
+- <span class="pt-changelog-area">Broker</span> An outbox reconcile sweep that runs while a command commits no longer makes that command's commit fail on the outbox's unique index. (#1906)
+- <span class="pt-changelog-area">Broker</span> **Breaking.** The startup reconcile sweep and `protean outbox reconcile` now rebuild the lost outbox row of every event-sourced aggregate's event in the scanned window, where they used to repair only the newest event. (#1907)
+- <span class="pt-changelog-area">Broker</span> **Breaking.** `reconcile_outbox` and `protean outbox reconcile` no longer publish an event of a state-based aggregate whose commit rolled back, and they now repair only the events of event-sourced aggregates. (#1908)
+- <span class="pt-changelog-area">CLI</span> **Breaking.** `protean eventstore verify` now reports a message whose body is NULL or not a JSON object as `malformed_message`, and the `message-db` extra needs `message-db-py` 0.3.5 or later. (#1909)
+- <span class="pt-changelog-area">Projections</span> Rebuilding a projection whose projector is registered with `idempotent=True` no longer leaves the projection empty. (#1913)
+- <span class="pt-changelog-area">Server</span> **Breaking.** Event-store subscriptions now report their exhausted positions as `dlq_depth` in `protean subscriptions status`, `/readyz`, the observatory and the `protean_subscription_dlq_depth` gauge, where they reported `0`. (#1921)
+- <span class="pt-changelog-area">Fields</span> **Breaking.** Value objects now compare and hash by their field values, so `Decimal("9.99")` and `Decimal("9.9900")` are equal, and a field's default is now validated and cast like an assigned value. (#1928)
+- <span class="pt-changelog-area">IR</span> `protean ir show` and every other IR build no longer fail with `AttributeError` when a handler sets `subscription_type` or `subscription_profile` as a string. (#1930)
+- <span class="pt-changelog-area">Event store</span> A `$all` subscription no longer waits `gap_timeout_seconds` and logs an abandoned gap at each snapshot, and a run of snapshot rows no longer stops it for good. (#2105)
+- <span class="pt-changelog-area">Event store</span> A process manager now loads every transition in its stream, where one with more than 1,000 transitions loaded an old version and failed every later transition with `ExpectedVersionError`. (#2106)
+
+</details>
+
+</div>
+</div>
+
+<div class="pt-changelog-release" markdown="1">
+<div class="pt-changelog-meta" markdown="1">
 ## 0.18.0 { #v0-18-0 }
 <p class="pt-changelog-date">October 21, 2026</p>
 </div>
