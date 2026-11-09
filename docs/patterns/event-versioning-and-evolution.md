@@ -52,16 +52,18 @@ strategies to bridge old and new schemas.
 The golden rules:
 
 1. **New fields get defaults where possible**: A default keeps old payloads
-   readable. When no sensible default exists, reach for an upcaster or a new event
+   readable. When no sensible default exists, use an upcaster or a new event
    type (rule 4).
 2. **Old fields stay by default**: Keep and deprecate an unused field so old
-   payloads stay deserializable. To remove one, enable lenient mode, which drops it
-   on read and gives up its data (see [ADR-0040](../adr/0040-schema-evolution-ladder.md)).
+   payloads stay deserializable. To remove one, enable lenient mode, which
+   drops the field on read and discards its data
+   (see [ADR-0040](../adr/0040-schema-evolution-ladder.md)).
 3. **Semantics never change**: A field's meaning is permanent. If the meaning
    changes, create a new field or a new event type.
-4. **Structural changes are versioned**: A change weak schema cannot express (a
-   type change, a newly required field) bumps the version and adds an upcaster; a
-   change that no transformation can bridge retires the old event type for a new one.
+4. **Structural changes are versioned**: When weak schema cannot express a
+   change (a type change, a newly required field), you bump the version and add
+   an upcaster. When no transformation can convert the old payload, you retire
+   the old event type and create a new one.
 
 ---
 
@@ -81,7 +83,7 @@ the behavior of events written before the field existed:
 
 Old events deserialize successfully: `discount_code` is `None`, `channel` is
 `"web"`. Consumers that don't know about the new fields ignore them. Consumers
-that do know about them handle `None` / `"web"` as the legacy case.
+that do know about them treat `None` / `"web"` as the legacy case.
 
 **Rules for adding fields:**
 
@@ -98,8 +100,8 @@ When a new business operation is introduced, create a new event type:
 --8<-- "patterns/event-versioning-and-evolution/003.py:new_type"
 ```
 
-New event types don't affect existing consumers. Consumers that don't handle
-`OrderGiftWrapped` ignore it.
+Existing consumers keep working when you add a new event type. Consumers that
+don't handle `OrderGiftWrapped` ignore it.
 
 ### Widening Field Types
 
@@ -115,8 +117,8 @@ status = String(choices=["pending", "shipped"])
 status = String(choices=["pending", "shipped", "returned", "refunded"])
 ```
 
-Old events still match. New events use the expanded set. Consumers should
-already handle unknown values gracefully.
+Old events still match. New events use the expanded set of choices. Consumers
+should already process unknown values without failing.
 
 ### Renaming a Field
 
@@ -140,10 +142,10 @@ name may still be read.
 A rename only stays safe when the field type is unchanged: renaming *and*
 changing the type (say `String` to `Integer`) is still breaking, because an
 old payload's value cannot satisfy the new type. The checker reports that as a
-`field_type_changed` change; handle the type change with an upcaster. A
-`Decimal` field renamed with a lower or newly added `precision`, or a different
-`scale`, is breaking the same way. So is a `Dict` or `List` field renamed with
-a value type that was added, changed or removed.
+`field_type_changed` change. Write an upcaster to convert the old value to the
+new type. A `Decimal` field renamed with a lower or newly added `precision`, or
+a different `scale`, is breaking the same way. So is a `Dict` or `List` field
+renamed with a value type that was added, changed or removed.
 
 ---
 
@@ -169,8 +171,8 @@ The aggregate now raises `OrderPlacedV2`. Consumers must handle both types:
 **When to use:** Significant structural changes, changed semantics, new required
 fields whose value cannot be computed from historical data, or a rename bundled
 with one of those. A pure rename uses `renamed_from` and needs no new event type.
-A required field whose value is computable from the old payload is a Rung 2
-upcaster case.
+When you can compute a required field's value from the old payload, use an
+upcaster (Rung 2 of the schema-evolution ladder).
 
 #### Marking the old event deprecated
 
@@ -183,19 +185,20 @@ Once the aggregate raises the new event, mark the old one deprecated and point
 ```
 
 The old class stays registered so historical events keep deserializing, but
-two things now flag its continued use:
+Protean now flags its continued use in two ways:
 
 - **Raising it warns**: If code still calls `raise_(OrderPlaced(...))`, Protean
   emits a `ProteanDeprecationWarning` naming the successor. The warning fires
-  **once per event type**, not once per instance, so a hot path is nudged
-  without flooding the logs.
+  **once per event type** and not once per instance, so code that raises the
+  event often gets one warning and does not fill the logs with repeats.
 - **`protean check` reports it**: The `DEPRECATED_ELEMENT` diagnostic names the
-  successor (`superseded by \`OrderPlacedV2\``), and `protean ir diff` treats
-  removing it before its `removal` version as a premature (breaking) removal.
+  successor (`superseded by \`OrderPlacedV2\``). `protean ir diff` treats
+  removing the old event before its `removal` version as a premature
+  (breaking) removal.
 
-`superseded_by` is documentation-only: it accepts an Event class or a name
-string and is never resolved to a link, so pointing at an event in another
-bounded context is fine.
+`superseded_by` is documentation-only. It accepts an Event class or a name
+string, and Protean never resolves it to a link, so you can point it at an
+event in another bounded context.
 
 ### Strategy 2: Upcasting on Read
 
@@ -237,9 +240,9 @@ Design consumers to be tolerant of fields an event may not carry:
 --8<-- "patterns/event-versioning-and-evolution/009.py:handler"
 ```
 
-The consumer handles whatever fields are present and provides sensible defaults
-for missing ones. This is pragmatic but can lead to scattered default-handling
-logic.
+The consumer reads whatever fields are present and provides sensible defaults
+for missing ones. This is pragmatic but can lead to scattered
+default-handling logic.
 
 **When to use:** Consumers that don't require strict schemas (analytics,
 logging, monitoring). Not suitable for consumers that need precise data
@@ -253,9 +256,9 @@ current event no longer declares, opt into **lenient deserialization**. Set
 `@domain.event(lenient=True)`); the deserializer then drops unknown fields
 (recording their names in the message metadata) instead of raising
 `DeserializationError`. It is **opt-in**: the default is strict, so a typo or
-genuine schema drift still fails loudly. Reach for lenience only on the read
-path for legacy data; for *structural* evolution, an upcaster is the precise
-tool.
+genuine schema drift still fails loudly. Use lenient deserialization only on
+the read path for legacy data; for *structural* evolution, an upcaster is the
+precise tool.
 
 **When to use:** Reading old payloads that carry since-removed fields, where no
 upcaster exists. Not a substitute for upcasting when a value needs transforming.
@@ -276,7 +279,7 @@ This simplifies some evolution scenarios but creates others:
 
 **Benefits:**
 
-- Fact events always match the aggregate's current schema
+- Each fact event matches the aggregate's schema at the time Protean raises it
 - No manual event class maintenance
 - Projections that mirror the aggregate get updates automatically
 
@@ -291,7 +294,7 @@ This simplifies some evolution scenarios but creates others:
 - Treat fact events as eventually-consistent snapshots, not as precise
   historical records
 - Use delta events for precise historical semantics
-- Always add fields to aggregates with defaults when using fact events
+- When you use fact events, give every new aggregate field a default
 
 ---
 
@@ -329,9 +332,10 @@ exception to this rule; a single stored event is never edited in place.
 
 When you deploy a schema change, existing events in the stream remain
 unchanged. New events use the new schema. The stream contains a mix of old
-and new schemas. Consumers must handle both. This is the normal deployment path;
-a deliberate operator migration (see [Migration Strategies](#migration-strategies))
-is the one thing that rewrites existing events.
+and new schemas. Consumers must handle both. A mixed stream is the normal
+result of a deployment. A deliberate operator migration (see
+[Migration Strategies](#migration-strategies)) is the one thing that rewrites
+existing events.
 
 ### Snapshots and Schema Changes
 
@@ -368,12 +372,13 @@ patterns:
 
 ## Migration Strategies
 
-When an upcaster chain has grown long enough that maintaining it costs more than
-it saves, the answer is to rewrite the stored events once, so no upcaster runs on
-every read. This is the top rung of the [schema-evolution
-ladder](../adr/0040-schema-evolution-ladder.md). Both tactics below rewrite the
-contents of an event store, which is migration work, so Protean leaves them to
-operators and does not build them into core.
+An upcaster chain can grow long enough that maintaining it costs more than it
+saves. At that point, rewrite the stored events once, so no upcaster runs on
+every read. A one-time rewrite is the top rung of the
+[schema-evolution ladder](../adr/0040-schema-evolution-ladder.md), the ordered
+list of evolution strategies. The copy-transform pattern and in-place
+transformation both rewrite the contents of an event store. That is migration
+work, so Protean leaves both to operators and does not build them into core.
 
 ### The Copy-Transform Pattern
 
@@ -385,16 +390,17 @@ For large schema changes, create a new stream with transformed events:
 4. Switch consumers to the new stream
 5. Keep the old stream for audit purposes
 
-This is a heavy operation but provides a clean break from historical schemas.
+Copy-transform rewrites every event in the stream, so it is costly. The new
+stream then holds no events in historical schemas.
 
 ### In-Place Transformation
 
-In-place transformation rewrites the events in the existing stream to the current
-schema and retags them with the current type and version, so a rewritten event no
-longer takes the upcast path on read. It keeps the stream name and skips the
-consumer cutover that copy-transform needs, and it loses the original payloads
-unless you archive them first. Reach for it when the old schema has no audit value
-and the stream name must stay stable.
+In-place transformation rewrites the events in the existing stream to the
+current schema. It also retags them with the current type and version, so a
+rewritten event no longer goes through upcasting on read. It keeps the stream
+name and skips the consumer cutover that copy-transform needs. But it loses the
+original payloads unless you archive them first. When the old schema has no
+audit value and the stream name must stay stable, use in-place transformation.
 
 ### The Dual-Write Transition
 
@@ -500,7 +506,7 @@ create a new event type. The Decision Guide below lists the routes.
 
 ## Decision Guide
 
-The ladder at a glance:
+This diagram shows the schema-evolution ladder:
 
 --8<-- "diagrams/schema-evolution-ladder.md"
 
@@ -545,7 +551,7 @@ Semantics never change. When in doubt, create a new event type.
 
     **Guides:**
 
-    - [Evolving Events Over Time](../guides/evolving-events.md): The how-to companion: the end-to-end evolution workflow walked with one running example.
+    - [Evolving Events Over Time](../guides/evolving-events.md): The how-to guide for this page, which follows one running example through the end-to-end evolution workflow.
     - [Event Upcasting](../guides/consume-state/event-upcasting.md): The upcaster mechanism in depth.
     - [Events](../guides/domain-definition/events.md): Event structure, metadata, and versioning reference.
 

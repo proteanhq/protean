@@ -11,24 +11,25 @@
 ## Context
 
 `@handle` wraps every handler invocation in a `UnitOfWork`
-(`src/protean/utils/mixins.py`), and there is no way to influence that. Since
-ADR-0027 the Unit of Work is one real database transaction, so a handler that
-calls an external system holds row locks and a pooled connection for the length
-of that call. Version (OCC) and transient retry re-run the whole handler body, so
-a retry re-issues the call.
+(`src/protean/utils/mixins.py`), and there is no way to turn that wrapping off
+or change it. Since ADR-0027 the Unit of Work is one real database transaction,
+so a handler that calls an external system holds row locks and a pooled
+connection for the length of that call. Version (OCC) and transient retry
+re-run the whole handler body, so a retry re-issues the call.
 
 A request came in for `@handle(SomeEvent, unit_of_work=False)`: run the handler
 with no wrapping Unit of Work so it can own its own transaction boundaries and
-commit sub-units independently. Working through the cases showed the request was
-pointing at something real and prescribing the wrong fix, and that most of what
-it asked for either already works or should not be built.
+commit sub-units independently. We worked through the cases and found that the
+request named a real problem but asked for the wrong fix. Most of what it asked
+for either already works or should not be built.
 
 Three facts drove the decision:
 
-1. **The Unit of Work is lazy.** `start()` opens no session. The session, and on
-   SQLAlchemy the real `BEGIN`, appears at the first repository access, confirmed
-   on the memory and SQLite providers. A handler method that persists nothing
-   already runs with no transaction, by accident of the implementation.
+1. **The Unit of Work is lazy.** `start()` opens no session. The session, and
+   on SQLAlchemy the real `BEGIN`, appears at the first repository access. We
+   confirmed this on the memory and SQLite providers. A handler method that
+   persists nothing already runs with no transaction, by accident of
+   the implementation.
 
 2. **Handler methods are already transactionally independent.** For event
    handlers and projectors, `_dispatch_handlers` loops over every matching
@@ -36,14 +37,15 @@ Three facts drove the decision:
    three methods is already three independent transactions.
 
 3. **They are not independent in failure.** The loop propagates the first
-   exception, so sibling methods are skipped, and `_handlers` is a
-   `defaultdict(set)`, so which ones get skipped is arbitrary. With three methods
-   where the second fails, one sibling ran and one never did.
+   exception, so it skips the sibling methods that have not run yet.
+   `_handlers` is a `defaultdict(set)`, so the set of skipped siblings is
+   arbitrary. With three methods where the second fails, one sibling ran and
+   one never did.
 
 Spring models this problem as a propagation enum (`REQUIRED`, `REQUIRES_NEW`,
-`NOT_SUPPORTED`, `NESTED`) and enforces guardrails, raising when a transactional
-event listener picks a propagation that cannot work. Axon makes the Unit of Work
-a lifecycle with phases and has components register work into a phase, with no
+`NOT_SUPPORTED`, `NESTED`). Spring raises an error when a transactional event
+listener picks a propagation that cannot work. Axon makes the Unit of Work a
+lifecycle with phases and has components register work into a phase, with no
 opt-out. Django offers `on_commit()`, `atomic(durable=True)` and
 `non_atomic_requests`, and its `on_commit` callbacks are lost on a crash.
 NServiceBus is explicit that its outbox covers outgoing messages only and does not
@@ -52,7 +54,7 @@ in history so replay returns the recorded value instead of re-executing.
 
 ## Decision
 
-**A handler method either persists or talks to the outside world. Not both.**
+**A handler method either persists or calls an external system. Not both.**
 
 Around it:
 
@@ -88,25 +90,26 @@ Around it:
   model this ADR states, and it gets fixed. Among one handler class's methods,
   two failures are excluded from that, for reasons that come from the machinery
   rather than the principle. An `ExpectedVersionError` propagates at once.
-  Under asynchronous processing the conflict dooms the message, which is
-  redelivered, and every sibling runs again. Under synchronous processing
-  nothing redelivers, so the methods after the conflict do not run for that
-  event. (The conflicting method's own retry sits inside `@handle` and has
-  already run out by this point.) A `BaseException` that is not an `Exception`
-  also stops dispatch. On both paths the failures already collected are
-  attached to the raised exception as a note and logged, since only the raised
-  exception propagates, so nothing downstream would otherwise report them.
+  Under asynchronous processing, the conflict fails the whole message and the
+  engine redelivers it. Every sibling then runs again. Under synchronous
+  processing nothing redelivers, so the methods after the conflict do not run
+  for that event. (The conflicting method's own retry runs inside `@handle`,
+  and it has already used all its attempts by this point.) A `BaseException`
+  that is not an `Exception` also stops dispatch. Only the raised exception
+  propagates, so nothing downstream would report the failures already
+  collected. On both paths, Protean therefore attaches those failures to the
+  raised exception as a note and logs them.
 
-  *Amended (October 2026): across handler classes under synchronous
-  processing, an `ExpectedVersionError` is collected like any other failure,
-  and the command's commit reports it as a `TransactionError` with the conflict
-  as its `__cause__`. The only exclusion left across handler classes is a
+  *Amended (October 2026): across handler classes under synchronous processing,
+  Protean collects an `ExpectedVersionError` like any other failure. The
+  command's commit then reports it as a `TransactionError` with the conflict as
+  its `__cause__`. The only exclusion left across handler classes is a
   `BaseException` that is not an `Exception`. The first version of this
   decision let the conflict stop the drain and reach the commit unchanged.
-  That made the command's version retry run the command again after its writes
-  were already saved, so it saved them twice. An event handler's or projector's
-  own retry inside `@handle` retries its conflict when version retry is
-  enabled. A process manager calls its methods without that wrapper, so its
+  As a result, the command's version retry ran the command again after its
+  writes were already saved. The retry saved those writes twice. When version
+  retry is enabled, `@handle` retries a conflict in an event handler or
+  projector. A process manager calls its methods without that wrapper, so its
   conflict is not retried.*
 
 - **Process managers are out of scope**: `BaseProcessManager` overrides
@@ -117,10 +120,10 @@ Around it:
 
 - **No ordering between handlers for the same event**: If two reactions must
   happen in order, the second is reacting to what the first did, so it subscribes
-  to an event the first raises. An ordering option would bury that dependency in
-  configuration where nothing at the call site reveals it. An event chain puts it
-  in the code, where correlation and causation IDs already trace it and each step
-  can be tested on its own.
+  to an event the first raises. An ordering option would put that dependency in
+  configuration, where nothing at the call site shows it. An event chain puts
+  it in the code, where correlation and causation IDs already trace it and each
+  step can be tested on its own.
 
 ### The shapes this produces
 
@@ -171,8 +174,8 @@ class PartnerNotifier:
 published once that transaction commits, so `notify_partner` runs after the write
 is durable. The value it needs travels on the event.
 
-The shape to avoid is one method doing both, where the external call sits inside
-the transaction that the repository access opened:
+The shape to avoid is one method doing both, where the external call runs
+inside the transaction that the repository access opened:
 
 ```python
 @handle(OrderPlaced)
@@ -224,11 +227,12 @@ event handlers (ADR-0016), and `asynchronous=True` already means "outside my
 transaction". Called outside any unit of work, the same call still handles the
 command at once and returns its result.
 
-So a version conflict on the record step retries the record step alone, and the
-send runs once. When the record step still fails, or its deadline passes before
-it runs, the caller's commit raises `TransactionError`. It never raises
-`ExpectedVersionError`, which would make the caller's own version retry run the
-send again. A rollback of the caller means the command never runs.
+So when a version conflict occurs on the record step, Protean retries the
+record step alone. The send runs once. When the record step still fails, or its
+deadline passes before it runs, the caller's commit raises `TransactionError`.
+It never raises `ExpectedVersionError`, which would make the caller's own
+version retry run the send again. A rollback of the caller means the command
+never runs.
 
 A `TransactionError` from the record step still reaches whatever runs the
 caller. Under `event_processing = "async"`, the engine then delivers the event
@@ -256,14 +260,15 @@ outbox for outbound messages, `idempotent=True` for redelivery, event chains for
 sequencing, and separate handler classes for full independence with their own
 subscriptions and checkpoints.
 
-The lazy Unit of Work already behaves as the guarantee requires, and a regression
-test will lock it in. The advisory diagnostic does not exist yet. The
-sibling-skipping defect is fixed for event handler and projector methods, and for
-sibling handler classes under synchronous dispatch, which brings sync into line
-with async: "independent reactions to one fact are independent in failure" now
-holds for event handlers and projectors in both processing modes, apart from the
-two exclusions above. The same fan-out problem remains at two sites (process
-managers' own dispatch loop and broker subscribers) and is tracked separately.
+The lazy Unit of Work already behaves as the guarantee requires, and a
+regression test will check that behavior. The advisory diagnostic does not
+exist yet. The sibling-skipping defect is fixed for event handler and projector
+methods, and for sibling handler classes under synchronous dispatch, so sync
+now matches async. In both processing modes, "independent reactions to one fact
+are independent in failure" now holds for event handlers and projectors, apart
+from the two exclusions under "Siblings are independent in failure". The same
+sibling-skipping defect remains at two sites (process managers' own dispatch
+loop and broker subscribers) and is tracked separately.
 
 ## Consequences
 
@@ -295,11 +300,12 @@ Negative:
 - **`@handle(Event, unit_of_work=False)`**, the original request. Rejected on
   granularity and on safety. It is Spring's `NOT_SUPPORTED` applied to a whole
   handler rather than a block, so it switches off OCC retry and the idempotency
-  policy for everything else the handler does. Worse, delivery is at-least-once,
-  so a handler that commits three sub-units and dies on the fourth is redelivered
-  and re-applies the first three, turning a visible full rollback into a silent
-  duplicate. Django's `non_atomic_requests` is the closest precedent, and it is
-  safe because HTTP requests are not redelivered. Messages are.
+  policy for everything else the handler does. Worse, delivery is
+  at-least-once: when a handler commits three sub-units and fails on the
+  fourth, the engine redelivers the message. The handler re-applies the first
+  three, and a visible full rollback becomes a silent duplicate. Django's
+  `non_atomic_requests` is the closest precedent, and it is safe because HTTP
+  requests are not redelivered. Messages are.
 
 - **A `prepare=` phase on `@handle`**, running before the transaction and not
   replayed on retry. Rejected because the boundary is too thin to explain and it
@@ -308,9 +314,10 @@ Negative:
 
 - **A journaled side effect** in the style of Temporal's `SideEffect`, recording a
   result against `(message_id, key)` so retries and redeliveries read it back.
-  Rejected as complexity in the wrong place. It exists only to make the
-  persist-and-call-out shape survivable, and the remote system's idempotency key
-  already solves that at the layer that can guarantee it.
+  Rejected as complexity in the wrong place. The journal would exist only to
+  make the persist-and-call-out shape safe to retry and redeliver. The remote
+  system's idempotency key already solves that problem, and only the remote
+  system can guarantee it.
 
 - **A suspend scope**, a context manager running a block with no transaction.
   Rejected as unnecessary. The "no repository access, no transaction" guarantee gives

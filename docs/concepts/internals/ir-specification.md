@@ -14,7 +14,7 @@ The IR answers three kinds of questions:
 - **Infrastructure**: What repositories persist which aggregates? What database
   models map them?
 
-The IR never captures **logic**, what happens inside method bodies, how
+The IR never captures **logic**: what happens inside method bodies, how
 invariants are evaluated, or what transformations handlers perform.
 
 ---
@@ -22,19 +22,19 @@ invariants are evaluated, or what transformations handlers perform.
 ## Philosophy & Principles
 
 **Topology, not logic.**
-The IR captures *what* and *how connected*, never *what happens inside*. When
-the IR says an aggregate has a post-invariant named `order_must_have_items`, it
-records the fact that this guard exists and when it runs, not what it checks.
+The IR captures *what* and *how connected*, never *what happens inside*. For an
+aggregate with a post-invariant named `order_must_have_items`, the IR records
+that the guard exists and when it runs. It leaves out what the guard checks.
 
-**Declare, don't detect.**
-When the IR needs information not naturally introspectable (like whether an
-event is published), the solution is explicit developer declaration via `Meta`
-options, never static analysis of Python source.
+**Declare, don't detect.** Some information the IR needs cannot be found by
+introspection, such as whether an event is published. The developer declares
+that information explicitly through `Meta` options, and the IR does not detect
+it by static analysis of Python source.
 
 **Aggregate-centric, flow-aware.**
-The primary organization mirrors DDD's aggregate cluster concept. Cross-cutting
-concerns (domain services, process managers, subscribers) get explicit treatment
-in a separate section.
+The primary organization mirrors DDD's aggregate cluster concept. The IR places
+cross-cutting concerns (domain services, process managers, subscribers) in a
+separate section.
 
 **Deterministic and diffable.**
 The same domain model always produces byte-identical IR JSON. This is
@@ -42,8 +42,9 @@ non-negotiable for git diffing, compatibility checking, and staleness detection.
 
 **One document, one bounded context.**
 A single IR document represents one `Domain` instance = one bounded context.
-Multiple aggregates within one bounded context is normal DDD, `Order` and `Payment`
-aggregates in the same domain are clusters within one BC.
+Multiple aggregates within one bounded context are normal in DDD. For example,
+`Order` and `Payment` aggregates in the same domain are two clusters within one
+bounded context (BC).
 
 **Lossless within scope.**
 Every piece of structural and behavioral metadata available on the composite
@@ -109,11 +110,11 @@ The `ir_version` field uses semantic versioning (`MAJOR.MINOR.PATCH`):
 ### Version discipline in tooling
 
 `protean ir check` compares the stored baseline's `ir_version` against the
-current schema version before comparing checksums. A baseline built against a
-different schema version is reported as a **version mismatch** (exit code 3),
-distinct from stale content (exit code 1), because checksums are not comparable
-across schema versions. Regenerate the baseline against the current schema to
-clear it.
+current schema version before comparing checksums. `protean ir check` reports a
+baseline built against a different schema version as a **version mismatch**
+(exit code 3). A version mismatch is distinct from stale content (exit code 1),
+because checksums are not comparable across schema versions. Regenerate the
+baseline against the current schema to clear it.
 
 ---
 
@@ -206,8 +207,8 @@ are excluded. The IR captures structural identity, not deployment topology.
 
 ## Aggregate Clusters
 
-The `clusters` section is the heart of the IR. Each key is an aggregate's FQN,
-and the value contains the complete cluster.
+The `clusters` section is the main section of the IR. Each key is an
+aggregate's FQN, and the value contains the complete cluster.
 
 ### Cluster Structure
 
@@ -535,9 +536,9 @@ Process managers extend the handler format with lifecycle metadata:
 
 The IR does not capture per-command event causality. Events are raised within
 aggregate methods, and handler logic is conditional. A static declaration
-cannot capture this. Consumers can reconstruct the flow graph by combining
-command→handler, handler→aggregate, aggregate→events, and event→handler
-mappings.
+cannot capture which events a given command causes. Consumers can reconstruct
+the flow graph by combining command→handler, handler→aggregate,
+aggregate→events, and event→handler mappings.
 
 ---
 
@@ -638,8 +639,8 @@ An enricher is a function the framework calls on every message or save: an
 aggregate enricher sets fields on an aggregate just before it is persisted, and
 a command or event enricher adds keys to a message's metadata. Each entry is the
 enricher's qualified name (`module.qualname`). A `functools.partial` is
-recorded as `functools.partial(module.qualname)` of the function it wraps, and
-any other callable object without its own `__qualname__` is named by its class.
+recorded as `functools.partial(module.qualname)` of the function it wraps. Any
+other callable object without its own `__qualname__` is named by its class.
 
 ```json
 {
@@ -660,8 +661,8 @@ any other callable object without its own `__qualname__` is named by its class.
   reported
 - Domain traversal loads the root directory's files first, then each
   subdirectory in name order, with the files in each directory sorted by name.
-  So enrichers registered by traversed modules land in the same order on every
-  machine
+  As a result, traversed modules register their enrichers in the same order on
+  every machine
 
 ---
 
@@ -830,8 +831,8 @@ references are valid. A VO without `part_of` appears in the cluster of the
 aggregate or entity that holds it in a field, including a list or dict field.
 When no aggregate or entity holds it, the VO appears in the cluster of a
 command or event that holds it in a single-value field. A list or dict field on
-a command or event does not place it. A VO that none of these hold appears only
-in the elements index.
+a command or event does not place it. If no aggregate, entity, command or event
+places the VO, it appears only in the elements index.
 
 ### Diagnostics in Checksum
 

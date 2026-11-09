@@ -9,11 +9,11 @@
 ## Context
 
 Before the 5.1 hardening work, Protean had no built-in health probes. Operators
-deploying to Kubernetes wrote their own liveness and readiness checks,
-typically a Python script that imported the domain and called `broker.ping()`,
-and exposed it through a sidecar or a manual HTTP server. The pattern in
-`docs/guides/server/production-deployment.md` showed this exact workaround.
-Three problems made this approach untenable at scale:
+deploying to Kubernetes wrote their own liveness and readiness checks. A
+typical check was a Python script that imported the domain and called
+`broker.ping()`, and operators exposed it through a sidecar or a manual HTTP
+server. The pattern in `docs/guides/server/production-deployment.md` showed
+this exact workaround. Three problems made this approach untenable at scale:
 
 1. **No uniform probe contract**: Each team invented its own probe
    semantics. Some checked only broker connectivity; some checked every
@@ -65,44 +65,45 @@ the async engine by default.
 
 Both implementations share readiness logic through `protean.utils.health`,
 which exposes `check_providers`, `check_brokers`, `check_event_store`,
-and `check_caches`. The async-engine probe adds the `subscriptions`
-block on top; the FastAPI router does not. Not because it couldn't
-(`collect_subscription_statuses()` walks the registry and works fine
-without a running engine), but because an API pod's readiness should
-not depend on how far behind a worker's consumers are. Those are
-separate deployments with separate failure modes, and a web pod that
-can serve requests is ready even when a worker is backed up. Only
-`circuit_state` and `total` are genuinely engine-only.
+and `check_caches`. The async-engine probe also reports the `subscriptions`
+block, but the FastAPI router does not. The FastAPI router could report the
+block, since `collect_subscription_statuses()` walks the registry and works
+without a running engine. The router leaves it out because an API pod's
+readiness should not depend on how far behind a worker's consumers are. Those
+are separate deployments with separate failure modes, and a web pod that can
+serve requests is ready even when a worker is backed up. Only `circuit_state`
+and `total` are genuinely engine-only.
 
 **Transport choice: asyncio over aiohttp/ASGI.**
 
 The engine's probe server uses `asyncio.start_server` directly, not `aiohttp`
-or an ASGI framework. Health probes are the simplest possible HTTP workload (a
-few fixed routes returning small JSON payloads) and bringing in an HTTP
-framework for a probe server inflates the dependency graph of a package that is
+or an ASGI framework. Health probes are the simplest possible HTTP workload: a
+few fixed routes that return small JSON payloads. An HTTP framework for a probe
+server would add to the dependency graph of a package that is
 deliberately minimal.
 
 **Readiness during shutdown:**
 
 `/readyz` returns `503` the moment `Engine.shutdown()` sets
 `shutting_down = True`, well before subscriptions stop or handlers
-drain. This is the "graceful drain" signal to load balancers, pull the pod out
-of rotation first, then let in-flight work complete on the old pod.
+drain. This `503` is the "graceful drain" signal to load balancers. A load
+balancer pulls the pod out of rotation first, and in-flight work then completes
+on the old pod.
 
 **Liveness during shutdown:**
 
-`/healthz` keeps returning `200` while the engine drains. The
-asymmetry is deliberate: liveness failure triggers a container
-restart, which would kill the drain mid-flight. Only the event loop
-itself being unresponsive should fail liveness.
+`/healthz` keeps returning `200` while the engine drains. The asymmetry is
+deliberate: a liveness failure triggers a container restart, which would stop
+the drain before it finishes. Only the event loop itself being unresponsive
+should fail liveness.
 
 ## Consequences
 
 **Positive:**
 
-- Every Protean deployment gets Kubernetes-compatible probes without
-  user code. The `docs/guides/server/production-deployment.md`
-  workaround goes away.
+- Every Protean deployment that runs the async engine gets
+  Kubernetes-compatible probes without user code. Operators no longer need the
+  `docs/guides/server/production-deployment.md` workaround.
 - The async engine is visible to service meshes and load balancers
   for the first time. Rolling deploys drain cleanly.
 - Liveness and readiness have correct asymmetric behaviour during
@@ -119,11 +120,11 @@ itself being unresponsive should fail liveness.
 - Port `8080` is opened by default. Operators running other services
   on `8080` (local Jenkins, another app's admin port) must either
   move Protean via `[server.health] port = ...` or disable the
-  server. This is the most common "gotcha" adopters will hit.
-- The engine probe's HTTP implementation is hand-rolled. It is
-  deliberately minimal (no keep-alive, no chunked transfer, no
-  compression) but it is our responsibility to maintain. A future
-  need for HTTPS or HTTP/2 on the probe port would force a rewrite.
+  server. This port conflict is the most common problem adopters will hit.
+- We wrote the engine probe's HTTP implementation ourselves, without an HTTP
+  library. It is deliberately minimal (no keep-alive, no chunked transfer, no
+  compression) but it is our responsibility to maintain. If we later need HTTPS
+  or HTTP/2 on the probe port, we will have to rewrite the probe server.
 - Readiness checks call `provider.is_alive()`, `broker.ping()`,
   `cache.ping()`, and the event store's equivalent on every
   `GET /readyz`. Probes every 5 seconds add ping load to every
@@ -132,29 +133,27 @@ itself being unresponsive should fail liveness.
   it is worth sizing.
 - The `subscriptions` block queries infrastructure once per
   subscription (Redis `XLEN`/`XINFO`, event-store reads, outbox
-  counts). That is far heavier than the adapter pings above, and
-  unlike them it can hang, so **it is not collected on the probe
-  path at all**: a background task refreshes it every two seconds
-  and the probe reads the result out of memory. Answering `/readyz`
-  therefore stays as cheap as it was when the field was a bare
-  integer. A deployment with very many subscriptions pays the
-  collection cost once per interval regardless of probe frequency.
-  This is deliberately the opposite trade from the adapter pings,
+  counts). These queries cost far more than the adapter pings above, and unlike
+  the pings they can hang. So **the block is not collected on the probe path at
+  all**: a background task refreshes it every two seconds, and the probe reads
+  the result from memory. Answering `/readyz` therefore stays as cheap as it
+  was when the field was a bare integer. A deployment with very many
+  subscriptions pays the collection cost once per interval regardless of probe
+  frequency. This is deliberately the opposite trade from the adapter pings,
   which still run inline: those decide the verdict, so they must be
   current; the subscription block only informs, so it may be stale.
 - Reporting lag without acting on it is deliberate (see
   "Per-subscription readiness" below), so `/readyz` alone will not
-  page anyone about a stuck subscription. Alerting still belongs on
+  page anyone about a stuck subscription. Alerts still have to come from
   the metrics.
-- The block reports what the engine actually runs. Three earlier
-  gaps in `collect_subscription_statuses()` were closed in #1288:
-  outbox processors for `outbox.external_brokers` now get a row,
-  providers with `managed = false` no longer get one for a processor
-  the engine never started, and a partitioned (`sequential_by`)
-  category sums lag across its per-key partition streams rather than
-  reading an empty base stream. `total` and `len(details)` can still
-  differ, since one partitioned process manager is a single engine
-  subscription but one row per stream category.
+- The block reports what the engine actually runs. A follow-up fix (#1288)
+  closed three earlier gaps in `collect_subscription_statuses()`. Outbox
+  processors for `outbox.external_brokers` now get a row, providers with
+  `managed = false` no longer get one for a processor the engine never started,
+  and a partitioned (`sequential_by`) category sums lag across its per-key
+  partition streams instead of reading an empty base stream. `total` and
+  `len(details)` can still differ, since one partitioned process manager is a
+  single engine subscription but one row per stream category.
 
 ## Alternatives Considered
 
@@ -174,35 +173,35 @@ socket layer still accepts connections. HTTP with a response body is the
 standard Kubernetes probe contract and signals something meaningful.
 
 **Mounting probes on an existing API app.** Considered. `create_health_router`
-does exactly this for FastAPI users. For the async engine, which has
-no HTTP surface otherwise, a standalone probe server was the simpler
-choice than mandating FastAPI as a runtime dependency.
+does exactly this for FastAPI users. The async engine serves no other HTTP
+endpoints, so a standalone probe server was simpler than making FastAPI a
+required runtime dependency.
 
 **One combined probe with query-parameter liveness vs readiness.**
 Rejected. Kubernetes expects distinct paths with distinct behaviours
 (`livenessProbe` restarts the container; `readinessProbe` pulls it
-from rotation). Conflating them in one endpoint obscures the
-semantic difference and invites misconfiguration.
+from rotation). If one endpoint serves both probes, operators can miss the
+difference between them and configure the probes wrongly.
 
 **Per-subscription readiness.** Originally deferred in favour of a bare
 count; **adopted in 0.17 (#832)** as a reported-but-not-enforced block.
-`/readyz` now carries per-subscription lag, pending count, DLQ depth,
-status, and circuit-breaker state, sourced from the same
+`/readyz` now carries per-subscription lag, pending count, DLQ depth, status,
+and circuit-breaker state. These values come from the same
 `collect_subscription_statuses()` that feeds the
-`protean.subscription.consumer_lag` and
-`protean.subscription.pending_messages` gauges and the
-`protean subscriptions status` CLI. No new metric names were introduced.
+`protean.subscription.consumer_lag` and `protean.subscription.pending_messages`
+gauges and the `protean subscriptions status` CLI. No new metric names
+were introduced.
 
-The block is **informational: it never changes the probe's verdict.**
-Letting lag flip readiness to `503` was considered and rejected. A
-backlog is a normal, self-correcting condition (a burst of traffic, a
-replay, a slow downstream), and it is precisely when a consumer is
-behind that you least want Kubernetes to pull it out of rotation and
-stop it draining. An open circuit breaker is treated the same way: one
-handler is paused, the engine is still healthy. Readiness answers "can
-this pod process messages?", which stays true under lag. Alerting on
-lag remains the metrics' job; the block exists so an operator debugging
-a pod can see *which* subscription is behind without leaving the probe.
+The block is **informational: it never changes the probe's verdict.** We
+considered letting lag switch readiness to `503`, and we rejected it. A backlog
+is a normal, self-correcting condition (a burst of traffic, a replay, a slow
+downstream), and it is precisely when a consumer is behind that you least want
+Kubernetes to pull it out of rotation and stop it draining. An open circuit
+breaker is treated the same way: one handler is paused, the engine is still
+healthy. Readiness means "this pod can process messages", which stays true
+under lag. Operators should alert on lag from the metrics. The block lets an
+operator debugging a pod see *which* subscription is behind from the probe
+response alone.
 
 ## References
 
@@ -210,5 +209,5 @@ a pod can see *which* subscription is behind without leaving the probe.
   wiring and Kubernetes `terminationGracePeriodSeconds`.
 - `docs/reference/server/hardening.md`: Probe response bodies, status
   codes, and configuration reference.
-- ADR-0011, Engine shutdown and resource lifecycle contract (the shutdown
-  sequence that `/readyz` signals during).
+- ADR-0011, Engine shutdown and resource lifecycle contract: The shutdown
+  sequence during which `/readyz` returns `503`.
