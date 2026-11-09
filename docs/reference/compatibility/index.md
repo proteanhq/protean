@@ -21,7 +21,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Remove field from any persisted element | **Breaking** |
 | Remove a field deprecated past its removal version | Safe (expected removal) |
 | Remove a field from an event-sourced aggregate that declares the name `reserved` | Safe (`reserved`) |
-| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`), unless the rename also changes a `Dict` or `List` value type, or a `Decimal` field's precision or scale in a breaking way (see the rows below) |
+| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`), unless the rename also changes a `Dict` or `List` value type, or a `Decimal` field's precision or scale in a breaking way (see the rows below), or moves an event's Protobuf field number (see the `field_number_changed` row) |
 | Rename a field *and* change its type | **Breaking** (`field_type_changed`) |
 | Change field type | **Breaking** |
 | Raise or remove a `Decimal` field's `precision`, same `scale` | Safe (`field_precision_widened`) |
@@ -40,12 +40,17 @@ Protean classifies changes to persisted domain elements using these rules:
 | Point an event-sourced aggregate's identity at another field | **Breaking** (`identity_field_changed`) |
 | Drop an `@apply` handler while its event survives | **Breaking** (`apply_handler_removed`) |
 | Drop a name from an event-sourced aggregate's `reserved` | **Breaking** (`reservation_removed`) |
+| Add, remove or rename an event's field so that a field it keeps gets a different Protobuf field number, without a `__version__` bump | **Breaking** (`field_number_changed`). Protean numbers an event's Protobuf fields in sorted name order, and the numbers must not change within one `__version__`. To fix it, bump `__version__` and register an upcaster for the old version, which may return the payload unchanged. To land the change on purpose, see [Landing a deliberate breaking change](../../guides/compatibility-checking.md#landing-a-deliberate-breaking-change). |
 
 Most of these rules apply to every persisted element: aggregates, entities,
-value objects, commands, events, database models, and projections. Six rows are
-the exception: the last five, and the `reserved` field-removal row above them.
-They read attributes only an aggregate has, so they are checked on event-sourced
-aggregates and nowhere else.
+value objects, commands, events, database models, and projections. Seven rows
+are the exception. The five rows above the last one, and the `reserved`
+field-removal row, read attributes only an aggregate has, so they are checked on
+event-sourced aggregates and nowhere else. The last row, `field_number_changed`,
+is checked on events only. The check runs whether or not the project generates
+Protobuf schemas. A field added, removed or renamed on a command, aggregate,
+entity, value object or projection can still move that element's Protobuf field
+numbers, and the check does not report it.
 
 ### Decimal precision and scale
 

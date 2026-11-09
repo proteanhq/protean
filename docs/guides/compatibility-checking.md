@@ -237,6 +237,34 @@ breaking release.
 
 ---
 
+## Landing a deliberate breaking change
+
+Sometimes a breaking change is the right call, for example an event change
+that `protean ir diff` reports as `field_number_changed` when no stored or
+in-flight payload depends on the old numbers. To land it:
+
+1. Refresh the baseline so `.protean/ir.json` holds the change, with the
+   `--fix` staleness hook or by hand:
+
+    ```bash
+    protean ir show --domain myapp.domain --canonical > .protean/ir.json
+    ```
+
+2. Commit the change and the refreshed `.protean/ir.json` together, skipping
+   the compatibility hook for this one commit:
+
+    ```bash
+    SKIP=protean-check-compat git commit -m "Rename PointsEarned.amount to points"
+    ```
+
+3. Open the pull request. The `protean ir diff --base origin/main` CI step
+   fails on it, because `origin/main` still holds the old IR. The reviewer
+   reads the reported change and accepts that failure for this pull request.
+4. Merge the pull request. The baseline at `HEAD` now holds the change, so
+   later commits pass the hook and the CI step.
+
+---
+
 ## Using the CLI
 
 ### `protean ir check`

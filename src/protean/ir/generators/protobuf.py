@@ -30,11 +30,13 @@ Conventions:
 - Date/DateTime map to the well-known ``google.protobuf.Timestamp``, written
   ``.google.protobuf.Timestamp`` so a package with a ``google`` part cannot
   shadow it.
-- **Field numbers are assigned 1..N in sorted field-name order.** This is
-  deterministic, so re-generating the same schema always yields the same
-  numbers. (Adding a new field can shift the numbers of alphabetically-later
-  fields; preserving wire compatibility across such edits would need a persisted
-  number map, which is out of scope for schema *emission*.)
+- **Field numbers are assigned 1..N in sorted field-name order** (see
+  :func:`field_numbers`). Re-generating the same schema always yields the same
+  numbers. Adding, removing or renaming a field can move the numbers of the
+  fields that sort after it. An event's numbers are stable only within one
+  ``__version__``: ``protean ir diff`` reports a change that would move one as
+  breaking (``field_number_changed``). Numbers for every other element can move
+  when its fields change.
 - Output is deterministic and sorted.
 """
 
@@ -112,6 +114,15 @@ def _field_proto_type(
     return _scalar_proto_type(field), False
 
 
+def field_numbers(fields: dict[str, dict[str, Any]]) -> dict[str, int]:
+    """Return the proto3 field number of each field, keyed by field name.
+
+    Numbers run 1..N in sorted field-name order. The generator writes these
+    numbers, and the compatibility check compares them across two snapshots.
+    """
+    return {name: number for number, name in enumerate(sorted(fields), start=1)}
+
+
 def _message_body(
     name: str,
     fields: dict[str, dict[str, Any]],
@@ -120,7 +131,9 @@ def _message_body(
 ) -> list[str]:
     """Render a single proto3 ``message`` block as a list of lines."""
     lines = [f"message {name} {{"]
-    for number, (fname, fspec) in enumerate(sorted(fields.items()), start=1):
+    numbers = field_numbers(fields)
+    for fname, fspec in sorted(fields.items()):
+        number = numbers[fname]
         proto_type, repeated = _field_proto_type(fspec, resolve, referenced)
         is_required = fspec.get("required") or fspec.get("identifier")
 

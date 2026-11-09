@@ -56,8 +56,10 @@ def _build(
             {"__module__": "shop", "name": String(), **(order_fields or {})},
         )
     )
+    # ``account_id`` sorts before every field name these tests use, so no
+    # case moves a Protobuf field number and adds ``field_number_changed``.
     placed = type(
-        "Placed", (), {"__module__": "shop", "order_id": Identifier(), **fields}
+        "Placed", (), {"__module__": "shop", "account_id": Identifier(), **fields}
     )
     domain.event(placed, part_of=order, published=published, version=version)
     domain.init(traverse=False)
@@ -601,7 +603,7 @@ class Order:
 
 @domain.event(part_of=Order, published=True, version=1)
 class Placed:
-    order_id = Identifier()
+    account_id = Identifier()
     qty = String()
 """
 

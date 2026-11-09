@@ -53,9 +53,11 @@ named records referenced by fullname). `--format protobuf` emits proto3
 `{name}.v{version}.proto` messages with `optional`/`repeated` labels,
 `.google.protobuf.Timestamp` for dates, and `string` for a `Decimal` field.
 Protean assigns field numbers deterministically in sorted field-name order, so
-re-generating an *unchanged* schema is byte-identical. Adding a field renumbers
-alphabetically-later fields, so these numbers are for emission, not
-wire-compatible evolution. The Avro and Protobuf formats are compiler backends
+re-generating an *unchanged* schema is byte-identical. Adding, removing or
+renaming a field can move the numbers of the fields that sort after it. An
+event's field numbers are stable only within one `__version__`: `protean ir diff`
+reports a change that would move one as breaking (`field_number_changed`).
+Numbers for other elements can move when their fields change. The Avro and Protobuf formats are compiler backends
 for schema *emission*, and runtime binary encode/decode is out of scope.
 Protean does not carry field-level constraints (choices/enums, min/max) into
 either format.
