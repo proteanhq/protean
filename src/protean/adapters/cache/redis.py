@@ -6,7 +6,6 @@ from typing import Any
 import redis
 
 from protean.core.projection import BaseProjection
-from protean.infra.registry import caches
 from protean.port.cache import BaseCache, CacheCapabilities, TTLValue
 from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
@@ -209,8 +208,3 @@ class RedisCache(BaseCache):
         if remaining_ms < 0:
             raise ValueError(f"Unexpected PTTL value from Redis: {remaining_ms}")
         return float(remaining_ms) / 1000
-
-
-def register() -> None:
-    """Register RedisCache with Protean as the `redis` cache."""
-    caches.register("redis", "protean.adapters.cache.redis.RedisCache")

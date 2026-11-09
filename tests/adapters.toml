@@ -4,8 +4,8 @@
 # (src/protean/cli/test.py), and by the `Adapters` job in ci.yml. The guard
 # test tests/cli/test_adapter_manifest.py fails when a module under
 # src/protean/adapters/ is in no entry, when a test marked for a "touched"
-# adapter is outside that adapter's paths, or when a database, broker or
-# event-store entry leaves out the shared modules it loads through.
+# adapter is outside that adapter's paths, or when a database, broker,
+# event-store or cache entry leaves out the shared modules it loads through.
 #
 # Each [adapters.<name>] entry has:
 #
@@ -77,6 +77,7 @@ leg = "redis"
 services = ["redis"]
 paths = [
     "src/protean/infra/registry.py",
+    "src/protean/adapters/broker/__init__.py",
     "src/protean/adapters/broker/redis.py",
     "src/protean/server/subscription/partitioned_stream_subscription.py",
     "tests/adapters/broker/generic/",
@@ -91,6 +92,7 @@ leg = "redis"
 services = ["redis"]
 paths = [
     "src/protean/infra/registry.py",
+    "src/protean/adapters/broker/__init__.py",
     "src/protean/adapters/broker/redis_pubsub.py",
     "tests/adapters/broker/redis_pubsub/",
 ]
@@ -103,6 +105,7 @@ leg = "redis"
 services = ["redis"]
 paths = [
     "src/protean/infra/registry.py",
+    "src/protean/adapters/cache/__init__.py",
     "src/protean/adapters/cache/redis.py",
     "tests/adapters/cache/",
 ]

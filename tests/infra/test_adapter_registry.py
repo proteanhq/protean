@@ -3,6 +3,7 @@
 import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from importlib import import_module, metadata
 from importlib.metadata import EntryPoint, EntryPoints
 from typing import Any
 from unittest.mock import patch
@@ -251,15 +252,28 @@ class TestImportFailure:
         assert f"Failed to load {port.port_name} 'bad'" in message
         assert "NoSuchAdapter" in message
 
-    def test_path_without_a_module(self, port, empty):
-        empty.register("bad", "Adapter")
+    @pytest.mark.parametrize("class_path", ["Adapter", ".Adapter", ".rel.Adapter"])
+    def test_path_that_is_not_absolute_and_dotted(self, port, empty, class_path):
+        empty.register("bad", class_path)
 
         with pytest.raises(ConfigurationError) as exc_info:
             empty.get("bad")
 
-        assert f"Failed to load {port.port_name} 'bad' from 'Adapter'" in str(
-            exc_info.value
+        assert str(exc_info.value) == (
+            f"Failed to load {port.port_name} 'bad' from '{class_path}': expected "
+            f"an absolute dotted path of the form 'module.ClassName'."
         )
+
+    def test_value_error_from_the_module_propagates(self, empty, tmp_path, monkeypatch):
+        """The module's own failure is not reported as a missing dependency."""
+        (tmp_path / "raises_on_import.py").write_text(
+            "raise ValueError('bad setting at import')\n"
+        )
+        monkeypatch.syspath_prepend(str(tmp_path))
+        empty.register("bad", "raises_on_import.Adapter")
+
+        with pytest.raises(ValueError, match="bad setting at import"):
+            empty.get("bad")
 
 
 @pytest.mark.no_test_domain
@@ -538,34 +552,41 @@ class TestBuiltInRegistration:
     """Each built-in register() function maps its name to its class."""
 
     @pytest.mark.parametrize(
-        ("registry", "module", "func", "name", "cls_name", "extra"),
+        ("registry", "name", "class_path", "extra"),
         [
-            (providers, "repository.memory", "register", "memory", "MemoryProvider", None),
-            (providers, "repository.sqlalchemy", "register_postgresql", "postgresql", "PostgresqlProvider", "sqlalchemy"),
-            (providers, "repository.sqlalchemy", "register_sqlite", "sqlite", "SqliteProvider", "sqlalchemy"),
-            (providers, "repository.sqlalchemy", "register_mysql", "mysql", "MysqlProvider", "sqlalchemy"),
-            (providers, "repository.sqlalchemy", "register_mssql", "mssql", "MssqlProvider", "sqlalchemy"),
-            (providers, "repository.elasticsearch", "register", "elasticsearch", "ESProvider", "elasticsearch"),
-            (brokers, "broker.inline", "register", "inline", "InlineBroker", None),
-            (brokers, "broker.redis", "register", "redis", "RedisBroker", "redis"),
-            (brokers, "broker.redis_pubsub", "register", "redis_pubsub", "RedisPubSubBroker", "redis"),
-            (event_stores, "event_store.memory", "register", "memory", "MemoryEventStore", None),
-            (event_stores, "event_store.message_db", "register", "message_db", "MessageDBStore", "message_db"),
-            (caches, "cache.memory", "register", "memory", "MemoryCache", None),
-            (caches, "cache.redis", "register", "redis", "RedisCache", "redis"),
+            (providers, "memory", "repository.memory.MemoryProvider", None),
+            (providers, "postgresql", "repository.sqlalchemy.PostgresqlProvider", "sqlalchemy"),
+            (providers, "sqlite", "repository.sqlalchemy.SqliteProvider", "sqlalchemy"),
+            (providers, "mysql", "repository.sqlalchemy.MysqlProvider", "sqlalchemy"),
+            (providers, "mssql", "repository.sqlalchemy.MssqlProvider", "sqlalchemy"),
+            (providers, "elasticsearch", "repository.elasticsearch.ESProvider", "elasticsearch"),
+            (brokers, "inline", "broker.inline.InlineBroker", None),
+            (brokers, "redis", "broker.redis.RedisBroker", "redis"),
+            (brokers, "redis_pubsub", "broker.redis_pubsub.RedisPubSubBroker", "redis"),
+            (event_stores, "memory", "event_store.memory.MemoryEventStore", None),
+            (event_stores, "message_db", "event_store.message_db.MessageDBStore", "message_db"),
+            (caches, "memory", "cache.memory.MemoryCache", None),
+            (caches, "redis", "cache.redis.RedisCache", "redis"),
         ],
     )  # fmt: skip
-    def test_register_function(self, registry, module, func, name, cls_name, extra):
+    def test_declared_entry_point_registers_its_class(
+        self, registry, name, class_path, extra
+    ):
         if extra:
             pytest.importorskip(extra)
-        adapter_module = pytest.importorskip(f"protean.adapters.{module}")
+        declared = {
+            ep.name: ep for ep in metadata.entry_points().select(group=registry.group)
+        }
+        assert name in declared, f"{registry.group} declares no '{name}' entry point"
         registry.clear()
         registry._discovered = True
 
-        getattr(adapter_module, func)()
+        declared[name].load()()
 
-        assert registry.list() == {name: f"protean.adapters.{module}.{cls_name}"}
-        assert registry.get(name) is getattr(adapter_module, cls_name)
+        full_path = f"protean.adapters.{class_path}"
+        assert registry.list() == {name: full_path}
+        module_path, cls_name = full_path.rsplit(".", maxsplit=1)
+        assert registry.get(name) is getattr(import_module(module_path), cls_name)
 
     def test_mysql_registration_without_sqlalchemy_registers_nothing(self):
         """The provider is optional, so `import protean` works without SQLAlchemy."""
@@ -577,21 +598,53 @@ class TestBuiltInRegistration:
 
         assert "mysql" not in providers.list()
 
+
+@pytest.mark.no_test_domain
+class TestMissingOptionalExtra:
+    """An adapter whose extra is not installed stays registered by name."""
+
     @pytest.mark.parametrize(
-        ("group", "names"),
+        ("registry", "name", "dependency", "adapter_module"),
         [
-            ("protean.providers", {"memory", "postgresql", "sqlite", "mssql", "mysql", "elasticsearch"}),
-            ("protean.brokers", {"inline", "redis", "redis_pubsub"}),
-            ("protean.event_stores", {"memory", "message_db"}),
-            ("protean.caches", {"memory", "redis"}),
+            (event_stores, "message_db", "psycopg2", "protean.adapters.event_store.message_db"),
+            (caches, "redis", "redis", "protean.adapters.cache.redis"),
         ],
     )  # fmt: skip
-    def test_package_declares_the_entry_points(self, group, names):
-        from importlib import metadata
+    def test_get_names_the_missing_module(
+        self, registry, name, dependency, adapter_module
+    ):
+        registry.clear()
+        registry._discovered = False
 
-        declared = {
-            ep.name: ep.value for ep in metadata.entry_points().select(group=group)
-        }
+        with module_unavailable(dependency, reload=(adapter_module,)):
+            registry._discover_plugins()
+            assert name in registry.list()
 
-        assert names <= set(declared)
-        assert all(declared[name].startswith("protean.adapters.") for name in names)
+            with pytest.raises(ConfigurationError) as exc_info:
+                registry.get(name)
+
+        message = str(exc_info.value)
+        assert message.startswith(f"Failed to load {registry.port_name} '{name}'")
+        assert dependency in message
+        assert "Ensure the required dependencies are installed" in message
+
+
+@pytest.mark.no_test_domain
+class TestRemovedNames:
+    """The per-port registry names are gone; `protean.infra.registry` replaces them."""
+
+    @pytest.mark.parametrize(
+        ("module", "name"),
+        [
+            ("protean.port.provider", "registry"),
+            ("protean.port.provider", "ProviderRegistry"),
+            ("protean.port.broker", "registry"),
+            ("protean.port.broker", "BrokerRegistry"),
+            ("protean.adapters.repository", "registry"),
+            ("protean.adapters.broker", "registry"),
+            ("protean.adapters.event_store", "EVENT_STORE_PROVIDERS"),
+            ("protean.adapters.cache", "CACHE_PROVIDERS"),
+        ],
+    )
+    def test_name_is_not_defined(self, module, name):
+        assert not hasattr(import_module(module), name)

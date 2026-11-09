@@ -22,6 +22,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def register_message_db() -> None:
+    """Register MessageDBStore with Protean as the `message_db` event store."""
+    # Lives here, away from message_db.py, so that registering the name does not
+    # import psycopg2. Without the extra installed, `get("message_db")` then
+    # fails naming the missing module instead of reporting an unknown name.
+    event_store_registry.register(
+        "message_db", "protean.adapters.event_store.message_db.MessageDBStore"
+    )
+
+
 class EventStore:
     def __init__(self, domain: "Domain") -> None:
         self.domain: Domain = domain

@@ -200,9 +200,9 @@ redis_pubsub = "protean.adapters.broker.redis_pubsub:register"
 
 Each entry point maps a broker name to a `register()` function. The function
 is called on first access and registers the broker class path with
-`protean.infra.registry.brokers`, the `AdapterRegistry` for brokers. Each `register()` function wraps its dependency imports in
-`try/except`, so Protean silently skips brokers with uninstalled optional
-dependencies.
+`protean.infra.registry.brokers`, the `AdapterRegistry` for brokers. When
+the `redis` package is not installed, the Redis broker modules fail to import,
+and Protean skips those brokers without an error.
 
 External packages can register their own brokers the same way. See
 [Custom Brokers](./custom-brokers.md) for a complete guide including a Kafka

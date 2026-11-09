@@ -7,7 +7,6 @@ import psycopg2
 from message_db.client import MessageDB
 
 from protean.exceptions import ConfigurationError, ExpectedVersionError
-from protean.infra.registry import event_stores
 from protean.port.event_store import BaseEventStore, EventStoreCapabilities
 
 if TYPE_CHECKING:
@@ -205,10 +204,3 @@ class MessageDBStore(BaseEventStore):
         Docker-only connection convention.
         """
         _truncate_message_store(self.domain.config["event_store"]["database_uri"])
-
-
-def register() -> None:
-    """Register MessageDBStore with Protean as the `message_db` event store."""
-    event_stores.register(
-        "message_db", "protean.adapters.event_store.message_db.MessageDBStore"
-    )

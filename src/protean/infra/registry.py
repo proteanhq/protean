@@ -35,10 +35,11 @@ PortT = TypeVar("PortT")
 class AdapterRegistry(Generic[PortT]):
     """Registry of the adapter classes that implement one port.
 
-    Registration stores a dotted class path and imports nothing, so an adapter
-    whose optional dependencies are missing costs nothing until it is used.
-    The first ``get()`` call loads every entry point in ``group``; later calls
-    do not look again, and ``clear()`` does not reset that.
+    Registration stores a dotted class path and imports nothing. The first
+    ``get()`` call loads every entry point in ``group``, which imports each
+    module an entry point names; later calls do not look again, and ``clear()``
+    does not reset that. Discovery overwrites a name registered before it with
+    the entry point's class path.
 
     Args:
         group: The entry-point group whose ``register()`` functions are loaded.
@@ -99,8 +100,10 @@ class AdapterRegistry(Generic[PortT]):
         """Import and return the adapter class registered under ``name``.
 
         Raises:
-            ConfigurationError: When ``name`` is not registered, the class cannot
-                be imported, or the class leaves abstract members unimplemented.
+            ConfigurationError: When ``name`` is not registered, its class path
+                is not an absolute ``module.ClassName`` path, importing the module raises ``ImportError``,
+                the module has no such class, or the class leaves abstract
+                members unimplemented.
         """
         self._discover_plugins()
 
@@ -112,12 +115,18 @@ class AdapterRegistry(Generic[PortT]):
             )
 
         class_path = self._paths[name]
+        module_path, _, class_name = class_path.rpartition(".")
+        if not module_path or module_path.startswith("."):
+            raise ConfigurationError(
+                f"Failed to load {self.port_name} '{name}' from '{class_path}': "
+                f"expected an absolute dotted path of the form 'module.ClassName'."
+            )
+
         try:
-            module_path, class_name = class_path.rsplit(".", maxsplit=1)
             adapter_cls = cast(
                 "type[PortT]", getattr(import_module(module_path), class_name)
             )
-        except (ImportError, AttributeError, ValueError) as e:
+        except (ImportError, AttributeError) as e:
             raise ConfigurationError(
                 f"Failed to load {self.port_name} '{name}' from '{class_path}': {e}. "
                 f"Ensure the required dependencies are installed."

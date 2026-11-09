@@ -16,6 +16,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def register_redis() -> None:
+    """Register RedisCache with Protean as the `redis` cache."""
+    # Lives here, away from redis.py, so that registering the name does not
+    # import redis. Without the extra installed, `get("redis")` then fails
+    # naming the missing module instead of reporting an unknown name.
+    cache_registry.register("redis", "protean.adapters.cache.redis.RedisCache")
+
+
 class Caches(MutableMapping[str, BaseCache]):
     def __init__(self, domain: "Domain") -> None:
         self.domain = domain

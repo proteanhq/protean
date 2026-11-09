@@ -82,9 +82,15 @@ adapter by that name. An event store class takes `(domain, conn_info)` in its
 constructor. A cache class takes `(name, caches, conn_info)`, where `caches`
 is the domain's collection of configured caches.
 
-When `Domain.init()` loads the class, the registry checks that it implements
-every abstract method of its base class. If any are missing, the registry raises
-`ConfigurationError` and names each missing method.
+When `Domain.init()` loads the class, the registry checks that the class
+implements every abstract method and property it inherits. If any are missing,
+the registry raises `ConfigurationError` and names each one. The registry does
+not check that the class subclasses the port's base class.
+
+Protean loads every entry point in a group the first time it looks up a name in
+that group. If your code registers a name before then, and an installed package
+also declares that name, the entry point replaces your class path and Protean
+logs a warning. Use a name no installed package declares.
 
 ## Conformance Testing
 
