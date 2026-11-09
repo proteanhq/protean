@@ -451,6 +451,7 @@ class TestSchemaMigrationsCapability:
         ["SqliteProvider", "PostgresqlProvider", "MssqlProvider", "MysqlProvider"],
     )
     def test_sqlalchemy_providers_declare_the_flag(self, class_name):
+        pytest.importorskip("sqlalchemy", reason="SQLAlchemy not available")
         from protean.adapters.repository import sqlalchemy
 
         capabilities = self._capabilities(getattr(sqlalchemy, class_name))
