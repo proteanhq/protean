@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 
+> Amended November 2026, see the amendment to rung 1.
+
 **Date:** September 2026
 
 ## Context
@@ -54,13 +56,22 @@ lightest rung that fits the change.
 
 ### Rung 1: weak schema, for additive and rename changes
 
-A field added with a default, or a field renamed, needs no version bump. Add the
-field with a default and old payloads decode with the default filling the gap.
+A field added with a default, or a field renamed, needs no version bump, except
+on an event when the change moves a Protobuf field number (see the amendment
+below). Add the field with a default and old payloads decode with the default
+filling the gap.
 When a renamed field declares `renamed_from`, Protean resolves the old key onto
 the new field on read. Protean also emits an Avro `aliases` entry, so an
 external consumer resolves the old key on the wire too. Lenient mode is the
 tolerant-reader half of this rung: turn it on to read a legacy payload that
 still carries a since-removed field.
+
+*Amended (November 2026, #1918): on an event, an added, removed or renamed
+field can move the Protobuf field number of a field the event keeps, because
+Protean numbers the fields in sorted name order. `ir diff` reports that change
+as breaking (`field_number_changed`) within one `__version__`. Such a change
+moves to rung 2: bump `__version__` and register an upcaster for the old
+version, which may return the payload unchanged.*
 
 ### Rung 2: versioning plus an upcaster, for structural changes
 

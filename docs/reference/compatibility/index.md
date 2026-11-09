@@ -16,7 +16,7 @@ Protean classifies changes to persisted domain elements using these rules:
 
 | Change | Classification |
 |--------|---------------|
-| Add optional field (or with default) | Safe |
+| Add optional field (or with default) | Safe, unless it moves an event's Protobuf field number (see the `field_number_changed` row) |
 | Add required field without default | **Breaking** |
 | Remove field from any persisted element | **Breaking** |
 | Remove a field deprecated past its removal version | Safe (expected removal) |
@@ -126,7 +126,8 @@ lists the breaks in `contracts.breaking_changes`. `diff_ir()` sets
 applies the same field rules as the compatibility report: a field type change,
 a `Dict` or `List` value type change, a breaking `Decimal` precision or scale
 change, and a required field added without a default. So for a published
-event's fields, the two lists flag the same breaks, with these exceptions:
+event's fields, the two lists flag the same field breaks, with these
+exceptions:
 
 - An event version bump covered by an upcaster: the report marks those field
   changes as mitigated, and the contract check does not.
@@ -138,6 +139,9 @@ event's fields, the two lists flag the same breaks, with these exceptions:
 - `exclude` in `.protean/config.toml` filters the compatibility report only. A
   contract break on an excluded published event still counts as breaking.
   `protean ir diff` and the `protean-check-compat` hook still print it.
+- A change that moves an event's Protobuf field number within one
+  `__version__`: the report flags it as `field_number_changed` for every event,
+  published or not, and the contract check has no matching entry.
 
 The contract check writes these field entries. In the table, the List column
 names the key under `contracts` that holds each entry:

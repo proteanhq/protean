@@ -56,8 +56,9 @@ def _build(
             {"__module__": "shop", "name": String(), **(order_fields or {})},
         )
     )
-    # ``account_id`` sorts before every field name these tests use, so no
-    # case moves a Protobuf field number and adds ``field_number_changed``.
+    # Each case keeps the same field names on both sides, or adds, removes
+    # or renames one field that sorts after ``account_id``. No case moves a
+    # Protobuf field number, so none adds ``field_number_changed``.
     placed = type(
         "Placed", (), {"__module__": "shop", "account_id": Identifier(), **fields}
     )

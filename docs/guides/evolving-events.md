@@ -93,7 +93,13 @@ remove-plus-add (more on that [below](#check-compatibility-protean-ir-diff)).
 
 ## Bump the version and write upcasters
 
-A rename is handled by `renamed_from` alone, shown above, with no version bump.
+A rename is handled by `renamed_from` alone, shown above, with no version bump,
+as long as it moves no Protobuf field number. Protean numbers an event's
+Protobuf fields in sorted name order. A rename that changes where a field sorts
+moves its own number and the numbers of the fields that sort between its old
+and new name, and `ir diff` reports that as breaking (`field_number_changed`).
+That rename also needs a version bump and an upcaster for the old version, which
+may return the payload unchanged.
 Weak schema cannot express some structural changes (a newly required field, a
 type change, a field split). For those changes, bump the version so that an
 upcaster transforms stored events on read. Set `__version__` and register an
@@ -297,9 +303,9 @@ change: weak schema, versioning with an upcaster, or an operator migration.
 
 | Change | How | Compatibility |
 |--------|-----|---------------|
-| Add an optional / defaulted field | add it | `FULL`, nobody breaks |
+| Add an optional / defaulted field | add it; also bump the version and add an upcaster if the new field moves a Protobuf field number | `FULL`, nobody breaks |
 | Add a required field, no default | give it a default, an upcaster for a computable value, or a new event type | breaks `BACKWARD` if unmitigated |
-| Rename a field | `renamed_from=[...]` (no version bump) | `BACKWARD` via Avro `aliases`; `FULL` if the field was optional or defaulted |
+| Rename a field | `renamed_from=[...]`, with no version bump unless the rename moves a Protobuf field number | `BACKWARD` via Avro `aliases`; `FULL` if the field was optional or defaulted |
 | Change a field's type | new field or new event version + upcaster | `NONE` without an upcaster |
 | Retire an event | `deprecated=` + `superseded_by=` | deprecation-aware removal |
 | Read old payloads with dropped fields | `lenient_deserialization` (opt-in) | read-path escape hatch |

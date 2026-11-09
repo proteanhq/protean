@@ -75,7 +75,9 @@ identity marker.
 
 Versioning is simple and unambiguous. There is no debate about whether a change is a minor
 or patch version: the number increments by 1 when a change needs a new version, and ADR-0040
-decides which changes do. Adding an optional or defaulted field, like renaming one, does not.
+decides which changes do. Adding an optional or defaulted field, like renaming one, does not,
+unless the change moves a Protobuf field number of a field the event keeps (see the
+amendment to rung 1 in ADR-0040).
 
 The `__type__` string (`{Domain}.{ClassName}.v{version}`) is stable across code refactoring. Moving
 `UserRegistered` from `auth.events` to `auth.domain.events` does not change its `__type__`,

@@ -328,15 +328,20 @@ versions were ever stored).
 
 | Situation | Approach |
 |-----------|----------|
-| Add optional field with default | No upcaster needed, add `default=` |
+| Add optional field with default | No upcaster needed, add `default=` (unless the new field moves a Protobuf field number, see below) |
 | Add required field with computable default | Upcaster |
-| Rename a field | `renamed_from` (an upcaster only if you are already bumping the version) |
+| Rename a field | `renamed_from` (an upcaster only if you are already bumping the version, or the rename moves a Protobuf field number, see below) |
 | Change field type (e.g. string→int) | Upcaster (bump the version) |
 | Change data structure (flat→nested) | Upcaster (bump the version) |
 | Remove a field | Lenient mode drops it on read (an upcaster strips it only if you also bump the version) |
 | Change the meaning of a field | **New event type** |
 | Fundamentally different business operation | **New event type** |
 | Event applies to a different aggregate | **New event type** |
+
+Protean numbers an event's Protobuf fields in sorted name order. An added field that does not sort last, or a rename that changes where a
+field sorts, moves the numbers of other fields, and `protean ir diff` reports that as breaking (`field_number_changed`) within
+one `__version__`. For such a change, bump `__version__` and register an
+upcaster for the old version, which may return the payload unchanged.
 
 ---
 

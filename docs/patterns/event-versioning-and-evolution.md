@@ -135,9 +135,9 @@ A stored payload written with the old `name` key now deserializes into
 `customer_name` without an upcaster. `renamed_from` also accepts a list of
 aliases (`renamed_from=["name", "full_name"]`) when a field has been renamed
 more than once. The compatibility checker reads the declared rename and reports
-a safe `field_renamed` change rather than a breaking remove + add. Keep
-the `renamed_from` declaration for as long as payloads written under the old
-name may still be read.
+a safe `field_renamed` change rather than a breaking remove + add, with the
+exceptions below. Keep the `renamed_from` declaration for as long as payloads
+written under the old name may still be read.
 
 A rename only stays safe when the field type is unchanged: renaming *and*
 changing the type (say `String` to `Integer`) is still breaking, because an
@@ -146,6 +146,14 @@ old payload's value cannot satisfy the new type. The checker reports that as a
 new type. A `Decimal` field renamed with a lower or newly added `precision`, or
 a different `scale`, is breaking the same way. So is a `Dict` or `List` field
 renamed with a value type that was added, changed or removed.
+
+A rename on an event also needs a version bump when it moves a Protobuf field
+number. Protean numbers an event's Protobuf fields in sorted name order, so a
+rename that changes where a field sorts moves the numbers of the fields that
+sort between its old and new name. Within one `__version__` the checker reports
+that as a breaking `field_number_changed` change. Bump `__version__` and
+register an upcaster for the old version, which may return the payload
+unchanged.
 
 ---
 
@@ -512,10 +520,10 @@ This diagram shows the schema-evolution ladder:
 
 | Change Type | Safe? | Strategy |
 |-------------|-------|----------|
-| Add optional field with default | Yes | add it |
+| Add optional field with default | Yes | add it (bump the version and add an upcaster if the new field moves a Protobuf field number) |
 | Add new event type | Yes | Add handler methods |
 | Add more choices to a field | Yes | Consumers handle unknowns |
-| Rename a field | Yes | `renamed_from` (same type, no version bump) |
+| Rename a field | Yes | `renamed_from` (same type, no version bump unless the rename moves a Protobuf field number) |
 | Remove a field | With lenient mode | Deprecate, or read old payloads leniently (drops its data) |
 | Change field type | No | Version bump + upcaster, or a new field / event type |
 | Change field semantics | No | New field name |
