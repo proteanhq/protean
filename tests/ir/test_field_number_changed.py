@@ -178,7 +178,9 @@ class TestVersionBump:
         assert [c for c in report.breaking_changes if c.element_fqn == EVENT_FQN] == []
         assert _number_changes(report) == []
 
-    @pytest.mark.parametrize(("left_v", "right_v"), [(None, 1), (1, None)])
+    @pytest.mark.parametrize(
+        ("left_v", "right_v"), [(None, 1), (1, None), (None, None)]
+    )
     def test_a_missing_version_on_either_side_reports_nothing(self, left_v, right_v):
         left = _event_ir(_POINTS_EARNED, version=left_v)
         right = _event_ir(_renamed_fields(), version=right_v)
@@ -339,6 +341,72 @@ class TestRenameMatching:
         message = _number_changes(report)[0].message
         assert message.count("(from amount)") == 1
 
+    @pytest.mark.parametrize("aliases", [["amount", "x"], ["x", "amount"]])
+    def test_every_old_field_a_rename_replaces_is_checked(self, aliases):
+        # ``points`` replaces ``amount`` (number 1) and ``x`` (number 3) and
+        # takes number 3, so ``x`` keeps its number and ``amount`` moves,
+        # whichever order the aliases are listed in.
+        left_fields = {"amount": _std(), "b": _std(), "x": _std()}
+        right_fields = {
+            "a0": _std(),
+            "b": _std(),
+            "points": _std(renamed_from=aliases),
+        }
+
+        report = _run(_event_ir(left_fields), _event_ir(right_fields))
+
+        assert _number_changes(report)[0].message == (
+            "Protobuf field numbers changed in event 'app.PointsEarned' within "
+            "version 1: points (from amount) 1 -> 3. " + FIX_TEXT
+        )
+
+    def test_a_kept_field_carrying_renamed_from_is_matched_by_name(self):
+        # ``reason`` stays and names the removed ``customer_id`` as an old
+        # name; only the name match counts for ``reason``.
+        fields = {k: v for k, v in _POINTS_EARNED.items() if k != "customer_id"}
+        fields["reason"] = _std(renamed_from=["customer_id"])
+
+        report = _run(_event_ir(_POINTS_EARNED), _event_ir(fields))
+
+        assert _number_changes(report)[0].message == (
+            "Protobuf field numbers changed in event 'app.PointsEarned' within "
+            "version 1: occurred_at 5 -> 4, reason 6 -> 5. " + FIX_TEXT
+        )
+
+
+class TestGeneratedEventsAreNotChecked:
+    """Nobody can bump the version of an event the framework defines."""
+
+    @pytest.mark.parametrize("flag", ["is_fact_event", "auto_generated"])
+    def test_a_flagged_event_reports_no_number_change(self, flag):
+        left = _event_ir(_POINTS_EARNED)
+        right = _event_ir(_renamed_fields())
+        for ir in (left, right):
+            ir["clusters"]["app.Order"]["events"][EVENT_FQN][flag] = True
+
+        assert _number_changes(_run(left, right)) == []
+
+    def test_a_fact_event_from_a_real_domain_reports_no_number_change(self):
+        def build(**fields: Any) -> dict[str, Any]:
+            domain = Domain(name="Bank")
+            domain.aggregate(
+                type("Account", (), {"__module__": "bank", **fields}),
+                fact_events=True,
+            )
+            domain.init(traverse=False)
+            return IRBuilder(domain).build()
+
+        left = build(name=String())
+        right = build(aaa=String(), name=String())
+
+        events = [
+            e
+            for cluster in right["clusters"].values()
+            for e in cluster["events"].values()
+        ]
+        assert [e["is_fact_event"] for e in events] == [True]
+        assert _number_changes(_run(left, right)) == []
+
 
 class TestAvroSafety:
     def test_the_change_type_is_neutral_for_avro(self):
@@ -431,6 +499,34 @@ class TestIrDiffJson:
         assert len(moved) == 1
         assert moved[0]["severity"] == "breaking"
         assert moved[0]["element_fqn"] == "shop.Placed"
+
+
+class TestIrDiffRename:
+    def test_a_renamed_from_rename_exits_1_and_names_the_rename(self, tmp_path):
+        left = _build(amount=Integer(), customer_id=Identifier(), reason=String())
+        right = _build(
+            customer_id=Identifier(),
+            points=Integer(renamed_from=["amount"]),
+            reason=String(),
+        )
+        result = runner.invoke(
+            app,
+            [
+                "ir",
+                "diff",
+                "-l",
+                _write(tmp_path, "left.json", left),
+                "-r",
+                _write(tmp_path, "right.json", right),
+            ],
+        )
+
+        assert result.exit_code == 1
+        output = " ".join(result.output.split())
+        assert (
+            "Protobuf field numbers changed in event 'shop.Placed' within "
+            "version 1: customer_id 2 -> 1, points (from amount) 1 -> 2." in output
+        )
 
 
 _SHOP_SOURCE = """

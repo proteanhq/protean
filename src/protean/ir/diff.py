@@ -1575,13 +1575,18 @@ def _classify_field_number_changes(
     Appends one breaking ``field_number_changed`` change for each event present
     in both IRs with the same ``__version__`` on both sides, when a field kept
     by name or by a declared ``renamed_from`` rename gets a different number.
-    An event with a missing ``__version__`` on either side is skipped. Other
-    element types are not checked.
+    An event with a missing ``__version__`` on either side is skipped, and so
+    is a fact event or other framework-generated event, whose version nobody
+    can bump. Other element types are not checked.
     """
     left_events = _events_by_fqn(left_ir)
     for fqn, right_entry in _events_by_fqn(right_ir).items():
         left_entry = left_events.get(fqn)
-        if left_entry is None or not _same_event_version(left_entry, right_entry):
+        if (
+            left_entry is None
+            or _is_generated_event(right_entry)
+            or not _same_event_version(left_entry, right_entry)
+        ):
             continue
         moved = _moved_field_numbers(
             left_entry.get("fields", {}), right_entry.get("fields", {})
@@ -1599,6 +1604,11 @@ def _classify_field_number_changes(
             )
 
 
+def _is_generated_event(entry: dict[str, Any]) -> bool:
+    """Whether the framework, not the user, defines the event class."""
+    return bool(entry.get("is_fact_event") or entry.get("auto_generated"))
+
+
 def _same_event_version(
     left_entry: dict[str, Any], right_entry: dict[str, Any]
 ) -> bool:
@@ -1614,24 +1624,25 @@ def _moved_field_numbers(
 ) -> list[tuple[str, str, int, int]]:
     """List ``(new_name, old_name, old_number, new_number)`` for each moved field.
 
-    A right field matches the left field of the same name, or the left field
-    its ``renamed_from`` names when that field is gone from the right. The list
-    is ordered by the new number.
+    A right field matches the left field of the same name, or each left field
+    its ``renamed_from`` names when that field is gone from the right, so one
+    field can appear once per old name it replaces. The list is ordered by the
+    new number.
     """
     left_numbers = field_numbers(left_fields)
     right_numbers = field_numbers(right_fields)
     added = {n: f for n, f in right_fields.items() if n not in left_fields}
     removed = [n for n in left_fields if n not in right_fields]
-    old_name_of = {n: n for n in right_fields if n in left_fields}
-    old_name_of.update(
-        {new: old for old, new in _detect_field_renames(added, removed).items()}
+    pairs = [(n, n) for n in right_fields if n in left_fields]
+    pairs.extend(
+        (new, old) for old, new in _detect_field_renames(added, removed).items()
     )
     moved = [
         (new, old, left_numbers[old], right_numbers[new])
-        for new, old in old_name_of.items()
+        for new, old in pairs
         if left_numbers[old] != right_numbers[new]
     ]
-    return sorted(moved, key=lambda m: m[3])
+    return sorted(moved, key=lambda m: (m[3], m[2]))
 
 
 def _field_number_message(
