@@ -443,11 +443,12 @@ precedence hierarchy.
 
 ## Circuit breaker
 
-Every `StreamSubscription` carries an in-memory circuit breaker that pauses
-reads after repeated handler failures, so a failing downstream service gets no
-new calls until a probe succeeds. It counts consecutive handler-outcome
-failures (a message routed to the DLQ still counts as one failure) and is
-separate from `poll()`'s own backoff for broker read errors.
+Every `StreamSubscription` carries an in-memory circuit breaker that pauses new
+reads after repeated handler failures, which cuts the calls to a failing
+downstream service. Messages already read in the current batch still run. The
+breaker counts consecutive handler-outcome failures (a message routed to the
+DLQ still counts as one failure) and is separate from `poll()`'s own backoff
+for broker read errors.
 
 | Key | Default | Purpose |
 |-----|---------|---------|
