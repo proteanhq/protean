@@ -1,18 +1,8 @@
 import logging
-from collections import defaultdict
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
-from protean.core.command_handler import BaseCommandHandler
-from protean.core.event_handler import BaseEventHandler
-from protean.core.event_sourced_repository import (
-    BaseEventSourcedRepository,
-    event_sourced_repository_factory,
-)
-from protean.core.projector import BaseProjector
-from protean.exceptions import ConfigurationError
 from protean.infra.registry import event_stores as event_store_registry
-from protean.utils import fqn
 
 if TYPE_CHECKING:
     from protean.domain import Domain
