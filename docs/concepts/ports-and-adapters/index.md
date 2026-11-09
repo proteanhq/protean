@@ -175,14 +175,15 @@ for full details.
 
 Providers are discovered dynamically through Python
 [entry points](https://packaging.python.org/en/latest/specifications/entry-points/).
-Built-in adapters register under the `protean.providers` (databases) and
-`protean.brokers` (brokers) entry-point groups. Third-party adapter packages
+Built-in adapters register under the `protean.providers` (databases),
+`protean.brokers` (brokers), `protean.event_stores` (event stores) and
+`protean.caches` (caches) entry-point groups. Third-party adapter packages
 register in the same way, making them automatically available after
 `pip install`.
 
 This replaces the earlier hardcoded provider dictionary and lets adapters ship
-as separate plugin packages. External packages can add new database or broker
-adapters without modifying Protean source code. See [Building Custom Database
+as separate plugin packages. External packages can add new database, broker,
+event store or cache adapters without modifying Protean source code. See [Building Custom Database
 Adapters](../../reference/adapters/database/custom-databases.md) and [Building
 Custom Brokers](../../reference/adapters/broker/custom-brokers.md) for guides.
 

@@ -79,7 +79,8 @@ eventstoredb = "protean_eventstoredb:register"
 
 The `provider` key in `[event_store]` or `[caches.<name>]` then selects the
 adapter by that name. An event store class takes `(domain, conn_info)` in its
-constructor. A cache class takes `(name, domain, conn_info)`.
+constructor. A cache class takes `(name, caches, conn_info)`, where `caches`
+is the domain's collection of configured caches.
 
 When `Domain.init()` loads the class, the registry checks that it implements
 every abstract method of its base class. If any are missing, the registry raises

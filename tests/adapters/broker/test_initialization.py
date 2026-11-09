@@ -257,7 +257,9 @@ class TestNonDestructiveReinitialization:
             built.append(broker)
             return broker
 
-        mocker.patch.object(broker_module.registry, "get", return_value=flaky_ctor)
+        mocker.patch.object(
+            broker_module.broker_registry, "get", return_value=flaky_ctor
+        )
         log_spy = mocker.spy(broker_module.logger, "exception")
 
         with pytest.raises(RuntimeError, match="cannot connect"):
