@@ -9,9 +9,9 @@ These are the principles behind the design decisions.
 ## Mirror the Domain in Code
 
 Your codebase should read like the business it serves, not just at the class
-level, but at the folder level too. When a newcomer opens your project, the
-directory tree should name the parts of the business, so a newcomer can find
-the code for a feature by knowing what the feature is called.
+level, but at the folder level too. Your directory tree should name the parts
+of the business. A newcomer to your project can then find the code for a
+feature from the feature's name.
 
 ### In Classes
 
@@ -31,12 +31,13 @@ The same principle extends to how you organize files. **The folder tree
 owns the "what" (domain concepts). The framework owns the "which kind"
 (layer, side, boundary).**
 
-Classic layered approaches split code into `domain/`, `application/`,
-`infrastructure/`, and completely destroy domain visibility. To understand a
-single feature, you fish through three separate subtrees. Protean's decorators
-(`@Aggregate`, `@CommandHandler`, `@Projection`, `@Repository`) already declare
-what layer each element belongs to. The framework carries this architectural
-metadata so your folder structure doesn't have to repeat it.
+Classic layered approaches split code into `domain/`, `application/`, and
+`infrastructure/`. That split hides the domain concepts from anyone who reads
+the folder tree. To understand a single feature, you have to search three
+separate subtrees. Protean's decorators (`@Aggregate`, `@CommandHandler`,
+`@Projection`, `@Repository`) already declare what layer each element belongs
+to. The framework carries this architectural metadata so your folder structure
+doesn't have to repeat it.
 
 This means you organize by **domain concept**: aggregates as top-level folders,
 capability files that colocate related commands and handlers, projections
@@ -63,9 +64,9 @@ adjust, repeat. There are no migrations to run and no broker to start.
 
 ## Separate Domain from Infrastructure
 
-Technology concerns have a way of creeping into business logic. Before
-long, your domain code is coupled to a specific database, your business
-rules are tangled with API serialization, and changing any technology
+Developers often put technology concerns into business logic without meaning
+to. Before long, your domain code is coupled to a specific database, your
+business rules are tangled with API serialization, and changing any technology
 means rewriting core logic.
 
 Protean enforces a clean separation through the **Ports and Adapters**
@@ -80,9 +81,8 @@ configuration, not code changes:
 
 Switching from an in-memory store to PostgreSQL is a configuration
 change. Your domain logic, tests, and business rules remain untouched.
-Infrastructure elements are initialized and injected at runtime, ensuring
-that your core logic stays consistent across local development, CI/CD,
-and production.
+Protean initializes and injects infrastructure elements at runtime. Your core
+logic therefore stays the same across local development, CI/CD, and production.
 
 ## Pragmatism over Purity
 
@@ -99,15 +99,15 @@ same codebase, provided the decisions are explicit and well-documented.
 
 When the framework's defaults don't fit, Protean provides **escape hatches**.
 You can override its implementation and specify your own database models,
-custom repository queries, or adapter-specific optimizations. The goal is
-always to serve the domain, not to enforce architectural dogma.
+custom repository queries, or adapter-specific optimizations. Protean always
+puts the needs of the domain ahead of any fixed architectural rule.
 
 ## Evolve Architecture Incrementally
 
 You don't need to decide your final architecture on day one. In early
 stages of development, it's rare to clearly understand all the domains
-and their boundaries. Premature decisions about these boundaries can
-be detrimental as the project matures.
+and their boundaries. If you decide these boundaries too early, those decisions
+can hurt the project as it matures.
 
 Protean is designed for **progressive evolution**:
 
@@ -120,9 +120,9 @@ Protean is designed for **progressive evolution**:
 
 As your understanding deepens, you can decompose a monolithic domain
 into finer-grained **bounded contexts**, extract subdomains, and evolve
-your architecture without rewriting from scratch. Protean's high degree
-of testability ensures these refactoring efforts happen safely, without
-introducing regressions.
+your architecture without rewriting from scratch. Because you can test the
+whole domain model in Protean, your tests catch regressions while you do
+this refactoring.
 
 Technology decisions follow the same principle: **defer until the last
 responsible moment.** Start with in-memory adapters, prove your domain
@@ -133,8 +133,8 @@ low.
 ## Communicate Through Events
 
 As systems grow, tight coupling between subdomains creates fragility.
-A change in one bounded context cascades into others, and the whole
-system becomes harder to maintain.
+A change in one bounded context forces changes in other bounded contexts, and
+the whole system becomes harder to maintain.
 
 Protean uses **events as the primary communication mechanism** between
 aggregates and bounded contexts. Events represent facts (things that happened)
@@ -174,23 +174,24 @@ the domain logic they exercise has not changed.
 
 ## What belongs in Protean
 
-Protean is opinionated. It guides you toward the DDD patterns it is built
-around instead of accommodating every possible feature, and the same filter
-decides what belongs in the framework itself:
+Protean is opinionated. Protean guides you toward the DDD patterns it is built
+around and does not try to support every possible feature. The Protean
+maintainers use the same test to decide what belongs in the framework itself:
 
 - **Domain concerns belong in the framework; infrastructure concerns belong in
   adapters.** Schema migrations, document-style persistence, and storage-specific
   optimizations are adapter responsibilities. Protean defines the port contracts,
   and each adapter owns its own infrastructure.
 - **DDD purity over convenience**: Aggregates have a single surrogate identity
-  rather than composite keys. Validation lives in the domain layer as invariants,
-  not in the database. Hard deletion is an infrastructure escape hatch, not a
-  domain operation.
+  rather than composite keys. Validation runs in the domain layer as
+  invariants, and the database takes no part in it. Hard deletion is an
+  infrastructure escape hatch, and the domain layer has no
+  hard-delete operation.
 - **No abstractions over technology-specific concerns**: Protean wraps no
   technology in a generic layer of its own. When a feature makes sense only for
-  some adapters, those adapters implement it with their technology's own tools
-  and declare it as a capability, and Protean uses the feature only where an
-  adapter declares it.
+  some adapters, those adapters implement the feature with their technology's
+  own tools and declare it as a capability. Protean uses the feature only with
+  adapters that declare it.
 - **Coherence over feature breadth**: Fixing inconsistencies, unifying patterns,
   and improving type safety come before adding new capabilities. A smaller,
   coherent framework serves you better than a large, sprawling one.

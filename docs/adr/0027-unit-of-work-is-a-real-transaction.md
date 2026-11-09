@@ -16,9 +16,9 @@ optimistic-concurrency guard (ADR-0013, #1087/#1244) is documented in terms of i
 The model was almost certainly chosen to keep database transactions short. Writes
 live in Python memory, so the real DB transaction is open only briefly at commit.
 That is a real benefit for lock contention. But it pays for that benefit by giving
-up the guarantees a Unit of Work exists to provide. We measured the actual behavior
-against a running PostgreSQL instance, and the atomicity it appears to offer holds
-only for the simplest case.
+up the guarantees a Unit of Work exists to provide. We measured the actual
+behavior against a running PostgreSQL instance. The model appears to offer
+atomicity, but it delivers atomicity only in the simplest case.
 
 What we measured (empirical probes against real PostgreSQL):
 
@@ -47,20 +47,22 @@ What we measured (empirical probes against real PostgreSQL):
    hole is present.
 
 5. Read-your-writes inside a UoW is broken (issue #1256). A criteria read
-   (`filter`/`count`/`exists`) never flushes the session's pending writes, so it
-   returns stale results on PostgreSQL and MSSQL, and in-UoW uniqueness validation
-   reads committed state. (A `get` after modifying an existing aggregate does see the
-   change, because SQLAlchemy's identity map returns the in-memory object.) The
-   criteria case cannot be fixed by flushing before reads, because that flush would
-   be another durable, un-rollback-able mid-UoW write, per finding (1).
+   (`filter`/`count`/`exists`) never flushes the session's pending writes, so
+   it returns stale results on PostgreSQL and MSSQL. For the same reason,
+   in-UoW uniqueness validation reads committed state. (A `get` after modifying
+   an existing aggregate does see the change, because SQLAlchemy's identity map
+   returns the in-memory object.) The criteria case cannot be fixed by flushing
+   before reads, because that flush would be another durable, un-rollback-able
+   mid-UoW write, per finding (1).
 
 The root cause of all five is the same. With an AUTOCOMMIT engine, any statement
 that reaches the database is committed immediately, so "buffer and flush once" only
 approximates a transaction for a single statement. Every mature ORM and framework
 avoids this by mapping the Unit of Work onto a real database transaction:
 SQLAlchemy's own default, Hibernate/JPA, Django's `atomic()`, Entity Framework,
-Rails. Inside a real transaction, atomicity, read-your-writes, and isolation are
-properties you get from the database, not ones the application re-implements.
+Rails. Inside a real transaction, the database provides atomicity,
+read-your-writes, and isolation. The application does not have to
+re-implement them.
 
 ## Decision
 
@@ -86,8 +88,9 @@ With the UoW as a real transaction, each guarantee comes from the database:
 - Full atomicity: multi-table, child-bearing, and outbox writes are all-or-nothing,
   so the orphaned-parent and split-outbox holes close.
 - Optimistic concurrency: `version_id_col` in a real transaction is the designed
-  SQLAlchemy use case. The `WHERE _version = :loaded` guard rides the real flush and
-  raises on a concurrent bump. It gets simpler, not harder.
+  SQLAlchemy use case. The `WHERE _version = :loaded` guard runs as part of the
+  real flush and raises when a concurrent write has incremented the version. It
+  gets simpler, not harder.
 - Isolation: concurrent UoWs are isolated by the database, not by buffering.
 - `_claim` (`SELECT ... FOR UPDATE SKIP LOCKED`) holds its row lock inside the
   transaction, rather than as an AUTOCOMMIT special case.
@@ -116,17 +119,18 @@ Negative:
   raises contention and connection-pool pressure for long UoWs. The mitigations are
   standard and are good DDD practice regardless: keep a UoW to a single use-case's
   worth of work, and do no external I/O (an API call, a broker publish) inside a UoW.
-- This changes a load-bearing subsystem that #1087/#1244 recently stabilized. It
-  must be validated carefully, not shipped casually.
+- This changes a load-bearing subsystem that #1087/#1244 recently stabilized.
+  We must validate the change carefully before we ship it.
 
-Sharp edges of the real-transaction model:
+What can go wrong under the real-transaction model:
 
-A real transaction has sharp edges that the AUTOCOMMIT model hid. None are new to
-this change: the Memory and SQLite adapters already run each UoW as a real
-transaction (Memory via a copy-on-write session, SQLite via SQLAlchemy's default
-autoflush), so they already behaved this way, which we verified by reproduction.
-Bringing PostgreSQL and MSSQL into line surfaced these edges. This change resolves
-the ones the framework can fix and documents the rest as guidance.
+A real transaction has sharp edges that the AUTOCOMMIT model hid. None of these
+edges is new to this change, because the Memory and SQLite adapters already run
+each UoW as a real transaction (Memory via a copy-on-write session, SQLite via
+SQLAlchemy's default autoflush). We verified by reproduction that those
+adapters already behaved this way. We found these edges when we brought
+PostgreSQL and MSSQL into line with the Memory and SQLite adapters. This change
+resolves the ones the framework can fix and documents the rest as guidance.
 
 Resolved in this change, for all adapters:
 
@@ -136,9 +140,10 @@ Resolved in this change, for all adapters:
   is safe: only the outermost UoW commits or rolls back.
 - An OCC conflict raised at an in-UoW read. With `autoflush=True` a read flushes
   pending writes first, so a version-guarded `UPDATE` can lose an optimistic-
-  concurrency race at the read. That used to surface as a raw `StaleDataError` the
-  version-retry path missed; `filter` and `count` now translate it to
-  `ExpectedVersionError`, matching the flush and commit paths.
+  concurrency race at the read. That conflict used to appear as a raw
+  `StaleDataError`, which the version-retry path missed. `filter` and `count`
+  now translate it to `ExpectedVersionError`, matching the flush and
+  commit paths.
 - A reset-teardown deadlock. The test reset helper (`_data_reset`) deleted all tables
   before rolling back a leaked in-progress UoW, so a UoW holding row locks blocked the
   delete and deadlocked. It now rolls back the dangling UoW first.
@@ -153,18 +158,18 @@ Remaining as guidance (properties of any real transaction, not framework bugs):
   thread's UoW holds a pooled connection for the whole transaction. The async engine
   runs on a single event-loop thread and is not exposed to this; a multithreaded host
   (a threaded WSGI worker, a user thread pool) is.
-- On MSSQL the default read-committed isolation uses row locks, not MVCC, so a reader
-  can block on a writer holding a row inside a UoW where PostgreSQL would not. Enable
-  `READ_COMMITTED_SNAPSHOT` on the database for MVCC-style reads if that blocking is a
-  problem.
+- On MSSQL, unlike PostgreSQL, the default read-committed isolation uses row
+  locks instead of MVCC, so a reader can block on a writer that holds a row
+  inside a UoW. Enable `READ_COMMITTED_SNAPSHOT` on the database for MVCC-style
+  reads if that blocking is a problem.
 
-Migration and validation:
+How the change is migrated and validated:
 
 The change touches OCC (ADR-0013), `_claim`, `_commit_if_standalone`, the standalone
-read/write paths, and the connection lifecycle. It ships with a property-test suite
-on real PostgreSQL and MSSQL that encodes the guarantees the old model cannot meet.
-With the old AUTOCOMMIT engine restored, the regression tests in these suites go red;
-on the fix they pass
+read/write paths, and the connection lifecycle. The change ships with a
+property-test suite that runs on real PostgreSQL and MSSQL. The suite encodes
+the guarantees the old model cannot meet. With the old AUTOCOMMIT engine
+restored, the regression tests in these suites go red; on the fix they pass
 (`tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
 and its MSSQL mirror):
 
@@ -216,7 +221,8 @@ explicit-inner-rollback all leave the store consistent).
   not belong in a domain-layer Unit of Work. The aggregate is the consistency
   boundary and one UoW maps to one use case. Cross-aggregate coordination is done
   with domain events, and a durable side-effect that must survive a rollback goes
-  through the outbox or a write outside the UoW. Nesting is not forbidden (that
-  would break legitimate composition, such as an application service called from a
-  command handler); it joins, so the correct single-transaction behavior is the
+  through the outbox or a write outside the UoW. Nesting is not forbidden,
+  because forbidding it would break legitimate composition, such as an
+  application service called from a command handler. A nested UoW joins the
+  outermost transaction, so the correct single-transaction behavior is the
   automatic one.

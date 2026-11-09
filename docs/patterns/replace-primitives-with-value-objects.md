@@ -15,8 +15,8 @@ This compiles, tests pass, and the application works, until it doesn't.
   expected a valid email address.
 
 - A financial report sums `balance_amount` across users in different currencies.
-  The result is meaningless: you can't add USD and EUR. But the code doesn't
-  know that, they're just floats.
+  The result is meaningless: you can't add USD and EUR. But the code cannot
+  detect the mismatch, because `balance_amount` is a plain float.
 
 - A test creates a user with `country="United States"`, another with
   `country="US"`, and a third with `country="usa"`. The query for US users
@@ -56,8 +56,8 @@ Value objects:
 Apply these tests to identify primitives that should be value objects:
 
 1. **Format rules exist**: If a string must match a pattern (email, phone,
-   postal code, URL), it's a value object. The validation should live with the
-   data, not in every handler that touches it.
+   postal code, URL), it's a value object. The value object validates its own
+   data, so no handler repeats the check.
 
 2. **Multiple fields travel together**: If two or more fields are meaningless
    alone but meaningful together (amount + currency, latitude + longitude,
@@ -71,8 +71,8 @@ Apply these tests to identify primitives that should be value objects:
    instances are equal. These are value objects.
 
 5. **Operations exist**: If you can add two of them, compare them, or transform
-   them, the operation logic should live in the value object. `Money` can be
-   added (if currencies match). `DateRange` can check for overlaps.
+   them, the operation logic belongs in the value object. `Money` can be added
+   (if currencies match). `DateRange` can check for overlaps.
 
 ---
 
@@ -154,9 +154,9 @@ each field individually.
 --8<-- "patterns/replace-primitives-with-value-objects/007.py:address"
 ```
 
-The ten address fields became two `Address` fields. Adding a work address is one more
-field. The `Address` value object validates itself. You can't create a partial
-address with just a city and no street.
+The ten address fields became two `Address` fields. To add a work address, you
+add one more field. The `Address` value object validates itself. You can't
+create a partial address with just a city and no street.
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/007.py:usage"
@@ -248,7 +248,7 @@ The invariant fires at construction time. An invalid `Percentage` cannot exist.
 
 ## The Validation Shift
 
-When you introduce value objects, validation naturally migrates from the
+When you introduce value objects, you move the format validation from the
 aggregate to the value object:
 
 **Before: validation on the aggregate**
@@ -326,16 +326,15 @@ primitive.
 
 Value objects add a small overhead: object construction, invariant checking,
 and the wrapper object itself. In hot paths processing millions of records per
-second, this overhead might matter. Profile before optimizing, in most
-applications, the overhead is negligible compared to database and network
-latency.
+second, this overhead might matter. Profile before optimizing, because in most
+applications the overhead is negligible compared to database and
+network latency.
 
 ### Fields That Are Truly Independent
 
 If two fields happen to appear together but don't have a conceptual
 relationship, don't force them into a value object. `created_at` and
-`updated_at` often appear together but aren't a single concept, they're two independent
-timestamps.
+`updated_at` often appear together, but they are two independent timestamps.
 
 ---
 
@@ -371,9 +370,9 @@ value object's guarantees. Replace the entire value object instead.
 ### Value Objects with Identity
 
 If a concept has identity (meaning two instances with the same attributes can
-be different) it's an entity, not a value object. A `BankAccount` with a
-balance of $100 is not the same as another `BankAccount` with $100. They have
-different identities. Use an entity or aggregate instead.
+be different), it's an entity. A `BankAccount` with a balance of $100 is not
+the same as another `BankAccount` with $100. They have different identities.
+Use an entity or aggregate instead.
 
 ---
 

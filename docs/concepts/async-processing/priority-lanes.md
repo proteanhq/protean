@@ -112,7 +112,7 @@ With the default threshold of `0`:
 
 Within each lane, messages are processed in FIFO order. Within the outbox,
 messages are fetched in descending priority order, so `CRITICAL` messages are
-published before `HIGH` messages, which are published before `NORMAL` messages.
+published before `HIGH` messages, and `HIGH` messages before `NORMAL` messages.
 
 ---
 
@@ -168,17 +168,17 @@ When `domain.process()` is called, the priority is resolved as:
 The resolved priority is stored in two places:
 
 1. **Command metadata** (`DomainMeta.priority`): Embedded in the command when
-   it is written to the event store. This ensures the priority survives across
-   process boundaries, when the Engine picks up a command asynchronously, it
-   reads the priority from the metadata and reconstructs the `processing_priority()` context before
-   running the handler.
+   it is written to the event store. The command carries the priority across
+   process boundaries. When the Engine picks up a command asynchronously, it
+   reads the priority from the metadata. It then reconstructs the
+   `processing_priority()` context before running the handler.
 
 2. **Outbox records** (`Outbox.priority`): Written by `UoW.commit()` when
    events are persisted to the outbox table. The OutboxProcessor reads this
    value to decide which Redis Stream (primary or backfill) to publish to.
 
-This means priority lanes work correctly regardless of whether commands are
-processed synchronously or asynchronously.
+With the priority stored in both places, priority lanes work correctly whether
+commands are processed synchronously or asynchronously.
 
 ---
 
@@ -330,19 +330,20 @@ Priority lanes are not appropriate in every situation:
 
 - **Event-sourced aggregate reconstruction**: Priority lanes only affect the
   outbox-to-broker pipeline (stream subscriptions). Event-sourced aggregates
-  that reconstruct state from the event store are not affected by priority
-  lanes, since they read directly from the event store, not from Redis Streams.
+  reconstruct state by reading directly from the event store. They do not read
+  from Redis Streams, so priority lanes do not apply to them.
 
 - **Low-volume systems**: If your system processes a small number of events and
   migrations complete in seconds, priority lanes add unnecessary complexity.
   The feature is designed for systems where batch operations produce enough
   events to create visible latency in production processing.
 
-- **Single-stream idempotency assumptions**: If your event handlers rely on
+- **Single-stream idempotency assumptions**: Your event handlers may rely on
   processing all events for a stream category in a single FIFO order (for
   example, to detect duplicates by position or to use Redis stream message IDs
-  for ordering), splitting into two streams will break that assumption. Message
-  IDs are no longer globally ordered across the primary and backfill streams.
+  for ordering). If they do, splitting into two streams will break that
+  assumption. Message IDs are no longer globally ordered across the primary and
+  backfill streams.
 
 ---
 

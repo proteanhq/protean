@@ -37,8 +37,7 @@ context**, **identity correlation**, and **event-driven state propagation**.
 
 ## Two Variations
 
-Before diving into solutions, it's important to distinguish two scenarios that
-look similar but require different approaches:
+Two scenarios look similar but need different approaches:
 
 ### Different Concepts, Same Name
 
@@ -105,7 +104,7 @@ The solution has three parts:
 └──────────────┘                              └──────────────┘
 ```
 
-The key insight: **the customer_id is the thread that connects all
+The key insight: **the customer_id is the identifier that connects all
 representations**. Each context stores this identifier and uses it to correlate
 incoming events with its local model.
 
@@ -246,8 +245,8 @@ systems and translate them into the local domain's language:
 
 The subscriber is the **anti-corruption layer**. It prevents the Sales
 context's schema from leaking into the Shipping domain. If Sales changes how it
-structures customer events, only the subscriber needs to change, the `Recipient`
-aggregate and the rest of the Shipping domain remain untouched.
+structures customer events, only the subscriber needs to change. The
+`Recipient` aggregate and the rest of the Shipping domain remain untouched.
 
 A registration creates a recipient with a name and no address. The address
 comes with `CustomerAddressUpdated`. A subscriber can also receive the same
@@ -453,8 +452,9 @@ integration (e.g., an API call or a command sent through a broker), not events.
 
 The pattern is rooted in a core DDD principle: **bounded contexts are
 autonomous**. They own their models, their data, and their rules. The only thing
-they share is identity and events. This keeps contexts loosely coupled while
-ensuring they stay synchronized on the real-world concepts they all model.
+they share is identity and events. Sharing only identity and events keeps the
+contexts loosely coupled. The contexts still stay synchronized on the
+real-world concepts they all model.
 
 ---
 

@@ -9,11 +9,10 @@ containers, enclosing attributes of primitive types.
 
 ## Defining a Value Object
 
-Consider the example of an Email Address. A User’s Email can be treated
-as a simple “String.” If we do so, validations that check for the value
-correctness (an email address) are either specified as part of the `User`
-class' lifecycle methods or as independent business logic present in the
-services layer.
+Consider the example of an Email Address. You can treat a user's email as a
+plain string. The checks for a correct value (an email address) then go either
+in the lifecycle methods of the `User` class or in separate business logic in
+the services layer.
 
 But an Email is more than just another string in the system. It has
 well-defined, explicit rules associated with it, like:
@@ -24,11 +23,11 @@ well-defined, explicit rules associated with it, like:
 - The domain URL to be among the list of acceptable domains, if defined
 - A total length of less 255 characters
 
-So it makes better sense to make Email a Value Object, with a simple string
-representation to the outer world, but having a distinct local_part (the part
+So it makes better sense to make Email a Value Object. It has a simple string
+representation to the outer world, but it keeps a distinct local_part (the part
 of the email address before @) and domain_part (the domain part of the
-address). Any value assignment will have to satisfy the domain rules listed
-above.
+address). Any value assignment will have to satisfy the domain rules
+listed above.
 
 Below is a sample implementation of the `Email` concept as a Value Object:
 
@@ -73,7 +72,7 @@ setting `part_of` registers the value object within the aggregate's cluster
 and ensures it participates in the aggregate's validation lifecycle.
 
 `part_of` takes the aggregate class or its name as a string. A string is
-resolved to the class at `domain.init()`, and it must name an aggregate: a name
+resolved to the class at `domain.init()`, and it must name an aggregate. A name
 that matches no aggregate, such as a typo or an entity's name, makes
 `domain.init()` raise `ConfigurationError`.
 
@@ -95,8 +94,8 @@ Value Objects can be embedded into Aggregates and Entities with the
     --8<-- "guides/domain-definition/value-objects/001.py:aggregate"
     ```
 
-An email address can be supplied during user object creation, and the
-value object takes care of its own validations.
+You can supply an email address when you create a user object. The `Email`
+value object runs its own validations.
 
 ```shell
 ...
@@ -138,7 +137,7 @@ Value Objects are typically initialized along with the enclosing entity.
 Python's `decimal.Decimal` as `D` so it does not clash with the field of the
 same name: `from decimal import Decimal as D`.
 
-Assigning value is straight-forward with a `Balance` object:
+You assign a value by passing a `Balance` object:
 
 ```shell
 ...
@@ -177,19 +176,18 @@ The attribute names are a combination of the field name defined in `Account`
 class (`balance`) and the field names defined in the `Balance` Value Object
 (`currency` and `amount`).
 
-The resultant `Account` object would be the same in all aspects in either case.
-But note that you can only assign by attributes when initializing an
-entity. Trying to update an attribute value directly after initialization does
-not work because Value Objects are immutable - they cannot be changed once
-initialized. Read more in [Immutability](#immutability) section.
+The `Account` object is the same in every way in either case. But you can
+assign by attributes only when you initialize an entity. You cannot update an
+attribute value directly after initialization, because Value Objects are
+immutable: they cannot be changed once initialized. Read more in
+[Immutability](#immutability) section.
 
-The approach of assigning an entirely new Value Object instead of editing
-attributes also makes sense because all invariants (validations) should be
-satisfied at all times.
+You assign an entirely new Value Object instead of editing attributes for a
+second reason: all invariants (validations) should be satisfied at all times.
 
 !!!note
-    It is recommended that you always deal with Value Objects by their class.
-    Attributes are generally used by Protean during persistence and retrieval.
+    In your own code, create and pass Value Objects by their class. Attributes
+    are generally used by Protean during persistence and retrieval.
 
 ## Nested Value Objects
 
@@ -235,8 +233,9 @@ useful when receiving data from APIs or external sources:
 --8<-- "guides/domain-definition/value-objects/003.py:dict"
 ```
 
-This works for nested value objects too, any dict matching the value object's
-field structure will be automatically converted.
+Dict-based initialization also works for nested value objects: Protean
+automatically converts any dict that matches the value object's
+field structure.
 
 ## Invariants
 
@@ -311,8 +310,8 @@ Value objects compare and hash their field values, so `D('100.0')` and
 `D('100.00')` count as the same amount. A `Balance` holding one equals a
 `Balance` holding the other, and both hash the same. `to_dict()` still keeps
 each amount as it was given, so the two render as `"100.0"` and `"100.00"`.
-A value object of a different class, including a subclass, is never equal,
-even when its field values match.
+A value object never equals a value object of a different class, including a
+subclass, even when the field values match.
 
 ## Identity
 
@@ -320,11 +319,11 @@ Unlike Aggregates and Entities, Value Objects do not have any inbuilt concept
 of unique identities. This allows two instances of value objects to be swapped
 or even be replaced by a single object instance.
 
-This also means that all functionalities related to identity or uniqueness
-are not applicable to Value Objects.
+Because Value Objects have no unique identity, no functionality related to
+identity or uniqueness applies to them.
 
-For example, trying to mark a Value Object field with `unique = True` or
-`identifier = True` will throw a `IncorrectUsageError` exception.
+For example, when you mark a Value Object field with `unique = True` or
+`identifier = True`, Protean raises an `IncorrectUsageError` exception.
 
 ```shell
 In [1]: @domain.value_object
@@ -438,8 +437,8 @@ You can customize the generated class name and exclude specific fields:
 
 ### Inline field descriptor
 
-For inline use in commands and events, use the `ValueObjectFromEntity`
-field descriptor instead of calling the function separately:
+For inline use in commands and events, use the `ValueObjectFromEntity` field
+descriptor instead of calling `value_object_from_entity()` separately:
 
 ```python
 --8<-- "guides/domain-definition/value-objects/009.py:command"

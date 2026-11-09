@@ -3,8 +3,8 @@
 Protean ships with native OpenTelemetry (OTel) support for distributed tracing
 and metrics. When enabled, command processing, event handling, repository
 operations, and server message dispatch automatically emit OTel spans and
-metrics, plugging into any APM backend (Datadog, Jaeger, Grafana Tempo, etc.)
-with zero user code changes.
+metrics. Any APM backend (Datadog, Jaeger, Grafana Tempo, etc.) can receive
+them with zero user code changes.
 
 ## Installation
 
@@ -19,7 +19,7 @@ This pulls in:
 - `opentelemetry-api` and `opentelemetry-sdk`
 - `opentelemetry-exporter-otlp-proto-grpc` (OTLP exporter)
 - `opentelemetry-instrumentation-fastapi` (HTTP span auto-instrumentation)
-- `opentelemetry-exporter-prometheus` (`/metrics` convergence)
+- `opentelemetry-exporter-prometheus` (OTel metrics on the `/metrics` endpoint)
 
 ## Configuration
 
@@ -72,8 +72,8 @@ not installed, all instrumentation is a no-op:
    call works identically whether real or no-op, so instrumented code never
    needs conditional guards.
 
-The rest of the codebase never imports `opentelemetry` directly, all OTel interaction flows
-through `protean.utils.telemetry`.
+The rest of the codebase never imports `opentelemetry` directly. All OTel calls
+go through `protean.utils.telemetry`.
 
 ---
 
@@ -318,10 +318,10 @@ The key functions are in `protean.utils.telemetry`:
 !!! note "Domain-level correlation vs. distributed tracing"
     `TraceParent` provides *infrastructure* span lineage (parent-child spans
     in Jaeger/Datadog). Protean's `correlation_id` and `causation_id` provide
-    *business* operation lineage (which command caused which event). Both are
-    complementary, the `correlation_id` attribute on OTEL spans bridges the two
-    layers. See [Correlation and Causation
-    IDs](../observability/correlation-and-causation.md#relationship-to-opentelemetry)
+    *business* operation lineage (which command caused which event). The two
+    kinds of lineage complement each other. Both layers carry the
+    `correlation_id`, which OTEL spans hold as an attribute. See [Correlation
+    and Causation IDs](../observability/correlation-and-causation.md#relationship-to-opentelemetry)
     for the full picture.
 
 ---
@@ -361,7 +361,7 @@ and logs a warning.
 ### Excluding Observatory endpoints
 
 When the Observatory runs alongside your application, you may want to exclude
-its endpoints from tracing to avoid noise:
+its endpoints from tracing to keep its own requests out of your traces:
 
 ```python
 --8<-- "guides/server/opentelemetry/003.py:observatory"
@@ -371,9 +371,9 @@ its endpoints from tracing to avoid noise:
 
 ## `/metrics` endpoint convergence
 
-The Observatory's `/metrics` endpoint (Prometheus text exposition format) is
-aware of OTel. When telemetry is enabled and `opentelemetry-exporter-prometheus`
-is installed:
+The Observatory's `/metrics` endpoint (Prometheus text exposition format) can
+serve OTel metrics. When telemetry is enabled and
+`opentelemetry-exporter-prometheus` is installed:
 
 1. A `PrometheusMetricReader` is attached to the domain's `MeterProvider`
 2. All OTel counters, histograms, and infrastructure gauges are served via
@@ -394,7 +394,8 @@ broker, or the broker's health check raises an error, the OTel broker gauges
 report 0. The fallback then leaves out the broker and stream gauges. The
 fallback reads the per-consumer gauges from the first domain with a Redis
 broker, so it leaves them out only when no domain has one or Redis cannot be
-read. No configuration change is needed. The convergence is automatic.
+read. No configuration change is needed. The endpoint picks between the two
+implementations automatically.
 
 ---
 
@@ -419,9 +420,9 @@ Protean offers two complementary observability paths:
   exported to your APM platform. Distributed tracing across service boundaries.
 
 They share instrumentation callsites but have independent emission paths. Both
-can run simultaneously, the Observatory's trace emitter and OTel spans are
-emitted from the same code points in the Engine and handlers without
-interference.
+can run simultaneously without interference. The Observatory's trace emitter
+and OTel spans are emitted from the same code points in the Engine
+and handlers.
 
 ---
 
@@ -608,9 +609,9 @@ new way commands enter the system), ensure trace continuity:
 - **On message arrival**: Call `extract_context_from_traceparent(msg.metadata.headers.traceparent)`
   and pass the result as `context=` to `start_as_current_span()`.
 
-If either side is missed, the distributed trace will break at that
-boundary. See the three existing injection/extraction points in
-[ADR-0008](../../adr/0008-centralized-telemetry-gateway-and-traceparent-bridging.md)
+If you skip either the injection on message creation or the extraction on
+message arrival, the distributed trace breaks at that boundary. See the three
+existing injection/extraction points in [ADR-0008](../../adr/0008-centralized-telemetry-gateway-and-traceparent-bridging.md)
 for reference.
 
 ---

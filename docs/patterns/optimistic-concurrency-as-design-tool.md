@@ -8,8 +8,8 @@ that the version in the database matches what was loaded. If another
 transaction modified the aggregate in the meantime, the commit raises
 `ExpectedVersionError`.
 
-Most teams treat this error as infrastructure noise, a generic "something went
-wrong, try again" situation:
+Most teams treat `ExpectedVersionError` as a generic infrastructure failure and
+answer it with "something went wrong, try again":
 
 ```python
 # fragment
@@ -43,8 +43,9 @@ except ExpectedVersionError:
 ```
 
 This is correct mechanically, the version check prevented data corruption. But
-it is lazy architecturally. The user sees "try again" with no explanation of
-what happened, what they lost, or whether trying again will even work.
+as an architecture choice, the generic handler is weak. The user sees "try
+again" with no explanation of what happened, what they lost, or whether trying
+again will even work.
 
 Worse, the same generic handler is used whether the conflict is:
 
@@ -65,8 +66,8 @@ being used under contention.
 ## The Pattern
 
 Stop treating `ExpectedVersionError` as a generic infrastructure error.
-Instead, classify version conflicts by their **business meaning** and handle
-each category deliberately.
+Instead, classify version conflicts by their **business meaning** and choose a
+deliberate response for each category.
 
 There are three categories:
 
@@ -116,15 +117,14 @@ the operation, and commit.
 --8<-- "patterns/optimistic-concurrency-as-design-tool/001.py:aggregate"
 ```
 
-The application service implements a retry loop. If a version conflict
-occurs, the operation is safe to retry because each change is independent
-and idempotent, setting the theme to "dark" produces the same result regardless
-of how many times it runs.
-Each attempt runs in its own `UnitOfWork`. A conflict with a concurrent
-write can surface when the unit of work commits, so the `except` clause sits
-outside the `with` block. Call the service outside any other unit of work.
-Inside one, each attempt joins the outer unit of work, and the conflict
-surfaces at the outer commit with no retry.
+The application service implements a retry loop. If a version conflict occurs,
+the operation is safe to retry because each change is independent and
+idempotent: setting the theme to "dark" produces the same result regardless of
+how many times it runs. Each attempt runs in its own `UnitOfWork`. A conflict
+with a concurrent write can surface when the unit of work commits, so the
+`except` clause sits outside the `with` block. Call the service outside any
+other unit of work. Inside one, each attempt joins the outer unit of work, and
+the conflict surfaces at the outer commit with no retry.
 
 ```python
 --8<-- "patterns/optimistic-concurrency-as-design-tool/001.py:service"
@@ -153,10 +153,10 @@ adapter and the aggregate, the conflict surfaces inside `repo.add` or when
 the handler's unit of work commits, after the handler method has returned.
 An `except` clause in the handler either never runs or stops the retry that
 follows. Instead, the framework catches the conflict and runs the handler
-again in a fresh unit of work. The reload sees that the seat is reserved, and `reserve()`
-raises `SeatAlreadyTaken`. If two customers try to reserve the same seat
-simultaneously, one succeeds and the other learns that the seat is taken,
-not that a vague "conflict" occurred.
+again in a fresh unit of work. On the reloaded aggregate, `reserve()` finds
+that the seat is reserved and raises `SeatAlreadyTaken`. If two customers try
+to reserve the same seat simultaneously, one succeeds and the other learns that
+the seat is taken.
 
 ```python
 --8<-- "patterns/optimistic-concurrency-as-design-tool/002.py:handler"
@@ -171,10 +171,10 @@ The API layer can now give the customer a meaningful response:
 !!! warning "The precondition must be complete"
     The framework's retry is safe here only because `reserve()` checks the
     seat's status on the reloaded aggregate. If the precondition has a gap,
-    the retry succeeds and double-books the seat. The conflict *is* the
-    answer: someone else got there first, and the precondition is what
-    turns that into `SeatAlreadyTaken`. If you turn auto-retry off, the
-    caller gets the raw `ExpectedVersionError` and must translate it.
+    the retry succeeds and double-books the seat. The conflict *is* the answer:
+    another customer reserved the seat first, and the precondition turns that
+    conflict into `SeatAlreadyTaken`. If you turn auto-retry off, the caller
+    gets the raw `ExpectedVersionError` and must translate it.
 
 ### Category 3: Merge if possible (conditional retry)
 
@@ -279,11 +279,11 @@ To disable auto-retry entirely, set `enabled = false` in
 ## Atomicity guarantee across adapters
 
 The pattern above assumes that `ExpectedVersionError` is raised reliably
-whenever two writers race on the same aggregate. That guarantee is only as
-strong as the adapter behind the repository. Since the 5.1 hardening work,
-every first-party adapter checks the expected version **in the same atomic
-operation as the write**. There is no window in which two writers can both
-observe the same version and both commit.
+whenever two writers race on the same aggregate. Whether that assumption holds
+depends on the repository's adapter. Since the 5.1 hardening work, every
+first-party adapter checks the expected version **in the same atomic operation
+as the write**. There is no window in which two writers can both observe the
+same version and both commit.
 
 | Adapter | Mechanism |
 |---------|-----------|
@@ -294,13 +294,12 @@ observe the same version and both commit.
 | MessageDB event store | Stored-procedure API enforces expected version inside PostgreSQL |
 
 Earlier versions of the SQLAlchemy and memory adapters used a
-SELECT-then-UPDATE pattern with a time-of-check to time-of-use window:
-two concurrent handlers could both pass the `SELECT _version` check,
-both issue their `UPDATE`, and the slower writer would silently
-overwrite the faster one without raising `ExpectedVersionError`. That
-window is now closed. Two concurrent writers on the same aggregate will
-always surface one success and one `ExpectedVersionError`, regardless
-of adapter.
+SELECT-then-UPDATE pattern with a time-of-check to time-of-use window. Two
+concurrent handlers could both pass the `SELECT _version` check and both issue
+their `UPDATE`. The slower writer would then silently overwrite the faster one
+without raising `ExpectedVersionError`. That window is now closed. With any
+first-party adapter, two concurrent writers on the same aggregate always
+produce one success and one `ExpectedVersionError`.
 
 **What this means for the pattern.** Category 2 handlers (seat
 reservations, inventory allocation) can trust the version check as the
@@ -415,9 +414,9 @@ class Order(BaseAggregate):
 
 Every field shares the same `_version`. Any change to any field increments the
 version and conflicts with any concurrent change to any other field. The
-solution is to design smaller aggregates, see [Design Small
-Aggregates](design-small-aggregates.md), so that each aggregate's version
+solution is to design smaller aggregates, so that each aggregate's version
 protects only the data that genuinely must be consistent.
+See [Design Small Aggregates](design-small-aggregates.md).
 
 ---
 

@@ -64,9 +64,9 @@ This handler is 40 lines of business logic. It validates, calculates, mutates,
 decides, and raises events. The `Order` aggregate is a passive data container
 that the handler manipulates.
 
-This is the **anemic domain model**. An anti-pattern where domain objects carry
-data but no behavior, and business logic lives in service layers (handlers,
-application services, utility functions).
+This is the **anemic domain model**. In this anti-pattern, domain objects carry
+data but no behavior. Service layers (handlers, application services, utility
+functions) contain the business logic.
 
 The consequences:
 
@@ -87,7 +87,7 @@ The consequences:
   checking eligibility or raising events.
 
 The root cause: **behavior is in the wrong place**. The handler should
-orchestrate; the domain model should think.
+orchestrate; the domain model should decide.
 
 ---
 
@@ -212,8 +212,8 @@ Logic intrinsic to a domain concept belongs in the value object:
 --8<-- "patterns/thin-handlers-rich-domain/003.py:money"
 ```
 
-Currency-matching logic lives in `Money`, not in the handler that adds two
-monetary amounts.
+`Money` checks that two amounts share a currency, so the handler that adds two
+monetary amounts needs no currency check.
 
 ---
 
@@ -233,7 +233,8 @@ ask whether the extra logic belongs in the domain model:
 | `if user.role != "admin"` | Maybe | Handler (Layer 4 contextual check) |
 | `service.validate(a, b)` | Yes | Domain service (cross-aggregate) |
 
-The handler is the **coordinator**, not the **decision-maker**.
+The handler is the **coordinator**, and the domain model is
+the **decision-maker**.
 
 ---
 
@@ -327,10 +328,9 @@ Event handlers should be equally thin:
 ```
 
 The reservation logic (checking availability, preventing double-reservation,
-updating quantities) lives in `Inventory.reserve()`, not in the handler.
-`OrderPlaced` belongs to `Order`, so `stream_category` points the handler at the
-order stream. Without it the handler would listen to the inventory stream and
-never see the event.
+updating quantities) is in `Inventory.reserve()`. `OrderPlaced` belongs to
+`Order`, so `stream_category` points the handler at the order stream. Without
+it the handler would listen to the inventory stream and never see the event.
 
 ---
 
@@ -376,7 +376,7 @@ def place_order(self, command: PlaceOrder):
     repo.add(order)
 ```
 
-Construction with multiple `add_item` calls is orchestration, not logic.
+Building the order with multiple `add_item` calls is still orchestration.
 
 ### Layer 4 Guards
 

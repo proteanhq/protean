@@ -25,15 +25,16 @@ priority notification when shipped." Another `if` in the handler. Then:
 "International orders need customs documentation before shipping." More
 conditions, more logic, spread across the handler.
 
-The aggregate has become a data bag. The handler has become the brain. This is
-the **anemic domain model**, the most pervasive anti-pattern in DDD.
+The aggregate now holds data and no behavior. All the business logic is in the
+handler. This is the **anemic domain model**, the most pervasive anti-pattern
+in DDD.
 
 The problems are structural:
 
-- **Business rules scatter across handlers**: The rules about shipping live in
-  the command handler, the event handler that processes returns, the application
-  service that handles admin overrides, and the batch job that auto-ships
-  after payment confirmation. Each location has its own version of the rules.
+- **Business rules scatter across handlers**: The shipping rules are in the
+  command handler, the event handler that processes returns, the application
+  service that handles admin overrides, and the batch job that auto-ships after
+  payment confirmation. Each location has its own version of the rules.
 
 - **Invariants can't protect the aggregate**: Protean's `@invariant.post`
   decorator runs after methods are called on the aggregate. But if the handler
@@ -198,7 +199,7 @@ aggregate where it belongs.
 
 ## The Three Responsibilities of an Aggregate Method
 
-Every state-changing method on an aggregate should handle three things:
+Every state-changing method on an aggregate should do three things:
 
 ### 1. Validate Preconditions
 
@@ -248,9 +249,8 @@ Record what happened as a domain event:
 ```
 
 The event is raised as part of the business operation, not as an afterthought
-in the handler. This guarantees that whenever the state changes, the
-corresponding event is raised. You can't ship an order without raising
-`OrderShipped`.
+in the handler. Each time the method changes the state, it also raises the
+matching event. You can't ship an order without raising `OrderShipped`.
 
 ---
 
@@ -298,15 +298,17 @@ Without `atomic_change`, emptying `items` would fail the
 `total_must_match_items` invariant before the new items and total are in
 place. Inside the block the checks wait until the block ends.
 
-This is still an encapsulated method on the aggregate. The handler doesn't need
-to know about `atomic_change`. It calls `order.restructure_order(...)`, and the
-aggregate handles the complexity internally.
+`restructure_order` is still an encapsulated method on the aggregate. The
+handler doesn't need to know about `atomic_change`. It calls
+`order.restructure_order(...)`, and the aggregate groups its changes with
+`atomic_change` inside that method.
 
 ---
 
 ## The Command-Method Connection
 
-Commands name the intent. Methods execute it. The handler is the bridge.
+Commands name the intent. Methods execute it. The handler calls the method with
+the command's data.
 
 ```
 Command:     ShipOrder(order_id, tracking_number)
@@ -351,9 +353,9 @@ class Order:
         self.tracking_number = tracking_number
 ```
 
-This is just a setter with a fancy name. It doesn't validate preconditions,
-doesn't raise events, and doesn't express the full business operation. A real
-method captures the complete behavior.
+`set_shipped` is a setter with a business-sounding name. It doesn't validate
+preconditions, doesn't raise events, and doesn't express the full business
+operation. A real method captures the complete behavior.
 
 ### God Method That Does Everything
 
@@ -416,8 +418,9 @@ infrastructure:
 --8<-- "patterns/encapsulate-state-changes/001.py:tests"
 ```
 
-No repository, no command, no handler, no UoW. Just construct the aggregate,
-call the method, assert the result. This is fast, focused, and comprehensive.
+No repository, no command, no handler, no UoW. Each test constructs the
+aggregate, calls the method, and asserts the result. These tests run fast and
+check each business operation on its own.
 
 ---
 
@@ -426,7 +429,7 @@ call the method, assert the result. This is fast, focused, and comprehensive.
 ### Simple CRUD Without Business Rules
 
 If an aggregate is genuinely a data container with no business rules (no state
-machine, no preconditions, no events) direct field assignment is acceptable.
+machine, no preconditions, no events), direct field assignment is acceptable.
 But this is rare in a DDD system. If most of your aggregates look like data
 bags, consider whether DDD is the right approach for your domain.
 
@@ -434,7 +437,7 @@ bags, consider whether DDD is the right approach for your domain.
 
 When hydrating aggregates from a database or event stream, the framework sets
 fields directly. This is internal framework behavior, not application-level
-code. Protean handles this transparently.
+code. Protean loads the fields without any code from you.
 
 ### Value Objects
 

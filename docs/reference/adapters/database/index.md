@@ -120,10 +120,10 @@ Each database configuration must specify:
 
 ## Database Capabilities
 
-Providers declare their capabilities through a flag-based system. Unlike broker
-capabilities (which are hierarchical tiers), database capabilities are
-**orthogonal**, providers pick and choose which capabilities they support, and
-individual flags can be combined freely.
+Providers declare their capabilities through a flag-based system. Broker
+capabilities form hierarchical tiers, but database capabilities are
+**orthogonal**: each provider declares any subset of capabilities it supports.
+You can combine individual flags freely.
 
 ### Capability Flags
 
@@ -234,8 +234,9 @@ elasticsearch = "protean.adapters.repository.elasticsearch:register"
 
 Each entry point maps a provider name to a `register()` function. The function
 is called on first access and registers the provider class path with the
-`ProviderRegistry`. Dependencies are wrapped in `try/except` so that providers
-with uninstalled optional dependencies are silently skipped.
+`ProviderRegistry`. Each `register()` function imports its dependencies inside
+`try/except`, so it silently skips registering a provider whose optional
+dependencies are not installed.
 
 ### Third-Party Providers
 
@@ -261,9 +262,9 @@ guide.
 ## Required Lookups
 
 Every provider must register a minimum set of **12 standard lookups** that
-power Protean's filtering API. These are validated when a provider is first
-loaded, missing lookups produce a warning, and filters using them will raise
-`NotImplementedError`.
+power Protean's filtering API. Protean validates these lookups when it first
+loads a provider. A missing lookup produces a warning. A filter that uses a
+missing lookup raises `NotImplementedError`.
 
 | Lookup | Example |
 |--------|---------|

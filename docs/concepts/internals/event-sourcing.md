@@ -10,9 +10,9 @@ aggregate and its stream in step.
 
 The central design principle: **`@apply` handlers are the only place where
 event-sourced aggregate state is mutated.** Both the live path (processing
-commands) and the replay path (loading from event store) converge on the
-same `@apply` handlers, eliminating an entire class of bugs where live
-behavior diverges from replay behavior.
+commands) and the replay path (loading from event store) call the same `@apply`
+handlers, which removes an entire class of bugs where live behavior diverges
+from replay behavior.
 
 ```
 Live path:    business_method() → raise_() → @apply handler → state mutated
@@ -107,12 +107,11 @@ def _apply(self, event):
 `_replaying` is the replay-only signal that lets an assignment to a
 [`reserved`](../../reference/domain-elements/element-decorators.md) (removed)
 field name drop instead of raising. `BaseAggregate.__getattr__` reads the same
-flag: while it is set, a call to the `add_<name>` or `remove_<name>` helper of a
-reserved association does nothing, so the child entities that call would have
-added are not rebuilt. `get_one_from_<name>` and
-`filter_<name>` still raise. The live `raise_()` path calls `_apply_handler()`
-directly and never sets the flag, so a live write or helper call on a removed
-field still raises.
+flag: while it is set, a call to the `add_<name>` or `remove_<name>` helper of
+a reserved association does nothing, so the child entities that the call would
+have added are not rebuilt. `get_one_from_<name>` and `filter_<name>` still
+raise. The live `raise_()` path calls `_apply_handler()` directly and never
+sets the flag, so a live write or helper call on a removed field still raises.
 
 ## Aggregate Construction
 
@@ -132,7 +131,8 @@ Pydantic validation**. Uses `__new__` to skip `__init__` entirely:
 7. Sets up HasMany pseudo-methods (`add_*`, `remove_*`, etc.)
 8. Discovers invariants from the MRO
 
-This follows the same pattern as `BaseEntity.__deepcopy__`.
+`_create_for_reconstitution()` follows the same pattern
+as `BaseEntity.__deepcopy__`.
 
 ### `_create_new(**identity_kwargs)`
 
@@ -187,8 +187,8 @@ avoid double-incrementing:
 | Live (`raise_()`) | `raise_()` itself | Before calling `_apply_handler()` |
 | Replay (`_apply()`) | `_apply()` | After calling `_apply_handler()` |
 
-This ensures each event increments the version exactly once regardless of
-which path processes it.
+With this split, Protean increments the version exactly once for each event, on
+either path.
 
 ## Invariant Checking
 
@@ -381,8 +381,9 @@ When a projector listens to multiple stream categories (e.g., both `user` and
 `transaction`), events must be processed in the order they were originally
 stored, not grouped by category. The rebuild reads all events from each
 category, then sorts the combined list by `global_position` before dispatching.
-This ensures that a `Registered` event from the `user` category is processed
-before a subsequent `Transacted` event from the `transaction` category.
+Because of this sort, the rebuild processes a `Registered` event from the
+`user` category before a subsequent `Transacted` event from the
+`transaction` category.
 
 ### Error handling during replay
 

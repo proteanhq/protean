@@ -15,9 +15,9 @@ OpenTelemetry is an optional dependency in Protean (`pip install
 protean[telemetry]`). Instrumentation code (span creation, metric recording,
 context propagation) is woven into core modules like `CommandProcessor`,
 `UnitOfWork`, `Repository`, `Engine`, and `OutboxProcessor`. Without a clear
-boundary, every instrumented file would need its own `try: import
-opentelemetry... except ImportError` guard and conditional logic, scattering
-OTEL awareness across dozens of files.
+boundary, every instrumented file would need its own
+`try: import opentelemetry... except ImportError` guard and conditional logic,
+so OTEL checks would appear in dozens of files.
 
 During the Epic 6.1 implementation (8 PRs over multiple weeks), code
 review caught at least four instances where contributors directly
@@ -43,9 +43,10 @@ HTTP POST /orders
               -> ...
 ```
 
-Each arrow may cross a process boundary (via event store or broker). For a
-distributed trace to survive this journey, the trace context must be explicitly
-carried in message metadata and extracted/injected at each boundary. Protean
+Each arrow may cross a process boundary (via event store or broker). To keep
+one distributed trace across these steps, Protean must carry the trace context
+explicitly in message metadata. At each boundary, Protean must inject the
+context into the outgoing message and extract it from the incoming one. Protean
 already had a `TraceParent` value object in `MessageHeaders` using W3C format,
 but it was not connected to OTEL's context propagation. The challenge was
 bridging these two systems bidirectionally without coupling core domain code to
@@ -124,16 +125,18 @@ three cooperative injection/extraction points:
 2. **Event raising** (`BaseAggregate.raise_()`) preserves an existing
    `traceparent` from the event's metadata if present (e.g., when the event was
    constructed with explicit headers). Otherwise it falls back to
-   `inject_traceparent_from_context()` to capture the current span context. This
-   ensures events raised during synchronous command handler execution inherit
-   the handler's span context.
+   `inject_traceparent_from_context()` to capture the current span context.
+   Because of this fallback, an event raised during synchronous command handler
+   execution inherits the handler's span context.
 
 **Extraction (incoming messages):**
 
-3. **Command processing** (`CommandProcessor.process()`) and **engine
-   message handling** (`Engine.handle_message()`), call `extract_context_from_traceparent()` to convert the incoming `TraceParent` value object
-   back to an OTEL `Context`, passed as the `context=` parameter to `start_as_current_span()`. This makes the new
-   span a child of the incoming trace.
+3. **Command processing** (`CommandProcessor.process()`) and **engine message
+   handling** (`Engine.handle_message()`) call
+   `extract_context_from_traceparent()` to convert the incoming `TraceParent`
+   value object back to an OTEL `Context`. They pass that `Context` as the
+   `context=` parameter to `start_as_current_span()`. This makes the new span a
+   child of the incoming trace.
 
 The bridge uses OTEL's standard `propagate.inject()` and `propagate.extract()`
 with W3C `traceparent` format, matching the format that Protean's `TraceParent`
@@ -160,12 +163,12 @@ created lazily per domain via `get_domain_metrics(domain)`:
 Dimensional attributes (e.g., `command_type`, `handler_name`, `status`)
 are passed at recording time, not at instrument creation time.
 
-The Observatory's `/metrics` endpoint converges with OTEL: when OTEL is
-installed, infrastructure metrics (outbox depth, broker health,
-subscription lag) are registered as `ObservableGauge` callbacks on the
-OTEL `MeterProvider`, and `get_prometheus_text()` serves the combined
-output. When OTEL is not installed, the original hand-rolled Prometheus
-exposition is preserved unchanged.
+When OTEL is installed, Protean registers the Observatory's infrastructure
+metrics (outbox depth, broker health, subscription lag) as `ObservableGauge`
+callbacks on the OTEL `MeterProvider`. The Observatory's `/metrics` endpoint
+then serves the combined output through `get_prometheus_text()`. When OTEL is
+not installed, the original hand-rolled Prometheus exposition is
+preserved unchanged.
 
 ## Consequences
 
@@ -174,9 +177,9 @@ exposition is preserved unchanged.
 - Instrumentation code is clean and unconditional. A typical callsite is
   four lines: get tracer, open span, set attributes, handle error. No
   imports from `opentelemetry`, no availability checks.
-- The no-op pattern establishes a reusable approach for future optional
-  integrations in Protean. Any subsystem that depends on an optional
-  package can follow the same gateway + no-op model.
+- Protean can reuse the no-op pattern for future optional integrations. Any
+  subsystem that depends on an optional package can follow the same gateway +
+  no-op model.
 - Full distributed traces flow end-to-end: HTTP request -> command ->
   handler -> event -> outbox -> downstream handler, all linked by W3C
   traceparent propagation.
@@ -194,8 +197,8 @@ exposition is preserved unchanged.
 
 - The gateway module is a single point of evolution. Every new OTEL
   feature (e.g., span links, baggage) requires adding a helper to
-  `telemetry.py` rather than using OTEL directly. This is by design
-  but adds friction.
+  `telemetry.py` rather than using OTEL directly. Adopting a new OTEL feature
+  therefore takes more work.
 - The "never import opentelemetry elsewhere" rule is enforced by code
   review, not by tooling. A lint rule (e.g., in 3.5 Architecture
   Fitness Functions) could automate this in the future.
@@ -234,29 +237,30 @@ freedom to pick their backend.
 
 ## Update: Log↔Trace Correlation (Epic 6.6, sub-issue #917)
 
-Epic 6.6 (Logging Overhaul) extended this story with automatic log↔trace
-correlation. When `telemetry.enabled=True`, `Domain.configure_logging()`
-installs a stdlib `OTelTraceContextFilter` on the root logger and appends a
-`protean_otel_processor` to the structlog pipeline. Both read the active span
-via `opentelemetry.trace.get_current_span()` and inject `trace_id` (32-char
-hex), `span_id` (16-char hex), and `trace_flags` (`int`) into every log record.
-Outside a valid span, or when the `opentelemetry` extra is not installed, the
-fields default to empty strings / `0`, no lazy import fires when telemetry is
-disabled.
+The Logging Overhaul (Epic 6.6) extended this telemetry work with automatic
+log↔trace correlation. When `telemetry.enabled=True`,
+`Domain.configure_logging()` installs a stdlib `OTelTraceContextFilter` on the
+root logger and appends a `protean_otel_processor` to the structlog pipeline.
+Both read the active span via `opentelemetry.trace.get_current_span()` and
+inject `trace_id` (32-char hex), `span_id` (16-char hex), and `trace_flags`
+(`int`) into every log record. Outside a valid span, or when the
+`opentelemetry` extra is not installed, the fields default to empty strings /
+`0`. No lazy import fires when telemetry is disabled.
 
-Epic 6.6 also closed a gap in the Epic 6.5 correlation extraction: the
-existing `ProteanCorrelationFilter` and `protean_correlation_processor`
-now fall back to `g.correlation_id` and `g.causation_id` when no
-`g.message_in_context` is in scope. These two attributes are the
-documented extension point for HTTP middleware, CLI commands, and
-background jobs that need log records tagged *before* a domain message
-exists. Message-based extraction (from `g.message_in_context.metadata.domain`)
-still takes precedence when available.
+The Logging Overhaul also closed a gap in the Epic 6.5 correlation extraction:
+the existing `ProteanCorrelationFilter` and `protean_correlation_processor` now
+fall back to `g.correlation_id` and `g.causation_id` when no
+`g.message_in_context` is in scope. These two attributes are the documented
+extension point for HTTP middleware, CLI commands, and background jobs that
+need log records tagged *before* a domain message exists. Message-based
+extraction (from `g.message_in_context.metadata.domain`) still takes precedence
+when available.
 
-Together, the two additions complete the end-to-end OOTB promise Epic 6.5
-made for logs: every log record emitted under an active domain context now
-carries both the correlation identifiers and the trace identifiers needed
-to jump between log aggregators and APM tools without code changes.
+Together, the two additions complete the promise Epic 6.5 made that logs work
+end to end without configuration: every log record emitted under an active
+domain context now carries both the correlation identifiers and the trace
+identifiers needed to move between log aggregators and APM tools without
+code changes.
 
 ## References
 

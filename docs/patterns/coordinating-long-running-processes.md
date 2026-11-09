@@ -72,8 +72,8 @@ delegates the *how* to the appropriate aggregate via commands.
 
 This is a well-established pattern in DDD and event-driven architectures,
 documented by Vaughn Vernon, Greg Young, and the NServiceBus / MassTransit
-communities. The key insight is that a multi-step process needs its own
-identity and state, separate from the aggregates it coordinates.
+communities. A multi-step process needs its own identity and state, separate
+from the aggregates the process coordinates.
 
 ---
 
@@ -216,24 +216,25 @@ the event was delivered twice), the handler is a no-op.
 Events from different aggregate streams have no guaranteed ordering.
 `PaymentConfirmed` can arrive before `OrderPlaced`. Two strategies:
 
-- **Make the early arrival impossible**: If the PM does not exist when
-  `PaymentConfirmed` arrives (because `OrderPlaced` has not created it
-  yet), Protean skips the event and does not deliver it again. This is safe
-  when the event can only follow a command the PM issued, as
-  `PaymentConfirmed` follows `RequestPayment` here.
+- **Make the early arrival impossible**: `PaymentConfirmed` can arrive before
+  `OrderPlaced` has created the PM. If the PM does not exist yet, Protean skips
+  the event and does not deliver it again. This is safe when the event can only
+  follow a command the PM issued, as `PaymentConfirmed` follows
+  `RequestPayment` here.
 
 - **Design correlation to make ordering irrelevant**: Structure each
   handler to set state based on what it knows, not on what it assumes
   happened before. Mark the handler `start=True` too, so an early
-  `PaymentConfirmed` creates the PM instead of being skipped, and record
-  the payment details. When `OrderPlaced` arrives, check whether payment is
-  already recorded and skip the `RequestPayment` step.
+  `PaymentConfirmed` creates the PM instead of being skipped. In that handler,
+  record the payment details. In the `OrderPlaced` handler, check whether
+  payment is already recorded. If payment is recorded, skip the
+  `RequestPayment` step.
 
 ### 3. Design compensation explicitly
 
 For every "forward" step the PM orchestrates, document the compensating
-action. When a step fails, the PM issues compensation commands to undo
-previous steps.
+action. When a step fails, the failure handler you write in the PM issues
+compensation commands for the previous steps.
 
 | Forward step | Compensating action |
 |---|---|

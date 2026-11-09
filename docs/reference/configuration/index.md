@@ -3,7 +3,7 @@
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
-Protean's configuration is managed through the Domain object, which can be configured in multiple ways:
+You can configure Protean through the Domain object in multiple ways:
 
 ## Direct Configuration
 
@@ -46,8 +46,8 @@ Default: `False`
 ### `testing`
 
 Enable testing mode. Exceptions are propagated rather than handled by the
-domain’s error handlers. Extensions may also change their behavior to
-facilitate easier testing. You should enable this in your own tests.
+domain’s error handlers. Extensions may also change their behavior to make
+testing easier. You should enable testing mode in your own tests.
 
 Default: `False`
 
@@ -67,23 +67,23 @@ c4bf0121035265bf44657217c33a7d041fe9e505961fc7da5d976aa0eaf5cf94
 
 ### `env`
 
-Reserved for informational use. Protean does not read this key to select
-which environment overlay (`[staging]`, `[prod]`, etc.) to apply: overlay
-selection is driven entirely by the `PROTEAN_ENV` environment variable,
-described in [Multiple Environments](#multiple-environments). Setting `env`
-in `domain.toml` has no effect on Protean's own behavior.
+Reserved for informational use. Protean does not read `env` to pick the
+environment overlay (`[staging]`, `[prod]`, etc.) to apply. Only the
+`PROTEAN_ENV` environment variable picks the overlay, as described in
+[Multiple Environments](#multiple-environments). Setting `env` in `domain.toml`
+has no effect on Protean's own behavior.
 
 Default: `None`
 
 ### `identity_strategy`
 
-The default strategy to use to generate an identity value. Can be overridden
-at the [`Auto`](../fields/simple-fields.md#auto) field level.
+The default strategy Protean uses when it generates an identity value. Can be
+overridden at the [`Auto`](../fields/simple-fields.md#auto) field level.
 
 Supported options are `uuid` and `function`.
 
-If the `identity_strategy` is chosen to be a `function`, `identity_function`
-has to be mandatorily specified during domain object initialization.
+If you set `identity_strategy` to `function`, you must specify
+`identity_function` when you initialize the domain object.
 
 Default: `uuid`
 
@@ -122,7 +122,7 @@ Default: `string`
     custom database model declares the identity column is not checked,
     because the model sets that column's type. The memory provider
     holds the 128-bit value. Elasticsearch stores it as a string, so it
-    loads back as a string. Neither is affected.
+    loads back as a string. The rule does not apply to either provider.
 
 ### `command_processing`
 
@@ -193,8 +193,8 @@ field was removed, without an upcaster.
 
 The dropped-field record is read-time observability on the deserialized
 message: it is not written back to the event store and, being `_`-prefixed, is
-not emitted as a CloudEvents extension. Dropping only removes unknown fields, a
-payload still missing a required field raises as usual.
+not emitted as a CloudEvents extension. Dropping only removes unknown fields,
+so a payload still missing a required field raises as usual.
 
 The default is strict: an unknown field raises, so a typo or genuine schema
 drift is not silently swallowed. A per-event `lenient` meta option
@@ -258,15 +258,15 @@ They are defined in the `[databases]` section.
 --8<-- "reference/configuration/index/databases.toml"
 ```
 
-You can define as many databases as you need. The default database is identified
-by the `default` key, and is used when you do not specify a database name when
-accessing the domain.
+You can define as many databases as you need. The `default` key identifies the
+default database. Protean uses it when you access the domain without naming
+a database.
 
 The only other database defined by default is `memory`, which is the in-memory
 stub database provider.
 
-The persistence store defined here is then specified in the `provider` key of
-aggregates and entities to assign them a specific database.
+To assign an aggregate or entity a specific database, name the persistence
+store defined here in its `provider` key.
 
 ```python hl_lines="1"
 --8<-- "reference/configuration/index/002.py:aggregate"
@@ -325,8 +325,7 @@ Read more in [Adapters → Broker](../adapters/broker/index.md) section.
 
 ### `event_store`
 
-The event store that stores event and command messages is defined in this
-section.
+This section defines the event store, which stores event and command messages.
 
 ```toml
 --8<-- "reference/configuration/index/event_store.toml"
@@ -415,11 +414,11 @@ default** on port `8080`.
 
 The server exposes `GET /healthz`, `GET /livez`, `GET /readyz`, and
 `POST /drainz`. `/drainz` asks the engine in that process to stop taking new
-work while in-flight work finishes, without shutting it down; `/readyz` then
-reports not-ready so a load balancer stops routing to the pod. Its `drained`
-field turns `true` once that engine has no batch in flight. For the probe
-response bodies, readiness semantics, draining, and FastAPI router factory, see
-[Server Hardening reference](../server/hardening.md#health-checks).
+work while in-flight work finishes, without shutting the engine down. `/readyz`
+then reports not-ready so a load balancer stops routing to the pod. Its
+`drained` field turns `true` once that engine has no batch in flight. For the
+probe response bodies, readiness semantics, draining, and FastAPI router
+factory, see [Server Hardening reference](../server/hardening.md#health-checks).
 
 #### Claiming Unhandled Messages
 
@@ -427,10 +426,10 @@ response bodies, readiness semantics, draining, and FastAPI router factory, see
 must stay unacknowledged before a starting subscription claims it. A worker
 stopped in the middle of a batch leaves its unhandled messages pending in the
 consumer group; the next start claims and handles them once they are this old.
-Keep it above `circuit_breaker_reset_seconds` and above your longest batch, so
-a start never claims the entries of a consumer that is still running. A zero,
-negative or non-numeric value falls back to `120`. See
-[`server.reclaim_idle_seconds`](../server/hardening.md#serverreclaim_idle_seconds).
+Keep `server.reclaim_idle_seconds` above `circuit_breaker_reset_seconds` and
+above your longest batch, so a start never claims the entries of a consumer
+that is still running. A zero, negative or non-numeric value falls back to
+`120`. See [`server.reclaim_idle_seconds`](../server/hardening.md#serverreclaim_idle_seconds).
 
 #### Priority Lanes
 
@@ -459,9 +458,9 @@ delivery. The outbox is automatically enabled when
 --8<-- "reference/configuration/index/outbox.toml"
 ```
 
-Cleanup runs as bounded `batch_size` deletes rather than one unbounded
-`DELETE`, so large backlogs are cleared without long lock holds; each batch
-commits before the next when cleanup runs standalone.
+Cleanup runs as bounded `batch_size` deletes instead of one unbounded `DELETE`,
+so large backlogs clear without long lock holds. When cleanup runs standalone,
+each batch commits before the next.
 
 Read more in [Server → Outbox Pattern](../../concepts/async-processing/outbox.md) section.
 
@@ -650,11 +649,11 @@ configuration.
 --8<-- "reference/configuration/index/environments.toml"
 ```
 
-Protean has a default configuration with memory stubs that is overridden
-by configurations in the `toml` file, which can further be over-ridden by an
-environment-specific configuration, as seen above. There are two environment
-specific settings above for databases - an `sqlite` db configuration for
-`staging` and a `postgresql` db configuration for `prod`.
+Protean has a default configuration with memory stubs. Configurations in the
+`toml` file override it, and an environment-specific configuration can override
+those further, as seen above. There are two environment specific settings above
+for databases - an `sqlite` db configuration for `staging` and a `postgresql`
+db configuration for `prod`.
 
 ### Testing Overlays
 
