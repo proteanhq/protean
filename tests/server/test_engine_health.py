@@ -306,6 +306,10 @@ class TestHealthServerIntegration:
         """The block survives the real probe path, not just a direct call."""
         domain = _handler_domain()
         with _serving(domain) as (engine, hs, loop, port):
+            # The server's background refresh starts with the server and reads
+            # the engine's original subscription, which has no breaker.  Stop
+            # it, or its result can land after the refresh below and replace it.
+            loop.run_until_complete(hs._subscriptions.stop())
             engine._subscriptions[HANDLER] = _breaker_subscription(
                 engine, CircuitBreakerState.CLOSED
             )
