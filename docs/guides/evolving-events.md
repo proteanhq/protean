@@ -65,9 +65,12 @@ union (Avro's mechanism for "may be absent").
     A field you *added* is part of the current schema, so it decodes fine.
 
 !!! tip "Rule of thumb"
-    Adding an **optional** field, or a **field with a default**, never breaks
-    anyone. Adding a **required field with no default** breaks readers of old
-    data. They have no value to supply. Prefer a default.
+    Adding an **optional** field, or a **field with a default**, keeps old
+    data readable. Adding a **required field with no default** breaks readers of
+    old data. They have no value to supply. Prefer a default. On an event, an
+    added field that does not sort last by name moves the Protobuf numbers of
+    the fields after it. `ir diff` reports that as breaking unless you bump
+    `__version__` (see [Bump the version](#bump-the-version-and-write-upcasters)).
 
 ## Rename a field with `renamed_from`
 
@@ -111,8 +114,11 @@ upcasters: it converts a `v1` payload step by step to the current `v3` before
 your handler receives it.
 
 The running example bumps `OrderPlaced` to show this chaining. Its rename and
-defaulted fields would load under weak schema without a bump, so the version bump
-here illustrates the mechanism; those two changes do not require it.
+defaulted fields would load under weak schema without a bump. The bump to v2 is
+still required: `currency` and `customer` sort before `order_id`, so `order_id`
+moves from Protobuf field number 3 to 4, and `ir diff` reports that as breaking
+without a bump. The v2 to v3 change adds `placed_at`, which sorts last and moves
+no number, so that bump only illustrates the mechanism.
 
 ```python
 --8<-- "guides/evolving-events/002.py:upcasters"

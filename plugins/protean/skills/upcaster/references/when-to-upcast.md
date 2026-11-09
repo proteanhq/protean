@@ -4,7 +4,7 @@
 
 | Change | Strategy | Why |
 |--------|----------|-----|
-| Add optional field with default | **No upcaster**: just add `default=` | Old events deserialize fine; missing field gets the default |
+| Add optional field with default | **No upcaster**: just add `default=`, if the name sorts after every existing field | Old events deserialize fine; missing field gets the default. A name that sorts earlier moves Protobuf field numbers: bump `__version__` and register an upcaster, which may return the payload unchanged |
 | Add required field with known default | **Upcast** | Old events need the new field to pass validation |
 | Rename a field | **Upcast** | Old events have the old name; transformation is structural |
 | Change field type (e.g., string→int) | **Upcast** | Old events have the old type; transformation is structural |
@@ -17,7 +17,7 @@
 
 ## Backward-Compatible Changes (No Upcaster Needed)
 
-These changes are always safe and require no upcaster. The examples use an `Order` aggregate:
+These changes are safe and require no upcaster, with one exception. Protean numbers an event's Protobuf fields in sorted name order. An added field that sorts before an existing field moves the numbers after it, and `protean ir diff` reports that as breaking (`field_number_changed`) until you bump `__version__` and register an upcaster, which may return the payload unchanged. The examples use an `Order` aggregate:
 
 ```python
 @domain.aggregate
@@ -39,8 +39,8 @@ class OrderPlaced:
 class OrderPlaced:
     order_id = Identifier(required=True)
     amount = Decimal(precision=19, scale=4, required=True)
-    discount_code = String(default=None)    # Safe: old events get None
-    channel = String(default="web")         # Safe: old events get "web"
+    promo_code = String(default=None)       # Safe: old events get None
+    sales_channel = String(default="web")   # Safe: old events get "web"
 ```
 
 ### Adding new event types

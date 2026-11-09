@@ -54,6 +54,13 @@ class OrderPlaced:
 
 Some changes don't require a new version:
 
+An added field whose name sorts after every existing field keeps the same
+version. Protean numbers an event's Protobuf fields in sorted name order, so a
+field that sorts earlier moves the numbers of the fields after it, and
+`protean ir diff` reports that as breaking (`field_number_changed`) until you
+bump `__version__` and register an upcaster, which may return the payload
+unchanged.
+
 **Adding optional fields:**
 ```python
 @domain.event(part_of="Order")
@@ -64,7 +71,7 @@ class OrderPlaced:
     customer_id: String(required=True)
     placed_at: DateTime(required=True)
     # New optional field - backward compatible
-    notes: String()  # Old events won't have this, default is None
+    shipping_notes: String()  # Old events won't have this, default is None
 ```
 
 **Adding default values:**
@@ -76,7 +83,7 @@ class ProductCreated:
     product_id: String(required=True, identifier=True)
     name: String(required=True)
     # New field with default - backward compatible
-    category: String(default="uncategorized")
+    product_type: String(default="uncategorized")
 ```
 
 ### 2. Breaking Changes (New Version)

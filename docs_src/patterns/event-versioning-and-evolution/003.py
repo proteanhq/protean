@@ -10,7 +10,8 @@ class Order:
 
 
 # --8<-- [start:after]
-# After: added discount_code and channel (same message version, no bump)
+# After: added discount_code and channel (both sort before order_id, so
+# `protean ir diff` asks for a __version__ bump)
 @domain.event(part_of=Order)
 class OrderPlaced:
     order_id: Identifier(required=True)

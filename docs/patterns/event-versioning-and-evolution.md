@@ -69,7 +69,10 @@ The golden rules:
 
 ## Backward-Compatible Changes
 
-These changes are safe and require no versioning strategy:
+These changes keep old events readable without an upcaster. One exception
+applies to events: an added or renamed field that changes the sorted order of
+field names moves Protobuf field numbers, and that needs a version bump (see
+below).
 
 ### Adding Optional Fields with Defaults
 
@@ -84,6 +87,14 @@ the behavior of events written before the field existed:
 Old events deserialize successfully: `discount_code` is `None`, `channel` is
 `"web"`. Consumers that don't know about the new fields ignore them. Consumers
 that do know about them treat `None` / `"web"` as the legacy case.
+
+Protean numbers an event's Protobuf fields in sorted name order. `channel` and
+`discount_code` sort before `order_id`, so this change moves the numbers of the
+fields after them, and `protean ir diff` reports it as breaking
+(`field_number_changed`) while `__version__` stays the same. To ship this change,
+bump `__version__` and register an upcaster for the old version, which may return
+the payload unchanged. A new field whose name sorts after every existing field
+moves no number and needs no bump.
 
 **Rules for adding fields:**
 
