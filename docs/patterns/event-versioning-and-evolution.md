@@ -243,7 +243,7 @@ of which version was originally stored.
 **When to use:** Type changes, field splits or merges, or calculated new fields
 where a reasonable transformation exists. Useful when you don't want handlers to
 know about historical schemas. A pure rename uses `renamed_from` and needs no
-upcaster.
+upcaster, unless it moves a Protobuf field number.
 
 **Trade-off:** Upcasting adds a processing layer and must be maintained as
 schemas evolve further. Each version needs an upcaster to the next.

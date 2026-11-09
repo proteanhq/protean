@@ -157,7 +157,8 @@ lacks it fails to load with a `DeserializationError` that names `amount`.
 
 The `amount → total_amount` step renames a field inside a version bump to show
 how the chain composes. A rename on its own uses `renamed_from` and needs no
-version bump. The decision table below shows which change calls for which tool.
+version bump, unless the new name sorts to a different position and so moves a
+Protobuf field number. The decision table below shows which change calls for which tool.
 
 ### Scenario 5: Removing an Obsolete Field
 
