@@ -63,6 +63,7 @@ The SQLite provider supports the following capabilities:
 - :white_check_mark: **RAW_QUERIES**: Execute raw SQL queries
 - :white_check_mark: **SCHEMA_MANAGEMENT**: Create/drop tables
 - :white_check_mark: **CONNECTION_POOLING**: SQLAlchemy connection pool management
+- :white_check_mark: **SCHEMA_MIGRATIONS**: Versioned migrations through Alembic
 - :x: **SIMULATED_TRANSACTIONS**: Uses real transactions instead
 - :x: **NATIVE_JSON**: No native JSON column type (stored as text)
 - :x: **NATIVE_ARRAY**: No native array column type (stored as text)

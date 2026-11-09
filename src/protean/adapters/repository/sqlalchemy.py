@@ -6,6 +6,7 @@ import functools
 import importlib
 import json
 import logging
+import pathlib
 import time
 import types
 import typing
@@ -73,7 +74,7 @@ from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET, FieldSpec
 from protean.infra.registry import providers
 from protean.port.dao import BaseDAO, BaseLookup, HoldBack
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import BaseProvider, DatabaseCapabilities, SchemaMigrator
 from protean.utils import (
     Database,
     DomainObjects,
@@ -2814,8 +2815,31 @@ class SAProvider(BaseProvider):
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
-        """SQLAlchemy providers support full relational capabilities."""
-        return DatabaseCapabilities.RELATIONAL
+        """SQLAlchemy providers support relational capabilities and migrations."""
+        return DatabaseCapabilities.RELATIONAL | DatabaseCapabilities.SCHEMA_MIGRATIONS
+
+    def _schema_migrator(self, directory: pathlib.Path) -> SchemaMigrator:
+        """The Alembic-backed migrator, or the extra to install when Alembic is missing.
+
+        Raises:
+            ConfigurationError: Alembic is not installed. The message names the
+                ``protean[<database>]`` extra that installs it.
+        """
+        try:
+            from protean.adapters.repository.schema_migrator.alembic_migrator import (  # noqa: PLC0415
+                AlembicSchemaMigrator,
+            )
+        except ModuleNotFoundError as exc:
+            # Only a missing Alembic maps to the extra. Any other missing module
+            # is a different fault and propagates unchanged.
+            if exc.name is None or exc.name.split(".")[0] != "alembic":
+                raise
+            raise ConfigurationError(
+                f"Database '{self.name}' ({self.__database__}) needs Alembic for "
+                f"schema migrations, and it cannot be imported ({exc}). Install "
+                f'it with `pip install "{_alembic_extra(self.__database__)}"`.'
+            ) from exc
+        return AlembicSchemaMigrator(directory, self)
 
     @property
     def metadata(self) -> MetaData:
@@ -3358,9 +3382,10 @@ class PostgresqlProvider(SAProvider):
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
-        """PostgreSQL supports relational capabilities plus native JSON and arrays."""
+        """PostgreSQL supports relational capabilities and migrations, plus native JSON and arrays."""
         return (
             DatabaseCapabilities.RELATIONAL
+            | DatabaseCapabilities.SCHEMA_MIGRATIONS
             | DatabaseCapabilities.NATIVE_JSON
             | DatabaseCapabilities.NATIVE_ARRAY
         )
@@ -3440,6 +3465,17 @@ class SqliteProvider(SAProvider):
         return conn
 
 
+def _alembic_extra(database: str) -> str:
+    """The extra that installs Alembic for ``database``.
+
+    Each SQLAlchemy database has an extra of the same name, and every one of them
+    installs Alembic. A database outside that set gets the package name.
+    """
+    if database in {db.value for db in SAProvider.databases}:
+        return f"protean[{database}]"
+    return "alembic"
+
+
 # The default driver of each provider that has one, with the extra that installs
 # it.
 _DEFAULT_DRIVER_EXTRAS: dict[str, str] = {
@@ -3515,9 +3551,10 @@ class MssqlProvider(SAProvider):
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
-        """MSSQL supports relational capabilities plus native JSON and arrays."""
+        """MSSQL supports relational capabilities and migrations, plus native JSON and arrays."""
         return (
             DatabaseCapabilities.RELATIONAL
+            | DatabaseCapabilities.SCHEMA_MIGRATIONS
             | DatabaseCapabilities.NATIVE_JSON
             | DatabaseCapabilities.NATIVE_ARRAY
         )
@@ -3592,12 +3629,16 @@ class MysqlProvider(SAProvider):
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
-        """MySQL supports relational capabilities plus native JSON.
+        """MySQL supports relational capabilities and migrations, plus native JSON.
 
         MySQL 8 has a real JSON type. It has no array type, so ``NATIVE_ARRAY``
         is not declared and a list column is stored as JSON.
         """
-        return DatabaseCapabilities.RELATIONAL | DatabaseCapabilities.NATIVE_JSON
+        return (
+            DatabaseCapabilities.RELATIONAL
+            | DatabaseCapabilities.SCHEMA_MIGRATIONS
+            | DatabaseCapabilities.NATIVE_JSON
+        )
 
     @property
     def charset(self) -> str:

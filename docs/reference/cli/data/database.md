@@ -12,6 +12,7 @@ path (defaults to the current directory).
 | `protean db drop` | Drop all database tables | Yes |
 | `protean db truncate` | Delete all rows, preserve schema | Yes |
 | `protean db setup-outbox` | Create only outbox tables | No |
+| `protean db init` | Create the migrations folder for one provider | No |
 
 ## `protean db setup`
 
@@ -91,6 +92,65 @@ command exits with an error.
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
+
+## `protean db init`
+
+Creates the folder that holds the schema migrations of one database provider.
+A migration is a versioned script that changes the schema. Protean runs them
+through [Alembic](https://alembic.sqlalchemy.org/), which the `postgresql`,
+`sqlite`, `mssql` and `mysql` extras install.
+
+```bash
+protean db init --domain=my_domain
+```
+
+The command writes these files into the folder:
+
+| Path | Content |
+|------|---------|
+| `alembic.ini` | Alembic's settings. `protean_domain` records the `--domain` value and `protean_provider` the provider name. |
+| `env.py` | Two lines that call Protean's `run_migrations`. It loads the domain and runs the migrations on the provider's database. |
+| `script.py.mako` | The template for new migration scripts. |
+| `versions/` | An empty folder for the migration scripts. |
+
+Plain `alembic` commands work on the folder:
+
+```bash
+alembic -c migrations/alembic.ini current
+alembic -c migrations/alembic.ini stamp head
+```
+
+Alembic resolves a relative `protean_domain` from the folder you run it in.
+Run `alembic` from the folder you ran `protean db init` in, which is usually
+the project root. When the `PROTEAN_DOMAIN` environment variable is set, its
+value is used in place of `protean_domain`.
+
+The command refuses, and writes nothing, when:
+
+- The provider does not declare the `SCHEMA_MIGRATIONS` capability. The
+  memory and Elasticsearch providers do not. The message lists the configured
+  providers that do.
+- The provider sets `managed = false`. Protean does not change the schema of
+  an unmanaged database.
+- The folder exists and is not empty. An existing empty folder is used.
+
+It also stops when `--provider` names a provider the domain does not
+configure, and when Alembic is not installed. The second message names the
+extra to install.
+
+**Options**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--domain` | Domain module path | `.` (current directory) |
+| `--provider` | Name of the database provider | `default` |
+| `--directory` | Folder to create the migrations in | `migrations` |
+
+Each provider gets its own folder. For a second provider, pass both options:
+
+```bash
+protean db init --provider=analytics --directory=migrations/analytics
+```
 
 ## Domain Discovery
 

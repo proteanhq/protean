@@ -11,6 +11,20 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "alembic"
+version = "1.20.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mako" },
+    { name = "sqlalchemy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/93/1c/00909e0fbebad2121d916fdcab044cae988146680e9ee4387ba25fef8747/alembic-1.20.1.tar.gz", hash = "sha256:83490def1f723413db5096591f7609ac52544805be93849170088ed04f5a2e0b", size = 2103576, upload-time = "2026-10-22T03:24:35.93Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/11/3c/8740f5b4e1bd57333e4f84265b9b6363da4f7cf70f5622dd1e2fde7a0bd5/alembic-1.20.1-py3-none-any.whl", hash = "sha256:9970712cfb81ea26c8658d378aaa5b8f6ff9146e5bb111d70497c164016cf598", size = 270355, upload-time = "2026-10-22T03:24:37.667Z" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -2792,22 +2806,26 @@ message-db = [
     { name = "message-db-py" },
 ]
 mssql = [
+    { name = "alembic" },
     { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'" },
     { name = "pyodbc" },
     { name = "sqlalchemy" },
 ]
 mysql = [
+    { name = "alembic" },
     { name = "cffi", marker = "platform_python_implementation != 'PyPy'" },
     { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'" },
     { name = "pymysql", extra = ["rsa"] },
     { name = "sqlalchemy" },
 ]
 postgresql = [
+    { name = "alembic" },
     { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'" },
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy" },
 ]
 postgresql-psycopg2 = [
+    { name = "alembic" },
     { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'" },
     { name = "psycopg2-binary" },
     { name = "sqlalchemy" },
@@ -2827,6 +2845,7 @@ shell = [
     { name = "ipython" },
 ]
 sqlite = [
+    { name = "alembic" },
     { name = "greenlet", marker = "platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'" },
     { name = "sqlalchemy" },
 ]
@@ -2889,6 +2908,11 @@ types = [
 
 [package.metadata]
 requires-dist = [
+    { name = "alembic", marker = "extra == 'mssql'", specifier = ">=1.13.0" },
+    { name = "alembic", marker = "extra == 'mysql'", specifier = ">=1.13.0" },
+    { name = "alembic", marker = "extra == 'postgresql'", specifier = ">=1.13.0" },
+    { name = "alembic", marker = "extra == 'postgresql-psycopg2'", specifier = ">=1.13.0" },
+    { name = "alembic", marker = "extra == 'sqlite'", specifier = ">=1.13.0" },
     { name = "bleach", specifier = ">=6.1.0" },
     { name = "cffi", marker = "platform_python_implementation != 'PyPy' and extra == 'mysql'", specifier = ">=2.0.0" },
     { name = "copier", marker = "extra == 'scaffold'", specifier = ">=9.4.0,<10" },

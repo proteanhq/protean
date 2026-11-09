@@ -94,6 +94,7 @@ MySQL.
 - :white_check_mark: **RAW_QUERIES**: Execute raw SQL.
 - :white_check_mark: **SCHEMA_MANAGEMENT**: Create and drop tables.
 - :white_check_mark: **CONNECTION_POOLING**: SQLAlchemy pool management.
+- :white_check_mark: **SCHEMA_MIGRATIONS**: Versioned migrations through Alembic.
 - :white_check_mark: **NATIVE_JSON**: `Dict` fields map to the `JSON` column type.
 - :x: **NATIVE_ARRAY**: MySQL has no array type. A `List` field is stored as
   JSON, which is what the MSSQL provider does too.

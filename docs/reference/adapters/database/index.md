@@ -158,6 +158,7 @@ Capabilities are organized into five tiers:
 |------|-------------|
 | `SCHEMA_MANAGEMENT` | Create/drop tables, indices, or storage structures |
 | `CONNECTION_POOLING` | Connection pool management |
+| `SCHEMA_MIGRATIONS` | Versioned schema migrations, kept in the folder `protean db init` creates |
 
 **Tier 5: Type System**
 
@@ -207,6 +208,7 @@ On the memory provider, `results` holds one record, Ada's.
 | RAW_QUERIES | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
 | SCHEMA_MANAGEMENT |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 | CONNECTION_POOLING |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| SCHEMA_MIGRATIONS |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
 | NATIVE_JSON |  |  | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
 | NATIVE_ARRAY |  |  | :white_check_mark: | :white_check_mark: |  |  |
 

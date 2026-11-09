@@ -429,3 +429,81 @@ class TestRequiredLookups:
         assert missing == [], (
             f"{provider.__class__.__name__} is missing required lookups: {missing}"
         )
+
+
+class TestSchemaMigrationsCapability:
+    """Which providers declare ``SCHEMA_MIGRATIONS``, and the gated method."""
+
+    @staticmethod
+    def _capabilities(provider_cls):
+        # ``capabilities`` reads nothing from the instance, so skipping
+        # ``__init__`` checks the declaration without a driver or a server.
+        return object.__new__(provider_cls).capabilities
+
+    def test_flag_is_not_part_of_relational(self):
+        assert (
+            DatabaseCapabilities.SCHEMA_MIGRATIONS
+            not in DatabaseCapabilities.RELATIONAL
+        )
+
+    @pytest.mark.parametrize(
+        "class_name",
+        ["SqliteProvider", "PostgresqlProvider", "MssqlProvider", "MysqlProvider"],
+    )
+    def test_sqlalchemy_providers_declare_the_flag(self, class_name):
+        from protean.adapters.repository import sqlalchemy
+
+        capabilities = self._capabilities(getattr(sqlalchemy, class_name))
+
+        assert DatabaseCapabilities.SCHEMA_MIGRATIONS in capabilities
+
+    def test_memory_provider_does_not_declare_the_flag(self):
+        from protean.adapters.repository.memory import MemoryProvider
+
+        capabilities = self._capabilities(MemoryProvider)
+
+        assert DatabaseCapabilities.SCHEMA_MIGRATIONS not in capabilities
+
+    def test_elasticsearch_provider_does_not_declare_the_flag(self):
+        pytest.importorskip("elasticsearch", reason="Elasticsearch not available")
+        from protean.adapters.repository.elasticsearch import ESProvider
+
+        capabilities = self._capabilities(ESProvider)
+
+        assert DatabaseCapabilities.SCHEMA_MIGRATIONS not in capabilities
+
+    def test_schema_migrator_on_memory_provider_raises(self, tmp_path):
+        from protean.adapters.repository.memory import MemoryProvider
+        from protean.domain import Domain
+        from protean.exceptions import NotSupportedError
+
+        domain = Domain(name="Memory migrations")
+        provider = MemoryProvider("default", domain, {"provider": "memory"})
+
+        with pytest.raises(NotSupportedError, match="does not support schema"):
+            provider.schema_migrator(tmp_path / "migrations")
+        assert not (tmp_path / "migrations").exists()
+
+    def test_base_method_raises_when_flag_is_declared_but_not_implemented(
+        self, tmp_path
+    ):
+        """A provider that declares the flag and does not override
+        ``_schema_migrator`` reaches the base method, which refuses."""
+        from protean.adapters.repository.memory import MemoryProvider
+        from protean.domain import Domain
+        from protean.exceptions import NotSupportedError
+
+        class DeclaresOnly(MemoryProvider):
+            @property
+            def capabilities(self):
+                return (
+                    DatabaseCapabilities.IN_MEMORY
+                    | DatabaseCapabilities.SCHEMA_MIGRATIONS
+                )
+
+        domain = Domain(name="Declares only")
+        provider = DeclaresOnly("default", domain, {"provider": "memory"})
+
+        with pytest.raises(NotSupportedError, match="does not implement schema"):
+            provider.schema_migrator(tmp_path / "migrations")
+        assert not (tmp_path / "migrations").exists()

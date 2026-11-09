@@ -60,6 +60,7 @@ iterating another.
 - :white_check_mark: **RAW_QUERIES**: Execute raw SQL.
 - :white_check_mark: **SCHEMA_MANAGEMENT**: Create and drop tables.
 - :white_check_mark: **CONNECTION_POOLING**: SQLAlchemy pool management.
+- :white_check_mark: **SCHEMA_MIGRATIONS**: Versioned migrations through Alembic.
 - :white_check_mark: **NATIVE_JSON** and **NATIVE_ARRAY**: `Dict` and `List`
   fields are queryable. SQL Server has no `JSON` column type, so the provider
   stores them through a JSON type backed by `NVARCHAR`.
