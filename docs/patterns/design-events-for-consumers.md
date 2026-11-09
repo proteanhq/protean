@@ -249,8 +249,12 @@ infrastructure details.
 ### 5. Events Are Immutable Contracts
 
 Once an event is published and consumers depend on it, its fields become a
-contract. Adding new fields is safe (existing consumers ignore them). Removing
-or renaming fields is a breaking change.
+contract. Adding a new field with a default is safe for consumers that read
+fields by name: they ignore it. Removing or renaming fields is a breaking change.
+Protean numbers an event's Protobuf fields in sorted name order, so a new field
+whose name does not sort last moves the numbers of the fields after it.
+`protean ir diff` reports that as breaking until you bump `__version__` (see
+[Event Versioning and Evolution](event-versioning-and-evolution.md)).
 
 Design events with care from the start, because you can evolve an event later
 but removing a field breaks its consumers.

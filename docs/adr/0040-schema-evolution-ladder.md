@@ -176,7 +176,8 @@ An adopter facing a schema change now has one place that says which mechanism
 applies. The three existing mechanisms are unchanged, and the two heavy tactics
 are documented as operator migrations outside core.
 
-Each rung carries a cost. Weak schema is cheap and needs no version bump. It
+Each rung carries a cost. Weak schema is cheap and needs no version bump, except
+for an event change that moves a Protobuf field number. It
 cannot transform a value, so a type change or a newly required field still forces
 rung 2. Lenient mode reads old payloads without raising, and it drops any data
 the current schema does not declare, so it tolerates a missing field without
