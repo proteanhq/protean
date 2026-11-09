@@ -190,6 +190,24 @@ class TestWriteMigrationsFolder:
         else:
             assert not target.exists()
 
+    def test_failed_write_keeps_another_writers_files(self, tmp_path, monkeypatch):
+        target = tmp_path / "migrations"
+        read_template = schema_migrator._template
+
+        def racing_template(name):
+            # Another process writes into the folder after the emptiness check.
+            if name == "env.py.tmpl":
+                (target / "env.py").write_text("theirs", encoding="utf-8")
+            return read_template(name)
+
+        monkeypatch.setattr(schema_migrator, "_template", racing_template)
+
+        with pytest.raises(ConfigurationError, match="File exists"):
+            write_migrations_folder(target, "domain.py", "default")
+
+        assert [p.name for p in target.iterdir()] == ["env.py"]
+        assert (target / "env.py").read_text(encoding="utf-8") == "theirs"
+
 
 class TestMigratingThroughTheProvider:
     def test_stamp_uses_the_attached_provider(self, provider, tmp_path):

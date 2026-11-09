@@ -212,6 +212,20 @@ class TestInitWritesTheFolder:
         assert stamped_versions(project / "shop.db") == [("0001",)]
         assert not (cwd / "shop.db").exists()
 
+    def test_relative_ini_path_from_the_migrations_folder(self, project):
+        write_domain(
+            project,
+            {"default": {"provider": "sqlite", "database_uri": "sqlite:///shop.db"}},
+        )
+        assert runner.invoke(app, ["db", "init"]).exit_code == 0
+        add_revision(project / "migrations")
+
+        for command in (["current"], ["stamp", "head"]):
+            completed = run_alembic(project / "migrations", *command, ini="alembic.ini")
+            assert completed.returncode == 0, completed.stderr
+
+        assert stamped_versions(project / "shop.db") == [("0001",)]
+
     def test_records_the_domain_from_protean_domain(self, project, monkeypatch):
         (project / "shop").mkdir()
         write_domain(project / "shop", {"default": sqlite(project / "shop.db")})

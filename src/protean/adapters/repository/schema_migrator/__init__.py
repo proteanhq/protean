@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import shutil
 import string
 import sys
 import threading
@@ -88,18 +87,18 @@ def write_migrations_folder(
         root=_root_option(directory, project_root or Path.cwd()),
     )
 
-    existed = directory.is_dir()
+    created: list[Path] = []
     try:
-        (directory / "versions").mkdir(parents=True)
-        (directory / "alembic.ini").write_text(ini, encoding="utf-8")
-        (directory / "env.py").write_text(_template("env.py.tmpl"), encoding="utf-8")
-        (directory / "script.py.mako").write_text(
-            _template("script.py.mako"), encoding="utf-8"
-        )
+        if not directory.is_dir():
+            _make_folder(directory, created)
+        _make_folder(directory / "versions", created)
+        _write_new(directory / "alembic.ini", ini, created)
+        _write_new(directory / "env.py", _template("env.py.tmpl"), created)
+        _write_new(directory / "script.py.mako", _template("script.py.mako"), created)
     except OSError as exc:
         # Remove a partial folder, so a second ``init`` does not refuse it as
         # not empty.
-        _remove_written(directory, existed)
+        _remove_created(created)
         raise ConfigurationError(
             f"Cannot create migrations in '{directory}': {exc.strerror or exc}."
         ) from exc
@@ -118,18 +117,34 @@ def _refuse_unusable(directory: Path) -> None:
         )
 
 
-def _remove_written(directory: Path, existed: bool) -> None:
-    """Remove what the writer wrote: the folder's content, or the new folder."""
-    if not directory.is_dir():
-        return
-    if not existed:
-        shutil.rmtree(directory, ignore_errors=True)
-        return
-    for child in list(directory.iterdir()):
-        if child.is_dir():
-            shutil.rmtree(child, ignore_errors=True)
+# Another process can write into the folder after ``_refuse_unusable`` passed.
+# The writer creates every path exclusively and records it, so a failed write
+# removes only what it created and never another writer's files.
+
+
+def _make_folder(path: Path, created: list[Path]) -> None:
+    """Create ``path`` and its missing parents; raise if ``path`` exists."""
+    if not path.parent.is_dir():
+        _make_folder(path.parent, created)
+    path.mkdir()
+    created.append(path)
+
+
+def _write_new(path: Path, text: str, created: list[Path]) -> None:
+    """Write ``text`` to a new file; raise ``FileExistsError`` if it exists."""
+    with path.open("x", encoding="utf-8") as file:
+        created.append(path)
+        file.write(text)
+
+
+def _remove_created(created: list[Path]) -> None:
+    for path in reversed(created):
+        if path.is_dir():
+            # A folder that another writer has added to stays.
+            with contextlib.suppress(OSError):
+                path.rmdir()
         else:
-            child.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
 
 
 def migration_provider(domain: Domain, provider_name: str) -> BaseProvider:
@@ -267,7 +282,9 @@ def _provider_from_ini(config: Any) -> SAProvider:
     if config.config_file_name is not None and config.file_config.has_section(
         "loggers"
     ):
-        fileConfig(config.config_file_name, disable_existing_loggers=False)
+        # The parsed file, because a relative ``-c`` path no longer resolves
+        # once the run has changed to ``protean_root``.
+        fileConfig(config.file_config, disable_existing_loggers=False)
 
     domain_path = _ini_option(config, "protean_domain")
     provider_name = _ini_option(config, "protean_provider")
