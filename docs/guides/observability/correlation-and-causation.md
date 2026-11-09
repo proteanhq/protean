@@ -20,8 +20,9 @@ both IDs:
 - **`causation_id`**: The `headers.id` of the *immediate parent* message.
   It answers: "What directly caused this message?"
 
-Take a small order domain. Handling `PlaceOrder` raises `OrderPlaced`, and an
-event handler reacts to `OrderPlaced` by dispatching `ConfirmOrder`:
+Take a small order domain. The command handler for `PlaceOrder` raises
+`OrderPlaced`. An event handler reacts to `OrderPlaced` by dispatching
+`ConfirmOrder`:
 
 ```python
 --8<-- "guides/observability/correlation-and-causation/001.py:model"
@@ -57,8 +58,8 @@ Pass the `correlation_id` parameter directly:
 
 When using the `DomainContextMiddleware` with FastAPI, the middleware
 extracts `X-Correlation-ID` (falling back to `X-Request-ID`) from the
-incoming request and stores it in the global context. `current_domain.process()`
-picks it up automatically:
+incoming request and stores it in the global context.
+`current_domain.process()` reads the ID from the global context automatically:
 
 ```python
 --8<-- "guides/observability/correlation-and-causation/002.py:imports"
@@ -190,9 +191,9 @@ The event store provides three methods for causation chain traversal:
 --8<-- "guides/observability/correlation-and-causation/001.py:traverse"
 ```
 
-For the common case of "give me the whole chain in causal order",
-`domain.correlation_trace()` wraps `build_causation_tree()` and flattens it
-into a depth-first, pre-order list (each parent appears before its effects):
+To get the whole chain in causal order, call `domain.correlation_trace()`. It
+wraps `build_causation_tree()` and flattens the tree into a depth-first,
+pre-order list (each parent appears before its effects):
 
 ```python
 --8<-- "guides/observability/correlation-and-causation/001.py:correlation-trace"
@@ -208,9 +209,9 @@ classes themselves (their `__type__` is used):
 --8<-- "guides/observability/correlation-and-causation/001.py:assert-chain"
 ```
 
-It raises `AssertionError` with the expected and actual sequences when the
-length or any type does not match, making end-to-end causation flows easy to
-pin down in a single assertion.
+`assert_chain()` raises `AssertionError` with the expected and actual sequences
+when the length or any type does not match. You can check an end-to-end
+causation flow in a single assertion.
 
 ### CLI inspection
 
@@ -236,8 +237,8 @@ this automatically.
 
 When the server processes an incoming broker message, it extracts the
 `correlation_id` from the message's `metadata.domain.correlation_id` and
-sets it on the processing context. If the external message has no
-correlation ID, a fresh UUID is generated so the chain within the consuming
+sets it on the processing context. If the external message has no correlation
+ID, the server generates a fresh UUID, so the chain within the consuming
 service is still fully traced.
 
 ```python
@@ -266,7 +267,7 @@ Protean maintains two distinct tracing layers that complement each other:
 | **Domain tracing** | `DomainMeta.correlation_id` + `causation_id` | Business operation tracking | Flexible strings |
 | **Distributed tracing** | `MessageHeaders.traceparent` | Infrastructure span tracking (Jaeger, Datadog) | W3C 32-hex / 16-hex |
 
-The `correlation_id` bridges both layers. It identifies the same business
+Both layers carry the `correlation_id`. It identifies the same business
 operation whether you're looking at domain metadata or a Jaeger trace.
 
 When OTel is enabled, Protean sets `protean.correlation_id` on all major
@@ -338,8 +339,8 @@ For details on the Observatory, see the
 
 `Domain.init()` auto-configures logging and installs the correlation
 integrations: `ProteanCorrelationFilter` on the root logger and on each of its handlers, and `protean_correlation_processor` on the structlog pipeline.
-Every log record emitted during message processing includes `correlation_id` and `causation_id` fields;
-no manual wiring required.
+Every log record emitted during message processing includes `correlation_id`
+and `causation_id` fields. You do not need to wire anything by hand.
 
 For the full setup, config keys, and the wide event schema, see the
 [Logging guide](../server/logging.md) and the
@@ -369,9 +370,10 @@ Both integrations check for an active domain context and a
 `g.message_in_context` before reading IDs. When no context is available (e.g.,
 during startup or in a background thread), both fields default to `""` so
 formatters never raise `KeyError`. When no message is in scope, both
-integrations fall back to `g.correlation_id` / `g.causation_id`. The documented
-extension point for HTTP middleware, CLI commands, and background jobs that
-need logs tagged before any domain message exists.
+integrations fall back to `g.correlation_id` / `g.causation_id`.
+`g.correlation_id` and `g.causation_id` are the documented extension point for
+HTTP middleware, CLI commands, and background jobs that need logs tagged before
+any domain message exists.
 
 ---
 

@@ -1,14 +1,15 @@
 # Endpoint Tests
 
 Protean endpoints are thin adapters. They translate HTTP into domain commands
-and let `domain.process()` handle the rest. Testing them means verifying that
-the HTTP layer correctly dispatches commands and returns appropriate responses,
-while the domain takes care of business logic. This separation makes endpoint
-tests surprisingly straightforward.
+and let `domain.process()` handle the rest. An endpoint test checks that the
+HTTP layer dispatches the right command and returns the right response, while
+the domain runs the business logic. This separation keeps endpoint
+tests simple.
 
 ## What You're Actually Testing
 
-Endpoint tests sit at the boundary between HTTP and your domain. They verify:
+Endpoint tests check how an endpoint connects HTTP requests to your domain.
+They verify:
 
 - **Request → Command translation**: Does the endpoint extract the right
   data from the request and build the correct command?
@@ -71,9 +72,9 @@ handler takes the ordered books out of stock:
 --8<-- "guides/fastapi/testing-endpoints/001.py:domain"
 ```
 
-In the layout above, this code lives in `myapp/`, and each example below goes
-in the file named in its title. The examples leave out the imports of `domain`
-and the elements from `myapp`, so each block shows only the new code.
+In the layout above, this code is in `myapp/`, and each example below goes in
+the file named in its title. The examples leave out the imports of `domain` and
+the elements from `myapp`, so each block shows only the new code.
 
 ### The `conftest.py` recipe
 
@@ -92,8 +93,9 @@ and a FastAPI `TestClient` wired to that domain.
 --8<-- "guides/fastapi/testing-endpoints/001.py:client"
 ```
 
-That's it. The root `conftest.py` handles domain lifecycle and per-test cleanup
-(via `DomainFixture`). The API-specific `conftest.py` provides the client.
+These two `conftest.py` files are the whole setup. The root `conftest.py` uses
+`DomainFixture` to set up the domain and to clean up its data after each test.
+The API-specific `conftest.py` provides the client.
 Every test starts with a clean slate, no leftover data from previous tests.
 
 !!! tip "Why a separate `tests/api/conftest.py`?"
@@ -104,8 +106,8 @@ Every test starts with a clean slate, no leftover data from previous tests.
 
 ## Testing `domain.process()` endpoints
 
-The most common Protean endpoint pattern accepts a request, builds a command,
-and hands it to `domain.process()`:
+In the most common Protean endpoint pattern, the endpoint accepts a request,
+builds a command, and hands it to `domain.process()`:
 
 ```python title="myapp/api.py"
 --8<-- "guides/fastapi/testing-endpoints/001.py:api-imports"
@@ -118,17 +120,17 @@ and hands it to `domain.process()`:
 --8<-- "guides/fastapi/testing-endpoints/001.py:happy-path"
 ```
 
-Notice the pattern:
+Each test follows three steps:
 
 1. **Seed**: Set up the preconditions using repositories directly.
 2. **Act**: Make an HTTP request through the `TestClient`.
 3. **Assert**: Check the HTTP response.
 
 The `DomainContextMiddleware` pushes the domain context for the request,
-so `current_domain` resolves correctly inside the endpoint. And because
-`command_processing` is set to `"sync"`, the command handler runs
-immediately, by the time the response returns, all side effects (aggregate
-creation, events, projections) have completed.
+so `current_domain` resolves correctly inside the endpoint. Because
+`command_processing` is set to `"sync"`, the command handler runs immediately.
+By the time the response returns, all side effects (aggregate creation, events,
+projections) have completed.
 
 ### Verifying side effects
 
@@ -228,13 +230,13 @@ client with different URL paths:
 ```
 
 Each request path activates the correct domain context automatically. The test
-makes requests, the middleware handles the rest.
+makes requests, and the middleware does the rest.
 
 ## Keeping endpoints thin
 
-The Proteanic way is to keep endpoints as thin adapters. If you find
-yourself writing complex test setups or testing business logic through
-HTTP, that's a signal to push the logic down:
+The Proteanic way is to keep endpoints as thin adapters. When you write complex
+test setups or test business logic through HTTP, move that logic out of the
+endpoint and into the domain:
 
 | If your endpoint... | Move it to... |
 |---------------------|---------------|
@@ -243,10 +245,11 @@ HTTP, that's a signal to push the logic down:
 | Queries and transforms data | Projection + projector |
 | Catches and maps exceptions | `register_exception_handlers` |
 
-When endpoints are thin, endpoint tests become thin too. Most of your testing
-energy goes into [domain model tests](../testing/domain-model-tests.md) and
+When endpoints are thin, endpoint tests become thin too. You write most of your
+tests as [domain model tests](../testing/domain-model-tests.md) and
 [application tests](../testing/application-tests.md). The endpoint tests are
-just the final sanity check that HTTP wiring works.
+the last check that the HTTP layer passes requests to the domain and returns
+its responses.
 
 ## Checklist
 

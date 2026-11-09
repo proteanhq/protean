@@ -71,7 +71,7 @@ Both types of tests are valuable. But domain unit tests should be the
 
 The examples below assume a `tests/conftest.py` that uses Protean's
 `DomainFixture` to initialize the domain and provide a per-test context. The
-domain and its elements live in an `isolation_shop` package, and the tests
+domain and its elements are defined in an `isolation_shop` package. The tests
 import them from `isolation_shop.domain`:
 
 ```python
@@ -190,8 +190,8 @@ service with aggregate instances directly:
 --8<-- "patterns/testing-domain-logic-in-isolation/test_domain_services.py:services"
 ```
 
-No repositories, no handlers. Construct the aggregates, pass them to the
-service, assert results.
+No repositories, no handlers. Each test constructs the aggregates, passes them
+to the service, and asserts the results.
 
 ---
 
@@ -277,14 +277,15 @@ they test the most important code with the least overhead.
 | End-to-end | Full system behavior | Real infrastructure | Slow | Happy paths |
 
 Domain logic is the most important code in your system. Test it directly,
-without infrastructure, in isolation. Construct aggregates, call methods,
-assert results. Save integration tests for verifying the plumbing.
+without infrastructure, in isolation. Construct aggregates, call their methods,
+and assert the results. Save integration tests for verifying the plumbing.
 
 !!! tip "Run all test layers in both modes"
-    Domain unit tests already use in-memory adapters. Integration tests can
-    too, with Protean's [Dual-Mode Testing](dual-mode-testing.md), a single `pytest --protean-env memory`
-    flag switches every adapter to its in-memory equivalent. Run fast during
-    development, then validate against real infrastructure in CI.
+    Domain unit tests already use in-memory adapters. Integration tests can use
+    them too, with Protean's [Dual-Mode Testing](dual-mode-testing.md). A
+    single `pytest --protean-env memory` flag switches every adapter to its
+    in-memory equivalent. Run fast during development, then validate against
+    real infrastructure in CI.
 
 ---
 

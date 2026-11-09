@@ -20,8 +20,8 @@ All database adapters are built from five components that work together:
 **Extends**: `protean.port.provider.BaseProvider`
 
 The Provider is the central coordinator. It manages connections, sessions, and
-the database lifecycle. You implement the abstract methods and the `capabilities`
-property in this table.
+the database lifecycle. You implement the abstract methods and the
+`capabilities` property listed in the table below.
 
 The provider class also sets a `__database__` attribute to the database's
 name. Protean reads it when it picks a custom repository or database model
@@ -66,13 +66,13 @@ underscored internals:
 `BaseDAO` also provides `save_if_absent(entity, apply_hooks=True)`. It saves
 the entity unless another row already holds its unique key, and returns `None`
 in that case. The unique key is the fields of each `Index` declared with
-`unique=True` and no `where` predicate. The outbox writes its rows through this
-method. The default checks with `_count`, then saves. Two writers that check at
-the same moment can both pass the check. If your store has a unique index on
-the key, it rejects the second write with its own error. If it has none, both
-rows are kept. Override `save_if_absent` so that a lost race also returns
-`None`, for example with a conditional insert, or by catching the store's
-unique-index error and checking for the key again.
+`unique=True` and no `where` predicate. The outbox writes its rows through
+`save_if_absent`. The default implementation checks for the key with `_count`,
+then saves. Two writers that check at the same moment can both pass the check.
+If your store has a unique index on the key, it rejects the second write with
+its own error. If it has none, both rows are kept. Override `save_if_absent` so
+that a lost race also returns `None`, for example with a conditional insert, or
+by catching the store's unique-index error and checking for the key again.
 
 ### 3. DatabaseModel
 
@@ -87,8 +87,8 @@ abstract methods:
 | `to_entity(item)` | Convert a database record to a domain entity |
 
 Use the `_entity_to_dict()` helper to extract attribute values from an entity
-into a flat dictionary. This helper handles value objects, shadow fields, and
-nested associations consistently across all adapters:
+into a flat dictionary. This helper converts value objects, shadow fields, and
+nested associations the same way in every adapter:
 
 ```python
 # fragment
@@ -351,7 +351,7 @@ above) should provide a session object with no-op implementations.
 
 ## Call Flow
 
-Understanding how Protean routes data through the adapter components:
+Protean routes data through the adapter components as follows:
 
 **Initialization:**
 
@@ -410,7 +410,8 @@ dao.query.filter(...).count()
 ## Declaring Capabilities
 
 Choose the `DatabaseCapabilities` flags that accurately represent what your
-adapter supports. Capabilities are orthogonal, combine them freely:
+adapter supports. Each capability is independent of the others, so you can
+combine them freely:
 
 ```python
 # fragment
@@ -467,8 +468,8 @@ pytest --db-provider=dynamodb --db-uri="http://localhost:8000" \
 
 ## Guidance for adapter authors
 
-1. **Handle Connection Failures**: Implement reconnection logic and return
-   meaningful results from `is_alive()`.
+1. **Handle Connection Failures**: Implement reconnection logic, and make
+   `is_alive()` return `True` only when the database is reachable.
 2. **Declare Accurate Capabilities**: Only declare capabilities you actually
    support. Use the conformance test suite to verify.
 3. **Use `_entity_to_dict()`**: Avoid duplicating entity-to-dict conversion

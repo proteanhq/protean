@@ -74,9 +74,9 @@ This approach uses the event store's inherent durability. Events are immutable
 and always available for replay.
 
 An exhausted event-store position is its own dead-letter queue. The
-`protean eventstore dlq` commands act on it: `list` enumerates exhausted
-positions, `inspect` re-reads the failing event, `replay` re-drives one through
-its handler, and `purge` clears one with a terminal marker. See
+`protean eventstore dlq` commands act on it: `list` shows exhausted positions,
+`inspect` re-reads the failing event, `replay` runs one through its handler
+again, and `purge` clears one with a terminal marker. See
 [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md).
 
 ```toml
@@ -109,8 +109,8 @@ enable_dlq = true
 ### OutboxProcessor
 
 Handles **outgoing** messages (domain &rarr; broker). Uses exponential backoff
-with jitter. Failed messages stay in the outbox table with a retry status, no
-DLQ is needed because the outbox table itself is durable.
+with jitter. Failed messages stay in the outbox table with a retry status. No
+DLQ is needed, because the outbox table itself is durable.
 
 ---
 
@@ -176,7 +176,7 @@ enable_dlq = false
 
 ## Configuration reference
 
-All error-handling configuration lives under `[server]` in `domain.toml`:
+You set the error-handling options under `[server]` in `domain.toml`:
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -221,7 +221,8 @@ This is transparent: the subscription does not see transient version
 conflicts in a handler it runs directly. A command handler that a process
 manager calls synchronously gets no fast retry, so its conflict reaches the
 subscription.
-Only persistent conflicts (extremely rare) surface as failures.
+For a handler the subscription runs directly, only persistent conflicts
+(extremely rare) surface as failures.
 
 Under `event_processing = "sync"`, event handlers run inside the command's
 commit, after the command's writes are saved. When version retry is enabled,
@@ -314,10 +315,11 @@ If `handle_error()` itself raises, the exception is caught and logged, the
 engine continues processing.
 
 When a handler class has several `@handle` methods for one event and more than
-one of them fails, `exc` is an `ExceptionGroup` holding every failure, so
-matching on exception type has to look at the members. A handler method that
-raises its own group arrives the same way, which is why the helper above treats
-a group as a shape to unwrap instead of a signal about how many methods failed.
+one of them fails, `exc` is an `ExceptionGroup` holding every failure. Code
+that matches on exception type therefore has to look at the members of the
+group. When a handler method raises its own group, that group arrives in `exc`
+the same way. For that reason, the `_each` helper in the example above unwraps
+every group and does not read it as a count of failed methods.
 [Classify async processing errors](../../patterns/classify-async-processing-errors.md)
 works this through in full.
 

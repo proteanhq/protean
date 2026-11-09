@@ -2,11 +2,11 @@
 
 ## Why Events?
 
-When an `Order` is placed, several things need to happen: inventory must be
-reserved, the customer must be notified, analytics must be updated, and billing
-must be triggered. If the order aggregate calls all these services directly, it
-becomes tightly coupled to every downstream concern, and any failure in
-notification or analytics can block the order itself.
+When an `Order` is placed, the system must reserve inventory, notify the
+customer, update analytics, and trigger billing. If the order aggregate calls
+all these services directly, it becomes tightly coupled to every downstream
+concern, and any failure in notification or analytics can block the
+order itself.
 
 Domain events decouple the *thing that happened* from the *reactions to it*.
 The `Order` aggregate records the fact that an `OrderPlaced` event occurred.
@@ -18,9 +18,9 @@ command), and auditable (events form a complete history of what happened and
 when).
 
 Domain events are immutable facts that indicate a state change in the
-business domain. They capture meaningful changes and convey the state
-transitions of aggregates, ensuring that all parts of the system remain
-consistent and informed.
+business domain. Each event records a meaningful change in an aggregate's
+state. The parts of the system that consume these events use them to stay
+consistent with the aggregate.
 
 ## Facts
 
@@ -71,20 +71,19 @@ within and across bounded contexts. This promotes loose coupling by decoupling
 the producer (e.g., an aggregate that raises an event) from the consumers
 (e.g., various components that handle the event).
 
-Such a design eliminates the need for two-phase commits (global
-transactions) across bounded contexts, optimizing performance at the level
-of each transaction.
+When bounded contexts communicate through events, you need no two-phase commits
+(global transactions) across them. Each transaction then performs better on
+its own.
 
 ## Structure
 
 ### Events have **metadata**. { data-toc-label="Metadata" }
-Metadata such as timestamps, unique event identifiers, and version numbers are
-included to ensure precise tracking and processing.
+Protean adds metadata such as timestamps, unique event identifiers, and version
+numbers to each event, so consumers can track and process events precisely.
 
 ### Events are **versioned**. { data-toc-label="Versioning" }
-Each event is assigned a version number, ensuring that consumers can handle
-them in the correct order and manage compatibility between event producers and
-consumers.
+Each event carries a schema version number, so producers and consumers can
+manage compatibility as the event's structure changes.
 
 ### Events are **timestamped**. { data-toc-label="Timestamp" }
 Each event carries a timestamp indicating when the event occurred, which is
@@ -96,7 +95,7 @@ the event and the unique identity of the aggregate that generated the event.
 
 ### Events are written into streams.  { data-toc-label="Event Streams" }
 Events are written to and read from streams. Review the section on
-[Streams](../foundations/streams.md) for a deep-dive.
+[Streams](../foundations/streams.md) for a detailed explanation.
 
 ## Event Types
 
@@ -115,9 +114,9 @@ changes, Delta Events enable efficient updates and reduce the overhead
 associated with processing entire aggregates.
 
 Delta events are a good choice when composing internal state via Event Sourcing
-or notifying external consumers for choice events, like `LowInventoryAlert`.
-They are also appropriate for composing a custom projection of the state based on
-events (for example in Command Query Resource Separation).
+or notifying external consumers of selected events, like `LowInventoryAlert`.
+They are also appropriate for composing a custom projection of the state based
+on events (for example in Command Query Responsibility Segregation).
 
 #### Multiple Event Types
 
@@ -152,8 +151,8 @@ the sequence of events from the Event Store, ensuring a complete and accurate
 history.
 
 ### Events are part of the transaction boundary. { data-toc-label="Transactions" }
-Events are typically included in the transaction boundary, ensuring that they
-are only published if the transaction is successful.
+Events are typically included in the transaction boundary, so they are
+published only if the transaction is successful.
 
 ### Events trigger side effects. { data-toc-label="Side Effects" }
 Events often lead to side effects, such as updating read models, triggering
@@ -161,16 +160,16 @@ workflows, or invoking external systems. These side effects are managed by
 [event handlers](./event-handlers.md) and [projectors](./projectors.md).
 
 ### Events can be used to build local state in a different bounded context. { data-toc-label="Read-only Models" }
-Other bounded contexts should be listen to interested events and construct
-read-only structures within themselves to take decisions later. A receiver
-should not query the current state from the sender because the sender's state
-could have already mutated.
+Other bounded contexts should listen to the events they are interested in and
+construct read-only structures within themselves. They use those structures to
+make decisions later. A receiver should not query the current state from the
+sender because the sender's state could have already mutated.
 
 ---
 
 ## Next steps
 
-For practical details on defining and working with events in Protean, see the guides:
+For practical details on defining and using events in Protean, see the guides:
 
 - [Events](../../guides/domain-definition/events.md): Defining events, event structure, metadata, versioning, and fact events.
 - [Raising Events](../../guides/domain-behavior/raising-events.md): Raising events from aggregates and entities, dispatching, and event sourcing patterns.

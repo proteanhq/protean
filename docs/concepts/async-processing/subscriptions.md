@@ -111,9 +111,8 @@ The event handler on `Order` issues the command:
 --8<-- "concepts/async-processing/subscriptions/004.py:hand_off"
 ```
 
-An event handler that is part of `Inventory` but handles `OrderShipped`, an
-event owned by `Order`, is what `protean check` reports as
-`EVENT_HANDLER_FOREIGN_EVENT`.
+`protean check` reports `EVENT_HANDLER_FOREIGN_EVENT` for an event handler that
+is part of `Inventory` but handles `OrderShipped`, an event owned by `Order`.
 The [event handlers guide](../../guides/consume-state/event-handlers.md#defining-an-event-handler)
 shows the full example, including the command handler that skips an order it
 has already applied.
@@ -203,15 +202,15 @@ StreamSubscription uses Redis Streams' built-in consumer group tracking:
 Because each EventStoreSubscription records its position together with the time
 that position was written, Protean can tell how far behind a projection is. A
 projection's **staleness** is the time since the projector feeding it last
-advanced while events remained unprocessed; its **lag** is the number of events
-still behind the stream head. A projection fed by several projectors is as stale
-as its worst feeder.
+advanced while events remained unprocessed. A projection's **lag** is the
+number of events still behind the stream head. A projection fed by several
+projectors is as stale as its worst feeder.
 
-The position-write timestamp is what makes time-based staleness possible, so it
-is reported for event-store-backed projectors. Stream-backed (Redis) projectors
-report lag but not time-based staleness. Inspect staleness with
-`protean projection status` or the `protean_projection_staleness_seconds`
-metric; see
+Time-based staleness depends on the position-write timestamp. For this reason,
+Protean reports time-based staleness for event-store-backed projectors.
+Stream-backed (Redis) projectors report lag but not time-based staleness.
+Inspect staleness with `protean projection status` or the
+`protean_projection_staleness_seconds` metric; see
 [Monitor the System](../../guides/server/monitoring.md#monitoring-projection-staleness).
 
 ## Error Handling
@@ -253,7 +252,7 @@ failed, how many retries were attempted, and which consumer group was processing
 them. Protean provides two interfaces for inspecting and acting on DLQ
 messages:
 
-**CLI**, The [`protean dlq`](../../reference/cli/data/dlq.md) commands let you list,
+**CLI**: The [`protean dlq`](../../reference/cli/data/dlq.md) commands let you list,
 inspect, replay, and purge DLQ messages from the terminal:
 
 ```bash
@@ -273,10 +272,10 @@ protean dlq replay-all --subscription=order --domain=my_app
 protean dlq purge --subscription=order --domain=my_app
 ```
 
-**Observatory**, The [Observatory
+**Observatory**: The [Observatory
 dashboard](../../reference/server/observability.md) includes a DLQ tab that
-provides the same capabilities through a web interface, plus REST API endpoints
-at `/api/dlq/*` for programmatic access.
+provides the same capabilities through a web interface. Observatory also
+offers REST API endpoints at `/api/dlq/*` for programmatic access.
 
 
 ## Where to go next

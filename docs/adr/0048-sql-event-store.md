@@ -28,9 +28,9 @@ Relevant Protean behaviour:
 - Message DB holds a per-category lock until commit, so each category commits
   in position order. A `$all` subscription reads every category by global
   position. A position can be missing because its transaction has not committed
-  yet or has rolled back, so the subscription waits `gap_timeout_seconds`
-  (default 5) at a missing position before moving on
-  ([ADR-0025](0025-all-subscription-gap-safety.md)).
+  yet or has rolled back. The subscription therefore waits
+  `gap_timeout_seconds` (default 5) at a missing position before moving
+  on ([ADR-0025](0025-all-subscription-gap-safety.md)).
 - `ExpectedVersionError` triggers `version_retry`, which reruns the handler
   from the start.
 - Commands sent through `domain.process()` and process manager transition
@@ -113,13 +113,13 @@ must pass the same suite.
   contend for a lock. A sequence assigns the global position.
 - SQLite: the database write lock. `AUTOINCREMENT` assigns the global position
   and never reuses one after a delete.
-- Appends to different categories do not block each other.
-- `$all` subscriptions read by global position with Protean's ADR-0025 gap
-  wait, as on the Message DB store. Every append in a Unit of Work happens at
-  commit, immediately before the outbox save, so the time between assigning a
-  position and committing it is short. A subscription skips an event only when
-  that commit exceeds `gap_timeout_seconds`, which a domain with slow commits
-  raises under `[server.event_store_subscription]`.
+- On PostgreSQL, appends to different categories do not block each other.
+- `$all` subscriptions read by global position and wait at a missing position
+  (ADR-0025), as on the Message DB store. Every append in a Unit of Work
+  happens at commit, immediately before the outbox save, so the time between
+  assigning a position and committing it is short. A subscription skips an
+  event only when that commit exceeds `gap_timeout_seconds`, which a domain
+  with slow commits raises under `[server.event_store_subscription]`.
 
 At commit, the store takes the category locks for all collected messages in
 sorted key order, then writes the messages in the order they were produced. A

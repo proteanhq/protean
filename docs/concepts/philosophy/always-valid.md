@@ -2,11 +2,11 @@
 
 What if your domain objects could never be invalid?
 
-Most frameworks treat validation as something you do _to_ an object, call `validate()`,
-check `is_valid()`, hope someone remembered to run it before saving. Between those
-explicit checks, the object can exist in any state: missing fields, broken
-business rules, impossible combinations. The longer it stays invalid, the
-further the corruption spreads.
+Most frameworks treat validation as something you do _to_ an object: you call
+`validate()`, check `is_valid()`, and hope someone remembered to run it before
+saving. Between those explicit checks, the object can exist in any state:
+missing fields, broken business rules, impossible combinations. The longer it
+stays invalid, the further the corruption spreads.
 
 Protean takes a different approach. **Domain objects are always valid, or they
 don't exist.** Every field assignment, every method call, every state
@@ -36,9 +36,9 @@ Layer 3: Aggregate Invariants     →  Business rules, cross-field consistency
 Layer 4: Handler/Service Guards   →  Contextual rules, authorization
 ```
 
-Each layer trusts the layers below it and adds what they don't cover. Together,
-they form a defense-in-depth strategy where invalid state is caught at the
-earliest possible moment.
+Each layer relies on the layers before it and adds the checks they don't cover.
+Together, they form a defense-in-depth strategy where invalid state is caught
+at the earliest possible moment.
 
 Let's build up an Order domain step by step to see each layer in action.
 
@@ -82,7 +82,7 @@ currency and rules about sign. When a concept has internal rules, wrap it in a
 --8<-- "concepts/philosophy/always-valid/002.py:money"
 ```
 
-Now use it in the Order:
+Now use the `Money` value object in the Order:
 
 ```python hl_lines="8"
 --8<-- "concepts/philosophy/always-valid/002.py:order"
@@ -98,7 +98,7 @@ aggregate.
 
 Value object invariants are **context-free**. An `Email` is either valid or
 not, regardless of which aggregate uses it. This eliminates duplication. The
-format rule lives in one place and is reused everywhere.
+format rule is defined in one place and reused everywhere.
 
 **What belongs here:** Format patterns (email, phone, SKU), internal
 consistency (end date after start date), concept-level rules (non-negative
@@ -112,9 +112,8 @@ money).
 ## Layer 3: Aggregate invariants
 
 Business rules that span multiple fields or entities within the aggregate.
-These are the rules that define what makes an Order _valid_ as a business
-concept, not just that its fields have the right types, but that it's
-internally consistent.
+These rules define what makes an Order _valid_ as a business concept: beyond
+having fields of the right types, the Order must be internally consistent.
 
 ```python
 --8<-- "concepts/philosophy/always-valid/003.py:setup"
@@ -151,7 +150,7 @@ context-dependent rules.
 ## Layer 4: Handler and service guards
 
 Some rules depend on context: who is making the request, what time it is,
-what state other aggregates are in. These rules live in command handlers,
+what state other aggregates are in. You write these rules in command handlers,
 application services, or domain services, outside the aggregate.
 
 ```python
@@ -169,7 +168,8 @@ path, not just the handler.
 
 ## How it works
 
-The always-valid guarantee isn't magic, it's automatic interception.
+Protean enforces the always-valid guarantee by intercepting every
+field assignment.
 
 When you write `order.status = "confirmed"`, Protean's `__setattr__`
 implementation does more than set a field:
@@ -212,7 +212,7 @@ The always-valid guarantee changes how you write and think about domain code:
   saving. The aggregate cannot accept invalid state.
 
 - **Named methods are safe**: A method like `order.place()` can modify multiple
-  fields. Invariants catch any inconsistency on each assignment, or you use
+  fields. Invariants check each assignment for inconsistency, or you use
   `atomic_change` for coordinated mutations.
 
 - **Handlers can't corrupt state**: Even if a command handler sets fields

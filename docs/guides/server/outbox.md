@@ -77,16 +77,16 @@ automatically by the commands above: a partial index on the active set
 (`message_id`, `target_broker`) for idempotency, an index on
 `correlation_id`, and `ix_outbox_hold_back` on (`target_broker`,
 `stream_category`, `partition_key`, `status`) for the check that holds a
-partition key's later rows. The unique index is composite because a single event is
-dual-written once per target broker (the internal broker plus every external
-broker), all rows sharing one `message_id` and differing only by
-`target_broker`, so `message_id` is not unique on its own across those
+partition key's later rows. The unique index is composite because Protean
+dual-writes a single event once per target broker (the internal broker plus
+every external broker). All those rows share one `message_id` and differ only
+by `target_broker`, so `message_id` is not unique on its own across those
 per-broker rows. The framework always writes a non-NULL `target_broker`, so the
 composite index still enforces one outbox row per (`message_id`, broker),
-including in single-broker configurations. These are declared as
+including in single-broker configurations. The outbox indexes are declared as
 [index declarations](../domain-definition/indexes.md) on the framework's
-`Outbox` aggregate, so on a large, long-running outbox the polling and
-cleanup paths stay fast without any manual tuning.
+`Outbox` aggregate, so on a large, long-running outbox the polling and cleanup
+paths stay fast without any manual tuning.
 
 ---
 
@@ -169,7 +169,7 @@ would let them publish out of order. A discarded row no longer holds its key,
 so it is deleted `abandoned_retention_hours` after it was discarded, partition
 key or not.
 
-Tune these with two trade-offs in mind:
+Tune the `[outbox.cleanup]` retention settings with two trade-offs in mind:
 
 - **Shorter `published_retention_hours`** = less storage, less audit
   trail. 24 hours is fine if you don't need cross-system replay.
@@ -199,9 +199,9 @@ max_tick_interval = 30     # Back off to at most 30s when idle
 ```
 
 Each empty poll doubles the wait (1s, 2s, 4s, and so on up to 30s); the first
-non-empty batch resets it to the base `tick_interval`. This trims wasted
+non-empty batch resets it to the base `tick_interval`. The backoff cuts wasted
 queries on a mostly idle deployment without adding latency under load, since a
-pending message snaps polling back to full speed on the next tick.
+pending message returns polling to the base `tick_interval` on the next tick.
 
 Backoff is disabled by default: omit `max_tick_interval` (or set it to a value
 at or below `tick_interval`) and the processor polls at a constant
@@ -247,8 +247,8 @@ a larger `limit`. `limit=None` does not lift the cap: it still returns at most
 
 **The database**: abandoned rows can also be inspected with regular SQL.
 Prefer `protean outbox retry` and `discard` for changing them, because those
-commands refuse a row that is not failed or abandoned, and a row a worker
-claims while the command runs.
+commands refuse two kinds of row: a row that is not failed or abandoned, and a
+row that a worker claims while the command runs.
 
 ### A partitioned key can halt
 
@@ -292,9 +292,9 @@ When the server runs with `--workers N`, every worker runs its own
 worker crashes mid-publish, its lock expires after 5 minutes and the message
 becomes eligible again.
 
-Scale the outbox throughput by increasing `messages_per_tick` or the
-worker count, not by lowering `tick_interval`, smaller ticks just increase database load
-without increasing throughput.
+To scale the outbox throughput, increase `messages_per_tick` or the worker
+count. Lowering `tick_interval` increases database load without
+increasing throughput.
 
 See [Multi-Worker Mode](../../reference/server/supervisor.md) for the
 supervisor configuration and
@@ -308,11 +308,11 @@ for the locking details.
 The commit sequence appends events to the event store *before* it commits the
 relational transaction that carries aggregate state and the outbox rows. The
 event store is the durable anchor (see
-[ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md)). This
-closes the corrupting failure where the event store could be left missing a
-committed event, but it leaves a narrow window: if the process dies between
-the append and the relational commit, the event is durable in the store while
-its outbox row never landed, so the event would never be published.
+[ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md)). Appending
+first prevents the corrupting failure where the event store could be left
+missing a committed event, but it leaves a narrow window. If the process dies
+between the append and the relational commit, the event is durable in the store
+while its outbox row never committed, so the event would never be published.
 
 Reconciliation repairs that window for event-sourced aggregates by re-deriving
 the missing outbox rows directly from the event store. It does not repair
@@ -327,16 +327,16 @@ $ protean server --domain=my_domain
 ```
 
 The sweep reads nothing when no event-sourced aggregate is on the provider.
-Otherwise it reads the newest 1,000 messages and rebuilds the row of every
-event-sourced aggregate's event among them that is missing its row. This
-covers a row lost behind a later commit by another process in the same domain.
-The sweep never blocks boot (a failure is logged and startup continues),
-and is safe under `--workers N`, because the composite unique index on
-(`message_id`, `target_broker`) makes concurrent sweeps idempotent. A sweep is
-also safe while a command is committing. If the sweep writes a row before the
-command saves it, the command keeps the sweep's row, skips its own copy and
-commits. SQLite and Elasticsearch have exceptions, listed in the
-[`protean outbox reconcile`](../../reference/cli/data/outbox.md#protean-outbox-reconcile)
+Otherwise the sweep reads the newest 1,000 messages. For each event among them
+from an event-sourced aggregate, the sweep rebuilds the outbox row when that
+row is missing. This covers a row lost behind a later commit by another process
+in the same domain. The sweep never blocks boot (a failure is logged and
+startup continues). It is safe under `--workers N`, because the composite
+unique index on (`message_id`, `target_broker`) makes concurrent sweeps
+idempotent. A sweep is also safe while a command is committing. If the sweep
+writes a row before the command saves it, the command keeps the sweep's row,
+skips its own copy and commits. SQLite and Elasticsearch have exceptions,
+listed in the [`protean outbox reconcile`](../../reference/cli/data/outbox.md#protean-outbox-reconcile)
 reference.
 The startup sweep covers only the `default` provider. Run the CLI with
 `--provider` for aggregates on other providers.
@@ -359,23 +359,24 @@ Reconciled 2 outbox row(s) from the event store.
 Reconciliation repairs only events raised by this domain's event-sourced
 aggregates on the given provider. For an event-sourced aggregate the event store
 holds the aggregate's state, so the event is the saved change. For a state-based
-aggregate the relational row is the state. On a transactional provider that row
-commits or rolls back together with its outbox rows, so a state-based event with
-no outbox row has no saved change behind it, and publishing it would report a
+aggregate the relational row is the state. On a transactional provider, that
+row commits or rolls back together with its outbox rows. So a state-based event
+with no outbox row has no saved change, and publishing the event would report a
 change that did not happen. Reconciliation skips every state-based event,
-whether or not the aggregate row exists. On a provider that keeps writes without
-a transaction, such as Elasticsearch, the aggregate row can be saved while its
-outbox row is lost. That change did happen, and its event stays unpublished.
+whether or not the aggregate row exists. On a provider that keeps writes
+without a transaction, such as Elasticsearch, the aggregate row can be saved
+while its outbox row is lost. That change did happen, and its event
+stays unpublished.
 
-Another domain's events in a shared event store, commands, process manager
-transition events, and events of aggregates on other providers never get a row
-either.
+Reconciliation never writes a row for these messages either: another domain's
+events in a shared event store, commands, process manager transition events,
+and events of aggregates on other providers.
 
-An event counts as missing only when its internal-broker row is missing. A
-`published` event that is missing gets back one row per broker in
-`[outbox].external_brokers`, so it reaches external brokers again. The list is
-read from the current configuration, so it includes brokers added after the
-event was written. External rows lost on their own, while the internal row
+An event counts as missing only when its internal-broker row is missing. For a
+missing `published` event, reconciliation rebuilds one row per broker in
+`[outbox].external_brokers`, so the event reaches external brokers again. The
+list is read from the current configuration, so it includes brokers added after
+the event was written. External rows lost on their own, while the internal row
 remains, are not rebuilt. If the event's `partition_key` can no longer be
 computed, every rebuilt row is saved as abandoned and the event is not sent.
 
@@ -391,10 +392,10 @@ and those events are published again.
 
 A rebuilt row is created when the sweep saves it, with priority 0. For a
 `sequential_by` key, the processor publishes the key's rows in the order they
-were created within one priority lane. So an event rebuilt behind a later
-commit is delivered after that commit's events for the same key when both rows
-are in the same lane. When the later row is in the other lane, either one can
-be delivered first.
+were created within one priority lane. So when both rows are in the same lane,
+the processor delivers an event rebuilt behind a later commit after that
+commit's events for the same key. When the later row is in the other lane,
+either one can be delivered first.
 
 See the
 [`protean outbox reconcile` reference](../../reference/cli/data/outbox.md) for

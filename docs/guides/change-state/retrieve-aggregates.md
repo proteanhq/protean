@@ -19,8 +19,9 @@ Out[1]: <Person: Person object (id: 1)>
 `get` raises `ObjectNotFoundError` if no aggregate is found with the given
 identity.
 
-Finding an aggregate by a field value is also possible, but requires a custom
-repository to be defined with a business-oriented method. See the
+To find an aggregate by a field value, use `find_by`, described in the next
+section. For a lookup that the built-in methods do not cover, define a
+business-oriented method on a custom repository. See the
 [Repositories](./repositories.md) guide for details on defining custom
 repositories.
 
@@ -223,7 +224,7 @@ In [3]: repository.query.filter(name__in=["John Doe", "Jane Doe"]).all().total
 Out[3]: 2
 ```
 
-The `isnull` lookup is handy for fields that may be unset:
+Use the `isnull` lookup for fields that may be unset:
 
 ```python
 --8<-- "guides/change-state/retrieve-aggregates/002.py:article"
@@ -257,10 +258,10 @@ discarded in Python. Only a bare field reference is supported: arithmetic
 
 !!!note
     These lookups have database-specific implementations, and a few (the array
-    lookups `any` / `overlap`, and `F()`) are not supported on every adapter. See
-    the [lookup support matrix](../../concepts/internals/query-system.md#lookup-support-across-adapters)
-    for which adapter supports what; an unsupported lookup raises
-    `NotImplementedError` rather than returning wrong results.
+    lookups `any` / `overlap`, and `F()`) are not supported on every adapter.
+    See the [lookup support matrix](../../concepts/internals/query-system.md#lookup-support-across-adapters)
+    for which adapter supports what. An unsupported lookup raises
+    `NotImplementedError`, so it never returns wrong results.
 
 ---
 
@@ -349,16 +350,17 @@ And inside custom repository methods:
 --8<-- "guides/change-state/retrieve-aggregates/003.py:repository"
 ```
 
-This pattern gives you most of the formal [Specification
-Pattern](https://martinfowler.com/apsupp/spec.pdf)'s value (named, composable,
-testable query criteria) with zero framework complexity. The Q functions are
-regular Python: easy to write, easy to test, and easy to understand.
+Plain Q-returning functions give you most of the formal
+[Specification Pattern](https://martinfowler.com/apsupp/spec.pdf)'s value
+(named, composable, testable query criteria) with zero framework complexity.
+The Q functions are regular Python: easy to write, easy to test, and easy
+to understand.
 
 ### Structuring as specifications
 
-When you need both database queries *and* in-memory evaluation of the same
-business rule, for example, querying overdue orders from the database and also
-checking whether a single order is overdue inside an event handler. You can
+Sometimes you need both database queries *and* in-memory evaluation of the same
+business rule. For example, you query overdue orders from the database and also
+check inside an event handler whether a single order is overdue. You can
 structure your query criteria as specification classes:
 
 ```python
@@ -382,9 +384,9 @@ Use `to_query()` with `find()` for database queries, and
 ```
 
 !!! tip
-    Start with plain Q-returning functions. Graduate to specification
-    classes only when you genuinely need `is_satisfied_by()` for in-memory
-    evaluation alongside database queries.
+    Start with plain Q-returning functions. Switch to specification classes
+    only when you need `is_satisfied_by()` for in-memory evaluation alongside
+    database queries.
 
 ## Sorting results
 
@@ -571,13 +573,14 @@ record.name = "X"   # NotSupportedError: Records are read-only
 
 Because a `Record` is not an entity, `only()` cannot be combined with the
 entity-loading operations `update()` and `delete()`; both raise
-`NotSupportedError`. `count()` works with `only()` (the projection is moot for a
-count), and `raw()` ignores any projection and always returns full entities.
+`NotSupportedError`. `count()` works with `only()`, because a projection makes
+no difference to a count. `raw()` ignores any projection and always returns
+full entities.
 
 Calling `only()` again replaces the projection (projections do not compose);
 calling it with no arguments clears the projection and restores full-entity
-loading. See the [QuerySet API reference](../../api/queryset.md) for the full
-`Record` surface.
+loading. See the [QuerySet API reference](../../api/queryset.md) for every
+attribute and method of `Record`.
 
 ## Bulk operations
 
@@ -587,10 +590,10 @@ QuerySets provide methods for updating and deleting multiple records at once.
 
 !!! warning "Deprecated in 0.18.0, removed in 0.20.0"
     `update()` patches fields straight onto the store, so the change never goes
-    through a behaviour method on the aggregate and the events that change
-    should raise never fire. Calling it emits a `RemovedInProtean020Warning`.
-    Load each match, invoke a behaviour method on it, and persist it with
-    `repository.add()`. See the
+    through a behaviour method on the aggregate. As a result, the events that
+    change should raise never fire. Calling it emits a
+    `RemovedInProtean020Warning`. Load each match, invoke a behaviour method on
+    it, and persist it with `repository.add()`. See the
     [migration note](../../reference/migration/v0-18.md#daoupdate-and-querysetupdate-are-deprecated).
 
 Updates each matching object individually: it loads every entity and triggers
@@ -687,9 +690,10 @@ SQL for SQLAlchemy, etc. All other query options (`order_by`, `offset`,
 
 ## Query performance
 
-A query that filters or sorts on the same fields repeatedly needs a database
-index to stay fast as the table grows, without one, the database falls back to
-a full scan. Declare the indexes a query path needs on the aggregate itself:
+When a query filters or sorts on the same fields repeatedly, it needs a
+database index to stay fast as the table grows. Without an index, the database
+falls back to a full scan. Declare the indexes a query path needs on the
+aggregate itself:
 
 ```python
 --8<-- "guides/change-state/retrieve-aggregates/005.py:index"

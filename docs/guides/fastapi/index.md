@@ -1,8 +1,8 @@
 # FastAPI Integration
 
 Protean provides integration utilities for
-[FastAPI](https://fastapi.tiangolo.com/) applications. These live in the
-`protean.integrations.fastapi` package and cover two concerns:
+[FastAPI](https://fastapi.tiangolo.com/) applications. These utilities are in
+the `protean.integrations.fastapi` package and cover two concerns:
 
 1. **Domain context middleware**: Automatically push the correct Protean
    domain context per HTTP request.
@@ -15,7 +15,7 @@ Protean provides integration utilities for
 
 Every Protean operation needs an active domain context. In a FastAPI
 application, each HTTP request should run inside the context of the domain
-it belongs to. `DomainContextMiddleware` handles this automatically by
+it belongs to. `DomainContextMiddleware` pushes that domain context for you by
 matching the request URL path to a `Domain` instance.
 
 ### Basic setup
@@ -85,11 +85,12 @@ logging, and OTEL spans, see
 
 ### HTTP wide event logging
 
-`DomainContextMiddleware` also emits one **wide event per HTTP request**
-on the `protean.access.http` logger, request envelope, commands dispatched during the request,
-`request_id`, and `correlation_id` shared with any domain-layer wide events. See the dedicated [HTTP
-wide events guide](./http-wide-events.md) for configuration, enrichment, and
-tail sampling.
+`DomainContextMiddleware` also emits one **wide event per HTTP request** on the
+`protean.access.http` logger. The event carries the request envelope, the
+commands dispatched during the request, the `request_id`, and the
+`correlation_id` shared with any domain-layer wide events. See the dedicated
+[HTTP wide events guide](./http-wide-events.md) for configuration, enrichment,
+and tail sampling.
 
 ---
 
@@ -142,7 +143,7 @@ A typical FastAPI application using both utilities:
 
 The endpoints on this page are plain `def` functions. `domain.process()` is a
 blocking call, and FastAPI runs a `def` endpoint in its thread pool, so the
-call does not hold up the event loop. The domain context that the middleware
+call does not block the event loop. The domain context that the middleware
 pushes reaches the endpoint in that thread.
 
 ## Startup and shutdown lifecycle

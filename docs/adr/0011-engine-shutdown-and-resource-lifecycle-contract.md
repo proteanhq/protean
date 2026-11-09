@@ -27,9 +27,9 @@ event loop. Three problems surfaced in production:
    alone to avoid dropping in-flight traffic. There was no way for
    the engine to say "I'm draining; don't send me more work."
 
-`Domain.close()` did not exist. Tests that spun up ad-hoc domains had
-no way to tear them down cleanly, which the test suite worked around
-with per-suite fixtures that bypassed adapter lifecycles entirely.
+`Domain.close()` did not exist. Tests that spun up ad-hoc domains had no way to
+tear them down cleanly. The test suite worked around this with per-suite
+fixtures, and those fixtures bypassed adapter lifecycles entirely.
 
 ## Decision
 
@@ -92,9 +92,9 @@ embedders can call directly.
 - In-flight handlers get a bounded, predictable drain window instead
   of an abrupt cancel. Aggregates and event logs stay in agreement
   across rolling deploys.
-- `Domain.close()` is a first-class API. Tests and tooling that
-  create domains on demand can tear them down cleanly. The test
-  suite no longer has to bypass adapter lifecycles.
+- `Domain.close()` is a public API. Tests and tooling that create domains on
+  demand can tear them down cleanly. The test suite no longer has to bypass
+  adapter lifecycles.
 - Socket, file-descriptor, and thread leaks are eliminated by
   default. Every adapter now has a real `close()` hook.
 - Load balancers pull pods out of rotation before handlers are
@@ -111,10 +111,9 @@ embedders can call directly.
   raise it.
 - The 10-second drain window is hard-coded. A workload with a
   handler that routinely takes longer must split the handler or
-  accept cancellation under shutdown. We chose to keep the bound
-  fixed rather than make it configurable to avoid incident scenarios
-  where an operator sets it to a high value and delays deploys
-  indefinitely.
+  accept cancellation under shutdown. We chose to keep the bound fixed, because
+  a configurable bound would let an operator set it to a high value during an
+  incident and delay deploys indefinitely.
 
   > **Superseded by ADR-0036.** The window is now configurable via
   > `server.drain_timeout` (default 10 seconds), with guardrails for the
@@ -140,10 +139,9 @@ embedders can call directly.
 > config.
 
 The operational value of a
-predictable upper bound outweighs the flexibility of tuning. A
-configurable drain invites operators to set it to five minutes during
-an incident and then forget to reset it, stretching subsequent rolling
-deploys.
+predictable upper bound outweighs the flexibility of tuning. With a
+configurable drain, an operator could set it to five minutes during an incident
+and then forget to reset it. Subsequent rolling deploys would then take longer.
 
 **Strict reverse-LIFO tracking of adapter initialisation.** Considered
 and rejected. The actual initialisation order within a domain is

@@ -2,7 +2,7 @@
 
 ## The Problem
 
-Your bounded context raises domain events that drive internal reactions, event
+Your bounded context raises domain events that drive internal reactions: event
 handlers sync state across aggregates, projectors update read models, and
 process managers coordinate workflows. All of these flow through a single
 internal broker (typically Redis Streams via the outbox pattern).

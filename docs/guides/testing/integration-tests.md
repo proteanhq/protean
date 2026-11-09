@@ -126,10 +126,10 @@ See [Run the Server](../server/index.md#test-mode) for CLI details.
 ## Driving flows with `process_and_wait`
 
 The `Engine(domain, test_mode=True).run()` calls above are the low-level
-primitive. For most tests `protean.testing` provides higher-level helpers that
-make the **same test body work in both synchronous and asynchronous processing
-modes**, and hand you the events and errors without reaching into outbox rows or
-event-store streams.
+primitive. For most tests, `protean.testing` provides higher-level helpers.
+With these helpers, the **same test body works in both synchronous and
+asynchronous processing modes**. The helpers also hand you the events and
+errors, so you do not read outbox rows or event-store streams yourself.
 
 `process_and_wait(command, domain)` processes a command through its full runtime
 path (`handler → aggregate → UoW commit → outbox → engine → subscription →

@@ -1,10 +1,11 @@
 # Ports & Adapters Architecture
 
-A core tenet in Protean's philosophy is to separate the domain
-from the underlying infrastructure. It enables you to code
-and test models without worrying about technology and plug in a
-component when ready. This lets you delay your decision on technology
-until [the last responsible moment](https://blog.codinghorror.com/the-last-responsible-moment/).
+A core principle of Protean is to keep the domain separate from the underlying
+infrastructure. Because of this separation, you can write and test your models
+before you choose any technology, and add the component for that technology
+when you are ready. This lets you delay your decision on technology until
+[the last responsible moment](https://blog.codinghorror.com/the-last-responsible-moment/),
+the latest point at which you can still decide without closing off options.
 
 Protean's design is based on the [Ports and Adapters architecture](https://en.wikipedia.org/wiki/Hexagonal_architecture_(software)),
 also known as Hexagonal Architecture,
@@ -14,9 +15,9 @@ allowing loosely coupled components that can be easily connected and swapped.
 between the application and the outside world. They define a protocol that can
 be implemented by concrete technology implementations called adapters.
 
-**Adapters** are the glue between the application and the outside world. They
-tailor the exchanges between the external technology and the ports that
-represent the requirements of the inside of the application.
+**Adapters** connect the application to the outside world. Each adapter
+translates the exchanges between an external technology and a port. The port
+states what the application requires from that technology.
 
 Protean exposes several ports with an array of built-in adapters for
 each port.
@@ -64,10 +65,10 @@ specific database technology. It contains the configuration and setup needed
 to connect to the database, and it provides methods for interacting with the
 database at a high level.
 
-The Provider acts as the bridge between the application and the database,
-ensuring that the necessary connections are established and maintained.
-It also handles any database-specific nuances, such as connection pooling,
-transaction management, and query optimization.
+The Provider connects the application to the database: it opens and manages the
+connections the application needs. It also implements the behavior
+specific to its database, such as connection pooling, transaction management,
+and query optimization.
 
 To add a new provider, subclass from the Provider Base class and implement
 methods for your database technology.
@@ -86,8 +87,8 @@ and other database queries, translating them into the appropriate SQL or
 database-specific commands.
 
 By using DAOs, the application code remains clean and decoupled from the
-database logic. DAOs also work in conjunction in [lookups](#lookups) to
-establish a query API that works across various adapters.
+database logic. DAOs and [lookups](#lookups) together provide a query API that
+works across various adapters.
 
 To add a new DAO for your provider, subclass from the DAO Base class and
 implement methods for your database technology.
@@ -100,9 +101,9 @@ transactions, and ensuring data consistency.
 
 The Session provides a context for performing database operations,
 ensuring that all database interactions within a transaction are properly
-managed and that resources are released appropriately. This component is
-crucial for maintaining transactional integrity and for handling rollback
-scenarios in case of errors.
+managed and that resources are released appropriately. The Unit of Work uses
+the Session to keep each transaction intact and to roll it back when an error
+occurs.
 
 The Session object is usually constructed and provided by the database orm
 or technology package. For example, `PostgreSQL` adapter depends on the
@@ -139,10 +140,10 @@ by supplying an explicit hand-crafted model class for your entity.
 ### Lookups
 
 Lookups in Protean are mechanisms used to query the database based on certain
-criteria. They are customized implementations of different types of filters
-that help filter and retrieve data from the database, making it easier to
-perform complex queries without writing raw SQL. Lookups are typically used in
-the DAO layer to fetch records that match specific conditions.
+criteria. Each lookup is a custom implementation of one type of filter. With
+lookups, you can run complex queries without writing raw SQL. Lookups are
+typically used in the DAO layer to fetch records that match specific
+conditions.
 
 Refer to the section on
 [querying](../../guides/change-state/retrieve-aggregates.md#filtering-criteria)
@@ -162,10 +163,11 @@ set of flags indicating which features the adapter supports. This enables:
 - **Informed technology decisions**: Compare adapters at a glance using
   capability matrices.
 
-Database capabilities are orthogonal (providers pick and choose), while broker
-and event store capabilities are organized into hierarchical tiers. See
+Database capabilities are independent of each other, so a provider can declare
+any combination of them. Broker and event store capabilities, by contrast, are
+organized into hierarchical tiers. See
 [Database Capabilities](../../reference/adapters/database/index.md#database-capabilities),
-[Broker Capabilities](../../reference/adapters/broker/index.md#broker-capabilities)
+[Broker Capabilities](../../reference/adapters/broker/index.md#broker-capabilities),
 and [What each event store guarantees](../../reference/adapters/eventstore/index.md#what-each-event-store-guarantees)
 for full details.
 
@@ -178,9 +180,9 @@ Built-in adapters register under the `protean.providers` (databases) and
 register in the same way, making them automatically available after
 `pip install`.
 
-This replaces the earlier hardcoded provider dictionary and enables a true
-plugin ecosystem. External packages can add new database or broker adapters
-without modifying Protean source code. See [Building Custom Database
+This replaces the earlier hardcoded provider dictionary and lets adapters ship
+as separate plugin packages. External packages can add new database or broker
+adapters without modifying Protean source code. See [Building Custom Database
 Adapters](../../reference/adapters/database/custom-databases.md) and [Building
 Custom Brokers](../../reference/adapters/broker/custom-brokers.md) for guides.
 

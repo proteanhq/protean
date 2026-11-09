@@ -32,8 +32,8 @@ Teams encounter this gap and react in one of three ways, all problematic:
 
 The team treats it as a non-issue: "The projection will catch up in a moment."
 But users do not know about eventual consistency. They expect the data they
-just submitted to appear immediately. Ignoring the gap creates support tickets,
-duplicate submissions, and eroded trust.
+just submitted to appear immediately. When the team ignores the gap, users file
+support tickets, submit duplicate orders, and stop trusting the application.
 
 ### Adding `time.sleep()` hacks
 
@@ -52,8 +52,9 @@ async def create_order(data: OrderData):
     return {"order_id": order.order_id}
 ```
 
-This is fragile. Half a second is not enough under load, two seconds is too
-slow for normal traffic, and it blocks the API worker thread.
+A fixed `time.sleep()` delay is fragile. Half a second is not enough under
+load, and two seconds is too slow for normal traffic. The sleep also blocks the
+API worker thread.
 
 ### Forcing synchronous processing everywhere
 
@@ -62,10 +63,11 @@ slow for normal traffic, and it blocks the API worker thread.
 event_processing = "sync"
 ```
 
-This eliminates the gap by running projectors inline during the commit, but
-defeats the purpose of CQRS. Write latency includes every handler in the
-chain, and failures cascade back to the caller. Synchronous processing is
-valuable for **testing** but should not be the production strategy.
+Synchronous processing eliminates the gap by running projectors inline during
+the commit, but it defeats the purpose of CQRS. Write latency includes every
+handler in the chain, and failures cascade back to the caller. Synchronous
+processing is valuable for **testing** but should not be the
+production strategy.
 
 ---
 
@@ -106,9 +108,9 @@ multiple entities. The write side returns one aggregate; the list needs many.
 ### 3. Version polling (coordination strategy)
 
 The write endpoint returns the aggregate's version alongside the entity
-data. The frontend passes this version to the read endpoint, which polls the
-projection until its version matches or exceeds the expected version, or until
-a timeout.
+data. The frontend passes this version to the read endpoint and polls it until
+the projection's version matches or exceeds the expected version, or until a
+timeout.
 
 **Best for:** critical transitions where the UI must show the confirmed
 read-side state (e.g., payment confirmation page, shipping status).
@@ -196,7 +198,7 @@ reads the projection (for normal reads):
 The frontend uses the POST response data for the initial detail page render and
 switches to the projection-backed GET endpoint for subsequent loads. This
 strategy is particularly effective because `@use_case` methods naturally return
-the aggregate, the API layer passes it through.
+the aggregate, and the API layer passes it through.
 
 !!! warning "Write-side reads are not free"
     Reading from the aggregate's repository means querying the write database.
@@ -235,11 +237,11 @@ endpoint with `?min_version=N`. On each poll:
 !!! note "Version tracking in projections"
     Protean's aggregates carry `_version` automatically. For an aggregate
     stored as state, saving a change moves it up by one. An event-sourced
-    aggregate moves it up by one for each event it raises, so an operation
-    that raises two events moves it up by two. A projection does not track
-    `_version` for you. To use version
-    polling, give the projection a `version` field and fill it in the
-    projector, as `OrderSummary` does above from the version its events carry.
+    aggregate moves `_version` up by one for each event it raises, so an
+    operation that raises two events moves it up by two. A projection does not
+    track `_version` for you. To use version polling, give the projection a
+    `version` field. Fill the field in the projector from the version the
+    events carry, as `OrderSummary` does above.
 
 ---
 
@@ -356,9 +358,10 @@ def list_orders():
     return [o.to_dict() for o in orders]
 ```
 
-This defeats the purpose of projections. The write model's table lacks the
-indexes, denormalization, and field shaping that projections provide, and it
-couples read and write schemas together.
+A direct query on the write database defeats the purpose of projections. The
+write model's table lacks the indexes, denormalization, and field shaping that
+projections provide. The direct query also couples read and write
+schemas together.
 
 ---
 
@@ -384,11 +387,11 @@ three:
 - **Version polling** for critical state transitions (payment confirmation,
   shipping status)
 
-Eventual consistency is a feature, not a bug. The gap between write and read is
-by design. It enables independent scaling, failure isolation, and read-side
-optimization. Bridge the gap in the UI layer with explicit strategies rather
-than hiding it with sleeps, forcing synchronous processing, or pretending it
-does not exist.
+When projections update asynchronously, the gap between write and read is by
+design. It enables independent scaling, failure isolation, and read-side
+optimization. Bridge the gap in the UI layer with explicit strategies. Do not
+hide it with sleeps, force synchronous processing, or pretend it does
+not exist.
 
 ---
 

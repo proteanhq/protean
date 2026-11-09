@@ -7,15 +7,15 @@ environments.
 
 ## Overview
 
-Conformance testing ensures that a provider:
+The conformance tests check that a provider:
 
 - Correctly implements all operations it claims to support
 - Handles edge cases consistently (nulls, duplicates, concurrency)
 - Works with Protean's Unit of Work, QuerySet, and repository patterns
 - Passes the same tests that Protean's built-in adapters pass
 
-The generic test suite lives in `tests/adapters/repository/generic/` and
-covers CRUD, filtering, ordering, transactions, raw queries, schema management,
+The generic test suite is in `tests/adapters/repository/generic/` and covers
+CRUD, filtering, ordering, transactions, raw queries, schema management,
 optimistic locking, value objects, associations, and more.
 
 ## CLI: `protean test test-adapter`
@@ -279,8 +279,9 @@ implementation and re-run until all declared capabilities pass.
 ## Custom Field Conformance
 
 The same idea applies to custom fields built with
-[`Custom`](../fields/custom-fields.md). Protean ships a reusable check a `Custom`
-field runs against itself, so you can prove your field before you depend on it.
+[`Custom`](../fields/custom-fields.md). Protean ships a reusable check that you
+run against a `Custom` field, so you can prove your field before you depend
+on it.
 
 ```python
 # fragment
@@ -301,7 +302,8 @@ custom-field contract:
 - **A serialize, persist, reload, and event-replay round-trip.** The value saves,
   reloads equal, and replays equal from the aggregate's fact event.
 
-It raises `AssertionError` on any violation, so drop it straight into a test:
+`run_custom_field_conformance` raises `AssertionError` on any violation, so you
+can call it directly inside a test:
 
 ```python
 # fragment

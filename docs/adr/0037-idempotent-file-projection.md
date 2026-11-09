@@ -49,18 +49,20 @@ with this ADR; the whole-file mode was added for the per-editor renderers (#1474
   existing file keeps the user's other servers (the key-path merge landed in #1475).
 - *Whole file*, for a dx-owned text file with no user-owned region. The framework
   owns the entire file, so the render is the whole content and the managed slice is
-  the whole file. A hand edit anywhere in it reads as a conflict. This is for a file
-  whose format leaves no room for a marker line above its first byte, such as
-  Cursor's `.mdc` rule file, whose YAML frontmatter must start at line 1 (#1474).
+  the whole file. A hand edit anywhere in it reads as a conflict. The
+  whole-file mode is for a file format that cannot take a marker line before
+  its first byte. Cursor's `.mdc` rule file is one example, because its YAML
+  frontmatter must start at line 1 (#1474).
 
-**A state file at `.protean/dx-state.json` remembers what was written.** It sits
-beside `project.json` (ADR-0034) and `ir.json`. Per target path it records the pack
-version stamp and two hashes: the hash of the whole file the writer last wrote, and
-the hash of the managed slice it last wrote.
+**A state file at `.protean/dx-state.json` remembers what was written.** The
+state file is in the same folder as `project.json` (ADR-0034) and `ir.json`.
+Per target path it records the pack version stamp and two hashes: the hash of
+the whole file the writer last wrote, and the hash of the managed slice it last
+wrote.
 
-**The slice hash alone decides what happens.** Comparing three values, the slice on
-disk, the slice the state file last recorded, and the slice just rendered, gives four
-outcomes:
+**The slice hash alone decides what happens.** The writer compares three values
+(the slice on disk, the slice the state file last recorded, and the slice just
+rendered) and gets one of four outcomes:
 
 - **create**: the target is absent.
 - **no change**: the on-disk slice equals the new slice and the version stamp
@@ -74,18 +76,19 @@ outcomes:
 The whole-file hash does not feed that decision. It feeds one informational flag,
 `outside_modified`, which says the file drifted while the managed slice stayed
 identical. A `check` or `diff` verb can report that the user edited around the block.
-It never blocks a write, because editing outside the block is the whole point of a
-co-owned file.
+The `outside_modified` flag never blocks a write, because editing outside the
+block is the whole point of a co-owned file.
 
 **The diff path mutates nothing.** `diff_managed_file` recomputes from disk, compares,
 and returns the status plus the content it would write. `apply_managed_file` runs it
 first and then acts. This is the derive-and-compare shape of
 `scaffold/manifest.py:check_manifest_drift`.
 
-**Hashes are taken over LF-normalized utf-8 text.** A target is read in text mode,
-so a CRLF file and an LF file with the same content hash the same and a platform
-newline difference never reads as a phantom conflict. A write goes back out in
-whatever line ending the file already uses, so an update never rewrites them.
+**Hashes are taken over LF-normalized utf-8 text.** The writer reads a target
+in text mode, so a CRLF file and an LF file with the same content get the same
+hash. A platform newline difference therefore never shows up as a false
+conflict. A write keeps whatever line ending the file already uses, so an
+update never rewrites a file's line endings.
 
 **A symlink target is refused.** `diff_managed_file` raises before it reads. An update
 writes through `os.replace`, which would swap the link for a regular file and leave
@@ -94,40 +97,46 @@ over a symlink, dangling ones included, so both paths say the same thing.
 
 **One pair per block id, in v1.** A file carries exactly one
 `PROTEAN:BEGIN/END` pair for the requested block id; other tools' blocks, with
-different ids, may coexist in the same file and are left untouched. A missing,
-duplicated, or reversed marker for the requested id raises instead of falling
-back to overwriting the file. Marker matching is line-anchored, so a block id
-that is a prefix of another id does not false-match.
-A block whose body contains a line identical to a marker is rejected at
-construction, because writing it would frame a phantom block and poison every later
-apply.
+different ids, may coexist in the same file and are left untouched. When a
+marker for the requested id is missing, duplicated, or reversed, the writer
+raises an error and does not overwrite the file. Marker matching is
+line-anchored, so a block id that is a prefix of another id does not
+false-match. A block whose body contains a line identical to a marker is
+rejected at construction, because writing it would put a duplicate marker line
+in the file and make every later apply fail.
 
-**Serialization follows the house style** of ADR-0033: a frozen dataclass, an explicit
-`to_dict`/`from_dict` JSON dump with sorted keys and a trailing newline, and a
-`state_version` marker that `from_dict` rejects loudly when it does not recognize it.
+**Serialization follows the house style** of ADR-0033: a frozen dataclass, an
+explicit `to_dict`/`from_dict` JSON dump with sorted keys and a trailing
+newline, and a `state_version` marker. `from_dict` rejects an unrecognized
+`state_version` loudly.
 
-Writes are atomic, through a sibling temp file and an `os.replace`. The target file is
-written before the state file, so a failed write leaves the state on the prior stamp and
-the next run re-derives rather than trusting a stamp for content that never landed.
+Writes are atomic, through a sibling temp file and an `os.replace`. The writer
+writes the target file before the state file, so a failed write leaves the
+prior stamp in the state file. The next run then re-derives the outcome and
+does not trust a stamp for content that was never written.
 
 ## Consequences
 
-- Re-running `dx install` is safe by default. The common cases, nothing changed and
-  the user edited around the block, both do the right thing with no prompt.
+- Re-running `dx install` is safe by default. In the two common cases, the
+  writer does the right thing with no prompt: nothing changed, or the user
+  edited around the block.
 - A user edit inside the framework's block is never silently destroyed. The cost is
   that resolving it is manual: the writer reports the conflict and stops, and there is
   no merge-conflict-marker mode or `--force` in v1.
 - The state file is a new file in the user's repo. It has to be committed for the
-  conflict check to work across machines. Delete it and the writer loses the record
-  of what it last wrote: a file whose block still matches the new render is still a
-  safe update, but a block the user edited now reads as a conflict, since an
-  unrecorded slice matches no recorded state.
-- Managed-block files carry visible marker comments. That is a small cost in the
-  file's readability, and it buys a boundary the user can see and work around.
+  conflict check to work across machines. If the state file is deleted, the
+  writer loses the record of what it last wrote. A file whose block still
+  matches the new render is still a safe update, but a block the user edited
+  now reads as a conflict, because an unrecorded slice matches no
+  recorded state.
+- Managed-block files carry visible marker comments. The marker comments make
+  the file a little harder to read. In return, the user can see the boundary of
+  the framework's block and edit around it.
 - The JSON merge takes an optional key-path so it can manage a nested key on its
   own: managing `mcpServers.protean` sets only that entry and keeps every sibling
-  server. With no key-path it stays the shallow top-level merge. `.mcp.json` asked
-  for the nested form (#1475), so it is built; other targets still use the shallow one.
+  server. With no key-path it stays the shallow top-level merge. The writer has
+  the nested form because `.mcp.json` needs it (#1475). Other targets still use
+  the shallow merge.
 - `state_version` means an old build meeting a newer state file fails loudly instead of
   misreading it. The cost is one more version marker to bump when the shape changes.
 

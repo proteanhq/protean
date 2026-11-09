@@ -84,10 +84,10 @@ The handler's job is orchestration, not business logic:
 3. Pass everything to the domain service.
 4. Persist the order. Only the order.
 
-If the inventory check fails, the `ValidationError` propagates to the
-API layer and returns a `400 Bad Request` automatically (thanks to the
-exception handlers we registered in Chapter 10). Nothing was saved, so the
-order stays `PENDING`.
+If the inventory check fails, the `ValidationError` propagates to the API
+layer. The exception handlers we registered in Chapter 10 then return a
+`400 Bad Request` automatically. Nothing was saved, so the order
+stays `PENDING`.
 
 A handler changes one aggregate per transaction. The inventory records are
 loaded so the service can check them, but they are not saved here.
@@ -107,7 +107,7 @@ command per title. Inventory's command handler does the reservation:
 --8<-- "guides/getting-started/tutorial/ch13.py:reservation"
 ```
 
-The event handler sits in Order's cluster because Order owns
+The event handler is part of Order's cluster because Order owns
 `OrderConfirmed`. It does not change Inventory itself. It hands the change to
 Inventory as a command. `reserve_inventory` belongs in the `OrderEventHandler`
 from Chapter 6, next to its `on_order_confirmed` notification. Add the method
@@ -119,8 +119,8 @@ Events can be delivered more than once, so the command handler checks
 Without that check, a redelivered `OrderConfirmed` would reserve the stock
 twice. The check works because an order reserves each book once: two lines for
 the same book arrive as one command with the summed quantity. The list grows by
-one id for every order that reserves the book, and it loads with the inventory
-record each time.
+one id for every order that reserves the book. The repository loads the list
+every time it loads the inventory record.
 
 The stock check and the reservation happen in two transactions. The service
 checks the stock it read. The reservation runs later, in its own transaction,
@@ -133,9 +133,10 @@ asynchronous processing, the reservation fails in the server instead.
 
 A real store has to handle that failure. A common way is a compensating step:
 Inventory's command handler catches the error and raises an event such as
-`ReservationFailed`, and a handler reacts by cancelling the order. Chapter 20
-builds this kind of compensation with a process manager for a failed shipment.
-It leaves a failed reservation out, and describes how to add it.
+`ReservationFailed`. A handler then reacts to that event by cancelling the
+order. Chapter 20 builds this kind of compensation with a process manager for a
+failed shipment. It does not build compensation for a failed reservation, but
+it describes how to add one.
 
 This chapter's domain sets `command_processing` and `event_processing` to
 `"sync"`, so the whole chain runs before `domain.process()` returns. With

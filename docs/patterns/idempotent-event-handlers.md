@@ -39,12 +39,12 @@ This is not a rare edge case. It happens routinely in distributed systems:
   acknowledgment to the event store is lost. The event is redelivered.
 
 - **Competing consumers**: In a multi-instance deployment, two instances
-  briefly process the same event before coordination kicks in.
+  briefly process the same event before coordination starts.
 
 Unlike commands (covered in [Command Idempotency](command-idempotency.md)),
 events represent **facts that already happened**. You cannot reject an event or
-return an error to its producer. The Order was placed. The handler must deal
-with it, potentially more than once.
+return an error to its producer. The Order was placed. The handler must process
+it, potentially more than once.
 
 ---
 
@@ -54,13 +54,13 @@ Design every event handler to produce the **same result** whether it processes
 an event once or multiple times. The aggregate's state after two deliveries
 should be identical to its state after one.
 
-This is achieved through one of three strategies:
+You make a handler idempotent with one of three strategies:
 
 1. **Naturally idempotent operations**: Operations that produce the same
    result regardless of repetition (set-based, not additive).
 2. **Deduplication**: Detecting and skipping duplicate deliveries.
-3. **Upsert instead of insert**: Using database semantics that handle
-   duplicates gracefully.
+3. **Upsert instead of insert**: Using database operations that update an
+   existing record instead of failing on a duplicate.
 
 The examples on this page react to events from an `Order` aggregate:
 
@@ -227,9 +227,9 @@ delivery would try to create a second record with the same ID:
 ```
 
 `repo.get()` raises `ObjectNotFoundError` when no record has the ID, so the
-projector catches it to tell a first delivery from a repeat. This pattern
-handles both first delivery and duplicate delivery. The result is the same
-either way.
+projector catches it to tell a first delivery from a repeat. The projector
+creates the record on the first delivery and updates it on a duplicate
+delivery. The result is the same either way.
 
 ### Existence Guard
 
@@ -247,16 +247,16 @@ looks the shipment up by order ID and returns `None` when there is none:
 
 ### Example 1: Loyalty Points (Additive Operation)
 
-Loyalty points are additive, awarding points twice doubles the reward. This
+Loyalty points are additive, so awarding points twice doubles the reward. This
 requires explicit deduplication.
 
 ```python
 --8<-- "patterns/idempotent-event-handlers/002.py:loyalty"
 ```
 
-The idempotency logic lives in the aggregate's `award_points` method, not
-in the handler. The handler is thin. The aggregate checks its
-`point_transactions` to detect duplicates.
+The idempotency logic runs in the aggregate's `award_points` method, not in
+the handler. The handler is thin. The aggregate checks its `point_transactions`
+to detect duplicates.
 
 ### Example 2: Inventory Reservation (Cross-Aggregate Side Effect)
 

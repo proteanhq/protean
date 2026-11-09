@@ -103,14 +103,15 @@ Protean project. It has two layers:
   IR listing the project's own aggregate clusters (with their commands, events,
   and handlers) and its projections.
 
-`--type=llms` is the one type that runs with no `--domain` and no `--ir`: with
-no source it emits the framework layer alone; with a source it adds the project
-overlay. Like `event-model`, it is its own view and is not part of `--type=all`.
+`--type=llms` is the one type that runs with no `--domain` and no `--ir`. With
+no source, it emits the framework layer alone. With a source, it adds the
+project overlay. Like `event-model`, it is its own view and is not part
+of `--type=all`.
 
 The output is byte-stable: for a given Protean version and project structure,
-generating twice yields identical bytes. The overlay reads only structural parts
-of the IR, never volatile fields like the build timestamp, so it does not churn
-between runs.
+generating twice yields identical bytes. The overlay reads only structural
+parts of the IR, never volatile fields like the build timestamp, so its output
+does not change between runs.
 
 ```shell
 # Framework layer only (no source needed)
@@ -136,17 +137,18 @@ protean docs generate --type=llms --domain=my_app --output=llms.txt --check
 
 The snapshot is a **secondary** path. The [`protean mcp`](../runtime/mcp.md)
 server is the recommended way to give an agent domain knowledge: it answers
-live from the installed domain, so there is no file to keep fresh. Reach for a
-committed snapshot only for agents that do not speak MCP, and know the
-trade-off: a file can go stale, and `--check` is what tells you it has. See
+live from the installed domain, so there is no file to keep fresh. Use a
+committed snapshot only for agents that do not support MCP. This choice has a
+cost: the file can go out of date, and `--check` tells you when it has. See
 [Giving an agent domain context](../../../guides/giving-agents-domain-context.md).
 
 #### The opt-in `domain_snapshot` config key
 
-Repeating `--domain` and `--output` on every `generate` and `--check` run is
-noise. The `[tool.protean.docs].domain_snapshot` key names both once. It is
-**absent by default**: set it only when you commit a snapshot. Nothing reads it
-until you add it, and `protean new` and `protean dx` never write it.
+Without a config key, you repeat `--domain` and `--output` on every `generate`
+and `--check` run. The `[tool.protean.docs].domain_snapshot` key names both
+once. It is **absent by default**: set it only when you commit a snapshot.
+Nothing reads the key until you add it. `protean new` and `protean dx` never
+write it.
 
 In `pyproject.toml`:
 
@@ -155,8 +157,8 @@ In `pyproject.toml`:
 domain_snapshot = { path = "llms.txt", domain = "src/my_app/domain.py" }
 ```
 
-In a `domain.toml` the same key sits under `[docs]` (a `domain.toml` maps
-directly to the Protean namespace, with no `tool.protean` prefix):
+In a `domain.toml` the same key goes in the `[docs]` table (a `domain.toml`
+maps directly to the Protean namespace, with no `tool.protean` prefix):
 
 ```toml
 [docs]
@@ -192,8 +194,8 @@ under `src/<package>/`, which a run from the project root does not see: put the
 key in the root `pyproject.toml` there.
 
 A config file that cannot be parsed stops the command with an error naming the
-file. Nothing else reads it on this path, so a typo there would otherwise drop
-the configured domain and output without a word.
+file. Nothing else reads the config file on this path, so without the error a
+typo there would silently drop the configured domain and output.
 
 ### The AGENTS.md constraint pack
 
@@ -209,14 +211,15 @@ the code so a reader can trace it back:
   comply: <fix> (`CODE`)
 ```
 
-Beyond the fixed wording in that template (the lead-in, `To comply:`, and the
-code in backticks at the end), the generator adds nothing: it drops the three
-registry fields in as they are written, joined with single spaces. The rule
+The generator adds nothing beyond the fixed wording in that template (the
+lead-in, `To comply:`, and the code in backticks at the end). It inserts the
+three registry fields as they are written, joined with single spaces. The rule
 reads as full sentences because each registry field already ends with a period.
 
-Only error-level codes appear: advisory `warning` and `info` codes are style and
-design nudges, not hard rules, so they are excluded. The set of rules is coupled
-to the live registry, so adding or removing an error code changes the file.
+Only error-level codes appear. Advisory `warning` and `info` codes give style
+and design advice and are not hard rules, so the generator excludes them. The
+set of rules is coupled to the live registry, so adding or removing an error
+code changes the file.
 
 `--type=agents` needs no `--domain` and no `--ir`: it derives only from the
 registry and the installed Protean version, so it runs with no source. Like
@@ -227,11 +230,12 @@ bytes, because the header is version-stamped, the registry traversal is sorted,
 and nothing reads a timestamp.
 
 This command prints the diagnostics-derived hard rules on their own. A project
-generated with `protean new` ships a richer `AGENTS.md`: the dx-managed form,
-which composes the packaged pack guidance with these hard rules inside a managed
-block. That file is written and maintained by [`protean dx`](dx.md), not by this
-command. After upgrading Protean, refresh it with `protean dx refresh`. Use this
-command when you want the hard-rules pack by itself:
+generated with `protean new` ships a richer `AGENTS.md`, the dx-managed form.
+That file combines the packaged pack guidance with these hard rules inside a
+managed block. That file is written and maintained by [`protean dx`](dx.md),
+not by this command. After upgrading Protean, refresh it with
+`protean dx refresh`. Use this command when you want the hard-rules pack
+by itself:
 
 ```shell
 # Print the constraint pack
@@ -241,17 +245,18 @@ protean docs generate --type=agents
 ### Annotating the event model
 
 The event model carries structure, not the business context a person adds: why
-a slice exists, the rule behind it, which team owns it. Those notes live outside
-the generated output, in `.protean/annotations.toml`, and merge back in on
-render. Keeping them out of the diagram means the model stays disposable and the
-notes stay under version control next to the code they describe. The file's
-shape is recorded in [ADR-0032](../../../adr/0032-annotation-file-for-the-event-model.md).
+a slice exists, the rule behind it, which team owns it. You keep those notes in
+`.protean/annotations.toml`, outside the generated output. The command merges
+them into the output when it renders. Keeping them out of the diagram means the
+model stays disposable and the notes stay under version control next to the
+code they describe. The file's shape is recorded in
+[ADR-0032](../../../adr/0032-annotation-file-for-the-event-model.md).
 
 The file has a top-level `[annotations]` map keyed by element FQN. Each entry
 carries a required `note` (free text, the business context) and an optional
 `owner` (the team or person accountable). The FQN is the value
-`protean.utils.fqn` computes, `module.QualifiedName`; in a project generated
-from the canonical layout, an `Order` aggregate in
+`protean.utils.fqn` computes, `module.QualifiedName`. For example, in a project
+generated from the canonical layout, an `Order` aggregate in
 `src/myproj/example/aggregate.py` has the FQN `myproj.example.aggregate.Order`.
 The FQN must be quoted, because TOML reads its dots as table separators
 otherwise:
@@ -268,21 +273,23 @@ owner = "Fulfillment"
 On render, each note merges into every slice that draws the element it keys. A
 note on an aggregate, a command, an event, or a consumer (a projector, event
 handler, or process manager) shows after that slice's Given-When-Then and before
-its diagram. A consumer drawn in two slices shows its note in both. Because the key is the element's FQN, a note stays attached
-across a content change (adding a field, reordering elements, regenerating the
-model) and breaks on an identity change (renaming or moving the element), which
-changes the FQN.
+its diagram. A consumer drawn in two slices shows its note in both. Because the
+key is the element's FQN, a note stays attached across a content change (adding
+a field, reordering elements, regenerating the model). The note breaks on an
+identity change (renaming or moving the element), because that change alters
+the FQN.
 
-A key that matches no drawn element is listed in an "Unmatched annotations"
-section at the end of the render, so a note orphaned by a rename or a typo stays
-visible and gets re-keyed. A fact event is filtered from the event model, so it
-draws no node; a note keyed to one is reported unmatched.
+The command lists a key that matches no drawn element in an "Unmatched
+annotations" section at the end of the render. A note orphaned by a rename or a
+typo therefore stays visible, and you can re-key it. A fact event is filtered
+from the event model, so it draws no node; a note keyed to one is
+reported unmatched.
 
 `--annotations <path>` reads the file from a non-default location. An explicit
 path that does not exist is an error, as is a malformed file: either aborts the
-command before any output is written. With no annotations file present, the
-default path absent and no `--annotations` given, the render is exactly what it
-is without the feature.
+command before any output is written. If no annotations file exists at the
+default path and you pass no `--annotations`, the render is identical to a
+render without the feature.
 
 ```shell
 # Merge notes from the default .protean/annotations.toml
@@ -293,10 +300,9 @@ protean docs generate --domain=my_app --type=event-model \
     --annotations=docs/event-model-notes.toml
 ```
 
-Notes are Markdown prose and cannot sit inside a raw flowchart, so
+Notes are Markdown prose and cannot go inside a raw flowchart. For that reason,
 `--format=mermaid` leaves the diagram body unchanged and appends only the
-unmatched-annotation report, the one piece that belongs at the end of the
-render.
+unmatched-annotation report, which belongs at the end of the render.
 
 ## `protean docs preview`
 

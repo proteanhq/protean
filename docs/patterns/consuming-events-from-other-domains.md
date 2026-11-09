@@ -57,10 +57,10 @@ own commands and events.
     This pattern applies to **distributed domains**, separate services
     communicating through a broker, or external systems you don't control.
 
-    When multiple domains live in the **same repository and share the same
-    event store**, Protean also supports `register_external_event()`, which
-    gives your domain typed access to another domain's events without raw
-    dict parsing. This is especially useful for process managers coordinating
+    When multiple domains are in the **same repository and share the same event
+    store**, Protean also supports `register_external_event()`, which gives
+    your domain typed access to another domain's events without raw dict
+    parsing. This is especially useful for process managers coordinating
     cross-domain workflows.
 
     See [Multi-Domain Applications, Cross-domain
@@ -93,7 +93,7 @@ The subscriber:
     [Handling External Schema Changes](#handling-external-schema-changes).
     That is the shape a producer outside Protean usually sends. When the
     producer is a Protean domain publishing through its outbox, the event
-    fields sit under `payload["data"]` and the event type under
+    fields are in `payload["data"]` and the event type is in
     `payload["metadata"]["headers"]["type"]`.
     [Publishing Events to External Brokers](publishing-events-to-external-brokers.md#step-4-consume-on-the-other-side)
     shows a subscriber that reads that shape.
@@ -102,7 +102,7 @@ The subscriber:
     Subscribers deliberately receive raw `dict` payloads rather than typed
     domain objects. This is the anti-corruption boundary. Your domain does
     **not** import or depend on the external domain's event classes. The raw
-    dict is the firewall between external and internal models.
+    dict separates the external model from your internal model.
 
 ---
 
@@ -111,8 +111,8 @@ The subscriber:
 ### Translating to Commands
 
 The most common pattern: translate external payloads into internal commands.
-This funnels external stimuli through your domain's normal command processing
-pipeline:
+Your domain then processes the external input through its normal command
+processing pipeline:
 
 ```python
 --8<-- "patterns/consuming-events-from-other-domains/002.py:subscriber"
@@ -189,7 +189,7 @@ Only the subscriber changes:
 ```
 
 Your domain's `CreateShipment` command, `Shipment` aggregate, and all handlers
-remain unchanged. The schema change is absorbed by the subscriber.
+remain unchanged. Only the subscriber code changes to match the new schema.
 
 ---
 
@@ -206,11 +206,11 @@ that don't exist in your domain:
 boundary before passing it into your domain.
 
 !!! tip "Preserving the correlation chain"
-    When consuming events from external services, the `correlation_id` from the
-    source event is automatically bridged into your subscriber's processing
-    context. Any commands dispatched inside the subscriber inherit it, stitching
-    the causal chain across service boundaries. See
-    [Correlation and Causation IDs](../guides/observability/correlation-and-causation.md#service-boundary-handling)
+    When your subscriber consumes events from external services, Protean
+    automatically copies the `correlation_id` from the source event into your
+    subscriber's processing context. Any commands dispatched inside the
+    subscriber inherit the `correlation_id`, so you can trace one causal chain
+    across service boundaries. See [Correlation and Causation IDs](../guides/observability/correlation-and-causation.md#service-boundary-handling)
     for details.
 
 ---

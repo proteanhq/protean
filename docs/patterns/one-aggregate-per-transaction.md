@@ -51,8 +51,9 @@ boundary**.
 
 ## The Pattern
 
-Modify **exactly one aggregate per transaction**. Cross-aggregate side effects
-flow through **domain events**, processed in their own separate transactions.
+Modify **exactly one aggregate per transaction**. **Domain events** carry
+cross-aggregate side effects, and handlers process each event in its own
+separate transaction.
 
 ```
 Anti-pattern:
@@ -88,7 +89,8 @@ tolerates it.
 
 ### Aggregates Are Consistency Boundaries
 
-This is definitional. In Eric Evans' original formulation, an aggregate is:
+Aggregates are consistency boundaries by definition. In Eric Evans' original
+formulation, an aggregate is:
 
 > A cluster of associated objects that are treated as a unit for the purpose of
 > data changes. External references are restricted to one member of the
@@ -116,8 +118,8 @@ Most cross-aggregate operations don't require immediate consistency. Consider:
   negligible.
 
 The business operations that truly require multi-aggregate atomicity are rare.
-When they arise, consider whether the aggregate boundaries are drawn correctly
--- perhaps those two "aggregates" should actually be one.
+When they arise, consider whether the aggregate boundaries are drawn correctly.
+Perhaps those two "aggregates" should actually be one.
 
 ### Independent Scalability
 
@@ -226,8 +228,8 @@ def transfer(self, command: TransferMoney):
 **What about failure?** If the credit fails (target account doesn't exist,
 database error), the debit has already been committed. The event handler retries.
 If retries are exhausted, a compensating action re-credits the source account.
-This is the saga pattern, complex, but each step is a single-aggregate
-transaction, making failures predictable and recoverable.
+This is the saga pattern. It is complex, but each step is a single-aggregate
+transaction, so failures are predictable and recoverable.
 
 ### Order Fulfillment Pipeline
 
@@ -332,8 +334,7 @@ method shares the handler's UoW. An application service method can open a
 | Testing | Must set up multiple aggregates | Test each aggregate independently |
 | Protean support | Possible but not recommended | Natural fit with UoW + events |
 
-One aggregate, one transaction, one commit. Everything else flows through
-events.
+One aggregate, one transaction, one commit. Events trigger every other change.
 
 ---
 

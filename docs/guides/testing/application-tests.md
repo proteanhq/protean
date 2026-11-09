@@ -12,10 +12,10 @@ these tests. It uses Gherkin feature files to express scenarios in plain
 language and maps each step to a Python function, integrating with
 pytest fixtures.
 
-Application tests exercise the full processing pipeline (from command dispatch
-through handler execution to persistence) using synchronous processing and
-in-memory adapters so that assertions are deterministic and no infrastructure
-is required.
+Application tests exercise the full processing pipeline, from command dispatch
+through handler execution to persistence. They use synchronous processing and
+in-memory adapters, so assertions are deterministic and the tests need
+no infrastructure.
 
 ## Installing pytest-bdd
 
@@ -63,7 +63,7 @@ tests/
 ```
 
 Each domain concept gets its own directory with feature files and step
-definitions. Shared steps (like creating common entities) live in
+definitions. Shared steps (like creating common entities) are defined in
 `conftest.py` files at the appropriate level.
 
 ## Writing Feature Files
@@ -115,7 +115,7 @@ provide the step definitions:
 Use `target_fixture` to pass data between steps. The return value of the step
 becomes a pytest fixture available to all subsequent steps in the same
 scenario. The `Given` steps that return the `book` and `customer` fixtures are
-shared steps, so they live in `tests/bdd/ordering/conftest.py`, shown under
+shared steps, so `tests/bdd/ordering/conftest.py` defines them, as shown under
 [Domain-Specific Shared Steps](#domain-specific-shared-steps). The test module
 holds the rest:
 
@@ -183,9 +183,9 @@ pytest-bdd discovers step definitions defined there automatically.
 
 ### Root-Level Shared Steps
 
-The root `conftest.py` uses `DomainFixture` to initialize the domain and
-manage per-test cleanup (see [Fixtures and Patterns](./fixtures-and-patterns.md)
-for the full setup):
+The root `conftest.py` uses `DomainFixture` to initialize the domain and clean
+up after each test (see [Fixtures and Patterns](./fixtures-and-patterns.md) for
+the full setup):
 
 ??? example "The root `conftest.py` these tests run under"
 
@@ -298,6 +298,6 @@ pytest tests/bdd/ -m "happy_path and not validation"
 
 !!!note
     Setting `command_processing` and `event_processing` to `"sync"` is
-    essential for application tests. It ensures commands are handled
-    immediately and events are dispatched synchronously, so your `@then` steps
-    can verify outcomes deterministically.
+    essential for application tests. With these settings, Protean processes
+    commands immediately and dispatches events synchronously, so your `@then`
+    steps can verify outcomes deterministically.

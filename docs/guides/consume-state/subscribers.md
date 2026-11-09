@@ -242,8 +242,8 @@ exceptions:
 ### Error Handler Failures
 
 If an exception occurs within the `handle_error` method itself, the Protean
-Engine will catch and log that exception as well, ensuring that the message
-processing pipeline continues to function. This provides an additional layer
+Engine will catch and log that exception as well, so the message processing
+pipeline continues to function. This provides an additional layer
 of resilience:
 
 ```python
@@ -299,11 +299,11 @@ The context `Message` wraps the broker metadata:
 | `msg.data` | The raw payload `dict` |
 
 Because this is the same `message_in_context` used for domain events and
-commands, any commands dispatched by the subscriber via `domain.process()`
-automatically inherit this message ID as their `causation_id`, linking
-the full trace chain back to the original external message. The
-`correlation_id` from the source service is also preserved automatically,
-stitching the causal chain across service boundaries.
+commands, any command the subscriber dispatches via `domain.process()`
+automatically inherits this message ID as its `causation_id`. That
+`causation_id` links the full trace chain back to the original external
+message. Protean also preserves the `correlation_id` from the source service
+automatically, so the causal chain stays connected across service boundaries.
 
 The context is automatically set before `__call__` is invoked and cleaned up
 afterward, even if the subscriber raises an exception.

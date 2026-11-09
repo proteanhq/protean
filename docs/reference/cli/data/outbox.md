@@ -38,13 +38,12 @@ exists. On a provider that keeps writes without a transaction, such as
 Elasticsearch, the aggregate row can be saved while its outbox row is lost.
 That change did happen, and its event stays unpublished.
 
-Another domain's events in a shared store, commands, process manager transition
-events, and events of aggregates on other providers never get outbox rows in
-this provider, so they are skipped as well. A rebuilt row carries the same
-`partition_key` the original commit would have set. This is
-the manual counterpart to the [automatic startup
-sweep](#automatic-startup-sweep), run it on demand after a suspected crash, or
-from a cron job as a periodic safety net.
+The command also skips messages that never get outbox rows in this provider:
+another domain's events in a shared store, commands, process manager transition
+events, and events of aggregates on other providers. A rebuilt row carries the
+same `partition_key` the original commit would have set. `reconcile` is the
+manual form of the [automatic startup sweep](#automatic-startup-sweep). Run it
+after a suspected crash, or from a cron job as a periodic safety net.
 
 ```bash
 # Reconcile the default provider's outbox
@@ -94,8 +93,8 @@ duplicates a row. The count that `reconcile` prints covers only the rows this
 run wrote.
 
 A run is also safe at the same time as the startup sweep or while commands are
-committing. When two writers try to save the same row, whichever saves it
-first keeps it and the other skips its copy, and a committing command still
+committing. When two writers try to save the same row, the first writer keeps
+its copy and the other writer skips its own. A committing command still
 commits. The exceptions depend on the provider:
 
 - On SQLite, one transaction writes at a time. A run that waits for a
@@ -116,13 +115,14 @@ event's rows are saved in one commit. So a broker added to `external_brokers`
 later is not back-filled for events that still have their internal row. The
 count in the output includes the external rows.
 
-Events older than the shorter of `[outbox.cleanup].published_retention_hours`
-(default 168) and `[outbox.cleanup].abandoned_retention_hours` (default 720)
-are skipped. Cleanup deletes rows older than these retentions (it keeps
-abandoned rows that have a partition key), and a deleted row looks the same as
-one lost in a crash, so rebuilding it would send the event again. An event lost in a crash and left unrepaired for longer than that
-retention is not repaired. An event with no stored time is also skipped,
-because its age is unknown.
+Reconciliation skips events older than the shorter of
+`[outbox.cleanup].published_retention_hours` (default 168) and
+`[outbox.cleanup].abandoned_retention_hours` (default 720). Cleanup deletes
+rows older than these retentions, except abandoned rows that have a partition
+key. A deleted row looks the same as one lost in a crash, so rebuilding a
+deleted row would send its event again. An event lost in a crash and left
+unrepaired for longer than that retention is not repaired. An event with no
+stored time is also skipped, because its age is unknown.
 
 The cutoff uses the retentions configured when the run starts. Cleanup deleted
 rows under the retentions configured when it ran. If you raise the shorter
@@ -179,9 +179,9 @@ exits 0. The scan reads the abandoned rows a page at a time, so a row whose
 status changes while it runs can be missed or listed twice.
 
 Under `--json`, `data.halted` holds one object per halted group. The
-`last_error` below is shortened. A real one also holds the `traceback`,
-`failed_at` and `retry_count` of the last failure, and prints across several
-lines:
+`last_error` below is shortened. A real `last_error` also holds the
+`traceback`, `failed_at` and `retry_count` of the last failure. It prints
+across several lines:
 
 ```json
 {
@@ -268,9 +268,10 @@ Outbox row 6f1c2a9e-... is discarded and will not be published.
 
 ## Automatic startup sweep
 
-The same reconciliation runs once automatically when the server boots, so an
-event-sourced aggregate's event whose outbox row was lost in a crash before the
-relational commit gets its row back on restart without operator action:
+The server runs the same reconciliation once when it boots. So when a crash
+loses the outbox row of an event-sourced aggregate's event before the
+relational commit, the event gets its row back on restart without
+operator action:
 
 ```bash
 protean server --domain=my_domain

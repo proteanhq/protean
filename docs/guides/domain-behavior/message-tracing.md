@@ -111,8 +111,8 @@ Protean maintains two distinct tracing layers:
 | **Domain tracing** | `DomainMeta.correlation_id` + `causation_id` | Protean-internal causation chain | Flexible strings |
 | **Distributed tracing** | `MessageHeaders.traceparent` | External tool integration (Jaeger, Zipkin) | W3C hex format |
 
-`correlation_id` links both layers. It identifies the same business operation
-whether you're looking at Protean's domain metadata or a W3C trace.
+Both layers carry the `correlation_id`. It identifies the same business
+operation whether you're looking at Protean's domain metadata or a W3C trace.
 `causation_id`, however, is domain-layer only because Protean's message IDs
 (like `"myapp::order-abc123-0.1"`) are intentionally human-readable and cannot
 fit in W3C's 16-hex-char `parent_id` format.

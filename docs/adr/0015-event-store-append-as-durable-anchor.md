@@ -21,18 +21,18 @@ writes to two different datastores, with no atomicity spanning them:
 
 The order matters. The outbox rows are committed with the relational transaction
 in step 1, before the events reach the event store in step 2. If the process
-dies, or the event-store write fails, in the window between the two, the
-relational side is durable but the event store is missing the events. The
-consequences differ by aggregate style:
+dies or the event-store write fails between the two writes, the relational side
+is durable but the event store is missing the events. The consequences differ
+by aggregate style:
 
 - For an event-sourced aggregate the event store is the source of truth.
   `from_events()` reconstructs a state that is missing the lost event, so the
   committed write and the replayable history diverge silently. The aggregate's
   optimistic-concurrency version has already advanced and the outbox row exists,
   but the event that justifies them is gone.
-- For a CQRS aggregate the relational state is intact, but the event store (used
-  for audit and projection rebuilds) is incomplete, and the outbox will still
-  publish events the store does not contain.
+- For a CQRS aggregate the relational state is intact, but the event store
+  (used for audit and projection rebuilds) is incomplete. The outbox still
+  publishes events the store does not contain.
 
 In both cases consumers can receive, through the outbox, events that the event
 store has no record of. The divergence is invisible to in-memory tests (a single
@@ -41,11 +41,11 @@ against a real two-store setup.
 
 The constraint that shapes every option is that the relational database and the
 event store are independent systems. Neither Message DB nor EventStoreDB
-participates in a two-phase commit with the aggregate database, and Protean does
-not want to take on a distributed-transaction coordinator. So the problem cannot
-be solved by making the two writes truly atomic. It must be solved by choosing
-which store is the durable anchor and making the failure mode recoverable rather
-than corrupting.
+participates in a two-phase commit with the aggregate database. Protean does
+not want to take on a distributed-transaction coordinator. So the problem
+cannot be solved by making the two writes truly atomic. It must be solved by
+choosing which store is the durable anchor, and by turning the corrupting
+failure mode into a recoverable one.
 
 Both supported event stores provide the optimistic-concurrency primitive needed
 to make a repeated append safe. Message DB appends with an `expected_version`; a
@@ -66,11 +66,12 @@ sequence, and make the relational commit and outbox follow it.
 
    *Amended (November 2026, ADR-0048): a SQL event store that shares the
    `default` database provider appends inside the Unit of Work's transaction.
-   Events, aggregate rows and outbox rows then commit or roll back together, so
-   the append is part of the relational commit and is no longer a separate
-   durable anchor, and reconciliation has no window to repair. This decision
-   applies unchanged to every event store that commits each append on its own
-   connection, including a SQL event store configured with `database_uri`.*
+   Events, aggregate rows, and outbox rows then commit or roll back together,
+   so the append is part of the relational commit and is no longer a separate
+   durable anchor. As a result, reconciliation has no window to repair. This
+   decision applies unchanged to every event store that commits each append on
+   its own connection, including a SQL event store configured with
+   `database_uri`.*
 
 2. **Idempotent on retry**: Because a commit can be retried after a partial
    failure (the append succeeds, the relational commit fails), the append must be
@@ -101,13 +102,13 @@ sequence, and make the relational commit and outbox follow it.
 
    *Amended (November 2026, #1908): reconciliation rebuilds outbox rows only for
    events of event-sourced aggregates. For a state-based aggregate the
-   relational row is the state, and on a transactional provider it commits or
-   rolls back with its outbox rows, so its event with no outbox row has no saved
-   change behind it. A crash before the relational commit therefore self-heals
-   on restart only for event-sourced aggregates. On a provider without
-   transactions, such as Elasticsearch, a state-based aggregate's saved change
-   whose outbox row was lost stays unpublished. The commit order above is
-   unchanged.*
+   relational row is the state, and on a transactional provider that row
+   commits or rolls back with its outbox rows. So an event of such an aggregate
+   with no outbox row has no saved change behind it. A crash before the
+   relational commit therefore self-heals on restart only for event-sourced
+   aggregates. On a provider without transactions, such as Elasticsearch, a
+   state-based aggregate's saved change whose outbox row was lost stays
+   unpublished. The commit order above is unchanged.*
 
 ## Consequences
 
@@ -121,8 +122,8 @@ Positive:
   correctly from the store. State-based aggregates' events are not re-derived
   (see the amendment to decision 4).
 - The contract is the same across every event store. Adopting EventStoreDB at
-  scale needs no change to the commit ordering, and EventStoreDB's native
-  `EventId` idempotency makes the retry path simpler than Message DB's.
+  scale needs no change to the commit ordering. EventStoreDB's native `EventId`
+  idempotency also makes the retry path simpler than Message DB's.
 - The decision composes with the existing optimistic-concurrency and claim
   contract (ADR-0013) rather than introducing a new mechanism.
 
@@ -130,24 +131,24 @@ Negative:
 
 - The relational transaction now stays open across the event-store append round
   trip (the writes are buffered, the event store is appended, then the relational
-  session commits). With a local-ish Message DB the append is cheap, but with a
-  remote or clustered EventStoreDB the round trip lengthens the lock-hold window
-  and can increase contention under load. The implementation must keep the
-  relational transaction minimal around the append, and we must benchmark this
-  against the two-store setup.
+  session commits). With a nearby Message DB the append is cheap, but with a
+  remote or clustered EventStoreDB the round trip lengthens the lock-hold
+  window and can increase contention under load. The implementation must keep
+  the relational transaction minimal around the append, and we must benchmark
+  this against the two-store setup.
 - Message DB's retry path needs an explicit already-applied check to distinguish
-  a self-retry from a real concurrent-writer conflict. EventStoreDB does not, but
-  the framework code must handle both.
-- A reconciliation and repair capability is new surface to build, test, and
-  operate: a repair command and a startup sweep. The startup sweep adds bounded
-  work to server boot (a scan for unreconciled events) and must stay bounded
-  in the common case where there is nothing to repair: it reads at most the
-  configured window of recent messages and looks up their outbox rows in
-  batches. It is the price of not having
-  true cross-store atomicity.
-- This is not two-phase commit. A narrow window remains in which events are
-  durable but their outbox rows are not yet committed. The design makes that
-  window recoverable for event-sourced aggregates; it does not remove it.
+  a self-retry from a real concurrent-writer conflict. EventStoreDB does not
+  need that check, but the framework code must implement both retry paths.
+- Reconciliation and repair add two new parts to build, test, and operate: a
+  repair command and a startup sweep. The startup sweep adds bounded work to
+  server boot (a scan for unreconciled events) and must stay bounded in the
+  common case where there is nothing to repair. It does so by reading at most
+  the configured window of recent messages and looking up their outbox rows in
+  batches. It is the price of not having true cross-store atomicity.
+- The reordered commit sequence is not a two-phase commit. A narrow window
+  remains in which events are durable but their outbox rows are not yet
+  committed. The design makes that window recoverable for event-sourced
+  aggregates, but it does not remove the window.
 
 ## Alternatives Considered
 
@@ -155,12 +156,12 @@ Negative:
 appends into the relational transaction itself (atomic with aggregate state and
 the outbox), then have a background processor append them to the event store
 idempotently, exactly as the outbox publishes to brokers. This makes the
-relational commit the single atomic boundary and is the most robust end state. It
-was deferred because it is a substantially larger build (a new pending-writes
-store, a processor, ordering and version guarantees) and because it makes the
-event store eventually consistent, which breaks read-your-own-writes for
-event-sourced aggregates unless the read path also consults the pending writes.
-We record it as the likely future direction beyond this decision.
+relational commit the single atomic boundary and is the most robust end state.
+We deferred it because it is a substantially larger build (a new pending-writes
+store, a processor, ordering and version guarantees) and makes the event store
+eventually consistent. Read-your-own-writes then breaks for event-sourced
+aggregates unless the read path also consults the pending writes. We record the
+write-ahead approach as the likely future direction beyond this decision.
 
 **Same-transaction append when the stores coincide.** When the event store is
 backed by the same relational database as the aggregate, the append can join the
@@ -169,22 +170,23 @@ but does not help the deployments that matter here, where the event store
 (Message DB, EventStoreDB) is a separate system.
 
 **Two-phase commit across the stores.** Rejected. Neither Message DB nor
-EventStoreDB offers practical XA participation with the aggregate database, and a
-distributed-transaction coordinator is complexity and operational fragility the
-framework does not want to own.
+EventStoreDB offers practical XA participation with the aggregate database. A
+distributed-transaction coordinator adds complexity and operational fragility
+that the framework does not want to own.
 
 **EventStoreDB subscriptions as the delivery mechanism.** At scale,
 EventStoreDB's persistent subscriptions and `$all` stream can drive broker
 delivery directly, which would let the event store replace the relational outbox
-for the publish path. That collapses the two-store problem almost entirely: the
-event store becomes both the source of truth and the reliable-delivery
+for the publish path. That change solves almost all of the two-store problem:
+the event store becomes both the source of truth and the reliable-delivery
 mechanism, and there is no separate outbox transaction left to keep consistent.
 This is the natural evolution once an EventStoreDB adapter exists. The decision
-here is the correct interim that evolves toward it rather than a design that must
-be unwound for it.
+here is the correct interim step toward EventStoreDB subscriptions for
+delivery, and Protean will not have to undo it to adopt them.
 
-**Document the window only.** The issue's stated minimum was to document the
-window and provide a repair path. Documentation alone leaves the corrupting
-failure mode in place for event-sourced aggregates, which is the core defect, so
-it is insufficient on its own. The repair path is retained as part of this
-decision; the reorder is what closes the corruption.
+**Document the window only.** The issue that raised this problem asked, at
+minimum, to document the window and provide a repair path. Documentation alone
+leaves the corrupting failure mode in place for event-sourced aggregates. That
+failure mode is the core defect, so documentation is insufficient on its own.
+We keep the repair path as part of this decision, but the reorder in decision 1
+is the change that stops the event store from missing committed events.

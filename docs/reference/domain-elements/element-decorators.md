@@ -34,12 +34,13 @@ default is `()`.
 
 Suppress the narrowest thing that works: one code on one element. It applies to
 that element only, so it cannot quietly disable a rule across the domain the way
-a config-level suppression can. Reach for it when a rule is wrong about *this*
-element, not when a rule is inconvenient; `protean check` reports what is
-suppressed, so a suppression is a claim you are making in public.
+a config-level suppression can. Use `suppress_checks` when a rule is wrong
+about *this* element, and leave the rule on when it is only inconvenient.
+`protean check` reports what is suppressed, so a suppression is a claim you are
+making in public.
 
-Config-wide suppressions live under `[lint].suppressions` in
-[configuration](../configuration/index.md).
+You set config-wide suppressions with the `[lint].suppressions` key
+in [configuration](../configuration/index.md).
 
 ---
 
@@ -67,17 +68,18 @@ Boolean element options are bare predicates (`event_sourced`, `fact_events`,
 `abstract`), not `is_`-prefixed.
 
 !!! warning "Deprecated: `is_event_sourced`"
-    `is_event_sourced` is a deprecated alias for `event_sourced`. It still works
-    but emits a `RemovedInProtean019Warning` and is reported as a
-    `DEPRECATED_OPTION` diagnostic by `protean check`; it will be removed in
-    v0.19.0. If both are supplied, `event_sourced` wins.
+    `is_event_sourced` is a deprecated alias for `event_sourced`.
+    `is_event_sourced` still works, but it emits a `RemovedInProtean019Warning`
+    and `protean check` reports it as a `DEPRECATED_OPTION` diagnostic. Protean
+    will remove `is_event_sourced` in v0.19.0. If both are supplied,
+    `event_sourced` wins.
 
 Guide: [Aggregates](../../guides/domain-definition/aggregates.md) ·
 [Declaring Indexes](../../guides/domain-definition/indexes.md)
 
 ### `Domain.entity`
 
-An object with identity that lives inside an aggregate. Entities are always
+An object with identity that is part of an aggregate. Entities are always
 accessed through their parent aggregate and cannot exist independently.
 
 | Option | Default | Description |
@@ -160,9 +162,10 @@ option **or** with a `__version__` class attribute (both default to `1`):
 --8<-- "reference/domain-elements/element-decorators/003.py:version"
 ```
 
-The two forms are equivalent, both drive the `vN` suffix of the event's type
+The two forms are equivalent: both set the `vN` suffix of the event's type
 string (`Ordering.OrderPlaced.v2` in a domain named `Ordering`). Declaring the
-version **both** ways on the same class raises an `IncorrectUsageError`. The same option is available on `@domain.command`.
+version **both** ways on the same class raises an `IncorrectUsageError`. The
+same option is available on `@domain.command`.
 
 Guide: [Events](../../guides/domain-definition/events.md) ·
 Reference: [Compatibility](../compatibility/index.md)

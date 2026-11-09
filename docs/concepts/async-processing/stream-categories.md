@@ -3,7 +3,7 @@
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
-Stream categories are a fundamental concept in Protean that organize and route messages (events and commands) throughout your application. They provide the foundation for message subscriptions, event sourcing, and cross-aggregate coordination.
+Stream categories are a fundamental concept in Protean that organize and route messages (events and commands) throughout your application. Message subscriptions, event sourcing, and cross-aggregate coordination all depend on stream categories.
 
 ## What is a Stream Category?
 
@@ -138,10 +138,10 @@ In this example:
 - `ReduceStock` is part of `Inventory`, so it is routed to Inventory's command
   handler. `Inventory` changes only through that handler.
 
-Do not make an event handler part of one aggregate and have it handle another
-aggregate's events so it can change its own aggregate from there. `protean
-check` reports `EVENT_HANDLER_FOREIGN_EVENT` when a handler handles an event
-that a single other aggregate in the same domain defines. The
+Do not make an event handler part of the aggregate it changes when the events
+it handles belong to another aggregate. `protean check` reports
+`EVENT_HANDLER_FOREIGN_EVENT` when a handler handles an event that a single
+other aggregate in the same domain defines. The
 [event handlers guide](../../guides/consume-state/event-handlers.md#defining-an-event-handler)
 has a full, runnable version of this hand-off.
 

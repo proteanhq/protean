@@ -157,7 +157,7 @@ lacks it fails to load with a `DeserializationError` that names `amount`.
 
 The `amount → total_amount` step renames a field inside a version bump to show
 how the chain composes. A rename on its own uses `renamed_from` and needs no
-version bump; the decision table below covers which change calls for which tool.
+version bump. The decision table below shows which change calls for which tool.
 
 ### Scenario 5: Removing an Obsolete Field
 
@@ -282,13 +282,13 @@ class WrongTarget(BaseUpcaster): ...
 ### Version gaps (`protean check`)
 
 The errors above are *hard* failures at `domain.init()`. A subtler problem
-passes startup but fails later, at read time: an event whose `__version__` has
-outrun its upcasters, so an old stored payload has no path to the current
-version. `protean check` flags this at build time as an `UPCASTER_GAP`
-**warning**. For example, an event at `__version__` 3 with only a `2→3`
-upcaster leaves stored `v1` payloads unreadable. Add an upcaster covering the
-missing versions (or ignore the warning if no payloads at those versions were
-ever stored).
+passes startup but fails at read time: the upcasters for an event do not cover
+every version below its `__version__`. Protean then cannot upcast an old stored
+payload to the current version. `protean check` flags this at build time as an
+`UPCASTER_GAP` **warning**. For example, an event at `__version__` 3 with only
+a `2→3` upcaster leaves stored `v1` payloads unreadable. Add an upcaster
+covering the missing versions (or ignore the warning if no payloads at those
+versions were ever stored).
 
 ---
 
@@ -313,8 +313,9 @@ ever stored).
   both v1→v2 and v2→v3 upcasters. A direct v1→v3 upcaster is valid only if
   there was no v2 in production.
 - **Don't modify the stored event**: Upcasting transforms data in memory during
-  deserialization; the event store is never modified. Rewriting stored events is a
-  separate, deliberate operator migration (see [Migration Strategies](../../patterns/event-versioning-and-evolution.md#migration-strategies)).
+  deserialization and never modifies the event store. Rewriting stored events
+  is a separate, deliberate operator migration (see
+  [Migration Strategies](../../patterns/event-versioning-and-evolution.md#migration-strategies)).
 - **Don't use upcasting for semantic changes**: If the *meaning* of an event
   changes (not just its structure), create a new event type instead.
 - **Don't perform expensive operations**: Upcasting happens synchronously during
@@ -342,8 +343,9 @@ ever stored).
 ## Limitations
 
 - **No event type renaming**: If you rename an event class (e.g. `OrderCreated`
-  → `OrderPlaced`), the type strings differ and upcasting can't bridge them.
-  Use the "new event type" strategy instead.
+  → `OrderPlaced`), the type strings differ and upcasting can't convert events
+  from the old type string to the new one. Use the "new event type"
+  strategy instead.
 
 - **No multi-event transformations**: An upcaster transforms one event at a
   time. Splitting one event into two or merging two events into one is not
@@ -361,5 +363,5 @@ ever stored).
 
     **Related guides:**
 
-    - [Evolving Events Over Time](../evolving-events.md): The broader event-evolution workflow: upcasting sits alongside `renamed_from` field renames, event `deprecated`/`superseded_by`, and opt-in lenient deserialization.
+    - [Evolving Events Over Time](../evolving-events.md): The broader event-evolution workflow, which covers upcasting together with `renamed_from` field renames, event `deprecated`/`superseded_by`, and opt-in lenient deserialization.
     - [Temporal Queries](../change-state/temporal-queries.md): Load aggregate state at a specific version or point in time.

@@ -4,23 +4,22 @@ In DDD, changing the state of the system is a critical operation that is
 carefully controlled and structured. This section outlines the principles and
 practices that govern how state transitions occur within an application.
 
-It is essential for understanding how to maintain the integrity and consistency
-of your domain model while handling user-driven changes in a reliable and
-scalable way.
+These principles keep your domain model consistent while your application
+processes user-driven changes reliably and at scale.
 
 ## The Domain Model is protected
 
 The Domain Model is not accessible by the external world.
 
-One of the foundational principles in DDD is that the domain model
-(representing the core business logic and rules of your application) is
-protected from direct access by external systems or layers. This encapsulation
-ensures that the domain model remains pure, focused on business logic, and free
+The domain model represents the core business logic and rules of your
+application. One of the foundational principles in DDD is that the domain model
+is protected from direct access by external systems or layers. Because of this
+encapsulation, the domain model stays pure, focused on business logic, and free
 from concerns about external interactions.
 
-The domain model should only be interacted with via specific interfaces
-designed to handle business operations, ensuring that all interactions with the
-model are controlled and follow the defined business rules.
+Code outside the domain model should call it only through specific interfaces
+built for business operations. That way, every call into the model is
+controlled and follows the defined business rules.
 
 *In Protean, these "interfaces" are aggregate methods named in line with the
 ubiquitous language.*
@@ -29,13 +28,14 @@ ubiquitous language.*
 
 The application layer acts as the intermediary between the domain model and the
 rest of the system. It is the only layer that can directly invoke changes on
-the domain model. This separation of concerns ensures that the domain logic is
-only manipulated through well-defined use cases.
+the domain model. This separation of concerns means that the application layer
+invokes the domain logic only through well-defined use cases.
 
-This design allows for better maintainability and flexibility because the
-application layer changes at a different rate than the domain model. It also
-supports testing the domain model in isolation and the ability to refactor
-the domain logic to evolve independently from other system concerns.
+The application layer changes at a different rate than the domain model, so
+keeping the two apart makes your application easier to maintain and more
+flexible. The separation also lets you test the domain model in isolation and
+refactor the domain logic so that it evolves independently from other
+system concerns.
 
 ## Application Layer encloses actions
 
@@ -45,10 +45,9 @@ in the application layer.
 
 By having the API layer delegate actions to the application layer, we maintain
 a clear separation between external communication and internal processing.
-This approach not only protects the domain model from direct exposure but also
-allows the application to handle various concerns such as validation,
-authorization, and orchestration of complex workflows before interacting with
-the domain model.
+With this delegation, external code cannot reach the domain model directly. The
+application layer can also run validation, check authorization, and orchestrate
+complex workflows before it calls the domain model.
 
 There are two ways the external API layer can invoke the application layer:
 
@@ -64,9 +63,9 @@ defined in the ubiquitous language. These use cases may or may not be reusable,
 but every business use case has a 1-1 mapping with a use case in application
 services.
 
-This design also allows for better organization of business logic, as each
-service is responsible for a specific set of related operations, reducing the
-overall complexity of the application layer.
+Each application service is responsible for a specific set of related
+operations. With this split, business logic is better organized and the
+application layer is less complex overall.
 
 ### Commands
 
@@ -80,9 +79,9 @@ By capturing intent as commands, the system can ensure that each operation is
 processed consistently, with a clear audit trail of how the system's state
 evolves over time.
 
-This separation also allows for optimized handling of write operations, focusing on
-modifying the state of the system, while queries are handled separately,
-optimized for reading data.
+With this separation, the system can optimize write operations for changing its
+state, while it processes queries separately and optimizes them for
+reading data.
 
 Each Command is processed by a handler method in a Command Handler element.
 
@@ -98,9 +97,9 @@ improving both maintainability and scalability.
 
 ## Application layer hydrates aggregates
 
-The Application Layer is responsible for retrieving (a.k.a hydrating) an
-aggregate from the persistence store (or an event store if using the Event
-Sourcing pattern), and then persisting it.
+The application layer retrieves (a.k.a hydrates) an aggregate from the
+persistence store, and then persists it. If you use the Event Sourcing pattern,
+the application layer uses an event store in place of the persistence store.
 
 When a command is processed, the application layer hydrates the aggregate and
 then invokes methods on the up-to-date aggregate.
@@ -123,6 +122,7 @@ After the aggregate has mutated, the changes need to be persisted to ensure
 that the system's state is durable and consistent. Repositories save aggregates
 back to the persistence store or event store.
 
-Repositories not only persist the changes but also handle the publication of
-events raised by the aggregate. These events are stored in the event store,
-providing a detailed history of how the system's state has evolved over time.
+Repositories persist the changes and register the aggregate with the unit of
+work. When the unit of work commits, it gathers the events the aggregate raised
+and publishes them. These events are stored in the event store, providing a
+detailed history of how the system's state has evolved over time.

@@ -1,21 +1,21 @@
 # Init-time and Runtime Diagnostics
 
 Some failures cannot be caught by static analysis: they depend on what you pass
-to a runtime accessor, or on calling one before `domain.init()` has run. Protean
-raises these as exceptions, and each one carries a stable **code** alongside its
-prose message, so an operator or an agent catching the exception gets the same
-machine-readable rationale and fix that a `protean check` finding carries.
+to a runtime accessor, or on calling one before `domain.init()` has run.
+Protean raises these failures as exceptions, each with a stable **code**
+alongside its prose message. So an operator or an agent that catches one gets
+the same machine-readable rationale and fix as a `protean check` finding.
 
-These are the `kind = "raise"` codes. They are distinct from the
-[Fitness Function Catalog](fitness-functions.md), which lists the
+The codes on these exceptions are the `kind = "raise"` codes. They are distinct
+from the [Fitness Function Catalog](fitness-functions.md), which lists the
 `kind = "lint"` codes that `protean check` reports at design time. Both sets
-live in one registry, `protean.ir.diagnostics`, so a code is a public identifier
+are in one registry, `protean.ir.diagnostics`, so a code is a public identifier
 you can rely on: renaming or removing one is a breaking change.
 
 A few of these failures *are* statically detectable (a duplicate database model,
-two elements sharing a name). They stay `raise`-only for now; the shared
-registry keeps the door open for a future `protean check` rule to surface them at
-design time under the same code.
+two elements sharing a name). They stay `raise`-only for now. Because both sets
+share one registry, a future `protean check` rule can report them at design
+time under the same code.
 
 ## Reading a coded exception
 
@@ -111,9 +111,10 @@ the store unset.
 `sanitize` unset are cleaned. Reading a malformed value as `false` would turn a typo
 into a silent fail-open, so the value is rejected at load time instead.
 
-**Fix.** Write `[field_defaults]` as a table and give `sanitize` a boolean, or one of
-the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`, or the empty string, which
-reads as false and is what `${VAR|}` resolves to when the variable is unset.
+**Fix.** Write `[field_defaults]` as a table and give `sanitize` a boolean, one
+of the strings `true`/`1`/`yes`/`on`/`false`/`0`/`no`/`off`, or the empty
+string. The empty string reads as false, and `${VAR|}` resolves to it when the
+variable is unset.
 
 ### CONFIG_UNRESOLVED_ENV_VAR { #config-unresolved-env-var }
 
@@ -179,8 +180,8 @@ database on the duplicate model.
 unregistered element, or a name string instead of the class, has no entry to
 resolve.
 
-**Fix.** Pass a registered element class to the accessor, and register the element with
-the domain first.
+**Fix.** Register the element with the domain first. Then pass the registered
+element class to the accessor.
 
 ### USAGE_ENRICHER_NOT_CALLABLE { #usage-enricher-not-callable }
 

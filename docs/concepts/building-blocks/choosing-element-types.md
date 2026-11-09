@@ -3,7 +3,7 @@
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
 
-One of the most critical decisions in Domain-Driven Design is choosing the right domain element type for your concepts. This guide provides practical checklists, examples, and decision flows to help you determine whether a domain concept should be modeled as an **Aggregate**, an **Entity**, or a **Value Object**.
+One of the most critical decisions in Domain-Driven Design is choosing the right domain element type for your concepts. Use the checklists, examples, and decision flows below when you decide whether to model a domain concept as an **Aggregate**, an **Entity**, or a **Value Object**.
 
 ## Understanding the Core Differences
 
@@ -41,7 +41,7 @@ One of the most critical decisions in Domain-Driven Design is choosing the right
 - **It controls other entities**: The concept needs to manage the lifecycle of related entities
 - **It's a transaction root**: Operations on this concept and its related data should be transactional
 - **It has complex business behavior**: The concept encapsulates significant business logic and rules
-- **It generates domain events**: Changes to this concept trigger events that other parts of the system care about
+- **It generates domain events**: Changes to this concept trigger events that other parts of the system react to
 
 ### Choose an Entity when:
 
@@ -275,4 +275,4 @@ Does this concept need to be accessed directly from outside the domain?
 - **Line Items**: Usually Entity (part of order/invoice)
 
 !!!note
-    Remember: These decisions aren't permanent. As your understanding of the domain evolves, you can refactor elements to better reflect the business reality. The key is to make informed decisions based on the business requirements and domain understanding rather than technical convenience.
+    Remember: These decisions aren't permanent. As your understanding of the domain evolves, you can refactor elements to better reflect the business reality. Base each decision on the business requirements and what you know about the domain. Technical convenience is not a reason to choose an element type.

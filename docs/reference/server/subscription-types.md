@@ -163,17 +163,19 @@ How the trim behaves depends on the consumer topology:
 - **More than one consumer group** (for example a projector plus an event
   handler): Protean trims by `MINID` at the slowest group's last-delivered
   position, so nothing a slow group has not yet read is ever removed.
-  `retention_maxlen` is ignored here, consumer progress bounds the stream. Note the flip side:
-  a group parked at `0-0` (a dead consumer, or a handler you removed without
-  deleting its group) holds the floor down, so the stream keeps growing until
-  you delete that group. Retention is progress-bounded, not size-bounded,
-  whenever multiple groups exist.
+  `retention_maxlen` is ignored here, because consumer progress bounds the
+  stream. The same rule has a cost. A group whose last-delivered position stays
+  at `0-0` (a dead consumer, or a handler you removed without deleting its
+  group) is always the slowest group, so Protean trims nothing and the stream
+  keeps growing until you delete that group. Retention is progress-bounded, not
+  size-bounded, whenever multiple groups exist.
 - **At most one consumer group:** Protean caps the stream at `retention_maxlen`
-  with a plain `MAXLEN` trim. This is a fixed-size cap, not a progress-safe one:
-  if the single handler falls more than `retention_maxlen` behind (catch-up on a
-  pre-existing stream, an outage, or a slow handler under a fast producer),
-  `MAXLEN` drops the oldest *unread* entries. Size `retention_maxlen` above your
-  largest expected backlog.
+  with a plain `MAXLEN` trim. This cap has a fixed size and ignores how far the
+  handler has read. If the single handler falls more than `retention_maxlen`
+  entries behind, `MAXLEN` drops the oldest *unread* entries. The handler can
+  fall behind during catch-up on a pre-existing stream, during an outage, or
+  when a slow handler runs under a fast producer. Size `retention_maxlen` above
+  your largest expected backlog.
 
 Trimming is approximate (Redis's `~`): the stream is trimmed a whole node at a
 time, so it may settle slightly above `retention_maxlen`, never below it. This
@@ -256,8 +258,8 @@ f"position-{subscriber_name}-{stream_category}"
 
 #### Origin Stream Filtering
 
-Filter messages based on their origin stream - useful when handling events
-that were generated in response to specific commands:
+Filter messages by their origin stream. Use this filter when your handler
+processes events raised in response to specific commands:
 
 ```python
 --8<-- "reference/server/subscription-types/001.py:origin_filter"
@@ -325,7 +327,7 @@ is set to `production`, `prod`, or `prd`.
 ## Configuration Examples
 
 !!!note
-    If you do not explicitly specify a `subscription_type` or `subscription_profile`, the defaults will be picked up from your domain configuration.
+    If you do not explicitly specify a `subscription_type` or `subscription_profile`, Protean uses the defaults from your domain configuration.
 
 ### StreamSubscription Configuration
 

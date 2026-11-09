@@ -76,10 +76,10 @@ Every consumer must load the aggregate. This creates a cascade of problems:
   Loading the current aggregate gives you *today's* data, not the data at event
   time.
 
-- **Broken in async processing**: When events are processed asynchronously (as
-  they should be), the aggregate may have been modified between when the event
-  was raised and when the handler runs. The handler loads stale or inconsistent
-  data.
+- **Broken in async processing**: When handlers process events asynchronously
+  (as they should), the aggregate may change between the moment it raises the
+  event and the moment the handler runs. The handler loads stale or
+  inconsistent data.
 
 The root cause: **events carry references instead of data, forcing consumers
 to query back to the source**.
@@ -195,8 +195,8 @@ Projections that just need the latest state listen for the fact event.
 
 ### 1. Include Identifiers for All Referenced Aggregates
 
-Every aggregate that a consumer might need to correlate should have its
-identity in the event:
+Put the identity of every aggregate that a consumer might need to correlate in
+the event:
 
 ```python
 --8<-- "patterns/design-events-for-consumers/004.py:identifiers"
@@ -252,8 +252,8 @@ Once an event is published and consumers depend on it, its fields become a
 contract. Adding new fields is safe (existing consumers ignore them). Removing
 or renaming fields is a breaking change.
 
-Design events thoughtfully from the start, knowing that evolution is possible
-but removal is painful.
+Design events with care from the start, because you can evolve an event later
+but removing a field breaks its consumers.
 
 ---
 
@@ -376,8 +376,9 @@ class OrderPlaced(BaseEvent):
     # ... 20 more fields
 ```
 
-Include what consumers need, not everything the aggregate has. Derivable
-fields (item_count from items, subtotal from items) are noise.
+Include what consumers need, not everything the aggregate has. Derivable fields
+(item_count from items, subtotal from items) repeat data that consumers
+can compute.
 
 ### Exposing Internal State
 

@@ -1,9 +1,9 @@
 # Logging
 
-Protean ships with structured logging that configures itself. Call
-`domain.init()` and every log line (from framework internals, your handler
-code, and the SQLAlchemy adapter) flows through the same `structlog` pipeline
-as JSON in production and colored console output in development.
+Protean ships with structured logging that configures itself. When you call
+`domain.init()`, every log line from framework internals, your handler code,
+and the SQLAlchemy adapter goes through the same `structlog` pipeline, as JSON
+in production and as colored console output in development.
 
 The tasks operators and application developers do most often are below. For
 the full schema of every framework event and every config key, see
@@ -93,8 +93,8 @@ JSON:
 }
 ```
 
-A failing handler lifts the level to `error`, flips `status` to `"failed"`,
-and preserves the traceback:
+When a handler fails, Protean sets the level to `error` and `status` to
+`"failed"`, and keeps the traceback:
 
 ```json
 {
@@ -122,7 +122,7 @@ for the full field list.
 
 ## Configure via `domain.toml`
 
-The `[logging]` section is the declarative control surface. A typical
+You configure logging declaratively in the `[logging]` section. A typical
 production configuration:
 
 ```toml
@@ -183,10 +183,10 @@ applies them the way the parent does.
 
 ## Override programmatically
 
-When `domain.toml` is not the right shape (tests, one-off scripts, embedded
-domains) call `Domain.configure_logging()` directly. Explicit keyword arguments
-override `domain.toml` but still read `PROTEAN_LOG_LEVEL` as an override for
-`level` unless `level=` is passed:
+When `domain.toml` does not fit your case (tests, one-off scripts, embedded
+domains), call `Domain.configure_logging()` directly. Explicit keyword
+arguments override `domain.toml`. `Domain.configure_logging()` still reads
+`PROTEAN_LOG_LEVEL` as an override for `level` unless you pass `level=`:
 
 ```python
 --8<-- "guides/server/logging/002.py:configure"
@@ -281,7 +281,8 @@ for why tail sampling beats head sampling.
 !!! warning "Keep the safety defaults on"
     Setting `always_keep_errors = false` or `always_keep_slow = false`
     combined with a low `default_rate` will silently drop the events you
-    most want to see. The safety defaults exist for a reason.
+    most want to see. The safety defaults stop sampling from dropping errors
+    and slow events.
 
 ---
 
@@ -314,10 +315,11 @@ own logging (Django, a custom server, an OS-level journald shim), set
 export PROTEAN_NO_AUTO_LOGGING=1
 ```
 
-Single-worker `protean server` and `protean observatory` honor it too: they
-leave any logging your domain module sets up on import in place. The worker
-processes of a multi-worker or `--reload` run do not read it. They apply
-`[logging]`, or the `--log-config` file when you pass one.
+Single-worker `protean server` and `protean observatory` honor
+`PROTEAN_NO_AUTO_LOGGING` too: they keep any logging that your domain module
+configures on import. The worker processes of a multi-worker or `--reload` run
+do not read it. They apply `[logging]`, or the `--log-config` file when you
+pass one.
 
 You can then wire whichever parts of Protean's integration you want
 manually:
@@ -326,9 +328,10 @@ manually:
 --8<-- "guides/server/logging/005.py:filter"
 ```
 
-Attach the filter to each handler on the root logger. A filter on a logger
-runs only for records logged on that logger, so a filter on the root logger
-misses records from child loggers such as `logging.getLogger("myapp.orders")`.
+Attach the correlation filter to each handler on the root logger. A filter on a
+logger runs only for records logged on that logger, so a filter on the root
+logger misses records from child loggers such as
+`logging.getLogger("myapp.orders")`.
 
 `Domain.init()` also detects a pre-configured root logger (handlers already
 attached) and skips its auto-configuration in that case, so in many
@@ -368,4 +371,4 @@ structlog writes to stdlib handlers.
 - **[Production Deployment](./production-deployment.md)**: Container
   deployment, supervisor configuration, multi-worker mode (see also the
   [multi-worker logging](../../reference/logging.md#multi-worker-logging)
-  reference for the `QueueHandler` / `QueueListener` hygiene pattern).
+  reference for the `QueueHandler` / `QueueListener` setup pattern).

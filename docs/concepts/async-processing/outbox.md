@@ -63,27 +63,26 @@ broker, and marking the row as `PUBLISHED` on success. Failures are
 retried with exponential backoff. Each poll pushes its status, lock-window,
 and retry-window predicates into the database so a healthy outbox issues a
 single `SELECT` per tick. When `outbox.max_tick_interval` is set, an idle
-processor backs off its poll interval (doubling after each empty poll, up to
-the cap) and snaps back to the base `tick_interval` as soon as a batch is
-found.
+processor doubles its poll interval after each empty poll, up to that cap. When
+a poll finds a batch, the processor returns to the base `tick_interval`
+at once.
 
 **3. Message consumption.** StreamSubscription consumers read from the
 broker stream, just as they would for any other message. They have no
 awareness of the outbox, it's an implementation detail of the publisher side.
 
-The guarantee that holds this together: step 1 is transactional with
-the aggregate save. Steps 2 and 3 are eventually consistent but never
-lossy, a row that's written in the outbox is published exactly once (with
-at-least-once semantics from the consumer's perspective).
+The three steps are reliable because step 1 is transactional with the aggregate
+save. Steps 2 and 3 are eventually consistent but never lossy. The processor
+publishes each row written in the outbox at least once.
 
 One outbox processor runs per managed database provider that an
 aggregate is stored in. A provider configured with `managed = false` gets
 none. A domain with one database has one processor; a domain with
 aggregates in a `default` database and an `analytics` database has two,
-each publishing its own outbox to the configured broker. A provider that
-no aggregate uses, such as the built-in `memory` provider in a domain
-that stores everything in `default`, gets no processor, because nothing
-writes to its outbox.
+each publishing its own outbox to the configured broker. When no aggregate uses
+a provider, the provider gets no processor, because nothing writes to its
+outbox. An example is the built-in `memory` provider in a domain that stores
+everything in `default`.
 
 See the [Outbox Guide](../../guides/server/outbox.md) for enabling the
 outbox, creating the table, configuring retries and cleanup, and
@@ -101,15 +100,15 @@ truth for event-sourced replay, is the durable anchor.
 This ordering trades an unrecoverable failure for a recoverable one. If the
 process dies between the two writes, the events are durable in the store while
 their outbox rows never committed. The events exist but would never publish.
-For an event-sourced aggregate that gap is closed by **reconciliation**, which
-re-derives the missing outbox rows from the event store, and runs both
-automatically on server startup and on demand via `protean outbox reconcile`.
-Reconciliation skips a state-based aggregate's events. Its relational row is its
-state, and on a transactional provider that row rolled back together with the
+For an event-sourced aggregate, **reconciliation** re-derives the missing
+outbox rows from the event store. Reconciliation runs automatically on server
+startup and on demand via `protean outbox reconcile`. Reconciliation skips a
+state-based aggregate's events. A state-based aggregate's relational row is its
+state. On a transactional provider that row rolled back together with the
 outbox rows, so publishing the event would report a change that was never
 saved. On a provider without transactions, such as Elasticsearch, the row can
-be saved while its outbox row is lost, and that event stays unpublished. The full rationale (and why this was
-chosen over two-phase commit) is in
+be saved while its outbox row is lost, and that event stays unpublished. The
+full rationale (and why this was chosen over two-phase commit) is in
 [ADR-0015](../../adr/0015-event-store-append-as-durable-anchor.md); the
 operational walkthrough is in [Recover from a
 crash](../../guides/server/outbox.md#recover-from-a-crash-reconciliation).
@@ -153,7 +152,7 @@ schedule.
 
 External messages use a stripped envelope that removes internal-only fields
 (`expected_version`, `asynchronous`, `priority`, event store positions,
-`checksum`) while preserving fields external consumers need: headers for
+`checksum`). The envelope keeps the fields external consumers need: headers for
 deduplication, domain context for routing, and user-provided extensions.
 
 For setup, see
@@ -230,8 +229,9 @@ the outbox table doesn't grow unbounded. Published rows are kept long
 enough to serve as an audit trail; abandoned and discarded rows are kept
 long enough to investigate. An abandoned row with a partition key is
 never purged: it holds its key's later rows, so it stays until someone
-retries or discards it. The retention windows are separately configurable, see [Outbox
-Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
+retries or discards it. You can configure the retention windows for published
+rows and for abandoned and discarded rows separately. See
+[Outbox Guide: Configure cleanup](../../guides/server/outbox.md#configure-cleanup).
 
 ## Multi-Worker Support
 
@@ -243,8 +243,8 @@ database level to prevent duplicate publishing.
 
 The processor uses an atomic `UPDATE...WHERE` to claim messages. Under READ
 COMMITTED isolation (PostgreSQL, MSSQL), concurrent updates on the same row
-block until the first transaction commits, then re-evaluate the WHERE clause,
-so only one worker succeeds:
+block until the first transaction commits. Each blocked update then
+re-evaluates the WHERE clause, so only one worker succeeds:
 
 ```python
 --8<-- "concepts/async-processing/outbox/001.py:claim"

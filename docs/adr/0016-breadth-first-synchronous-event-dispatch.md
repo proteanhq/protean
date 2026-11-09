@@ -8,10 +8,10 @@
 
 With `event_processing = "sync"`, `UnitOfWork._do_commit` consumed the events
 raised in the transaction by calling `handler_cls._handle(event)` immediately,
-in-stack, at commit time. This is **depth-first, re-entrant** dispatch: an event
-raised *inside* a running handler is processed nested, before the current
-handler's side effects, including a process manager's transition, are
-persisted.
+in-stack, at commit time. This is **depth-first, re-entrant** dispatch: Protean
+processed an event raised *inside* a running handler at once, nested in that
+handler. The nested event ran before Protean persisted the current handler's
+side effects, including a process manager's transition.
 
 Two failures follow directly from that ordering:
 
@@ -19,9 +19,10 @@ Two failures follow directly from that ordering:
   typically dispatches the next command (`current_domain.process(cmd,
   asynchronous=False)`), which raises the next event. Under re-entrancy that
   event re-enters `_handle` for step 2 while step 1 is still running, so
-  `_load_or_create` reads the PM's stream. Still empty, because the start
-  transition is persisted only *after* the handler returns, so it gets `None`
-  and silently skips the step. The saga can never advance past step 1 in sync mode.
+  `_load_or_create` reads the PM's stream. That stream is still empty, because
+  the start transition is persisted only *after* the handler returns. So
+  `_load_or_create` gets `None`, and the saga silently skips the step. The saga
+  can never advance past step 1 in sync mode.
 
 - **Projectors can update before they create**: The same depth-first order lets
   a projector for a *nested* event run before the projector for the
@@ -47,10 +48,10 @@ Make synchronous dispatch **breadth-first** using a chain-scoped FIFO queue
    re-entrancy flag live on the domain-context `g`, so they survive nested
    UnitOfWork commits and re-entrant `process()` calls.
 
-2. **Each handler commits before the next runs**: Draining FIFO means a process
-   manager's transition for the current step is persisted before the next step's
-   event is handled, and an originating event's projector runs before a nested
-   event's projector.
+2. **Each handler commits before the next runs**: The drain processes the queue
+   in FIFO order, so a process manager's transition for the current step is
+   persisted before the next step's event is handled. For the same reason, an
+   originating event's projector runs before a nested event's projector.
 
 3. **Preserve trace lineage**: The active `message_in_context` is captured at
    enqueue time and restored around each drained `_handle`, so causation and
@@ -70,8 +71,9 @@ Positive:
 - Multi-step process managers work identically under sync and async dispatch.
 - Projector create-before-update ordering is restored; the `ObjectNotFoundError`
   class of failure disappears.
-- Synchronous and asynchronous processing converge on the same causal ordering,
-  removing a "works async, breaks sync" trap for tests and dev setups.
+- Synchronous and asynchronous processing follow the same causal ordering. This
+  removes one way for code that works async to break under sync in tests and
+  dev setups.
 - Trace causation/correlation is unchanged.
 
 Negative (Tier-2 behavioral change):
@@ -85,10 +87,10 @@ Negative (Tier-2 behavioral change):
 
 ## Upgrade Notes
 
-If a handler dispatches a nested command synchronously and then inspects the
-result of that command's *downstream* events within the same handler, that
-inspection will no longer see the cascade, because the cascade is now drained
-after the handler returns:
+Suppose a handler dispatches a nested command synchronously and then, within
+the same handler, inspects the result of that command's *downstream* events.
+The handler no longer sees the cascade at that point, because the drain runs
+the cascade after the handler returns:
 
 ```python
 @handle(Placed, start=True, correlate="order_id")
@@ -118,6 +120,7 @@ post-handler state), and it leaves the projector create-before-update bug
 untouched. Breadth-first fixes both symptoms at the shared dispatch layer.
 
 **Queue on the UnitOfWork rather than `g`.** Rejected: `UnitOfWork._messages_to_dispatch`
-is per-UoW and broker-only. The queue must outlive nested UnitOfWork commits and
-re-entrant `process()` calls within one domain context, so it is chain-scoped on
-`g`, alongside `message_in_context`.
+is per-UoW and broker-only. The queue must last across nested UnitOfWork
+commits and re-entrant `process()` calls within one domain context. So it is
+stored on `g`, alongside `message_in_context`, and scoped to the whole chain of
+handlers in that context.

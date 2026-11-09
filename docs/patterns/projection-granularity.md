@@ -49,8 +49,8 @@ The symptoms:
   names, so it joins the order projection with a customer projection. The same
   join the write side would have needed.
 
-- **Projectors are trivial copy machines**: Every projector just copies fields
-  from the event to the projection. No transformation, no denormalization, no
+- **Projectors are trivial copy machines**: Every projector copies fields from
+  the event to the projection. No transformation, no denormalization, no
   value added.
 
 - **No read-side optimization**: Queries against the projection are no faster
@@ -103,15 +103,15 @@ data from the same events. The consequences:
   four projectors. With millions of orders, this takes four times as long.
 
 - **Staleness windows**: Each projection updates independently. During high
-  load, the list view might show "shipped" while the detail view still shows
-  "placed" because its projector is lagging.
+  load, the detail view's projector can lag. The list view might then show
+  "shipped" while the detail view still shows "placed".
 
 - **Schema proliferation**: The database accumulates tables that are 80%
   identical, wasting storage and complicating migrations.
 
 The root cause of both extremes: **projections were designed around domain
 entities (one per aggregate) or infrastructure concerns (one per endpoint),
-rather than around what consumers actually need**.
+when they should be designed around what consumers actually need**.
 
 ---
 
@@ -304,17 +304,17 @@ This approach works because:
 ### Example 5: Knowing when NOT to use a projection
 
 Sometimes the right answer is to not create a projection at all. If the read
-pattern matches the aggregate structure exactly and the data lives in one
-aggregate, query the aggregate's repository directly:
+pattern matches the aggregate structure exactly and one aggregate holds all the
+data, query the aggregate's repository directly:
 
 ```python
 --8<-- "patterns/projection-granularity/001.py:product"
 ```
 
-Create a projection only when the read model's shape differs from the write
-model, because it combines multiple aggregates, precomputes derived data, or
-optimizes for a specific query pattern that the aggregate's table does not
-support well.
+Create a projection only when the read model needs a different shape from the
+write model. A different shape comes from combining multiple aggregates,
+precomputing derived data, or optimizing for a specific query pattern that the
+aggregate's table does not support well.
 
 ---
 

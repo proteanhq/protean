@@ -37,10 +37,11 @@ not split streams and consumers stay on the base stream with a regular
 subscription. That is deliberate, so a domain declaring `sequential_by` still
 runs on the inline broker in tests, without ordering guarantees.
 
-The public methods below each call `_require_partitioning(...)` first, so an
-adapter that has not declared the capability fails loudly rather than half-working.
-Implement the underscore-prefixed variants (`_record_partition`,
-`_partition_keys`, and so on); the public wrappers are provided.
+The public methods below each call `_require_partitioning(...)` first, so a
+call to an adapter that has not declared the capability raises
+`NotSupportedError` before any work starts. Implement the underscore-prefixed
+variants (`_record_partition`, `_partition_keys`, and so on). Protean's base
+broker class provides the public wrappers.
 
 ## Discovery
 
@@ -57,22 +58,23 @@ O(keys in the broker).
 **`reap_partition` must be atomic and conservative.** Reap only when no consumer
 group on any of the partition's streams has pending entries *and* all have been
 idle for at least `min_idle_ms`. When priority lanes are on, the caller passes
-`backfill_suffix` so the key's backfill lane is checked and deleted with the main
-stream; skipping it strands unconsumed work. Leave the generation counter in
-place so a re-created partition keeps a monotonic fence. A publisher that
+`backfill_suffix`. The adapter then checks and deletes the key's backfill lane
+together with the main stream. An adapter that skips the backfill lane leaves
+unconsumed work in it. Keep the partition's lease generation counter after a
+reap, so a re-created partition keeps a monotonic fence. A publisher that
 re-adds a key immediately after a reap is fine: it is rediscovered next cycle.
 
 ## Ownership, and why it is fenced
 
 One owner per partition is what makes processing sequential. A lease alone is not
 enough: an owner can stall (GC pause, network partition), lose its lease, and
-resume mid-operation believing it still owns the partition. Both workers then
-process the same key.
+resume mid-operation believing it still owns the partition. The stalled owner
+and the worker that took over its lease then both process the same key.
 
 So ownership is **fenced**. `acquire_partition_lease` returns a monotonically
-increasing generation, and every read and ack carries that token. The broker
-rejects an operation whose token is older than the current generation, so a
-resumed stale owner cannot act.
+increasing generation. Every read and ack carries that generation as its token.
+The broker rejects an operation whose token is older than the current
+generation, so a resumed stale owner cannot act.
 
 | Method | Contract |
 |--------|----------|
@@ -104,11 +106,11 @@ handles it by dropping the partition.
 |--------|----------|
 | `trim(stream, maxlen)` | Trim `stream`, returning the number of entries removed. |
 
-`trim` must not delete anything a consumer group still needs. The Redis adapter's
-rule is worth copying: with **two or more** consumer groups, trim to the minimum
-`last-delivered-id` across them and **ignore `maxlen`**, because consumer
-progress bounds the stream; with **zero or one**, cap at `maxlen`. Refuse a
-non-positive `maxlen` rather than emptying the stream. See
+`trim` must not delete anything a consumer group still needs. The Redis
+adapter's rule is worth copying. With **two or more** consumer groups, trim to
+the minimum `last-delivered-id` across them and **ignore `maxlen`**, because
+consumer progress bounds the stream. With **zero or one**, cap at `maxlen`.
+Refuse a non-positive `maxlen` rather than emptying the stream. See
 [Tuning subscriptions](../../../guides/server/tuning-subscriptions.md#stop-a-stream-from-growing-forever)
 for the operator-facing consequences.
 
