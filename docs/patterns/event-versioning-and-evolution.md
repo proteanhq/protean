@@ -557,8 +557,8 @@ This diagram shows the schema-evolution ladder:
 | Stored events | Appended to in normal operation; rewritten only by an operator migration |
 
 Events are permanent contracts. Evolve them the way you evolve APIs. Additive
-changes are safe; structural changes are versioned or replaced. New fields get
-defaults. Old fields stay unless you opt into lenient reads, which drop them.
+changes are safe, unless they move a Protobuf field number, which needs a version
+bump. Structural changes are versioned or replaced. New fields get defaults. Old fields stay unless you opt into lenient reads, which drop them.
 Semantics never change. When in doubt, create a new event type.
 
 ---
