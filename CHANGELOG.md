@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-09
+
+### Upgrade Notes
+
+Read the [0.18 migration guide](https://docs.proteanhq.com/reference/migration/v0-18/) before you upgrade. These changes can need action, in the order the guide covers them:
+
+- [`eventstore verify` exits 2 when it cannot connect](https://docs.proteanhq.com/reference/migration/v0-18/#eventstore-verify-exits-2-when-it-cannot-connect) (#1910)
+- [Value objects compare their field values](https://docs.proteanhq.com/reference/migration/v0-18/#value-objects-compare-their-field-values) (#1928)
+- [`eventstore verify` reports a message whose body is not a JSON object](https://docs.proteanhq.com/reference/migration/v0-18/#eventstore-verify-reports-a-message-whose-body-is-not-a-json-object) (#1909)
+- [A nested handler's conflict reaches the enclosing handler or the caller](https://docs.proteanhq.com/reference/migration/v0-18/#a-nested-handlers-conflict-reaches-the-enclosing-handler-or-the-caller) (#1914)
+- [Event-store subscriptions report their exhausted positions as DLQ depth](https://docs.proteanhq.com/reference/migration/v0-18/#event-store-subscriptions-report-their-exhausted-positions-as-dlq-depth) (#1921)
+- [Outbox reconciliation repairs only event-sourced aggregates' events](https://docs.proteanhq.com/reference/migration/v0-18/#outbox-reconciliation-repairs-only-event-sourced-aggregates-events) (#1908)
+- [An outer commit after a nested failure raises](https://docs.proteanhq.com/reference/migration/v0-18/#an-outer-commit-after-a-nested-failure-raises) (#1631)
+- [A shutdown finishes the batch in hand, and a start claims what stopped workers left](https://docs.proteanhq.com/reference/migration/v0-18/#a-shutdown-finishes-the-batch-in-hand-and-a-start-claims-what-stopped-workers-left) (#1929)
+- [A process manager's dates, datetimes and decimals keep their type after a reload](https://docs.proteanhq.com/reference/migration/v0-18/#a-process-managers-dates-datetimes-and-decimals-keep-their-type-after-a-reload) (#1892)
+- [Outbox reconciliation repairs every lost row in its window](https://docs.proteanhq.com/reference/migration/v0-18/#outbox-reconciliation-repairs-every-lost-row-in-its-window) (#1907)
+- [Datetimes are compared and stored as UTC](https://docs.proteanhq.com/reference/migration/v0-18/#datetimes-are-compared-and-stored-as-utc) (#1900)
+
+### Changed
+
+- [Handlers] **Breaking.** When a nested `UnitOfWork` fails and the outermost one then commits, `commit()` now rolls back and raises the nested failure, or `TransactionError`, instead of logging a warning and returning. (#1631)
+- [Database] **Breaking.** A `DateTime` filter now compares UTC instants on every provider, and SQLite, MySQL, MariaDB and SQL Server now store `DateTime` values as UTC and load them as UTC-aware. (#1900)
+- [CLI] **Breaking.** `protean eventstore verify` now exits 2 when it cannot connect to the event store, and under `--json` it prints one error envelope. (#1910)
+- [Handlers] **Breaking.** A handler that runs inside an active Unit of Work no longer retries a version conflict or a transient error in place, so the error reaches the outermost `@handle` handler's retry or the caller. (#1914)
+- [Server] **Breaking.** On `SIGTERM` the engine now finishes the batch it has read within `server.drain_timeout`, and a starting subscription claims the messages that stopped workers left pending in Redis. (#1929)
+- [Fields] A process manager's `Decimal` field no longer fails the transition save, and its `Date`, `DateTime` and `Decimal` fields keep their type after a reload instead of holding the stored string. (#1892)
+
+### Fixed
+
+- [Broker] An outbox reconcile sweep that runs while a command commits no longer makes that command's commit fail on the outbox's unique index. (#1906)
+- [Broker] **Breaking.** The startup reconcile sweep and `protean outbox reconcile` now rebuild the lost outbox row of every event-sourced aggregate's event in the scanned window, where they used to repair only the newest event. (#1907)
+- [Broker] **Breaking.** `reconcile_outbox` and `protean outbox reconcile` no longer publish an event of a state-based aggregate whose commit rolled back, and they now repair only the events of event-sourced aggregates. (#1908)
+- [CLI] **Breaking.** `protean eventstore verify` now reports a message whose body is NULL or not a JSON object as `malformed_message`, and the `message-db` extra needs `message-db-py` 0.3.5 or later. (#1909)
+- [Projections] Rebuilding a projection whose projector is registered with `idempotent=True` no longer leaves the projection empty. (#1913)
+- [Server] **Breaking.** Event-store subscriptions now report their exhausted positions as `dlq_depth` in `protean subscriptions status`, `/readyz`, the observatory and the `protean_subscription_dlq_depth` gauge, where they reported `0`. (#1921)
+- [Fields] **Breaking.** Value objects now compare and hash by their field values, so `Decimal("9.99")` and `Decimal("9.9900")` are equal, and a field's default is now validated and cast like an assigned value. (#1928)
+- [IR] `protean ir show` and every other IR build no longer fail with `AttributeError` when a handler sets `subscription_type` or `subscription_profile` as a string. (#1930)
+- [Event store] A `$all` subscription no longer waits `gap_timeout_seconds` and logs an abandoned gap at each snapshot, and a run of snapshot rows no longer stops it for good. (#2105)
+- [Event store] A process manager now loads every transition in its stream, where one with more than 1,000 transitions loaded an old version and failed every later transition with `ExpectedVersionError`. (#2106)
+
 ## [0.18.0] - 2026-10-21
 
 ### Upgrade Notes
@@ -1254,7 +1294,8 @@ Every runnable example in the docs now lives in `docs_src`, and a test runs it a
 - Derive SQLAlchemy field types correctly for embedded value object fields
 - Elasticsearch adapter bugfixes and model enhancements
 
-[Unreleased]: https://github.com/proteanhq/protean/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/proteanhq/protean/compare/v0.18.1...HEAD
+[0.18.1]: https://github.com/proteanhq/protean/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/proteanhq/protean/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/proteanhq/protean/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/proteanhq/protean/compare/v0.16.3...v0.17.0
