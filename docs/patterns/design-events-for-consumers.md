@@ -253,7 +253,8 @@ contract. Adding a new field with a default is safe for consumers that read
 fields by name: they ignore it. Removing or renaming fields is a breaking change.
 Protean numbers an event's Protobuf fields in sorted name order, so a new field
 whose name does not sort last moves the numbers of the fields after it.
-`protean ir diff` reports that as breaking until you bump `__version__` (see
+`protean ir diff` reports that as breaking until you bump `__version__` and
+register an upcaster (see
 [Event Versioning and Evolution](event-versioning-and-evolution.md)).
 
 Design events with care from the start, because you can evolve an event later

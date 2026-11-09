@@ -70,7 +70,8 @@ union (Avro's mechanism for "may be absent").
     old data. They have no value to supply. Prefer a default. On an event, an
     added field that does not sort last by name moves the Protobuf numbers of
     the fields after it. `ir diff` reports that as breaking unless you bump
-    `__version__` (see [Bump the version](#bump-the-version-and-write-upcasters)).
+    `__version__` and register an upcaster (see
+    [Bump the version](#bump-the-version-and-write-upcasters)).
 
 ## Rename a field with `renamed_from`
 
@@ -115,8 +116,9 @@ your handler receives it.
 
 The running example bumps `OrderPlaced` to show this chaining. Its rename and
 defaulted fields would load under weak schema without a bump. The bump to v2 is
-still required: `currency` and `customer` sort before `order_id`, so `order_id`
-moves from Protobuf field number 3 to 4, and `ir diff` reports that as breaking
+still required: `currency` and `customer` sort before `order_id`, so two
+Protobuf field numbers move. `customer` takes number 3 where `customer_name`
+had 2, and `order_id` moves from 3 to 4. `ir diff` reports that as breaking
 without a bump. The v2 to v3 change adds `placed_at`, which sorts last and moves
 no number, so that bump only illustrates the mechanism.
 
@@ -309,7 +311,7 @@ change: weak schema, versioning with an upcaster, or an operator migration.
 
 | Change | How | Compatibility |
 |--------|-----|---------------|
-| Add an optional / defaulted field | add it; also bump the version and add an upcaster if the new field moves a Protobuf field number | `FULL`, nobody breaks |
+| Add an optional / defaulted field | add it; also bump the version and add an upcaster if the new field moves a Protobuf field number | `FULL` for Avro readers |
 | Add a required field, no default | give it a default, an upcaster for a computable value, or a new event type | breaks `BACKWARD` if unmitigated |
 | Rename a field | `renamed_from=[...]`, with no version bump unless the rename moves a Protobuf field number | `BACKWARD` via Avro `aliases`; `FULL` if the field was optional or defaulted |
 | Change a field's type | new field or new event version + upcaster | `NONE` without an upcaster |

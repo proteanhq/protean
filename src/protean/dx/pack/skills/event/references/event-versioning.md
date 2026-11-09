@@ -52,14 +52,14 @@ class OrderPlaced:
 
 ### 1. Changes That Keep the Same Version
 
-Some changes don't require a new version:
-
-An added field whose name sorts after every existing field keeps the same
-version. Protean numbers an event's Protobuf fields in sorted name order, so a
-field that sorts earlier moves the numbers of the fields after it, and
-`protean ir diff` reports that as breaking (`field_number_changed`) until you
-bump `__version__` and register an upcaster, which may return the payload
+Protean numbers an event's Protobuf fields in sorted name order. An added
+optional field whose name sorts after every existing field keeps the same
+version. A field that sorts earlier moves the numbers of the fields after it,
+and `protean ir diff` reports that as breaking (`field_number_changed`) until
+you bump `__version__` and register an upcaster, which may return the payload
 unchanged.
+
+Some changes don't require a new version:
 
 **Adding optional fields:**
 ```python

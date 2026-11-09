@@ -3,6 +3,8 @@
 **Status:** Accepted. Compatibility semantics are settled by the schema-evolution
 ladder in [ADR-0040](0040-schema-evolution-ladder.md).
 
+> Amended November 2026, see the Consequences note on Protobuf field numbers.
+
 **Date:** March 2026
 
 ## Context

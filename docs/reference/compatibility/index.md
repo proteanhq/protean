@@ -19,7 +19,7 @@ Protean classifies changes to persisted domain elements using these rules:
 | Add optional field (or with default) | Safe, unless it moves an event's Protobuf field number (see the `field_number_changed` row) |
 | Add required field without default | **Breaking** |
 | Remove field from any persisted element | **Breaking** |
-| Remove a field deprecated past its removal version | Safe (expected removal) |
+| Remove a field deprecated past its removal version | Safe (expected removal), unless it moves an event's Protobuf field number (see the `field_number_changed` row) |
 | Remove a field from an event-sourced aggregate that declares the name `reserved` | Safe (`reserved`) |
 | Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`), unless the rename also changes a `Dict` or `List` value type, or a `Decimal` field's precision or scale in a breaking way (see the rows below), or moves an event's Protobuf field number (see the `field_number_changed` row) |
 | Rename a field *and* change its type | **Breaking** (`field_type_changed`) |
@@ -47,8 +47,12 @@ value objects, commands, events, database models, and projections. Seven rows
 are the exception. The five rows above the last one, and the `reserved`
 field-removal row, read attributes only an aggregate has, so they are checked on
 event-sourced aggregates and nowhere else. The last row, `field_number_changed`,
-is checked on events only. The check runs whether or not the project generates
-Protobuf schemas. A field added, removed or renamed on a command, aggregate,
+is checked on events only, and only on an event's own fields. A field change
+inside a value object the event holds can move the numbers in that value
+object's nested message, and the check does not report it. Fact events are not
+checked, because the framework defines them and nobody can bump their
+`__version__`. The check runs whether or not the project generates Protobuf
+schemas. A field added, removed or renamed on a command, aggregate,
 entity, value object or projection can still move that element's Protobuf field
 numbers, and the check does not report it.
 
@@ -140,8 +144,9 @@ exceptions:
   contract break on an excluded published event still counts as breaking.
   `protean ir diff` and the `protean-check-compat` hook still print it.
 - A change that moves an event's Protobuf field number within one
-  `__version__`: the report flags it as `field_number_changed` for every event,
-  published or not, and the contract check has no matching entry.
+  `__version__`: the report flags it as `field_number_changed` for every event
+  not listed in `exclude`, published or not, and the contract check has no
+  matching entry.
 
 The contract check writes these field entries. In the table, the List column
 names the key under `contracts` that holds each entry:
@@ -214,7 +219,10 @@ The checker understands three evolution mechanisms:
 - **Deprecation grace**: A field marked `deprecated` and removed at or past its
   `removal` version is an *expected removal* (safe), not a breaking one. This
   applies to every persisted element, including internal and event-sourced
-  events (not only published event contracts). The checker compares the
+  events (not only published event contracts). On an event at the same
+  `__version__`, an expected removal can still move the Protobuf numbers of the
+  fields that sort after it, and the checker reports that as a breaking
+  `field_number_changed`. The checker compares the
   `removal` version against the release version. The `protean ir diff` CLI does
   not yet supply a release version, so this downgrade applies when the diff is
   run with an explicit current version. Write the `removal` version as a

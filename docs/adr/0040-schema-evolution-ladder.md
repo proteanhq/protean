@@ -121,7 +121,8 @@ transformed into a value the current schema needs.
 ADR-0001's versioning decision stands: monotonic integers, version in the
 `__type__` string. This ADR corrects one line. Compatibility across a schema
 change is handled by the whole ladder: weak schema for additive and rename
-changes, versioning plus an upcaster for structural ones. ADR-0001's status line
+changes that move no Protobuf field number of an event, versioning plus an
+upcaster for structural ones and for the changes that do move one. ADR-0001's status line
 now points here for compatibility semantics.
 
 ### What this means for snapshots

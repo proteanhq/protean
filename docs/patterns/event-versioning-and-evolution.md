@@ -70,9 +70,9 @@ The golden rules:
 ## Backward-Compatible Changes
 
 These changes keep old events readable without an upcaster. One exception
-applies to events: an added or renamed field that changes the sorted order of
-field names moves Protobuf field numbers, and that needs a version bump (see
-below).
+applies to events: an added field that does not sort last, or a rename that
+moves a field to a different place in the sorted order, moves Protobuf field
+numbers, and that needs a version bump (see below).
 
 ### Adding Optional Fields with Defaults
 
@@ -556,9 +556,9 @@ This diagram shows the schema-evolution ladder:
 | Large migrations | In-place transformation, copy-transform, or dual-write transition |
 | Stored events | Appended to in normal operation; rewritten only by an operator migration |
 
-Events are permanent contracts. Evolve them the way you evolve APIs. Additive
-changes are safe, unless they move a Protobuf field number, which needs a version
-bump. Structural changes are versioned or replaced. New fields get defaults. Old fields stay unless you opt into lenient reads, which drop them.
+Events are permanent contracts. Evolve them the way you evolve APIs. Adding an
+optional field is safe, unless it moves a Protobuf field number, which needs a
+version bump. Structural changes are versioned or replaced. New fields get defaults. Old fields stay unless you opt into lenient reads, which drop them.
 Semantics never change. When in doubt, create a new event type.
 
 ---

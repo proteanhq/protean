@@ -32,11 +32,13 @@ Conventions:
   shadow it.
 - **Field numbers are assigned 1..N in sorted field-name order** (see
   :func:`field_numbers`). Re-generating the same schema always yields the same
-  numbers. Adding, removing or renaming a field can move the numbers of the
-  fields that sort after it. An event's numbers are stable only within one
-  ``__version__``: ``protean ir diff`` reports a change that would move one as
-  breaking (``field_number_changed``). Numbers for every other element can move
-  when its fields change.
+  numbers. Adding or removing a field can move the numbers of the fields that
+  sort after it. Renaming a field can move its own number and the numbers of
+  the fields between its old and new name. Within one ``__version__``,
+  ``protean ir diff`` reports a change that moves an event's own field number
+  as breaking (``field_number_changed``). It does not check fact events, the
+  nested messages of value objects an event holds, or other elements, so their
+  numbers can move when their fields change.
 - Output is deterministic and sorted.
 """
 
