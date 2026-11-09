@@ -139,15 +139,16 @@ class UpcastPriceChangedV1ToV2(BaseUpcaster):
         return data
 
 
-# Example: adding optional enrichment fields keeps the same version
+# Example: adding optional fields that sort last by name keeps the same version
 @domain.event(part_of="User")
 class UserRegistered:
     """User registration event.
 
     Version History:
     - v1: user_id, email, registered_at
-    - v1: added optional user_agent, ip_address, referral_source
-      (backward compatible, no version bump)
+    - v1: added optional web_user_agent, web_ip_address, web_referral_source
+      (backward compatible, no version bump: each new name sorts after
+      user_id, so no Protobuf field number moves)
     """
 
     __version__ = 1
@@ -157,9 +158,9 @@ class UserRegistered:
     registered_at: DateTime(required=True)
 
     # Optional enrichment fields - old events simply lack them
-    user_agent: String()
-    ip_address: String()
-    referral_source: String()
+    web_user_agent: String()
+    web_ip_address: String()
+    web_referral_source: String()
 
 
 # Example: field removal (breaking change)
@@ -250,14 +251,14 @@ if __name__ == "__main__":
             user_id="USER-002",
             email="jane@example.com",
             registered_at=datetime.now(UTC),
-            user_agent="Mozilla/5.0",
-            ip_address="192.168.1.100",
-            referral_source="google",
+            web_user_agent="Mozilla/5.0",
+            web_ip_address="192.168.1.100",
+            web_referral_source="google",
         )
 
         print("\nUserRegistered with enrichment (still v1):")
-        print(f"  Basic: {basic.email}, IP: {basic.ip_address}")
-        print(f"  Enriched: {enriched.email}, IP: {enriched.ip_address}")
+        print(f"  Basic: {basic.email}, IP: {basic.web_ip_address}")
+        print(f"  Enriched: {enriched.email}, IP: {enriched.web_ip_address}")
 
         # Field removal
         account = AccountCreated(

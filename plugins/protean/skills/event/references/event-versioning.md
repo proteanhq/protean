@@ -50,7 +50,7 @@ class OrderPlaced:
 
 ## Version Evolution Strategies
 
-### 1. Backward Compatible Changes (Same Version)
+### 1. Changes That Keep the Same Version
 
 Some changes don't require a new version:
 
