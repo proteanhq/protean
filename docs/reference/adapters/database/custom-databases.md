@@ -432,8 +432,8 @@ def capabilities(self) -> DatabaseCapabilities:
 
 !!!warning
     Only declare capabilities you actually implement. The conformance test
-    suite will verify that your adapter correctly supports every declared
-    capability except `SCHEMA_MIGRATIONS`.
+    suite checks most declared capabilities. It does not check
+    `OPTIMISTIC_LOCKING`, `CONNECTION_POOLING` or `SCHEMA_MIGRATIONS`.
 
 ### Supporting schema migrations (optional)
 
