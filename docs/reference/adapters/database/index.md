@@ -233,8 +233,9 @@ elasticsearch = "protean.adapters.repository.elasticsearch:register"
 ```
 
 Each entry point maps a provider name to a `register()` function. The function
-is called on first access and registers the provider class path with the
-`ProviderRegistry`. A `register()` function for a provider with optional
+is called on first access and registers the provider class path with
+`protean.infra.registry.providers`, the `AdapterRegistry` for database
+providers. A `register()` function for a provider with optional
 dependencies imports them inside `try/except`, so it silently skips
 registering that provider when those dependencies are not installed.
 

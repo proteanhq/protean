@@ -17,7 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from protean.port.provider import DatabaseCapabilities, registry
+from protean.infra.registry import providers
+from protean.port.provider import DatabaseCapabilities
 
 DOCS = (
     Path(__file__).resolve().parents[1]
@@ -78,7 +79,7 @@ def _first_table(lines: list[str]) -> list[str]:
 def _provider_names() -> set[str]:
     """Protean's own provider names, from its entry points.
 
-    Read here rather than from ``registry.list()``, which is empty until
+    Read here rather than from ``providers.list()``, which is empty until
     something triggers plugin discovery. A guard that enumerates an empty set
     passes on every page, including a blank one.
 
@@ -96,7 +97,7 @@ def _provider_names() -> set[str]:
 
 
 def _declared(provider_name: str) -> DatabaseCapabilities:
-    provider_cls = registry.get(provider_name)
+    provider_cls = providers.get(provider_name)
     # ``capabilities`` is a property on the class; read it off the descriptor so
     # nothing has to be constructed against a live server.
     return provider_cls.capabilities.fget(provider_cls)  # type: ignore[attr-defined]

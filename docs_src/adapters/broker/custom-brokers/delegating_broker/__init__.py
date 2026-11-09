@@ -4,7 +4,8 @@ from typing import Any
 
 from protean import Domain
 from protean.adapters.broker.inline import InlineBroker
-from protean.port.broker import BaseBroker, BrokerCapabilities, DLQEntry, registry
+from protean.infra.registry import brokers
+from protean.port.broker import BaseBroker, BrokerCapabilities, DLQEntry
 
 
 class DelegatingBroker(BaseBroker):
@@ -82,7 +83,7 @@ class DelegatingBroker(BaseBroker):
 
 
 # Make the broker available as `provider = "delegating_inline"`
-registry.register("delegating_inline", f"{__name__}.DelegatingBroker")
+brokers.register("delegating_inline", f"{__name__}.DelegatingBroker")
 # --8<-- [end:broker]
 
 # --8<-- [start:usage]

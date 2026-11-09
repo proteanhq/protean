@@ -1,11 +1,11 @@
 """Package for  Concrete Implementations of Protean repositories"""
 
-import importlib
 import logging
 from collections.abc import Iterator, MutableMapping
 from typing import TYPE_CHECKING
 
 from protean.exceptions import ConfigurationError
+from protean.infra.registry import caches as cache_registry
 from protean.port.cache import BaseCache
 from protean.utils.inflection import underscore
 
@@ -14,11 +14,6 @@ if TYPE_CHECKING:
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
-
-CACHE_PROVIDERS = {
-    "memory": "protean.adapters.cache.memory.MemoryCache",
-    "redis": "protean.adapters.cache.redis.RedisCache",
-}
 
 
 class Caches(MutableMapping[str, BaseCache]):
@@ -73,14 +68,7 @@ class Caches(MutableMapping[str, BaseCache]):
                 raise ConfigurationError("You must define a 'default' provider")
 
             for cache_name, conn_info in configured_caches.items():
-                provider_full_path = CACHE_PROVIDERS[conn_info["provider"]]
-                provider_module, provider_class = provider_full_path.rsplit(
-                    ".", maxsplit=1
-                )
-
-                cache_cls = getattr(
-                    importlib.import_module(provider_module), provider_class
-                )
+                cache_cls = cache_registry.get(conn_info["provider"])
                 provider = cache_cls(cache_name, self, conn_info)
 
                 cache_objects[cache_name] = provider

@@ -13,12 +13,12 @@ from typing import (
 
 import redis
 
+from protean.infra.registry import brokers
 from protean.port.broker import (
     BaseBroker,
     BrokerCapabilities,
     DLQEntry,
     LeaseLostError,
-    registry,
 )
 
 if TYPE_CHECKING:
@@ -1906,7 +1906,7 @@ def register() -> None:
     try:
         import redis  # noqa: F401, PLC0415
 
-        registry.register("redis", "protean.adapters.broker.redis.RedisBroker")
+        brokers.register("redis", "protean.adapters.broker.redis.RedisBroker")
         logger.debug("Redis broker registered successfully")
     except ImportError as e:
         # Redis not available, skip registration

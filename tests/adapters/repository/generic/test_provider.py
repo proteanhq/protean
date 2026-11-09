@@ -12,8 +12,8 @@ from protean.adapters.repository.memory import MemoryProvider, MemorySession
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import String
+from protean.infra.registry import providers as provider_registry
 from protean.port.provider import BaseProvider, DatabaseCapabilities
-from protean.port.provider import registry as provider_registry
 
 
 class User(BaseAggregate):
@@ -259,7 +259,7 @@ class TestConfigurationErrorMessages:
 
             error_msg = str(exc_info.value)
             assert "'postgresqll'" in error_msg
-            assert "Available providers:" in error_msg
+            assert "Available:" in error_msg
             for name in sorted(provider_registry.list().keys()):
                 assert name in error_msg
 

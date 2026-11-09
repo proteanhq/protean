@@ -199,8 +199,8 @@ redis_pubsub = "protean.adapters.broker.redis_pubsub:register"
 ```
 
 Each entry point maps a broker name to a `register()` function. The function
-is called on first access and registers the broker class path with the
-`BrokerRegistry`. Each `register()` function wraps its dependency imports in
+is called on first access and registers the broker class path with
+`protean.infra.registry.brokers`, the `AdapterRegistry` for brokers. Each `register()` function wraps its dependency imports in
 `try/except`, so Protean silently skips brokers with uninstalled optional
 dependencies.
 

@@ -1,7 +1,7 @@
-import importlib
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
@@ -11,6 +11,7 @@ from protean.core.event_sourced_repository import (
 )
 from protean.core.projector import BaseProjector
 from protean.exceptions import ConfigurationError
+from protean.infra.registry import event_stores as event_store_registry
 from protean.utils import fqn
 
 if TYPE_CHECKING:
@@ -19,11 +20,6 @@ if TYPE_CHECKING:
     from protean.port.event_store import BaseEventStore
 
 logger = logging.getLogger(__name__)
-
-EVENT_STORE_PROVIDERS = {
-    "memory": "protean.adapters.event_store.memory.MemoryEventStore",
-    "message_db": "protean.adapters.event_store.message_db.MessageDBStore",
-}
 
 
 class EventStore:
@@ -56,20 +52,13 @@ class EventStore:
 
     def _initialize_event_store(self) -> "BaseEventStore":
         configured_event_store = self.domain.config["event_store"]
-        event_store_full_path = EVENT_STORE_PROVIDERS[
-            configured_event_store["provider"]
-        ]
-        event_store_module, event_store_class = event_store_full_path.rsplit(
-            ".", maxsplit=1
+        # Event store adapters take (domain, conn_info) and pass their own name
+        # to BaseEventStore, so the base constructor does not describe them.
+        event_store_cls = cast(
+            "Callable[[Domain, dict[str, Any]], BaseEventStore]",
+            event_store_registry.get(configured_event_store["provider"]),
         )
-
-        event_store_cls = getattr(
-            importlib.import_module(event_store_module), event_store_class
-        )
-
-        store: BaseEventStore = event_store_cls(self.domain, configured_event_store)
-
-        return store
+        return event_store_cls(self.domain, configured_event_store)
 
     def _initialize(self) -> None:
         logger.debug("Initializing Event Store...")

@@ -51,8 +51,9 @@ from protean.fields.association import _ReferenceField
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import _ShadowField
 from protean.fields.resolved import ResolvedField
+from protean.infra.registry import providers
 from protean.port.dao import BaseDAO, BaseLookup
-from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
+from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import _fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
@@ -1425,7 +1426,7 @@ def register() -> None:
     try:
         import elasticsearch  # noqa: F401, PLC0415
 
-        registry.register(
+        providers.register(
             "elasticsearch",
             "protean.adapters.repository.elasticsearch.ESProvider",
         )

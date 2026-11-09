@@ -85,9 +85,9 @@ def register():
     try:
         # Only register if kafka is available
         import kafka
-        from protean.port.broker import registry
+        from protean.infra.registry import brokers
 
-        registry.register(
+        brokers.register(
             "kafka",
             "protean_kafka.broker.KafkaBroker"
         )
