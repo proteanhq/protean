@@ -10,7 +10,8 @@ The Engine is responsible for:
 
 1. **Registering handler subscriptions**: Creating subscriptions for event
    handlers, command handlers, and projectors
-2. **Managing broker subscriptions**: Handling external message consumers
+2. **Managing broker subscriptions**: Connecting subscribers for external
+   messages to the configured message broker
 3. **Running outbox processors**: Publishing messages from the transactional
    outbox
 4. **Coordinating lifecycle**: Starting, running, and gracefully shutting down
@@ -29,7 +30,7 @@ handlers from your domain:
 
 ## Subscription Registration
 
-The Engine associates subscriptions with each handler during initialization. The factory determines the subscription type based on the [configuration hierarchy](#configuration-hierarchy).
+The Engine associates subscriptions with each handler during initialization. The Engine's subscription factory picks the subscription type from the [configuration hierarchy](#configuration-hierarchy).
 
 ### Handler Subscriptions
 
@@ -74,9 +75,9 @@ instances that connect to the configured message broker:
 ### Outbox Processors
 
 When the outbox is enabled (via `default_subscription_type = "stream"`), the
-Engine creates an `OutboxProcessor` for each managed database provider that
-an aggregate is stored in, to publish messages to the configured broker. A
-provider configured with `managed = false` gets no processor:
+Engine creates an `OutboxProcessor` for each managed database provider holding
+an aggregate. Each `OutboxProcessor` publishes messages to the configured
+broker. A provider configured with `managed = false` gets no processor:
 
 ```toml
 # Configuration in domain.toml
@@ -93,9 +94,9 @@ tick_interval = 1
 
 When `external_brokers` is configured, the Engine creates additional
 `OutboxProcessor` instances, one per external broker per managed database provider
-that an aggregate is stored in. These processors
-only pick up outbox rows tagged with their target broker and publish using a
-stripped metadata envelope suitable for external consumers:
+that an aggregate is stored in. Each external processor reads only the outbox
+rows tagged with its target broker. It publishes those rows with a stripped
+metadata envelope suitable for external consumers:
 
 ```toml
 [outbox]
@@ -103,7 +104,8 @@ broker = "default"
 external_brokers = ["partner_events"]   # Adds external processors
 ```
 
-With one database provider, this creates two processors:
+With one database provider, this `[outbox]` configuration creates
+two processors:
 
 - `outbox-processor-default-to-default`: Internal events
 - `outbox-processor-default-to-partner_events-external`: Published events to
@@ -111,7 +113,7 @@ With one database provider, this creates two processors:
 
 External processors emit `outbox.external_published` and
 `outbox.external_failed` trace events (distinct from internal
-`outbox.published` / `outbox.failed`), and skip priority lane routing since
+`outbox.published` / `outbox.failed`). They skip priority lane routing, since
 lanes are an internal concern.
 
 See [Dispatching Published Events to External Brokers](../../guides/server/external-event-dispatch.md)
@@ -128,13 +130,13 @@ When registering subscriptions, the Engine consults a hierarchy of configuration
 
 This means that explicit intent at the handler level takes priority, but system-wide defaults provide sensible behavior when specifics are not set.
 
-For example, if a handler specifies a custom stream name, it will be used; otherwise, the engine will infer the relevant category from the handler’s associated aggregate or fall back to profile/domain defaults.
+For example, if a handler specifies a custom stream name, the Engine uses it. Otherwise, the Engine infers the stream category from the handler’s associated aggregate, or falls back to profile or domain defaults.
 
 ## Tracing
 
-The Engine initializes a `TraceEmitter` at startup that publishes structured
-`MessageTrace` events as messages flow through the pipeline. Trace events are
-emitted at three points during `handle_message`:
+The Engine initializes a `TraceEmitter` at startup. The `TraceEmitter`
+publishes structured `MessageTrace` events as messages move through the
+pipeline. Trace events are emitted at three points during `handle_message`:
 
 - `handler.started`: Before the handler processes the message
 - `handler.completed`: After successful processing (includes `duration_ms`)
@@ -164,10 +166,10 @@ persistence. If `[observatory]` is missing or not a table, or `int()` cannot
 convert the value (such as `"abc"` or `inf`), the Engine falls back to the
 7-day default.
 
-The emitter adds zero overhead when no monitoring tools are subscribed and
-persistence is disabled, see
-[Observability](../../reference/server/observability.md) for the full design,
-the Observatory monitoring server, and trace API endpoints.
+The emitter adds no overhead when no monitoring tools are subscribed and
+persistence is disabled. For the full design, the Observatory monitoring
+server, and trace API endpoints, see
+[Observability](../../reference/server/observability.md).
 
 ## Context Propagation
 
@@ -220,8 +222,8 @@ application, see [Multi-Tenancy in Event-Driven Systems](../../patterns/multi-te
 ## Shutdown sequence
 
 The Engine owns the lifecycle of every infrastructure adapter it
-opens. When it receives `SIGINT`, `SIGTERM`, or `SIGHUP`, it walks a
-deliberate four-step sequence that preserves three invariants:
+opens. When it receives `SIGINT`, `SIGTERM`, or `SIGHUP`, it runs a deliberate
+four-step sequence that preserves three invariants:
 
 1. **Load balancers pull the pod out of rotation first**: Readiness
    probes flip to `503` before handlers stop, so new traffic stops
@@ -230,9 +232,9 @@ deliberate four-step sequence that preserves three invariants:
    to 10 seconds to complete, after which stragglers are cancelled.
    This bounds shutdown time without sacrificing successful commits
    that are already underway.
-3. **Resources close in reverse-initialisation order**: Dependents
-   close before their dependencies, so a handler mid-commit never
-   finds its repository's connection pool closed out from under it.
+3. **Resources close in reverse-initialisation order**: Dependents close before
+   their dependencies, so a handler mid-commit never finds its repository's
+   connection pool already closed.
 
 ```mermaid
 sequenceDiagram
@@ -256,12 +258,12 @@ sequenceDiagram
     Eng->>OS: loop.stop()
 ```
 
-Two guarantees fall out of this sequence:
+This sequence gives two guarantees:
 
 - **`/readyz` fails before any handler is disturbed**: The health
   server stops in step 3; subscriptions stop in step 4; in-flight
-  handlers drain in step 5. A load balancer that polls `/readyz` every
-  5 seconds pulls the pod within that window, and requests already in
+  handlers drain in step 5. A load balancer polling `/readyz` every 5 seconds
+  pulls the pod out of rotation within those 5 seconds. Requests already in
   flight complete on the old pod.
 - **`Domain.close()` is safe to call from application code**: Tests
   and tooling that create domains on demand can invoke `domain.close()`
@@ -270,13 +272,14 @@ Two guarantees fall out of this sequence:
   closing. Custom adapters inherit a no-op `close()`; override it when
   the adapter holds sockets, file handles, or background threads.
 
-For the `terminationGracePeriodSeconds` you need in Kubernetes, and the full
-reference. What `Domain.close()` does per adapter, when `SIGHUP` vs `SIGTERM`
-matter, how to disable the health server, see [Server Hardening
+For the `terminationGracePeriodSeconds` you need in Kubernetes and for the full
+shutdown reference, see [Server Hardening
 reference](../../reference/server/hardening.md#shutdown-sequence) and [Harden
-the Server](../../guides/server/hardening.md#shut-down-gracefully). The design
-rationale (why subscriptions stop first, why 10 seconds, why per-adapter error
-isolation) is captured in
+the Server](../../guides/server/hardening.md#shut-down-gracefully).
+These pages also explain what `Domain.close()` does per adapter, when `SIGHUP`
+vs `SIGTERM` matter, and how to disable the health server. The design rationale
+(why subscriptions stop first, why 10 seconds, why per-adapter error isolation)
+is captured in
 [ADR-0011](../../adr/0011-engine-shutdown-and-resource-lifecycle-contract.md).
 
 ---
@@ -299,7 +302,7 @@ See the [Running the Server](../../guides/server/index.md) guide.
 
 - [Subscriptions](subscriptions.md): Learn how handlers connect to message sources and react to events.
 - [Subscription Types](../../reference/server/subscription-types.md): Compare StreamSubscription and EventStoreSubscription, and choose the right one for your workload.
-- [Configuration](../../reference/server/configuration.md): Dive deeper into configuring engine profiles, subscriptions, and runtime options.
+- [Configuration](../../reference/server/configuration.md): Look up the settings for engine profiles, subscriptions, and runtime options.
 - [Outbox Pattern](outbox.md): Understand reliable message publishing and transactional outbox processing.
 - [Observability](../../reference/server/observability.md): Real-time tracing, the Observatory server, SSE streaming, and Prometheus metrics.
 - [Running the Server](../../guides/server/index.md): Explore how to deploy, operate, and monitor the server in different environments.

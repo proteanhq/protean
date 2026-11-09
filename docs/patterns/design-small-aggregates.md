@@ -15,27 +15,27 @@ That instinct gives you an aggregate that demos well and fails in production:
   unrelated parts of one customer queue behind each other for no reason.
 
 - **Every read pays for the whole graph.** Changing a customer's email loads
-  their orders, addresses, payment methods, and loyalty history first. What you
-  transfer, deserialize, and hold in memory tracks the size of the aggregate,
-  not the size of the job.
+  their orders, addresses, payment methods, and loyalty history first. You
+  transfer, deserialize, and hold in memory the whole aggregate, even when the
+  job needs only a small part of it.
 
 - **Transactions grow with it.** More data in a transaction means more chance
   of a conflict, a lock held longer, and more work thrown away on rollback. In
   an event-sourced system it also means a long stream that is slow to replay.
 
-- **You end up enforcing invariants nobody asked for.** Data earns its place in
-  an aggregate by having to stay consistent with the rest of it. Most
-  relationships do not. Does an email change have to be atomic with the order
-  history? Almost never. A big aggregate guarantees consistency the business
-  never wanted.
+- **You end up enforcing invariants nobody asked for.** Data belongs in an
+  aggregate only when it has to stay consistent with the rest of the aggregate.
+  Most relationships do not. Does an email change have to be atomic with the
+  order history? Almost never. A big aggregate guarantees consistency the
+  business never wanted.
 
 - **It sets hard.** Once other code depends on the shape, splitting it is a
-  large piece of work. The internal structure has by then leaked into commands,
-  events, handlers, and projections, so moving one boundary turns into a
-  migration across all of them.
+  large piece of work. By then, commands, events, handlers, and projections all
+  depend on the aggregate's internal structure, so you have to migrate all of
+  them to move one boundary.
 
-All five come from one thing: the boundary was drawn around **what relates to
-what**, when it should follow **what has to stay consistent**.
+All five problems have one cause: you drew the boundary around **what relates
+to what**, but it should follow **what has to stay consistent**.
 
 ---
 
@@ -78,9 +78,9 @@ Take an e-commerce system:
 | Payment record | No, payment is processed asynchronously | **No** |
 | Product catalog | No, product details are reference data | **No** |
 
-Order comes down to an ID, its line items, a status, a total, and perhaps a
-snapshot of the shipping address as it was at the time. Everything else is its
-own aggregate, referenced by identity.
+Order keeps an ID, its line items, a status, a total, and perhaps a snapshot of
+the shipping address as it was at the time. Everything else is its own
+aggregate, referenced by identity.
 
 ---
 
@@ -151,23 +151,23 @@ do not touch it.
 
 **Option 3: Look up in a read model.**
 
-When the decision needs the other aggregate's data and can live with it being
-slightly behind, query a projection:
+When your handler needs the other aggregate's data to decide, and a slightly
+out-of-date copy is acceptable, query a projection:
 
 ```python
 --8<-- "patterns/design-small-aggregates/001.py:read_model"
 ```
 
 You read what you need without tying Order to Customer. A projector runs after
-the event it reacts to, so the view can trail the aggregate it reflects. Use
-this only where that window is acceptable; where it is not, the decision belongs
-inside the other aggregate.
+the event it reacts to, so the view can trail the aggregate it reflects. Query
+a projection only where that delay is acceptable. Where the delay is not
+acceptable, make the decision inside the other aggregate.
 
 ---
 
 ## What Protean gives you
 
-Protean gives you four pieces for this:
+Protean gives you four pieces for keeping aggregates small:
 
 ### The `Identifier` field
 
@@ -190,9 +190,10 @@ consistent in the same transaction, use entities:
 --8<-- "patterns/design-small-aggregates/004.py:entities"
 ```
 
-`OrderItem` sits inside `Order` because:
+`Order` contains `OrderItem` because:
 
-- Adding or removing one has to update the order's total in the same breath
+- Adding or removing one has to update the order's total in the
+  same transaction
 - The order has rules about its items, such as needing at least one
 - An item does not exist without its order
 
@@ -205,9 +206,9 @@ When data describes part of the aggregate but has no identity of its own:
 ```
 
 `ShippingAddress` is embedded as a value object, a frozen record of where this
-order goes. It does not point at an `Address` aggregate, because the order needs
-the address *as it was when the order was placed*, not whatever the customer has
-today.
+order goes. It does not point at an `Address` aggregate, because the order
+needs the address *as it was when the order was placed*, even after the
+customer changes it.
 
 ### Domain events across aggregates
 
@@ -220,7 +221,8 @@ When something in one aggregate has to change another, raise a domain event:
 `Order` knows nothing about `CustomerLoyalty`. It raises an event. The event
 handler stays with `Order`, the aggregate that owns the event, and issues an
 `AwardPoints` command. `CustomerLoyalty`'s own command handler updates the
-points. You can deploy, scale, and test the two on their own.
+points. You can deploy, scale, and test `Order` and `CustomerLoyalty` on
+their own.
 
 Events are delivered at least once, so the same `OrderPlaced` can arrive
 twice. The command carries the order id, and the loyalty command handler
@@ -263,8 +265,8 @@ product, and `Inventory`'s command handler does the write:
 --8<-- "patterns/design-small-aggregates/007.py:split"
 ```
 
-That is the shape a well-designed DDD system settles into: small aggregates,
-joined by events and the commands their handlers issue.
+A well-designed DDD system has this shape: small aggregates, connected by
+events and by the commands that event handlers issue.
 
 ---
 
@@ -334,10 +336,11 @@ tasks:
 
 The command handler counts the rows itself, so running it twice for the same
 event gives the same progress. Do not take those counts from a projection
-that a projector updates from `TaskCompleted` as well. The two consume the event
-through separate subscriptions, in no fixed order. Adding one to the
-projection's count double-counts the task when the projector got there first,
-and reports a stale count when the projector lags.
+that a projector updates from `TaskCompleted` as well. The event handler on
+`Task` and the projector consume the event through separate subscriptions, in
+no fixed order. Adding one to the projection's count double-counts the task
+when the projector ran first. The same addition gives a stale count when the
+projector has not run yet.
 
 ---
 
@@ -360,18 +363,18 @@ splitting into many aggregates may cost more than it returns. With one user at a
 time and a few hundred records, a larger aggregate that keeps the code short is
 a fair trade.
 
-Start there, and split when contention, performance, or complexity starts to
-hurt.
+Start with the larger aggregate. Split it when contention, performance, or
+complexity becomes a problem.
 
 ### Event-sourced aggregates
 
 Event-sourced aggregates carry one more concern: stream length. A long-lived
-aggregate with thousands of events takes longer to replay, which argues for
-keeping them small. Where an aggregate genuinely needs to be one consistency
-boundary, reach for snapshots before you split it. Protean writes one while it
-loads the aggregate, once enough events have piled up since the last snapshot to
-pass `snapshot_threshold`, and you can create one by hand; see
-[Snapshots](../guides/change-state/snapshots.md).
+aggregate with thousands of events takes longer to replay, which is a reason to
+keep event-sourced aggregates small. Where an aggregate genuinely needs to be
+one consistency boundary, reach for snapshots before you split it. Once the
+events since the last snapshot reach `snapshot_threshold`, Protean writes a
+snapshot during the next load of the aggregate. You can also create a snapshot
+by hand (see [Snapshots](../guides/change-state/snapshots.md)).
 
 ---
 
@@ -380,9 +383,10 @@ pass `snapshot_threshold`, and you can create one by hand; see
 ### Mistake 1: splitting on UI screens
 
 "The order page shows orders and the customer page shows customer info, so
-they should be separate aggregates." That lands on the right answer for the
-wrong reason. Boundaries come from **business rules**, not screen layout. Put
-orders and customers on one page tomorrow and the boundaries should not move.
+they should be separate aggregates." That reasoning gives the right split for
+the wrong reason. Boundaries come from **business rules**, not screen layout.
+Put orders and customers on one page tomorrow and the boundaries should
+not move.
 
 ### Mistake 2: using HasOne/HasMany across aggregates
 

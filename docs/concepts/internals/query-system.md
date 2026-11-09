@@ -45,10 +45,11 @@ BaseRepository._dao
         → ConcreteDAO(domain, provider, entity_cls, database_model_cls)
 ```
 
-The repository speaks domain language (`add`, `get`, `query`, `find_by`, and
-custom methods). The DAO speaks database language (`_filter`, `_count`,
-`_create`, `_update`, `_delete`). Custom repository methods use `self.query`
-and `self.find_by` (which delegate to the internal `_dao`) to build queries.
+The repository exposes methods named in domain terms (`add`, `get`, `query`,
+`find_by`, and custom methods). The DAO exposes methods named in database terms
+(`_filter`, `_count`, `_create`, `_update`, `_delete`). Custom repository
+methods use `self.query` and `self.find_by` (which delegate to the internal
+`_dao`) to build queries.
 
 **Key source files:**
 
@@ -104,23 +105,24 @@ The concrete DAO implementation (e.g., `DictDAO` for memory, `SADAO` for
 SQLAlchemy) recursively walks the Q object tree, resolves each lookup using
 the provider's lookup registry, and builds a database-specific query.
 
-`_filter` accepts a `with_total` flag (default `True`). When it is `False`
-the caller only needs `ResultSet.items`, so adapters may skip an expensive
-total-count computation (such as SQL's separate wrapped `COUNT` query) and
-report only the size of the returned page. Adapters that derive the total for
-free (memory, Elasticsearch) may continue to populate it.
+`_filter` accepts a `with_total` flag (default `True`). When `with_total` is
+`False`, the caller only needs `ResultSet.items`. Adapters may then skip an
+expensive total-count computation (such as SQL's separate wrapped `COUNT`
+query) and report only the size of the returned page. Adapters that derive the
+total for free (memory, Elasticsearch) may continue to populate it.
 
 `_filter` also accepts an optional `fields` argument (a list of attribute
-names) set via `QuerySet.only()`. When present, the adapter fetches only those
-columns (SQLAlchemy `load_only`, Elasticsearch `_source` filtering; the memory
-store selects when building the result) and the QuerySet builds read-only
-`Record` objects through the model's `to_records` instead of materializing
-entities. Because a `Record` never enters the entity layer, the field-selection
-path runs no invariants and does no event-position sync or Unit of Work
-tracking, which is what keeps it cheap and the domain model uncompromised.
+names) set via `QuerySet.only()`. When `fields` is present, the adapter fetches
+only those columns (SQLAlchemy `load_only`, Elasticsearch `_source` filtering;
+the memory store selects when building the result). The QuerySet then builds
+read-only `Record` objects through the model's `to_records` instead of
+materializing entities. A `Record` never enters the entity layer, so the
+field-selection path runs no invariants and does no event-position sync or Unit
+of Work tracking. Skipping that work keeps the field-selection path cheap and
+leaves the domain model uncompromised.
 
-Counting takes a lighter path that bypasses `_filter` entirely. `count()` on
-a QuerySet calls the DAO's `_count` method with just the Q object tree; the
+Counting takes a lighter path that bypasses `_filter` entirely. `count()` on a
+QuerySet calls the DAO's `_count` method with only the Q object tree. The
 concrete DAO issues a single `SELECT COUNT(*)` (SQLAlchemy `func.count()`,
 memory `len` over the filtered set, Elasticsearch's `_count` API) with no
 projection wrapper and no entity materialization. `offset`, `limit`, and
@@ -131,8 +133,8 @@ projection wrapper and no entity materialization. `offset`, `limit`, and
 ## Q objects: the expression tree
 
 Q objects (`protean.utils.query.Q`) represent filter criteria as a tree
-structure. They are the internal currency that flows from QuerySet to DAO to
-database.
+structure. Internally, the QuerySet passes Q objects to the DAO, and the DAO
+turns them into a query for the database.
 
 ### Tree structure
 
@@ -286,17 +288,18 @@ handles it in `process_target`: SQLAlchemy resolves `F` to the column object so
 the comparison renders as native SQL; the memory adapter resolves it per record
 to the referenced attribute; the Elasticsearch adapter raises
 `NotImplementedError`, since the equivalent needs a Painless script query.
-Because `F` resolution lives in `process_target`, it composes with every
-comparison lookup without per-lookup changes. The outbox poll and claim paths
-use `F` to push `retry_count < max_retries` into the database.
+Because `process_target` resolves `F`, each comparison lookup on the memory and
+SQLAlchemy adapters accepts an `F` target without per-lookup changes. The
+outbox poll and claim paths use `F` to push `retry_count < max_retries` into
+the database.
 
 ### Lookup support across adapters
 
 Every adapter registers the same core set of lookups (`REQUIRED_LOOKUPS` on
 `BaseProvider`). A provider missing one warns at load, and using it raises
-`NotImplementedError`. Beyond that core set support varies, but the contract is
-the same everywhere: an unsupported lookup fails loudly rather than silently
-returning wrong results.
+`NotImplementedError`. Beyond that core set, support varies by adapter, but the
+contract is the same everywhere: an unsupported lookup fails loudly and never
+silently returns wrong results.
 
 | Lookup            | Memory | SQLAlchemy        | Elasticsearch |
 |-------------------|:------:|:-----------------:|:-------------:|
@@ -312,15 +315,16 @@ returning wrong results.
 
 The twelve lookups above `any` are universal and exercised by the cross-adapter
 conformance suites under `tests/adapters/repository/generic/` and
-`tests/repository/`. The array lookups `any` and `overlap` match documents whose
-array field shares an element with the given values: SQLAlchemy maps them to native array operators
-(`= ANY(...)` and `&&`, so they need a backend with array columns such as
-PostgreSQL); Elasticsearch renders both as a `terms` query (its fields are
-natively multivalued); the in-memory store compares elements by equality (not
-hashing, so unhashable items such as dicts are supported).
-`F()` column references work on the memory and SQLAlchemy adapters but not on
-Elasticsearch. Full-text (`search`), geospatial, and vector-similarity lookups
-are backend-specific and are not part of the portable contract.
+`tests/repository/`. The array lookups `any` and `overlap` match documents
+whose array field shares an element with the given values. SQLAlchemy maps them
+to native array operators (`= ANY(...)` and `&&`), so they need a backend with
+array columns such as PostgreSQL. Elasticsearch renders both as a `terms`
+query, because its fields are natively multivalued. The in-memory store
+compares elements by equality without hashing them, so it supports unhashable
+items such as dicts. `F()` column references work on the memory and SQLAlchemy
+adapters but not on Elasticsearch. Full-text (`search`), geospatial, and
+vector-similarity lookups are backend-specific and are not part of the
+portable contract.
 
 **Key source files:**
 
@@ -348,9 +352,9 @@ dao.query.filter(user_id="123")
 # Final criteria sent to DAO: user_reference_id="123"
 ```
 
-This translation allows field names to differ from database column names
-(via the `referenced_as` option on fields) without leaking persistence
-concerns into query code.
+Because QuerySet translates the names, a field name can differ from its
+database column name (via the `referenced_as` option on fields), and query code
+does not need to know the column name.
 
 The same translation applies to `order_by`:
 
@@ -372,9 +376,9 @@ Protean keeps that knowledge in the domain layer: an aggregate declares the
 indexes its query paths need with the `indexes=` decorator option, alongside
 its fields and invariants. This mirrors the ports-and-adapters split the query
 system already follows: the portable `Q`/QuerySet API on one side, the
-adapter-specific SQL on the other. Portable index declarations (composite,
-descending, unique) live on the aggregate and are honored by every SQL adapter;
-storage-specific tuning (GIN, BRIN, expression indexes) drops to
+adapter-specific SQL on the other. You declare portable indexes (composite,
+descending, unique) on the aggregate, and every SQL adapter honors them. For
+storage-specific tuning (GIN, BRIN, expression indexes), you use
 `Index.from_sql` on the model. A partial index whose `where=` predicate is a
 `Q` object reuses the same expression tree, compiled to the dialect's
 partial-index clause.
@@ -434,25 +438,26 @@ class ResultSet:
 ```
 
 The `all()` method on QuerySet converts raw database results (dicts or model
-objects) into domain entity objects via `DatabaseModel.to_entity()`, marks
-each entity as retrieved (`entity.state_.mark_retrieved()`), and for
-aggregates, adds them to the active Unit of Work's identity map. When the
-identity map already holds an aggregate, `all()` returns that instance in place
-of the copy it just loaded.
+objects) into domain entity objects via `DatabaseModel.to_entity()`. It then
+marks each entity as retrieved (`entity.state_.mark_retrieved()`) and adds each
+aggregate to the active Unit of Work's identity map. When the identity map
+already holds an aggregate, `all()` returns that instance in place of the copy
+it just loaded.
 
-Reading a QuerySet without calling `all()` (iterating it, indexing it, or
-reading `first`, `last` or `items`) hands out a deep copy of the cached
-results, so changing one result does not change the next read. Inside a Unit
-of Work, aggregates are the exception: a read hands out the instance the
-identity map tracks, the same instance that `all()` and `get()` return. Other
-results, such as entities that are not aggregates, are still copied.
+When you read a QuerySet without calling `all()` (iterating it, indexing it, or
+reading `first`, `last` or `items`), the QuerySet returns a deep copy of the
+cached results. Changing one result therefore does not change the next read.
+Inside a Unit of Work, aggregates are the exception: a read returns the
+instance the identity map tracks, the same instance that `all()` and `get()`
+return. Other results, such as entities that are not aggregates, are
+still copied.
 
 The cache belongs to the transaction it was filled in, or to no transaction
-when it was filled outside a Unit of Work. When a QuerySet is read in a
-different transaction, for example a QuerySet evaluated before a Unit of Work
-began and read inside it, or read again after its Unit of Work ended, the
-query runs again. The read then returns what is stored now, and the
-aggregates it loads are tracked by the current Unit of Work.
+when it was filled outside a Unit of Work. The QuerySet runs the query again
+when you read it in a different transaction. Two examples are a QuerySet
+evaluated before a Unit of Work began and then read inside it, and a QuerySet
+read again after its Unit of Work ended. The read then returns what is stored
+now, and the aggregates it loads are tracked by the current Unit of Work.
 
 **Key source file:** `src/protean/core/queryset.py`
 
@@ -470,8 +475,9 @@ on projections.
 **Read methods work identically:** `filter()`, `exclude()`, `order_by()`,
 `limit()`, `offset()`, `all()`, `raw()`, and all properties.
 
-The clone-on-write pattern preserves the type, chaining `.filter()` on a `ReadOnlyQuerySet` returns
-another `ReadOnlyQuerySet`, because `_clone()` uses `self.__class__()`.
+Because `_clone()` uses `self.__class__()`, each clone keeps the type of the
+QuerySet it came from. Chaining `.filter()` on a `ReadOnlyQuerySet` returns
+another `ReadOnlyQuerySet`.
 
 ```python
 # fragment
@@ -516,8 +522,8 @@ the correct provider or cache based on the projection's meta options
 
 ## Entity state tracking
 
-When entities flow through the repository/DAO layer, their `state_` property
-(an `_EntityState` instance) tracks lifecycle state:
+When the repository/DAO layer loads, saves, or deletes entities, each entity's
+`state_` property (an `_EntityState` instance) tracks its lifecycle state:
 
 | State | Meaning | Triggered by |
 |-------|---------|-------------|

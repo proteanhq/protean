@@ -12,10 +12,10 @@ aggregate cluster, reading command -> aggregate -> event -> read model. It turns
 code into a diagram. The inverse does not exist. A person can write an event model
 on a whiteboard, but nothing in Protean reads that model back to start a project.
 
-Epic #1347 builds the inverse: `protean new --from-model <file>` reads a small text
-model and generates a first project whose slice reflects the model's aggregate,
-fields, command, and event, and that passes `protean verify`. Two pieces sit
-between the text and the project:
+Epic #1347 builds the inverse, `protean new --from-model <file>`. The command
+reads a small text model and generates a first project that passes
+`protean verify`, with a slice that reflects the model's aggregate, fields,
+command, and event. Two components turn the text into the project:
 
 - A **parser** (#1471) turns model text into a structured form.
 - A **generator** (#1472) turns that structured form into a `ChangePlan`
@@ -42,10 +42,11 @@ separate spec type and no second field vocabulary.
 This ADR fixes the grammar, the **authored-IR profile** (which IR keys the author
 supplies and which the generator derives), the **vocabulary map**, and the
 **conformance direction** (IR to text to IR). It does not enumerate the
-parser's validation rules, the eligibility cases, or the full promotion output. Those
-are #1471 and #1472's implementation contract, pinned by the IR schema and the worked
-example below and enforced by the conformance test and `protean verify`. The precise
-contract lives in code and tests, so this ADR stays a decision record.
+parser's validation rules, the eligibility cases, or the full promotion output.
+Those three form the implementation contract of the parser (#1471) and the
+generator (#1472). The IR schema and the worked example below pin that
+contract, and the conformance test and `protean verify` enforce it. The code
+and tests state the precise contract, so this ADR records only decisions.
 
 ### The grammar
 
@@ -89,38 +90,42 @@ The rules:
 - A **field is required and has no default**, except the projection's identity
   `key`, which carries the framework identity default. Optional fields and author
   defaults are a later addition to the grammar.
-- A **constraint list** is comma-separated inside the parentheses. A constraint is
-  either `max_length=<positive-integer>`, valid only on `string` and `text`, or the
-  bare flag `key`, valid only on an `identifier` field of a `projection`, where it
-  marks the projection's identity.
+- A **constraint list** is comma-separated inside the parentheses. A constraint
+  is either `max_length=<positive-integer>` or the bare flag `key`.
+  `max_length` is valid only on `string` and `text`, and `key` is valid only on
+  an `identifier` field of a `projection`, where it marks the
+  projection's identity.
 - A **projector body** is one `for <ProjectionName>` line and one
-  `consumes <EventName>` line. The one-slice grammar's projector consumes exactly one
-  event; a projector that handles several events is a later grammar, and eligibility
-  rejects a multi-handler projector from the round trip.
+  `consumes <EventName>` line. In the one-slice grammar, a projector consumes
+  exactly one event. A projector that handles several events is a later
+  grammar, and the eligibility check rejects a multi-handler projector from the
+  round trip.
 
 Cardinality for one slice: exactly one `aggregate`, one `command`, one `event`. The
 read side is optional: at most one `projection` and one `projector`, together or not
-at all. A `projection` has exactly one `key` field, the surfaced `<slug>_id`; its
-other fields are drawn from the event by name and carry the event field's type and
-constraints, so promotion populates the projection from the event with no other
-source. The `for` and `consumes` lines name the model's own projection and event. The
-parse is deterministic, infers nothing, and reports every violation with its line
-number. The specific validation rules (name normalization, reserved names, referential
-integrity, field-shape compatibility) are #1471's, checked by the conformance test and
-by `protean verify` on the generated project.
+at all. A `projection` has exactly one `key` field, the surfaced `<slug>_id`.
+Its other fields come from the event by name and carry the event field's type
+and constraints, so promotion populates the projection from the event alone.
+The `for` and `consumes` lines name the model's own projection and event. The
+parse is deterministic, infers nothing, and reports every violation with its
+line number. The parser (#1471) owns the specific validation rules: name
+normalization, reserved names, referential integrity, and field-shape
+compatibility. The conformance test and `protean verify` on the generated
+project check them.
 
-The exhaustive normalization, reserved-name, and name-collision rules (which
-generated symbols a field or block name may not shadow, how a slug is recovered)
-are the parser's and generator's to enforce, because several of them depend on the
-project's composition root, which the grammar does not carry. This ADR fixes the
-shapes; #1471 and #1472 fix the enumeration.
+The parser and the generator enforce the exhaustive normalization,
+reserved-name, and name-collision rules (which generated symbols a field or
+block name may not shadow, how a slug is recovered). They enforce them because
+several of these rules depend on the project's composition root, which the
+grammar does not carry. This ADR fixes the shapes; the parser and the generator
+fix the full list of rules.
 
 ### The primitive types
 
 The grammar carries eight field types, each a lexical token (`string`, `integer`)
-that maps to one IR field `kind` and `type` through the table below. The tokens are
-the grammar's own surface; the field model they resolve to is the IR's, so there is no
-second field representation to keep in sync.
+that maps to one IR field `kind` and `type` through the table below. The tokens
+belong to the grammar, but each one resolves to the IR's field model. So there
+is no second field representation to keep in sync.
 
 | Grammar type | IR field `kind` | IR field `type` |
 |--------------|-----------------|-----------------|
@@ -144,17 +149,17 @@ Every authored field carries `required: true` in its IR entry. The projection's
 identity `key` is the one field without `required`, since it takes the framework
 identity default.
 
-The framework applies an implicit `min_length=1` to required string-based fields
-(ADR-0026), and that bound does reach the IR: it is applied as pydantic `MinLen(1)`
-metadata, which `IRBuilder` reads back like any other constraint, so a required
-string field with no other bound carries `min_length: 1` whether or not the author
-wrote it. An explicit `min_length` of any other value stays in the IR as written. The
-grammar has no `min_length` syntax, and its `required` re-derives exactly that bound,
-so the emitter drops a `min_length` of 1 and refuses any other value, including an
-explicit `0` (a required field that accepts the empty string has no grammar form).
-An author who writes `min_length=1` by hand is therefore indistinguishable in the IR
-from one who left it implicit; the two promote to the same field, so the round trip
-holds either way.
+The framework applies an implicit `min_length=1` to required string-based
+fields (ADR-0026) as pydantic `MinLen(1)` metadata, and `IRBuilder` reads that
+metadata back like any other constraint. So a required string field with no
+other bound carries `min_length: 1` in the IR whether or not the author wrote
+it. An explicit `min_length` of any other value stays in the IR as written. The
+grammar has no `min_length` syntax, and its `required` re-derives exactly that
+bound. So the emitter drops a `min_length` of 1 and refuses any other value,
+including an explicit `0` (a required field that accepts the empty string has
+no grammar form). An author who writes `min_length=1` by hand therefore
+produces the same IR as an author who leaves it implicit. The two promote to
+the same field, so the round trip holds either way.
 
 ### The authored-IR profile
 
@@ -177,28 +182,29 @@ message's `__type__` and `__version__`; `part_of`; the aggregate's injected iden
 and the aggregate's `stream_category`; the projector's `aggregates`,
 `stream_categories`, and `subscription` (a projector carries no `options`);
 `invariants`; the empty element maps every cluster requires; the domain metadata;
-the elements index; and the checksum. The complete builder output is #1472's to
-produce. Promotion is one deterministic step, and it is the same step whether the
-fragment came from a text model or from `protean add`.
+the elements index; and the checksum. The generator produces the complete
+builder output. Promotion is one deterministic step, and it is the same step
+whether the fragment came from a text model or from `protean add`.
 
-Because the fragment is IR field entries plus names, there is one field vocabulary, so
-a field's shape lives in the IR field model alone. Widening the grammar to reach a new
-IR field kind still updates the type table, the parser, the emitter, and the
-eligibility check together; the gain is that no second field representation exists to
-drift from the IR.
+Because the fragment is IR field entries plus names, there is one field
+vocabulary, so only the IR field model defines a field's shape. To widen the
+grammar to a new IR field kind, a Protean maintainer still updates the type
+table, the parser, the emitter, and the eligibility check together. The gain is
+that no second field representation exists to drift from the IR.
 
 v1 targets the default identity (`identity_type = string`, `identity_strategy =
 uuid`), so the aggregate id is a UUID stored as a string and the surfaced `<slug>_id`
 reference is an unconstrained `string` or `identifier`. The author writes that
-`<slug>_id` field on the event and projection; promotion does not inject it but wires
-the generated `create` to set it from the aggregate's id, so promotion validates the
-relationship. The read side is optional;
-when omitted, the generator derives a default projection that mirrors the event's
-fields (the `<slug>_id` becoming the `Identifier` key) and a projector that consumes
-the event, so a write-side-only model still passes `protean verify`. The derived-code
-mechanics (the command handler, the generation-gap seam of ADR-0035,
-`Meta.stream_name`, and the per-field declaration forms the generator writes)
-are #1472's contract, gated by that verify.
+`<slug>_id` field on the event and projection, and promotion does not inject
+it. Promotion instead wires the generated `create` to set the field from the
+aggregate's id, so promotion validates the relationship. The read side is
+optional, and when the model omits it, the generator derives a default
+projection and projector. The default projection mirrors the event's fields
+(the `<slug>_id` becoming the `Identifier` key), and the default projector
+consumes the event, so a write-side-only model still passes `protean verify`.
+The derived-code mechanics (the command handler, the generation-gap seam of
+ADR-0035, `Meta.stream_name`, and the per-field declaration forms the generator
+writes) are the generator's contract, and `protean verify` checks them.
 
 ### The vocabulary map
 
@@ -230,28 +236,30 @@ flag). Automations and multi-slice models are a later grammar.
 The grammar stays aligned with the renderer's vocabulary through a structural round
 trip, run as a build-time test, with no live sync between the two.
 
-Issue #1471 adds an **emitter** that reads a full IR and a cluster FQN, resolving the
-slice's read side through the top-level `projections` map, and produces grammar text
-for the covered subset: the participants' names, their authored fields, and the
-wiring (`for`, `consumes`). Parsing that text produces an IR fragment. The
-conformance test asserts the fragment matches the slice on the covered subset. The
-comparison covers the shared IR element and field shapes plus the authored wiring (the
-grammar's `for` and `consumes` keys, which promotion normalizes to `projector_for` and
-`handlers`). Over that covered subset the emitter and parser are inverses, checked as a
-property.
+Issue #1471 adds an **emitter** that reads a full IR and a cluster FQN and
+resolves the slice's read side through the top-level `projections` map. The
+emitter produces grammar text for the covered subset: the participants' names,
+their authored fields, and the wiring (`for`, `consumes`). Parsing that text
+produces an IR fragment. The conformance test asserts the fragment matches the
+slice on the covered subset. The comparison covers the shared IR element and
+field shapes plus the authored wiring (the grammar's `for` and `consumes` keys,
+which promotion normalizes to `projector_for` and `handlers`). Over that
+covered subset the emitter and parser are inverses, checked as a property.
 
-A cluster is **eligible** when its covered data (the authored fields, the identity,
-and the wiring) is expressible in the grammar: authored fields within the eight types
-and two constraints, the injected-id identity, the field-set relationships between the
-command, event, and projection that the worked example shows, and framework-default
-options. Derived metadata the round trip does not compare (element descriptions from
-docstrings, FQNs) is ignored, so it never makes a cluster ineligible. A message's
-version is also outside the grammar, but the covered subset is version-1 messages:
-the grammar has no version syntax, so promotion recreates a version-1 message, and a
-command or event at any other version is ineligible. The emitter raises on an
-ineligible cluster, so it never drops a covered participant silently. The exact
-eligibility rules are #1471's, enforced by this conformance test; the ADR fixes that
-eligibility is decided against the IR over the covered subset.
+A cluster is **eligible** when the grammar can express its covered data: the
+authored fields, the identity, and the wiring. That means authored fields
+within the eight types and two constraints, the injected-id identity, the
+field-set relationships between the command, event, and projection that the
+worked example shows, and framework-default options. The eligibility check
+ignores derived metadata the round trip does not compare (element descriptions
+from docstrings, FQNs), so that metadata never makes a cluster ineligible. A
+message's version is also outside the grammar, but the covered subset is
+version-1 messages: the grammar has no version syntax, so promotion recreates a
+version-1 message, and a command or event at any other version is ineligible.
+The emitter raises on an ineligible cluster, so it never drops a covered
+participant silently. The work in issue #1471 sets the exact eligibility rules,
+and this conformance test enforces them. This ADR fixes that eligibility is
+decided against the IR over the covered subset.
 
 Field order is not part of the contract. The IR keys fields by name in a map, and
 `IRBuilder` canonicalizes them by name, so a fragment carries no declaration order.
@@ -271,24 +279,25 @@ infers nothing. Every violation is reported with its line number, through
 `ModelParseError`.
 
 `emit_model` reads a full IR and a cluster FQN and writes grammar text back for
-the covered subset. On a cluster the grammar cannot express, it raises
-`ModelEmitError` rather than emitting a partial model, so nothing is dropped in
-silence and then lost on the way back. It refuses:
+the covered subset. When the grammar cannot express a cluster, `emit_model`
+raises `ModelEmitError` and emits no partial model. So the emitter never drops
+part of a cluster silently, and the parse back to IR loses nothing. It refuses:
 
 - a field type or constraint outside the eight types and two constraints the
   grammar carries;
-- a shape the grammar has no room for;
+- a shape the grammar cannot express;
 - behaviour the grammar carries no syntax for: a non-default element option, a
   declared invariant, a published event, or a domain identity other than the
   default.
 
 A build-time conformance test round-trips a real `to_ir()` slice through
-`emit_model` and `parse_model` and matches it against the worked example below,
-so the grammar stays aligned with the renderer's vocabulary with no live sync.
+`emit_model` and `parse_model`. The test matches the result against the worked
+example below, so the grammar stays aligned with the renderer's vocabulary with
+no live sync.
 
 `parse_model` is the parser half of `protean new --from-model` (#1347). The
-generator that promotes a fragment into a project is #1472, documented in the
-[`protean add` reference](../reference/cli/project/add.md).
+generator (#1472) promotes a fragment into a project, and the
+[`protean add` reference](../reference/cli/project/add.md) documents it.
 
 ### Normative worked example
 
@@ -333,68 +342,76 @@ referenced by name; the `fields` maps are unordered):
 ```
 
 The field-entry shape is what `IRBuilder` emits: the `String` with `max_length` matches
-`customer_name` in `ir/examples/ordering-ir.json`. The plain-`String` `order_id`
-reference on the event and the `Identifier` `key` on the projection are what `protean
-add aggregate Order` generates (`scaffold/add_plan.py`, ADR-0030, ADR-0035); a
-hand-written aggregate in `ordering-ir.json` instead carries its event reference as an
-`Identifier`. Promoted, this fragment is that default slice. A write-side-only model
-omits the last two blocks; the generator derives the default `OrderSummary` and
+`customer_name` in `ir/examples/ordering-ir.json`.
+`protean add aggregate Order` generates the plain-`String` `order_id` reference
+on the event and the `Identifier` `key` on the projection
+(`scaffold/add_plan.py`, ADR-0030, ADR-0035). A hand-written aggregate in
+`ordering-ir.json` instead carries its event reference as an `Identifier`.
+When the generator promotes this fragment, the result is the default slice that
+`protean add aggregate Order` generates. A write-side-only model omits the last
+two blocks; the generator derives the default `OrderSummary` and
 `OrderProjector`.
 
 ## Consequences
 
-- **One canonical.** The text model is an authoring surface over the IR, so there is
-  a single field vocabulary and a single structural contract. #1471 and #1472 build
-  against the IR schema, so no second field representation exists to drift from it.
-  Widening the grammar to a new IR field kind still updates the grammar, parser,
-  emitter, and eligibility check together, as the authored-IR profile above states.
+- **One canonical.** The text model is an authoring surface over the IR, so
+  there is a single field vocabulary and a single structural contract. The
+  parser (#1471) and the generator (#1472) build against the IR schema, so no
+  second field representation exists to drift from it. To widen the grammar to
+  a new IR field kind, a Protean maintainer still updates the grammar, parser,
+  emitter, and eligibility check together, as the authored-IR profile section
+  above states.
 - **No middle column to drift.** The vocabulary map is grammar term to IR key. The
   conformance round trip is IR to text to IR, a true inverse, checked as a property.
   The class of defect that comes from keeping two representations aligned by hand does
   not exist here.
-- **No separate spec version.** The earlier draft's `SliceSpec` carried its own
-  `spec_version`. The authored fragment is IR-shaped, so its field entries track the IR
-  schema and need no parallel version. `ir_version` identifies the IR format, so it does
-  not version an authored model or its contract; the grammar's own evolution is versioned
-  by this ADR.
+- **No separate spec version.** The first draft of this ADR defined a
+  `SliceSpec` type, and that type carried its own `spec_version`. The authored
+  fragment is IR-shaped, so its field entries track the IR schema and need no
+  parallel version. `ir_version` identifies the IR format, so it does not
+  version an authored model or its contract. We version the grammar's own
+  changes through this ADR.
 - **The grammar is small:** eight types, two constraints, five block kinds, one slice.
   A person can write a model without a manual, and the parser can name the line of any
   mistake. The first grammar cannot express automations, multi-slice models, entities,
   or value objects; each is a later addition to this ADR and the parser together.
-- **The scope line is explicit.** The generated code's validity stays #1472's
-  contract, gated by `protean verify`. This ADR bounds the input so that gate is
-  reachable; it does not enumerate the parser's reserved-name rules or the generator's
-  per-field emission, which live with their implementations.
+- **The scope line is explicit.** The generator (#1472) stays responsible for
+  valid generated code, and `protean verify` checks it. This ADR bounds the
+  input so that the generated project can pass `protean verify`. It does not
+  list the parser's reserved-name rules or the generator's per-field emission,
+  which their implementations define.
 
 ## Alternatives Considered
 
 **A separate slice-spec type as the parse target.** The parser could return frozen
 `SliceSpec` / `ElementSpec` / `SliceField` dataclasses with their own type strings,
-serialized the ADR-0033 house-style way. This was the first draft of this ADR. It
-re-declares a subset of the IR's field model, so the two drift, and it needs a
-hand-maintained vocabulary map to stay aligned. That map is a standing correctness
-liability. Reusing the IR field model removes the second vocabulary and the map's
-middle column.
+serialized the ADR-0033 house-style way. This was the first draft of this ADR.
+That design re-declares a subset of the IR's field model, so the two field
+models drift. It also needs a hand-maintained vocabulary map to keep them
+aligned. That map is a standing correctness liability. Reusing the IR field
+model removes the second vocabulary and the map's middle column.
 
 **Parse into a full IR document.** The grammar could target a schema-valid IR. The IR
 is a fully-resolved whole-domain snapshot with many derived keys (checksums, FQNs,
 message types, stream categories, empty element maps for every category) that do not
-exist before code. The author writes a fragment; the generator resolves it. Requiring
-a full IR from the author would push the resolution work onto the person.
+exist before code. The author writes a fragment; the generator resolves it. If
+the grammar targeted a full IR, the author would have to do the resolution work
+that the generator does.
 
 **Reuse the renderer's Mermaid output as the text format.** Mermaid encodes the
 diagram's shapes and edges. It leaves out the fields the generator needs, and it is
-built to be drawn, so nothing parses it back. A grammar written for reading carries
-the fields and reports a clear line error on a mistake.
+built to be drawn, so nothing parses it back. A grammar written for reading
+carries the fields. Its parser reports a clear line error on a mistake.
 
 **Round trip through a spec (spec to text to spec).** The emitter could build text
 from a hand-built spec and parse it back. That checks two pieces of new code against
-each other, which can share one wrong assumption. Emitting from the IR checks the
-grammar against the vocabulary the renderer already emits, which is the drift the
-conformance test exists to catch.
+each other, which can share one wrong assumption. When the emitter reads from
+the IR, the conformance test checks the grammar against the vocabulary the
+renderer already emits. Drift between those two vocabularies is what the test
+exists to catch.
 
 **Infer the wiring from names.** The parser could attach the command and event to the
 aggregate by name prefix, or invent a projection from the aggregate. A scaffold that
 infers can produce code the author did not intend. A one-slice model has one
-aggregate, so the command and event attach to it structurally, and the read side is
-written out or left to the generator's stated default.
+aggregate, so the command and event attach to it structurally. The author
+writes the read side out or leaves it to the generator's stated default.

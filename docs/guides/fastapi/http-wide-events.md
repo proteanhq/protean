@@ -4,9 +4,9 @@
     A **wide event** is one rich, structured log line per unit of work (a
     handled message, an HTTP request) that carries every field an operator
     might want to query on. It replaces a stream of thin events that you later
-    have to join by correlation ID. The pattern comes from Jamie Brandon's
-    [*Logging Sucks, So Use Wide Events*](https://loggingsucks.com) and
-    Stripe's [canonical log lines](https://brandur.org/canonical-log-lines).
+    have to join by correlation ID. The pattern comes from Boris Tane's
+    [*Logging Sucks*](https://loggingsucks.com) and Stripe's
+    [canonical log lines](https://brandur.org/canonical-log-lines).
     See the [logging concept page](../../concepts/observability/logging.md#the-wide-event-pattern)
     for the full rationale.
 

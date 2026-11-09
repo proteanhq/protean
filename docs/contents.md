@@ -58,8 +58,8 @@ A guided, hands-on tutorial building a complete online bookstore.
 
 ## Guides
 
-Comprehensive reference organized by topic. Each guide goes deep on a
-specific area.
+Comprehensive reference organized by topic. Each guide covers one area
+in detail.
 
 - [Guide Overview](./guides/index.md): How the guides are organized and where to start.
 - [How Do I...?](./how-do-i.md): Task-oriented index: find the right guide by what you're trying to do.
@@ -73,7 +73,7 @@ specific area.
 
 ### Set Up the Domain
 
-- [The Domain Object](./guides/compose-a-domain/index.md): The composition root that manages elements, configuration, and adapters.
+- [The Domain Object](./guides/compose-a-domain/index.md): The composition root that registers elements, holds configuration, and connects adapters.
 - [Register Elements](./guides/compose-a-domain/register-elements.md): How elements register themselves with the domain.
 - [Initialize the Domain](./guides/compose-a-domain/initialize-domain.md): Call `init()` to wire everything together.
 - [Activate the Domain](./guides/compose-a-domain/activate-domain.md): Bind the domain to a context for use.
@@ -178,7 +178,7 @@ specific area.
 - [Running the Server](./guides/server/index.md): Start, configure, and operate the Protean server.
 - [Harden the Server](./guides/server/hardening.md): Raise pool limits, enable K8s health probes, run DLQ maintenance, pick subscription profiles, emit OTEL metrics, and shut down gracefully.
 - [Tuning Subscriptions](./guides/server/tuning-subscriptions.md): Pick a profile, override one setting, cap stream growth, use the circuit breaker, process events for one entity in order, and check consumer lag.
-- [Server Hardening Reference](./reference/server/hardening.md): Every option, default, metric, and profile shipped by the hardening epic.
+- [Server Hardening Reference](./reference/server/hardening.md): Every option, default, metric, and profile for hardening the server.
 - [Error Handling](./guides/server/error-handling.md): Retry logic, dead letter queues, and recovery mechanisms for message processing failures.
 - [Dead Letter Queues](./guides/server/dead-letter-queues.md): Discover, inspect, replay, and purge messages that failed after retries were exhausted.
 - [Using the Outbox](./guides/server/outbox.md): Reliably publish domain events via the outbox pattern; configuration, retries, cleanup.
@@ -385,7 +385,7 @@ Protean supports but does not enforce.
 ### Testing & Infrastructure
 
 - [Test Event-Driven Flows End-to-End](./patterns/testing-event-driven-flows.md): Three testing levels for event chains: domain unit tests, sync flow tests, and async E2E tests with the Engine in test mode.
-- [Setting Up and Tearing Down Databases for Tests](./patterns/setting-up-and-tearing-down-database-for-tests.md): Manage database schema and test data lifecycles separately for fast, isolated integration tests.
+- [Setting Up and Tearing Down Databases for Tests](./patterns/setting-up-and-tearing-down-database-for-tests.md): Set up and tear down the database schema separately from test data, for fast, isolated integration tests.
 
 ### Operations
 
@@ -399,7 +399,7 @@ Protean supports but does not enforce.
 
 Design reasoning and internal architecture for contributors and advanced users.
 
-- [Internals Overview](./concepts/internals/index.md): What this section covers.
+- [Internals Overview](./concepts/internals/index.md): The design reasoning behind Protean's internal architecture.
 - [Field System](./concepts/internals/field-system.md): How FieldSpec translates domain vocabulary to Pydantic, and why three definition styles are supported.
 - [Shadow Fields](./concepts/internals/shadow-fields.md): How ValueObject and Reference fields are flattened into database columns via shadow fields.
 - [Query System](./concepts/internals/query-system.md): How the Repository → DAO → QuerySet → Provider chain works, Q object expression trees, lookup resolution, and lazy evaluation.
@@ -412,7 +412,7 @@ Design reasoning and internal architecture for contributors and advanced users.
 ## Migration
 
 - [Compatibility Reference](./reference/compatibility/index.md): Breaking change rules, three-tier taxonomy, deprecation lifecycle, and config.toml reference.
-- [Migrating to 0.18](./reference/migration/v0-18.md): Upgrade guide for the 0.18 release. Covers the right-sized dependency surface: the web/observatory stack, the shell, and the scaffolder move behind install extras.
+- [Migrating to 0.18](./reference/migration/v0-18.md): Upgrade guide for the 0.18 release. Covers the smaller default dependency set: the web/observatory stack, the shell, and the scaffolder now need an install extra.
 - [Migrating to 0.17](./reference/migration/v0-17.md): Upgrade guide for the 0.17 API-consolidation release. Covers the `event_sourced` option rename, the internalized `is_fact_event` option, and the email subsystem deprecation.
 - [Migrating to 0.16](./reference/migration/v0-16.md): Upgrade guide for the 0.16 stability release. Covers the outbox column-bounds structural change and its per-backend `ALTER TABLE` recipes.
 - [Migrating to 0.15](./reference/migration/v0-15.md): Upgrade guide for the Pydantic v2 foundation release. Covers breaking changes, field style migration, and new features.
@@ -425,9 +425,9 @@ Design reasoning and internal architecture for contributors and advanced users.
 - [Philosophy & Design Principles](./concepts/philosophy/index.md): The convictions that guide Protean's design.
 - [The Always-Valid Domain](./concepts/philosophy/always-valid.md): How four validation layers guarantee domain objects are never invalid.
 - [Applicability Charter](./reference/applicability.md): What Protean is a good fit for, and the shapes of systems it is not, with the reason in each case.
-- [Consistency & Delivery Guarantees](./reference/guarantees.md): Per-port,
-  per-adapter ordering, delivery, consistency, and isolation, the contract
-  conformance and property tests cite.
+- [Consistency & Delivery Guarantees](./reference/guarantees.md): The ordering,
+  delivery, consistency, and isolation guarantees of each port and adapter.
+  Conformance and property tests cite this contract.
 - [Versioning Policy](./reference/versioning-policy.md): What a version number promises: code that runs warning-free on 1.N runs unmodified on 1.N+1.
 - [Stable Surface](./reference/stable-surface.md): Which imports, options, config keys, and commands the compatibility contract covers, tier by tier.
 - [Why Protean?](./why-protean.md): Four capabilities that set Protean apart: domain compiler, always-valid domain, progressive architecture, infrastructure portability.

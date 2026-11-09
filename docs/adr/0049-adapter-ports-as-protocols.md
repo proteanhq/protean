@@ -13,7 +13,7 @@ the operations an adapter writes, and it held the framework features built on
 those operations: aggregate loading, retries, dead-letter handling and
 unit-of-work recording.
 
-The two jobs pulled the base classes apart:
+Before this decision, the ports had these problems:
 
 - An adapter author read the whole base class to find the methods an adapter
   must write. Most of its methods were framework features.
@@ -61,21 +61,23 @@ This decision keeps four earlier ones:
   member, record and flag.
 
 If the Port listed features such as aggregate loading, every adapter would
-implement or inherit them, and the base class would return under another name.
-In the service, each feature has one implementation that every adapter gets.
+implement or inherit them. The Port would then be the old base class under
+another name. In the service, each feature has one implementation that every
+adapter gets.
 
 ### 2. A Port holds no logic
 
 A Port gives a method body only for a no-op, such as `create_schema()` on a
 store with no schema. The body is `return None` (or the empty value of the
 return type), because mypy treats a Protocol method whose body is `...` as
-abstract. Retry policy, TTL defaults, aggregate loading and unit-of-work
-binding live in the service.
+abstract. The service holds retry policy, TTL defaults, aggregate loading and
+unit-of-work binding.
 
 A no-op default fits only an operation whose absence changes no outcome for the
-caller. An operation whose absence the caller needs to know about, such as
-trimming a stream to a retention limit, is a sub-protocol behind its own flag
-(decision 4), so the service can see that the adapter lacks it.
+caller. Some operations, such as trimming a stream to a retention limit, change
+the outcome for the caller when an adapter lacks them. Each such operation is a
+sub-protocol behind its own flag (decision 4), and the service reads that flag
+to learn whether the adapter has the operation.
 
 ### 3. An adapter subclasses its Port, and strict mypy checks it
 
@@ -97,9 +99,9 @@ members and mypy's check of signatures.
 
 ### 4. A declared flag requires its sub-protocol
 
-- An optional feature with its own methods is a sub-protocol of the Port,
-  unlocked by one capability flag, such as `DeadLetterQueuePort` for
-  `DEAD_LETTER_QUEUE`.
+- An optional feature with its own methods is a sub-protocol of the Port, and
+  one capability flag requires that sub-protocol, such as `DeadLetterQueuePort`
+  for `DEAD_LETTER_QUEUE`.
 - A flag without a sub-protocol declares a guarantee, such as durability, or
   gates members or arguments of the core Port, such as the schema operations
   behind `SCHEMA_MANAGEMENT`.
@@ -154,10 +156,10 @@ that needs the native client calls the service's `get_connection()`
 `protean.infra` holds the services, the containers and the adapter registry, in
 flat modules. `protean.adapters` holds adapter implementations only.
 
-The `protean check` diagnostic that reports a domain module importing
-`protean.adapters` then flags infrastructure imports alone.
-`protean.domain.infrastructure` keeps its name and its job, database and outbox
-setup.
+The `protean check` diagnostic reports a domain module that imports
+`protean.adapters`. After this change, that diagnostic flags infrastructure
+imports alone. `protean.domain.infrastructure` keeps its name and its job,
+database and outbox setup.
 
 ### 8. Registered adapters share one constructor and one registry
 
@@ -213,7 +215,7 @@ without narrowing it, and mypy would not report a wrong assumption.
   service's `read_all` takes `page_size`, because it sets the size of each
   page.
 - The event-store Port uses Message DB's function names where they exist, such
-  as `write_message` and `get_stream_messages`, and has one read member per
+  as `write_message` and `get_stream_messages`. It has one read member per
   scope: stream, category and all. The caller states the scope by the member it
   calls, and the adapter does not infer it from the stream name. The service
   computes a stream's version and a category's head position from the
@@ -229,17 +231,17 @@ without narrowing it, and mypy would not report a wrong assumption.
 
 Each port's conformance suite lives under `tests/conformance/<port>/` and stays
 out of the wheel. `protean test test-adapter --port <port>` runs it from a
-source checkout. One pytest plugin selects the adapter for every port, and a
-test declares the flag it needs with one marker, which the plugin reads against
-the adapter's declared capabilities.
+source checkout. One pytest plugin selects the adapter for every port. A test
+declares the flag it needs with one marker, and the plugin checks that marker
+against the adapter's declared capabilities.
 
 One plugin and one marker give every port the same way to select an adapter
 and skip a test.
 
 ### 13. The port break follows the stable-surface tiers
 
-- The `Base*` adapter classes are removed. Code that the adapters of one
-  technology share stays in that technology's adapter package, as the
+- The `Base*` adapter classes are removed. The adapters of one technology keep
+  their shared code in that technology's adapter package. For example, the
   SQLAlchemy dialects share one provider class. `BaseDatabaseModel` stays as
   the base for model classes.
 - A Provisional or Internal name in `docs/reference/stable-surface.md`, such as
@@ -261,8 +263,8 @@ and skip a test.
 A change that applies to every call of an adapter operation, such as a span, a
 timer or a retry, then goes in one service method. Before this decision the
 base classes were that place, because every call went through them. If
-framework code called the adapter directly, such a change would first move
-every caller onto the service.
+framework code called the adapter directly, a contributor would first move
+every caller onto the service, then make the change.
 
 ### 15. A service method is public only when application code calls it
 
@@ -332,8 +334,8 @@ framework would become a public name that application code may call.
   the `protean check` diagnostic on `protean.adapters` imports would flag
   framework imports.
 - **Give a service only the methods that add behaviour, and let framework code
-  call the adapter for the rest.** Rejected: a later change that applies to
-  every call would first move every caller onto the service.
+  call the adapter for the rest.** Rejected: for a later change that applies to
+  every call, a contributor would first move every caller onto the service.
 - **Expose the adapter as a public `adapter` attribute.** Rejected: application
   code could call the adapter and skip the service's unit-of-work recording
   and retries.

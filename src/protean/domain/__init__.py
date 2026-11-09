@@ -92,7 +92,10 @@ from protean.core.domain_service import domain_service_factory
 from protean.core.entity import entity_factory
 from protean.core.event import BaseEvent, domain_event_factory
 from protean.core.event_handler import event_handler_factory
-from protean.core.event_sourced_repository import event_sourced_repository_factory
+from protean.core.event_sourced_repository import (
+    BaseEventSourcedRepository,
+    event_sourced_repository_factory,
+)
 from protean.core.process_manager import process_manager_factory
 from protean.core.projection import BaseProjection, projection_factory
 from protean.core.projector import projector_factory
@@ -183,6 +186,7 @@ from .handler_setup import HandlerConfigurator
 from .infrastructure import InfrastructureManager
 from .query_processor import QueryProcessor
 from .resolver import ElementResolver
+from .routing import MessageRouter
 from .type_manager import TypeManager
 from .validation import DomainValidator
 
@@ -376,6 +380,8 @@ class Domain:
         self.event_store: EventStore = EventStore(self)
         self.brokers: Brokers = Brokers(self)
         self.caches: Caches = Caches(self)
+        # Rebuilt from the registry on every `_initialize`; empty until then.
+        self._router: MessageRouter = MessageRouter()
 
         # Cache for holding Model to Entity/Aggregate associations.
         # Structure mirrors Providers._repositories: keyed by the element's
@@ -934,6 +940,8 @@ class Domain:
         self.caches._initialize()
         self.brokers._initialize()
         self.event_store._initialize()
+        # A fresh router on every init, so a re-init never keeps stale routes.
+        self._router = MessageRouter(self.registry)
 
     def close(self) -> None:
         """Close all domain infrastructure connections and release resources.
@@ -2263,7 +2271,7 @@ class Domain:
         Returns:
             List[BaseEventHandler]: Event Handlers that have registered to consume the event
         """
-        return self.event_store.handlers_for(event)
+        return self._router.handlers_for(event)
 
     ############################
     # Projector Functionality  #
@@ -2277,7 +2285,7 @@ class Domain:
         Returns:
             List[BaseProjector]: Projectors that have registered to consume the projection
         """
-        return self.event_store.projectors_for(projection_cls)
+        return self._router.projectors_for(projection_cls)
 
     ############################
     # Repository Functionality #
@@ -2300,7 +2308,7 @@ class Domain:
             # subclass but is consumed repository-like (add/get/find_by) by
             # callers; cast to keep this method's public contract stable.
             repository = cast(
-                BaseRepository, self.event_store.repository_for(element_cls)
+                BaseRepository, self._event_sourced_repository_for(element_cls)
             )
         else:
             # A cache-backed projection has no provider, so the lookup below
@@ -2324,6 +2332,18 @@ class Domain:
             # This is a regular aggregate or a projection
             repository = self.providers.repository_for(element_cls)
         return repository
+
+    def _event_sourced_repository_for(
+        self, aggregate_cls: Any
+    ) -> BaseEventSourcedRepository:
+        """Return a new event-sourced repository instance for the aggregate."""
+        repository_cls: type[BaseEventSourcedRepository] = type(
+            aggregate_cls.__name__ + "Repository", (BaseEventSourcedRepository,), {}
+        )
+        repository_cls = event_sourced_repository_factory(
+            repository_cls, self, part_of=aggregate_cls
+        )
+        return repository_cls(self)
 
     ###########################
     # ReadView Functionality #
