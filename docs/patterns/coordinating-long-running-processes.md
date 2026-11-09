@@ -97,7 +97,7 @@ Protean provides a `@domain.process_manager` element with:
 
 ### The Aggregates
 
-Four aggregates participate in order fulfillment, `Order`, `Payment`, `Inventory`, and `Shipping`. Each
+Four aggregates participate in order fulfillment: `Order`, `Payment`, `Inventory`, and `Shipping`. Each
 publishes events that the PM reacts to, and each accepts commands that the PM
 issues:
 
@@ -216,10 +216,10 @@ the event was delivered twice), the handler is a no-op.
 Events from different aggregate streams have no guaranteed ordering.
 `PaymentConfirmed` can arrive before `OrderPlaced`. Two strategies:
 
-- **Make the early arrival impossible**: `PaymentConfirmed` can arrive before
-  `OrderPlaced` has created the PM. If the PM does not exist yet, Protean skips
-  the event and does not deliver it again. This is safe when the event can only
-  follow a command the PM issued, as `PaymentConfirmed` follows
+- **Make the early arrival impossible**: If the PM does not exist when
+  `PaymentConfirmed` arrives, because `OrderPlaced` has not created the PM yet,
+  Protean skips the event and does not deliver it again. This is safe when the
+  event can only follow a command the PM issued, as `PaymentConfirmed` follows
   `RequestPayment` here.
 
 - **Design correlation to make ordering irrelevant**: Structure each

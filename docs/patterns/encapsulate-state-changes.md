@@ -36,8 +36,8 @@ The problems are structural:
   service that handles admin overrides, and the batch job that auto-ships after
   payment confirmation. Each location has its own version of the rules.
 
-- **Invariants can't protect the aggregate**: Protean's `@invariant.post`
-  decorator runs after methods are called on the aggregate. But if the handler
+- **Invariants can't protect the aggregate**: Protean checks `@invariant.post`
+  invariants after each field assignment on the aggregate. But if the handler
   sets fields directly, the aggregate's methods are never called, and
   invariants become the only defense. Invariants catch violations after the
   fact. They can't encode the business process itself.

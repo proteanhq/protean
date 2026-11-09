@@ -65,9 +65,10 @@ every re-run. The hand-owned subclass (`aggregate.py`) holds your invariants and
 behavior, and `add` writes it once and never overwrites it. Every planned file
 records an `ownership` marker, `generated` or `hand_owned`. The preview shows
 the marker next to each path (as `generated` or `hand-owned`), so you can see
-which files a re-run would refresh and which it would leave alone. `add` still
-only previews the plan today; the applier that honors the marker on disk comes
-in a later release.
+which files a re-run would refresh and which it would leave alone. `add` writes
+the plan today, but its applier only creates files: it stops when any planned
+file already exists, and it does not read the marker. An applier that honors
+the marker on a re-run comes in a later release.
 
 ## How the name is used
 

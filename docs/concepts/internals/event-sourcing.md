@@ -131,8 +131,8 @@ Pydantic validation**. Uses `__new__` to skip `__init__` entirely:
 7. Sets up HasMany pseudo-methods (`add_*`, `remove_*`, etc.)
 8. Discovers invariants from the MRO
 
-`_create_for_reconstitution()` follows the same pattern
-as `BaseEntity.__deepcopy__`.
+`_create_for_reconstitution()` follows the same pattern as the
+`BaseEntity.__deepcopy__` method.
 
 ### `_create_new(**identity_kwargs)`
 

@@ -32,7 +32,8 @@ retry re-posts to the partner. The webhook fires twice for one order.
 
 ## The Pattern
 
-A handler method either persists or talks to the outside world. Not both.
+A handler method either persists or talks to the outside world, and never
+does both.
 
 Split the work into two methods:
 

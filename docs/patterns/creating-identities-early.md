@@ -66,9 +66,10 @@ Identity is what separates entities and aggregates from value objects. Two
 orders. Two with different fields but the same identity are one order at two
 points in time.
 
-An aggregate without an identity cannot be told apart from another aggregate or followed from one point in time to the next. Nothing can address it, no
-command or event can reference it, and it cannot enforce any rule that depends on
-knowing which one it is.
+An aggregate without an identity cannot be told apart from another aggregate
+or followed from one point in time to the next. Nothing can address it, no
+command or event can reference it, and it cannot enforce any rule that depends
+on knowing which one it is.
 
 ### Everything else is keyed on it
 
@@ -189,8 +190,8 @@ in whenever it has to be preserved:
 --8<-- "patterns/creating-identities-early/001.py:command"
 ```
 
-With `Identifier` fields, the caller creates the identity, and the command
-handler passes it from the command to the aggregate.
+The `Identifier` field type matches the pattern: the identity starts at the
+caller and moves through the command into the aggregate.
 
 ---
 

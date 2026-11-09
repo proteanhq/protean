@@ -428,8 +428,8 @@ Sharing a class couples their evolution paths.
 
 Events are facts, not requests. A publishing context should not expect or
 depend on a consuming context's reaction. The publisher raises
-`CustomerRegistered` and moves on. Whether Billing creates an account, Support
-creates a contact, or no one reacts at all. The publisher doesn't know and
+`CustomerRegistered` and moves on. It doesn't know whether Billing creates
+an account, Support creates a contact, or no one reacts at all, and it
 doesn't care.
 
 If you need a guaranteed response from another context, use a command-based
@@ -453,7 +453,7 @@ integration (e.g., an API call or a command sent through a broker), not events.
 The pattern is rooted in a core DDD principle: **bounded contexts are
 autonomous**. They own their models, their data, and their rules. The only thing
 they share is identity and events. Sharing only identity and events keeps the
-contexts loosely coupled. The contexts still stay synchronized on the
+contexts loosely coupled, and the shared events keep them synchronized on the
 real-world concepts they all model.
 
 ---

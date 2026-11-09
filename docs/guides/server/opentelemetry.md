@@ -611,7 +611,8 @@ new way commands enter the system), ensure trace continuity:
 
 If you skip either the injection on message creation or the extraction on
 message arrival, the distributed trace breaks at that boundary. See the three
-existing injection/extraction points in [ADR-0008](../../adr/0008-centralized-telemetry-gateway-and-traceparent-bridging.md)
+existing injection/extraction points in
+[ADR-0008](../../adr/0008-centralized-telemetry-gateway-and-traceparent-bridging.md)
 for reference.
 
 ---

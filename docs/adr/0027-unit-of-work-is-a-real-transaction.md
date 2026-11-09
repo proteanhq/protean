@@ -122,7 +122,7 @@ Negative:
 - This changes a load-bearing subsystem that #1087/#1244 recently stabilized.
   We must validate the change carefully before we ship it.
 
-What can go wrong under the real-transaction model:
+Sharp edges of the real-transaction model:
 
 A real transaction has sharp edges that the AUTOCOMMIT model hid. None of these
 edges is new to this change, because the Memory and SQLite adapters already run
@@ -163,7 +163,7 @@ Remaining as guidance (properties of any real transaction, not framework bugs):
   inside a UoW. Enable `READ_COMMITTED_SNAPSHOT` on the database for MVCC-style
   reads if that blocking is a problem.
 
-How the change is migrated and validated:
+Migration and validation:
 
 The change touches OCC (ADR-0013), `_claim`, `_commit_if_standalone`, the standalone
 read/write paths, and the connection lifecycle. The change ships with a

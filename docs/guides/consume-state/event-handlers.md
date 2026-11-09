@@ -323,8 +323,8 @@ automatic retries and dead-letter queuing for failed messages:
     to `max_retries` (default 3), set under
     `[server.event_store_subscription]`. A position that still fails is marked
     exhausted and skipped. The exhausted positions are the event store's
-    dead-letter queue. You list, inspect, replay, and purge them
-    with [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md).
+    dead-letter queue. You list, inspect, replay, and purge them with
+    [`protean eventstore dlq`](../../reference/cli/data/eventstore-dlq.md).
 
 See [Server → Configuration](../../reference/server/configuration.md) for detailed
 configuration options and the priority hierarchy.

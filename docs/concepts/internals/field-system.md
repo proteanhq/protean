@@ -70,8 +70,8 @@ model:
 --8<-- "concepts/internals/field-system/002.py:what_pydantic_sees"
 ```
 
-Pydantic has no awareness that FieldSpec ever existed. FieldSpec is a
-compile-time translation layer and is not a runtime abstraction. After
+Pydantic has no awareness that FieldSpec ever existed, by design: FieldSpec
+is a compile-time translation layer, not a runtime abstraction. After
 resolution, Protean domain elements ARE Pydantic models with full access to
 validation, serialization, JSON Schema generation, and the broader Pydantic
 ecosystem.
@@ -265,13 +265,16 @@ of truth for field discovery.
 
 Annotation-style field definitions are incompatible with PEP 563 deferred
 evaluation. When `from __future__ import annotations` is active, Python
-stringifies all annotations at definition time, `String(max_length=50)` becomes the string `"String(max_length=50)"`. The
-metaclass never sees the FieldSpec instance, so resolution cannot happen.
+stringifies all annotations at definition time, so `String(max_length=50)`
+becomes the string `"String(max_length=50)"`. The metaclass never sees the
+FieldSpec instance, so resolution cannot happen.
 
 This is a fundamental limitation of placing callable objects in annotation
 positions under deferred evaluation. PEP 649 (deferred evaluation of
 annotations) resolves this in Python 3.14+ by lazily evaluating annotations
-rather than stringifying them.
+rather than stringifying them. On Python 3.14, a module that keeps
+`from __future__ import annotations` still gets strings, so the limitation
+stays for that module.
 
 **Workaround:** Use assignment style (`name = String(max_length=50)`) or raw
 Pydantic style in modules that require `from __future__ import annotations`.

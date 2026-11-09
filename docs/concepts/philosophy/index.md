@@ -185,8 +185,8 @@ maintainers use the same test to decide what belongs in the framework itself:
 - **DDD purity over convenience**: Aggregates have a single surrogate identity
   rather than composite keys. Validation runs in the domain layer as
   invariants, and the database takes no part in it. Hard deletion is an
-  infrastructure escape hatch, and the domain layer has no
-  hard-delete operation.
+  infrastructure escape hatch, and the domain layer has no hard-delete
+  operation.
 - **No abstractions over technology-specific concerns**: Protean wraps no
   technology in a generic layer of its own. When a feature makes sense only for
   some adapters, those adapters implement the feature with their technology's

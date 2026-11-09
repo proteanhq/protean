@@ -25,8 +25,8 @@ these problems:
 
 - **Type safety evaporates**: A `Currency` row and an `OrderStatus` row are the
   same Python type. Nothing stops a handler from assigning a country code where
-  a currency was expected. The compiler can't catch the mistake; only code that
-  inspects the data at runtime can tell them apart.
+  a currency was expected. A type checker can't catch the mistake; only code
+  that inspects the data at runtime can tell them apart.
 
 - **Invariants degrade into deferred lookups**: "An order's status must be one
   of the valid statuses" can no longer be a domain rule. It becomes a query

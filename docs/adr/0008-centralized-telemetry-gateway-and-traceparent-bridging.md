@@ -197,8 +197,8 @@ preserved unchanged.
 
 - The gateway module is a single point of evolution. Every new OTEL
   feature (e.g., span links, baggage) requires adding a helper to
-  `telemetry.py` rather than using OTEL directly. Adopting a new OTEL feature
-  therefore takes more work.
+  `telemetry.py` rather than using OTEL directly. This is by design, but
+  adopting a new OTEL feature takes more work.
 - The "never import opentelemetry elsewhere" rule is enforced by code
   review, not by tooling. A lint rule (e.g., in 3.5 Architecture
   Fitness Functions) could automate this in the future.

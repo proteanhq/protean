@@ -156,7 +156,7 @@ each field individually.
 
 The ten address fields became two `Address` fields. To add a work address, you
 add one more field. The `Address` value object validates itself. You can't
-create a partial address with just a city and no street.
+create a partial address with only a city and no street.
 
 ```python
 --8<-- "patterns/replace-primitives-with-value-objects/007.py:usage"
@@ -319,8 +319,8 @@ These emerge from your specific domain:
 
 Not every string needs to be a value object. A `name` field with no format
 rules, no operations, and no composition is fine as a `String`. Apply the
-extraction tests from the beginning of this pattern, if none apply, keep the
-primitive.
+extraction tests from the beginning of this pattern. If none of them apply,
+keep the primitive.
 
 ### Performance-Critical Paths
 

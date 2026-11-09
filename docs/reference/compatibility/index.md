@@ -186,7 +186,7 @@ The checker understands three evolution mechanisms:
 
 - **Reserved field on an event-sourced aggregate**: Removing a field from an
   event-sourced aggregate is safe only when the aggregate declares the field name
-  in `reserved`. The `reserved` declaration is the whole migration: during
+  in `reserved`. The `reserved` declaration does the migration: during
   replay, Protean drops an assignment to a reserved name (from a retained
   `@apply` handler for a retired event) instead of raising, so the aggregate
   still rebuilds. Protean also drops a call to the `add_<name>` or

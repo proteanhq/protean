@@ -418,7 +418,8 @@ work while in-flight work finishes, without shutting the engine down. `/readyz`
 then reports not-ready so a load balancer stops routing to the pod. Its
 `drained` field turns `true` once that engine has no batch in flight. For the
 probe response bodies, readiness semantics, draining, and FastAPI router
-factory, see [Server Hardening reference](../server/hardening.md#health-checks).
+factory, see
+[Server Hardening reference](../server/hardening.md#health-checks).
 
 #### Claiming Unhandled Messages
 
