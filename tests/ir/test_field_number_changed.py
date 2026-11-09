@@ -408,6 +408,32 @@ class TestGeneratedEventsAreNotChecked:
         assert _number_changes(_run(left, right)) == []
 
 
+class TestPublishedEvent:
+    def test_the_change_is_in_the_report_and_not_in_the_contract_list(self):
+        def build(**fields: Any) -> dict[str, Any]:
+            domain = Domain(name="Shop")
+            order = domain.aggregate(
+                type("Order", (), {"__module__": "shop", "name": String()})
+            )
+            placed = type("Placed", (), {"__module__": "shop", **fields})
+            domain.event(placed, part_of=order, published=True, version=1)
+            domain.init(traverse=False)
+            return IRBuilder(domain).build()
+
+        left = build(amount=Integer(), customer_id=Identifier())
+        right = build(customer_id=Identifier(), points=Integer(renamed_from=["amount"]))
+
+        diff = diff_ir(left, right)
+        report = classify_changes(diff, left, right)
+
+        assert len(_number_changes(report)) == 1
+        contracts = diff["contracts"]
+        assert [c["type"] for c in contracts["renamed_fields"]] == [
+            "contract_field_renamed"
+        ]
+        assert "breaking_changes" not in contracts
+
+
 class TestAvroSafety:
     def test_the_change_type_is_neutral_for_avro(self):
         assert _AVRO_CHANGE_SAFETY["field_number_changed"] == (True, True)

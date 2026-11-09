@@ -2,7 +2,9 @@
 
 ``diff_ir()`` builds ``contracts.breaking_changes`` for published events, and
 ``classify_changes()`` builds the compatibility report over every persisted
-element. For a published event's fields, both lists must flag the same breaks.
+element. For a published event's fields, both lists must flag the same breaks,
+with one exception: a moved Protobuf field number (``field_number_changed``)
+is in the report only and has no contract entry.
 """
 
 from __future__ import annotations
