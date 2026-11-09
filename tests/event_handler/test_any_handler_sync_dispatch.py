@@ -3,7 +3,7 @@
 A ``@handle("$any")`` event handler scoped to an aggregate fired under async
 (Engine) dispatch but was silently skipped under ``event_processing="sync"``
 (the default in tests / the in-memory env), because the synchronous path routes
-through ``EventStore.handlers_for``, which matched only the concrete event
+through ``domain.handlers_for``, whose lookup matched only the concrete event
 ``__type__`` and dropped ``$any``-keyed handlers.
 """
 

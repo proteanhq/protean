@@ -803,7 +803,7 @@ class CommandProcessor:
             Optional[type[BaseCommandHandler]]: Command Handler class registered to
             process the command
         """
-        return self._domain.event_store.command_handler_for(command)
+        return self._domain._router.command_handler_for(command)
 
     @staticmethod
     def _emit_validation_failed(
