@@ -29,7 +29,8 @@ arrives at the same state regardless of how many times the command is delivered.
 ## Idempotency Keys
 
 An idempotency key is a unique token that identifies a specific **request**,
-not a specific data shape or entity. This distinction is critical.
+not a specific data shape or entity. The key tells a retry apart from a new
+request that carries the same data.
 
 Consider two calls that look identical:
 
@@ -43,9 +44,9 @@ domain.process(AddItemToCart(cart_id="c-1", product_id="X", quantity=3))
 ```
 
 These have the same payload, the same entity identifier, but they are
-**two different requests**. The user genuinely wants 6 units total. A system
-that deduplicates based on the command's data would silently swallow the second
-request.
+**two different requests**. The user genuinely wants 6 units total. If a system
+deduplicates based on the command's data, it discards the second request and
+reports no error.
 
 Now consider a retry of the same request:
 
@@ -138,9 +139,9 @@ def on_payment_confirmed(self, event: PaymentConfirmed):
 
 ## Protean's Approach: Three-Layer Idempotency
 
-Protean addresses command idempotency through three independent, complementary
-layers. Each layer provides value on its own. Together they form defense in
-depth.
+Protean provides command idempotency through three independent, complementary
+layers. Each layer provides value on its own. Together they form defense
+in depth.
 
 ```
 Layer 3: Handler-Level Idempotency
@@ -212,11 +213,11 @@ domain.process(command, idempotency_key="req-123")
 3. **Processing failure**: The command is in the event store but processing
    failed. The Redis entry is either absent or marked as error. The caller
    receives the exception and can safely retry with the same idempotency key.
-   The retry goes through from the beginning.
+   The retry runs every step again from the start.
 
 #### Duplicate Behavior
 
-By default, duplicate submissions are **silently acknowledged**, the caller
+By default, Protean **silently acknowledges** duplicate submissions. The caller
 receives the same result as the first submission. This is critical for retry
 safety: a client retrying a failed network request should not get an error
 because the first attempt actually succeeded.
@@ -256,9 +257,9 @@ except DuplicateCommandError as exc:
 
 When no key is provided, Layer 1 is bypassed entirely. Every call to
 `domain.process()` appends to the event store and proceeds with handling. This
-is the appropriate behavior for internal framework use (e.g., saga-generated
-commands where the caller manages idempotency at a higher level) or for
-commands where handler-level patterns provide sufficient protection.
+behavior suits internal framework use, such as saga-generated commands whose
+caller manages idempotency at a higher level. It also suits commands that
+handler-level patterns already protect.
 
 ### Layer 2: Subscription-Level Deduplication
 
@@ -270,14 +271,15 @@ Position tracking alone is not sufficient. If the server processes a command
 but crashes before persisting the updated position, the command will be
 redelivered on restart.
 
-Layer 2 closes this gap by consulting the same Redis idempotency cache that
-Layer 1 writes to. When the subscription picks up a command for processing:
+To stop a redelivered command from running twice, Layer 2 checks the same Redis
+idempotency cache that Layer 1 writes to. When the subscription picks up a
+command for processing:
 
 1. If the command carries an idempotency key, check Redis.
 2. If found with status `success`, skip processing and advance the position.
 3. If not found, process the message via the handler.
-4. On successful processing, write the result to Redis (just as Layer 1
-   would), then advance the position.
+4. On successful processing, write the result to Redis (as Layer 1 would), then
+   advance the position.
 
 For commands **without** idempotency keys, Layer 2 relies on position tracking
 alone, the existing behavior. The subscription advances past messages it has
@@ -346,9 +348,10 @@ ideally at the client.
 Commands that add items, increment counters, or accumulate state need
 explicit deduplication. Processing them twice would produce incorrect state.
 
-When using idempotency keys (the recommended approach), the framework handles
-this at Layers 1 and 2. But as defense-in-depth, or when keys aren't
-available, the handler can track processed commands on the aggregate:
+With idempotency keys, the approach this page recommends, the framework
+deduplicates additive commands at Layers 1 and 2. But as defense-in-depth, or
+when keys aren't available, the handler can track processed commands on
+the aggregate:
 
 ```python
 --8<-- "patterns/command-idempotency/004.py:add_item"
@@ -383,18 +386,18 @@ any conflict. For both cases, pair the aggregate with an idempotency key
 (Layers 1 and 2), or track processed command keys on the aggregate as in the
 additive pattern above.
 
-The conflict surfaces when the unit of work commits, after the handler method
-returns. A `try`/`except ExpectedVersionError` inside the handler never sees it.
-The error says only that another write came first, not that it was the same
+The unit of work raises the conflict when it commits, after the handler method
+returns. A `try`/`except ExpectedVersionError` inside the handler never sees
+it. The error says only that another write came first, not that it was the same
 command. Swallowing it would also drop a different command that happened to
 collide, so leave conflicts to the version retry. The error reaches the caller
 only when the retries run out or `version_retry` is turned off.
 
 ### Cross-Aggregate Commands
 
-Commands that affect multiple aggregates through events are handled by a key
-principle: **each aggregate is independently responsible for its own
-idempotency**.
+When a command changes multiple aggregates through events, follow one key
+principle: **each aggregate is independently responsible for its
+own idempotency**.
 
 The command handler modifies only the primary aggregate. Downstream aggregates
 are modified through event handlers, each in its own transaction.
@@ -412,8 +415,8 @@ the handler again. Make the event handler idempotent itself, as described in
 ### External Side Effects
 
 External side effects (sending emails, calling payment APIs, posting to
-third-party services) cannot be made idempotent by the framework alone. The
-developer must handle these explicitly.
+third-party services) cannot be made idempotent by the framework alone. You
+must make these side effects idempotent yourself.
 
 #### Pattern: Status Flag
 
@@ -461,8 +464,8 @@ charging again.
 
 For side effects that must happen exactly once and survive crashes, use the
 outbox pattern. Instead of performing the side effect directly in the handler,
-raise an event. A separate processor picks it up and executes it with retry
-and deduplication:
+raise an event. A separate processor picks up the event and executes the side
+effect with retry and deduplication:
 
 ```python
 # fragment
@@ -514,16 +517,14 @@ subscription picks it up, but the handler fails.
 
 - The subscription advances its position past the failed message (to avoid
   blocking subsequent messages).
-- The subscription retries the message, up to `max_retries`, with a fixed
-  `retry_delay_seconds` between attempts. An event store subscription
-  retries on its recovery passes. See
-  [Classify async processing errors](classify-async-processing-errors.md#transient-errors-let-the-framework-retry)
+- A stream subscription retries the message, up to `max_retries`, with a fixed
+  `retry_delay_seconds` between attempts. An event store subscription retries
+  on its recovery passes. See [Classify async processing errors](classify-async-processing-errors.md#transient-errors-let-the-framework-retry)
   for how each subscription type counts and spaces its retries.
 - If the handler eventually succeeds, the idempotency key is cached in Redis.
-- If all retries are exhausted, a stream subscription moves the message to
-  its dead-letter stream (`enable_dlq`, on by default), and an event store
-  subscription marks the position exhausted in the event store's dead-letter
-  queue.
+- If all retries are exhausted, a stream subscription moves the message to its
+  dead-letter stream (`enable_dlq`, on by default). An event store subscription
+  instead marks the position exhausted in the event store's dead-letter queue.
 
 If the caller retries with the same idempotency key before the subscription
 succeeds:

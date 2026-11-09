@@ -78,8 +78,8 @@ Event B depends on the side effects of event A (e.g., B reads an entity
 that A creates). When processed concurrently, B may execute before A's
 effects are visible.
 
-**Example:** An `AssociationChanged` event expects a Client that was
-created by a `ClientCreated` event that hasn't been committed yet.
+**Example:** An `AssociationChanged` event expects a Client from a
+`ClientCreated` event. That `ClientCreated` event hasn't been committed yet.
 
 ### Class 4: Duplicate processing
 
@@ -142,11 +142,11 @@ see [Optimistic Concurrency as Design Tool](optimistic-concurrency-as-design-too
 
 ### Process Managers (for coordination)
 
-When events have causal dependencies (one event must be processed before
-another can safely execute) a [Process
-Manager](coordinating-long-running-processes.md) is the DDD-correct solution.
-The PM correlates related events, tracks what has happened, and issues commands
-in the right order.
+Some events have causal dependencies: one event must be processed before
+another can safely execute. For these events, a
+[Process Manager](coordinating-long-running-processes.md) is the DDD-correct
+solution. The Process Manager correlates related events, tracks what has
+happened, and issues commands in the right order.
 
 ### Idempotent handler patterns (for duplicates)
 
@@ -173,9 +173,9 @@ Solution A.
 
 ### Solution A: Combine into a single handler
 
-The simplest fix. If both events target the same aggregate, a single
-handler serializes processing naturally, within one handler's subscription,
-events are processed sequentially.
+The simplest fix. If both events target the same aggregate, a single handler
+serializes processing naturally. Within one handler's subscription, events are
+processed sequentially.
 
 ```python
 --8<-- "patterns/designing-for-concurrent-event-processing/001.py:model"
@@ -202,10 +202,10 @@ tracking, a Process Manager provides explicit coordination:
 --8<-- "patterns/designing-for-concurrent-event-processing/002.py:process_manager"
 ```
 
-The PM handles out-of-order delivery. If the association event arrives
-before the creation event, the contacts are buffered and applied once the
-client exists. Both handlers are marked `start=True` for this reason: a
-process manager skips an event when no instance exists for its correlation
+The Process Manager accepts the two events in either order. If the association
+event arrives before the creation event, the contacts are buffered and applied
+once the client exists. Both handlers are marked `start=True` for this reason:
+a process manager skips an event when no instance exists for its correlation
 value and the handler is not a start handler.
 
 **When to use:** Events have causal dependencies. Multiple aggregates
@@ -304,9 +304,10 @@ except ExpectedVersionError:
     pass  # "It's fine, another handler already did it"
 ```
 
-An `ExpectedVersionError` is not noise. It is a signal that concurrent
-modification happened. Silencing it means you are discarding a state
-change that may have been important. See
+An `ExpectedVersionError` is not a harmless error that you can ignore. It tells
+you that another transaction modified the aggregate after the handler loaded
+it. Silencing it means you are discarding a state change that may have been
+important. See
 [Optimistic Concurrency as Design Tool](optimistic-concurrency-as-design-tool.md)
 for how to classify these conflicts correctly.
 
@@ -319,9 +320,9 @@ for how to classify these conflicts correctly.
 
 Single-worker deployment is a scaling decision, not a concurrency guarantee. As
 soon as you add a second worker, all unprotected handlers become vulnerable.
-Design for concurrency from the start. It costs nothing when running
-single-worker (the patterns are just good architecture), but saves production
-incidents when you scale.
+Design for concurrency from the start. On a single worker, designing for
+concurrency costs nothing, because the patterns are good architecture anyway.
+When you scale, though, the same design prevents production incidents.
 
 ### Splitting causally dependent logic across handlers
 
@@ -368,9 +369,9 @@ infrastructure (locks, partitioned streams, framework-level deduplication),
 look at the handler topology. The simplest fix is usually to combine related
 handlers or introduce a Process Manager.
 
-For the specific case the primitives above do not cover. A single
-high-throughput handler that must serialize by an entity key without collapsing
-every key onto one worker, Protean offers
+The primitives above do not cover one specific case: a single high-throughput
+handler that must serialize by an entity key without collapsing every key onto
+one worker. For that case, Protean offers
 [`sequential_by`](../reference/server/sequential-by.md) (per-key sequential processing,
 [ADR-0028](../adr/0028-partition-per-key-sequential-processing.md)). Reach for
 it only after the structural options above do not fit.

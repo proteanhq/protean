@@ -9,19 +9,21 @@ boilerplate out of them.
 ## Protean's Pytest Plugin
 
 Protean ships with a pytest plugin that is **automatically activated** when
-Protean is installed, no configuration required. The plugin provides:
+Protean is installed and needs no configuration. The plugin provides:
 
 - **`--protean-env` CLI option**: Sets `PROTEAN_ENV` before test collection
   (default: `test`), so `domain.toml` environment overlays are applied when
   Domain instances are constructed at import time.
 - **Standard markers**: Registers `domain`, `application`, `integration`,
-  `slow`, and `bdd` markers so `--strict-markers` doesn't complain.
+  `slow`, and `bdd` markers so `--strict-markers` accepts them without
+  an error.
 
 ### `DomainFixture`
 
-Protean also provides `DomainFixture`, a test lifecycle manager that handles
-domain initialization, database schema management, per-test context activation,
-and data cleanup across **all** adapters (providers, brokers, and event store).
+Protean also provides `DomainFixture`, a test lifecycle manager. It initializes
+the domain, creates and drops the database schema, activates the domain context
+for each test, and cleans up data across **all** adapters (providers, brokers,
+and event store).
 
 Import it from `protean.integrations.pytest`:
 
@@ -55,9 +57,9 @@ names the broker's provider instead, as in `Broker 'default' (redis provider)`.
 
 `setup()` still returns, so tests that never touch the broker keep running.
 The warning appears once, in pytest's warnings summary. Without it, a suite
-whose tests never publish passes with no visible sign of a down broker. The
-per-test reset in `domain_context()` logs its failure to clear the broker and
-carries on, and pytest shows that log line only for failing tests.
+whose tests never publish passes with no visible sign of a down broker. When
+the per-test reset in `domain_context()` cannot clear the broker, it logs the
+failure and continues. pytest shows that log line only for failing tests.
 
 A wrong password or a denied command also makes the ping fail, so check the
 broker's credentials as well as its host and port.
@@ -205,7 +207,8 @@ pytest-bdd discovers step definitions defined there automatically.
 The domain is already initialized by the root `conftest.py` via
 `DomainFixture`. BDD-level conftest files only need to define shared steps.
 
-Domain-specific shared steps go in that directory's `conftest.py`:
+Put domain-specific shared steps in the `conftest.py` of their own directory,
+such as `tests/bdd/ordering/conftest.py`:
 
 ```python
 # fragment
@@ -264,8 +267,8 @@ def _ctx(app_fixture):
 
 This overrides the root-level domain fixture for all tests under
 `tests/integration/`, while the rest of the test suite continues to
-use in-memory adapters. `DomainFixture` handles schema creation,
-teardown, and per-test data cleanup automatically.
+use in-memory adapters. `DomainFixture` automatically creates the schema, drops
+it at teardown, and cleans up data after each test.
 
 ### Per-Test Global State Reset
 
@@ -428,8 +431,8 @@ pytest tests/unit/test_book.py::test_publish_changes_status
 
 ## Coverage Reporting
 
-Run your test suite with coverage to verify you're hitting the 100% target
-on business logic:
+Run your test suite with coverage to verify that your business logic meets the
+100% coverage target:
 
 ```shell
 # Run all tests with coverage
@@ -451,12 +454,12 @@ omit = ["myapp/__init__.py", "myapp/config.py"]
 
 Anything with a deadline, a lock expiry, or a retry backoff is awkward to test
 against the real clock. The usual workaround is to sleep just under the
-threshold and assert the thing has not happened yet, which is a race: the margin
-you left is the margin a busy CI machine will eat.
+threshold and assert the thing has not happened yet. That workaround is a race:
+on a busy CI machine, the code can take longer than the margin you left.
 
-Every domain holds a clock on `domain.clock`. Replace it and the code that reads
-it sees whatever time you say. Restore it afterwards, or the frozen time leaks
-into every test that runs next:
+Every domain holds a clock on `domain.clock`. Replace the clock, and any code
+reading `domain.clock` sees the time you set. Restore the original clock
+afterwards, or the frozen time leaks into every test that runs next:
 
 ```python
 # fragment
@@ -470,14 +473,16 @@ A deadline test then states its intent directly, with nothing to race:
 --8<-- "guides/testing/fixtures-and-patterns/minimal/test_patterns.py:deadline"
 ```
 
-The default is `SystemClock`, which returns `datetime.now(UTC)`, so a domain you
-have not touched behaves exactly as before. `Clock` is a `Protocol`, so a stub
-does not subclass anything: a `now()` returning a timezone-aware UTC `datetime`
-is the whole contract. Both live in `protean.utils`.
+The default is `SystemClock`, which returns `datetime.now(UTC)`, so a domain
+whose clock you have not replaced behaves exactly as before. `Clock` is a
+`Protocol`, so a stub does not subclass anything: a `now()` returning a
+timezone-aware UTC `datetime` is the whole contract. Both live
+in `protean.utils`.
 
-Prefer this to patching `datetime` at module scope. Patching reaches into
-whichever module you named and misses the others, and it breaks as soon as the
-code moves; the clock is a seam the framework maintains.
+Prefer replacing `domain.clock` to patching `datetime` at module scope.
+A patch replaces `datetime` only in the module you name, and it breaks as soon
+as the code moves. By contrast, Protean maintains the clock as a seam, a
+supported place where a test can replace the time.
 
 ## Anti-Patterns to Avoid
 

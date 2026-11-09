@@ -9,16 +9,17 @@
 An event is immutable once stored (only a deliberate operator migration rewrites
 it), but the code that reads it keeps changing. A field gets renamed, a new one
 is added, an old one is dropped. Months later a
-handler still has to decode a payload written by last year's schema. Protean has
-three mechanisms for surviving that drift, and until now no written rule for
-which one to reach for.
+handler still has to decode a payload written by last year's schema. Protean
+has three mechanisms that let current code read a payload written under an
+older schema. Until this ADR, no written rule said which mechanism to use.
 
 - `renamed_from` on a field: Maps an old payload key onto its current field. It
   is defined in `fields/base.py` and applied on read by `Message._resolve_field_aliases`.
 - Lenient deserialization: Drops payload keys the current class no longer
   declares, recording them under `_dropped_fields` in the message metadata. It
-  is the per-class `lenient` meta option or the `lenient_deserialization` config
-  key, read by `Message._is_lenient`, and it is off by default.
+  is set by the per-class `lenient` meta option or the
+  `lenient_deserialization` config key, which `Message._is_lenient` reads. It
+  is off by default.
 - Upcasters (`@domain.upcaster`): Transform a stored payload on read, in memory,
   from one version to the next. `Message.to_domain_object` walks the chain when a
   stored type string names a version older than the current class. The stored
@@ -33,11 +34,11 @@ field cannot tell whether to declare `renamed_from`, bump `__version__` and writ
 an upcaster, or do both.
 
 Collapsing to one mechanism is the wrong instinct, and prior art confirms it.
-Axon, which ADR-0001 already cites, uses payload conversion (added fields with
-defaults, removed fields, renames via Jackson's `@JsonAlias`, type changes via
-converters) for most versioning and reserves upcasters for the cases conversion
-cannot express. Marten splits the same way. The empirical survey of
-event-sourced systems by [Overeem et al.](https://www.sciencedirect.com/science/article/pii/S0164121221000674)
+Axon, which ADR-0001 already cites, uses payload conversion for most
+versioning: added fields with defaults, removed fields, renames via Jackson's
+`@JsonAlias`, and type changes via converters. Axon reserves upcasters for the
+cases conversion cannot express. Marten splits the same way. The empirical
+survey of event-sourced systems by [Overeem et al.](https://www.sciencedirect.com/science/article/pii/S0164121221000674)
 names five tactics: versioned events, weak schema, upcasting, in-place
 transformation, and copy-and-transform. It finds that systems start with
 versioned events and weak schema and grow into the heavier tactics as chains get
@@ -45,8 +46,9 @@ long. Protean has the first three. It lacks the two heavy ones.
 
 ## Decision
 
-Protean's schema evolution is a ladder. Each rung handles a class of change, and
-you climb only as far as the change forces you to.
+Protean's schema evolution is a ladder: an ordered set of mechanisms, from the
+lightest to the heaviest. Each rung covers one class of change, and you use the
+lightest rung that fits the change.
 
 --8<-- "diagrams/schema-evolution-ladder.md"
 
@@ -54,24 +56,25 @@ you climb only as far as the change forces you to.
 
 A field added with a default, or a field renamed, needs no version bump. Add the
 field with a default and old payloads decode with the default filling the gap.
-Rename a field by declaring `renamed_from` and Protean resolves the old key onto
-the new field on read, and emits an Avro `aliases` entry so an external consumer
-resolves it on the wire too. Lenient mode is the tolerant-reader half of this
-rung: turn it on to read a legacy payload that still carries a since-removed
-field.
+When a renamed field declares `renamed_from`, Protean resolves the old key onto
+the new field on read. Protean also emits an Avro `aliases` entry, so an
+external consumer resolves the old key on the wire too. Lenient mode is the
+tolerant-reader half of this rung: turn it on to read a legacy payload that
+still carries a since-removed field.
 
 ### Rung 2: versioning plus an upcaster, for structural changes
 
 A change weak schema cannot express (a newly required field, a type change, a
-field split or merge) needs the version bumped and an upcaster for each hop. The
-upcaster transforms the payload on read, in memory, from one version to the next,
-leaving the stored event unchanged; Protean chains them so a `v1` payload is
-walked up to the current version before a handler sees it. This is a read-time
-transform, distinct from the Rung 3 migrations that rewrite the store. Use this
-rung whenever a stored value has to be transformed, which weak schema cannot do.
-An upcaster works only when it can supply the new value from the old payload. A
-newly required field with no computable value has no upcaster to write; replace
-the event with a new type in that case.
+field split or merge) needs the version bumped and an upcaster for each hop.
+The upcaster transforms the payload on read, in memory, from one version to the
+next, and leaves the stored event unchanged. Protean runs the upcasters in
+sequence and converts a `v1` payload to the current version before a handler
+sees it. This is a read-time transform, distinct from the Rung 3 migrations
+that rewrite the store. Use this rung whenever a stored value has to be
+transformed, which weak schema cannot do. An upcaster works only when it can
+supply the new value from the old payload. A newly required field with no
+computable value has no upcaster to write; replace the event with a new type in
+that case.
 
 ### Rung 3: an operator-level migration, for a chain grown past usefulness
 
@@ -86,10 +89,11 @@ it saves, the answer is to rewrite the stored events. Two tactics apply.
 
 Both rewrite the contents of an event store, which is migration work. Protean
 treats migration as an adapter and operator concern, the same stance `upgrade.py`
-already takes, so core does not build these tactics. The ladder names them and
-documents copy-and-transform as an operator-level migration in the
-[event-versioning pattern](../patterns/event-versioning-and-evolution.md). A
-port-level rewrite contract can come later if real demand appears.
+already takes, so core does not build these tactics. This ADR names both
+tactics as rung 3, and the
+[event-versioning pattern](../patterns/event-versioning-and-evolution.md)
+describes copy-and-transform as an operator-level migration. A port-level
+rewrite contract can come later if real demand appears.
 
 ### Lenient mode
 
@@ -113,40 +117,42 @@ now points here for compatibility semantics.
 
 An event-sourced aggregate snapshot gets none of these three mechanisms. A
 snapshot is written (for example by `create_snapshot` in `port/event_store.py`)
-with the fixed type `SNAPSHOT` and no metadata. An aggregate carries a `_version`
-(its event position, used for optimistic concurrency), but no schema version to
-upcast from, and `renamed_from`, lenient mode, and upcasters are all consumed by
-`Message.to_domain_object`, which a snapshot never reaches. So an adopter who declares `renamed_from`, enables
-lenient mode, and registers upcasters still has unloadable snapshots after a
-snapshot-breaking change: a field renamed or removed, or a required field added.
-(A field added with a default still constructs, since the default fills the gap.) The ladder settles what "the same treatment events get" means, so
-the snapshot fix (#1362) can align a snapshot with the rung that matches its
-change.
+with the fixed type `SNAPSHOT` and no metadata. An aggregate carries a
+`_version` (its event position, used for optimistic concurrency), but no schema
+version to upcast from. `renamed_from`, lenient mode, and upcasters are all
+consumed by `Message.to_domain_object`, which a snapshot never reaches. So an
+adopter who declares `renamed_from`, enables lenient mode, and registers
+upcasters still has unloadable snapshots after a snapshot-breaking change: a
+field renamed or removed, or a required field added. (A field added with a
+default still constructs, since the default fills the gap.) The ladder settles
+what "the same treatment events get" means, so the snapshot fix (#1362) can
+align a snapshot with the rung that matches its change.
 
 ### Reserved names on an event-sourced aggregate
 
 Removing a field from an event-sourced aggregate is its own rung. The three
 mechanisms above act on a payload as it is decoded; this one acts on the
 aggregate as its stream replays. An event-sourced aggregate's authoritative
-state is its event stream, and a retained `@apply` handler for a retired event
-can still assign a field that has since been removed. That assignment would raise
-under `extra="forbid"` and stop the rebuild.
+state is its event stream. During replay, a retained `@apply` handler for a
+retired event can still assign a field that has since been removed. That
+assignment would raise under `extra="forbid"` and stop the rebuild.
 
-Declaring the removed name in `reserved` on the aggregate settles it. During
-replay only, an assignment to a reserved name is dropped instead of raising, so
-the aggregate rebuilds without the removed field. The live `raise_` path never
-takes this relaxation, so a write to a removed field on a new event still raises.
-This is the same shape as `renamed_from`: a declaration the author adds that
-carries a runtime effect, and like `deprecated` it also earns a safe rating from
-the checker. The downgrade is earned by that declaration, never applied
-automatically. Reusing a reserved name for a live field raises at
-registration, and the compatibility checker downgrades the field removal to safe
-only when the aggregate declares the name.
+Declaring the removed name in `reserved` on the aggregate prevents that error.
+During replay only, an assignment to a reserved name is dropped instead of
+raising, so the aggregate rebuilds without the removed field. The live `raise_`
+path never takes this relaxation, so a write to a removed field on a new event
+still raises. `reserved` works like `renamed_from`: the author adds a
+declaration, and the declaration changes runtime behaviour. Like `deprecated`,
+a `reserved` declaration also gets a safe rating from the checker. The
+downgrade is earned by that declaration, never applied automatically. Protean
+raises an error at registration when a live field reuses a reserved name. The
+compatibility checker downgrades the field removal to safe only when the
+aggregate declares the name.
 
 `reserved` covers a field removal, nothing wider. A type change or a newly
-required field on an event-sourced aggregate stays breaking, and the replay
-hazards (a moved stream category, a moved identity, a dropped handler whose event
-survives) stay their own breaking changes.
+required field on an event-sourced aggregate stays breaking. The replay hazards
+(a moved stream category, a moved identity, a dropped handler whose event
+survives) also stay their own breaking changes.
 
 The declaration has to stay for as long as the events do. Taking a name back out
 of `reserved` is a replay hazard in its own right, reported as

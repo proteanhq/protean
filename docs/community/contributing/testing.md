@@ -1,6 +1,6 @@
 # Testing Protean
 
-Protean places a high emphasis on testing to ensure the framework's stability, correctness, and reliability. The project follows test-driven development practices, and all new features or bug fixes should be accompanied by appropriate tests.
+Protean places a high emphasis on testing to ensure the framework's stability, correctness, and reliability. The project follows test-driven development practices. Add tests with every new feature or bug fix.
 
 Protean uses `pytest` as the testing tool, because it allows for simple unit tests as well as complex functional testing. Protean uses `pytest` fixtures to manage test setup and teardown, ensuring tests are isolated and repeatable. The use of `pytest` also enables easy integration with other tools and plugins, such as coverage reporting and parallel test execution.
 
@@ -15,7 +15,7 @@ protean test [OPTIONS]
 Options:
 
 - `-c, --category [CORE|EVENTSTORE|DATABASE|BROKER|COVERAGE|FULL|PR]`: Specifies which category of tests to run
-- `-n, --workers TEXT`: Worker processes for the core suite in `CORE` and `PR`, and for the tests that need no service in `FULL` and `COVERAGE`: a number, `auto`, or `logical` (the default, one per logical CPU). `0` runs them in one process. You can also set it with the `PROTEAN_TEST_WORKERS` environment variable.
+- `-n, --workers TEXT`: Worker processes for the core suite in `CORE` and `PR`, and for the tests that need no service in `FULL` and `COVERAGE`. The value is a number, `auto`, or `logical` (the default, one per logical CPU). `0` runs them in one process. You can also set it with the `PROTEAN_TEST_WORKERS` environment variable.
 - `-a, --adapter TEXT`: `PR` only. An adapter, or a group of adapters, from `tests/adapters.toml` to run. Repeat it for more. Without it, `PR` runs the adapters every pull request runs; with it, only the ones you name.
 - `--no-core`, `--no-adapters`: `PR` only. Skip the core suite, or the adapter suites (not both).
 
@@ -40,13 +40,13 @@ protean test -c DATABASE
 
 > **Note**: Make sure that the underlying database services are running within Docker before executing tests in the `DATABASE`, `EVENTSTORE`, or `FULL` categories. Use the `make up` command to start the necessary services.
 
-This will run database tests against multiple adapters (MEMORY, POSTGRESQL, SQLITE).
+`protean test -c DATABASE` runs the database tests against multiple adapters (MEMORY, POSTGRESQL, SQLITE).
 
 ### Parallel runs
 
 `CORE` runs on [pytest-xdist](https://pytest-xdist.readthedocs.io/) with `--dist loadfile`, so all the tests in one file run on the same worker. `PR` runs its core suite the same way.
 
-`FULL` and `COVERAGE` start with two passes over the whole suite, one after the other. The first runs every test that needs no service on pytest-xdist, as `CORE` does. The second runs the tests that need one, in a single process. A test needs a service when a flag such as `--redis` or `--mssql` is what lets it run: it carries that marker, or it sits under a package of that name, such as `tests/adapters/repository/sqlalchemy_repo/mssql/`. The suite's own `--service-tests=none` and `--service-tests=only` options make the split. After that they run the separate adapter suites side by side, up to three at a time.
+`FULL` and `COVERAGE` start with two passes over the whole suite, one after the other. The first runs every test that needs no service on pytest-xdist, as `CORE` does. The second runs the tests that need one, in a single process. A test needs a service when it runs only with a flag such as `--redis` or `--mssql`. Such a test carries that marker or is in a package of that name, such as `tests/adapters/repository/sqlalchemy_repo/mssql/`. The suite's own `--service-tests=none` and `--service-tests=only` options make the split. After the two passes, `FULL` and `COVERAGE` run the separate adapter suites in parallel, up to three at a time.
 
 Tests that use a service run in one process, because within one adapter's suite they share a database, Redis keys, Elasticsearch indexes, and the Message-DB `$all` stream. `EVENTSTORE`, `DATABASE` and `BROKER` never use pytest-xdist and ignore `--workers`. With `--sequential`, `FULL` and `COVERAGE` run every suite one at a time and in one process.
 
@@ -62,7 +62,7 @@ Protean supports Python 3.11, 3.12, 3.13, and 3.14, and tests against the 3.15 p
 
 ### Prerequisites
 
-Install the four stable Python versions via [pyenv](https://github.com/pyenv/pyenv) and ensure they are listed in `.python-version` so that `python3.11`, `python3.12`, `python3.13`, and `python3.14` are available on `$PATH`:
+Install the four stable Python versions with [pyenv](https://github.com/pyenv/pyenv). List them in `.python-version`, so that `python3.11`, `python3.12`, `python3.13`, and `python3.14` are available on `$PATH`:
 
 ```shell
 pyenv install 3.11 3.12 3.13 3.14
@@ -154,11 +154,12 @@ These containers are also used in CI pipelines to ensure consistent testing acro
 
 CI does not pull these images from Docker Hub. Instead it pulls them from a
 public mirror in this org's GitHub Container Registry (GHCR), at
-`ghcr.io/proteanhq/mirror/<image>`. This avoids Docker Hub's anonymous pull
-rate limit on shared CI runners and lets pull requests from forks run the full
-suite with no secrets, since public GHCR packages are readable with a fork's
-`GITHUB_TOKEN`. The `.github/workflows/mirror-images.yml` workflow refreshes the
-mirror weekly (and on demand via **Run workflow**).
+`ghcr.io/proteanhq/mirror/<image>`. With the mirror, CI avoids Docker Hub's
+anonymous pull rate limit on shared CI runners. The mirror also lets pull
+requests from forks run the full suite with no secrets, because a fork's
+`GITHUB_TOKEN` can read public GHCR packages. The
+`.github/workflows/mirror-images.yml` workflow refreshes the mirror weekly (and
+on demand via **Run workflow**).
 
 Local `make up` still pulls from upstream registries by default, so no mirror
 access is needed for day-to-day development. To point a service at the mirror
@@ -314,9 +315,9 @@ uv run pytest --postgresql --db POSTGRESQL_PSYCOPG2 tests/adapters/repository/ge
 
 #### Running the MySQL leg
 
-The `mysql` provider serves MySQL and MariaDB, and SQLAlchemy reports a
-different dialect name for each, so both are in the matrix. `make up` starts
-both containers. To run the conformance battery against them:
+The `mysql` provider serves MySQL and MariaDB. SQLAlchemy reports a different
+dialect name for each, so both are in the matrix. `make up` starts both
+containers. To run the conformance battery against them:
 
 ```shell
 uv run pytest --mysql --db MYSQL tests/adapters/repository/generic
@@ -324,9 +325,9 @@ uv run pytest --mysql --db MARIADB tests/adapters/repository/generic
 ```
 
 `--mysql` also enables the server-specific tests in
-`tests/adapters/repository/sqlalchemy_repo/mysql/`, which run against both.
-`native_array` is the only capability the provider does not claim, so those
-tests are deselected.
+`tests/adapters/repository/sqlalchemy_repo/mysql/`, which run against both
+MySQL and MariaDB. `native_array` is the only capability the provider does not
+claim, so those tests are deselected.
 
 ### `protean test test-adapter`
 
@@ -347,7 +348,7 @@ full CLI reference and usage examples.
 
 A test lasts when it fails only because the behaviour it checks has changed. A refactor that keeps the behaviour must leave it green, and a bug in that behaviour must turn it red. The rules below follow from that.
 
-The good examples on this page are test modules under `docs_src/community/contributing/testing/`, and `tests/docs/community/contributing/test_testing.py` runs each one under pytest. Every example block carries the `# fragment` marker. A bad example has it so that it does not run, and a good example has it because `test_testing.py` already runs that file (see [Code on documentation pages](#code-on-documentation-pages)).
+The good examples on this page are test modules under `docs_src/community/contributing/testing/`, and `tests/docs/community/contributing/test_testing.py` runs each one under pytest. Every example block carries the `# fragment` marker. A bad example carries the marker so that it does not run. A good example carries the marker because `test_testing.py` already runs its file (see [Code on documentation pages](#code-on-documentation-pages)).
 
 ### Test behaviour through the public API
 
@@ -372,7 +373,7 @@ These tests build `Money` normally and check its public attributes and the error
 
 ### Test one behaviour per test and name it for that behaviour
 
-When a test checks one behaviour, its name says what broke when it fails. A test that places an order, cancels it and checks the error for a draft order stops at the first failing assert, and hides whether the later steps still work:
+When a test checks one behaviour, its name says what broke when it fails. The test below places an order, cancels it and checks the error for a draft order. It stops at the first failing assert and does not show whether the later steps still work:
 
 ```python
 # fragment
@@ -520,8 +521,8 @@ A `pragma` with no reason leaves the next reader to work out why the line is exc
 
 A test may be deleted or merged into another when the behaviour it covered no longer exists in the code. Otherwise, both of these checks must pass:
 
-- **Coverage.** For every source module the deleted or merged tests covered, `coverage json` gives the same `missing_lines` and `missing_branches` before and after the change. Compare the line lists, because one line can be lost while another is gained and the percentage stays the same. Run the "before" measurement twice. A line that differs between those two runs is listed in the pull request and left out of the comparison.
-- **Mutation.** For a module with a [mutation testing](mutation-testing.md) target, the run after the change has no survivor that the run before did not have, and its not-covered count is no higher. A mutant is a small change mutmut makes to the source. It survives when the tests that reach it run and pass, and it is not covered when no test reaches it. `make mutation` prints the survivor names and the not-covered count. Compare those two, not the score. The score divides by the mutants some test reached, so deleting the only test that reaches a mutant moves it to not-covered, and the score can stay the same or rise.
+- **Coverage.** For every source module the deleted or merged tests covered, `coverage json` gives the same `missing_lines` and `missing_branches` before and after the change. Compare the line lists, because one line can be lost while another is gained and the percentage stays the same. Run the "before" measurement twice. If a line differs between those two runs, list it in the pull request. Leave that line out of the comparison.
+- **Mutation.** For a module with a [mutation testing](mutation-testing.md) target, the run after the change has no new survivor compared with the run before. Its not-covered count is also no higher. A mutant is a small change mutmut makes to the source. It survives when the tests that reach it run and pass, and it is not covered when no test reaches it. `make mutation` prints the survivor names and the not-covered count. Compare those two, not the score. The score divides by the mutants some test reached. If you delete the only test that reaches a mutant, the mutant moves to not-covered, so the score can stay the same or rise.
 
 "Before" is the merge-base of your branch with `main`. `main` itself moves as other pull requests merge. Measure it in a second worktree, with the same commands you use on your branch:
 
@@ -540,7 +541,7 @@ make mutation TARGET=entity
 
 ### Prefer one property test to a long list of examples
 
-When the rule is a property, one that holds for every input, a list of examples checks only the inputs someone thought of. A property test with [Hypothesis](https://hypothesis.readthedocs.io/) generates the inputs, and when one fails it shrinks it to a simpler input that still fails. Hypothesis is in the `test` dependency group.
+Some rules are properties: they hold for every input. For such a rule, a list of examples checks only the inputs the test's author thought of. A property test with [Hypothesis](https://hypothesis.readthedocs.io/) generates the inputs. When an input fails, Hypothesis shrinks it to a simpler failing input. Hypothesis is in the `test` dependency group.
 
 ```python
 # fragment
@@ -583,7 +584,7 @@ Example usage:
 
 ### `db`
 
-The `db` fixture handles database setup and teardown:
+The `db` fixture sets up and tears down the database:
 
 - Automatically associated with tests marked with `database`
 - Creates all database artifacts (tables, collections, etc.) before tests
@@ -622,17 +623,18 @@ The `db_config` fixture is used by `protean test` command and configures databas
 
 - Returns configuration for MEMORY, POSTGRESQL, ELASTICSEARCH, or SQLITE
 - Used to dynamically select the database to test against
-- Works with the `--db` option to specify the database type
+- Reads the `--db` option, which specifies the database type
 
-If you want to configure Protean to use a local database on your system, this is the place to edit connection settings.
+To configure Protean to use a local database on your system, edit the connection settings that the `db_config` fixture returns.
 
 ### `store_config`
 
-The `store_config` fixture does the same for event stores:
+The `store_config` fixture configures event store adapters in the same way,
+based on command-line options:
 
 - Returns configuration for MEMORY or MESSAGE_DB
 - Used to dynamically select the event store to test against
-- Works with the `--store` option to specify the store type
+- Reads the `--store` option, which specifies the store type
 
 ## Code on documentation pages
 
@@ -658,9 +660,9 @@ A `>>>` REPL session uses a `pycon` fence, and an IPython session uses `ipython`
 
 Give each page its own folder under `docs_src`, at the page's path, and number the files in the order the page shows them. The examples for `docs/guides/change-state/unit-of-work.md` are `docs_src/guides/change-state/unit-of-work/001.py` and `002.py`.
 
-A block that includes a section of a file a test already runs, such as a test module or a `conftest.py`, is marked `# fragment`. The page runner would otherwise run that code again in the page's namespace. Put `# fragment` on the line above the include.
+A test already runs some files, such as a test module or a `conftest.py`. When a block includes a section of such a file, mark the block `# fragment`. The page runner would otherwise run that code again in the page's namespace. Put `# fragment` on the line above the include.
 
-Each page you move to `docs_src` gets behaviour tests in `tests/docs`, in one file per page at the page's path. Folder names use underscores, and the file name starts with `test_`: the tests for `docs/guides/change-state/unit-of-work.md` are in `tests/docs/guides/change_state/test_unit_of_work.py`. A test loads an example with `load_example(path)` from `tests/docs/support.py`, where `path` is relative to `docs_src`, and then checks what the example does. Pass the path as a string literal.
+Each page you move to `docs_src` gets behaviour tests in `tests/docs`, in one file per page at the page's path. Folder names use underscores, and the file name starts with `test_`: the tests for `docs/guides/change-state/unit-of-work.md` are in `tests/docs/guides/change_state/test_unit_of_work.py`. A test loads an example with `load_example(path)` from `tests/docs/support.py`, then checks what the example does. The `path` is relative to `docs_src`. Pass the path as a string literal.
 
 `tests/docs/test_docs_src_is_tested.py` fails on a `docs_src` file that no test loads. It finds the loaded files by reading the test source for `load_example` and `run_example_tests` calls with a literal path, and for imports of `docs_src` packages. A file no test loads yet goes into its `ALLOWLIST`. That list is strict too: a listed file that a test now loads fails the check until you remove its entry.
 
@@ -676,7 +678,7 @@ Two checks have no allowlist. Every block that is not a fragment must parse, and
 
 Protean uses Coverage.py to track test coverage. `coverage` configuration is maintained in `pyproject.toml`.
 
-When running the full test suite with `protean test -c FULL` (or the pull request lane with `protean test -c PR`), coverage data is automatically collected and combined from tests across multiple adapters:
+When you run the full test suite with `protean test -c FULL` (or the pull request lane with `protean test -c PR`), the command collects coverage data from tests across multiple adapters and combines it:
 
 1. Each test run generates a `.coverage` file
 2. The `coverage combine` command merges these files
@@ -714,10 +716,10 @@ The report has four sections:
 
 - **Duplicate candidates.** The suite runs under coverage.py, and the audit
   switches coverage.py's context (the label it stores each recorded arc
-  under) to the running test. An arc is a step from one line to the next. A
-  test is listed when its arcs are a subset of another test's arcs, next to
-  the test that covers it. The list is grouped by top-level test folder. Tests
-  that cover no source arcs of their own are listed apart.
+  under) to the running test. An arc is a step from one line to the next. The
+  audit lists a test when its arcs are a subset of another test's arcs. The
+  listing shows the covering test next to it. The list is grouped by top-level
+  test folder. Tests that cover no source arcs of their own are listed apart.
 
   Only arcs run in the test body count. Fixture setup and teardown, and any
   child process the test starts, are not counted. Code that runs once per
@@ -727,19 +729,20 @@ The report has four sections:
 - **Private-state and coverage-named tests.** A scan of `tests/` (except
   `tests/support/`) lists calls to `X.__new__(X)`, writes to private
   attributes, patches of private names, files named `*_coverage.py`, and
-  docstrings or comments that say a test exists for coverage. A write through
-  `self` or `cls` in a test class, or to a mock the same function created, is
-  not listed. The two files that guard doc and deprecation coverage are not
-  scanned, and the report says why.
+  docstrings or comments that say a test exists for coverage. The scan does not
+  list a write through `self` or `cls` in a test class, or a write to a mock
+  the same function created. The two files that guard doc and deprecation
+  coverage are not scanned, and the report says why.
 - **The 50 slowest tests**, timed in a run without coverage.
 - **Order-dependent tests.** The suite runs again in a random order with
-  [pytest-randomly](https://github.com/pytest-dev/pytest-randomly). A test
-  that fails there and also failed in the coverage run, which keeps the
-  default order, is listed as a plain failure. Every other test that fails
-  there runs again alone, and one that passes alone is listed as
-  order-dependent. A flaky test can pass alone too, so check each one. A
-  test that is skipped or xfailed alone is listed on its own, since the
-  re-run did not show whether it passes. The section shows the seed.
+  [pytest-randomly](https://github.com/pytest-dev/pytest-randomly). The
+  coverage run keeps the default order. When a test fails in the random-order
+  run and also failed in the coverage run, the audit lists it as a plain
+  failure. The audit runs every other test that fails in the random-order run
+  again alone. It lists a test that passes alone as order-dependent. A flaky
+  test can pass alone too, so check each one. A test that is skipped or xfailed
+  alone is listed on its own, since the re-run did not show whether it passes.
+  The section shows the seed.
   `uv run python scripts/test_audit.py --seed <seed>` shuffles each file the
   same way again.
 
@@ -749,10 +752,10 @@ value the covering test does not.
 
 pytest-randomly is installed with the `test` group and turned off in
 `addopts`, so `protean test`, CI and `make mutation` run the suite in its usual
-order. The audit turns it on for its own run. A pytest run that a test starts,
-such as the one `protean verify` runs in a temporary project, keeps the usual
-order too: `tests/conftest.py` sets `PYTEST_ADDOPTS=-p no:randomly` for each
-test.
+order. The audit turns it on for its own run. Some tests start a pytest run of
+their own, such as the one `protean verify` runs in a temporary project. That
+run keeps the usual order too, because `tests/conftest.py` sets
+`PYTEST_ADDOPTS=-p no:randomly` for each test.
 
 ## Github Actions
 
@@ -762,11 +765,6 @@ Protean's CI runs in three lanes, so a pull request's cost follows the size of t
 - **Push to `main`.** The same, plus the full adapter suite (`protean test -c FULL`) on 3.14, which uploads `main`'s coverage and enforces the 94% project floor. A red run opens or updates a `ci-failure` issue.
 - **Nightly.** The full adapter suite on every Python version, including the 3.15 prerelease (non-blocking). A red run opens or updates the same `ci-failure` issue.
 
-Pull requests cannot be merged until the required checks pass. This ensures:
-
-- All features work as expected
-- No regressions are introduced
-- Code coverage remains high
-- Tests run on all supported Python versions
+Pull requests cannot be merged until the required checks pass. The checks run the tests on every supported Python version, catch regressions, and keep code coverage high.
 
 The pipeline also deploys documentation updates when changes are merged to the main branch.

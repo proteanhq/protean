@@ -104,8 +104,8 @@ oversized clusters are hard to keep transactionally consistent.
 | **Category** | `aggregate_design` |
 | **Level** | `info` |
 
-**Why.** A handler that handles many message types accretes unrelated
-responsibilities and becomes hard to reason about.
+**Why.** A handler for many message types collects unrelated responsibilities
+and becomes hard to reason about.
 
 **Fix.** Split the handler into focused handlers, or raise
 `[lint] handler_breadth_limit` (default `5` message types) if the breadth is
@@ -153,8 +153,9 @@ boundary.
 | **Category** | `bounded_context` |
 | **Level** | `warning` |
 
-**Why.** Circular identity references between aggregate clusters prevent
-independent decomposition, deployment, and event sourcing of the aggregates.
+**Why.** When aggregate clusters hold circular identity references to each
+other, you cannot decompose, deploy, or event-source the
+aggregates independently.
 
 **Fix.** Break the cycle by replacing one direction of the reference with a
 domain event or a process manager that coordinates the two aggregates
@@ -186,9 +187,9 @@ provider configuration instead.
 | **Level** | `warning` (opt-in) |
 
 Off by default. Enable with `[lint].check_adapter_calls = true`. It is gated
-separately from `check_infra_imports`, so the two rules switch independently:
-this one reads method bodies rather than the module's import list, and catches a
-call whose import was aliased or made locally.
+separately from `check_infra_imports`, so you can switch the two rules on
+independently. This rule reads method bodies instead of the module's import
+list. It catches a call whose import was aliased or made locally.
 
 **Why.** Domain elements must not depend on concrete infrastructure adapters.
 Calling into `protean.adapters` from a domain method couples the domain layer to
@@ -227,19 +228,19 @@ or mark it `published=True` if it is intentionally external.
 | **Category** | `handler_completeness` |
 | **Level** | `info` |
 
-**Why.** An event that no aggregate or entity method raises is declared and
-wired but produced by none of them. The check reads only aggregate and entity
-method bodies, so an event raised from a command handler, subscriber, or
-module-level factory is outside its scope and still shows here.
+**Why.** The event is declared and wired, but no aggregate or entity method
+raises it. The check reads only aggregate and entity method bodies, so an event
+raised from a command handler, subscriber, or module-level factory is outside
+its scope and still shows here.
 
 **Fix.** Raise the event from the aggregate or entity method that makes the
 change it records, or remove the event if nothing produces it.
 
-This is an advisory. It correlates a raise to a construction inside one method,
-so an event raised through a helper (`self._emit(Placed(...))` calling
-`self.raise_(e)`) or from caller code such as a command handler or subscriber is
-still reported. Suppress the code where a documented pattern raises the event
-outside an aggregate or entity method.
+`UNRAISED_EVENT` is an advisory. The check correlates a raise to a construction
+inside one method, so it still reports an event raised through a helper
+(`self._emit(Placed(...))` calling `self.raise_(e)`) or from caller code such
+as a command handler or subscriber. Suppress the code where a documented
+pattern raises the event outside an aggregate or entity method.
 
 ### UNUSED_COMMAND { #unused-command }
 
@@ -316,21 +317,21 @@ if it is filled by a subscriber.
 **Why.** A projection field that no projector method writes is a dead column: it
 renders in the read model and carries a type, but nothing ever fills it. The
 check reads what a projection's projector methods write, either constructing the
-projection with the field as a keyword or writing it as an attribute. It stays
-conservative: a construction whose field set it cannot read disables the check
-for the whole projection (a `**kwargs` splat, or a template mapping passed
-positionally as in `Projection(data, key=...)`), a projection with no observed
-write at all is skipped whole, and the `identity_field` is exempt because the
-framework fills it on write. These attribute writes are not counted as filling a
-field: a `del record.field`, which unbinds rather than fills; a write on one of
-an `@on` handler's own parameters (`self.field = ...`, `event.field = ...`),
-which is not a write to the record; a write on the receiver of any other
-projector method (`self.field = ...` in a helper), which is the projector rather
-than the record; and a write whose name is not a field of this projection. The
-level is `info` because the check works from observed writes: when the
-projector writes some fields, a sibling field filled only through a path it
-cannot follow (a helper, a dict splat, a bulk `update(...)`) can still be
-flagged.
+projection with the field as a keyword or writing it as an attribute. The check
+stays conservative in three ways. A construction whose field set it cannot read
+(a `**kwargs` splat, or a template mapping passed positionally as in
+`Projection(data, key=...)`) disables the check for the whole projection. The
+check skips a projection with no observed write at all. The `identity_field` is
+exempt, because the framework fills it on write. These attribute writes are not
+counted as filling a field: a `del record.field`, which unbinds rather than
+fills; a write on one of an `@on` handler's own parameters (`self.field = ...`,
+`event.field = ...`), which is not a write to the record; a write on the
+receiver of any other projector method (`self.field = ...` in a helper), which
+is the projector rather than the record; and a write whose name is not a field
+of this projection. The level is `info` because the check works from observed
+writes. A projector may write some fields and fill a sibling field only through
+a helper, a dict splat, or a bulk `update(...)`. The check cannot follow those
+paths, so it can still flag that sibling field.
 
 **Fix.** Write the field from the projector method that handles the event
 carrying it, or drop the field from the projection if nothing sources it.
@@ -477,39 +478,40 @@ process or capability rather than an entity.
 | **Level** | `info` |
 
 **Why.** A handler method runs inside a Unit of Work, and the transaction opens
-at its first repository access. An external call after that point holds row locks
-and a pooled connection for as long as the call takes, and a retry re-runs the
-whole method and re-issues the call.
+at its first repository access. An external call after that point holds row
+locks and a pooled connection for as long as the call takes. A retry re-runs
+the whole method and re-issues the call.
 
 **Fix.** Split the method: one that persists, and one that calls out. A method
 that touches no repository runs no transaction, so the call costs only
-wall-clock time. When the call must follow the write, have the persisting method
-raise an event and handle that.
+wall-clock time. When the call must follow the write, have the persisting
+method raise an event. A handler for that event then makes the call.
 
-This one is advisory rather than a warning, because a handler that needs the
-call's result to compute its write is expected to do both in one method. Pass
-the remote system's idempotency key so a retry does not duplicate the effect,
-and silence the check on that handler with `suppress_checks`.
+`HANDLER_PERSISTS_AND_CALLS_OUT` is an advisory instead of a warning, because a
+handler that needs the call's result to compute its write is expected to do
+both in one method. Pass the remote system's idempotency key so a retry does
+not duplicate the effect, and silence the check on that handler
+with `suppress_checks`.
 
 Process managers are covered too: their dispatch loop wraps each method in its
 own Unit of Work, so the hazard is the same. The remedy differs, though. Every
-process-manager method drives a state transition, and the transition is persisted
-after each one, so splitting a method in two records two transitions where you
-wanted one. Have the process manager raise an event and let a plain handler make
-the call instead.
+process-manager method drives a state transition. The transition is persisted
+after each method. So splitting a method in two records two transitions where
+you wanted one. Have the process manager raise an event and let a plain handler
+make the call instead.
 
-The rule is import-driven: it fires only when both signals resolve, a
-`repository_for(...)` call and a call into a known I/O library, with the call
-after the first `repository_for` in the same method. The `repo.get(...)` and
-`repo.add(...)` that follow a `repository_for` do not resolve and are never
-guessed at.
+The rule is import-driven. It fires only when two signals resolve in the same
+method: a `repository_for(...)` call, and a call into a known I/O library after
+the first `repository_for`. The rule does not resolve the `repo.get(...)` and
+`repo.add(...)` calls that follow a `repository_for`, and never guesses
+at them.
 
 It reads one method body at a time and reports nothing it cannot see
-statically, so it trades completeness for no false positives. A persist
-delegated to a helper the method calls, a repository held on `self`, a persist
-through the event store rather than `repository_for`, an I/O client reached
-through a local variable or a subscript, or a port or adapter held on `self`
-are not flagged. A port held on `self` is missed whatever its method is called.
+statically, so it trades completeness for no false positives. The rule does not
+flag a persist delegated to a helper the method calls, a repository held on
+`self`, a persist through the event store instead of `repository_for`, an I/O
+client reached through a local variable or a subscript, or a port or adapter
+held on `self`. A port held on `self` is missed whatever its method is called.
 A port imported at module level or inside the method counts only when its
 method is named `publish`, `send_email`, `sendmail`, `send_message` or `urlopen`, so
 `gateway.charge()` is not seen. A clean report is not proof; when in
@@ -551,9 +553,9 @@ the query is a one-off, such as admin or reporting access.
 
 A field counts as covered when it is the aggregate's identifier, carries a
 single-column `unique` constraint, or leads a declared index. Target resolution
-is conservative: a receiver the builder cannot resolve to an aggregate is
-skipped rather than guessed, so an unresolved query is a silent miss instead of
-a false positive.
+is conservative: the builder skips a receiver it cannot resolve to an aggregate
+and does not guess. An unresolved query is therefore a silent miss instead of a
+false positive.
 
 See the [UNINDEXED_FILTER_PATH reference](../concepts/protean-check/rules/unindexed-filter-path.md)
 for the recognized query surfaces and the resolution rules.
@@ -587,8 +589,8 @@ workloads.
 | **Category** | `versioning` |
 | **Level** | `warning` |
 
-**Why.** Stored payloads at older versions with no upcaster path to the current
-version fail to deserialize at read time.
+**Why.** When a stored payload is at an older version with no upcaster path to
+the current version, Protean cannot deserialize it at read time.
 
 **Fix.** Add upcasters covering the missing source versions. See
 [Evolving Events Over Time](../guides/evolving-events.md).
@@ -597,7 +599,7 @@ version fail to deserialize at read time.
 
 ## Deprecation
 
-Rules that surface elements, fields, and options scheduled for removal. See the
+Rules that report elements, fields, and options scheduled for removal. See the
 [v0.17 migration guide](migration/v0-17.md) for the deprecation timeline.
 
 !!! note "Deprecation coverage is a release gate"
@@ -606,17 +608,18 @@ Rules that surface elements, fields, and options scheduled for removal. See the
     registry in `protean._deprecation` (`DEPRECATIONS`). Each framework-API warn
     site routes through `warn_from_registry` / `deprecated_from_registry`, which
     read the removal version and replacement advice from the entry. So a
-    framework deprecation cannot warn without being registered, and a
-    source-scan test fails if any module reaches for the low-level
-    `warn_deprecated` / `@deprecated` primitives directly (the one exception is
-    a user-declared deprecated *event*, whose removal comes from the user's
-    event meta, not the registry). A deprecation may not ship unless it is both
-    registered **and** covered by its detection mechanism: either a `protean
-    check` rule that fires on it (`detection="check"`, with a `detection_hint`
-    token that proves the rule fired), or, for an imperative call with no
-    static site, its per-version `DeprecationWarning` plus a recorded `reason`
-    for why `check` cannot see it (`detection="runtime"`). The audit in
-    `tests/ir/test_deprecation_coverage_audit.py` enforces both arms.
+    framework deprecation cannot warn without being registered. A source-scan
+    test fails if any module uses the low-level `warn_deprecated` /
+    `@deprecated` primitives directly. The one exception is a user-declared
+    deprecated *event*, whose removal comes from the user's event meta instead
+    of the registry. A deprecation may not ship unless it is both registered
+    **and** covered by its detection mechanism. One mechanism is a
+    `protean check` rule that fires on the deprecation (`detection="check"`,
+    with a `detection_hint` token that proves the rule fired). For an
+    imperative call with no static site, the other is its per-version
+    `DeprecationWarning` plus a recorded `reason` for why `check` cannot see it
+    (`detection="runtime"`). The audit in
+    `tests/ir/test_deprecation_coverage_audit.py` enforces both mechanisms.
 
 ### DEPRECATED_ELEMENT { #deprecated-element }
 

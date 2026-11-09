@@ -12,9 +12,9 @@ pip install "protean[mysql]"
 ```
 
 PyMySQL is written in Python, so the extra installs from a wheel everywhere and
-needs no `libmysqlclient` on the machine. The extra pulls `cryptography` with
-it, which PyMySQL needs for the RSA key exchange that `caching_sha2_password`
-and `sha256_password` use on an unencrypted connection.
+needs no `libmysqlclient` on the machine. The extra also installs
+`cryptography`. PyMySQL needs `cryptography` for the RSA key exchange that
+`caching_sha2_password` and `sha256_password` use on an unencrypted connection.
 
 If PyMySQL cannot be imported, `domain.init()` raises a `ConfigurationError`
 that names the extra to install. This covers a `database_uri` that names
@@ -29,14 +29,14 @@ the DBAPI module to use in place of the URL's driver.
 ## Configure TLS explicitly
 
 **Do not assume the driver encrypts the connection.** Whether PyMySQL starts
-TLS without being told to depends on the version: on `pymysql==1.1.1`, the
-floor this extra declares, a connection with no SSL options is plaintext, and
-passing `ssl={}` or `ssl_disabled=False` does not change that. A current
-release does negotiate TLS. Pin nothing on that difference.
+TLS on its own depends on the version. On `pymysql==1.1.1`, the lowest version
+this extra allows, a connection with no SSL options is plaintext, even if you
+pass `ssl={}` or `ssl_disabled=False`. A current release does negotiate TLS.
+Do not rely on that difference between versions.
 
-On a plaintext connection the password crosses the wire under MySQL 8's
-default `caching_sha2_password` through an RSA exchange, so the transport is
-worth setting deliberately:
+On a plaintext connection under MySQL 8's default `caching_sha2_password`, the
+driver sends the password through an RSA exchange, so set the
+transport deliberately:
 
 Add the CA to the database block, alongside the keys above:
 
@@ -78,8 +78,8 @@ database_uri = "mariadb+pymysql://app:${MYSQL_PASSWORD}@localhost:3306/appdb"
 | `max_overflow` | 10 | Connections opened beyond `pool_size` under load |
 
 Use the scheme that matches the server. SQLAlchemy reports the dialect as
-`mysql` for `mysql+pymysql://` and `mariadb` for `mariadb+pymysql://`, and the
-provider reads that name to decide how to emit table DDL. Pointing a
+`mysql` for `mysql+pymysql://` and `mariadb` for `mariadb+pymysql://`. The
+provider reads the dialect name to decide how to emit table DDL. Pointing a
 `mysql+pymysql://` URI at a MariaDB server works, but the DDL is written for
 MySQL.
 
@@ -116,61 +116,63 @@ CREATE TABLE person (...) CHARSET=utf8mb4 COLLATE utf8mb4_0900_as_cs
 CREATE TABLE person (...) CHARSET=utf8mb4 COLLATE utf8mb4_uca1400_as_cs
 ```
 
-Setting the collation on the table rather than on each lookup keeps indexes
-usable. A `COLLATE` applied to a column inside a `WHERE` clause stops the
-optimizer from using an index on that column, and Protean filters through these
-lookups constantly.
+The provider sets the collation on the table instead of on each lookup, so
+MySQL can still use indexes. A `COLLATE` applied to a column inside a `WHERE`
+clause stops the optimizer from using an index on that column, and Protean
+filters through these lookups constantly.
 
 Two consequences:
 
-- The collation only reaches tables Protean creates. A table created by hand,
-  or by an earlier migration, keeps whatever collation it was given, and string
-  lookups against it behave the way that collation says.
-- The two servers spell that collation differently, so the default follows the
-  dialect: `utf8mb4_0900_as_cs` on MySQL, `utf8mb4_uca1400_as_cs` on MariaDB.
-  Neither name is a safe default for both. MySQL has never had a `uca1400`
-  collation, and MariaDB only gained the `utf8mb4_0900_*` aliases in 11.4.5,
-  so 10.11 LTS and 11.4.4 refuse the MySQL name with `Unknown collation`.
-  MySQL needs 8.0.1+ and MariaDB needs 10.10+; on anything older, set
-  `collation = "utf8mb4_bin"`.
+- Protean sets the collation only on the tables it creates. A table created by
+  hand, or by an earlier migration, keeps whatever collation it was given, and
+  string lookups against it behave the way that collation says.
+- MySQL and MariaDB spell the accent- and case-sensitive collation differently,
+  so the default follows the dialect: `utf8mb4_0900_as_cs` on MySQL,
+  `utf8mb4_uca1400_as_cs` on MariaDB. Neither name is a safe default for both.
+  MySQL has never had a `uca1400` collation. MariaDB added the `utf8mb4_0900_*`
+  aliases only in 11.4.5, so MariaDB 10.11 LTS and 11.4.4 refuse the MySQL name
+  with `Unknown collation`. MySQL needs 8.0.1+ and MariaDB needs 10.10+; on
+  anything older, set `collation = "utf8mb4_bin"`.
 
 The charset is pinned to `utf8mb4` and is not configurable: a narrower charset
 cannot hold the 4-byte characters Protean stores. MySQL names a collation after
-the charset it belongs to and rejects a mismatched pair, so a `collation` from
-another charset is refused at `domain.init()` naming the config key, rather than
-at `CREATE TABLE` with MySQL's own message.
+its charset and rejects a mismatched pair. Protean therefore refuses a
+`collation` from another charset at `domain.init()` with an error that names
+the config key, before MySQL can refuse it at `CREATE TABLE` with its
+own message.
 
 The case-insensitive lookups (`iexact`, `icontains`) are unaffected: they lower
 both sides of the comparison, so they keep matching every case.
 
-A [custom database model](../../../guides/change-state/database-models.md) keeps
-every table kwarg it declares except `mysql_charset`, `mysql_collate`,
-`mysql_engine` and `mysql_row_format`, which the provider owns. The two have to agree, and a model that set only the charset
-would get the provider's collation over a different character set, which MySQL
-rejects at `CREATE TABLE`.
+The provider sets `mysql_charset`, `mysql_collate`, `mysql_engine` and
+`mysql_row_format` itself. A [custom database model](../../../guides/change-state/database-models.md)
+keeps every other table kwarg it declares. The charset and the collation must
+match. If a model set only the charset, the table would get the provider's
+collation with a different character set, and MySQL rejects that pair
+at `CREATE TABLE`.
 
 ## Isolation level
 
 InnoDB defaults to `REPEATABLE READ`, under which a transaction keeps reading
 the snapshot it opened with. [ADR-0027](../../../adr/0027-unit-of-work-is-a-real-transaction.md)
 makes a Unit of Work one real database transaction and expects a read inside it
-to see what other transactions have committed, which is what PostgreSQL and SQL
-Server do at their defaults. The provider therefore opens its engine at
-`READ COMMITTED`.
+to see what other transactions have committed. PostgreSQL and SQL Server behave
+that way at their default isolation levels. The provider therefore opens its
+engine at `READ COMMITTED`.
 
 ## Schema changes commit the open transaction
 
 MySQL has no transactional DDL. A `CREATE TABLE`, `ALTER TABLE` or `DROP TABLE`
 commits whatever the connection has pending. `protean db setup` runs its DDL on
 a connection of its own, outside any Unit of Work, so ordinary use is
-unaffected. Running DDL inside a Unit of Work will commit that Unit of Work's
-writes early, and a later rollback will not take them back.
+unaffected. If you run DDL inside a Unit of Work, MySQL commits that Unit of
+Work's writes early, and a later rollback does not undo them.
 
 ## String columns used as keys
 
 InnoDB caps an index key at 3072 bytes. A `utf8mb4` character takes up to four
-bytes, so a `VARCHAR` beyond 768 characters cannot be indexed in full, which is
-what a primary key or a unique constraint needs. Protean raises
+bytes, so InnoDB cannot index a `VARCHAR` beyond 768 characters in full. A
+primary key or a unique constraint needs a full index. Protean raises
 `IncorrectUsageError` naming the field at schema-generation time:
 
 ```python
@@ -178,10 +180,11 @@ what a primary key or a unique constraint needs. Protean raises
 ```
 
 A `String` field with `max_length=None` becomes a `TEXT` column, because MySQL
-cannot create a `VARCHAR` without a length. `TEXT` cannot be a key column
-either without an index prefix length, so that combination raises the same
-error. A `ValueObjectList(..., pickled=True)` is stored as a BLOB, which has
-the same problem, so `unique=True` on one raises too.
+cannot create a `VARCHAR` without a length. A `TEXT` column cannot be a key
+column without an index prefix length either, so a key on a `String` field with
+`max_length=None` raises the same error. A `ValueObjectList(..., pickled=True)`
+is stored as a BLOB, which has the same problem, so `unique=True` on one
+raises too.
 
 The cap applies to a declared [`Index`](../../domain-elements/indexes.md) too,
 and InnoDB measures the whole key, so a composite index is the sum of its string
@@ -193,11 +196,12 @@ columns:
 
 Each field fits on its own; together they overrun the key.
 
-Every column in the key counts, not just the strings. A string is the only one
-wide enough to reach 3072 bytes alone, but a fixed-width column alongside a
-near-limit string is what tips it over: `String(max_length=768)` fills the
-budget exactly, and `Index("slug", "rank")` with an `Integer` needs 3076. The
-widths are the column's storage size, measured against both servers:
+Every column in the key counts, not only the strings. Only a string column is
+wide enough to reach 3072 bytes alone, but a fixed-width column next to a
+string near the limit can push the key past 3072 bytes. For example,
+`String(max_length=768)` uses exactly 3072 bytes, and `Index("slug", "rank")`
+with an `Integer` needs 3076 bytes. The widths are the column's storage size,
+measured against both servers:
 
 | Field | Column | Bytes |
 |-------|--------|------:|
@@ -212,24 +216,26 @@ widths are the column's storage size, measured against both servers:
 | `Decimal(precision, scale)` | `DECIMAL` | 4 per 9 digits |
 | Identity, and any reference to one | `CHAR(32)`, `VARCHAR(255)` or `INT` | 128, 1020 or 4 |
 
-A type not in this table counts as nothing rather than as a guess, so a key
-that overruns on one still gets MySQL's own error.
+The check counts a type missing from this table as zero bytes instead of
+guessing its width. So a key that goes over the limit because of such a type
+still gets MySQL's own error.
 
 An index may name a value object's shadow column (`Index("address_city")` for a
 `city` field on an embedded `Address`), and those are measured the same way,
 from the value object's own field.
 
-An association column holds the referenced aggregate's identity, so it is that
-column's width: `CHAR(32)` under a UUID identity, `VARCHAR(255)` under a string
-one. Both count toward the key.
+An association column holds the referenced aggregate's identity, so it has the
+width of that identity column. That width is `CHAR(32)` under a UUID identity
+and `VARCHAR(255)` under a string one. Both count toward the key.
 
 A [custom database model](../../../guides/change-state/database-models.md)
-declares its own columns, and InnoDB caps the column. So when an aggregate has
-one, the width comes from the column the model declares, not from the field. A
-model that narrows `String(max_length=900)` to `Column(String(100))` indexes
-fine, and one that widens a short field past the cap raises. `protean schema
-render` cannot see those columns, so it skips the check for an aggregate with a
-custom model and leaves it to `protean db setup`.
+declares its own columns. InnoDB applies the cap to those declared columns. So
+when an aggregate has a custom model, the check reads each width from the
+column the model declares and not from the field. A model that narrows
+`String(max_length=900)` to `Column(String(100))` indexes fine, and one that
+widens a short field past the cap raises. `protean schema render` cannot see
+those columns, so it skips the check for an aggregate with a custom model and
+leaves it to `protean db setup`.
 
 `protean schema render --indexes` runs the same check for the `mysql` and
 `mariadb` dialects, so a rendered `.sql` file never carries DDL the server would
@@ -237,19 +243,21 @@ reject on apply.
 
 ## Storage engine and row format
 
-Tables are created `ENGINE=InnoDB ROW_FORMAT=DYNAMIC`, named rather than taken
-from the server, because two of the provider's guarantees rest on them.
+The provider creates tables with `ENGINE=InnoDB ROW_FORMAT=DYNAMIC` stated
+explicitly instead of taking the server defaults, because two of the provider's
+guarantees depend on these settings.
 
 A MyISAM table is not transactional at all, and
 [ADR-0027](../../../adr/0027-unit-of-work-is-a-real-transaction.md) makes the
 Unit of Work one real transaction. `default_storage_engine` is an operator
-setting, so a server set to MyISAM would give you non-transactional tables with
-nothing to say so.
+setting, so a server set to MyISAM would give you non-transactional tables
+without any warning.
 
 The 3072-byte index key limit above is the `DYNAMIC` and `COMPRESSED` figure.
-Under `COMPACT` or `REDUNDANT` it is 767 bytes, and `innodb_default_row_format`
-is an operator setting too, so on such a server the key-width guard would pass
-an index the server then refuses.
+Under `COMPACT` or `REDUNDANT` the limit is 767 bytes.
+`innodb_default_row_format` is an operator setting too, so on a server with
+either row format the key-width guard would pass an index the server
+then refuses.
 
 ## Timestamps
 
@@ -258,18 +266,18 @@ otherwise, and drops microseconds on write without an error. Protean writes
 microsecond-precision timestamps, so every `DateTime` field maps to
 `DATETIME(6)`.
 
-A `DateTime` column holds no UTC offset, so Protean converts each value to
-UTC before it writes it or compares it in a filter, and reads a naive value as
-UTC. A load returns a UTC-aware `datetime`. A filter value in any offset then
-matches the same instant. Rows written before 0.18.1 hold the wall-clock time
-they were saved with; see
+A `DateTime` column holds no UTC offset, so Protean converts each value to UTC
+before it writes the value or compares it in a filter. Protean reads a naive
+value as UTC. A load returns a UTC-aware `datetime`. A filter value in any
+offset then matches the same instant. Rows written before 0.18.1 hold the
+wall-clock time they were saved with; see
 [Datetimes are compared and stored as UTC](../../migration/v0-18.md#datetimes-are-compared-and-stored-as-utc)
 to convert them.
 
 ## Indexes
 
-MySQL honors part of the [`Index`](../../domain-elements/indexes.md) surface,
-emitted during `protean db setup`:
+MySQL supports some of the [`Index`](../../domain-elements/indexes.md) options
+when `protean db setup` creates the indexes:
 
 - Composite, descending (`desc=`), and unique (`unique=`) indexes.
 - Partial indexes (`where=Q(...)`) are **not** supported. The index is created
@@ -289,19 +297,19 @@ emitted during `protean db setup`:
 The outbox claims messages through the portable path: a bounded `SELECT`
 followed by a guarded `UPDATE ... WHERE` per row. MySQL has `SKIP LOCKED` but
 no `UPDATE ... RETURNING`, so the single-statement claim PostgreSQL uses does
-not compile here. [ADR-0013](../../../adr/0013-optimistic-concurrency-and-claim-contract.md)
-covers why the portable path is correct wherever a guarded `UPDATE` re-evaluates
-its predicate against committed state under row-lock contention, which InnoDB
-does. The cost is `1 + N` round trips instead of one. When a partition key's
-rows are held back (see
+not compile here. InnoDB re-evaluates the predicate of a guarded `UPDATE`
+against committed state under row-lock contention.
+[ADR-0013](../../../adr/0013-optimistic-concurrency-and-claim-contract.md)
+covers why the portable path is correct on any database that does this. The
+cost is `1 + N` round trips instead of one. When the outbox holds back a
+partition key's rows (see
 [`sequential_by`](../../server/sequential-by.md#how-the-outbox-keeps-a-key-in-order)),
-each candidate row that has both a partition key and a stream category adds
-one more query, which checks for an earlier row of its key. The `SELECT`
+each candidate row with both a partition key and a stream category adds one
+more query. That query checks for an earlier row of the same key. The `SELECT`
 leaves out rows that are held, so a halted key's backlog adds no queries.
 
-The bounded delete behind `_delete_top` takes the portable path for the same
-kind of reason: MySQL rejects a subquery that reads the table being deleted
-from.
+The bounded delete in `_delete_top` also takes the portable path, because MySQL
+rejects a `DELETE` whose subquery reads the same table.
 
 ## SQLAlchemy model
 

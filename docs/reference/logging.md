@@ -39,8 +39,8 @@ page.
 ### `[logging.sampling]`
 
 Opt-in tail sampling for `protean.access` wide events. Disabled by default;
-every handled message produces one wide event. Enable when wide-event volume
-becomes a cost concern at scale.
+every handled message produces one wide event. When wide-event volume becomes a
+cost concern at scale, enable sampling.
 
 ```toml
 --8<-- "reference/logging/sampling.toml"
@@ -81,8 +81,8 @@ for the design rationale.
 
 Controls HTTP-layer wide event emission by
 [`DomainContextMiddleware`](../guides/fastapi/http-wide-events.md). Enabled by
-default; one wide event per HTTP request lands on the `protean.access.http`
-logger.
+default; the middleware writes one wide event per HTTP request to the
+`protean.access.http` logger.
 
 ```toml
 --8<-- "reference/logging/http.toml"
@@ -149,15 +149,15 @@ v0.17.0. Use the global `--log-level DEBUG` flag instead (for example,
 once the domain loads. `--log-level` and `--log-format` are passed to it as
 overrides, so the rest of `[logging]` (`redact`, `per_logger`, sampling, and the
 correlation and OpenTelemetry processors) still applies. With `--log-config`,
-or with `PROTEAN_NO_AUTO_LOGGING` set, the two commands skip that call.
-`Domain.init()` still auto-configures from `[logging]` when the root logger has
-no handlers, so a `dictConfig` that leaves the root logger without handlers
-gets the `[logging]` setup on top.
+or with `PROTEAN_NO_AUTO_LOGGING` set, the two commands skip the
+`Domain.configure_logging()` call. `Domain.init()` still auto-configures from
+`[logging]` when the root logger has no handlers. A `dictConfig` that leaves
+the root logger without handlers therefore also gets the `[logging]` setup.
 
 Other commands, such as `protean shell`, do not call
-`Domain.configure_logging()`. When one of these flags is used, the root logger
-has handlers, so `Domain.init()` skips its auto-configuration and `[logging]` is
-not applied.
+`Domain.configure_logging()`. When one of the three global flags is used with
+such a command, the root logger has handlers, so `Domain.init()` skips its
+auto-configuration and `[logging]` is not applied.
 
 In multi-worker (`--workers N`) and `--reload` runs, the three flags also reach
 every worker process. Each worker applies them the same way the parent does:
@@ -241,14 +241,14 @@ given name.
 ```
 
 Adds or removes business-specific fields on the **current wide event**.
-Uses `structlog.contextvars`, which is async-safe and thread-local, each coroutine or thread sees
-its own bindings.
+Uses `structlog.contextvars`, which is async-safe and thread-local. Each
+coroutine or thread sees its own bindings.
 
 The `access_log_handler` context manager snapshots outer bindings at
 handler entry, clears them for a clean handler scope, and restores them
-on exit. Fields that collide with framework-reserved names or stdlib
-`LogRecord` attributes are stripped before emission to protect the
-logging contract.
+on exit. Before it emits the wide event, `access_log_handler` strips fields
+that collide with framework-reserved names or stdlib `LogRecord` attributes, to
+protect the logging contract.
 
 Framework-reserved names that cannot be overwritten by application context:
 
@@ -286,7 +286,8 @@ pass through the configured redaction filter.
 ```
 
 Sets the root logger to WARNING and removes any `FileHandler` attached to
-the root logger. Use in `conftest.py` to minimize test noise.
+the root logger. Call it in `conftest.py` to keep INFO and DEBUG log lines out
+of your test output.
 
 ---
 
@@ -416,8 +417,8 @@ Emitted on responses with status `>= 500` and on unhandled endpoint exceptions.
 Same fields as `access.http_completed`, plus `error_type` and `error_message`
 when an exception was raised (and `exc_info` carrying the traceback). The
 middleware always echoes `X-Request-ID` on the response (including on
-synthesised 500s) so operators can pivot from an HTTP failure back into the log
-aggregator.
+synthesised 500s), so operators can use it to find a failed HTTP request's
+records in the log aggregator.
 
 When no `access.http_failed` event records an unhandled exception, the
 middleware logs `Unhandled error in <METHOD> <path>` at ERROR level, with the
@@ -458,8 +459,8 @@ Emits a WARNING on `protean.security`. The framework fills in
 caller supplies domain-specific fields. Keys that collide with stdlib
 `LogRecord` attributes are silently dropped.
 
-The four event-type constants are exposed so call sites never drift
-typographically from operator queries:
+Protean exports the four event-type constants, so call sites and operator
+queries use the same spelling:
 
 ```python
 --8<-- "reference/logging/006.py:security-constants"
@@ -472,7 +473,7 @@ typographically from operator queries:
 | `invalid_operation` | `InvalidOperationError` raised from a domain method. |
 | `invalid_state` | `InvalidStateError` raised from a domain method. |
 
-Common fields on every emission:
+Every emission carries these common fields:
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -497,7 +498,7 @@ aggregate schema.
 
 Emitted when a stored snapshot no longer constructs against the current
 aggregate schema, so the load path rebuilds the aggregate from its event stream.
-The warning marks snapshots to rebuild with `protean snapshot create`.
+Rebuild the snapshots that this warning names with `protean snapshot create`.
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -522,8 +523,8 @@ are silently dropped.
 
 ### `protean.server.engine`
 
-Engine lifecycle events. DEBUG-level events are only visible when the root
-logger is set to DEBUG; everything else is audible at INFO.
+Engine lifecycle events. DEBUG-level events appear only when the root logger is
+set to DEBUG. The other events are visible when the root logger is at INFO.
 
 | Event | Level | Fields |
 |-------|-------|--------|
@@ -557,8 +558,8 @@ Lifecycle and error events for the per-subscriber processing loop.
 | `subscription.shutdown` | INFO | `subscriber` |
 | `subscription.error` | ERROR (exc) | `subscriber`, `attempt` |
 
-Per-message handler timing and completion flow through the dedicated
-`protean.access` logger (see above), not through this logger.
+Per-message handler timing and completion go to the dedicated `protean.access`
+logger (see above). They do not appear on this logger.
 
 ---
 
@@ -608,8 +609,8 @@ failures use `logger.exception(...)` so stack traces are preserved.
 ### `protean.adapters.broker.redis`
 
 Failures on the Redis broker adapter. Most events are emitted via
-`logger.exception(...)` so the traceback is preserved; the structured
-event name doubles as the query key.
+`logger.exception(...)` so the traceback is preserved. The structured event
+name also serves as the query key.
 
 | Event | Level |
 |-------|-------|
@@ -755,8 +756,8 @@ for why redaction runs as a pipeline stage rather than at call sites.
 ## Multi-worker logging
 
 `protean server --workers N` (with `N > 1`) installs a
-`logging.handlers.QueueHandler` as the sole root handler for each worker
-and a `logging.handlers.QueueListener` on the supervisor that drains the
+`logging.handlers.QueueHandler` as the sole root handler for each worker. On
+the supervisor, it installs a `logging.handlers.QueueListener` that drains the
 queue and forwards records to the supervisor's configured handlers.
 
 The listener is stopped in a `finally` block on shutdown so buffered records
