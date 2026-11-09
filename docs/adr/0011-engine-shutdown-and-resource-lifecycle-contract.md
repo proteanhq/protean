@@ -8,7 +8,7 @@
 
 ## Context
 
-Before the 5.1 hardening work, `Engine.shutdown()` was optimistic: it
+Before this ADR, `Engine.shutdown()` was optimistic: it
 called `subscription.shutdown()` on each subscription, then stopped the
 event loop. Three problems surfaced in production:
 

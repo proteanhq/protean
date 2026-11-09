@@ -280,9 +280,8 @@ To disable auto-retry entirely, set `enabled = false` in
 
 The pattern above assumes that `ExpectedVersionError` is raised reliably
 whenever two writers race on the same aggregate. Whether that assumption holds
-depends on the repository's adapter. Since the 5.1 hardening work, every
-first-party adapter checks the expected version **in the same atomic operation
-as the write**. There is no window in which two writers can both observe the
+depends on the repository's adapter. Every first-party adapter checks the
+expected version **in the same atomic operation as the write**. There is no window in which two writers can both observe the
 same version and both commit.
 
 | Adapter | Mechanism |

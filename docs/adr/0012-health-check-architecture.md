@@ -8,7 +8,7 @@
 
 ## Context
 
-Before the 5.1 hardening work, Protean had no built-in health probes. Operators
+Before this ADR, Protean had no built-in health probes. Operators
 deploying to Kubernetes wrote their own liveness and readiness checks. A
 typical check was a Python script that imported the domain and called
 `broker.ping()`, and operators exposed it through a sidecar or a manual HTTP
