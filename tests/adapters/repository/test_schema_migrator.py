@@ -25,7 +25,7 @@ from protean.adapters.repository.sqlalchemy import (
 from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.exceptions import ConfigurationError
-from protean.fields import String
+from protean.fields import DateTime, String
 
 alembic_command = pytest.importorskip("alembic.command")
 from alembic.config import Config
@@ -48,6 +48,7 @@ MIGRATOR_MODULE = "protean.adapters.repository.schema_migrator.alembic_migrator"
 
 class Product(BaseAggregate):
     name = String(max_length=50)
+    released_at = DateTime()
 
 
 @pytest.fixture
@@ -230,7 +231,9 @@ class TestMigratingThroughTheProvider:
         alembic_command.revision(config, message="add product", autogenerate=True)
         versions = list((tmp_path / "migrations" / "versions").glob("*.py"))
         assert len(versions) == 1
-        assert "create_table('product'" in versions[0].read_text()
+        revision = versions[0].read_text()
+        assert "create_table('product'" in revision
+        assert "protean.adapters.repository.sqlalchemy.UTCDateTime(" in revision
 
         alembic_command.upgrade(config, "head")
 

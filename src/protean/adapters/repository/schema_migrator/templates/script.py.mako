@@ -9,6 +9,9 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+## Autogenerate renders Protean's column types, such as UTCDateTime, by their
+## full module path and adds no import for them.
+import protean.adapters.repository.sqlalchemy
 ${imports if imports else ""}
 
 # revision identifiers, used by Alembic.
