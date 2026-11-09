@@ -137,8 +137,8 @@ runs inside the deferred flush. The guard is therefore atomic without a serial
 isolation level, and the write stays invisible until commit. A non-atomic
 read-compare-write (read the version in Python, compare, then write
 unconditionally) would *not* hold: two transactions can both read the same
-version and both write, silently losing one update. The failure the guarded
-`UPDATE` prevents.
+version and both write, silently losing one update, which is the failure the
+guarded `UPDATE` prevents.
 
 > **Superseded in part by ADR-0027.** The AUTOCOMMIT engine described above was
 > later removed. As of ADR-0027 a Unit of Work is one real database transaction,

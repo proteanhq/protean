@@ -114,12 +114,12 @@ intended, so the whole use case stays atomic.
 
 Protean **does not support independent inner transactions**: a nested UoW
 cannot commit or roll back on its own, and there is no savepoint to partially
-roll back to. Protean leaves them out on purpose.
+roll back to. Protean leaves them out on purpose, for three reasons.
 
 Independent inner transactions are a real database tool. A savepoint lets an inner
 scope roll back on its own; a separate (suspend-and-new) transaction lets an inner
 scope commit even if the outer later rolls back. Protean's Unit of Work supports
-neither, for three reasons:
+neither:
 
 - **It is an infrastructure concern, not a domain one**: A savepoint or a
   sub-transaction is a persistence-layer mechanism. The domain-layer Unit of Work

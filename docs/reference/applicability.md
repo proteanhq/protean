@@ -75,10 +75,10 @@ Protean fits a single application that you can grow and later divide. Its
 promises are stated for stores you run, and they do not cover a managed
 global service.
 
-Protean ships database adapters for PostgreSQL, SQLite, Microsoft SQL Server,
-and Elasticsearch. Redis backs the broker and cache, and MessageDB backs the
-event store. There are in-memory versions of all of them for development and
-tests. See [Adapters](adapters/index.md) for the details.
+Protean ships database adapters for PostgreSQL, SQLite, MySQL and MariaDB,
+Microsoft SQL Server, and Elasticsearch. Redis backs the broker and cache, and
+MessageDB backs the event store. There are in-memory versions of all of them
+for development and tests. See [Adapters](adapters/index.md) for the details.
 
 ---
 

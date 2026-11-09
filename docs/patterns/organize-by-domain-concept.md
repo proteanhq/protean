@@ -31,7 +31,7 @@ This structure has three problems:
 
 2. **Write and read sides entangled**: Projector files (read-side concerns) are
    in the same folder as the aggregate and its capabilities (write-side
-   concerns). The read-side files make the domain harder to see in the folder.
+   concerns). Query-side plumbing pollutes the domain story.
 
 3. **Scattered workflows**: To work on address management, a developer
    touches five files: `addresses.py` for the handler, `commands.py` to
@@ -41,7 +41,7 @@ This structure has three problems:
    five locations.
 
 The classic layered alternative (splitting code into `domain/`, `application/`,
-`infrastructure/`) is even worse. To understand a single feature, you search
+`infrastructure/`) is even worse. To understand a single feature, you fish
 through three separate subtrees. The folder names describe the framework's
 layers instead of the business.
 
@@ -67,9 +67,9 @@ When it sees `@Aggregate`, it knows that's domain model. Protean's
 decorators carry this information so the folder structure doesn't have to
 repeat it.
 
-Infrastructure concerns that are truly external (API endpoints, configuration)
-are top-level files within the bounded context. You can see them there, instead
-of finding them mixed into a catch-all folder.
+Infrastructure concerns that are truly external (API endpoints,
+configuration) live as top-level files within the bounded context, visible
+as scaffolding rather than buried in a junk drawer.
 
 ### Write vs. Read (CQRS)
 
@@ -157,8 +157,7 @@ addresses:
 ```
 
 This optimizes for the most common developer workflow: understanding or
-modifying a single capability. You do not search through shared files that mix
-many capabilities.
+modifying a single capability. You do not hunt through shared grab-bag files.
 
 ### Events Stay Separate
 

@@ -82,7 +82,7 @@ priority-lane suffix machinery are in place.
 6. **Routing has one choke point**: The outbox processor maps a message to its
    physical stream in one place, immediately before `broker.publish`, where the
    backfill suffix is already applied. The outbox processor will also apply
-   partition routing and key validation at that point.
+   partition routing and the backstop key check at that point.
 
 ## Decision
 

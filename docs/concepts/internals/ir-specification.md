@@ -207,7 +207,7 @@ are excluded. The IR captures structural identity, not deployment topology.
 
 ## Aggregate Clusters
 
-The `clusters` section is the main section of the IR. Each key is an
+The `clusters` section is the heart of the IR. Each key is an
 aggregate's FQN, and the value contains the complete cluster.
 
 ### Cluster Structure

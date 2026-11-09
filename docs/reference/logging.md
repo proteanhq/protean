@@ -524,7 +524,7 @@ are silently dropped.
 ### `protean.server.engine`
 
 Engine lifecycle events. DEBUG-level events appear only when the root logger is
-set to DEBUG. The other events appear at INFO.
+set to DEBUG. The other events are visible when the root logger is at INFO.
 
 | Event | Level | Fields |
 |-------|-------|--------|

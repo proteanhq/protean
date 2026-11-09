@@ -2,7 +2,7 @@
 
 !!! abstract "Applies to: DDD · CQRS · Event Sourcing"
 
-Protean's promises for each port and adapter cover four points: the order in
+This page states what Protean promises for each port and adapter: the order in
 which writes and messages arrive, how many times they take effect, when a write
 becomes visible, and the isolation each promise needs. Conformance and property
 tests cite a row here as their expected behavior.

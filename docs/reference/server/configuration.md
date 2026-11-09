@@ -95,11 +95,10 @@ Optimized for building read models:
 ### Stream retention defaults {#stream-retention-defaults}
 
 `retention_maxlen` bounds a StreamSubscription's broker stream so processed
-messages don't accumulate forever. It is trimmed after each batch. How tight
-the bound is depends on the consumer topology. See
-[Stream retention](subscription-types.md#stream-retention) for the multi-group
-and single-group behavior and their caveats. Each profile carries a
-default cap:
+messages don't accumulate forever. The stream is trimmed after each batch. How
+tight the bound is depends on the consumer topology. See [Stream
+retention](subscription-types.md#stream-retention) for the multi-group and
+single-group behavior and their caveats. Each profile carries a default cap:
 
 | Profile | `retention_maxlen` |
 | ------- | ------------------ |

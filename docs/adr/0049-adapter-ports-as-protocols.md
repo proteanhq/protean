@@ -13,7 +13,7 @@ the operations an adapter writes, and it held the framework features built on
 those operations: aggregate loading, retries, dead-letter handling and
 unit-of-work recording.
 
-Because each base class did both jobs, the ports had these problems:
+Before this decision, the ports had these problems:
 
 - An adapter author read the whole base class to find the methods an adapter
   must write. Most of its methods were framework features.

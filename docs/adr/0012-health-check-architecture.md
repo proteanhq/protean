@@ -197,7 +197,7 @@ considered letting lag switch readiness to `503`, and we rejected it. A backlog
 is a normal, self-correcting condition (a burst of traffic, a replay, a slow
 downstream), and it is precisely when a consumer is behind that you least want
 Kubernetes to pull it out of rotation and stop it draining. An open circuit
-breaker is treated the same way: one handler is paused, the engine is still
+breaker is treated the same way: one handler is paused, and the engine is still
 healthy. Readiness means "this pod can process messages", which stays true
 under lag. Operators should alert on lag from the metrics. The block lets an
 operator debugging a pod see *which* subscription is behind from the probe

@@ -445,9 +445,9 @@ precedence hierarchy.
 
 Every `StreamSubscription` carries an in-memory circuit breaker that pauses
 reads after repeated handler failures, so a failing downstream service gets no
-new calls. It counts consecutive handler-outcome failures (a message routed to
-the DLQ still counts as one failure) and is separate from `poll()`'s own
-backoff for broker read errors.
+new calls until a probe succeeds. It counts consecutive handler-outcome
+failures (a message routed to the DLQ still counts as one failure) and is
+separate from `poll()`'s own backoff for broker read errors.
 
 | Key | Default | Purpose |
 |-----|---------|---------|

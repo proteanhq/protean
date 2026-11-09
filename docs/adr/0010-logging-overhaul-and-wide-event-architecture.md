@@ -141,7 +141,7 @@ mirrors them onto `g._http_wide_event_extras`, a dict the
 `DomainContextMiddleware` installs before `await call_next` and reads after.
 Without this mirror, `bind_event_context(user_id=...)` called from a FastAPI
 endpoint would reach the domain-layer wide event but never the HTTP wide event,
-silently broken.
+and nothing would report the gap.
 
 The nesting of logger names is deliberate: `protean.access.http` is a child of `protean.access` in Python's logger hierarchy, so a filter attached to `protean.access` (like the tail sampling filter) automatically applies to both. This is why the tail sampling filter's namespace match uses `startswith("protean.access.")` rather than an exact match.
 
@@ -222,8 +222,8 @@ keys match the configured list, regardless of where the value originated.
 Defaults (`password`, `token`, `secret`, `api_key`, `authorization`, `cookie`,
 `session`, `csrf`) are **unioned** with the operator-supplied list, not
 substituted. Operators cannot accidentally stop masking a core field by
-supplying their own list. A security invariant we explicitly want enforced by
-the framework.
+supplying their own list. This is a security invariant we want the framework
+to enforce.
 
 Matching is case-insensitive. Recursion into `dict` / `list` / `tuple` is bounded to `_MAX_REDACT_DEPTH=5`
 levels. Pathological nested payloads cannot stall logging. Redaction is a
@@ -247,7 +247,7 @@ Multi-process log interleaving is a real operational problem. Separate `protean 
 
 `protean server --workers N` (with `N > 1`) now installs a `QueueHandler` on each worker process and a `QueueListener` on the supervisor. Workers push `LogRecord` objects onto a `multiprocessing.Queue`; the supervisor drains the queue and hands records to its own handlers for final rendering. The listener is stopped in a `finally` block on shutdown so records pending in the queue are drained before process exit.
 
-**Single-worker mode is unchanged**, no queue overhead, no extra process, no
+**Single-worker mode is unchanged**: no queue overhead, no extra process, no
 behavioural change. Protean installs the queue only when more than one worker
 runs, following the principle of paying only for what you use.
 
@@ -340,7 +340,7 @@ whether to log at the start of a request, which loses exactly the events
 little more, since it assembles the event dict regardless. In return, it never
 loses the errors and slow requests.
 
-**Decorator-based per-handler wide event instrumentation.** Rejected. With a decorator, every handler author would have to remember to apply it. The framework could then no longer add observability without help from handler code. The access log emits from the handler-execution layer so no handler author opts in or out.
+**Decorator-based per-handler wide event instrumentation.** Rejected. With a decorator, every handler author would have to remember to apply it. That defeats the point of the framework adding observability on its own. The access log emits from the handler-execution layer so no handler author opts in or out.
 
 **Middleware for access log (instead of dedicated logger).** Rejected because the framework has no single middleware chain covering command handlers, event handlers, query handlers, and projectors. A dedicated logger emitted from the handler mixin reaches all four paths from one location.
 
