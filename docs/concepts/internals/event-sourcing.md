@@ -337,8 +337,10 @@ root node with `.children` recursively populated, or `None` if no messages
 exist.
 
 **Algorithm:** Build `{causation_id: [children]}` from the raw messages.
-Identify root(s) as messages with `causation_id=None`. Recursively construct
-`CausationNode` objects using `_build_node()`, with a `visited` set to
+Identify root(s) as messages with `causation_id=None`. When no message has
+`causation_id=None`, the roots are the messages whose `causation_id` points
+outside the group, or the first message if none does. Recursively construct
+`CausationNode` objects from the earliest root, with a `visited` set to
 prevent infinite recursion when message IDs overlap between parent and child
 (can happen with the MessageDB adapter in sync mode).
 

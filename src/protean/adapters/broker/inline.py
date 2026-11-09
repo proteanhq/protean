@@ -661,48 +661,9 @@ class InlineBroker(BaseBroker):
             # key nothing reads.
             stream = group_key[: -len(group_suffix)]
 
-            owned = group_key in self._subscription_owned_groups
-
-            stale_messages = []
-            for identifier, (_msg_id, message, timestamp) in list(
-                self._in_flight[group_key].items()
-            ):
-                if timestamp < cutoff_time:
-                    # Remove from in-flight
-                    del self._in_flight[group_key][identifier]
-
-                    if owned:
-                        # A subscription owns retry/DLQ for this group, so the
-                        # broker must not dead-letter underneath it. Hold the
-                        # timed-out message for redelivery (it stays available
-                        # via the failed-message retry path) instead of moving
-                        # it to the native DLQ. Retry count is preserved.
-                        retry_count = self._retry_counts[group_key].get(identifier, 0)
-                        self._remove_failed_message(stream, consumer_group, identifier)
-                        self._store_failed_message(
-                            stream,
-                            consumer_group,
-                            identifier,
-                            message,
-                            retry_count,
-                            current_time,
-                        )
-                        continue
-
-                    stale_messages.append((identifier, message))
-
-                    # Move to DLQ if enabled
-                    if self._enable_dlq:
-                        self._store_dlq_message(
-                            stream, consumer_group, identifier, message, "timeout"
-                        )
-                        logger.warning(
-                            f"Message '{identifier}' moved to DLQ due to timeout"
-                        )
-
-                    # Clean up tracking
-                    self._remove_retry_count(stream, consumer_group, identifier)
-                    self._cleanup_message_ownership(identifier, consumer_group)
+            _cleanup_stale_group(
+                self, group_key, stream, consumer_group, cutoff_time, current_time
+            )
 
     def _get_retry_count(
         self, stream: str, consumer_group: str, identifier: str
@@ -1128,6 +1089,86 @@ class InlineBroker(BaseBroker):
             bool: Always True for inline broker
         """
         return True
+
+
+def _cleanup_stale_group(
+    broker: InlineBroker,
+    group_key: str,
+    stream: str,
+    consumer_group: str,
+    cutoff_time: float,
+    current_time: float,
+) -> None:
+    """Take each message in-flight under ``group_key`` since before
+    ``cutoff_time`` out of flight, and hold it for redelivery or expire it."""
+    owned = group_key in broker._subscription_owned_groups
+
+    for identifier, (_msg_id, message, timestamp) in list(
+        broker._in_flight[group_key].items()
+    ):
+        if timestamp < cutoff_time:
+            # Remove from in-flight
+            del broker._in_flight[group_key][identifier]
+
+            if owned:
+                _hold_stale_message(
+                    broker,
+                    group_key,
+                    stream,
+                    consumer_group,
+                    identifier,
+                    message,
+                    current_time,
+                )
+            else:
+                _expire_stale_message(
+                    broker, stream, consumer_group, identifier, message
+                )
+
+
+def _hold_stale_message(
+    broker: InlineBroker,
+    group_key: str,
+    stream: str,
+    consumer_group: str,
+    identifier: str,
+    message: dict[str, Any],
+    current_time: float,
+) -> None:
+    # A subscription owns retry/DLQ for this group, so the
+    # broker must not dead-letter underneath it. Hold the
+    # timed-out message for redelivery (it stays available
+    # via the failed-message retry path) instead of moving
+    # it to the native DLQ. Retry count is preserved.
+    retry_count = broker._retry_counts[group_key].get(identifier, 0)
+    broker._remove_failed_message(stream, consumer_group, identifier)
+    broker._store_failed_message(
+        stream,
+        consumer_group,
+        identifier,
+        message,
+        retry_count,
+        current_time,
+    )
+
+
+def _expire_stale_message(
+    broker: InlineBroker,
+    stream: str,
+    consumer_group: str,
+    identifier: str,
+    message: dict[str, Any],
+) -> None:
+    # Move to DLQ if enabled
+    if broker._enable_dlq:
+        broker._store_dlq_message(
+            stream, consumer_group, identifier, message, "timeout"
+        )
+        logger.warning(f"Message '{identifier}' moved to DLQ due to timeout")
+
+    # Clean up tracking
+    broker._remove_retry_count(stream, consumer_group, identifier)
+    broker._cleanup_message_ownership(identifier, consumer_group)
 
 
 # Self-registration function for entry point

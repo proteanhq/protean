@@ -17,6 +17,7 @@ import pytest
 
 from protean.port.event_store import (
     BaseEventStore,
+    EventStoreCapabilities,
     IntegrityReport,
     IntegrityViolation,
 )
@@ -33,6 +34,10 @@ class _ListStore(BaseEventStore):
     def __init__(self, messages: list[dict[str, Any]]) -> None:
         # Store-wide order is by global_position, matching the read contract.
         self._messages = sorted(messages, key=lambda m: m["global_position"])
+
+    @property
+    def capabilities(self) -> EventStoreCapabilities:  # pragma: no cover
+        return EventStoreCapabilities.BASIC
 
     def _read(
         self,
@@ -412,6 +417,40 @@ def test_malformed_row_still_reports_non_monotonic_global_position():
     assert kinds == [
         BaseEventStore.VERIFY_MALFORMED_MESSAGE,
         BaseEventStore.VERIFY_NON_MONOTONIC_GLOBAL_POSITION,
+    ]
+
+
+def test_non_monotonic_violation_is_reported_before_the_malformed_one():
+    # verify reports violations in the order its checks run. The
+    # global_position check runs before the missing-field check.
+    store = _ListStore(
+        [
+            _msg(2, "test::user-abc", 0),
+            {"global_position": 2, "position": 1, "id": "b"},  # missing stream, dup gp
+        ]
+    )
+
+    report = store.verify()
+
+    assert [v.kind for v in report.violations] == [
+        BaseEventStore.VERIFY_NON_MONOTONIC_GLOBAL_POSITION,
+        BaseEventStore.VERIFY_MALFORMED_MESSAGE,
+    ]
+
+
+def test_duplicate_id_is_reported_before_the_position_gap_on_one_row():
+    store = _ListStore(
+        [
+            _msg(1, "test::user-abc", 0, id="dup"),
+            _msg(2, "test::user-abc", 2, id="dup"),  # duplicate id and a gap
+        ]
+    )
+
+    report = store.verify()
+
+    assert [v.kind for v in report.violations] == [
+        BaseEventStore.VERIFY_DUPLICATE_MESSAGE_ID,
+        BaseEventStore.VERIFY_POSITION_GAP,
     ]
 
 

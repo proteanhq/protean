@@ -147,3 +147,12 @@ class TestNogroupRetryBlockArgument:
         assert all(c["kwargs"].get("block") == expected_block for c in new_reads)
         # The group was recreated after NOGROUP discarded the cache entry
         assert client.xgroup_create_calls == 2
+
+    def test_retry_returns_the_decoded_new_message(self):
+        retry_response = [["orders", [(b"2-0", {b"data": b'{"n": 2}'})]]]
+        client = _FakeRedisClient(
+            [[], redis.ResponseError("NOGROUP No such consumer group"), retry_response]
+        )
+        broker = _broker(client)
+
+        assert _read(broker, 250) == [("2-0", {"n": 2})]

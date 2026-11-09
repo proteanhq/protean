@@ -324,3 +324,24 @@ class TestCleanupStaleConsumersErrors:
             for c in redis_broker.redis_instance.xinfo_consumers(stream, group)
         ]
         assert names == [b"\xff\xfe-bad"]
+
+    def test_a_consumer_entry_that_is_not_a_dict_is_skipped(
+        self, redis_broker, monkeypatch
+    ):
+        stream = "test::cleanup-not-dict"
+        group = "NotDictGroup"
+        current = "Handler-host1-1000-current"
+        stale = "Handler-host1-1000-old001"
+        self._stale_setup(redis_broker, stream, group, stale)
+        list_consumers = redis_broker.redis_instance.xinfo_consumers
+        monkeypatch.setattr(
+            redis_broker.redis_instance,
+            "xinfo_consumers",
+            lambda *args, **kwargs: ["not-a-dict", *list_consumers(*args, **kwargs)],
+        )
+
+        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+        monkeypatch.undo()
+
+        assert removed == 1
+        assert _consumer_names(redis_broker, stream, group) == set()

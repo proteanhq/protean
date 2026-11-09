@@ -207,6 +207,25 @@ class TestNonDestructiveReinitialization:
         assert "secondary" not in test_domain.brokers
         assert log_spy.call_count == 1
 
+    def test_reinit_closes_the_other_dropped_brokers_after_a_failed_close(
+        self, mocker, test_domain
+    ):
+        from protean.adapters.broker.inline import InlineBroker
+
+        failing = InlineBroker("failing", test_domain, {"provider": "inline"})
+        healthy = InlineBroker("healthy", test_domain, {"provider": "inline"})
+        # "failing" is added first, so its close() runs before "healthy"'s.
+        test_domain.brokers["failing"] = failing
+        test_domain.brokers["healthy"] = healthy
+        mocker.patch.object(failing, "close", side_effect=RuntimeError("boom"))
+        healthy_close = mocker.spy(healthy, "close")
+
+        test_domain.brokers._initialize()
+
+        assert "failing" not in test_domain.brokers
+        assert "healthy" not in test_domain.brokers
+        assert healthy_close.call_count == 1
+
     def test_reinit_rolls_back_newly_created_brokers_on_failure(
         self, mocker, test_domain
     ):

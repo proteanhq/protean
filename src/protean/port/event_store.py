@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from dataclasses import field as dc_field
 from datetime import datetime
+from enum import Flag, auto
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -112,6 +113,31 @@ class IntegrityReport:
         }
 
 
+class EventStoreCapabilities(Flag):
+    """The guarantees an event store makes.
+
+    Each event store declares its flags on ``capabilities``. Check a guarantee
+    with ``EventStoreCapabilities.DURABLE in store.capabilities``.
+    """
+
+    WRITE = auto()  # Append a message and return its stream position
+    READ_STREAM = auto()  # Read one stream by stream position
+    READ_CATEGORY = auto()  # Read a category by global position, inclusive
+    READ_ALL = auto()  # Read the whole store by global position, inclusive
+    EXPECTED_VERSION = auto()  # A stale expected version raises and writes nothing
+    CATEGORY_COMMIT_ORDER = auto()  # Category writes become visible in position order
+    CONSUMER_GROUPS = auto()  # A category read can be split across group members
+    DURABLE = auto()  # Messages survive a process restart
+    SCHEMA_MANAGEMENT = auto()  # The store creates and drops its own tables
+
+    # Convenience Capability Sets
+    BASIC = WRITE | READ_STREAM | READ_CATEGORY | READ_ALL
+
+    CONSISTENT = BASIC | EXPECTED_VERSION | CATEGORY_COMMIT_ORDER
+
+    PRODUCTION = CONSISTENT | DURABLE
+
+
 class BaseEventStore(metaclass=ABCMeta):
     """This class outlines the base event store capabilities
     to be implemented in all supported event store adapters.
@@ -133,6 +159,11 @@ class BaseEventStore(metaclass=ABCMeta):
         implementation is a no-op so that adapters without external
         resources (e.g. the in-memory store) work without changes.
         """
+
+    @property
+    @abstractmethod
+    def capabilities(self) -> EventStoreCapabilities:
+        """The guarantees this event store makes."""
 
     @abstractmethod
     def _write(
@@ -600,50 +631,16 @@ class BaseEventStore(metaclass=ABCMeta):
         No new snapshots are created for temporal queries.
         """
         stream = f"{part_of.meta_.stream_category}-{identifier}"
-        snapshot_message = self._read_last_message(
-            f"{part_of.meta_.stream_category}:snapshot-{identifier}"
+        aggregate = _aggregate_from_snapshot(
+            self, part_of, identifier, stream, at_version
         )
-
-        aggregate: BaseAggregate | None = None
-
-        if snapshot_message:
-            snapshot_version: int = snapshot_message["data"].get("_version", -1)
-            if snapshot_version <= at_version:
-                try:
-                    # Snapshot is usable: initialize from it
-                    aggregate = part_of(**snapshot_message["data"])
-                except ValidationError as exc:
-                    # Stale snapshot (predates the current schema). Discard it,
-                    # log a warning, and let the full-replay branch below rebuild
-                    # from the authoritative event stream.
-                    self._log_snapshot_discarded(part_of, identifier, exc)
-                else:
-                    remaining = at_version - aggregate._version
-                    if remaining > 0:
-                        event_stream = self._read_stream_fully(
-                            stream,
-                            start_position=aggregate._version + 1,
-                            max_rows=remaining,
-                        )
-                        for event_message in event_stream:
-                            event = Message.deserialize(
-                                event_message
-                            ).to_domain_object()
-                            aggregate._apply(event)
-                    # else: snapshot is exactly at the requested version
 
         if aggregate is None:
             # No usable snapshot — replay from the beginning up to the requested
             # version, paging so a version beyond one read page is not truncated.
-            event_stream = self._read_stream_fully(stream, max_rows=at_version + 1)
-
-            if not event_stream:
+            aggregate = _aggregate_from_events(self, part_of, stream, at_version)
+            if aggregate is None:
                 return None
-
-            events = [
-                Message.deserialize(msg).to_domain_object() for msg in event_stream
-            ]
-            aggregate = part_of.from_events(events)
 
         # Validate we reached the requested version
         if aggregate._version < at_version:
@@ -918,16 +915,7 @@ class BaseEventStore(metaclass=ABCMeta):
             ValueError: If the message cannot be found in the event store.
         """
         if isinstance(message_id, Message):
-            mid = (
-                message_id.metadata.headers.id
-                if message_id.metadata and message_id.metadata.headers
-                else None
-            )
-            cid = (
-                message_id.metadata.domain.correlation_id
-                if message_id.metadata and message_id.metadata.domain
-                else None
-            )
+            mid, cid = _ids_from_message(message_id)
             if mid is None:
                 raise ValueError("Message has no headers.id")
             if cid is None:
@@ -935,23 +923,7 @@ class BaseEventStore(metaclass=ABCMeta):
             group = self._load_correlation_group(cid)
             return mid, group
 
-        # String ID — single pass to find the target and its group
-        all_messages = self._read("$all", no_of_messages=1_000_000)
-        target_correlation_id: str | None = None
-        for m in all_messages:
-            if self._extract_message_id(m) == message_id:
-                target_correlation_id = self._extract_correlation_id(m)
-                break
-
-        if target_correlation_id is None:
-            raise ValueError(f"Message with ID '{message_id}' not found in event store")
-
-        group = [
-            m
-            for m in all_messages
-            if self._extract_correlation_id(m) == target_correlation_id
-        ]
-        return message_id, group
+        return message_id, _scan_for_group(self, message_id)
 
     # ------------------------------------------------------------------
     # Public causation chain API
@@ -1063,67 +1035,10 @@ class BaseEventStore(metaclass=ABCMeta):
         if not group:
             return None
 
-        # Build index and children map
-        by_id: dict[str, dict[str, Any]] = {}
-        children_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        roots: list[dict[str, Any]] = []
-
-        for m in group:
-            hid = self._extract_message_id(m)
-            if hid:
-                by_id[hid] = m
-            cid = self._extract_causation_id(m)
-            if cid:
-                children_map[cid].append(m)
-            else:
-                roots.append(m)
-
-        # Sort children by global_position for deterministic ordering
-        for children in children_map.values():
-            children.sort(key=lambda m: m.get("global_position", 0))
-
+        by_id, children_map, roots = _index_group(self, group)
+        roots = _pick_roots(self, group, by_id, roots)
         visited: set[str] = set()
-
-        def _build_node(raw_msg: dict[str, Any]) -> CausationNode:
-            hid = self._extract_message_id(raw_msg) or "?"
-            visited.add(hid)
-
-            metadata = raw_msg.get("metadata", {})
-            if not isinstance(metadata, dict):
-                metadata = {}
-            headers = metadata.get("headers", {})
-            if not isinstance(headers, dict):
-                headers = {}
-            domain_meta = metadata.get("domain", {})
-            if not isinstance(domain_meta, dict):
-                domain_meta = {}
-
-            node = CausationNode(
-                message_id=hid,
-                message_type=raw_msg.get("type", headers.get("type", "?")),
-                kind=domain_meta.get("kind", "?"),
-                stream=raw_msg.get("stream_name", headers.get("stream", "?")),
-                time=str(raw_msg.get("time", "")) if raw_msg.get("time") else None,
-                global_position=raw_msg.get("global_position"),
-            )
-
-            for child_msg in children_map.get(hid, []):
-                child_id = self._extract_message_id(child_msg)
-                if child_id and child_id not in visited:
-                    node.children.append(_build_node(child_msg))
-
-            return node
-
-        if not roots:
-            # All messages have causation_id set — pick the one whose
-            # causation_id points outside the group
-            root_candidates = [
-                m for m in group if self._extract_causation_id(m) not in by_id
-            ]
-            roots = root_candidates if root_candidates else [group[0]]
-
-        roots.sort(key=lambda m: m.get("global_position", 0))
-        return _build_node(roots[0])
+        return _causation_node(self, roots[0], children_map, visited)
 
     @abstractmethod
     def _stream_head_position(self, stream_category: str) -> int:
@@ -1294,44 +1209,20 @@ class BaseEventStore(metaclass=ABCMeta):
             # the malformed guard can ``continue``. A row can be malformed and
             # break monotonicity at once, and verify reports every violation.
             assert global_position is not None  # read-contract guarantee (mypy)
-            if (
-                prev_global_position is not None
-                and global_position <= prev_global_position
-            ):
-                violations.append(
-                    IntegrityViolation(
-                        kind=self.VERIFY_NON_MONOTONIC_GLOBAL_POSITION,
-                        stream=stream,
-                        position=position,
-                        detail=(
-                            f"global_position {global_position} does not exceed "
-                            f"the previous {prev_global_position}."
-                        ),
-                    )
-                )
+            violation = _global_order_violation(
+                self, stream, position, global_position, prev_global_position
+            )
+            if violation is not None:
+                violations.append(violation)
             prev_global_position = global_position
 
             # A row missing any required field is itself a corruption. Flag it
             # and move on: the remaining checks need those values, and running
             # them on a half-populated row would either crash or invent a
-            # spurious gap. Only absence is checked: every adapter types these
-            # columns, so a required field that is present never has the wrong
-            # type. ``data`` is not required here: Message DB allows a NULL body,
-            # and the row still holds its position, so it is checked separately
-            # below, after the position bookkeeping.
-            missing = [f for f in self._REQUIRED_FIELDS if msg.get(f) is None]
-            if missing:
-                violations.append(
-                    IntegrityViolation(
-                        kind=self.VERIFY_MALFORMED_MESSAGE,
-                        stream=stream,
-                        position=position,
-                        detail=(
-                            "Message is missing required field(s): "
-                            f"{', '.join(missing)}."
-                        ),
-                    )
-                )
+            # spurious gap.
+            violation = _missing_fields_violation(self, msg, stream, position)
+            if violation is not None:
+                violations.append(violation)
                 continue
 
             # Past the guard the three required fields are present. Narrow them
@@ -1340,56 +1231,23 @@ class BaseEventStore(metaclass=ABCMeta):
                 message_id is not None and stream is not None and position is not None
             )
 
-            # Duplicate message id (the store's own message identity)
-            if message_id in seen_ids:
-                violations.append(
-                    IntegrityViolation(
-                        kind=self.VERIFY_DUPLICATE_MESSAGE_ID,
-                        stream=stream,
-                        position=position,
-                        detail=f"Message id '{message_id}' appears more than once.",
-                    )
+            violations.extend(
+                _identity_and_position_violations(
+                    self,
+                    message_id,
+                    stream,
+                    position,
+                    seen_ids,
+                    last_position,
+                    stream_head,
                 )
-            seen_ids.add(message_id)
-
-            # Per-stream gapless position from base 0
-            expected = last_position.get(stream, -1) + 1
-            if position != expected:
-                violations.append(
-                    IntegrityViolation(
-                        kind=self.VERIFY_POSITION_GAP,
-                        stream=stream,
-                        position=position,
-                        detail=(
-                            f"Stream '{stream}' jumps to position {position}; "
-                            f"expected {expected}."
-                        ),
-                    )
-                )
-            last_position[stream] = position
-            stream_head[stream] = max(stream_head.get(stream, -1), position)
+            )
 
             violation = self._check_body(msg, stream, position, snapshot_version)
             if violation is not None:
                 violations.append(violation)
 
-        # Each snapshot's _version must not exceed its aggregate stream head
-        for snap_stream, version in snapshot_version.items():
-            category, _, identifier = snap_stream.partition(self._SNAPSHOT_MARKER)
-            aggregate_stream = f"{category}-{identifier}"
-            head = stream_head.get(aggregate_stream, -1)
-            if version > head:
-                violations.append(
-                    IntegrityViolation(
-                        kind=self.VERIFY_SNAPSHOT_AHEAD_OF_STREAM,
-                        stream=snap_stream,
-                        position=None,
-                        detail=(
-                            f"Snapshot _version {version} exceeds the head position "
-                            f"{head} of aggregate stream '{aggregate_stream}'."
-                        ),
-                    )
-                )
+        violations.extend(_snapshot_violations(self, snapshot_version, stream_head))
 
         return IntegrityReport(
             message_count=message_count,
@@ -1440,3 +1298,317 @@ class BaseEventStore(metaclass=ABCMeta):
             for event in self._read_all_raw(stream_category)
             if event["type"] == event_cls.__type__
         ]
+
+
+def _aggregate_from_snapshot(
+    store: BaseEventStore,
+    part_of: type[BaseAggregate],
+    identifier: str,
+    stream: str,
+    at_version: int,
+) -> BaseAggregate | None:
+    """Return the aggregate built from its latest snapshot and the events
+    after it, up to ``at_version``.
+
+    Returns ``None`` when there is no snapshot, the snapshot is past
+    ``at_version``, or the snapshot no longer constructs.
+    """
+    snapshot_message = store._read_last_message(
+        f"{part_of.meta_.stream_category}:snapshot-{identifier}"
+    )
+    if not snapshot_message:
+        return None
+
+    snapshot_version: int = snapshot_message["data"].get("_version", -1)
+    if snapshot_version > at_version:
+        return None
+
+    try:
+        # Snapshot is usable: initialize from it
+        aggregate = part_of(**snapshot_message["data"])
+    except ValidationError as exc:
+        # Stale snapshot (predates the current schema). Discard it,
+        # log a warning, and let the caller rebuild from the
+        # authoritative event stream.
+        store._log_snapshot_discarded(part_of, identifier, exc)
+        return None
+
+    remaining = at_version - aggregate._version
+    if remaining > 0:
+        event_stream = store._read_stream_fully(
+            stream,
+            start_position=aggregate._version + 1,
+            max_rows=remaining,
+        )
+        for event_message in event_stream:
+            event = Message.deserialize(event_message).to_domain_object()
+            aggregate._apply(event)
+    # else: snapshot is exactly at the requested version
+    return aggregate
+
+
+def _aggregate_from_events(
+    store: BaseEventStore,
+    part_of: type[BaseAggregate],
+    stream: str,
+    at_version: int,
+) -> BaseAggregate | None:
+    """Return the aggregate replayed from the first ``at_version + 1`` events
+    of ``stream``, or ``None`` when the stream is empty."""
+    event_stream = store._read_stream_fully(stream, max_rows=at_version + 1)
+
+    if not event_stream:
+        return None
+
+    events = [Message.deserialize(msg).to_domain_object() for msg in event_stream]
+    return part_of.from_events(events)
+
+
+def _ids_from_message(message: Message) -> tuple[str | None, str | None]:
+    """Return the message's ``headers.id`` and ``correlation_id``."""
+    mid = (
+        message.metadata.headers.id
+        if message.metadata and message.metadata.headers
+        else None
+    )
+    cid = (
+        message.metadata.domain.correlation_id
+        if message.metadata and message.metadata.domain
+        else None
+    )
+    return mid, cid
+
+
+def _scan_for_group(store: BaseEventStore, message_id: str) -> list[dict[str, Any]]:
+    """Return the correlation group of the message with ID ``message_id``.
+
+    Raises:
+        ValueError: No message in the store has that ID.
+    """
+    # String ID: single pass to find the target and its group
+    all_messages = store._read("$all", no_of_messages=1_000_000)
+    target_correlation_id: str | None = None
+    for m in all_messages:
+        if store._extract_message_id(m) == message_id:
+            target_correlation_id = store._extract_correlation_id(m)
+            break
+
+    if target_correlation_id is None:
+        raise ValueError(f"Message with ID '{message_id}' not found in event store")
+
+    return [
+        m
+        for m in all_messages
+        if store._extract_correlation_id(m) == target_correlation_id
+    ]
+
+
+def _index_group(
+    store: BaseEventStore, group: list[dict[str, Any]]
+) -> tuple[
+    dict[str, dict[str, Any]],
+    dict[str, list[dict[str, Any]]],
+    list[dict[str, Any]],
+]:
+    """Index a correlation group for the causation tree.
+
+    Returns the messages by ``headers.id``, the children of each message by
+    its ID sorted by ``global_position``, and the messages with no
+    causation ID.
+    """
+    by_id: dict[str, dict[str, Any]] = {}
+    children_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    roots: list[dict[str, Any]] = []
+
+    for m in group:
+        hid = store._extract_message_id(m)
+        if hid:
+            by_id[hid] = m
+        cid = store._extract_causation_id(m)
+        if cid:
+            children_map[cid].append(m)
+        else:
+            roots.append(m)
+
+    # Sort children by global_position for deterministic ordering
+    for children in children_map.values():
+        children.sort(key=lambda m: m.get("global_position", 0))
+
+    return by_id, children_map, roots
+
+
+def _pick_roots(
+    store: BaseEventStore,
+    group: list[dict[str, Any]],
+    by_id: dict[str, dict[str, Any]],
+    roots: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return the root candidates of the causation tree, sorted by
+    ``global_position``. The list is never empty for a non-empty group."""
+    if not roots:
+        # All messages have causation_id set: pick the one whose
+        # causation_id points outside the group
+        root_candidates = [
+            m for m in group if store._extract_causation_id(m) not in by_id
+        ]
+        roots = root_candidates if root_candidates else [group[0]]
+
+    roots.sort(key=lambda m: m.get("global_position", 0))
+    return roots
+
+
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _causation_node(
+    store: BaseEventStore,
+    raw_msg: dict[str, Any],
+    children_map: dict[str, list[dict[str, Any]]],
+    visited: set[str],
+) -> CausationNode:
+    """Build the node for ``raw_msg`` and, recursively, its unvisited children.
+
+    Adds each built message's ID to ``visited``.
+    """
+    hid = store._extract_message_id(raw_msg) or "?"
+    visited.add(hid)
+
+    metadata = _dict_or_empty(raw_msg.get("metadata", {}))
+    headers = _dict_or_empty(metadata.get("headers", {}))
+    domain_meta = _dict_or_empty(metadata.get("domain", {}))
+
+    node = CausationNode(
+        message_id=hid,
+        message_type=raw_msg.get("type", headers.get("type", "?")),
+        kind=domain_meta.get("kind", "?"),
+        stream=raw_msg.get("stream_name", headers.get("stream", "?")),
+        time=str(raw_msg.get("time", "")) if raw_msg.get("time") else None,
+        global_position=raw_msg.get("global_position"),
+    )
+
+    for child_msg in children_map.get(hid, []):
+        child_id = store._extract_message_id(child_msg)
+        if child_id and child_id not in visited:
+            node.children.append(
+                _causation_node(store, child_msg, children_map, visited)
+            )
+
+    return node
+
+
+def _global_order_violation(
+    store: BaseEventStore,
+    stream: Any,
+    position: Any,
+    global_position: int,
+    prev_global_position: int | None,
+) -> IntegrityViolation | None:
+    """Return a violation when ``global_position`` does not exceed the
+    previous row's."""
+    if prev_global_position is not None and global_position <= prev_global_position:
+        return IntegrityViolation(
+            kind=store.VERIFY_NON_MONOTONIC_GLOBAL_POSITION,
+            stream=stream,
+            position=position,
+            detail=(
+                f"global_position {global_position} does not exceed "
+                f"the previous {prev_global_position}."
+            ),
+        )
+    return None
+
+
+def _missing_fields_violation(
+    store: BaseEventStore, msg: dict[str, Any], stream: Any, position: Any
+) -> IntegrityViolation | None:
+    """Return a violation when ``msg`` lacks a required field."""
+    # Only absence is checked: every adapter types these columns, so a
+    # required field that is present never has the wrong type. ``data`` is
+    # not required here: Message DB allows a NULL body, and the row still
+    # holds its position, so ``verify`` checks it separately, after the
+    # position bookkeeping.
+    missing = [f for f in store._REQUIRED_FIELDS if msg.get(f) is None]
+    if not missing:
+        return None
+    return IntegrityViolation(
+        kind=store.VERIFY_MALFORMED_MESSAGE,
+        stream=stream,
+        position=position,
+        detail=f"Message is missing required field(s): {', '.join(missing)}.",
+    )
+
+
+def _identity_and_position_violations(
+    store: BaseEventStore,
+    message_id: str,
+    stream: str,
+    position: int,
+    seen_ids: set[str],
+    last_position: dict[str, int],
+    stream_head: dict[str, int],
+) -> list[IntegrityViolation]:
+    """Check a row's message ID and stream position, and record both.
+
+    Returns a duplicate-ID violation before a position-gap violation.
+    """
+    violations: list[IntegrityViolation] = []
+
+    # Duplicate message id (the store's own message identity)
+    if message_id in seen_ids:
+        violations.append(
+            IntegrityViolation(
+                kind=store.VERIFY_DUPLICATE_MESSAGE_ID,
+                stream=stream,
+                position=position,
+                detail=f"Message id '{message_id}' appears more than once.",
+            )
+        )
+    seen_ids.add(message_id)
+
+    # Per-stream gapless position from base 0
+    expected = last_position.get(stream, -1) + 1
+    if position != expected:
+        violations.append(
+            IntegrityViolation(
+                kind=store.VERIFY_POSITION_GAP,
+                stream=stream,
+                position=position,
+                detail=(
+                    f"Stream '{stream}' jumps to position {position}; "
+                    f"expected {expected}."
+                ),
+            )
+        )
+    last_position[stream] = position
+    stream_head[stream] = max(stream_head.get(stream, -1), position)
+
+    return violations
+
+
+def _snapshot_violations(
+    store: BaseEventStore,
+    snapshot_version: dict[str, int],
+    stream_head: dict[str, int],
+) -> list[IntegrityViolation]:
+    """Return a violation for each snapshot whose ``_version`` is past the
+    head of its aggregate stream."""
+    violations: list[IntegrityViolation] = []
+    # Each snapshot's _version must not exceed its aggregate stream head
+    for snap_stream, version in snapshot_version.items():
+        category, _, identifier = snap_stream.partition(store._SNAPSHOT_MARKER)
+        aggregate_stream = f"{category}-{identifier}"
+        head = stream_head.get(aggregate_stream, -1)
+        if version > head:
+            violations.append(
+                IntegrityViolation(
+                    kind=store.VERIFY_SNAPSHOT_AHEAD_OF_STREAM,
+                    stream=snap_stream,
+                    position=None,
+                    detail=(
+                        f"Snapshot _version {version} exceeds the head position "
+                        f"{head} of aggregate stream '{aggregate_stream}'."
+                    ),
+                )
+            )
+    return violations

@@ -117,6 +117,33 @@ class BrokerCapabilities(Flag):
     )
 
 
+def _publish_now(broker: "BaseBroker", stream: str, message: dict[str, Any]) -> str:
+    """Publish ``message``, reconnecting and retrying once on a connection error."""
+    try:
+        return broker._publish(stream, message)
+    except Exception as e:
+        # Check if this is a connection-related error and attempt recovery
+        if broker._is_connection_error(e):
+            logger.warning(f"Connection error during publish: {e}")
+            if broker._ensure_connection():
+                # Retry the operation once after reconnection
+                return broker._publish(stream, message)
+            else:
+                raise
+        else:
+            raise
+
+
+def _dispatch_sync(broker: "BaseBroker", stream: str, message: dict[str, Any]) -> None:
+    """In SYNC processing, hand ``message`` to each subscriber of ``stream``."""
+    if (
+        broker.domain.config["message_processing"] == Processing.SYNC.value
+        and broker._subscribers[stream]
+    ):
+        for subscriber_cls in broker._subscribers[stream]:
+            dispatch_to_subscriber(subscriber_cls, message)
+
+
 class BaseBroker(metaclass=ABCMeta):
     """Base class for all broker implementations.
 
@@ -274,27 +301,8 @@ class BaseBroker(metaclass=ABCMeta):
             current_uow.register_message(stream, message, broker_name=self.name)
             return None
         else:
-            try:
-                identifier = self._publish(stream, message)
-            except Exception as e:
-                # Check if this is a connection-related error and attempt recovery
-                if self._is_connection_error(e):
-                    logger.warning(f"Connection error during publish: {e}")
-                    if self._ensure_connection():
-                        # Retry the operation once after reconnection
-                        identifier = self._publish(stream, message)
-                    else:
-                        raise
-                else:
-                    raise
-
-            if (
-                self.domain.config["message_processing"] == Processing.SYNC.value
-                and self._subscribers[stream]
-            ):
-                for subscriber_cls in self._subscribers[stream]:
-                    dispatch_to_subscriber(subscriber_cls, message)
-
+            identifier = _publish_now(self, stream, message)
+            _dispatch_sync(self, stream, message)
             return identifier
 
     def ping(self) -> bool:

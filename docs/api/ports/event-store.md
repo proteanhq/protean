@@ -12,6 +12,16 @@ concrete adapter configuration.
 
 ---
 
+## EventStoreCapabilities
+
+The guarantees an event store declares on its `capabilities` property.
+
+::: protean.port.event_store.EventStoreCapabilities
+    options:
+      show_root_heading: false
+
+---
+
 ## CausationNode
 
 Tree node used by `build_causation_tree()` to represent the causation

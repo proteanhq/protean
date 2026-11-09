@@ -153,8 +153,8 @@ lookups for efficient or technology-specific queries.
 
 ## Capabilities
 
-Both database providers and brokers declare their **capabilities**, a set of
-flags indicating which features the adapter supports. This enables:
+Database providers, brokers and event stores declare their **capabilities**, a
+set of flags indicating which features the adapter supports. This enables:
 
 - **Capability-gated methods**: Methods like `raw()` automatically check
   whether the provider supports them, raising `NotSupportedError` if not.
@@ -164,10 +164,11 @@ flags indicating which features the adapter supports. This enables:
   capability matrices.
 
 Database capabilities are independent of each other, so a provider can declare
-any combination of them. Broker capabilities, by contrast, are organized into
-hierarchical tiers. See
-[Database Capabilities](../../reference/adapters/database/index.md#database-capabilities)
-and [Broker Capabilities](../../reference/adapters/broker/index.md#broker-capabilities)
+any combination of them. Broker and event store capabilities, by contrast, are
+organized into hierarchical tiers. See
+[Database Capabilities](../../reference/adapters/database/index.md#database-capabilities),
+[Broker Capabilities](../../reference/adapters/broker/index.md#broker-capabilities),
+and [What each event store guarantees](../../reference/adapters/eventstore/index.md#what-each-event-store-guarantees)
 for full details.
 
 ## Provider Registry
