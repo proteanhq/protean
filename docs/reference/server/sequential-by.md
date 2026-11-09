@@ -10,7 +10,8 @@ an entity key without sending every key to one worker.
 
 The full design and its guarantees are in
 [ADR-0028](../../adr/0028-partition-per-key-sequential-processing.md). Before
-you use `sequential_by`, read [Designing for Concurrent Event Processing](../../patterns/designing-for-concurrent-event-processing.md):
+you use `sequential_by`, read
+[Designing for Concurrent Event Processing](../../patterns/designing-for-concurrent-event-processing.md):
 most concurrency problems have a simpler structural fix.
 
 !!! note "Events on the Redis broker; command handlers still inert"

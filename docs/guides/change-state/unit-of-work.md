@@ -45,7 +45,8 @@ repository, it holds row locks and a connection for the length of the call.
 [HANDLER_PERSISTS_AND_CALLS_OUT](../../reference/fitness-functions.md#handler-persists-and-calls-out).
 The check does not read `@use_case` methods and recognises only some calls as
 I/O. A clean report is therefore not proof that no method calls out after
-persisting (see [what the source checks cover](../../reference/cli/upgrade-check.md#what-the-source-checks-cover)).
+persisting (see [what the source checks
+cover](../../reference/cli/upgrade-check.md#what-the-source-checks-cover)).
 For how to split such a method, and the recipe for a multi-facet sync, see
 [Calling External Systems from
 Handlers](../../patterns/calling-external-systems-from-handlers.md).

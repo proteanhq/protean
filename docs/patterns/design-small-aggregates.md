@@ -372,7 +372,7 @@ Event-sourced aggregates carry one more concern: stream length. A long-lived
 aggregate with thousands of events takes longer to replay, which is a reason to
 keep event-sourced aggregates small. Where an aggregate genuinely needs to be
 one consistency boundary, reach for snapshots before you split it. Once the
-events since the last snapshot pass `snapshot_threshold`, Protean writes a
+events since the last snapshot reach `snapshot_threshold`, Protean writes a
 snapshot during the next load of the aggregate. You can also create a snapshot
 by hand (see [Snapshots](../guides/change-state/snapshots.md)).
 

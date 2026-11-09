@@ -90,7 +90,8 @@ it saves, the answer is to rewrite the stored events. Two tactics apply.
 Both rewrite the contents of an event store, which is migration work. Protean
 treats migration as an adapter and operator concern, the same stance `upgrade.py`
 already takes, so core does not build these tactics. This ADR names both
-tactics as rung 3, and the [event-versioning pattern](../patterns/event-versioning-and-evolution.md)
+tactics as rung 3, and the
+[event-versioning pattern](../patterns/event-versioning-and-evolution.md)
 describes copy-and-transform as an operator-level migration. A port-level
 rewrite contract can come later if real demand appears.
 

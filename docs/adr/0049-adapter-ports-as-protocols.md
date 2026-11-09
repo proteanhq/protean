@@ -99,8 +99,8 @@ members and mypy's check of signatures.
 
 ### 4. A declared flag requires its sub-protocol
 
-- An optional feature with its own methods is a sub-protocol of the Port that
-  one capability flag requires, such as `DeadLetterQueuePort`
+- An optional feature with its own methods is a sub-protocol of the Port, and
+  one capability flag requires that sub-protocol, such as `DeadLetterQueuePort`
   for `DEAD_LETTER_QUEUE`.
 - A flag without a sub-protocol declares a guarantee, such as durability, or
   gates members or arguments of the core Port, such as the schema operations

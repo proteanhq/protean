@@ -54,7 +54,7 @@ in history so replay returns the recorded value instead of re-executing.
 
 ## Decision
 
-**A handler method either persists or calls an external system. Not both.**
+**A handler method either persists or talks to the outside world. Not both.**
 
 Around it:
 

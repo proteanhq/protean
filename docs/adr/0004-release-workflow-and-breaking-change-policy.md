@@ -75,7 +75,7 @@ Not all breaking changes carry the same risk or require the same mitigation. We 
 
 Introduce the new API alongside the old. The old API emits a `DeprecationWarning` with a specific removal version. The deprecated path delegates to the new implementation.
 
-Do not hand-roll `warnings.warn(...)`: use the reusable mechanism in `protean._deprecation`, so every deprecation cites a removal version in the same format and emits a per-version warning class (`RemovedInProtean018Warning`, etc.) that downstream projects can filter precisely.
+Do not hand-roll `warnings.warn(...)`: use the reusable mechanism in `protean._deprecation`, so every deprecation cites a removal version in the same format and emits a per-version warning class (`RemovedInProtean020Warning`, etc.) that downstream projects can filter precisely.
 
 ```python
 from protean._deprecation import deprecated, warn_deprecated
@@ -171,7 +171,7 @@ signature or method semantics. These may be flipped in a single release when
    domain validator warning (e.g. `LOW_POOL_SIZE`) or a logged runtime warning
    on first use.
 
-This exception exists because operational defaults carry a different kind of risk from API breaks. A wrong operational default causes a visible failure (connection exhaustion, port collision) and does not silently produce incorrect results. Operators who tuned these values already set the keys explicitly. The 3-version transition would add work for users and give them little extra safety.
+This exception exists because operational defaults carry a different kind of risk from API breaks. A wrong operational default causes a visible failure (connection exhaustion, port collision) and does not silently produce incorrect results. Operators who tuned these values already set the keys explicitly. The 3-version transition would add work and give little extra safety.
 
 Epic 5.1 applied this exception to two shipped changes: the SQLAlchemy pool
 defaults for `pool_size`/`max_overflow` went `2/5 → 5/10` (#794), and the
@@ -181,12 +181,13 @@ port-collision log entry).
 
 ### Exception: Silent Correctness Bug
 
-The Tier-2 transition path has a second narrow exception: an "old behaviour"
-that was never an intentional contract but a **silent correctness bug**. That
-code ran without error yet produced incorrect or unsafe results (reads executed
-inside a UnitOfWork, events double-processed, a validation that never fired).
-Such behaviour may be rejected outright in a single release (no opt-in flag, no
-warning window) when **all** of the following hold:
+A second narrow exception to the Tier-2 transition path applies when the "old
+behaviour" being changed was never an intentional contract but a **silent
+correctness bug**, code that ran without error yet produced incorrect or unsafe
+results (reads executed inside a UnitOfWork, events double-processed, a
+validation that never fired). Such behaviour may be rejected outright in a
+single release (no opt-in flag, no warning window) when **all** of the
+following hold:
 
 1. The prior behaviour violated a documented or clearly-implied contract; no correct program should have depended on it.
 2. The failure is **loud and immediate**, typically an `IncorrectUsageError`
@@ -202,8 +203,8 @@ An opt-out is offered only when a legitimate use of the old behaviour may exist;
 This exception exists for the same reason as the one for operational defaults:
 a loud, immediate, mechanically-fixable failure carries none of the danger the
 3-version transition is designed to absorb. A transition window here would
-*prolong* incorrect behaviour and would not protect against it. It is
-deliberately narrow. It covers bugs and leaves out disliked-but-intentional
+*prolong* incorrect behaviour and would not protect against it. The exception
+is deliberately narrow. It covers bugs and leaves out disliked-but-intentional
 API. The author of the change must show that the old behaviour was never
 a contract.
 
@@ -277,7 +278,7 @@ A release that removes something is the only kind that intentionally breaks user
 For critical bugs discovered after a release:
 
 1. Fix on `main` through normal PR workflow.
-2. Cherry-pick the fix to the corresponding `release/0.X.x` branch. The `Backport` workflow opens the cherry-pick PR when the fix merges. It does so only while the patch milestone (such as `0.15.1`) is open and the `release/0.X.x` branch exists. The fix PR, or the issue it closes, must carry that milestone. If you set the milestone on the issue after the merge, the `Backport` workflow opens the cherry-pick PR at that point. A `backport release/0.X.x` label on the PR does the same for a fix with no milestone. The author of a fix for a patch writes its migration note under the patch version in that minor's guide. Both branches have that file, so the note does not conflict. If the cherry-pick conflicts elsewhere, the `Backport` workflow opens the PR as a draft, and the maintainer resolves the conflict.
+2. Cherry-pick the fix to the corresponding `release/0.X.x` branch. When the fix merges, the `Backport` workflow opens the cherry-pick PR if the fix PR or the issue it closes carries the patch milestone (such as `0.15.1`), while that milestone is open and the `release/0.X.x` branch exists. Setting the milestone on the issue after the merge opens the cherry-pick PR at that point. A `backport release/0.X.x` label on the PR does the same for a fix with no milestone. The author of a fix for a patch writes its migration note under the patch version in that minor's guide. Both branches have that file, so the note does not conflict. If the cherry-pick conflicts elsewhere, the `Backport` workflow opens the PR as a draft, and the maintainer resolves the conflict.
 3. Tag a patch version (e.g., `v0.15.1`) on the release branch.
 4. Publish immediately.
 
@@ -335,7 +336,7 @@ A user who does that has turned "will my upgrade break?" into a test run. (Filte
 - **Minor** (1.2 → 1.3) carries change: new features, new deprecations, Tier 2 flag flips, Tier 3 schema changes with shipped migrations, and **the removal of anything already deprecated**. A minor may break code that ignored its warnings. It may not break code that had none.
 - **Majors are eras**, not accumulated breakage.
 
-**There is no fixed deprecation window.** Every deprecation already declares its own removal version and gets a dedicated warning class (`@deprecated(removal="0.18.0")` → `RemovedInProtean018Warning`). `protean check` reads those declarations. A blanket "survives two minors" rule adds nothing to a per-deprecation target that is explicit, machine-readable, and already shipping. Such a rule only adds false precision. Section 1 makes releases cheap and frequent, so "two minors" can be two weeks. Two weeks is less protection than the number implies.
+**There is no fixed deprecation window.** Every deprecation already declares its own removal version and gets a dedicated warning class (`@deprecated(removal="0.20.0")` → `RemovedInProtean020Warning`). `protean check` reads those declarations. A blanket "survives two minors" rule adds nothing to a per-deprecation target that is explicit, machine-readable, and already shipping. Such a rule only adds false precision. Section 1 makes releases cheap and frequent, so "two minors" can be two weeks. Two weeks is less protection than the number implies.
 
 One invariant takes the place of a fixed window, and the contract depends on it:
 
@@ -355,7 +356,7 @@ Strict SemVer says breaking changes only in majors. For a framework, that rule p
 
 The deprecation-managed model separates the two questions SemVer conflates. "Is this safe to upgrade?" is answered by the warning-free contract, continuously, per release. "Has the nature of the project changed?" is answered by the major version. A user with a clean warning log upgrades minors without reading anything. A major means the boundary of what Protean claims to do has moved.
 
-**What a major is reserved for.** A major marks a shift in the declared scope boundary, and a pile of small breaks does not justify one. Concretely, a major is for a change in the security posture (what Protean will hold and protect on the user's behalf). It is also for a change in the concurrency model, such as cluster-safe multi-worker operation, which changes the deployment contract and leaves every signature as it was. These are shifts a user must think about, not mechanically patch.
+**What a major is reserved for.** A major marks a shift in the declared scope boundary, and a pile of small breaks does not justify one. Concretely, a major is for a change in the security posture (what Protean will hold and protect on the user's behalf). It is also for a change in the concurrency model, such as cluster-safe multi-worker operation, which changes the deployment contract rather than a signature. These are shifts a user must think about, not mechanically patch.
 
 ### Precedent: this is the SQLAlchemy model, and we already ship half of it
 
@@ -363,7 +364,7 @@ The closest precedent is **SQLAlchemy**, and Django is a weaker match. SQLAlchem
 
 Its upgrade mechanism is the one adopted here, almost exactly:
 
-- **A per-version deprecation warning class**: SQLAlchemy emits `RemovedIn20Warning`; Protean already emits `RemovedInProtean018Warning` and friends from `protean._deprecation`. This was built before the policy was written down, so the policy ratifies existing code and proposes no new work.
+- **A per-version deprecation warning class**: SQLAlchemy emits `RemovedIn20Warning`; Protean already emits `RemovedInProtean020Warning` and friends from `protean._deprecation`. This was built before the policy was written down, so the policy ratifies existing code and proposes no new work.
 - **Warning-free means upgrade-safe**: SQLAlchemy's stated strategy is that once an application runs on 1.4 with the deprecation flags on and emits no 2.0 warnings, it is cross-compatible with 2.0. That is our contract sentence, arrived at independently and validated by a project with a far larger blast radius than ours.
 - **An early-warning switch**: SQLAlchemy gates next-major warnings behind `SQLALCHEMY_WARN_20=1` so users opt into seeing them before they are due. `protean check` plays that role for us, with the advantage of not requiring the code path to actually execute.
 - **Opt-in flags for behavioral change**: SQLAlchemy's `future=True` let 1.4 users run 2.0 semantics early. That is exactly our Tier 2 flag sequence.
@@ -392,7 +393,7 @@ The taxonomy and both exceptions (operational defaults, silent correctness bugs)
 
 ### Related open question
 
-Issue #841 tracks a separate question: how a developer *acknowledges* an intentional breaking change in their own domain. This is the inverse problem, where user code declares "yes, I meant to change this". That question belongs to the same policy and concerns a different actor. Nothing in this section depends on its outcome.
+Issue #841 tracks a separate question: how a developer *acknowledges* an intentional breaking change in their own domain. This is the inverse problem, where user code declares "yes, I meant to change this". That question belongs to the same policy but concerns a different actor. Nothing in this section depends on its outcome.
 
 ---
 
@@ -413,7 +414,7 @@ Issue #841 tracks a separate question: how a developer *acknowledges* an intenti
 - The tiered deprecation system adds overhead to PRs that touch public APIs.
 - `protean check` is an additional tool to build and maintain.
 - Frequent releases may tire users who prefer stability ("update fatigue"). If
-  this happens after 1.0, mitigate it with LTS versions.
+  needed, mitigate it after 1.0 with LTS versions.
 
 ### Risks
 

@@ -171,10 +171,9 @@ map of **IR field entries** exactly as the table above defines them, plus a
 - the element names and their fields (name, IR type, the two constraints);
 - the read-side wiring: `for` names the projection, `consumes` names the event.
 
-The fragment reuses the IR field model verbatim, because the two
-representations drifted apart in their field models in the first draft of this
-ADR. It references participants by their authored names, not by FQN. It is not
-a schema-valid IR on its own.
+The fragment reuses the IR field model verbatim, which is where the two
+representations used to drift. It references participants by their authored names,
+not by FQN. It is not a schema-valid IR on its own.
 
 The generator promotes the fragment to a full IR and then to code (#1472). Promotion
 fills the derived keys the author never writes. These include the FQNs and `module`; each
@@ -362,7 +361,7 @@ two blocks; the generator derives the default `OrderSummary` and
   a new IR field kind, a Protean maintainer still updates the grammar, parser,
   emitter, and eligibility check together, as the authored-IR profile section
   above states.
-- **No middle column to drift.** The vocabulary map takes each grammar term straight to an IR key. The
+- **No middle column to drift.** The vocabulary map is grammar term to IR key. The
   conformance round trip is IR to text to IR, a true inverse, checked as a property.
   The class of defect that comes from keeping two representations aligned by hand does
   not exist here.

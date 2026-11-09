@@ -742,8 +742,9 @@ The report has four sections:
   again alone. It lists a test that passes alone as order-dependent. A flaky
   test can pass alone too, so check each one. A test that is skipped or xfailed
   alone is listed on its own, since the re-run did not show whether it passes.
-  The section shows the seed. `uv run python scripts/test_audit.py --seed <seed>`
-  shuffles each file the same way again.
+  The section shows the seed.
+  `uv run python scripts/test_audit.py --seed <seed>` shuffles each file the
+  same way again.
 
 The report ranks candidates for review. The audit changes no test and writes
 only under `.test-audit/`. A test listed as a duplicate can still check a
@@ -764,11 +765,6 @@ Protean's CI runs in three lanes, so a pull request's cost follows the size of t
 - **Push to `main`.** The same, plus the full adapter suite (`protean test -c FULL`) on 3.14, which uploads `main`'s coverage and enforces the 94% project floor. A red run opens or updates a `ci-failure` issue.
 - **Nightly.** The full adapter suite on every Python version, including the 3.15 prerelease (non-blocking). A red run opens or updates the same `ci-failure` issue.
 
-Pull requests cannot be merged until the required checks pass. This ensures:
-
-- All features work as expected
-- No regressions are introduced
-- Code coverage remains high
-- Tests run on all supported Python versions
+Pull requests cannot be merged until the required checks pass. The checks run the tests on every supported Python version, catch regressions, and keep code coverage high.
 
 The pipeline also deploys documentation updates when changes are merged to the main branch.

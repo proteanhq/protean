@@ -10,8 +10,8 @@ The Engine is responsible for:
 
 1. **Registering handler subscriptions**: Creating subscriptions for event
    handlers, command handlers, and projectors
-2. **Managing broker subscriptions**: Connecting subscribers to external
-   message brokers
+2. **Managing broker subscriptions**: Connecting subscribers for external
+   messages to the configured message broker
 3. **Running outbox processors**: Publishing messages from the transactional
    outbox
 4. **Coordinating lifecycle**: Starting, running, and gracefully shutting down
@@ -168,7 +168,8 @@ convert the value (such as `"abc"` or `inf`), the Engine falls back to the
 
 The emitter adds no overhead when no monitoring tools are subscribed and
 persistence is disabled. For the full design, the Observatory monitoring
-server, and trace API endpoints, see [Observability](../../reference/server/observability.md).
+server, and trace API endpoints, see
+[Observability](../../reference/server/observability.md).
 
 ## Context Propagation
 
@@ -272,12 +273,14 @@ This sequence gives two guarantees:
   the adapter holds sockets, file handles, or background threads.
 
 For the `terminationGracePeriodSeconds` you need in Kubernetes and for the full
-shutdown reference, see [Server Hardening reference](../../reference/server/hardening.md#shutdown-sequence)
-and [Harden the Server](../../guides/server/hardening.md#shut-down-gracefully).
+shutdown reference, see [Server Hardening
+reference](../../reference/server/hardening.md#shutdown-sequence) and [Harden
+the Server](../../guides/server/hardening.md#shut-down-gracefully).
 These pages also explain what `Domain.close()` does per adapter, when `SIGHUP`
 vs `SIGTERM` matter, and how to disable the health server. The design rationale
 (why subscriptions stop first, why 10 seconds, why per-adapter error isolation)
-is captured in [ADR-0011](../../adr/0011-engine-shutdown-and-resource-lifecycle-contract.md).
+is captured in
+[ADR-0011](../../adr/0011-engine-shutdown-and-resource-lifecycle-contract.md).
 
 ---
 

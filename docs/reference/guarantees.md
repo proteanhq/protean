@@ -53,7 +53,7 @@ DAO's `update()`, which both persist through `save()`.
 | **Memory** | Insertion order, not promised | Copy-on-write session, visible at commit | Compare-and-set at commit | One process, per-provider lock |
 | **PostgreSQL, MSSQL, MySQL, MariaDB** | None | One transaction per Unit of Work | Conditional `UPDATE … WHERE _version = :expected` | READ COMMITTED |
 | **SQLite** | None | Autoflushed session | Conditional `UPDATE`, as above | Writers serialized |
-| **Elasticsearch** | None | None: each write lands at once | `if_seq_no` / `if_primary_term` | None |
+| **Elasticsearch** | None | None: each write takes effect at once | `if_seq_no` / `if_primary_term` | None |
 
 ### Read-your-writes
 
@@ -158,8 +158,9 @@ by its per-stream `position`, and a category or `$all` read pages by
     transactional provider its aggregate row commits or rolls back together
     with its outbox rows. On a provider without transactions, such as
     Elasticsearch, the row can be saved while its outbox row is lost, and that
-    event stays unpublished. [ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md)
-    is still *Proposed*, and this behavior can change.
+    event stays unpublished.
+    [ADR-0015](../adr/0015-event-store-append-as-durable-anchor.md) is still
+    *Proposed*, and this behavior can change.
 
 ---
 

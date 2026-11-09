@@ -38,7 +38,7 @@ The epic closed all thirteen gaps across ten PR-sized sub-issues (#913 to #925) 
 
 ### The loggingsucks.com inheritance
 
-The wide event pattern in this epic takes its shape directly from Jamie Brandon's [*Logging Sucks, So Use Wide Events*](https://loggingsucks.com) article. Protean's design depends on two of the article's principles:
+The wide event pattern in this epic takes its shape directly from Boris Tane's [*Logging Sucks*](https://loggingsucks.com) article. Protean's design depends on two of the article's principles:
 
 - **One rich event per unit of work**, not many thin events per step. Debugging is a join, and a single event with fifty fields beats fifty events with one field each.
 - **Query-oriented fields**, not human-readable strings. Fields should be
@@ -206,7 +206,7 @@ too, no extra decision required. If they have not, the structlog chain does not
 even pay the cost of a no-op processor on every log call, because the processor
 is never appended.
 
-OTel imports happen lazily, on the first call to `_get_otel_trace_context`. Module-level sentinels cache the result, so after the first call the hot path is a pure attribute lookup. Merely importing `protean.integrations.logging` does not trigger an `opentelemetry` import.
+OTel imports happen lazily, on the first call to `_get_otel_trace_context`. Module-level sentinels cache the result, so after the first call the hot path is a pure attribute lookup. Importing `protean.integrations.logging` alone does not trigger an `opentelemetry` import.
 
 ### 8. Redaction: processor/filter level, unioned defaults, depth-bounded
 
@@ -274,10 +274,10 @@ Every CLI subcommand (`server`, `test`, `shell`, `projection`, `snapshot`, `obse
 `--debug` on `server` and `observatory` is now a **Tier 1 surface-level break**
 per ADR-0004. The flag still works. It delegates to
 `configure_logging(level="DEBUG")`, but emits a `DeprecationWarning` pointing
-operators to `--log-level DEBUG`, with removal in v0.17.0. This is the minimum
-survival of two minor versions mandated by ADR-0004. The rest of the epic
-introduces new APIs and config keys but does not rename or remove existing
-ones. All other changes are strictly additive.
+operators to `--log-level DEBUG`, with removal in v0.17.0. This meets the
+ADR-0004 rule that a removal never ships in the same release as its
+deprecation. The rest of the epic introduces new APIs and config keys but does
+not rename or remove existing ones. All other changes are strictly additive.
 
 Every CLI command wraps its main body in `cli_exception_handler` so unhandled exceptions are logged
 with a structured event *before* propagating and killing the process. Before
@@ -299,10 +299,9 @@ The reason this lives in the adapter is that slow-query semantics depend on the 
 - Log↔trace correlation is automatic when `telemetry.enabled=True`. An operator debugging a slow request in Grafana/Tempo can pivot directly from a span to the log event and back.
 - All framework log records carry `correlation_id`, `causation_id`, and (when OTel is active) `trace_id` /
   `span_id` / `trace_flags`, without any application code change.
-- Sensitive data cannot leak through logs once redaction is configured.
-  Operators cannot weaken the defaults by supplying their own list. The
-  framework unions that list with the defaults, so the default fields always
-  stay masked.
+- Configured redaction masks sensitive fields in logs. Operators cannot
+  weaken the defaults by supplying their own list. The framework unions that
+  list with the defaults, so the default fields always stay masked.
 - Multi-worker deployments no longer interleave JSON records at byte boundaries.
 - `Domain.init()` auto-configures logging, so a developer who never thinks about logging still gets sensible defaults.
 - Tail sampling lets operators control wide-event cost at scale without losing
@@ -378,4 +377,4 @@ CloudWatch). Competing with log aggregator products is out of scope.
   precursor)
 - ADR-0008, Centralized Telemetry Gateway and TraceParent Bridging (log↔trace
   correlation companion)
-- [Jamie Brandon, *Logging Sucks, So Use Wide Events*](https://loggingsucks.com): Wide event pattern
+- [Boris Tane, *Logging Sucks*](https://loggingsucks.com): Wide event pattern

@@ -307,7 +307,8 @@ except ExpectedVersionError:
 An `ExpectedVersionError` is not a harmless error that you can ignore. It tells
 you that another transaction modified the aggregate after the handler loaded
 it. Silencing it means you are discarding a state change that may have been
-important. See [Optimistic Concurrency as Design Tool](optimistic-concurrency-as-design-tool.md)
+important. See
+[Optimistic Concurrency as Design Tool](optimistic-concurrency-as-design-tool.md)
 for how to classify these conflicts correctly.
 
 ### Assuming single-worker deployment
@@ -371,6 +372,6 @@ handlers or introduce a Process Manager.
 The primitives above do not cover one specific case: a single high-throughput
 handler that must serialize by an entity key without collapsing every key onto
 one worker. For that case, Protean offers
-[`sequential_by`](../reference/server/sequential-by.md) (per-key sequential
-processing, [ADR-0028](../adr/0028-partition-per-key-sequential-processing.md)).
-Reach for it only after the structural options above do not fit.
+[`sequential_by`](../reference/server/sequential-by.md) (per-key sequential processing,
+[ADR-0028](../adr/0028-partition-per-key-sequential-processing.md)). Reach for
+it only after the structural options above do not fit.

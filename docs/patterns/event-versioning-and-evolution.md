@@ -390,8 +390,8 @@ For large schema changes, create a new stream with transformed events:
 4. Switch consumers to the new stream
 5. Keep the old stream for audit purposes
 
-Copy-transform rewrites every event in the stream, so it is costly. The new
-stream then holds no events in historical schemas.
+Copy-transform copies and transforms every event in the stream, so it is
+costly, but the new stream holds no events in historical schemas.
 
 ### In-Place Transformation
 

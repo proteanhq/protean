@@ -138,7 +138,7 @@ also reports the circuit-breaker state of each stream subscription.
 | `details` | One row per subscription found by walking the domain registry. |
 | `lag` | Messages behind the stream head, or `null` when it cannot be determined. |
 | `lag_seconds` | Seconds behind the stream head, or `null` when it cannot be determined. |
-| `lag_drain_rate` | Change in `lag_seconds` per second: negative while the backlog drains, positive while it grows. `null` until two refreshes have landed, or when `lag_seconds` is unknown. |
+| `lag_drain_rate` | Change in `lag_seconds` per second: negative while the backlog drains, positive while it grows. `null` until two refreshes have finished, or when `lag_seconds` is unknown. |
 | `status` | `ok`, `lagging`, or `unknown`. |
 | `circuit_state` | `closed`, `open`, or `half_open`. Absent when the subscription has no breaker. |
 

@@ -618,8 +618,8 @@ Rules that report elements, fields, and options scheduled for removal. See the
     with a `detection_hint` token that proves the rule fired). For an
     imperative call with no static site, the other is its per-version
     `DeprecationWarning` plus a recorded `reason` for why `check` cannot see it
-    (`detection="runtime"`). The audit in `tests/ir/test_deprecation_coverage_audit.py`
-    checks the registry entries for both mechanisms.
+    (`detection="runtime"`). The audit in
+    `tests/ir/test_deprecation_coverage_audit.py` enforces both mechanisms.
 
 ### DEPRECATED_ELEMENT { #deprecated-element }
 

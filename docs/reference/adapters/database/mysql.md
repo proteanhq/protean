@@ -196,7 +196,7 @@ columns:
 
 Each field fits on its own; together they overrun the key.
 
-Every column in the key counts, not just the strings. Only a string column is
+Every column in the key counts, not only the strings. Only a string column is
 wide enough to reach 3072 bytes alone, but a fixed-width column next to a
 string near the limit can push the key past 3072 bytes. For example,
 `String(max_length=768)` uses exactly 3072 bytes, and `Index("slug", "rank")`
@@ -231,10 +231,11 @@ and `VARCHAR(255)` under a string one. Both count toward the key.
 A [custom database model](../../../guides/change-state/database-models.md)
 declares its own columns. InnoDB applies the cap to those declared columns. So
 when an aggregate has a custom model, the check reads each width from the
-column the model declares. A model that narrows `String(max_length=900)` to
-`Column(String(100))` indexes fine, and one that widens a short field past the
-cap raises. `protean schema render` cannot see those columns, so it skips the
-check for an aggregate with a custom model and leaves it to `protean db setup`.
+column the model declares and not from the field. A model that narrows
+`String(max_length=900)` to `Column(String(100))` indexes fine, and one that
+widens a short field past the cap raises. `protean schema render` cannot see
+those columns, so it skips the check for an aggregate with a custom model and
+leaves it to `protean db setup`.
 
 `protean schema render --indexes` runs the same check for the `mysql` and
 `mariadb` dialects, so a rendered `.sql` file never carries DDL the server would
@@ -301,7 +302,8 @@ against committed state under row-lock contention.
 [ADR-0013](../../../adr/0013-optimistic-concurrency-and-claim-contract.md)
 covers why the portable path is correct on any database that does this. The
 cost is `1 + N` round trips instead of one. When the outbox holds back a
-partition key's rows (see [`sequential_by`](../../server/sequential-by.md#how-the-outbox-keeps-a-key-in-order)),
+partition key's rows (see
+[`sequential_by`](../../server/sequential-by.md#how-the-outbox-keeps-a-key-in-order)),
 each candidate row with both a partition key and a stream category adds one
 more query. That query checks for an earlier row of the same key. The `SELECT`
 leaves out rows that are held, so a halted key's backlog adds no queries.

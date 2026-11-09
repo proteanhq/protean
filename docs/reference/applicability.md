@@ -6,8 +6,9 @@ clear about the systems Protean is not for as about the ones it is.
 You can check most of Protean's fit for your system in an afternoon. Protean
 runs entirely in memory, with no database, message broker, or other services to
 install. So you can build a real slice of your system, see how it feels, and
-throw it away if it does not fit. The [installation guide](../guides/getting-started/installation.md)
-and [Hello, Protean!](../guides/getting-started/hello.md) get you to a running
+throw it away if it does not fit. The
+[installation guide](../guides/getting-started/installation.md) and
+[Hello, Protean!](../guides/getting-started/hello.md) get you to a running
 example in a few minutes.
 
 Protean is Apache-2.0 licensed and pre-1.0. See

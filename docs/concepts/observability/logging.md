@@ -50,9 +50,9 @@ wrong inside a handler, you typically have a dozen scattered log lines:
 by filtering on `correlation_id`.
 
 The **wide event pattern** replaces that stream of thin events with one
-**rich event per unit of work**. Jamie Brandon's
-[*Logging Sucks, So Use Wide Events*](https://loggingsucks.com) made the term
-popular. Stripe engineering described the same pattern independently, as
+**rich event per unit of work**. Boris Tane's
+[*Logging Sucks*](https://loggingsucks.com) made the term popular. Stripe
+engineering described the same pattern independently, as
 the [canonical log line](https://brandur.org/canonical-log-lines):
 
 > We emit one log line for every request our application handles. The
@@ -247,7 +247,8 @@ once on the root logger and once per root handler. When context is absent, the
 filter does not change the output shape.
 
 For how correlation IDs propagate across HTTP, events, subscribers, and OTel
-spans, see [Correlation and Causation IDs](../../guides/observability/correlation-and-causation.md).
+spans, see
+[Correlation and Causation IDs](../../guides/observability/correlation-and-causation.md).
 
 ---
 
@@ -349,8 +350,7 @@ rejected. Operational concerns differ:
   name would force operators to re-split them by regex at ingestion time.
 - HTTP requests are often higher-cardinality than domain operations
   (scanners, bots, rate-limit probes). Two loggers let operators sample
-  aggressively at the HTTP layer and keep every domain handler event, with an
-  independent sampling setting for each.
+  aggressively at the HTTP layer and keep every domain handler event.
 
 Because `protean.access.http` is nested under `protean.access` in the Python
 logger hierarchy, filters attached to the parent (like the tail sampling

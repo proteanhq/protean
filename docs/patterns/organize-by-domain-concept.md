@@ -50,11 +50,11 @@ layers instead of the business.
 **The folder tree owns the "what" (domain concepts). The framework owns
 the "which kind" (layer, side, boundary).**
 
-Organize your codebase so that each folder name in the directory tree is a
-concept from your business. When a newcomer opens a domain folder, they should
-immediately understand what the system *does*, not what technologies it uses.
-Every folder and top-level file should be something you'd explain to a
-product manager.
+Organize your codebase so that the directory tree reads like the table of
+contents of a book about your business. When a newcomer opens a domain folder,
+they should immediately understand what the system *does*, not what
+technologies it uses. Every folder and top-level file should be something you'd
+explain to a product manager.
 
 To organize code by domain concept, you resolve three cross-cutting tensions:
 
@@ -243,16 +243,16 @@ src/identity/                              # Bounded context
 A newcomer opens `src/identity/` and understands:
 
 > "The Identity domain is defined in `domain.py` and exposes an `api`.
-> It centers on the **Customer** aggregate, customers register, manage > their
-profiles, have addresses, go through account lifecycle, and > participate in a
-loyalty program. The domain answers queries through > **projections**: customer
-snapshots, lookups, address books, and segment > distributions. It has
-**shared** vocabulary for email and phone."
+> It centers on the **Customer** aggregate: customers register, manage
+> their profiles, have addresses, go through account lifecycle, and
+> participate in a loyalty program. The domain answers queries through
+> **projections**: customer snapshots, lookups, address books, and segment
+> distributions. It has **shared** vocabulary for email and phone."
 
 ### How It Scales
 
-When you add a second aggregate (for example, Organization), you add one folder
-and leave the rest of the structure as it is:
+When you add a second aggregate (for example, Organization), you add its folder
+and do not reorganize the existing ones:
 
 ```
 src/identity/

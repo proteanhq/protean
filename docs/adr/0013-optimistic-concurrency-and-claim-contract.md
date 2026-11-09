@@ -48,14 +48,14 @@ rejects the claim.
 then issues a guarded `UPDATE … WHERE id =:id AND <criteria>` per row. The
 re-asserted criteria make a row another worker already claimed fail to match.
 The portable default costs `1 + N` round trips (identical in cost to the old
-flow). The fast path is the performance target, and the portable default is the
-correct baseline. It prevents double-claim on every backend, but the *failure
-mode* of a lost race differs: relational backends (PostgreSQL, MySQL, SQL
-Server) re-evaluate the guard under the row lock and return zero rows (graceful
-skip); SQLite serializes writers (a contended write may raise `SQLITE_BUSY`);
-Elasticsearch relies on document versioning, so the second writer hits a
-version conflict and the call raises rather than skipping. Elasticsearch is
-therefore not recommended as a concurrently-consumed claim store.
+flow). It is the correctness floor, not the performance target. It prevents
+double-claim on every backend, but the *failure mode* of a lost race differs:
+relational backends (PostgreSQL, MySQL, SQL Server) re-evaluate the guard under
+the row lock and return zero rows (graceful skip); SQLite serializes writers (a
+contended write may raise `SQLITE_BUSY`); Elasticsearch relies on document
+versioning, so the second writer hits a version conflict and the call raises
+rather than skipping. Elasticsearch is therefore not recommended as a
+concurrently-consumed claim store.
 
 **SQLAlchemy fast path (PostgreSQL only).** A single statement:
 
@@ -124,7 +124,8 @@ the database, not the application, decides the winner. For aggregate updates
 the adapter enforces this principle with SQLAlchemy's native
 **`version_id_col`**. Protean owns the version value
 (`version_id_generator=False`, advanced by `_validate_and_update_version`), and
-the ORM flush emits `UPDATE … SET …, _version = <new> WHERE id =:id AND _version = <loaded>`.
+the ORM flush emits
+`UPDATE … SET …, _version = <new> WHERE id =:id AND _version = <loaded>`.
 The flush raises `StaleDataError` (translated to `ExpectedVersionError` at
 commit) when a concurrent write already advanced the version. The adapter uses
 `version_id_col` instead of issuing an eager
@@ -142,7 +143,7 @@ version and both write, silently losing one update. The failure the guarded
 > **Superseded in part by ADR-0027.** The AUTOCOMMIT engine described above was
 > later removed. As of ADR-0027 a Unit of Work is one real database transaction,
 > so `version_id_col` no longer guards against an eager statement autocommitting
-> mid-UoW; it now simply rides the UoW's real flush. The optimistic-concurrency
+> mid-UoW; it is now part of the UoW's real flush. The optimistic-concurrency
 > contract in this ADR is unchanged. Only the transaction-model justification
 > above is superseded.
 

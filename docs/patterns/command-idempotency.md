@@ -290,8 +290,8 @@ already seen based on its stored position.
 - Server crash between handler execution and position persistence.
 - Position update interval gaps (position is written periodically, not after
   every single message).
-- A replay of any command with an idempotency key that the subscription has
-  already processed successfully.
+- Any scenario where the subscription replays messages that were already
+  successfully processed.
 
 ### Layer 3: Handler-Level Idempotency
 

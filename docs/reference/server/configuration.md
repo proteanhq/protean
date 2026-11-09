@@ -204,7 +204,7 @@ a domain resolves to the `event_store` subscription type, and the engine turns
 See [Server Hardening → Circuit breaker](./hardening.md#circuit-breaker) for
 the state machine, the metric, and the trace events. See
 [Tuning subscriptions](../../guides/server/tuning-subscriptions.md) for how to
-choose between the StreamSubscription options in the table above.
+choose values for the subscription options on this page.
 
 ### EventStoreSubscription Options
 
