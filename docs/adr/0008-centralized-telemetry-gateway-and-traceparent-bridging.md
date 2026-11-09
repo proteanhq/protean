@@ -257,10 +257,10 @@ extraction (from `g.message_in_context.metadata.domain`) still takes precedence
 when available.
 
 Together, the two additions complete the promise Epic 6.5 made that logs work
-end to end without configuration: every log record emitted under an active
-domain context now carries both the correlation identifiers and the trace
-identifiers needed to move between log aggregators and APM tools without
-code changes.
+end to end without code changes. Every log record emitted under an active
+domain context now carries the correlation identifiers, and, when telemetry
+is enabled, the trace identifiers needed to move between log aggregators and
+APM tools.
 
 ## References
 
