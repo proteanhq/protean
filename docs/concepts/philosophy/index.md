@@ -121,7 +121,7 @@ Protean is designed for **progressive evolution**:
 As your understanding deepens, you can decompose a monolithic domain
 into finer-grained **bounded contexts**, extract subdomains, and evolve
 your architecture without rewriting from scratch. Because you can test the
-whole domain model in Protean, your tests catch regressions while you do
+whole domain model in Protean, your tests can catch regressions while you do
 this refactoring.
 
 Technology decisions follow the same principle: **defer until the last
@@ -183,10 +183,9 @@ maintainers use the same test to decide what belongs in the framework itself:
   optimizations are adapter responsibilities. Protean defines the port contracts,
   and each adapter owns its own infrastructure.
 - **DDD purity over convenience**: Aggregates have a single surrogate identity
-  rather than composite keys. Validation runs in the domain layer as
-  invariants, and the database takes no part in it. Hard deletion is an
-  infrastructure escape hatch, and the domain layer has no hard-delete
-  operation.
+  rather than composite keys. Validation belongs in the domain layer as
+  invariants rather than in the database. Hard deletion is an infrastructure
+  escape hatch, and the domain layer has no hard-delete operation.
 - **No abstractions over technology-specific concerns**: Protean wraps no
   technology in a generic layer of its own. When a feature makes sense only for
   some adapters, those adapters implement the feature with their technology's

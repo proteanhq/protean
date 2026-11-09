@@ -26,8 +26,7 @@ well-defined, explicit rules associated with it, like:
 So it makes better sense to make Email a Value Object. It has a simple string
 representation to the outer world, but it keeps a distinct local_part (the part
 of the email address before @) and domain_part (the domain part of the
-address). Any value assignment will have to satisfy the domain rules
-listed above.
+address). Any value assignment must satisfy the domain rules listed above.
 
 Below is a sample implementation of the `Email` concept as a Value Object:
 
@@ -182,8 +181,8 @@ attribute value directly after initialization, because Value Objects are
 immutable: they cannot be changed once initialized. Read more in
 [Immutability](#immutability) section.
 
-You assign an entirely new Value Object instead of editing attributes for a
-second reason: all invariants (validations) should be satisfied at all times.
+Replacing the whole Value Object, rather than editing its attributes, also
+keeps every invariant satisfied at all times.
 
 !!!note
     In your own code, create and pass Value Objects by their class. Attributes

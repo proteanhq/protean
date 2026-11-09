@@ -104,7 +104,7 @@ The solution has three parts:
 └──────────────┘                              └──────────────┘
 ```
 
-The key insight: **the customer_id is the identifier that connects all
+The key insight: **the customer_id is the thread that connects all
 representations**. Each context stores this identifier and uses it to correlate
 incoming events with its local model.
 

@@ -122,8 +122,8 @@ OrderPlaced(
 
 ## What Protean gives you
 
-Protean generates an identity when you construct the element, without asking
-any database.
+By default, Protean generates an identity when you construct the element,
+without asking any database.
 
 ### You get an identity at construction
 
