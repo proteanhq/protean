@@ -65,6 +65,8 @@ paths = [
     "tests/adapters/database_model/sqlalchemy_model/postgresql/",
     "tests/adapters/repository/generic/",
     "tests/adapters/repository/sqlalchemy_repo/",
+    "docs_src/adapters/database/index/multiple_databases.toml",
+    "tests/docs/reference/adapters/database/test_index.py",
 ]
 markers = ["postgresql"]
 # POSTGRESQL runs on psycopg 3, the default driver. POSTGRESQL_PSYCOPG2 runs

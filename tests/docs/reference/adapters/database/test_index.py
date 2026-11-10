@@ -32,27 +32,49 @@ def test_metadata_lists_the_aggregate_table():
 MULTIPLE = "adapters/database/index/multiple_databases.toml"
 
 
+def _provider(domain, name):
+    """Build the provider ``name`` from the loaded config, without ``domain.init()``."""
+    conn_info = dict(domain.config["databases"][name])
+    return registry.providers.get(conn_info["provider"])(name, domain, conn_info)
+
+
+def test_default_database_is_the_memory_provider(tmp_path):
+    domain = domain_from_config(MULTIPLE, tmp_path)
+
+    assert type(_provider(domain, "default")) is MemoryProvider
+
+
+# Each adapter job starts one service, so the analytics and reporting
+# providers are checked in separate tests.
 @pytest.mark.elasticsearch
-@pytest.mark.postgresql
-def test_configuration_shown_builds_three_providers(tmp_path, monkeypatch):
+def test_analytics_database_connects_to_elasticsearch(tmp_path, monkeypatch):
     es_host = f"http://localhost:{ELASTICSEARCH_PORT}"
     monkeypatch.setenv("ELASTICSEARCH_HOST", es_host)
+    domain = domain_from_config(MULTIPLE, tmp_path)
+
+    provider = _provider(domain, "analytics")
+
+    assert type(provider) is ESProvider
+    nodes = provider._client.transport.node_pool.all()
+    assert [node.base_url for node in nodes] == [es_host]
+    assert provider.is_alive()
+
+
+@pytest.mark.postgresql
+def test_reporting_database_connects_to_postgresql(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", POSTGRES_URI)
     domain = domain_from_config(MULTIPLE, tmp_path)
-    domain.init(traverse=False)
 
-    providers = domain.providers
-    assert type(providers["default"]) is MemoryProvider
-    assert type(providers["analytics"]) is ESProvider
-    assert type(providers["reporting"]) is PostgresqlProvider
-    nodes = providers["analytics"]._client.transport.node_pool.all()
-    assert [node.base_url for node in nodes] == [es_host]
-    url = providers["reporting"]._engine.url
+    provider = _provider(domain, "reporting")
+
+    assert type(provider) is PostgresqlProvider
+    url = provider._engine.url
     assert (url.host, url.port, url.database) == (
         "localhost",
         POSTGRES_PORT,
         "postgres",
     )
+    assert provider.is_alive()
 
 
 def test_configuration_shown_defaults_to_the_documented_values(tmp_path, monkeypatch):
@@ -75,9 +97,8 @@ def test_elasticsearch_client_gets_the_documented_host(tmp_path, monkeypatch):
     # Built without domain.init(), which would ping localhost:9200.
     monkeypatch.delenv("ELASTICSEARCH_HOST", raising=False)
     domain = domain_from_config(MULTIPLE, tmp_path)
-    conn_info = dict(domain.config["databases"]["analytics"])
 
-    provider = registry.providers.get("elasticsearch")("analytics", domain, conn_info)
+    provider = _provider(domain, "analytics")
 
     nodes = provider._client.transport.node_pool.all()
     assert [node.base_url for node in nodes] == ["http://localhost:9200"]
