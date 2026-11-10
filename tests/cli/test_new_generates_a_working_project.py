@@ -389,6 +389,80 @@ class TestGeneratedProjectStarts:
         )
 
 
+# Builds the generated project's shared value objects and prints one JSON
+# object recording, per case, the exception class raised (or None) and its
+# messages, or the resulting value.
+_SHARED_VALUE_OBJECTS = """
+import json, sys
+sys.path.insert(0, "src")
+from decimal import Decimal
+from scaffolded.domain import scaffolded as domain
+domain.init()
+
+def outcome(build):
+    try:
+        value = build()
+    except Exception as exc:
+        return {"raised": type(exc).__name__, "messages": getattr(exc, "messages", None)}
+    return {"raised": None, "value": value}
+
+with domain.domain_context():
+    from scaffolded.shared.value_objects import EmailAddress, Money
+
+    def money(op):
+        result = op()
+        return [type(result.amount).__name__, str(result.amount)]
+
+    usd, eur = Money(amount=Decimal("1"), currency="USD"), Money(amount=Decimal("1"), currency="EUR")
+    print(json.dumps({
+        "bad_email": outcome(lambda: EmailAddress(email="not-an-email").email),
+        "good_email": outcome(lambda: EmailAddress(email="a@example.com").email),
+        "add": outcome(lambda: money(lambda: Money(amount=Decimal("10.10")).add(Money(amount=Decimal("0.20"))))),
+        "subtract": outcome(lambda: money(lambda: Money(amount=Decimal("10.30")).subtract(Money(amount=Decimal("0.20"))))),
+        "add_mixed": outcome(lambda: usd.add(eur)),
+        "subtract_mixed": outcome(lambda: usd.subtract(eur)),
+    }))
+"""
+
+
+@pytest.fixture(scope="module")
+def outcomes(tmp_path_factory) -> dict:
+    """Run `_SHARED_VALUE_OBJECTS` once in a generated default project."""
+    project = _generate(tmp_path_factory.mktemp("shared_vos"), [])
+    completed = subprocess.run(
+        [sys.executable, "-c", _SHARED_VALUE_OBJECTS],
+        cwd=project,
+        env=_subprocess_env(project),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    return json.loads(completed.stdout.strip().splitlines()[-1])
+
+
+class TestGeneratedSharedValueObjects:
+    """The generated `shared/value_objects.py` enforces its rules and adds money exactly."""
+
+    def test_email_without_at_sign_is_rejected(self, outcomes):
+        assert outcomes["bad_email"]["raised"] == "ValidationError"
+        assert "email" in outcomes["bad_email"]["messages"]
+
+    def test_valid_email_is_accepted(self, outcomes):
+        assert outcomes["good_email"] == {"raised": None, "value": "a@example.com"}
+
+    def test_money_adds_exactly_as_decimal(self, outcomes):
+        assert outcomes["add"] == {"raised": None, "value": ["Decimal", "10.30"]}
+
+    def test_money_subtracts_exactly_as_decimal(self, outcomes):
+        assert outcomes["subtract"] == {"raised": None, "value": ["Decimal", "10.10"]}
+
+    @pytest.mark.parametrize("case", ["add_mixed", "subtract_mixed"])
+    def test_mixed_currencies_raise_validation_error(self, outcomes, case):
+        assert outcomes[case]["raised"] == "ValidationError"
+        assert "currency" in outcomes[case]["messages"]
+
+
 class TestCommandsFindTheGeneratedDomain:
     """Commands run from the project root find `src/<package>/domain.py`."""
 

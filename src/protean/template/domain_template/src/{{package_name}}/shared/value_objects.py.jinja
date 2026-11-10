@@ -1,7 +1,10 @@
 """Shared value objects used across multiple aggregates."""
 
+from decimal import Decimal
 from typing import Annotated
 
+from protean import invariant
+from protean.exceptions import ValidationError
 from pydantic import Field
 
 from {{ package_name }}.domain import {{ domain_name }}
@@ -11,19 +14,19 @@ from {{ package_name }}.domain import {{ domain_name }}
 class Money:
     """Value object representing monetary values."""
 
-    amount: float
+    amount: Decimal
     currency: Annotated[str, Field(max_length=3)] | None = "USD"
 
     def add(self, other: "Money") -> "Money":
         """Add two money values."""
         if self.currency != other.currency:
-            raise ValueError("Cannot add money with different currencies")
+            raise ValidationError({"currency": ["Cannot add money with different currencies"]})
         return Money(amount=self.amount + other.amount, currency=self.currency)
 
     def subtract(self, other: "Money") -> "Money":
         """Subtract money values."""
         if self.currency != other.currency:
-            raise ValueError("Cannot subtract money with different currencies")
+            raise ValidationError({"currency": ["Cannot subtract money with different currencies"]})
         return Money(amount=self.amount - other.amount, currency=self.currency)
 
 
@@ -33,7 +36,7 @@ class EmailAddress:
 
     email: Annotated[str, Field(max_length=254)]
 
-    def __post_init__(self):
-        """Validate email format."""
+    @invariant.post
+    def email_must_contain_at_sign(self):
         if "@" not in self.email:
-            raise ValueError(f"Invalid email address: {self.email}")
+            raise ValidationError({"email": [f"Invalid email address: {self.email}"]})
