@@ -5,12 +5,12 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from protean.infra.registry import brokers
 from protean.port.broker import (
     BaseBroker,
     BrokerCapabilities,
     DLQEntry,
     OperationState,
-    registry,
 )
 
 if TYPE_CHECKING:
@@ -1177,4 +1177,4 @@ def register() -> None:
 
     InlineBroker is always available as it has no external dependencies.
     """
-    registry.register("inline", "protean.adapters.broker.inline.InlineBroker")
+    brokers.register("inline", "protean.adapters.broker.inline.InlineBroker")

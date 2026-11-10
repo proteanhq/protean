@@ -122,8 +122,9 @@ class Exact(BaseLookup):
 
 ### 5. Registration Function
 
-A `register()` function that registers the provider class with Protean's
-`ProviderRegistry`. Wrap dependency imports in `try/except` so the adapter is
+A `register()` function that registers the provider class with
+`protean.infra.registry.providers`, the `AdapterRegistry` for database
+providers. Wrap dependency imports in `try/except` so the adapter is
 silently skipped if dependencies are not installed:
 
 ```python
@@ -132,9 +133,9 @@ def register():
     """Register with Protean if dependencies are available."""
     try:
         import boto3  # Check that our dependency is installed
-        from protean.port.provider import registry
+        from protean.infra.registry import providers
 
-        registry.register("dynamodb", "my_package.provider.DynamoDBProvider")
+        providers.register("dynamodb", "my_package.provider.DynamoDBProvider")
     except ImportError:
         pass  # DynamoDB SDK not installed, skip registration
 ```
@@ -204,9 +205,9 @@ def register():
     """Register the DynamoDB provider with Protean."""
     try:
         import boto3
-        from protean.port.provider import registry
+        from protean.infra.registry import providers
 
-        registry.register(
+        providers.register(
             "dynamodb",
             "protean_dynamodb.provider.DynamoDBProvider",
         )
@@ -357,7 +358,7 @@ Protean routes data through the adapter components as follows:
 
 ```
 Domain.init()
-  → ProviderRegistry.get(name)             # loads your Provider class
+  → providers.get(name)                    # loads your Provider class
   → Provider.__init__(name, domain, conn_info)
   → Provider._create_database_artifacts()  # if setup_database() called
 ```

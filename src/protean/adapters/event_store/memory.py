@@ -7,6 +7,7 @@ from pydantic import Field
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.exceptions import ExpectedVersionError
+from protean.infra.registry import event_stores
 from protean.port.event_store import BaseEventStore, EventStoreCapabilities
 from protean.utils import OptionalStdlibDatetime
 from protean.utils.eventing import Metadata
@@ -236,3 +237,10 @@ class MemoryEventStore(BaseEventStore):
         """
         repo = self.domain.repository_for(MemoryMessage)
         repo._dao._delete_all()
+
+
+def register() -> None:
+    """Register MemoryEventStore with Protean as the `memory` event store."""
+    event_stores.register(
+        "memory", "protean.adapters.event_store.memory.MemoryEventStore"
+    )

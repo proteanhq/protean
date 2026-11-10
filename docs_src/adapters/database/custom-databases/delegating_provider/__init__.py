@@ -5,7 +5,8 @@ from typing import Any
 from protean import Domain
 from protean.adapters.repository.memory import MemoryProvider
 from protean.fields import String
-from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
+from protean.infra.registry import providers
+from protean.port.provider import BaseProvider, DatabaseCapabilities
 
 
 class DelegatingProvider(BaseProvider):
@@ -73,7 +74,7 @@ for lookup in MemoryProvider.get_lookups().values():
     DelegatingProvider.register_lookup(lookup)
 
 # Make the provider available as `provider = "delegating_memory"`
-registry.register("delegating_memory", f"{__name__}.DelegatingProvider")
+providers.register("delegating_memory", f"{__name__}.DelegatingProvider")
 # --8<-- [end:provider]
 
 # --8<-- [start:usage]

@@ -176,6 +176,14 @@ mssql = "protean.adapters.repository.sqlalchemy:register_mssql"
 mysql = "protean.adapters.repository.sqlalchemy:register_mysql"
 elasticsearch = "protean.adapters.repository.elasticsearch:register"
 
+[project.entry-points."protean.event_stores"]
+memory = "protean.adapters.event_store.memory:register"
+message_db = "protean.adapters.event_store:register_message_db"
+
+[project.entry-points."protean.caches"]
+memory = "protean.adapters.cache.memory:register"
+redis = "protean.adapters.cache:register_redis"
+
 [project.entry-points."pytest11"]
 protean = "protean.integrations.pytest.plugin"
 

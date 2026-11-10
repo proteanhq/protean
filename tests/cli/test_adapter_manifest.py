@@ -2,8 +2,8 @@
 
 The first class is the guard: it fails when an adapter module is in no manifest
 entry, when a test marked for a "touched" adapter is outside that adapter's
-paths, when a database or event-store entry leaves out a shared module it loads
-through, or when an entry names a path, service or suite that does not exist, so
+paths, when a database, broker, event-store or cache entry leaves out a shared
+module it loads through, or when an entry names a path, service or suite that does not exist, so
 the PR lane cannot silently stop testing an adapter.
 """
 
@@ -101,14 +101,23 @@ class TestManifestIsCurrent:
                 "databases",
                 [
                     "src/protean/adapters/repository/__init__.py",
+                    "src/protean/infra/registry.py",
                     "src/protean/port/dao.py",
                     "src/protean/port/provider.py",
+                ],
+            ),
+            (
+                "brokers",
+                [
+                    "src/protean/adapters/broker/__init__.py",
+                    "src/protean/infra/registry.py",
                 ],
             ),
             (
                 "stores",
                 [
                     "src/protean/adapters/event_store/__init__.py",
+                    "src/protean/infra/registry.py",
                     "src/protean/port/event_store.py",
                 ],
             ),
@@ -118,12 +127,40 @@ class TestManifestIsCurrent:
         self, manifest, suite, shared
     ):
         # Every database adapter loads through Providers and the DAO and
-        # provider ports, and every event store through the EventStore wrapper
-        # and its port. A change to one of them must run every such adapter.
+        # provider ports, every broker through the Brokers collection, and
+        # every event store through the EventStore wrapper and its port.
+        # Every database, broker and event store is resolved by
+        # its adapter registry. A change to one of them must run every such
+        # adapter.
         missing = [
             f"{entry.name}: {path}"
             for entry in manifest.adapters
             if getattr(entry, suite)
+            for path in shared
+            if not entry.matches(path)
+        ]
+        assert not missing, (
+            f"Add these shared modules to their entry's paths in "
+            f"{ADAPTER_MANIFEST.name}: {missing}"
+        )
+
+    def test_every_cache_adapter_includes_the_shared_modules_it_runs_on(self, manifest):
+        # Caches have no capability suite, so an entry counts as a cache
+        # adapter when it names a cache module. Every cache loads through the
+        # Caches collection, which resolves its class through the registry.
+        shared = [
+            "src/protean/adapters/cache/__init__.py",
+            "src/protean/infra/registry.py",
+        ]
+        cache_entries = [
+            entry
+            for entry in manifest.adapters
+            if any(p.startswith("src/protean/adapters/cache/") for p in entry.paths)
+        ]
+        assert {e.name for e in cache_entries} >= {"memory", "redis-cache"}
+        missing = [
+            f"{entry.name}: {path}"
+            for entry in cache_entries
             for path in shared
             if not entry.matches(path)
         ]

@@ -306,9 +306,9 @@ class TestTemplateGeneration:
 
     def test_message_db_event_store_configuration_uses_singular_section(self):
         """MessageDB choice must render the singular `[event_store]` section
-        with the underscore provider value (`message_db`) that
-        `EVENT_STORE_PROVIDERS` resolves -- not the hyphenated `message-db`
-        template choice value, which would KeyError at Domain.init()."""
+        with the underscore provider value (`message_db`) that the event store
+        registry resolves -- not the hyphenated `message-db` template choice
+        value, which would raise ConfigurationError at Domain.init()."""
         with isolated_filesystem() as project_dir:
             args = [
                 "new",

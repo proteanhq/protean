@@ -1,6 +1,8 @@
-import importlib
 import logging
-from typing import TYPE_CHECKING, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Optional, cast
+
+from protean.infra.registry import event_stores as event_store_registry
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -8,10 +10,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-EVENT_STORE_PROVIDERS = {
-    "memory": "protean.adapters.event_store.memory.MemoryEventStore",
-    "message_db": "protean.adapters.event_store.message_db.MessageDBStore",
-}
+
+def register_message_db() -> None:
+    """Register MessageDBStore with Protean as the `message_db` event store."""
+    # Lives here, away from message_db.py, so that registering the name does not
+    # import psycopg2. Without the extra installed, `get("message_db")` then
+    # fails naming the missing module instead of reporting an unknown name.
+    event_store_registry.register(
+        "message_db", "protean.adapters.event_store.message_db.MessageDBStore"
+    )
 
 
 class EventStore:
@@ -36,20 +43,13 @@ class EventStore:
 
     def _initialize_event_store(self) -> "BaseEventStore":
         configured_event_store = self.domain.config["event_store"]
-        event_store_full_path = EVENT_STORE_PROVIDERS[
-            configured_event_store["provider"]
-        ]
-        event_store_module, event_store_class = event_store_full_path.rsplit(
-            ".", maxsplit=1
+        # Event store adapters take (domain, conn_info) and pass their own name
+        # to BaseEventStore, so the base constructor does not describe them.
+        event_store_cls = cast(
+            "Callable[[Domain, dict[str, Any]], BaseEventStore]",
+            event_store_registry.get(configured_event_store["provider"]),
         )
-
-        event_store_cls = getattr(
-            importlib.import_module(event_store_module), event_store_class
-        )
-
-        store: BaseEventStore = event_store_cls(self.domain, configured_event_store)
-
-        return store
+        return event_store_cls(self.domain, configured_event_store)
 
     def _initialize(self) -> None:
         logger.debug("Initializing Event Store...")

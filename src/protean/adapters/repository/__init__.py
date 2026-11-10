@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
-from protean.port.provider import BaseProvider, registry
+from protean.infra.registry import providers as provider_registry
+from protean.port.provider import BaseProvider
 from protean.utils import _fully_qualified_name
 
 if TYPE_CHECKING:
@@ -104,7 +105,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
 
             for provider_name, conn_info in configured_providers.items():
                 provider_type = conn_info.get("provider")
-                provider_cls = registry.get(provider_type)
+                provider_cls = provider_registry.get(provider_type)
                 provider = provider_cls(provider_name, self.domain, conn_info)
 
                 # Initialize a connection to check if everything is ok

@@ -5,12 +5,10 @@ from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum, Flag, auto
-from importlib import import_module, metadata
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import (
-    ConfigurationError,
     NotSupportedError,
     ProteanException,
     ValidationError,
@@ -1199,108 +1197,3 @@ class BaseBroker(metaclass=ABCMeta):
         logger.debug(
             f"Broker {self.name}: Registered Subscriber {subscriber_cls.__name__} for stream {stream}"
         )
-
-
-class BrokerRegistry:
-    """Registry for broker implementations.
-
-    Brokers can register themselves dynamically, making their presence optional
-    based on whether the required dependencies are installed.
-    """
-
-    _brokers: ClassVar[dict[str, str]] = {}
-    _initialized: bool = False
-
-    @classmethod
-    def _discover_plugins(cls) -> None:
-        """Discover and load broker plugins using entry points."""
-        if cls._initialized:
-            return
-
-        # Python 3.11+ uses select() method
-        entry_points = metadata.entry_points()
-        broker_entries = entry_points.select(group="protean.brokers")
-
-        for entry_point in broker_entries:
-            try:
-                # Load and call the entry point registration function
-                register_func = entry_point.load()
-                register_func()
-                logger.debug(f"Loaded broker plugin: {entry_point.name}")
-            except ImportError as e:
-                # Usually a missing optional extra, which is a normal install.
-                logger.debug(f"Skipping broker plugin '{entry_point.name}': {e}")
-            except Exception as e:  # noqa: BLE001 - a plugin is third-party code
-                logger.warning(
-                    f"Failed to load broker plugin '{entry_point.name}': {e}"
-                )
-
-        cls._initialized = True
-
-    @classmethod
-    def register(cls, name: str, broker_class_path: str) -> None:
-        """Register a broker implementation.
-
-        Args:
-            name: The name/key for the broker (e.g., 'redis', 'inline')
-            broker_class_path: Full module path to the broker class
-                              (e.g., 'protean.adapters.broker.redis.RedisBroker')
-        """
-        if name in cls._brokers:
-            logger.warning(f"Broker '{name}' is already registered, overwriting.")
-
-        cls._brokers[name] = broker_class_path
-        logger.debug(f"Registered broker '{name}' -> {broker_class_path}")
-
-    @classmethod
-    def get(cls, name: str) -> type[BaseBroker]:
-        """Get a broker class by name.
-
-        Args:
-            name: The broker name
-
-        Returns:
-            The broker class
-
-        Raises:
-            ConfigurationError: If broker is not registered or cannot be imported
-        """
-        # Discover plugins on first access
-        cls._discover_plugins()
-
-        if name not in cls._brokers:
-            available = ", ".join(cls._brokers.keys()) if cls._brokers else "none"
-            raise ConfigurationError(
-                f"Broker '{name}' is not registered. Available brokers: {available}. "
-                f"Ensure the broker package is installed."
-            )
-
-        broker_path = cls._brokers[name]
-        try:
-            module_path, class_name = broker_path.rsplit(".", maxsplit=1)
-            module = import_module(module_path)
-            broker_cls: type[BaseBroker] = getattr(module, class_name)
-            return broker_cls
-        except (ImportError, AttributeError) as e:
-            raise ConfigurationError(
-                f"Failed to load broker '{name}' from '{broker_path}': {e}. "
-                f"Ensure the required dependencies are installed."
-            ) from e
-
-    @classmethod
-    def list(cls) -> dict[str, str]:
-        """List all registered brokers.
-
-        Returns:
-            Dictionary of broker names to their class paths
-        """
-        return cls._brokers.copy()
-
-    @classmethod
-    def clear(cls) -> None:
-        """Clear all registered brokers (mainly for testing)."""
-        cls._brokers.clear()
-
-
-# Create a global registry instance
-registry = BrokerRegistry()

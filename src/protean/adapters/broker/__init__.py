@@ -4,7 +4,8 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import ConfigurationError
-from protean.port.broker import BaseBroker, registry
+from protean.infra.registry import brokers as broker_registry
+from protean.port.broker import BaseBroker
 from protean.utils.globals import current_uow
 
 if TYPE_CHECKING:
@@ -114,7 +115,7 @@ def _build_brokers(
                 broker_objects[broker_name] = current
             else:
                 provider = conn_info["provider"]
-                broker_cls = registry.get(provider)
+                broker_cls = broker_registry.get(provider)
                 broker = broker_cls(broker_name, brokers.domain, conn_info)
                 broker_objects[broker_name] = broker
                 newly_created.append(broker)
@@ -170,5 +171,5 @@ def _register_subscribers(brokers: "Brokers") -> None:
 
 # No exports - this module only provides internal domain infrastructure
 # Brokers should be accessed via domain.brokers, not imported directly
-# Registry should be imported from protean.port.broker
+# Register broker adapters through protean.infra.registry.brokers
 __all__ = []

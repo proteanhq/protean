@@ -53,9 +53,44 @@ Event store adapters extend `BaseEventStore`, implement stream write/read
 operations, and declare the guarantees they make on a `capabilities` property.
 See [What each event store guarantees](./eventstore/index.md#what-each-event-store-guarantees).
 Cache adapters extend `BaseCache`, implement key-value operations with TTL
-support, and declare their capabilities through `CacheCapabilities`. These
-follow the same entry-point registration
-pattern as database and broker adapters.
+support, and declare their capabilities through `CacheCapabilities`.
+
+They register the same way as database and broker adapters. An event store's
+`register()` function calls `protean.infra.registry.event_stores`, and its entry
+point goes in the `protean.event_stores` group. A cache uses
+`protean.infra.registry.caches` and the `protean.caches` group:
+
+```python
+# fragment
+# src/protean_eventstoredb/__init__.py
+def register():
+    """Register the EventStoreDB event store with Protean."""
+    from protean.infra.registry import event_stores
+
+    event_stores.register(
+        "eventstoredb", "protean_eventstoredb.store.EventStoreDBStore"
+    )
+```
+
+```toml
+[project.entry-points."protean.event_stores"]
+eventstoredb = "protean_eventstoredb:register"
+```
+
+The `provider` key in `[event_store]` or `[caches.<name>]` then selects the
+adapter by that name. An event store class takes `(domain, conn_info)` in its
+constructor. A cache class takes `(name, caches, conn_info)`, where `caches`
+is the domain's collection of configured caches.
+
+When `Domain.init()` loads the class, the registry checks that the class
+implements every abstract method and property it inherits. If any are missing,
+the registry raises `ConfigurationError` and names each one. The registry does
+not check that the class subclasses the port's base class.
+
+Protean loads every entry point in a group the first time it looks up a name in
+that group. If your code registers a name before then, and an installed package
+also declares that name, the entry point replaces your class path and Protean
+logs a warning. Use a name no installed package declares.
 
 ## Conformance Testing
 

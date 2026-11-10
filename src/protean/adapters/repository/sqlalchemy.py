@@ -71,8 +71,9 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET, FieldSpec
+from protean.infra.registry import providers
 from protean.port.dao import BaseDAO, BaseLookup, HoldBack
-from protean.port.provider import BaseProvider, DatabaseCapabilities, registry
+from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import (
     Database,
     DomainObjects,
@@ -4045,7 +4046,7 @@ def register_postgresql() -> None:
     try:
         import sqlalchemy  # noqa: F401, PLC0415
 
-        registry.register(
+        providers.register(
             "postgresql",
             "protean.adapters.repository.sqlalchemy.PostgresqlProvider",
         )
@@ -4061,7 +4062,7 @@ def register_sqlite() -> None:
     try:
         import sqlalchemy  # noqa: F401, PLC0415
 
-        registry.register(
+        providers.register(
             "sqlite",
             "protean.adapters.repository.sqlalchemy.SqliteProvider",
         )
@@ -4077,7 +4078,7 @@ def register_mysql() -> None:
     try:
         import sqlalchemy  # noqa: F401, PLC0415
 
-        registry.register(
+        providers.register(
             "mysql",
             "protean.adapters.repository.sqlalchemy.MysqlProvider",
         )
@@ -4093,7 +4094,7 @@ def register_mssql() -> None:
     try:
         import sqlalchemy  # noqa: F401, PLC0415
 
-        registry.register(
+        providers.register(
             "mssql",
             "protean.adapters.repository.sqlalchemy.MssqlProvider",
         )

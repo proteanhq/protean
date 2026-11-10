@@ -7,6 +7,7 @@ from threading import RLock
 from typing import Any
 
 from protean.core.projection import BaseProjection
+from protean.infra.registry import caches
 from protean.port.cache import BaseCache, CacheCapabilities, TTLValue
 from protean.utils.inflection import underscore
 from protean.utils.reflection import id_field
@@ -239,3 +240,8 @@ class MemoryCache(BaseCache):
         # unreachable on this adapter: `MemoryCache` always builds its `TTLDict`
         # with a concrete default TTL, so every entry has an expiry.
         return self._db.get_ttl_or_none(key)
+
+
+def register() -> None:
+    """Register MemoryCache with Protean as the `memory` cache."""
+    caches.register("memory", "protean.adapters.cache.memory.MemoryCache")

@@ -88,6 +88,10 @@ disappears.
   These stay provisional until
   the adapter conformance suite ships publicly and has been exercised by an
   adapter Protean does not maintain.
+- **`AdapterRegistry`** in `protean.infra.registry`, with its four instances
+  `providers`, `brokers`, `event_stores` and `caches`. An adapter's
+  `register()` function calls one of them. Provisional for the same reason as
+  the port ABCs.
 - **`Field`** as the base class for custom field types.
 - **`FieldBase`**, the common ancestor of the field hierarchy.
 - **`ResolvedField`**, the field-reflection API adapter authors read.

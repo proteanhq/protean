@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import redis
 
-from protean.port.broker import BaseBroker, BrokerCapabilities, DLQEntry, registry
+from protean.infra.registry import brokers
+from protean.port.broker import BaseBroker, BrokerCapabilities, DLQEntry
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -299,7 +300,7 @@ def register() -> None:
     try:
         import redis  # noqa: F401, PLC0415
 
-        registry.register(
+        brokers.register(
             "redis_pubsub", "protean.adapters.broker.redis_pubsub.RedisPubSubBroker"
         )
         logger.debug("Redis PubSub broker registered successfully")

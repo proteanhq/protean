@@ -1292,11 +1292,11 @@ def _load_provider_capabilities(
     or does not initialize.
     """
     from protean.domain import Domain  # noqa: PLC0415
-    from protean.port.provider import ProviderRegistry  # noqa: PLC0415
+    from protean.infra.registry import providers  # noqa: PLC0415
 
     # Verify provider is registered
     try:
-        ProviderRegistry.get(provider)
+        providers.get(provider)
     except Exception as e:  # any lookup error exits 1 with the message
         print(f"Error: {e}")
         raise typer.Exit(code=1) from e
