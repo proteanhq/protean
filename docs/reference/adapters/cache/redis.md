@@ -70,10 +70,10 @@ redis://:password@redis.prod:6379/2  # With password, database 2
 
 !!!note
     Give the cache a Redis database of its own (the `/2` suffix).
-    `clear()` runs `FLUSHDB` on the configured database, and `RedisCache`
+    `flush_all()` runs `FLUSHDB` on the configured database, and `RedisCache`
     adds no cache-specific namespace to its keys, so it removes every key in
     that database. If the
-    cache shares a database with a broker, `clear()` also empties the
+    cache shares a database with a broker, `flush_all()` also empties the
     broker's streams and consumer groups. Other databases on the server are
     not touched.
 

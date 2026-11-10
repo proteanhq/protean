@@ -437,7 +437,7 @@ A reliability pattern that ensures messages are published to the broker exactly 
 
 ### Port
 
-An abstract interface that defines the contract between the domain and external infrastructure. Ports specify *what* capabilities are needed (persistence, messaging, caching) without prescribing *how* they are implemented. In Protean, ports include `BaseProvider`, `BaseBroker`, `BaseEventStore`, and `CachePort`.
+An abstract interface that defines the contract between the domain and external infrastructure. Ports specify *what* capabilities are needed (persistence, messaging, caching) without prescribing *how* they are implemented. In Protean, ports include `BaseProvider`, `BaseBroker`, `BaseEventStore`, and `BaseCache`.
 
 [Learn more →](concepts/ports-and-adapters/index.md) | **See also**: [Adapter](#adapter), [Ports and Adapters Architecture](#ports-and-adapters-architecture)
 

@@ -8,15 +8,13 @@ access to the denormalized views that projectors build.
 
 Protean's cache adapters store
 [Projection](../../../guides/consume-state/projections.md) instances keyed by
-their identifier. Every cache adapter implements the `CachePort` protocol, and
-`domain.cache_for(Projection)` returns a `Cache` that works on top of it. The
-`Cache` provides:
+their identifier. The `BaseCache` interface provides:
 
 - **Add/Get/Remove**: Store and retrieve projections by key
 - **Pattern matching**: Retrieve or remove projections by key pattern
 - **TTL management**: Set time-to-live on cached entries
 - **Health checks**: Verify cache connectivity
-- **Bulk operations**: Clear all entries
+- **Bulk operations**: Flush all entries
 
 ## Available Caches
 
@@ -141,8 +139,7 @@ To page a large projection set, query the projection's repository
 
 ## Interface
 
-`domain.caches[<name>]` and `domain.cache_for(Projection)` return a `Cache`
-with these methods:
+All cache adapters implement these methods:
 
 | Method | Description |
 |--------|-------------|
@@ -155,7 +152,7 @@ with these methods:
 | `remove(projection)` | Remove a cached projection. Does nothing if no record exists for it |
 | `remove_by_key(key)` | Remove an entry by key. Does nothing if the key is absent |
 | `remove_by_key_pattern(key_pattern)` | Remove entries matching a pattern. Does nothing if the pattern matches no keys |
-| `clear()` | Remove every key in the cache's backing store. On Redis that is every key in the configured database |
+| `flush_all()` | Remove every key in the cache's backing store. On Redis that is every key in the configured database |
 | `set_ttl(key, ttl)` | Set a TTL on a specific key. Does nothing if the key is absent, but still rejects an invalid TTL |
 | `get_ttl(key)` | Seconds remaining before a key expires; `None` if there is no such key, `math.inf` if it never expires. See below |
 

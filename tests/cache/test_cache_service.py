@@ -19,6 +19,7 @@ from protean.port.cache import (
     CacheCapabilities,
     CacheEntry,
     CacheHealth,
+    CachePatternPort,
     CachePort,
     CacheTTLPort,
 )
@@ -89,6 +90,30 @@ class PatternWithoutKeysMatching(KeyValueCache):
 
     def delete_matching(self, pattern: str) -> None:
         pass
+
+
+class ExpiringPatternCache(KeyValueCache, CachePatternPort):
+    """Lists every stored key, but reads keys in `expired` back as `None`."""
+
+    def __init__(self, name: str, domain: Any, config: Any) -> None:
+        super().__init__(name, domain, config)
+        self.expired: set[str] = set()
+
+    @property
+    def capabilities(self) -> CacheCapabilities:
+        return CacheCapabilities.KEY_VALUE | CacheCapabilities.PATTERN_MATCH
+
+    def get(self, key: str) -> CacheEntry | None:
+        return None if key in self.expired else self.store.get(key)
+
+    def keys_matching(self, pattern: str) -> list[str]:
+        return sorted(self.store)
+
+    def count_matching(self, pattern: str) -> int:
+        return len(self.store)
+
+    def delete_matching(self, pattern: str) -> None:
+        self.store.clear()
 
 
 class UndeclaredTTL(KeyValueCache, CacheTTLPort):
@@ -166,6 +191,27 @@ class TestAKeyValueOnlyCache:
 
         with pytest.raises(ConfigurationError):
             cache.add(Person(key="1", name="Ada"), ttl=0)
+
+
+class TestReads:
+    def test_get_names_an_unregistered_projection(self):
+        cache = _key_value_cache()
+
+        with pytest.raises(KeyError) as exc:
+            cache.get("order:::1")
+
+        assert "order" in str(exc.value)
+
+    def test_get_all_skips_an_entry_that_expires_after_the_scan(self):
+        cache = Cache(ExpiringPatternCache("scan", None, {"provider": "scan"}))
+        cache._register_projection(Person)
+        cache.add(Person(key="1", name="Ada"))
+        cache.add(Person(key="2", name="Grace"))
+        cache._adapter.expired.add("person:::1")
+
+        entries = cache._get_all("person:::*")
+
+        assert [str(p.key) for p in entries] == ["2"]
 
 
 class TestTheCapabilityCheckIsOneWay:
