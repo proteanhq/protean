@@ -53,6 +53,7 @@ The Memory provider supports the following capabilities:
 - :x: **TRANSACTIONS**: No real database-level atomicity
 - :x: **SCHEMA_MANAGEMENT**: No tables or indices to manage
 - :x: **CONNECTION_POOLING**: No external connections
+- :x: **SCHEMA_MIGRATIONS**: No schema to migrate
 - :x: **NATIVE_JSON**: No native JSON column type
 - :x: **NATIVE_ARRAY**: No native array column type
 

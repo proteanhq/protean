@@ -32,7 +32,18 @@ OPTIONAL_DISTS = {
 }
 
 # Top-level import name of each optional stack. `import protean` must pull none.
-OPTIONAL_IMPORTS = ["fastapi", "uvicorn", "jinja2", "IPython", "copier", "mcp"]
+OPTIONAL_IMPORTS = [
+    "fastapi",
+    "uvicorn",
+    "jinja2",
+    "IPython",
+    "copier",
+    "mcp",
+    "alembic",
+]
+
+# The SQLAlchemy extras, each of which installs Alembic for schema migrations.
+SQLALCHEMY_EXTRAS = ("postgresql", "postgresql-psycopg2", "sqlite", "mssql", "mysql")
 
 # Dependencies that must stay in the lean core.
 CORE_MUST_KEEP = {"bleach", "pydantic", "marshmallow", "typer"}
@@ -72,6 +83,23 @@ def test_each_optional_distribution_is_declared_in_its_extra():
     for dist, extra in OPTIONAL_DISTS.items():
         names = {_dist_name(spec) for spec in extras[extra]}
         assert dist in names, f"protean[{extra}] must provide {dist!r}"
+
+
+def test_alembic_is_not_a_core_dependency():
+    core = {_dist_name(spec) for spec in _pyproject()["project"]["dependencies"]}
+    assert core, "core dependency list is empty"
+    assert "alembic" not in core
+
+
+# The ids carry a prefix: a bare id such as ``sqlite`` is read as the opt-in
+# marker of the same name, and the test would be skipped without ``--sqlite``.
+@pytest.mark.parametrize(
+    "extra", SQLALCHEMY_EXTRAS, ids=[f"extra-{extra}" for extra in SQLALCHEMY_EXTRAS]
+)
+def test_each_sqlalchemy_extra_installs_alembic(extra):
+    extras = _pyproject()["project"]["optional-dependencies"]
+    names = {_dist_name(spec) for spec in extras[extra]}
+    assert "alembic" in names, f"protean[{extra}] must provide 'alembic'"
 
 
 def test_convenience_extras_compose_the_feature_extras():

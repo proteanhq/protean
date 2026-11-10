@@ -99,12 +99,12 @@ The PostgreSQL provider supports the following capabilities:
 - :white_check_mark: **RAW_QUERIES**: Execute raw SQL queries
 - :white_check_mark: **SCHEMA_MANAGEMENT**: Create/drop tables and indices
 - :white_check_mark: **CONNECTION_POOLING**: SQLAlchemy connection pool management
+- :white_check_mark: **SCHEMA_MIGRATIONS**: Versioned migrations through Alembic
 - :white_check_mark: **NATIVE_JSON**: PostgreSQL `JSONB` column type
 - :white_check_mark: **NATIVE_ARRAY**: PostgreSQL `ARRAY` column type
 
-PostgreSQL is the only built-in provider that supports **all 12 capability
-flags** (excluding `SIMULATED_TRANSACTIONS`, which is specific to the Memory
-provider).
+PostgreSQL supports **12 of the 13 capability flags**. It does not declare
+`SIMULATED_TRANSACTIONS`, which is specific to the Memory provider.
 
 ## Indexes
 

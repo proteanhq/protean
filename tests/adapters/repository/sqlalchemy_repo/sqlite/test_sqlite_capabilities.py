@@ -12,7 +12,9 @@ class TestSqliteProviderCapabilities:
     def test_capabilities(self, test_domain):
         provider = test_domain.providers["default"]
 
-        assert provider.capabilities == DatabaseCapabilities.RELATIONAL
+        assert provider.capabilities == (
+            DatabaseCapabilities.RELATIONAL | DatabaseCapabilities.SCHEMA_MIGRATIONS
+        )
 
         assert provider.has_capability(DatabaseCapabilities.TRANSACTIONS)
         assert provider.has_capability(DatabaseCapabilities.SCHEMA_MANAGEMENT)

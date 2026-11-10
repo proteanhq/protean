@@ -1,0 +1,48 @@
+# Alembic configuration for the migrations of one Protean provider.
+
+[alembic]
+script_location = %(here)s
+# Alembic 1.16 and later read this key; older versions ignore it.
+path_separator = os
+
+# The domain and the provider these migrations belong to. Protean's commands
+# take the domain from --domain. A plain `alembic` run reads it from here,
+# unless the PROTEAN_DOMAIN environment variable is set, and resolves a
+# relative path from protean_root, the folder `protean db init` ran in.
+protean_domain = $domain
+protean_provider = $provider
+protean_root = $root
+
+[loggers]
+keys = root,sqlalchemy,alembic
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = WARNING
+handlers = console
+qualname =
+
+[logger_sqlalchemy]
+level = WARNING
+handlers =
+qualname = sqlalchemy.engine
+
+[logger_alembic]
+level = INFO
+handlers =
+qualname = alembic
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(levelname)-5.5s [%(name)s] %(message)s
+datefmt = %H:%M:%S

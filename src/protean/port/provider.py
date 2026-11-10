@@ -1,6 +1,7 @@
 """Base class for Providers"""
 
 import logging
+import pathlib
 from abc import ABCMeta, abstractmethod
 from enum import Flag, auto
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
@@ -39,6 +40,7 @@ class DatabaseCapabilities(Flag):
     # Tier 4: Infrastructure
     SCHEMA_MANAGEMENT = auto()  # Create/drop tables/indices
     CONNECTION_POOLING = auto()  # Connection pool management
+    SCHEMA_MIGRATIONS = auto()  # Versioned schema changes through a SchemaMigrator
 
     # Tier 5: Type System
     NATIVE_JSON = auto()  # Native JSON column support
@@ -85,6 +87,24 @@ class SessionProtocol(Protocol):
     def commit(self) -> None: ...
     def rollback(self) -> None: ...
     def close(self) -> None: ...
+
+
+@runtime_checkable
+class SchemaMigrator(Protocol):
+    """Protocol that objects returned by ``schema_migrator()`` must satisfy.
+
+    A schema migrator keeps a versioned history of one provider's schema in a
+    folder on disk. The ``protean db`` migration commands call it and import
+    nothing from the migration tool behind it.
+    """
+
+    def init(self, domain_path: str) -> None:
+        """Create the migrations folder for ``domain_path``.
+
+        Raises ``ConfigurationError`` when the folder exists and is not empty,
+        and leaves it unchanged.
+        """
+        ...
 
 
 class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
@@ -271,6 +291,31 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         Adapters without RAW_QUERIES need not provide a meaningful implementation
         as the base class gates access via ``raw()``.
         """
+
+    def schema_migrator(self, directory: pathlib.Path) -> SchemaMigrator:
+        """Return the schema migrator that keeps its history in ``directory``.
+
+        Raises NotSupportedError if the provider does not declare
+        ``SCHEMA_MIGRATIONS``.
+        """
+        if not self.has_capability(DatabaseCapabilities.SCHEMA_MIGRATIONS):
+            raise NotSupportedError(
+                f"Provider '{self.name}' ({self.__class__.__name__}) "
+                "does not support schema migrations"
+            )
+        return self._schema_migrator(directory)
+
+    def _schema_migrator(self, directory: pathlib.Path) -> SchemaMigrator:
+        """Internal schema migrator factory.
+
+        Override in adapters that declare the SCHEMA_MIGRATIONS capability. The
+        default raises NotSupportedError, so an adapter without migrations
+        need not implement it.
+        """
+        raise NotSupportedError(
+            f"Provider '{self.name}' ({self.__class__.__name__}) "
+            "does not implement schema migrations"
+        )
 
     def pool_stats(self) -> dict[str, int]:
         """Return connection pool statistics.

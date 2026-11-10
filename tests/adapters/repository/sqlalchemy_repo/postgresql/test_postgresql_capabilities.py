@@ -14,6 +14,7 @@ class TestPostgresqlProviderCapabilities:
 
         expected = (
             DatabaseCapabilities.RELATIONAL
+            | DatabaseCapabilities.SCHEMA_MIGRATIONS
             | DatabaseCapabilities.NATIVE_JSON
             | DatabaseCapabilities.NATIVE_ARRAY
         )

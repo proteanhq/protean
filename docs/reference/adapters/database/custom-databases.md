@@ -432,8 +432,34 @@ def capabilities(self) -> DatabaseCapabilities:
 
 !!!warning
     Only declare capabilities you actually implement. The conformance test
-    suite will verify that your adapter correctly supports every declared
-    capability.
+    suite checks most declared capabilities. It does not check
+    `OPTIMISTIC_LOCKING`, `CONNECTION_POOLING` or `SCHEMA_MIGRATIONS`.
+
+### Supporting schema migrations (optional)
+
+`protean db init` works only with a provider that declares
+`SCHEMA_MIGRATIONS`. `RELATIONAL` does not include the flag, so
+an adapter adds it on its own:
+
+```python
+# fragment
+@property
+def capabilities(self) -> DatabaseCapabilities:
+    return DatabaseCapabilities.RELATIONAL | DatabaseCapabilities.SCHEMA_MIGRATIONS
+```
+
+An adapter that declares the flag also overrides `_schema_migrator(directory)`.
+It returns an object that satisfies the `SchemaMigrator` protocol from
+`protean.port.provider`. The protocol has one method, `init(domain_path)`,
+which creates the migrations folder in `directory`. It raises
+`ConfigurationError` when the folder exists and is not empty.
+
+Callers use `provider.schema_migrator(directory)`. It raises
+`NotSupportedError` when the provider does not declare the flag. An adapter
+that declares the flag and does not override `_schema_migrator` gets the
+`BaseProvider` version, which raises the same error. An adapter that leaves
+the flag out needs neither method. The conformance suite does not check
+`SCHEMA_MIGRATIONS`, so test the migrator in the adapter's own tests.
 
 ## Testing Your Adapter
 

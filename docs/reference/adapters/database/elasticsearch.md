@@ -81,6 +81,7 @@ The Elasticsearch provider supports the following capabilities:
 - :x: **RAW_QUERIES**: Not supported
 - :x: **CONNECTION_POOLING**: Managed by the `elasticsearch` client
   internally
+- :x: **SCHEMA_MIGRATIONS**: Index changes are not versioned
 - :x: **NATIVE_JSON**: Elasticsearch stores JSON natively, but this flag
   refers to SQL-style JSON columns
 - :x: **NATIVE_ARRAY**: No SQL-style array columns

@@ -1,12 +1,15 @@
 """CLI commands for database lifecycle management."""
 
+import os
+from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich import print
 
+from protean.adapters.repository.schema_migrator import migration_provider
 from protean.cli._helpers import handle_cli_exceptions, load_domain
-from protean.exceptions import ConfigurationError
+from protean.exceptions import ConfigurationError, NotSupportedError
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -88,3 +91,32 @@ def setup_outbox(
         raise typer.Abort() from exc
 
     print("Outbox tables created successfully.")
+
+
+@app.command(name="init")
+@handle_cli_exceptions("db init")
+def init(
+    domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
+    provider: Annotated[
+        str, typer.Option(help="Name of the provider the migrations belong to")
+    ] = "default",
+    directory: Annotated[
+        str, typer.Option(help="Folder to create the migrations in")
+    ] = "migrations",
+) -> None:
+    """Create a migrations folder for one database provider."""
+    derived_domain = load_domain(domain)
+    # Record the path the domain was loaded from, which is PROTEAN_DOMAIN when
+    # it is set, so a plain ``alembic`` run loads the same domain.
+    domain_path = os.environ.get("PROTEAN_DOMAIN") or domain
+    try:
+        with derived_domain.domain_context():
+            checked = migration_provider(derived_domain, provider)
+            checked.schema_migrator(Path(directory)).init(domain_path)
+    except (ConfigurationError, NotSupportedError) as exc:
+        # typer.echo, not rich's print: rich would read "[sqlite]" in an
+        # install hint such as "protean[sqlite]" as markup and drop it.
+        typer.echo(f"Error: {exc.args[0]}")
+        raise typer.Abort() from exc
+
+    typer.echo(f"Created migrations for provider '{provider}' in {directory}.")
