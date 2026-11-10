@@ -52,8 +52,9 @@ for a complete guide with a worked Kafka example, including:
 Event store adapters extend `BaseEventStore`, implement stream write/read
 operations, and declare the guarantees they make on a `capabilities` property.
 See [What each event store guarantees](./eventstore/index.md#what-each-event-store-guarantees).
-Cache adapters extend `BaseCache`, implement key-value operations with TTL
-support, and declare their capabilities through `CacheCapabilities`.
+Cache adapters subclass `CachePort` and implement its key-value methods. They
+declare their capabilities through `CacheCapabilities`, and they also subclass
+`CacheTTLPort` for `TTL` and `CachePatternPort` for `PATTERN_MATCH`.
 
 They register the same way as database and broker adapters. An event store's
 `register()` function calls `protean.infra.registry.event_stores`, and its entry
@@ -80,13 +81,17 @@ eventstoredb = "protean_eventstoredb:register"
 
 The `provider` key in `[event_store]` or `[caches.<name>]` then selects the
 adapter by that name. An event store class takes `(domain, conn_info)` in its
-constructor. A cache class takes `(name, caches, conn_info)`, where `caches`
-is the domain's collection of configured caches.
+constructor. A cache class takes `(name, domain, config)`, where `config` is
+the cache's `[caches.<name>]` table. The cache keeps `config` and does not
+change it.
 
 When `Domain.init()` loads the class, the registry checks that the class
 implements every abstract method and property it inherits. If any are missing,
 the registry raises `ConfigurationError` and names each one. The registry does
-not check that the class subclasses the port's base class.
+not check that the class subclasses the port's base class. A cache gets one more
+check: when the class declares `TTL` or `PATTERN_MATCH` but does not subclass
+`CacheTTLPort` or `CachePatternPort`, `Domain.init()` raises
+`ConfigurationError` naming the cache, the capability and the missing methods.
 
 Protean loads every entry point in a group the first time it looks up a name in
 that group. If your code registers a name before then, and an installed package

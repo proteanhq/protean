@@ -7,8 +7,8 @@ these to raise, so callers relying on ``.get()`` semantics stay correct.
 
 import pytest
 
-from protean.adapters.cache import Caches
 from protean.adapters.repository import Providers
+from protean.infra.cache import Caches
 
 
 def test_caches_getitem_raises_keyerror_when_uninitialized(test_domain):

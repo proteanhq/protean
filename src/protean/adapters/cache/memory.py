@@ -1,16 +1,23 @@
 import collections.abc
 import math
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from fnmatch import fnmatchcase
 from threading import RLock
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from protean.core.projection import BaseProjection
 from protean.infra.registry import caches
-from protean.port.cache import BaseCache, CacheCapabilities, TTLValue
-from protean.utils.inflection import underscore
-from protean.utils.reflection import id_field
+from protean.port.cache import (
+    CacheCapabilities,
+    CacheEntry,
+    CacheHealth,
+    CachePatternPort,
+    CachePort,
+    CacheTTLPort,
+)
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 
 class TTLDict(collections.abc.MutableMapping[str, Any]):
@@ -47,12 +54,22 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
             if self.is_expired(key, now=now, remove=True):
                 return None
             expire, _value = self._values[key]
-            # A `None` expiry is a never-expiring entry (a `TTLDict` built with
-            # `default_ttl=None`). `MemoryCache` never does this, but `TTLDict`
-            # allows it, so report it as `math.inf`, the port's shared answer.
+            # A `None` expiry is a never-expiring entry: one written with no
+            # TTL. Report it as `math.inf`, the port's shared answer.
             if expire is None:
                 return math.inf
             return expire - now
+
+    def put(self, key: str, value: Any, ttl: float | None) -> None:
+        """Store `value` under `key`, expiring `ttl` seconds from now, or never
+        when `ttl` is `None`.
+
+        The value and its expiry are written in one step, so no reader sees the
+        new value with the old expiry.
+        """
+        with self._lock:
+            expire = None if ttl is None else time.time() + ttl
+            self._values[key] = (expire, value)
 
     def expire_at(self, key: str, timestamp: float) -> None:
         """Set the key expire timestamp"""
@@ -106,18 +123,14 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
             return self._values[key][1]
 
 
-class MemoryCache(BaseCache):
-    def __init__(self, name: str, domain: Any, conn_info: dict[str, Any]) -> None:
-        """Initialize Cache with Connection/Adapter details"""
+class MemoryCache(CacheTTLPort, CachePatternPort):
+    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
+        self.name = name
+        self.domain = domain
+        self.config = config
 
-        # In case of `MemoryCache`, the `cache` value will always be `memory`.
-        conn_info["cache"] = "memory"
-        super().__init__(name, domain, conn_info)
-
-        # The Data Cache
-        self._db = TTLDict(self.ttl)
-
-        self._lock = RLock()
+        # No default expiry: the `Cache` service passes every entry's TTL to `put`.
+        self._db = TTLDict(None)
 
     @property
     def capabilities(self) -> CacheCapabilities:
@@ -129,119 +142,64 @@ class MemoryCache(BaseCache):
         """Always returns True for memory cache"""
         return True
 
+    def health(self) -> CacheHealth:
+        """The memory cache has no connection pool."""
+        return CacheHealth(pool=None)
+
     def get_connection(self) -> object:
         """Get the connection object for the repository"""
         return self._db._values
 
-    def add(self, projection: BaseProjection, ttl: TTLValue | None = None) -> None:
-        """Cache the projection's `to_dict()` data.
-
-        The key is `<projection_name>:::<id>`, where `<projection_name>` is the
-        projection class name in snake case.
-
-        Args:
-            projection: The projection to cache.
-            ttl: Seconds the entry lives, as a number or a string holding one.
-                `None` or `""` uses this cache's `TTL`, which is 300 seconds
-                when the cache configures none.
-
-        Raises:
-            ConfigurationError: If `ttl` is not a positive, finite number of
-                seconds. The message names the cache, and nothing is cached.
-        """
-        id_f = id_field(projection)
-        assert id_f is not None
-        assert id_f.field_name is not None
-        identifier = getattr(projection, id_f.field_name)
-        key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
-
-        # Resolved before the write, so a bad TTL raises without leaving a
-        # cached entry behind. The Redis adapter already had this ordering.
-        explicit_ttl = self._explicit_ttl(ttl)
-
-        self._db[key] = projection.to_dict()
-
-        # Only when the caller actually named one. Left out, the store applies
-        # this cache's TTL on insert, so re-setting it here would restart the
-        # countdown and make `ttl=""` behave differently from omitting it.
-        if explicit_ttl is not None:
-            self._db.set_ttl(key, explicit_ttl)
-
-    def get(self, key: str) -> BaseProjection | None:
-        projection_name = key.split(":::")[0]
-        projection_cls = self._projections[projection_name]
-
-        value = self._db.get(key)
-        return projection_cls(value) if value else None
-
-    def _get_all(self, key_pattern: str) -> list[BaseProjection]:
-        projection_name = key_pattern.split(":::")[0]
-        projection_cls = self._projections[projection_name]
-
-        # Snapshot with list() so the matching below runs outside the store's
-        # lock: keys() is a lazy iterator that holds TTLDict's RLock for the
-        # whole traversal, so matching while iterating it would hold the lock
-        # across every fnmatch call.
-        key_list = list(self._db.keys())
-        # Sort by key so the result is deterministic and in the same order the
-        # Redis adapter returns, keeping this utility consistent across adapters.
-        matches = sorted(key for key in key_list if fnmatchcase(key, key_pattern))
-        # Cap to the first GET_ALL_MAX in key order, warning if it truncated.
-        matches = self._capped(matches, key_pattern)
-
-        # A key can expire between the scan above and this read, so a `get`
-        # can come back empty. Skip it, the same way the Redis adapter does.
-        return [
-            projection_cls(value)
-            for key in matches
-            if (value := self._db.get(key)) is not None
-        ]
-
-    def count(self, key_pattern: str) -> int:
-        # list() snapshots under the store's lock; matching then runs lock-free.
-        key_list = list(self._db.keys())
-        return sum(1 for key in key_list if fnmatchcase(key, key_pattern))
-
-    def remove(self, projection: BaseProjection) -> None:
-        id_f = id_field(projection)
-        assert id_f is not None
-        assert id_f.field_name is not None
-        identifier = getattr(projection, id_f.field_name)
-        key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
-        self._db.pop(key, None)
-
-    def remove_by_key(self, key: str) -> None:
-        self._db.pop(key, None)
-
-    def remove_by_key_pattern(self, key_pattern: str) -> None:
-        # list() snapshots under the store's lock; matching then runs lock-free.
-        key_list = list(self._db.keys())
-        keys_to_delete = [key for key in key_list if fnmatchcase(key, key_pattern)]
-        # A key can expire between the scan above and this delete, so use
-        # `pop` with a default, the same as `remove` and `remove_by_key`.
-        for key in keys_to_delete:
-            self._db.pop(key, None)
-
-    def flush_all(self) -> None:
-        # Clear in place so the TTLDict (and its configured default TTL) is
-        # preserved — reassigning a plain {} broke set_ttl/get_ttl afterwards.
+    def clear(self) -> None:
+        # Clear in place so the TTLDict is preserved: reassigning a plain {}
+        # broke set_ttl/get_ttl afterwards.
         self._db.clear()
 
-    def set_ttl(self, key: str, ttl: TTLValue) -> None:
-        resolved_ttl = self._ttl_for(ttl)
+    def get(self, key: str) -> CacheEntry | None:
+        value: CacheEntry | None = self._db.get(key)
+        return value
+
+    def put(self, key: str, value: CacheEntry, ttl: float | None) -> None:
+        self._db.put(key, value, ttl)
+
+    def delete(self, key: str) -> None:
+        self._db.pop(key, None)
+
+    def set_ttl(self, key: str, ttl: float) -> None:
         if key in self._db:
-            self._db.set_ttl(key, resolved_ttl)
+            self._db.set_ttl(key, ttl)
 
     def get_ttl(self, key: str) -> float | None:
         # A never-added key and an expired-but-not-yet-evicted key both answer
         # `None`, matching how `get` already treats them. The check and the read
         # are one locked operation, so a concurrent eviction cannot reintroduce
-        # the `KeyError` this contract removes. `math.inf` (no expiry) is
-        # unreachable on this adapter: `MemoryCache` always builds its `TTLDict`
-        # with a concrete default TTL, so every entry has an expiry.
+        # a `KeyError`.
         return self._db.get_ttl_or_none(key)
+
+    def _matching(self, pattern: str) -> list[str]:
+        # Snapshot with list() so the matching runs outside the store's lock:
+        # keys() is a lazy iterator that holds TTLDict's RLock for the whole
+        # traversal, so matching while iterating it would hold the lock across
+        # every fnmatch call.
+        key_list = list(self._db.keys())
+        return [key for key in key_list if fnmatchcase(key, pattern)]
+
+    def keys_matching(self, pattern: str) -> list[str]:
+        return sorted(self._matching(pattern))
+
+    def count_matching(self, pattern: str) -> int:
+        return len(self._matching(pattern))
+
+    def delete_matching(self, pattern: str) -> None:
+        # A key can expire between the scan and this delete, so use `pop` with
+        # a default.
+        for key in self._matching(pattern):
+            self._db.pop(key, None)
 
 
 def register() -> None:
     """Register MemoryCache with Protean as the `memory` cache."""
     caches.register("memory", "protean.adapters.cache.memory.MemoryCache")
+
+
+_PORT_CHECK: type[CachePort] = MemoryCache

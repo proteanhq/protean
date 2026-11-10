@@ -32,12 +32,12 @@ For concrete adapter documentation, see
 
     [:material-arrow-right-box: BaseEventStore](event-store.md)
 
--   **:material-cached: BaseCache**
+-   **:material-cached: CachePort**
 
     ---
 
     Cache interface for read-optimized storage.
 
-    [:material-arrow-right-box: BaseCache](cache.md)
+    [:material-arrow-right-box: CachePort](cache.md)
 
 </div>

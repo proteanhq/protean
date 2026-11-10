@@ -104,7 +104,7 @@ class TestGetAllHardCap:
 
     The cap is patched down to a small number so the test does not have to load
     thousands of entries. Both adapters slice the same sorted key list through
-    `BaseCache._capped`, so the behaviour is one contract on every adapter.
+    `Cache._capped`, so the behaviour is one contract on every adapter.
     """
 
     PATTERN = "cache_entry:::*"
@@ -116,10 +116,10 @@ class TestGetAllHardCap:
     def test_truncates_to_the_cap_in_key_order_and_warns(
         self, cache, monkeypatch, caplog
     ):
-        monkeypatch.setattr("protean.port.cache.GET_ALL_MAX", 3)
+        monkeypatch.setattr("protean.infra.cache.GET_ALL_MAX", 3)
         self._load(cache, 5)
 
-        with caplog.at_level(logging.WARNING, logger="protean.port.cache"):
+        with caplog.at_level(logging.WARNING, logger="protean.infra.cache"):
             results = cache._get_all(self.PATTERN)
 
         # First 3 in key order, the ones a caller can predict, not any 3.
@@ -136,10 +136,10 @@ class TestGetAllHardCap:
         assert "matched 5" in warnings[0].getMessage()
 
     def test_does_not_warn_at_or_under_the_cap(self, cache, monkeypatch, caplog):
-        monkeypatch.setattr("protean.port.cache.GET_ALL_MAX", 3)
+        monkeypatch.setattr("protean.infra.cache.GET_ALL_MAX", 3)
         self._load(cache, 3)  # exactly the cap, not over it
 
-        with caplog.at_level(logging.WARNING, logger="protean.port.cache"):
+        with caplog.at_level(logging.WARNING, logger="protean.infra.cache"):
             results = cache._get_all(self.PATTERN)
 
         assert len(results) == 3

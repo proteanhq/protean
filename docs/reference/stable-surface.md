@@ -82,8 +82,9 @@ disappears.
 
 ## What is Provisional
 
-- **The port ABCs** (`BaseProvider`, `BaseBroker`, `BaseEventStore`,
-  `BaseCache`) for third-party adapter authors, with the `BaseDAO` and
+- **The ports** (`BaseProvider`, `BaseBroker`, `BaseEventStore`, and the
+  cache protocols `CachePort`, `CacheTTLPort` and `CachePatternPort`) for
+  third-party adapter authors, with the `BaseDAO` and
   `BaseLookup` classes a database provider subclasses in `protean.port.dao`.
   These stay provisional until
   the adapter conformance suite ships publicly and has been exercised by an

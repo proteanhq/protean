@@ -69,5 +69,5 @@ def cache(request):
     with domain.domain_context():
         provider = domain.cache_for(CacheEntry)
         yield provider
-        provider.flush_all()
-        provider.close()
+        provider.clear()
+        provider._close()

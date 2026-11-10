@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from protean.core.projection import BaseProjection
     from protean.core.repository import BaseRepository
     from protean.domain import Domain
-    from protean.port.cache import BaseCache
+    from protean.infra.cache import Cache
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +62,8 @@ class ReadView(Generic[_ProjectionT]):
         """Return the repository for a database-backed projection."""
         return self._domain.providers.repository_for(self._projection_cls)
 
-    def _cache(self) -> "BaseCache":
-        """Return the cache adapter for a cache-backed projection."""
+    def _cache(self) -> "Cache":
+        """Return the cache service for a cache-backed projection."""
         return self._domain.caches.cache_for(self._projection_cls)
 
     # ── Public read API ──────────────────────────────────────

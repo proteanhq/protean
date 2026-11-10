@@ -117,7 +117,7 @@ class TestRedisBrokerPoolConfig:
 
 
 class TestRedisCachePoolConfig:
-    """Verify that Redis cache forwards pool params from conn_info."""
+    """Verify that Redis cache forwards pool params from its config."""
 
     def test_pool_keys_extracted(self, test_domain):
         """Pool-related keys should be extracted from conn_info."""

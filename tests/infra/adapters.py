@@ -6,7 +6,7 @@ from protean.adapters.event_store.memory import MemoryEventStore
 from protean.adapters.repository.memory import MemoryProvider
 from protean.infra.registry import brokers, caches, event_stores, providers
 from protean.port.broker import BaseBroker
-from protean.port.cache import BaseCache
+from protean.port.cache import CachePort
 from protean.port.event_store import BaseEventStore
 from protean.port.provider import BaseProvider
 
@@ -39,7 +39,7 @@ class IncompleteEventStore(BaseEventStore):
     pass
 
 
-class IncompleteCache(BaseCache):
+class IncompleteCache(CachePort):
     pass
 
 

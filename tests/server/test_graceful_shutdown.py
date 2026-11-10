@@ -287,10 +287,10 @@ class TestBrokerClose:
 
 @pytest.mark.no_test_domain
 class TestCacheClose:
-    """Test BaseCache.close() default behavior."""
+    """Test the default no-op `CachePort.close()`."""
 
-    def test_base_cache_close_is_noop(self):
-        """Default close() on BaseCache does nothing (no error)."""
+    def test_cache_port_close_is_noop(self):
+        """Default close() on CachePort does nothing (no error)."""
 
         domain = Domain(name="Test")
         domain.config["caches"] = {
@@ -300,7 +300,7 @@ class TestCacheClose:
 
         cache = domain.caches["default"]
         # Should not raise - memory cache inherits default no-op close()
-        cache.close()
+        cache._close()
 
 
 @pytest.mark.no_test_domain
@@ -336,7 +336,7 @@ class TestCachesReinitializeClosesExisting:
         # Re-initialize should close the old cache
         domain.caches._initialize()
 
-        mock_cache.close.assert_called_once()
+        mock_cache._close.assert_called_once()
 
 
 @pytest.mark.no_test_domain
@@ -363,21 +363,21 @@ class TestRegistryCloseErrorIsolation:
     """Test that registry close() methods continue on individual adapter errors."""
 
     @pytest.mark.parametrize(
-        "registry, attribute, kind",
+        "registry, attribute, kind, close",
         [
-            ("brokers", "_brokers", "broker"),
-            ("caches", "_caches", "cache"),
-            ("providers", "_providers", "provider"),
+            ("brokers", "_brokers", "broker", "close"),
+            ("caches", "_caches", "cache", "_close"),
+            ("providers", "_providers", "provider", "close"),
         ],
     )
-    def test_close_continues_on_error(self, caplog, registry, attribute, kind):
-        """close() calls close() on every adapter in the registry. If one
-        adapter's close() raises, the other still gets closed."""
+    def test_close_continues_on_error(self, caplog, registry, attribute, kind, close):
+        """close() closes every adapter in the registry. If one adapter's
+        close raises, the other still gets closed."""
         domain = Domain(name="Test")
         domain.init(traverse=False)
 
         failing = MagicMock()
-        failing.close.side_effect = RuntimeError("connection lost")
+        getattr(failing, close).side_effect = RuntimeError("connection lost")
         ok = MagicMock()
         adapters = getattr(domain, registry)
         setattr(adapters, attribute, {"failing": failing, "ok": ok})
@@ -385,8 +385,8 @@ class TestRegistryCloseErrorIsolation:
         with caplog.at_level(logging.ERROR):
             adapters.close()
 
-        failing.close.assert_called_once()
-        ok.close.assert_called_once()
+        getattr(failing, close).assert_called_once()
+        getattr(ok, close).assert_called_once()
         assert any(
             f"Error closing {kind} 'failing'" in r.message for r in caplog.records
         )

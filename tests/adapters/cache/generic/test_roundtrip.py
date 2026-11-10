@@ -1,4 +1,4 @@
-"""Cross-adapter `add`/`get`/`flush_all`/`remove` round trips.
+"""Cross-adapter `add`/`get`/`clear`/`remove` round trips.
 
 Each behaviour is asserted once, against whichever adapter the `cache`
 fixture hands the test, so it runs against every configured cache adapter
@@ -30,12 +30,12 @@ class TestAddThenGet:
 
 
 class TestFlushAll:
-    def test_flush_all_empties_the_cache(self, cache):
+    def test_clear_empties_the_cache(self, cache):
         cache.add(CacheEntry(key="alpha", value="one"))
         cache.add(CacheEntry(key="beta", value="two"))
         assert cache.count("cache_entry:::*") == 2
 
-        cache.flush_all()
+        cache.clear()
 
         assert cache.count("cache_entry:::*") == 0
         assert cache.get(_key("alpha")) is None

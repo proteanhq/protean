@@ -6,7 +6,8 @@ from protean import Domain
 from protean.adapters.cache.memory import MemoryCache
 from protean.core.projection import BaseProjection
 from protean.fields import Identifier, String
-from protean.port.cache import BaseCache
+from protean.infra.cache import DEFAULT_TTL, Cache
+from protean.port.cache import CachePort
 
 
 class Token(BaseProjection):
@@ -16,9 +17,9 @@ class Token(BaseProjection):
 
 
 class TestCacheInitialization:
-    def test_that_base_repository_class_cannot_be_instantiated(self):
+    def test_that_the_cache_port_cannot_be_instantiated(self):
         with pytest.raises(TypeError):
-            BaseCache()
+            CachePort()
 
     def test_that_a_concrete_cache_can_be_initialized_successfully(self, test_domain):
         cache = MemoryCache("dummy_name", test_domain, {})
@@ -26,13 +27,15 @@ class TestCacheInitialization:
 
     def test_that_domain_initializes_cache_from_config(self, test_domain):
         assert len(list(test_domain.caches)) == 1
-        assert isinstance(next(iter(test_domain.caches.values())), MemoryCache)
+        cache = next(iter(test_domain.caches.values()))
+        assert isinstance(cache, Cache)
+        assert isinstance(cache._adapter, MemoryCache)
 
     def test_that_cache_can_be_retrieved(self, test_domain):
         cache_name = next(iter(test_domain.caches))
         assert cache_name is not None
         assert cache_name == "default"
-        assert isinstance(test_domain.caches[cache_name], MemoryCache)
+        assert isinstance(test_domain.caches[cache_name]._adapter, MemoryCache)
 
 
 class TestCacheProvider:
@@ -41,9 +44,10 @@ class TestCacheProvider:
         assert provider is not None
         assert provider.ping() is True
 
-    def test_conn_info(self, test_domain):
+    def test_config(self, test_domain):
         provider = test_domain.caches.get("default")
-        assert provider.conn_info["cache"] == "memory"
+        assert provider._adapter.config["provider"] == "memory"
+        assert "cache" not in provider._adapter.config
 
     def test_connection_via_provider(self, test_domain):
         provider = test_domain.caches.get("default")
@@ -109,14 +113,14 @@ class TestCachePersistenceFlows:
         cache.add(Token(key="qux", user_id="foo", email="bar@baz.com"))
         cache.add(Token(key="quux", user_id="fooo", email="baar@baz.com"))
 
-        original_get = cache._db.get
+        original_get = cache._adapter._db.get
 
         def get_with_one_eviction(key, default=None):
             if key == "token:::qux":
                 return None
             return original_get(key, default)
 
-        monkeypatch.setattr(cache._db, "get", get_with_one_eviction)
+        monkeypatch.setattr(cache._adapter._db, "get", get_with_one_eviction)
 
         tokens = cache._get_all("token:::qu*")
 
@@ -238,22 +242,22 @@ class TestCachePersistenceFlows:
         total = cache.count("token:::qu*")
         assert total == 2
 
-        cache.flush_all()
+        cache.clear()
 
         total = cache.count("token:::qu*")
         assert total == 0
 
-    def test_flush_all_keeps_backend_usable(self, test_domain):
-        """The cache must stay fully usable after ``flush_all``.
+    def test_clear_keeps_backend_usable(self, test_domain):
+        """The cache must stay fully usable after ``clear``.
 
-        Regression: ``MemoryCache.flush_all`` reassigned ``_db`` to a plain
-        ``{}``, so ``set_ttl``/``get_ttl`` (used by ``add(..., ttl=...)``)
+        Regression: clearing ``MemoryCache`` reassigned
+        ``_db`` to a plain ``{}``, so ``set_ttl``/``get_ttl`` (used by ``add(..., ttl=...)``)
         raised ``AttributeError`` on the next operation.
         """
         cache = test_domain.cache_for(Token)
         cache.add(Token(key="qux", user_id="foo", email="bar@baz.com"))
 
-        cache.flush_all()
+        cache.clear()
 
         # add-with-ttl exercises set_ttl; must not raise after a flush.
         cache.add(Token(key="quux", user_id="foo", email="bar@baz.com"), ttl=100)
@@ -307,7 +311,7 @@ class TestAddWithAnExplicitTTL:
         cache = test_domain.cache_for(Token)
         cache.add(self._token())
 
-        assert cache.get_ttl("token:::tok-1") == pytest.approx(cache.ttl, abs=1)
+        assert cache.get_ttl("token:::tok-1") == pytest.approx(DEFAULT_TTL, abs=1)
 
     def test_a_zero_ttl_is_rejected_not_silently_replaced(self, test_domain):
         """It used to fall through to the default, caching for 5 minutes."""

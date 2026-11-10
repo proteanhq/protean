@@ -38,7 +38,7 @@ def test_custom_ttl_replaces_the_default(example):
     assert 599.0 < example.remaining <= 600.0
 
 
-def test_flush_all_empties_the_cache(example):
+def test_clear_empties_the_cache(example):
     with example.domain.domain_context():
         cache = example.domain.cache_for(example.OrderSummary)
 

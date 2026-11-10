@@ -24,7 +24,7 @@ from protean.infra.registry import (
     providers,
 )
 from protean.port.broker import BaseBroker
-from protean.port.cache import BaseCache
+from protean.port.cache import CachePort
 from protean.port.event_store import BaseEventStore
 from protean.port.provider import BaseProvider
 from tests.infra.adapters import (
@@ -87,11 +87,11 @@ PORTS = [
         caches,
         "protean.caches",
         "cache",
-        BaseCache,
+        CachePort,
         MemoryCache,
         CustomCache,
         lambda name: {"caches": {"default": {"provider": name}}},
-        lambda domain: domain.caches["default"],
+        lambda domain: domain.caches["default"]._adapter,
     ),
 ]
 PORT_IDS = [port.group.removeprefix("protean.") for port in PORTS]
@@ -281,9 +281,8 @@ class TestCompleteness:
     def test_incomplete_class_is_rejected_naming_every_missing_member(
         self, port, empty
     ):
-        path = (
-            f"tests.infra.adapters.Incomplete{port.base.__name__.removeprefix('Base')}"
-        )
+        name = port.base.__name__.removeprefix("Base").removesuffix("Port")
+        path = f"tests.infra.adapters.Incomplete{name}"
         empty.register("partial", path)
 
         with pytest.raises(ConfigurationError) as exc_info:
@@ -350,7 +349,7 @@ class TestAfterLoad:
 
     def test_after_load_receives_name_and_class(self):
         calls: list[tuple[str, type]] = []
-        registry: AdapterRegistry[BaseCache] = AdapterRegistry(
+        registry: AdapterRegistry[CachePort] = AdapterRegistry(
             "protean.test", "test", after_load=lambda n, c: calls.append((n, c))
         )
         registry._discovered = True
@@ -362,7 +361,7 @@ class TestAfterLoad:
 
     def test_after_load_does_not_run_for_a_rejected_class(self):
         calls: list[tuple[str, type]] = []
-        registry: AdapterRegistry[BaseCache] = AdapterRegistry(
+        registry: AdapterRegistry[CachePort] = AdapterRegistry(
             "protean.test", "test", after_load=lambda n, c: calls.append((n, c))
         )
         registry._discovered = True

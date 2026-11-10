@@ -44,6 +44,6 @@ with domain.domain_context():
     remaining = cache.get_ttl("order_summary:::ord-123")
 
     # Remove every key in the cache's configured database
-    cache.flush_all()
+    cache.clear()
 # --8<-- [end:usage]
 # --8<-- [end:full]
