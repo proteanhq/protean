@@ -6,6 +6,7 @@ import pytest
 
 from protean.adapters.cache.memory import MemoryCache
 from protean.adapters.cache.redis import RedisCache
+from protean.exceptions import ConfigurationError
 from tests.docs.support import DOCS, DOCS_SRC, domain_from_config, load_example
 from tests.shared import REDIS_URI
 from tests.support.snippets import expand_includes, extract_toml_blocks
@@ -42,6 +43,20 @@ def test_memory_configuration_shown_builds_a_memory_cache(tmp_path):
 
     with domain.domain_context():
         assert type(domain.caches["default"]) is MemoryCache
+
+
+def test_changed_memory_provider_is_read(tmp_path):
+    # The memory cache is also the default, so an unknown name shows the key
+    # is read.
+    text = (DOCS_SRC / "adapters/cache/index/memory.toml").read_text()
+    assert 'provider = "memory"' in text
+    text = text.replace('provider = "memory"', 'provider = "nosuch"')
+    domain = domain_from_config("adapters/cache/index/memory.toml", tmp_path, text=text)
+
+    with pytest.raises(ConfigurationError, match="Unknown cache 'nosuch'"):
+        domain.init(traverse=False)
+        with domain.domain_context():
+            domain.caches["default"]
 
 
 def _redis_cache(path, tmp_path, monkeypatch, text=None):

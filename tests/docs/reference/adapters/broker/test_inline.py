@@ -7,6 +7,7 @@ import pytest
 
 from protean.adapters.broker.inline import InlineBroker
 from protean.adapters.broker.redis import RedisBroker
+from protean.exceptions import ConfigurationError
 from tests.docs.support import DOCS_SRC, REPO_ROOT, domain_from_config, load_example
 from tests.shared import REDIS_URI
 
@@ -129,6 +130,22 @@ def test_development_section_uses_the_inline_broker(tmp_path, monkeypatch):
 
     with domain.domain_context():
         assert type(domain.brokers["default"]) is InlineBroker
+
+
+def test_changed_development_provider_is_read(tmp_path, monkeypatch):
+    # The inline broker is also the default, so an unknown name in the dev
+    # section shows that the section is read when PROTEAN_ENV is dev.
+    monkeypatch.setenv("PROTEAN_ENV", "dev")
+    text = (DOCS_SRC / "adapters/broker/inline/environments.toml").read_text()
+    old = '[dev.brokers.default]\nprovider = "inline"'
+    assert old in text
+    text = text.replace(old, '[dev.brokers.default]\nprovider = "nosuch"')
+    domain = domain_from_config(
+        "adapters/broker/inline/environments.toml", tmp_path, text=text
+    )
+
+    with pytest.raises(ConfigurationError, match="Unknown broker 'nosuch'"):
+        domain.init(traverse=False)
 
 
 @pytest.mark.redis

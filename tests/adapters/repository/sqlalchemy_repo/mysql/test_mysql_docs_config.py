@@ -1,15 +1,15 @@
 """Execute the `domain.toml` snippets in the MySQL provider doc.
 
-Nothing in the repo runs the config examples in `docs/`, so a broken one
-survives for releases. Three shipped at once in the 0.17.0 audit: a key that
-crashed `Domain.init()`, an unquoted `${VAR|default}` that made every generated
+A config example in `docs/` that no test runs can break and survive for
+releases. Three shipped at once in the 0.17.0 audit: a key that crashed
+`Domain.init()`, an unquoted `${VAR|default}` that made every generated
 project fail to parse its own config, and five keys no adapter reads. A regex
 over the text cannot catch "spelled right, nobody reads it", which is exactly
 how those got through.
 
-So this reads the fences out of the published page rather than a copy, and runs
-each one through `Domain.init()` against a live server. An option renamed in the
-code without being renamed in the doc fails here.
+So this reads the published page, with its `docs_src` includes expanded, and
+runs each configuration block through `Domain.init()` against a live server.
+An option renamed in the code without being renamed in the doc fails here.
 """
 
 import re

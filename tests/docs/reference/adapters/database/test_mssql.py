@@ -69,3 +69,9 @@ def test_configuration_shown_carries_the_password(tmp_path, monkeypatch):
     assert url.drivername == "mssql+pyodbc"
     assert (url.username, url.password) == ("sa", "Secret-Pass1")
     assert (url.host, url.port, url.database) == ("localhost", 1433, "appdb")
+    assert dict(url.query) == {
+        "driver": "ODBC Driver 18 for SQL Server",
+        "TrustServerCertificate": "yes",
+        "Encrypt": "yes",
+        "MARS_Connection": "yes",
+    }

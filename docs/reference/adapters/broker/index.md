@@ -45,8 +45,9 @@ Brokers are configured in your domain configuration file (`domain.toml` or `.dom
 --8<-- "adapters/broker/index/multiple_brokers.toml"
 ```
 
-`${REDIS_URL|...}` reads the URI from the `REDIS_URL` environment
-variable, and uses the value after `|` when it is not set.
+`${REDIS_URL|...}` reads the Redis server's URI from the `REDIS_URL`
+environment variable, and uses the value after `|` when it is not set. The
+`/0` and `/1` after it pick a separate Redis database for each broker.
 
 Each broker configuration must specify:
 

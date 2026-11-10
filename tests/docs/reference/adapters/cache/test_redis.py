@@ -4,7 +4,7 @@ import pytest
 import redis
 
 from protean.adapters.cache.redis import RedisCache
-from tests.docs.support import domain_from_config, load_example
+from tests.docs.support import DOCS_SRC, domain_from_config, load_example
 from tests.shared import REDIS_URI
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.redis]
@@ -57,9 +57,9 @@ def test_entries_land_in_redis_with_the_default_ttl(example):
     assert 299_000 < client.pttl("order_summary:::ord-456") <= 300_000
 
 
-def _cache_from(path, tmp_path, monkeypatch):
+def _cache_from(path, tmp_path, monkeypatch, text=None):
     monkeypatch.setenv("REDIS_URL", REDIS_URL)
-    domain = domain_from_config(path, tmp_path)
+    domain = domain_from_config(path, tmp_path, text=text)
     domain.init(traverse=False)
     with domain.domain_context():
         cache = domain.caches["default"]
@@ -74,6 +74,18 @@ def test_configuration_shown_sets_the_uri_and_ttl(tmp_path, monkeypatch):
     )
 
     assert cache.ttl == 300
+
+
+def test_changed_ttl_reaches_the_cache(tmp_path, monkeypatch):
+    # 300 is also the default TTL, so a changed value shows the key is read.
+    text = (DOCS_SRC / "adapters/cache/redis/configuration.toml").read_text()
+    assert "TTL = 300" in text
+    text = text.replace("TTL = 300", "TTL = 120")
+    cache = _cache_from(
+        "adapters/cache/redis/configuration.toml", tmp_path, monkeypatch, text=text
+    )
+
+    assert cache.ttl == 120
 
 
 @pytest.mark.parametrize("cache_ttl, ttl", [(None, 3600), ("60", 60)])

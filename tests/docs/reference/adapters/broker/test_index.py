@@ -76,7 +76,7 @@ def test_health_stats_shape():
 
 @pytest.mark.redis
 def test_configuration_shown_builds_three_brokers(tmp_path, monkeypatch):
-    monkeypatch.setenv("REDIS_URL", f"{REDIS_URI}/7")
+    monkeypatch.setenv("REDIS_URL", REDIS_URI)
     domain = domain_from_config("adapters/broker/index/multiple_brokers.toml", tmp_path)
     domain.init(traverse=False)
 
@@ -89,9 +89,12 @@ def test_configuration_shown_builds_three_brokers(tmp_path, monkeypatch):
     assert type(brokers["default"]) is InlineBroker
     assert type(brokers["notifications"]) is RedisPubSubBroker
     assert type(brokers["analytics"]) is RedisBroker
-    for name in ("notifications", "analytics"):
-        kwargs = brokers[name].redis_instance.connection_pool.connection_kwargs
-        assert kwargs["db"] == 7
+    # The variable holds the server, and each URI keeps its own database
+    dbs = {
+        name: brokers[name].redis_instance.connection_pool.connection_kwargs["db"]
+        for name in ("notifications", "analytics")
+    }
+    assert dbs == {"notifications": 0, "analytics": 1}
 
 
 def test_configuration_shown_defaults_to_the_documented_uris(tmp_path, monkeypatch):

@@ -75,7 +75,7 @@ FILE_TIMEOUT = 30.0
 
 _FENCE_OPEN = r"^(?P<indent>[ \t]*)(?P<fence>`{{3,}}|~{{3,}})[ \t]*{language}(?:[ \t]+[^`]*)?[ \t]*$"
 _PYTHON_FENCE = re.compile(_FENCE_OPEN.format(language="(?:python|py)"))
-_TOML_FENCE = re.compile(_FENCE_OPEN.format(language="toml"))
+_TOML_FENCE = re.compile(_FENCE_OPEN.format(language=r"(?i:toml)(?:\{[^`]*\})?"))
 _FRAGMENT = re.compile(r"^# fragment\b")
 
 
@@ -103,8 +103,8 @@ def extract_blocks(text: str) -> list[Block]:
 def extract_toml_blocks(text: str) -> list[Block]:
     """Return the fenced TOML blocks in ``text``, in order.
 
-    A TOML block is a fence opened with ``toml``, optionally followed by
-    attributes. Its indentation and ``# fragment`` marker are read as
+    A TOML block is a fence opened with ``toml`` in any case, optionally
+    followed by attributes, with or without a space (``toml{.no-copy}``). Its indentation and ``# fragment`` marker are read as
     :func:`extract_blocks` reads a Python block's.
     """
     return _extract_fenced(text, _TOML_FENCE)
