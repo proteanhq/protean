@@ -3,7 +3,9 @@
 The pure helpers run in this process. The hooks and fixtures run in a child
 pytest session: each test copies the plugin next to a small synthetic suite
 under ``tmp_path``, so the child loads the plugin as the suite's conftest and
-nothing else from this repository's test tree.
+no other conftest from this repository's test tree. The child gets the
+repository root on ``PYTHONPATH`` because the plugin imports ``tests.shared``
+and ``tests.conformance.flag_coverage``.
 """
 
 import os
