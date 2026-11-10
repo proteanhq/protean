@@ -5,8 +5,8 @@ provider = "inline"
 # Additional named brokers
 [brokers.notifications]
 provider = "redis_pubsub"
-URI = "${REDIS_URL|redis://localhost:6379}/0"
+URI = "${REDIS_URL|redis://localhost:6379/0}"
 
 [brokers.analytics]
 provider = "redis"
-URI = "${REDIS_URL|redis://localhost:6379}/1"
+URI = "${REDIS_URL|redis://localhost:6379/1}"
