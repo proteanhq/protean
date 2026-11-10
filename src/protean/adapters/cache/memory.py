@@ -40,9 +40,11 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
         write run under one lock, so a concurrent delete cannot raise
         `KeyError` and an expired entry cannot come back.
         """
-        if now is None:
-            now = time.time()
         with self._lock:
+            # Read the clock after taking the lock: a time read before a wait
+            # for the lock could treat an entry that expired meanwhile as live.
+            if now is None:
+                now = time.time()
             if key not in self._values or self.is_expired(key, now=now, remove=True):
                 return
             _expire, value = self._values[key]

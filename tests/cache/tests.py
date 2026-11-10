@@ -503,3 +503,28 @@ class TestTTLDictSetTTL:
         store.set_ttl("absent", 60)
 
         assert store._values == {}
+
+    def test_an_entry_that_expires_while_set_ttl_waits_for_the_lock_stays_expired(
+        self, monkeypatch
+    ):
+        """`set_ttl` reads the clock after it takes the lock, so an entry that
+        expires while the call waits for the lock is evicted, not revived."""
+        import threading
+
+        from protean.adapters.cache import memory
+
+        clock = [100.0]
+        monkeypatch.setattr(memory.time, "time", lambda: clock[0])
+
+        ttl_dict = TTLDict(default_ttl=300)
+        ttl_dict.put("k", "v", ttl=10)  # expires at 110
+
+        ttl_dict._lock.acquire()
+        worker = threading.Thread(target=ttl_dict.set_ttl, args=("k", 60))
+        worker.start()
+        worker.join(timeout=0.2)  # the worker is now blocked on the lock
+        clock[0] = 200.0  # the entry expires while the worker waits
+        ttl_dict._lock.release()
+        worker.join()
+
+        assert "k" not in ttl_dict._values
