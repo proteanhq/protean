@@ -20,18 +20,14 @@ import pytest
 from protean.adapters.repository.sqlalchemy import MysqlProvider
 from protean.domain import Domain
 from tests.shared import MARIADB_URI, MYSQL_URI
+from tests.support.snippets import expand_includes, extract_toml_blocks
 
 pytestmark = [pytest.mark.mysql, pytest.mark.no_test_domain]
 
 # tests/adapters/repository/sqlalchemy_repo/mysql/ -> repo root is five up.
-DOC = (
-    Path(__file__).parents[5]
-    / "docs"
-    / "reference"
-    / "adapters"
-    / "database"
-    / "mysql.md"
-)
+REPO_ROOT = Path(__file__).parents[5]
+DOCS_SRC = REPO_ROOT / "docs_src"
+DOC = REPO_ROOT / "docs" / "reference" / "adapters" / "database" / "mysql.md"
 
 # The doc's URIs name an example host that does not exist in CI. Everything else
 # in the snippet — the provider name, the option names, the TOML itself — is
@@ -45,14 +41,14 @@ LIVE_URI = {
 def toml_snippets():
     """Every ```toml fence in the doc that configures a whole database.
 
-    The page also carries fragments meant to be pasted into a database block
-    (the TLS `connect_args` line), which are not domains on their own. A fence
-    naming `provider` is a complete config; anything else is a fragment.
+    The page includes each complete config from a file under `docs_src`, so the
+    includes are expanded first, as the docs build renders them. The page also
+    carries fragments meant to be pasted into a database block (the TLS
+    `connect_args` line), which are not domains on their own and are marked
+    `# fragment`.
     """
-    text = DOC.read_text(encoding="utf-8")
-    return [
-        s for s in re.findall(r"```toml\n(.*?)```", text, re.DOTALL) if "provider" in s
-    ]
+    text = expand_includes(DOC.read_text(encoding="utf-8"), [DOCS_SRC])
+    return [block.source for block in extract_toml_blocks(text) if not block.fragment]
 
 
 def repoint(snippet):
