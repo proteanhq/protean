@@ -56,6 +56,9 @@ The Memory provider supports the following capabilities:
 - :x: **SCHEMA_MIGRATIONS**: No schema to migrate
 - :x: **NATIVE_JSON**: No native JSON column type
 - :x: **NATIVE_ARRAY**: No native array column type
+- :white_check_mark: **BOUNDED_DELETE**: Deletes up to `limit` rows in one statement
+- :x: **NATIVE_CLAIM**: Claims rows in one statement
+- :x: **FILTERED_CLAIM_CANDIDATES**: Leaves held rows out of a claim's candidates
 
 !!!note
     The Memory provider uses **simulated transactions**, not real ones. Within

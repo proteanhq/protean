@@ -98,6 +98,9 @@ MySQL.
 - :white_check_mark: **NATIVE_JSON**: `Dict` fields map to the `JSON` column type.
 - :x: **NATIVE_ARRAY**: MySQL has no array type. A `List` field is stored as
   JSON, which is what the MSSQL provider does too.
+- :white_check_mark: **FILTERED_CLAIM_CANDIDATES**: Leaves held rows out of a claim's candidates.
+- :x: **NATIVE_CLAIM**: Claims rows in one statement.
+- :x: **BOUNDED_DELETE**: Deletes up to `limit` rows in one statement.
 
 ## Collation and case sensitivity
 

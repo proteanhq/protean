@@ -575,7 +575,7 @@ class TestRequiredLookups:
 
 
 class TestSchemaMigrationsCapability:
-    """``SCHEMA_MIGRATIONS`` sits outside the tiers and gates ``schema_migrator``."""
+    """``SCHEMA_MIGRATIONS`` is left out of ``RELATIONAL`` and gates ``schema_migrator``."""
 
     def test_flag_is_not_part_of_relational(self):
         assert (
