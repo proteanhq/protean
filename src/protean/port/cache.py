@@ -86,22 +86,18 @@ class CachePort(Protocol):
     @abstractmethod
     def capabilities(self) -> CacheCapabilities:
         """The behaviours this cache adapter supports."""
-        ...
 
     @abstractmethod
     def ping(self) -> bool:
         """Whether the cache is reachable."""
-        ...
 
     @abstractmethod
     def health(self) -> CacheHealth:
         """The adapter's health record."""
-        ...
 
     @abstractmethod
     def get_connection(self) -> object:
         """The native client, or the backing store for an adapter without one."""
-        ...
 
     def close(self) -> None:
         """Release the adapter's connections. Does nothing by default."""
@@ -112,13 +108,11 @@ class CachePort(Protocol):
     @abstractmethod
     def clear(self) -> None:
         """Remove every entry."""
-        ...
 
     @abstractmethod
     def get(self, key: str) -> CacheEntry | None:
         """The value stored under `key`, or `None` when the key is absent or
         has expired."""
-        ...
 
     @abstractmethod
     def put(self, key: str, value: CacheEntry, ttl: float | None) -> None:
@@ -127,12 +121,10 @@ class CachePort(Protocol):
         `ttl` is a positive, finite number of seconds, or `None` for an entry
         that never expires.
         """
-        ...
 
     @abstractmethod
     def delete(self, key: str) -> None:
         """Remove `key`. Does nothing if the key is absent."""
-        ...
 
 
 class CacheTTLPort(CachePort, Protocol):
@@ -145,7 +137,6 @@ class CacheTTLPort(CachePort, Protocol):
         `ttl` is a positive, finite number of seconds. Does nothing if the key
         is absent.
         """
-        ...
 
     @abstractmethod
     def get_ttl(self, key: str) -> float | None:
@@ -155,7 +146,6 @@ class CacheTTLPort(CachePort, Protocol):
         - `math.inf` when the key exists and never expires.
         - the seconds remaining otherwise.
         """
-        ...
 
 
 class CachePatternPort(CachePort, Protocol):
@@ -170,17 +160,14 @@ class CachePatternPort(CachePort, Protocol):
     @abstractmethod
     def keys_matching(self, pattern: str) -> list[str]:
         """The distinct keys that match `pattern`, in ascending order."""
-        ...
 
     @abstractmethod
     def count_matching(self, pattern: str) -> int:
         """The number of distinct keys that match `pattern`."""
-        ...
 
     @abstractmethod
     def delete_matching(self, pattern: str) -> None:
         """Remove every key that matches `pattern`. Does nothing if none match."""
-        ...
 
 
 CAPABILITY_PORTS: dict[CacheCapabilities, type[object]] = {

@@ -13,7 +13,7 @@ from protean.adapters.cache.memory import MemoryCache
 from protean.core.projection import BaseProjection
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.fields import Identifier, String
-from protean.infra.cache import Cache
+from protean.infra.cache import Cache, Caches
 from protean.infra.registry import caches as cache_registry
 from protean.port.cache import (
     CacheCapabilities,
@@ -279,3 +279,32 @@ class TestTheContainerBuildsTheAdapter:
         assert "cache" not in domain.config["caches"]["default"]
         assert cache.capabilities == CacheCapabilities.LOCAL
         assert cache.name == "default"
+
+
+@pytest.mark.no_test_domain
+class TestTheContainerBuildsCachesOnFirstUse:
+    @pytest.fixture
+    def caches(self):
+        domain = Domain(name="Test")
+        domain.config["caches"] = {"default": {"provider": "memory"}}
+        return Caches(domain)
+
+    def test_get_connection_builds_the_caches(self, caches):
+        assert caches.get_connection() is caches["default"]._adapter._db._values
+
+    def test_get_connection_names_an_unknown_cache(self, caches):
+        with pytest.raises(AssertionError, match="No Provider registered with name"):
+            caches.get_connection("missing")
+
+    def test_cache_for_builds_the_caches_and_registers_the_projection(self, caches):
+        cache = caches.cache_for(Person)
+
+        assert cache is caches["default"]
+        assert "person" in cache._projections
+
+    def test_a_config_without_a_default_cache_is_rejected(self):
+        domain = Domain(name="Test")
+        domain.config["caches"] = {"other": {"provider": "memory"}}
+
+        with pytest.raises(ConfigurationError, match="'default' provider"):
+            Caches(domain)._initialize()
