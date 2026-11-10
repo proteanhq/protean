@@ -49,6 +49,16 @@ class TestTheServiceWritesThroughThePort:
         assert remaining is not None
         assert CONFIGURED_TTL - 10 <= remaining <= CONFIGURED_TTL
 
+    @pytest.mark.parametrize("ttl", [None, ""])
+    def test_set_ttl_with_an_unset_ttl_uses_the_configured_ttl(self, cache, ttl):
+        cache.add(CacheEntry(key="1", value="a"), ttl=60)
+
+        cache.set_ttl("cache_entry:::1", ttl)
+
+        remaining = cache.get_ttl("cache_entry:::1")
+        assert remaining is not None
+        assert CONFIGURED_TTL - 10 <= remaining <= CONFIGURED_TTL
+
     @pytest.mark.parametrize("ttl", [0, "nan", True])
     def test_a_rejected_ttl_writes_nothing(self, cache, ttl):
         with pytest.raises(ConfigurationError):
@@ -60,7 +70,8 @@ class TestTheServiceWritesThroughThePort:
 class TestGetAllAtTheRealCap:
     def test_returns_the_first_entries_in_key_order_and_warns_once(self, cache, caplog):
         keys = [f"{i:05d}" for i in range(GET_ALL_MAX + 1)]
-        for key in keys:
+        # Insert in reverse so the result's order comes from the sort.
+        for key in reversed(keys):
             cache.add(CacheEntry(key=key, value="v"))
 
         with caplog.at_level(logging.WARNING, logger="protean.infra.cache"):
@@ -79,6 +90,16 @@ class TestTheAdapterPort:
         adapter.put("k", {"a": 1, "b": "two"}, 60.0)
 
         assert adapter.get("k") == {"a": 1, "b": "two"}
+
+    def test_a_stored_entry_is_isolated_from_the_callers_dicts(self, cache):
+        adapter = cache._adapter
+        value = {"a": {"b": 1}}
+        adapter.put("k", value, 60.0)
+
+        value["a"]["b"] = 2
+        adapter.get("k")["a"]["b"] = 3
+
+        assert adapter.get("k") == {"a": {"b": 1}}
 
     def test_put_without_a_ttl_never_expires(self, cache):
         adapter = cache._adapter

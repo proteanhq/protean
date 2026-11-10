@@ -3,7 +3,7 @@ import time
 import pytest
 
 from protean import Domain
-from protean.adapters.cache.memory import MemoryCache
+from protean.adapters.cache.memory import MemoryCache, TTLDict
 from protean.core.projection import BaseProjection
 from protean.fields import Identifier, String
 from protean.infra.cache import DEFAULT_TTL, Cache
@@ -18,7 +18,7 @@ class Token(BaseProjection):
 
 class TestCacheInitialization:
     def test_that_the_cache_port_cannot_be_instantiated(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError, match="abstract class CachePort"):
             CachePort()
 
     def test_that_a_concrete_cache_can_be_initialized_successfully(self, test_domain):
@@ -250,18 +250,19 @@ class TestCachePersistenceFlows:
     def test_clear_keeps_backend_usable(self, test_domain):
         """The cache must stay fully usable after ``clear``.
 
-        Regression: clearing ``MemoryCache`` reassigned
-        ``_db`` to a plain ``{}``, so ``set_ttl``/``get_ttl`` (used by ``add(..., ttl=...)``)
-        raised ``AttributeError`` on the next operation.
+        Regression: clearing ``MemoryCache`` reassigned ``_db`` to a plain
+        ``{}``, so the next TTL write, ``set_ttl`` or ``get_ttl`` raised
+        ``AttributeError``.
         """
         cache = test_domain.cache_for(Token)
         cache.add(Token(key="qux", user_id="foo", email="bar@baz.com"))
 
         cache.clear()
 
-        # add-with-ttl exercises set_ttl; must not raise after a flush.
         cache.add(Token(key="quux", user_id="foo", email="bar@baz.com"), ttl=100)
+        cache.set_ttl("token:::quux", 200)
         assert cache.count("token:::qu*") == 1
+        assert 190 <= cache.get_ttl("token:::quux") <= 200
 
 
 class TestCacheSerialization:
@@ -484,3 +485,21 @@ class TestCachesMapping:
             del domain.caches["missing"]
 
         assert list(domain.caches) == ["default"]
+
+
+class TestTTLDictSetTTL:
+    def test_an_expired_key_is_not_revived(self):
+        store = TTLDict(None)
+        store.put("k", {"a": 1}, 1)
+
+        store.set_ttl("k", 60, now=time.time() + 5)
+
+        assert store.get_ttl_or_none("k") is None
+        assert "k" not in store._values
+
+    def test_an_absent_key_is_not_created(self):
+        store = TTLDict(None)
+
+        store.set_ttl("absent", 60)
+
+        assert store._values == {}

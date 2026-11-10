@@ -35,22 +35,19 @@ DEFAULT_TTL = 300
 GET_ALL_MAX = 1000
 """The most entries `_get_all` returns before it truncates and warns.
 
-`_get_all` is a bounded utility, not a paged read. This cap keeps a match set
-that outgrew the store from materialising in full and hiding that a cache is the
-wrong place to enumerate it. Past the cap, `_get_all` returns the first
-`GET_ALL_MAX` entries in key order and logs a warning naming the pattern and the
-match count. It is a fixed number, not a per-call argument: tuning it would make
-it a pagination knob again.
+`_get_all` reads every match into memory, so it suits tests and small stores.
+Past the cap, `_get_all` returns the first `GET_ALL_MAX` entries in key order
+and logs a warning naming the pattern and the match count. The warning tells
+the caller to page the projection's repository instead. Callers cannot change
+the cap per call.
 """
 
 TTLValue = int | float | str
 """What a caller may pass as a TTL.
 
-`str` is in there because it is a shape that genuinely arrives: environment
-substitution runs over already-parsed TOML strings, so a TTL sourced from
-config is a string by the time anyone can pass it on. Every public entry point
-coerces through `_resolve_ttl`, so the annotation says what is accepted rather
-than what is stored.
+Environment substitution runs over parsed TOML strings, so a TTL read from
+config arrives as a string. Every public entry point converts the value with
+`_resolve_ttl`.
 """
 
 
@@ -65,9 +62,9 @@ def _reject_ttl(source: str, value: Any, reason: str) -> ConfigurationError:
 def _ttl_unset(value: Any) -> bool:
     """Whether a caller supplied no TTL at all.
 
-    `""` counts because that is what an unset environment variable looks like
-    after substitution, and `os.getenv("CACHE_TTL", "")` is a normal way to
-    reach these methods. `0` does not count: it is a value, and a rejected one.
+    `""` counts because an unset environment variable becomes `""` after
+    substitution, and callers pass `os.getenv("CACHE_TTL", "")`. `0` counts as
+    a supplied TTL, which `_resolve_ttl` rejects.
     """
     return value is None or value == ""
 
@@ -84,7 +81,8 @@ def _resolve_ttl(value: Any, source: str) -> int | float:
     """
     if value is None or value == "":
         return DEFAULT_TTL
-    # `bool` is an `int`, and `TTL = true` is a typo rather than one second.
+    # `bool` is a subclass of `int`. `TTL = true` in config is a typo, so it
+    # is rejected instead of read as one second.
     if isinstance(value, bool):
         raise _reject_ttl(source, value, "a number of seconds")
 
@@ -98,8 +96,13 @@ def _resolve_ttl(value: Any, source: str) -> int | float:
             raise _reject_ttl(source, value, "a number of seconds") from None
 
     # Every comparison with NaN is false, so a NaN TTL would make the memory
-    # cache keep entries forever without an error.
-    if not math.isfinite(number):
+    # cache keep entries forever without an error. `math.isfinite` raises
+    # `OverflowError` for an int too large to convert to a float.
+    try:
+        finite = math.isfinite(number)
+    except OverflowError:
+        finite = False
+    if not finite:
         raise _reject_ttl(source, value, "a finite number of seconds")
     if number <= 0:
         raise _reject_ttl(source, value, "a positive number of seconds")
@@ -107,17 +110,15 @@ def _resolve_ttl(value: Any, source: str) -> int | float:
 
 
 def _missing_port_members(adapter_cls: type, port: type[object]) -> list[str]:
-    """The members `port` adds to `CachePort` that `adapter_cls` lacks.
-
-    Falls back to every member `port` adds when the class has them all under
-    the right names but does not subclass `port`.
-    """
+    """The members `port` adds to `CachePort` that `adapter_cls` lacks."""
     added = sorted(
         getattr(port, "__abstractmethods__", frozenset())
         - CachePort.__abstractmethods__
     )
-    missing = [member for member in added if not hasattr(adapter_cls, member)]
-    return missing or added
+    return [member for member in added if not hasattr(adapter_cls, member)]
+
+
+_REQUIRED_ADAPTER_ATTRIBUTES = ("capabilities", "config")
 
 
 class Cache:
@@ -128,14 +129,16 @@ class Cache:
     `<projection_name>` is the projection class name in snake case.
 
     Raises:
-        ConfigurationError: When it is built, if the adapter declares a
-            capability without subclassing the sub-protocol that holds its
-            members, or the cache config has a `TTL` that is not a positive,
-            finite number of seconds.
+        ConfigurationError: When it is built, if the adapter has no
+            `capabilities` or `config` attribute, if it declares `TTL` or
+            `PATTERN_MATCH` without subclassing `CacheTTLPort` or
+            `CachePatternPort`, or if the cache config has a `TTL` that is not
+            a positive, finite number of seconds.
     """
 
     def __init__(self, adapter: CachePort) -> None:
         self._adapter = adapter
+        self._check_adapter_attributes()
         self._check_capability_ports()
         self._ttl = _resolve_ttl(adapter.config.get("TTL"), self._source)
         self._projections: dict[str, type[BaseProjection]] = {}
@@ -154,16 +157,30 @@ class Cache:
     def _source(self) -> str:
         return f"Cache '{self._adapter.name}'"
 
+    def _check_adapter_attributes(self) -> None:
+        # An adapter written for the earlier cache base class has neither
+        # attribute, and would otherwise fail later with a bare `AttributeError`.
+        adapter_cls = type(self._adapter)
+        for attribute in _REQUIRED_ADAPTER_ATTRIBUTES:
+            if not hasattr(self._adapter, attribute):
+                raise ConfigurationError(
+                    f"{self._source} uses {adapter_cls.__name__}, which has no "
+                    f"`{attribute}` attribute. A cache adapter implements "
+                    "`protean.port.cache.CachePort`."
+                )
+
     def _check_capability_ports(self) -> None:
         adapter_cls = type(self._adapter)
         for flag, port in CAPABILITY_PORTS.items():
             if flag in self._adapter.capabilities and port not in adapter_cls.__mro__:
-                missing = ", ".join(_missing_port_members(adapter_cls, port))
-                raise ConfigurationError(
+                message = (
                     f"{self._source} declares CacheCapabilities.{flag.name}, but "
-                    f"{adapter_cls.__name__} does not subclass {port.__name__}. "
-                    f"It does not implement: {missing}."
+                    f"{adapter_cls.__name__} does not subclass {port.__name__}."
                 )
+                missing = _missing_port_members(adapter_cls, port)
+                if missing:
+                    message += f" It does not implement: {', '.join(missing)}."
+                raise ConfigurationError(message)
 
     def _require(self, flag: CacheCapabilities) -> None:
         if flag not in self._adapter.capabilities:
@@ -187,8 +204,14 @@ class Cache:
         return f"{underscore(projection.__class__.__name__)}:::{identifier}"
 
     def _projection_cls(self, key: str) -> "type[BaseProjection]":
-        # A `KeyError` naming the projection when it is not registered.
-        return self._projections[key.split(":::")[0]]
+        prefix = key.split(":::")[0]
+        if prefix not in self._projections:
+            raise KeyError(
+                f"No projection is registered in {self._source} under {prefix!r}. "
+                "A key or pattern starts with a projection name in snake case, "
+                "then `:::`, such as 'user_profile:::*'."
+            )
+        return self._projections[prefix]
 
     def _write_ttl(self, ttl: TTLValue | None) -> float | None:
         """The TTL to pass to `put`, or `None` for no expiry.
@@ -209,10 +232,10 @@ class Cache:
     def _resolved_ttl(self, ttl: TTLValue | None) -> int | float:
         """The caller's TTL, resolved, or this cache's `TTL` when it is unset.
 
-        "Unset" is `None` or `""`, and nothing else. On this per-call path the
-        cache's own `TTL` wins over `DEFAULT_TTL`: otherwise
-        `add(p, ttl=os.getenv("CACHE_TTL", ""))` on a cache configured for an
-        hour would cache for five minutes. `0` is a value, and a rejected one.
+        "Unset" is `None` or `""`. An unset TTL takes the cache's configured
+        `TTL`, so `add(p, ttl=os.getenv("CACHE_TTL", ""))` on a cache
+        configured for an hour caches for an hour. `0` is a supplied TTL, which
+        `_resolve_ttl` rejects.
         """
         if _ttl_unset(ttl):
             return self._ttl
@@ -275,7 +298,7 @@ class Cache:
         """
         projection_cls = self._projection_cls(key)
         value = self._adapter.get(key)
-        return projection_cls(value) if value else None
+        return None if value is None else projection_cls(value)
 
     def _get_all(self, key_pattern: str) -> "list[BaseProjection]":
         """Every projection whose key matches `key_pattern`, in ascending key order.
@@ -297,6 +320,9 @@ class Cache:
         Raises:
             NotSupportedError: The cache does not support
                 `CacheCapabilities.PATTERN_MATCH`.
+            KeyError: The text before `:::` in `key_pattern` is not a
+                registered projection name. A pattern that starts with a glob,
+                such as `"*"`, raises this too.
         """
         port = self._pattern_port()
         projection_cls = self._projection_cls(key_pattern)

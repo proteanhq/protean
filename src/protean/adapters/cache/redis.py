@@ -21,6 +21,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _milliseconds(ttl: float) -> int:
+    """`ttl` seconds as whole milliseconds, rounded up to at least 1.
+
+    Redis rejects a `PSETEX` of 0 ms, and a `PEXPIRE` of 0 ms deletes the key,
+    so a TTL under 1 ms must not truncate to 0.
+    """
+    return max(1, math.ceil(ttl * 1000))
+
+
 class RedisCache(CacheTTLPort, CachePatternPort):
     """Redis-backed cache adapter.
 
@@ -105,9 +114,9 @@ class RedisCache(CacheTTLPort, CachePatternPort):
             self._client.set(key, payload)
             return
         # redis-py ships `py.typed` but leaves `psetex` without a return
-        # annotation, so mypy --strict flags the call as untyped. Not our bug.
+        # annotation, so mypy --strict flags the call as untyped.
         self._client.psetex(  # type: ignore[no-untyped-call]
-            key, int(ttl * 1000), payload
+            key, _milliseconds(ttl), payload
         )
 
     def delete(self, key: str) -> None:
@@ -154,7 +163,7 @@ class RedisCache(CacheTTLPort, CachePatternPort):
         self._client.flushdb()
 
     def set_ttl(self, key: str, ttl: float) -> None:
-        self._client.pexpire(key, int(ttl * 1000))
+        self._client.pexpire(key, _milliseconds(ttl))
 
     def get_ttl(self, key: str) -> float | None:
         # `PTTL` answers milliseconds. Every other TTL on this port is seconds

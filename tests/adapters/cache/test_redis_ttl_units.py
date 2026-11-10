@@ -75,3 +75,44 @@ class TestRedisSentinelsAreTranslated:
         broken client, so it fails loud instead of scaling to a near-zero TTL."""
         with pytest.raises(ValueError, match="Unexpected PTTL value"):
             cache_with(-3).get_ttl("k")
+
+
+class _RecordingClient:
+    """Records the milliseconds `psetex` and `pexpire` receive."""
+
+    def __init__(self) -> None:
+        self.milliseconds: list[int] = []
+
+    def psetex(self, key: str, ttl_ms: int, value: str) -> None:
+        self.milliseconds.append(ttl_ms)
+
+    def pexpire(self, key: str, ttl_ms: int) -> None:
+        self.milliseconds.append(ttl_ms)
+
+
+@pytest.fixture
+def recording_cache(monkeypatch):
+    client = _RecordingClient()
+    monkeypatch.setattr(RedisCache, "_client", property(lambda self: client))
+    return RedisCache.__new__(RedisCache), client
+
+
+class TestATTLIsSentInWholeMilliseconds:
+    """Redis rejects a `PSETEX` of 0 ms, and a `PEXPIRE` of 0 ms deletes the
+    key, so a TTL under 1 ms rounds up to 1 ms."""
+
+    @pytest.mark.parametrize(
+        ("seconds", "milliseconds"), [(0.0004, 1), (0.0015, 2), (60, 60_000)]
+    )
+    def test_put_rounds_up(self, recording_cache, seconds, milliseconds):
+        cache, client = recording_cache
+        cache.put("k", {"a": 1}, seconds)
+        assert client.milliseconds == [milliseconds]
+
+    @pytest.mark.parametrize(
+        ("seconds", "milliseconds"), [(0.0004, 1), (0.0015, 2), (60, 60_000)]
+    )
+    def test_set_ttl_rounds_up(self, recording_cache, seconds, milliseconds):
+        cache, client = recording_cache
+        cache.set_ttl("k", seconds)
+        assert client.milliseconds == [milliseconds]

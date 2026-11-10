@@ -13,6 +13,7 @@ from __future__ import annotations
 import pytest
 
 from protean.adapters.cache.memory import MemoryCache
+from protean.adapters.cache.redis import _milliseconds
 from protean.exceptions import ConfigurationError
 from protean.infra.cache import DEFAULT_TTL, Cache, _resolve_ttl
 
@@ -82,9 +83,9 @@ class TestTheAdaptersUseTheResolvedValue:
         assert cache._resolved_ttl(None) == DEFAULT_TTL
 
     def test_the_redis_expiry_is_computable_from_a_string_ttl(self):
-        """`int(ttl * 1000)` is what `psetex` receives."""
+        """`_milliseconds(ttl)` is what `psetex` receives."""
         resolved = _resolve_ttl("3600", "default")
-        assert int(resolved * 1000) == 3_600_000
+        assert _milliseconds(resolved) == 3_600_000
 
 
 class TestTTLMustBePositiveAndFinite:
@@ -106,6 +107,14 @@ class TestTTLMustBePositiveAndFinite:
         "configured", ["inf", "-inf", "Infinity", float("inf"), float("-inf")]
     )
     def test_infinity_is_rejected(self, configured):
+        with pytest.raises(ConfigurationError, match="finite"):
+            _resolve_ttl(configured, "Cache 'default'")
+
+    @pytest.mark.parametrize(
+        "configured",
+        [pytest.param(10**400, id="int"), pytest.param("1" + "0" * 400, id="str")],
+    )
+    def test_an_int_too_large_for_a_float_is_rejected(self, configured):
         with pytest.raises(ConfigurationError, match="finite"):
             _resolve_ttl(configured, "Cache 'default'")
 

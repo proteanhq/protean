@@ -6,10 +6,11 @@ access to the denormalized views that projectors build.
 
 ## Overview
 
-Protean's cache adapters store
-[Projection](../../../guides/consume-state/projections.md) instances keyed by
-their identifier. Each adapter implements the `CachePort` protocol, and the
-`Cache` service that wraps it provides:
+Protean caches store
+[Projection](../../../guides/consume-state/projections.md) data keyed by the
+projection's identifier. Each adapter implements the `CachePort` protocol and
+stores dicts under string keys. The `Cache` service that wraps it turns
+projections into dicts and back, and provides:
 
 - **Add/Get/Remove**: Store and retrieve projections by key
 - **Pattern matching**: Retrieve or remove projections by key pattern
@@ -26,9 +27,10 @@ within the process. No external dependencies are needed.
 
 - **Use cases**: Development, testing, prototyping
 - All data is lost on process restart
-- TTL is enforced lazily: every entry is written with an expiry, and an expired
-  entry is dropped the next time it is read, iterated or counted. There is no
-  background sweep, so an expired entry nobody touches still occupies memory.
+- TTL is enforced lazily: every entry the `Cache` service writes has an expiry,
+  and an expired entry is dropped the next time it is read, iterated or
+  counted. There is no background sweep, so an expired entry nobody touches
+  still occupies memory.
 
 ### Redis
 

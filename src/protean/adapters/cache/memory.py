@@ -1,4 +1,5 @@
 import collections.abc
+import copy
 import math
 import time
 from collections.abc import Iterator, Mapping
@@ -33,10 +34,17 @@ class TTLDict(collections.abc.MutableMapping[str, Any]):
         )
 
     def set_ttl(self, key: str, ttl: float, now: float | None = None) -> None:
-        """Set TTL for the given key"""
+        """Make `key` expire `ttl` seconds from `now`.
+
+        Does nothing if the key is absent or has expired. The check and the
+        write run under one lock, so a concurrent delete cannot raise
+        `KeyError` and an expired entry cannot come back.
+        """
         if now is None:
             now = time.time()
         with self._lock:
+            if key not in self._values or self.is_expired(key, now=now, remove=True):
+                return
             _expire, value = self._values[key]
             self._values[key] = (now + ttl, value)
 
@@ -147,27 +155,27 @@ class MemoryCache(CacheTTLPort, CachePatternPort):
         return CacheHealth(pool=None)
 
     def get_connection(self) -> object:
-        """Get the connection object for the repository"""
+        """The dict that backs this cache."""
         return self._db._values
 
     def clear(self) -> None:
-        # Clear in place so the TTLDict is preserved: reassigning a plain {}
-        # broke set_ttl/get_ttl afterwards.
         self._db.clear()
 
     def get(self, key: str) -> CacheEntry | None:
+        # Copy on the way in and out, so a caller that changes a dict it
+        # passed to `put` or got from `get` does not change the stored entry.
+        # The Redis adapter gets the same isolation from its JSON round trip.
         value: CacheEntry | None = self._db.get(key)
-        return value
+        return None if value is None else copy.deepcopy(value)
 
     def put(self, key: str, value: CacheEntry, ttl: float | None) -> None:
-        self._db.put(key, value, ttl)
+        self._db.put(key, copy.deepcopy(value), ttl)
 
     def delete(self, key: str) -> None:
         self._db.pop(key, None)
 
     def set_ttl(self, key: str, ttl: float) -> None:
-        if key in self._db:
-            self._db.set_ttl(key, ttl)
+        self._db.set_ttl(key, ttl)
 
     def get_ttl(self, key: str) -> float | None:
         # A never-added key and an expired-but-not-yet-evicted key both answer

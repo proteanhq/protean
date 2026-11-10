@@ -8,9 +8,12 @@ from typing import Any
 
 import pytest
 
-from protean import Domain
+from protean import Domain, handle
 from protean.adapters.cache.memory import MemoryCache
+from protean.core.aggregate import BaseAggregate
+from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
+from protean.core.projector import BaseProjector
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.fields import Identifier, String
 from protean.infra.cache import Cache, Caches
@@ -116,6 +119,36 @@ class ExpiringPatternCache(KeyValueCache, CachePatternPort):
         self.store.clear()
 
 
+class DuckTypedTTL(KeyValueCache):
+    """Declares `TTL` and has both TTL members, but does not subclass
+    `CacheTTLPort`."""
+
+    @property
+    def capabilities(self) -> CacheCapabilities:
+        return CacheCapabilities.KEY_VALUE | CacheCapabilities.TTL
+
+    def set_ttl(self, key: str, ttl: float) -> None:
+        pass
+
+    def get_ttl(self, key: str) -> float | None:
+        return None
+
+
+class AdapterWithoutCapabilities:
+    """The shape of an adapter written for the earlier cache base class."""
+
+    def __init__(self, name: str, domain: Any, conn_info: Any) -> None:
+        self.name = name
+        self.domain = domain
+        self.conn_info = conn_info
+
+
+class AdapterWithoutConfig(AdapterWithoutCapabilities):
+    @property
+    def capabilities(self) -> CacheCapabilities:
+        return CacheCapabilities.KEY_VALUE
+
+
 class UndeclaredTTL(KeyValueCache, CacheTTLPort):
     """Implements `CacheTTLPort` without declaring `TTL`."""
 
@@ -189,8 +222,13 @@ class TestAKeyValueOnlyCache:
     def test_a_bad_ttl_is_rejected_before_the_capability_check(self):
         cache = _key_value_cache()
 
-        with pytest.raises(ConfigurationError):
+        with pytest.raises(ConfigurationError, match="positive number of seconds"):
             cache.add(Person(key="1", name="Ada"), ttl=0)
+
+        assert cache._adapter.store == {}
+
+    def test_capabilities_are_the_adapters(self):
+        assert _key_value_cache().capabilities == CacheCapabilities.KEY_VALUE
 
 
 class TestReads:
@@ -212,6 +250,52 @@ class TestReads:
         entries = cache._get_all("person:::*")
 
         assert [str(p.key) for p in entries] == ["2"]
+
+    @pytest.mark.parametrize(
+        ("pattern", "prefix"), [("order:::*", "order"), ("*", "*")]
+    )
+    def test_get_all_names_a_pattern_without_a_registered_prefix(self, pattern, prefix):
+        cache = Cache(ExpiringPatternCache("scan", None, {"provider": "scan"}))
+        cache._register_projection(Person)
+        cache.add(Person(key="1", name="Ada"))
+
+        with pytest.raises(KeyError) as exc:
+            cache._get_all(pattern)
+
+        message = str(exc.value)
+        assert f"under {prefix!r}" in message
+        assert "Cache 'scan'" in message
+        assert "'user_profile:::*'" in message
+
+
+class TestADuckTypedAdapter:
+    def test_is_rejected_without_a_claim_that_members_are_missing(self):
+        with pytest.raises(ConfigurationError) as exc:
+            Cache(DuckTypedTTL("duck", None, {"provider": "duck"}))
+
+        message = str(exc.value)
+        assert message == (
+            "Cache 'duck' declares CacheCapabilities.TTL, but DuckTypedTTL does "
+            "not subclass CacheTTLPort."
+        )
+
+
+class TestAnAdapterForTheEarlierBaseClass:
+    @pytest.mark.parametrize(
+        ("cls", "attribute"),
+        [
+            (AdapterWithoutCapabilities, "capabilities"),
+            (AdapterWithoutConfig, "config"),
+        ],
+    )
+    def test_is_rejected_naming_the_cache_and_the_attribute(self, cls, attribute):
+        with pytest.raises(ConfigurationError) as exc:
+            Cache(cls("legacy", None, {"provider": "legacy"}))
+
+        message = str(exc.value)
+        assert "Cache 'legacy'" in message
+        assert f"no `{attribute}` attribute" in message
+        assert "CachePort" in message
 
 
 class TestTheCapabilityCheckIsOneWay:
@@ -237,19 +321,20 @@ class TestADeclaredCapabilityNeedsItsSubProtocol:
             cache_registry._paths.pop(name, None)
 
     @pytest.mark.parametrize(
-        ("cls", "flag", "port", "member"),
+        ("cls", "flag", "port", "member", "present"),
         [
-            (TTLWithoutGetTTL, "TTL", "CacheTTLPort", "get_ttl"),
+            (TTLWithoutGetTTL, "TTL", "CacheTTLPort", "get_ttl", ["set_ttl"]),
             (
                 PatternWithoutKeysMatching,
                 "PATTERN_MATCH",
                 "CachePatternPort",
                 "keys_matching",
+                ["count_matching", "delete_matching"],
             ),
         ],
     )
     def test_domain_init_names_the_cache_the_flag_and_the_member(
-        self, registered, cls, flag, port, member
+        self, registered, cls, flag, port, member, present
     ):
         registered("stub", cls)
         domain = Domain(name="Test")
@@ -262,7 +347,9 @@ class TestADeclaredCapabilityNeedsItsSubProtocol:
         assert "Cache 'default'" in message
         assert f"CacheCapabilities.{flag}" in message
         assert port in message
-        assert member in message
+        assert message.endswith(f"It does not implement: {member}.")
+        for name in present:
+            assert name not in message
 
 
 @pytest.mark.no_test_domain
@@ -308,3 +395,54 @@ class TestTheContainerBuildsCachesOnFirstUse:
 
         with pytest.raises(ConfigurationError, match="'default' provider"):
             Caches(domain)._initialize()
+
+
+class Signup(BaseAggregate):
+    email: String()
+
+
+class SignedUp(BaseEvent):
+    signup_id: Identifier(identifier=True)
+
+
+class SignupView(BaseProjection):
+    signup_id: Identifier(identifier=True)
+
+
+class SignupViewProjector(BaseProjector):
+    @handle(SignedUp)
+    def on_signed_up(self, event: SignedUp) -> None:
+        pass
+
+
+@pytest.mark.no_test_domain
+class TestAProjectionOnAKeyValueOnlyCache:
+    @pytest.fixture
+    def domain(self):
+        cache_registry.register("plain", f"{__name__}.KeyValueCache")
+        domain = Domain(name="Test")
+        domain.config["caches"]["default"] = {"provider": "plain"}
+        domain.register(Signup)
+        domain.register(SignedUp, part_of=Signup)
+        domain.register(SignupView, cache="default")
+        domain.register(
+            SignupViewProjector, projector_for=SignupView, aggregates=[Signup]
+        )
+        domain.init(traverse=False)
+        with domain.domain_context():
+            yield domain
+        cache_registry._paths.pop("plain", None)
+
+    def test_a_rebuild_raises_before_it_changes_the_cache(self, domain):
+        cache = domain.cache_for(SignupView)
+        cache.add(SignupView(signup_id="1"))
+
+        with pytest.raises(NotSupportedError, match="PATTERN_MATCH"):
+            domain.rebuild_projection(SignupView)
+
+        assert cache._adapter.store == {"signup_view:::1": {"signup_id": "1"}}
+        assert cache._adapter.put_ttls == [None]
+
+    def test_counting_the_view_raises(self, domain):
+        with pytest.raises(NotSupportedError, match="PATTERN_MATCH"):
+            domain.view_for(SignupView).count()

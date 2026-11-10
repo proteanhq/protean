@@ -56,7 +56,8 @@ Cache adapters subclass the `CachePort` protocol, implement its key-value
 operations, and declare their capabilities through `CacheCapabilities`. An
 adapter that declares `TTL` also subclasses `CacheTTLPort`, and one that declares
 `PATTERN_MATCH` also subclasses `CachePatternPort`. `Domain.init()` raises
-`ConfigurationError` when a declared flag has no matching protocol.
+`ConfigurationError` when an adapter declares `TTL` or `PATTERN_MATCH` and does
+not subclass the matching protocol.
 
 They register the same way as database and broker adapters. An event store's
 `register()` function calls `protean.infra.registry.event_stores`, and its entry

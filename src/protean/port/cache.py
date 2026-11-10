@@ -119,7 +119,9 @@ class CachePort(Protocol):
         """Store `value` under `key`, replacing any earlier value and expiry.
 
         `ttl` is a positive, finite number of seconds, or `None` for an entry
-        that never expires.
+        that never expires. A backend can refuse a TTL above its own limit,
+        and the adapter then raises the backend's error. Redis refuses a TTL
+        above about 9.2e15 seconds.
         """
 
     @abstractmethod
@@ -134,8 +136,8 @@ class CacheTTLPort(CachePort, Protocol):
     def set_ttl(self, key: str, ttl: float) -> None:
         """Make `key` expire `ttl` seconds from now.
 
-        `ttl` is a positive, finite number of seconds. Does nothing if the key
-        is absent.
+        `ttl` is a positive, finite number of seconds, with the same backend
+        limit as `put`. Does nothing if the key is absent or has expired.
         """
 
     @abstractmethod
