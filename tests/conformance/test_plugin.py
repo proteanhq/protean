@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -25,6 +26,7 @@ from tests.conformance.conftest import (
     missing_capability,
     parse_adapter_config,
     port_of,
+    reset_and_close,
     resolve_adapter_config,
 )
 from tests.shared import MESSAGE_DB_URI, POSTGRES_URI, REDIS_URI
@@ -345,6 +347,33 @@ class TestMissingCapability:
         assert reason == "memory does not declare NATIVE_JSON or NATIVE_ARRAY"
 
 
+class TestResetAndClose:
+    @pytest.mark.parametrize(
+        "port, clear",
+        [
+            ("database", "_data_reset"),
+            ("broker", "_data_reset"),
+            ("cache", "flush_all"),
+            ("event_store", "_data_reset"),
+        ],
+    )
+    def test_clears_then_closes_the_adapter(self, port, clear):
+        adapter = MagicMock()
+
+        reset_and_close(port, adapter)
+
+        assert [call[0] for call in adapter.method_calls] == [clear, "close"]
+
+    def test_closes_the_adapter_when_the_clear_fails(self):
+        adapter = MagicMock()
+        adapter.flush_all.side_effect = RuntimeError("down")
+
+        with pytest.raises(RuntimeError):
+            reset_and_close("cache", adapter)
+
+        adapter.close.assert_called_once_with()
+
+
 # ===================================================================
 # Hooks and fixtures, in a child session
 # ===================================================================
@@ -381,6 +410,24 @@ class TestRunWithoutOptions:
         assert result.returncode == 0, result.stdout + result.stderr
         assert "@pytest.mark.requires(*flags)" in result.stdout
         assert "@pytest.mark.requires_any(*flags)" in result.stdout
+
+    def test_the_teardown_is_set_up_before_a_gated_test_can_skip(self, suite):
+        result = run(
+            suite,
+            "conformance/database/test_database.py::test_requires_undeclared",
+            "--setup-plan",
+            "-v",
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        setups = [
+            line.split()[2]
+            for line in result.stdout.splitlines()
+            if line.strip().startswith("SETUP")
+        ]
+        assert setups.index("run_around_tests") < setups.index(
+            "_skip_unless_adapter_declares"
+        )
 
 
 class TestPortOption:

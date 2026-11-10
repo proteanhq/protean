@@ -161,20 +161,21 @@ ADAPTER_OF: dict[str, Callable[[Domain], Any]] = {
 }
 
 
-def _reset_closing(adapter: Any) -> None:
+RESET: dict[str, Callable[[Any], None]] = {
+    "database": lambda provider: provider._data_reset(),
+    "broker": lambda broker: broker._data_reset(),
+    "cache": lambda cache: cache.flush_all(),
+    "event_store": lambda store: store._data_reset(),
+}
+
+
+def reset_and_close(port: str, adapter: Any) -> None:
+    """Clear the data ``adapter`` holds, then close it."""
     try:
-        adapter._data_reset()
+        RESET[port](adapter)
     finally:
         # Close even when the reset fails, so a run does not leak connections.
         adapter.close()
-
-
-RESET: dict[str, Callable[[Any], None]] = {
-    "database": _reset_closing,
-    "broker": lambda broker: broker._data_reset(),
-    "cache": lambda cache: cache.flush_all(),
-    "event_store": _reset_closing,
-}
 
 
 # ===================================================================
@@ -404,12 +405,16 @@ def run_around_tests(
 
     if test_domain is not None:
         port = _require_port(request)
-        RESET[port](ADAPTER_OF[port](test_domain))
+        reset_and_close(port, ADAPTER_OF[port](test_domain))
 
 
 @pytest.fixture(autouse=True)
-def _skip_unless_adapter_declares(request: pytest.FixtureRequest) -> None:
+def _skip_unless_adapter_declares(
+    request: pytest.FixtureRequest, run_around_tests: None
+) -> None:
     """Skip a ``requires``/``requires_any`` test the adapter has no flags for."""
+    # Depending on ``run_around_tests`` registers the reset and close before
+    # this fixture can skip, so a skipped test still releases the adapter.
     requires = [marker.args for marker in request.node.iter_markers("requires")]
     requires_any = [marker.args for marker in request.node.iter_markers("requires_any")]
     if not requires and not requires_any:
