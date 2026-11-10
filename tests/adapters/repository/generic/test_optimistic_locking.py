@@ -699,9 +699,10 @@ class TestSameInstanceSavedRepeatedly:
 
 def _undoes_writes_on_rollback(test_domain):
     provider = test_domain.providers["default"]
-    return provider.has_capability(
-        DatabaseCapabilities.TRANSACTIONS
-    ) or provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS)
+    return (
+        DatabaseCapabilities.TRANSACTIONS in provider.capabilities
+        or DatabaseCapabilities.SIMULATED_TRANSACTIONS in provider.capabilities
+    )
 
 
 def _stored_sequence_ids(test_domain, counter):

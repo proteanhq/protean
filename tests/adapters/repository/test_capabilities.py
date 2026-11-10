@@ -20,6 +20,9 @@ class TestDatabaseCapabilities:
         assert DatabaseCapabilities.CONNECTION_POOLING
         assert DatabaseCapabilities.NATIVE_JSON
         assert DatabaseCapabilities.NATIVE_ARRAY
+        assert DatabaseCapabilities.NATIVE_CLAIM
+        assert DatabaseCapabilities.BOUNDED_DELETE
+        assert DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES
 
     def test_capability_combination(self):
         """Test combining capabilities using bitwise operations."""
@@ -203,7 +206,7 @@ class TestDatabaseCapabilities:
         assert DatabaseCapabilities.TRANSACTIONS not in common
 
     def test_capability_checking_methods(self):
-        """Test static capability checking logic (mirrors broker test)."""
+        """``in`` checks one flag or all of a set; ``&`` checks any of a set."""
         in_memory = DatabaseCapabilities.IN_MEMORY
 
         # has single capability
@@ -213,133 +216,273 @@ class TestDatabaseCapabilities:
 
         # has all
         basic = DatabaseCapabilities.CRUD | DatabaseCapabilities.FILTER
-        assert (in_memory & basic) == basic
+        assert basic in in_memory
 
         # has any
         mixed = (
             DatabaseCapabilities.TRANSACTIONS
             | DatabaseCapabilities.SIMULATED_TRANSACTIONS
         )
-        assert bool(in_memory & mixed)
+        assert in_memory & mixed
 
         # does not have all of mixed
-        assert (in_memory & mixed) != mixed
+        assert mixed not in in_memory
 
-
-class TestDatabaseCapabilityMethods:
-    """Test capability checking methods on actual provider instances."""
-
-    def test_memory_provider_capabilities(self, test_domain):
-        """Test MemoryProvider capability declaration and methods."""
-        provider = test_domain.providers["default"]
-        if provider.__class__.__name__ != "MemoryProvider":
-            return  # Only relevant for MemoryProvider
-
-        assert provider.capabilities == DatabaseCapabilities.IN_MEMORY
-
-        # Has BASIC_STORAGE capabilities
-        assert provider.has_capability(DatabaseCapabilities.CRUD)
-        assert provider.has_capability(DatabaseCapabilities.FILTER)
-        assert provider.has_capability(DatabaseCapabilities.BULK_OPERATIONS)
-        assert provider.has_capability(DatabaseCapabilities.ORDERING)
-
-        # Has SIMULATED_TRANSACTIONS but not TRANSACTIONS
-        assert provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS)
-        assert not provider.has_capability(DatabaseCapabilities.TRANSACTIONS)
-
-        # Has OPTIMISTIC_LOCKING and RAW_QUERIES
-        assert provider.has_capability(DatabaseCapabilities.OPTIMISTIC_LOCKING)
-        assert provider.has_capability(DatabaseCapabilities.RAW_QUERIES)
-
-        # Does not have SCHEMA_MANAGEMENT or CONNECTION_POOLING
-        assert not provider.has_capability(DatabaseCapabilities.SCHEMA_MANAGEMENT)
-        assert not provider.has_capability(DatabaseCapabilities.CONNECTION_POOLING)
-
-        # Does not have type system capabilities
-        assert not provider.has_capability(DatabaseCapabilities.NATIVE_JSON)
-        assert not provider.has_capability(DatabaseCapabilities.NATIVE_ARRAY)
-
-    def test_has_all_capabilities(self, test_domain):
-        """Test has_all_capabilities method with various combinations."""
-        provider = test_domain.providers["default"]
-
-        # Every provider should support BASIC_STORAGE
-        assert provider.has_all_capabilities(DatabaseCapabilities.BASIC_STORAGE)
-        assert provider.has_all_capabilities(DatabaseCapabilities.CRUD)
-        assert provider.has_all_capabilities(
-            DatabaseCapabilities.CRUD | DatabaseCapabilities.FILTER
+    def test_claim_and_delete_flags_are_in_no_tier(self):
+        """A provider opts into each claim and delete flag on its own."""
+        claim_and_delete = (
+            DatabaseCapabilities.NATIVE_CLAIM,
+            DatabaseCapabilities.BOUNDED_DELETE,
+            DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES,
         )
-
-        # Empty capabilities should always return True
-        assert provider.has_all_capabilities(DatabaseCapabilities(0))
-
-        # Provider should have all its own capabilities
-        assert provider.has_all_capabilities(provider.capabilities)
-
-    def test_has_any_capability(self, test_domain):
-        """Test has_any_capability method with various combinations."""
-        provider = test_domain.providers["default"]
-
-        # Should have any of the basic capabilities
-        assert provider.has_any_capability(DatabaseCapabilities.CRUD)
-        assert provider.has_any_capability(
-            DatabaseCapabilities.CRUD | DatabaseCapabilities.NATIVE_JSON
+        tiers = (
+            DatabaseCapabilities.BASIC_STORAGE,
+            DatabaseCapabilities.RELATIONAL,
+            DatabaseCapabilities.DOCUMENT_STORE,
+            DatabaseCapabilities.IN_MEMORY,
         )
+        for flag in claim_and_delete:
+            for tier in tiers:
+                assert flag not in tier, f"{flag.name} is in {tier.name}"
 
-        # Empty capabilities should return False
-        assert not provider.has_any_capability(DatabaseCapabilities(0))
 
-    def test_has_any_capability_with_no_match(self, test_domain):
-        """Test has_any_capability returns False when no capabilities match."""
+def _declared_capabilities(provider_cls):
+    # ``capabilities`` reads nothing from the instance, so skipping
+    # ``__init__`` checks the declaration without a driver or a server.
+    return object.__new__(provider_cls).capabilities
+
+
+# Every single-bit member of ``DatabaseCapabilities``, listed flag by flag for
+# each built-in provider class. A tier change or a new flag shows up here.
+_YES, _NO = True, False
+_DECLARED_CAPABILITIES: dict[str, dict[str, bool]] = {
+    "MemoryProvider": {
+        "CRUD": _YES,
+        "FILTER": _YES,
+        "BULK_OPERATIONS": _YES,
+        "ORDERING": _YES,
+        "TRANSACTIONS": _NO,
+        "SIMULATED_TRANSACTIONS": _YES,
+        "OPTIMISTIC_LOCKING": _YES,
+        "RAW_QUERIES": _YES,
+        "SCHEMA_MANAGEMENT": _NO,
+        "CONNECTION_POOLING": _NO,
+        "SCHEMA_MIGRATIONS": _NO,
+        "NATIVE_JSON": _NO,
+        "NATIVE_ARRAY": _NO,
+        "NATIVE_CLAIM": _NO,
+        "BOUNDED_DELETE": _YES,
+        "FILTERED_CLAIM_CANDIDATES": _NO,
+    },
+    "SAProvider": {
+        "CRUD": _YES,
+        "FILTER": _YES,
+        "BULK_OPERATIONS": _YES,
+        "ORDERING": _YES,
+        "TRANSACTIONS": _YES,
+        "SIMULATED_TRANSACTIONS": _NO,
+        "OPTIMISTIC_LOCKING": _YES,
+        "RAW_QUERIES": _YES,
+        "SCHEMA_MANAGEMENT": _YES,
+        "CONNECTION_POOLING": _YES,
+        "SCHEMA_MIGRATIONS": _YES,
+        "NATIVE_JSON": _NO,
+        "NATIVE_ARRAY": _NO,
+        "NATIVE_CLAIM": _NO,
+        "BOUNDED_DELETE": _NO,
+        "FILTERED_CLAIM_CANDIDATES": _NO,
+    },
+    "PostgresqlProvider": {
+        "CRUD": _YES,
+        "FILTER": _YES,
+        "BULK_OPERATIONS": _YES,
+        "ORDERING": _YES,
+        "TRANSACTIONS": _YES,
+        "SIMULATED_TRANSACTIONS": _NO,
+        "OPTIMISTIC_LOCKING": _YES,
+        "RAW_QUERIES": _YES,
+        "SCHEMA_MANAGEMENT": _YES,
+        "CONNECTION_POOLING": _YES,
+        "SCHEMA_MIGRATIONS": _YES,
+        "NATIVE_JSON": _YES,
+        "NATIVE_ARRAY": _YES,
+        "NATIVE_CLAIM": _YES,
+        "BOUNDED_DELETE": _YES,
+        "FILTERED_CLAIM_CANDIDATES": _YES,
+    },
+    "SqliteProvider": {
+        "CRUD": _YES,
+        "FILTER": _YES,
+        "BULK_OPERATIONS": _YES,
+        "ORDERING": _YES,
+        "TRANSACTIONS": _YES,
+        "SIMULATED_TRANSACTIONS": _NO,
+        "OPTIMISTIC_LOCKING": _YES,
+        "RAW_QUERIES": _YES,
+        "SCHEMA_MANAGEMENT": _YES,
+        "CONNECTION_POOLING": _YES,
+        "SCHEMA_MIGRATIONS": _YES,
+        "NATIVE_JSON": _NO,
+        "NATIVE_ARRAY": _NO,
+        "NATIVE_CLAIM": _NO,
+        "BOUNDED_DELETE": _YES,
+        "FILTERED_CLAIM_CANDIDATES": _YES,
+    },
+    "MssqlProvider": {
+        "CRUD": _YES,
+        "FILTER": _YES,
+        "BULK_OPERATIONS": _YES,
+        "ORDERING": _YES,
+        "TRANSACTIONS": _YES,
+        "SIMULATED_TRANSACTIONS": _NO,
+        "OPTIMISTIC_LOCKING": _YES,
+        "RAW_QUERIES": _YES,
+        "SCHEMA_MANAGEMENT": _YES,
+        "CONNECTION_POOLING": _YES,
+        "SCHEMA_MIGRATIONS": _YES,
+        "NATIVE_JSON": _YES,
+        "NATIVE_ARRAY": _YES,
+        "NATIVE_CLAIM": _NO,
+        "BOUNDED_DELETE": _YES,
+        "FILTERED_CLAIM_CANDIDATES": _YES,
+    },
+    "MysqlProvider": {
+        "CRUD": _YES,
+        "FILTER": _YES,
+        "BULK_OPERATIONS": _YES,
+        "ORDERING": _YES,
+        "TRANSACTIONS": _YES,
+        "SIMULATED_TRANSACTIONS": _NO,
+        "OPTIMISTIC_LOCKING": _YES,
+        "RAW_QUERIES": _YES,
+        "SCHEMA_MANAGEMENT": _YES,
+        "CONNECTION_POOLING": _YES,
+        "SCHEMA_MIGRATIONS": _YES,
+        "NATIVE_JSON": _YES,
+        "NATIVE_ARRAY": _NO,
+        "NATIVE_CLAIM": _NO,
+        "BOUNDED_DELETE": _NO,
+        "FILTERED_CLAIM_CANDIDATES": _YES,
+    },
+    "ESProvider": {
+        "CRUD": _YES,
+        "FILTER": _YES,
+        "BULK_OPERATIONS": _YES,
+        "ORDERING": _YES,
+        "TRANSACTIONS": _NO,
+        "SIMULATED_TRANSACTIONS": _NO,
+        "OPTIMISTIC_LOCKING": _YES,
+        "RAW_QUERIES": _NO,
+        "SCHEMA_MANAGEMENT": _YES,
+        "CONNECTION_POOLING": _NO,
+        "SCHEMA_MIGRATIONS": _NO,
+        "NATIVE_JSON": _NO,
+        "NATIVE_ARRAY": _NO,
+        "NATIVE_CLAIM": _NO,
+        "BOUNDED_DELETE": _YES,
+        "FILTERED_CLAIM_CANDIDATES": _NO,
+    },
+}
+
+
+def _provider_class(class_name):
+    if class_name == "MemoryProvider":
+        from protean.adapters.repository.memory import MemoryProvider
+
+        return MemoryProvider
+    if class_name == "ESProvider":
+        pytest.importorskip("elasticsearch", reason="Elasticsearch not available")
+        from protean.adapters.repository.elasticsearch import ESProvider
+
+        return ESProvider
+    pytest.importorskip("sqlalchemy", reason="SQLAlchemy not available")
+    from protean.adapters.repository import sqlalchemy
+
+    if class_name == "SAProvider":
+        # SAProvider is abstract, so read its declaration through a subclass
+        # that adds only the dialect hooks and inherits ``capabilities``.
+        class _InheritsSAProvider(sqlalchemy.SAProvider):
+            def _get_database_specific_engine_args(self):
+                return {}
+
+            def _get_database_specific_session_args(self):
+                return {}
+
+            def _execute_database_specific_connection_statements(self, conn):
+                return conn
+
+        return _InheritsSAProvider
+    return getattr(sqlalchemy, class_name)
+
+
+def _expected_capabilities(class_name):
+    expected = DatabaseCapabilities(0)
+    for flag_name, declared in _DECLARED_CAPABILITIES[class_name].items():
+        if declared:
+            expected |= DatabaseCapabilities[flag_name]
+    return expected
+
+
+class TestProviderDeclaredCapabilities:
+    """Each built-in provider class declares exactly the flags in the table."""
+
+    @pytest.mark.parametrize("class_name", sorted(_DECLARED_CAPABILITIES))
+    def test_provider_declares_exactly_its_row(self, class_name):
+        capabilities = _declared_capabilities(_provider_class(class_name))
+
+        assert capabilities == _expected_capabilities(class_name)
+
+    @pytest.mark.parametrize("class_name", sorted(_DECLARED_CAPABILITIES))
+    def test_row_names_every_flag(self, class_name):
+        """Adding a flag to ``DatabaseCapabilities`` fails here until each
+        provider's row says whether it declares the flag."""
+        single_bit_flags = {flag.name for flag in DatabaseCapabilities}
+        assert single_bit_flags, "DatabaseCapabilities has no members"
+
+        assert set(_DECLARED_CAPABILITIES[class_name]) == single_bit_flags
+
+    def test_configured_provider_declares_its_row(self, test_domain):
+        """The provider the test run configures returns its class's row."""
+        provider = test_domain.providers["default"]
+        class_name = provider.__class__.__name__
+        assert class_name in _DECLARED_CAPABILITIES
+
+        assert provider.capabilities == _expected_capabilities(class_name)
+
+
+class TestProviderCapabilityChecks:
+    """Check a configured provider's capabilities with ``in`` and ``&``."""
+
+    def test_base_provider_has_no_capability_helpers(self):
+        for name in ("has_capability", "has_all_capabilities", "has_any_capability"):
+            assert not hasattr(BaseProvider, name), name
+
+    def test_every_provider_has_basic_storage(self, test_domain):
         provider = test_domain.providers["default"]
 
-        # Build a set of capabilities the provider does NOT have
-        missing = DatabaseCapabilities(0)
-        if not provider.has_capability(DatabaseCapabilities.TRANSACTIONS):
-            missing |= DatabaseCapabilities.TRANSACTIONS
-        if not provider.has_capability(DatabaseCapabilities.NATIVE_JSON):
-            missing |= DatabaseCapabilities.NATIVE_JSON
-        if not provider.has_capability(DatabaseCapabilities.NATIVE_ARRAY):
-            missing |= DatabaseCapabilities.NATIVE_ARRAY
-        if not provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
-            missing |= DatabaseCapabilities.SIMULATED_TRANSACTIONS
+        assert DatabaseCapabilities.BASIC_STORAGE in provider.capabilities
+        assert provider.capabilities in provider.capabilities
 
-        if missing:
-            assert not provider.has_any_capability(missing)
-
-    def test_has_all_capabilities_fails_for_superset(self, test_domain):
-        """Test has_all_capabilities returns False for a superset of provider capabilities."""
+    def test_every_provider_has_real_or_simulated_transactions_but_not_both(
+        self, test_domain
+    ):
         provider = test_domain.providers["default"]
-
-        # All possible capabilities
-        all_caps = (
-            DatabaseCapabilities.RELATIONAL
-            | DatabaseCapabilities.NATIVE_JSON
-            | DatabaseCapabilities.NATIVE_ARRAY
-            | DatabaseCapabilities.SIMULATED_TRANSACTIONS
-        )
-
-        # No single provider has all of these (TRANSACTIONS + SIMULATED_TRANSACTIONS
-        # are mutually exclusive in the current adapter matrix)
-        assert not provider.has_all_capabilities(all_caps)
-
-    def test_combined_capability_checks(self, test_domain):
-        """Test checking combinations of capabilities."""
-        provider = test_domain.providers["default"]
-
-        # Every provider should support basic storage
-        assert provider.has_capability(DatabaseCapabilities.CRUD)
-        assert provider.has_capability(DatabaseCapabilities.FILTER)
-        assert provider.has_capability(DatabaseCapabilities.BULK_OPERATIONS)
-        assert provider.has_capability(DatabaseCapabilities.ORDERING)
-
-        assert provider.has_all_capabilities(DatabaseCapabilities.BASIC_STORAGE)
-
-        # Every provider has either TRANSACTIONS or SIMULATED_TRANSACTIONS
-        assert provider.has_any_capability(
+        either = (
             DatabaseCapabilities.TRANSACTIONS
             | DatabaseCapabilities.SIMULATED_TRANSACTIONS
         )
+
+        # Elasticsearch declares neither, so the check only holds where
+        # the provider has any transaction support at all.
+        if provider.capabilities & either:
+            assert either not in provider.capabilities
+
+    def test_empty_set_is_in_every_provider_and_matches_nothing(self, test_domain):
+        provider = test_domain.providers["default"]
+        empty = DatabaseCapabilities(0)
+
+        assert empty in provider.capabilities
+        assert not provider.capabilities & empty
 
 
 class TestRequiredLookups:
@@ -432,46 +575,13 @@ class TestRequiredLookups:
 
 
 class TestSchemaMigrationsCapability:
-    """Which providers declare ``SCHEMA_MIGRATIONS``, and the gated method."""
-
-    @staticmethod
-    def _capabilities(provider_cls):
-        # ``capabilities`` reads nothing from the instance, so skipping
-        # ``__init__`` checks the declaration without a driver or a server.
-        return object.__new__(provider_cls).capabilities
+    """``SCHEMA_MIGRATIONS`` sits outside the tiers and gates ``schema_migrator``."""
 
     def test_flag_is_not_part_of_relational(self):
         assert (
             DatabaseCapabilities.SCHEMA_MIGRATIONS
             not in DatabaseCapabilities.RELATIONAL
         )
-
-    @pytest.mark.parametrize(
-        "class_name",
-        ["SqliteProvider", "PostgresqlProvider", "MssqlProvider", "MysqlProvider"],
-    )
-    def test_sqlalchemy_providers_declare_the_flag(self, class_name):
-        pytest.importorskip("sqlalchemy", reason="SQLAlchemy not available")
-        from protean.adapters.repository import sqlalchemy
-
-        capabilities = self._capabilities(getattr(sqlalchemy, class_name))
-
-        assert DatabaseCapabilities.SCHEMA_MIGRATIONS in capabilities
-
-    def test_memory_provider_does_not_declare_the_flag(self):
-        from protean.adapters.repository.memory import MemoryProvider
-
-        capabilities = self._capabilities(MemoryProvider)
-
-        assert DatabaseCapabilities.SCHEMA_MIGRATIONS not in capabilities
-
-    def test_elasticsearch_provider_does_not_declare_the_flag(self):
-        pytest.importorskip("elasticsearch", reason="Elasticsearch not available")
-        from protean.adapters.repository.elasticsearch import ESProvider
-
-        capabilities = self._capabilities(ESProvider)
-
-        assert DatabaseCapabilities.SCHEMA_MIGRATIONS not in capabilities
 
     def test_schema_migrator_on_memory_provider_raises(self, tmp_path):
         from protean.adapters.repository.memory import MemoryProvider

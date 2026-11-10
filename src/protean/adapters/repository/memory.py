@@ -334,7 +334,7 @@ class MemoryProvider(BaseProvider):
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
-        """Basic storage, simulated transactions, and real optimistic locking.
+        """Basic storage, simulated transactions, real optimistic locking, and bounded deletes.
 
         ``OPTIMISTIC_LOCKING`` is a genuine guarantee here, not just for the
         sequential case: on the version-guarded write path (``repository.add``
@@ -346,7 +346,7 @@ class MemoryProvider(BaseProvider):
         the concurrency boundary, so independent child changes are guarded only
         through the root's version; see ``docs/reference/guarantees.md``.
         """
-        return DatabaseCapabilities.IN_MEMORY
+        return DatabaseCapabilities.IN_MEMORY | DatabaseCapabilities.BOUNDED_DELETE
 
     def __init__(
         self, name: str, domain: typing.Any, conn_info: dict[str, typing.Any]

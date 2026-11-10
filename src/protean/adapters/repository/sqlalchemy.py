@@ -3382,12 +3382,20 @@ class PostgresqlProvider(SAProvider):
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
-        """PostgreSQL supports relational capabilities and migrations, plus native JSON and arrays."""
+        """PostgreSQL supports relational capabilities and migrations, plus native JSON and arrays.
+
+        It also claims rows in one statement (``NATIVE_CLAIM``), deletes up to
+        ``limit`` rows in one statement (``BOUNDED_DELETE``), and leaves held
+        rows out of a claim's candidates (``FILTERED_CLAIM_CANDIDATES``).
+        """
         return (
             DatabaseCapabilities.RELATIONAL
             | DatabaseCapabilities.SCHEMA_MIGRATIONS
             | DatabaseCapabilities.NATIVE_JSON
             | DatabaseCapabilities.NATIVE_ARRAY
+            | DatabaseCapabilities.NATIVE_CLAIM
+            | DatabaseCapabilities.BOUNDED_DELETE
+            | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES
         )
 
     def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
@@ -3431,6 +3439,21 @@ class PostgresqlProvider(SAProvider):
 
 class SqliteProvider(SAProvider):
     __database__ = SAProvider.databases.sqlite.value
+
+    @property
+    def capabilities(self) -> DatabaseCapabilities:
+        """SQLite supports relational capabilities and migrations.
+
+        It also deletes up to ``limit`` rows in one statement
+        (``BOUNDED_DELETE``) and leaves held rows out of a claim's candidates
+        (``FILTERED_CLAIM_CANDIDATES``).
+        """
+        return (
+            DatabaseCapabilities.RELATIONAL
+            | DatabaseCapabilities.SCHEMA_MIGRATIONS
+            | DatabaseCapabilities.BOUNDED_DELETE
+            | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES
+        )
 
     def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
         """Supplies additional database-specific arguments to SQLAlchemy Engine.
@@ -3551,12 +3574,19 @@ class MssqlProvider(SAProvider):
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
-        """MSSQL supports relational capabilities and migrations, plus native JSON and arrays."""
+        """MSSQL supports relational capabilities and migrations, plus native JSON and arrays.
+
+        It also deletes up to ``limit`` rows in one statement
+        (``BOUNDED_DELETE``) and leaves held rows out of a claim's candidates
+        (``FILTERED_CLAIM_CANDIDATES``).
+        """
         return (
             DatabaseCapabilities.RELATIONAL
             | DatabaseCapabilities.SCHEMA_MIGRATIONS
             | DatabaseCapabilities.NATIVE_JSON
             | DatabaseCapabilities.NATIVE_ARRAY
+            | DatabaseCapabilities.BOUNDED_DELETE
+            | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES
         )
 
     def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
@@ -3632,12 +3662,14 @@ class MysqlProvider(SAProvider):
         """MySQL supports relational capabilities and migrations, plus native JSON.
 
         MySQL 8 has a real JSON type. It has no array type, so ``NATIVE_ARRAY``
-        is not declared and a list column is stored as JSON.
+        is not declared and a list column is stored as JSON. It leaves held rows
+        out of a claim's candidates (``FILTERED_CLAIM_CANDIDATES``).
         """
         return (
             DatabaseCapabilities.RELATIONAL
             | DatabaseCapabilities.SCHEMA_MIGRATIONS
             | DatabaseCapabilities.NATIVE_JSON
+            | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES
         )
 
     @property

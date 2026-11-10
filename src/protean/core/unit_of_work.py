@@ -295,9 +295,10 @@ class UnitOfWork:
         """
         for provider_name, item in self._state_based_items():
             provider = self.domain.providers[provider_name]
-            if provider.has_capability(
-                DatabaseCapabilities.TRANSACTIONS
-            ) or provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
+            if (
+                DatabaseCapabilities.TRANSACTIONS in provider.capabilities
+                or DatabaseCapabilities.SIMULATED_TRANSACTIONS in provider.capabilities
+            ):
                 item._version = item._next_version - 1
             else:
                 item._next_version = item._version + 1
@@ -333,8 +334,8 @@ class UnitOfWork:
 
         # Log transaction capability warnings for each configured provider
         for provider_name, provider in self.domain.providers.items():
-            if not provider.has_capability(DatabaseCapabilities.TRANSACTIONS):
-                if provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
+            if DatabaseCapabilities.TRANSACTIONS not in provider.capabilities:
+                if DatabaseCapabilities.SIMULATED_TRANSACTIONS in provider.capabilities:
                     logger.debug(
                         "Provider '%s' uses simulated transactions. "
                         "Commit and rollback hold only within this process; "

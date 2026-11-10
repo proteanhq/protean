@@ -202,8 +202,9 @@ If the switch requires code changes, one of three things is probably
 happening:
 
 - **You used an adapter-specific capability** (e.g. a raw SQL query).
-  Check with `provider.has_capability(...)` and guard capability-dependent
-  code, or choose adapters that share the capability you need.
+  Check with `DatabaseCapabilities.RAW_QUERIES in provider.capabilities`
+  and guard capability-dependent code, or choose adapters that share the
+  capability you need.
 - **Your tests depend on implementation details** of the memory adapter.
   Run them against a real adapter (`pytest` without
   `--protean-env=memory`) to catch this early.

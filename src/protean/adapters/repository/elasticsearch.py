@@ -804,8 +804,8 @@ class ESProvider(BaseProvider):
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
-        """Elasticsearch supports document storage with schema management but no transactions."""
-        return DatabaseCapabilities.DOCUMENT_STORE
+        """Elasticsearch supports document storage, schema management and bounded deletes, but no transactions."""
+        return DatabaseCapabilities.DOCUMENT_STORE | DatabaseCapabilities.BOUNDED_DELETE
 
     def __init__(self, name: str, domain: _Any, conn_info: dict[str, _Any]) -> None:
         """Initialize Provider with Connection/Adapter details"""

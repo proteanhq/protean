@@ -427,6 +427,56 @@ class TestConformancePluginIntegration:
         assert "passed" not in result.stdout
         assert "failed" not in result.stdout
 
+    def test_plugin_runs_transactional_tests_on_simulated_transactions(
+        self, tmp_path: Path
+    ):
+        """Memory declares only SIMULATED_TRANSACTIONS, and that is enough."""
+        result = self._run_pytest_subprocess(
+            tmp_path,
+            DOCS_OPT_IN,
+            "test_transactions.py",
+            ["--db=MEMORY", "-m", "transactional"],
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "passed" in result.stdout
+        assert "lacks transaction support" not in result.stdout
+
+    def test_plugin_skips_transactional_tests_without_any_transactions(
+        self, tmp_path: Path
+    ):
+        """A provider with neither transaction flag skips transactional tests."""
+        conftest = (
+            DOCS_OPT_IN
+            + """
+import pytest
+
+from protean.adapters.repository.memory import MemoryProvider
+from protean.infra.registry import providers
+from protean.port.provider import DatabaseCapabilities
+
+
+class NoTransactionsProvider(MemoryProvider):
+    @property
+    def capabilities(self):
+        return DatabaseCapabilities.BASIC_STORAGE
+
+
+providers.register("no_transactions", "conftest.NoTransactionsProvider")
+
+
+@pytest.fixture(scope="session")
+def db_config():
+    return {"provider": "no_transactions"}
+"""
+        )
+        result = self._run_pytest_subprocess(
+            tmp_path, conftest, "test_transactions.py", ["-m", "transactional"]
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "lacks transaction support (real or simulated)" in result.stdout
+        assert "passed" not in result.stdout
+        assert "failed" not in result.stdout
+
     def test_plugin_works_with_user_overridden_db_config(self, tmp_path: Path):
         """User can override db_config fixture in their own conftest."""
         conftest = (
