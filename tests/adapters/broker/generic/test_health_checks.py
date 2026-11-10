@@ -46,9 +46,9 @@ def test_multiple_pings_update_timing_info(broker):
 
 
 @pytest.mark.basic_pubsub
-def test_health_stats_basic_structure(broker):
-    """Test that health_stats() returns the expected structure"""
-    stats = broker.health_stats()
+def test_health_basic_structure(broker):
+    """Test that health() returns the expected structure"""
+    stats = broker.health()
 
     # Check required top-level keys
     assert "status" in stats
@@ -69,12 +69,12 @@ def test_health_stats_basic_structure(broker):
 
 
 @pytest.mark.basic_pubsub
-def test_health_stats_includes_ping_timing(broker):
-    """Test that health_stats() includes ping timing information"""
+def test_health_includes_ping_timing(broker):
+    """Test that health() includes ping timing information"""
     # Perform a ping first
     broker.ping()
 
-    stats = broker.health_stats()
+    stats = broker.health()
 
     # Should include ping timing
     assert "last_ping_ms" in stats
@@ -84,10 +84,10 @@ def test_health_stats_includes_ping_timing(broker):
 
 
 @pytest.mark.basic_pubsub
-def test_health_stats_without_prior_ping(broker):
-    """Test health_stats() behavior when no ping has been performed"""
+def test_health_without_prior_ping(broker):
+    """Test health() behavior when no ping has been performed"""
     # Don't call ping() first
-    stats = broker.health_stats()
+    stats = broker.health()
 
     # Should still return valid structure
     assert stats["status"] == "healthy"
@@ -96,14 +96,14 @@ def test_health_stats_without_prior_ping(broker):
 
 
 @pytest.mark.reliable_messaging
-def test_health_stats_details_for_inline_broker(broker):
+def test_health_details_for_inline_broker(broker):
     """Test broker-specific health details for inline broker"""
     # Add some test data first
     broker.publish("test_stream1", {"data": "test1"})
     broker.publish("test_stream2", {"data": "test2"})
     broker.get_next("test_stream1", "consumer_group1")  # Put one message in-flight
 
-    stats = broker.health_stats()
+    stats = broker.health()
     details = stats["details"]
 
     # Check inline broker specific details
@@ -146,43 +146,43 @@ def test_health_stats_details_for_inline_broker(broker):
 
 
 @pytest.mark.reliable_messaging
-def test_health_stats_tracks_message_state_changes(broker):
+def test_health_tracks_message_state_changes(broker):
     """Test that health stats reflect changes in message states"""
     # Initial state
-    stats = broker.health_stats()
+    stats = broker.health()
     initial_counts = stats["details"]["message_counts"]
     assert initial_counts["total_messages"] == 0
     assert initial_counts["in_flight"] == 0
 
     # Publish a message
     broker.publish("test_stream", {"data": "test"})
-    stats = broker.health_stats()
+    stats = broker.health()
     counts = stats["details"]["message_counts"]
     assert counts["total_messages"] == 1
     assert counts["in_flight"] == 0
 
     # Get message (moves to in-flight)
     broker.get_next("test_stream", "test_group")
-    stats = broker.health_stats()
+    stats = broker.health()
     counts = stats["details"]["message_counts"]
     assert counts["total_messages"] == 1
     assert counts["in_flight"] == 1
 
 
 @pytest.mark.basic_pubsub
-def test_ensure_connection_returns_true(broker):
-    """Test that ensure_connection() returns True for inline broker"""
-    result = broker.ensure_connection()
+def test_reconnect_returns_true(broker):
+    """Test that _reconnect() returns True for a healthy broker"""
+    result = broker._reconnect()
     assert result is True
     assert isinstance(result, bool)
 
 
 @pytest.mark.basic_pubsub
-def test_ensure_connection_idempotent(broker):
-    """Test that multiple calls to ensure_connection() are safe"""
-    result1 = broker.ensure_connection()
-    result2 = broker.ensure_connection()
-    result3 = broker.ensure_connection()
+def test_reconnect_idempotent(broker):
+    """Test that multiple calls to _reconnect() are safe"""
+    result1 = broker._reconnect()
+    result2 = broker._reconnect()
+    result3 = broker._reconnect()
 
     assert result1 is True
     assert result2 is True
@@ -190,15 +190,15 @@ def test_ensure_connection_idempotent(broker):
 
 
 @pytest.mark.basic_pubsub
-def test_health_stats_uptime_increases(broker):
+def test_health_uptime_increases(broker):
     """Test that uptime increases over time"""
-    stats1 = broker.health_stats()
+    stats1 = broker.health()
     uptime1 = stats1["uptime_seconds"]
 
     # Wait a small amount
     time.sleep(0.01)
 
-    stats2 = broker.health_stats()
+    stats2 = broker.health()
     uptime2 = stats2["uptime_seconds"]
 
     # Uptime should increase
@@ -208,7 +208,7 @@ def test_health_stats_uptime_increases(broker):
 
 
 @pytest.mark.reliable_messaging
-def test_health_stats_with_failed_messages(broker):
+def test_health_with_failed_messages(broker):
     """Test health stats when there are failed messages"""
     # Publish a message and put it in failed state
     broker.publish("test_stream", {"data": "test"})
@@ -217,7 +217,7 @@ def test_health_stats_with_failed_messages(broker):
     # Nack the message to put it in failed state
     broker.nack("test_stream", identifier, "test_group")
 
-    stats = broker.health_stats()
+    stats = broker.health()
     counts = stats["details"]["message_counts"]
 
     # For Redis, NACKed messages are pending, not failed
@@ -228,11 +228,11 @@ def test_health_stats_with_failed_messages(broker):
 
 
 @pytest.mark.reliable_messaging
-def test_health_stats_with_dlq_messages(broker):
+def test_health_with_dlq_messages(broker):
     """Test health stats when there are DLQ messages"""
     # Configure broker for quick DLQ testing
-    broker._max_retries = 1
-    broker._enable_dlq = True
+    broker._adapter._max_retries = 1
+    broker._adapter._enable_dlq = True
 
     # Publish a message
     broker.publish("test_stream", {"data": "test"})
@@ -242,28 +242,28 @@ def test_health_stats_with_dlq_messages(broker):
     broker.nack("test_stream", identifier, "test_group")
     # This should trigger additional retry logic that eventually moves to DLQ
 
-    stats = broker.health_stats()
+    stats = broker.health()
     # DLQ count may or may not be > 0 depending on implementation timing
     assert "dlq" in stats["details"]["message_counts"]
 
 
 @pytest.mark.reliable_messaging
-def test_health_stats_configuration_values(broker):
+def test_health_configuration_values(broker):
     """Test that health stats include correct configuration values"""
-    stats = broker.health_stats()
+    stats = broker.health()
     config = stats["details"]["configuration"]
 
     # Check that configuration values match broker settings
-    assert config["max_retries"] == broker._max_retries
-    assert config["retry_delay"] == broker._retry_delay
-    assert config["message_timeout"] == broker._message_timeout
-    assert config["enable_dlq"] == broker._enable_dlq
+    assert config["max_retries"] == broker._adapter._max_retries
+    assert config["retry_delay"] == broker._adapter._retry_delay
+    assert config["message_timeout"] == broker._adapter._message_timeout
+    assert config["enable_dlq"] == broker._adapter._enable_dlq
 
 
 @pytest.mark.reliable_messaging
-def test_health_stats_empty_broker_state(broker):
+def test_health_empty_broker_state(broker):
     """Test health stats for a completely empty broker"""
-    stats = broker.health_stats()
+    stats = broker.health()
     details = stats["details"]
 
     # Empty broker should have zero counts
@@ -290,7 +290,7 @@ def test_ping_after_data_reset(broker):
     broker.publish("test", {"data": "test"})
 
     # Reset data
-    broker._data_reset()
+    broker.clear()
 
     # Ping should still work
     result = broker.ping()
@@ -298,16 +298,16 @@ def test_ping_after_data_reset(broker):
 
 
 @pytest.mark.reliable_messaging
-def test_health_stats_after_data_reset(broker):
+def test_health_after_data_reset(broker):
     """Test health stats after data reset"""
     # Add some test data
     broker.publish("test_stream", {"data": "test"})
 
     # Reset the data
-    broker._data_reset()
+    broker.clear()
 
     # Health stats should reflect the reset state
-    stats = broker.health_stats()
+    stats = broker.health()
     assert stats["status"] == "healthy"
     assert stats["connected"] is True
 
@@ -322,13 +322,13 @@ def test_health_stats_after_data_reset(broker):
 @pytest.mark.basic_pubsub
 def test_ping_failure_handling(broker):
     """Test ping behavior when underlying ping fails"""
-    # Mock the _ping method to raise an exception
-    original_ping = broker._ping
+    # Mock the adapter's ping to raise an exception
+    original_ping = broker._adapter.ping
 
     def mock_ping():
         raise Exception("Connection error")
 
-    broker._ping = mock_ping
+    broker._adapter.ping = mock_ping
 
     try:
         result = broker.ping()
@@ -340,22 +340,22 @@ def test_ping_failure_handling(broker):
         assert broker._last_ping_time is None  # Set to None when exception occurs
 
     finally:
-        broker._ping = original_ping
+        broker._adapter.ping = original_ping
 
 
 @pytest.mark.basic_pubsub
-def test_health_stats_with_ping_failure(broker):
+def test_health_with_ping_failure(broker):
     """Test health stats when ping fails"""
-    # Mock the _ping method to fail
-    original_ping = broker._ping
+    # Mock the adapter's ping to fail
+    original_ping = broker._adapter.ping
 
     def mock_ping():
         raise Exception("Connection error")
 
-    broker._ping = mock_ping
+    broker._adapter.ping = mock_ping
 
     try:
-        stats = broker.health_stats()
+        stats = broker.health()
 
         # Should indicate unhealthy status
         assert stats["status"] in ["degraded", "unhealthy"]
@@ -366,15 +366,19 @@ def test_health_stats_with_ping_failure(broker):
         assert "message_counts" in stats["details"]
 
     finally:
-        broker._ping = original_ping
+        broker._adapter.ping = original_ping
 
 
 @pytest.mark.basic_pubsub
-def test_health_stats_calculation_errors(broker):
+def test_health_calculation_errors(broker):
     """Test health stats with various calculation errors"""
     # Mock different calculation methods to fail
-    original_calculate_streams = getattr(broker, "_calculate_streams_info", None)
-    original_calculate_groups = getattr(broker, "_calculate_consumer_groups_info", None)
+    original_calculate_streams = getattr(
+        broker._adapter, "_calculate_streams_info", None
+    )
+    original_calculate_groups = getattr(
+        broker._adapter, "_calculate_consumer_groups_info", None
+    )
 
     def mock_calculate_streams():
         raise Exception("Streams calculation failed")
@@ -383,12 +387,12 @@ def test_health_stats_calculation_errors(broker):
         raise Exception("Groups calculation failed")
 
     if original_calculate_streams:
-        broker._calculate_streams_info = mock_calculate_streams
+        broker._adapter._calculate_streams_info = mock_calculate_streams
     if original_calculate_groups:
-        broker._calculate_consumer_groups_info = mock_calculate_groups
+        broker._adapter._calculate_consumer_groups_info = mock_calculate_groups
 
     try:
-        stats = broker.health_stats()
+        stats = broker.health()
 
         # Should still return valid structure with fallback values
         assert "status" in stats
@@ -413,13 +417,13 @@ def test_health_stats_calculation_errors(broker):
 
     finally:
         if original_calculate_streams:
-            broker._calculate_streams_info = original_calculate_streams
+            broker._adapter._calculate_streams_info = original_calculate_streams
         if original_calculate_groups:
-            broker._calculate_consumer_groups_info = original_calculate_groups
+            broker._adapter._calculate_consumer_groups_info = original_calculate_groups
 
 
 @pytest.mark.reliable_messaging
-def test_health_stats_with_message_count_errors(broker):
+def test_health_with_message_count_errors(broker):
     """Test health stats when message count calculation fails"""
     # Mock the message count calculation to fail
     original_calculate_message_counts = getattr(
@@ -430,10 +434,10 @@ def test_health_stats_with_message_count_errors(broker):
         raise Exception("Message count calculation failed")
 
     if original_calculate_message_counts:
-        broker._calculate_message_counts = mock_calculate_message_counts
+        broker._adapter._calculate_message_counts = mock_calculate_message_counts
 
         try:
-            stats = broker.health_stats()
+            stats = broker.health()
 
             # Should still return valid structure
             assert "status" in stats
@@ -453,19 +457,25 @@ def test_health_stats_with_message_count_errors(broker):
                 assert message_counts["dlq"] == 0
 
         finally:
-            broker._calculate_message_counts = original_calculate_message_counts
+            broker._adapter._calculate_message_counts = (
+                original_calculate_message_counts
+            )
 
 
 @pytest.mark.basic_pubsub
-def test_health_stats_with_comprehensive_errors(broker):
+def test_health_with_comprehensive_errors(broker):
     """Test health stats when all calculation methods fail"""
     # Mock all calculation methods to fail
-    original_ping = broker._ping
+    original_ping = broker._adapter.ping
     original_calculate_message_counts = getattr(
         broker, "_calculate_message_counts", None
     )
-    original_calculate_streams = getattr(broker, "_calculate_streams_info", None)
-    original_calculate_groups = getattr(broker, "_calculate_consumer_groups_info", None)
+    original_calculate_streams = getattr(
+        broker._adapter, "_calculate_streams_info", None
+    )
+    original_calculate_groups = getattr(
+        broker._adapter, "_calculate_consumer_groups_info", None
+    )
 
     def mock_ping():
         raise Exception("Ping failed")
@@ -479,16 +489,16 @@ def test_health_stats_with_comprehensive_errors(broker):
     def mock_calculate_groups():
         raise Exception("Groups calculation failed")
 
-    broker._ping = mock_ping
+    broker._adapter.ping = mock_ping
     if original_calculate_message_counts:
-        broker._calculate_message_counts = mock_calculate_message_counts
+        broker._adapter._calculate_message_counts = mock_calculate_message_counts
     if original_calculate_streams:
-        broker._calculate_streams_info = mock_calculate_streams
+        broker._adapter._calculate_streams_info = mock_calculate_streams
     if original_calculate_groups:
-        broker._calculate_consumer_groups_info = mock_calculate_groups
+        broker._adapter._calculate_consumer_groups_info = mock_calculate_groups
 
     try:
-        stats = broker.health_stats()
+        stats = broker.health()
 
         # Should still return valid structure even with all errors
         assert "status" in stats
@@ -506,39 +516,41 @@ def test_health_stats_with_comprehensive_errors(broker):
             assert all(count == 0 for count in message_counts.values())
 
     finally:
-        broker._ping = original_ping
+        broker._adapter.ping = original_ping
         if original_calculate_message_counts:
-            broker._calculate_message_counts = original_calculate_message_counts
+            broker._adapter._calculate_message_counts = (
+                original_calculate_message_counts
+            )
         if original_calculate_streams:
-            broker._calculate_streams_info = original_calculate_streams
+            broker._adapter._calculate_streams_info = original_calculate_streams
         if original_calculate_groups:
-            broker._calculate_consumer_groups_info = original_calculate_groups
+            broker._adapter._calculate_consumer_groups_info = original_calculate_groups
 
 
 @pytest.mark.basic_pubsub
-def test_ensure_connection_error_recovery(broker):
-    """Test ensure_connection with error recovery scenarios"""
-    # Mock the _ensure_connection method to fail then succeed
-    original_ensure = broker._ensure_connection
+def test_reconnect_error_recovery(broker):
+    """Test reconnect with error recovery scenarios"""
+    # Mock the adapter's reconnect to fail then succeed
+    original_reconnect = broker._adapter.reconnect
     call_count = 0
 
-    def mock_ensure_connection():
+    def mock_reconnect():
         nonlocal call_count
         call_count += 1
         if call_count == 1:
             raise Exception("Connection error")
         return True
 
-    broker._ensure_connection = mock_ensure_connection
+    broker._adapter.reconnect = mock_reconnect
 
     try:
-        # First call should raise exception as the public method doesn't handle them
+        # First call should raise: the service's _reconnect does not catch it
         with pytest.raises(Exception, match="Connection error"):
-            broker.ensure_connection()
+            broker._reconnect()
 
         # Second call should succeed
-        result2 = broker.ensure_connection()
+        result2 = broker._reconnect()
         assert result2 is True
 
     finally:
-        broker._ensure_connection = original_ensure
+        broker._adapter.reconnect = original_reconnect

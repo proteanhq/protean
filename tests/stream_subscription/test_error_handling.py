@@ -54,13 +54,13 @@ class FailingEventHandler(BaseEventHandler):
 class BrokenBroker:
     """A broker that simulates various failure modes."""
 
-    def __init__(self, fail_ensure_group=False, fail_ack=False):
-        self.fail_ensure_group = fail_ensure_group
+    def __init__(self, fail_create_group=False, fail_ack=False):
+        self.fail_create_group = fail_create_group
         self.fail_ack = fail_ack
         self.messages = []
 
-    def _ensure_group(self, consumer_group, stream):
-        if self.fail_ensure_group:
+    def _create_group(self, stream, consumer_group):
+        if self.fail_create_group:
             raise Exception("Failed to create consumer group")
 
     def read_blocking(self, stream, consumer_group, consumer_name, timeout_ms, count):
@@ -102,10 +102,10 @@ def valid_test_event():
 
 # Test Initialization Errors
 @pytest.mark.redis
-async def test_initialization_fails_when_broker_ensure_group_raises_exception(
+async def test_initialization_fails_when_broker_create_group_raises_exception(
     test_domain, engine
 ):
-    """Test exception handling when _ensure_group fails."""
+    """Test exception handling when _create_group fails."""
     with test_domain.domain_context():
         # Create subscription
         subscription = StreamSubscription(
@@ -115,14 +115,14 @@ async def test_initialization_fails_when_broker_ensure_group_raises_exception(
         # Initialize first to get a broker
         await subscription.initialize()
 
-        # Replace broker with one that fails on _ensure_group
-        broken_broker = BrokenBroker(fail_ensure_group=True)
+        # Replace broker with one that fails on _create_group
+        broken_broker = BrokenBroker(fail_create_group=True)
         subscription.broker = broken_broker
 
-        # Test that _ensure_group raises the exception
+        # Test that _create_group raises the exception
         with pytest.raises(Exception, match="Failed to create consumer group"):
-            subscription.broker._ensure_group(
-                subscription.consumer_group, subscription.stream_category
+            subscription.broker._create_group(
+                subscription.stream_category, subscription.consumer_group
             )
 
 

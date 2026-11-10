@@ -131,11 +131,13 @@ class _StubBroker:
     """A minimal fake broker for capability assertions (not a mock).
 
     Only the surface :meth:`validate_sequential_by_capabilities` touches is
-    implemented: a name and a capability check.
+    implemented: a name, an adapter that is not the inline broker, and a
+    capability check.
     """
 
     def __init__(self, name: str, capabilities: BrokerCapabilities) -> None:
         self.name = name
+        self._adapter = object()
         self._capabilities = capabilities
 
     def has_capability(self, capability: BrokerCapabilities) -> bool:

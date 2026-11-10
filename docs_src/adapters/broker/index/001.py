@@ -16,7 +16,7 @@ with domain.domain_context():
         messages = broker.read(
             stream="orders",
             consumer_group="order-processor",
-            no_of_messages=10,
+            limit=10,
         )
 
     # Check for all of several capabilities

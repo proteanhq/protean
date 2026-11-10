@@ -75,7 +75,7 @@ class TestRedisBrokerPoolConfig:
         mock_from_url.assert_called_once_with("redis://localhost:6379/0")
 
     def test_reconnect_uses_same_pool_kwargs(self, test_domain):
-        """_ensure_connection reconnect should use the same pool kwargs."""
+        """reconnect should use the same pool kwargs."""
         conn_info = {
             "URI": "redis://localhost:6379/0",
             "max_connections": 25,
@@ -87,7 +87,7 @@ class TestRedisBrokerPoolConfig:
             mock_instance = mock_from_url.return_value
             mock_instance.ping.side_effect = [ConnectionError, True]
 
-            broker._ensure_connection()
+            broker.reconnect()
 
             # Second call (reconnect) should include pool kwargs
             assert mock_from_url.call_count == 2
@@ -109,11 +109,10 @@ class TestRedisBrokerPoolConfig:
         try:
             with domain.domain_context():
                 broker = domain.brokers["default"]
-                assert broker._pool_kwargs == {"max_connections": 10}
-                assert broker._ping() is True
+                assert broker._adapter._pool_kwargs == {"max_connections": 10}
+                assert broker.ping() is True
         finally:
-            for b in domain.brokers.values():
-                b.close()
+            domain.brokers.close()
 
 
 class TestRedisCachePoolConfig:

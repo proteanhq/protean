@@ -83,7 +83,7 @@ disappears.
 ## What is Provisional
 
 - **The ports** for third-party adapter authors: the `ProviderPort`,
-  `DatabaseModelPort`, `EventStorePort` and `CachePort` protocols, the `BaseProvider`, `BaseBroker` and `BaseEventStore` ABCs, with the `BaseDAO` class
+  `DatabaseModelPort`, `EventStorePort`, `CachePort` and `BrokerPort` protocols, the `BaseProvider`, `BaseBroker` and `BaseEventStore` ABCs, with the `BaseDAO` class
   which an adapter's DAO subclasses, and the `LookupPort` protocol, which an
   adapter's lookup classes subclass, in `protean.port.dao`,
   and the `NativeClaimPort`, `ClaimCandidatesPort` and `BoundedDeletePort`

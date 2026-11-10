@@ -352,7 +352,7 @@ class TestResetAndClose:
         "port, clear",
         [
             ("database", "clear"),
-            ("broker", "_data_reset"),
+            ("broker", "clear"),
             ("cache", "clear"),
             ("event_store", "clear"),
         ],

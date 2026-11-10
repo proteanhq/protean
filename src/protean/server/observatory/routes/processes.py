@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Path, Query
 from fastapi.responses import JSONResponse
 
+from protean.server._redis import redis_client
 from protean.server.subscription_status import collect_subscription_statuses
 from protean.server.tracing import TRACE_STREAM, decode_trace, trace_number
 
@@ -60,8 +61,9 @@ def _get_redis(domains: list[Domain]) -> Any:
         try:
             with d.domain_context():
                 broker = d.brokers.get("default")
-                if broker and hasattr(broker, "redis_instance"):
-                    return broker.redis_instance
+                client = redis_client(broker)
+                if client is not None:
+                    return client
         except Exception:  # one broken domain must not hide the others; logged
             logger.debug(
                 "Could not get the Redis broker of domain %s", d.name, exc_info=True

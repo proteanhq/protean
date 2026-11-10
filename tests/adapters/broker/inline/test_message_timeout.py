@@ -1,6 +1,11 @@
 import time
 
 
+def _in_flight_count(broker, consumer_group, stream):
+    """Return how many messages of ``stream`` are in flight for ``consumer_group``."""
+    return len(broker._adapter._in_flight[f"{stream}:{consumer_group}"])
+
+
 def test_message_timeout_cleanup(broker):
     """Test that messages are cleaned up after timeout"""
     stream = "test_stream"
@@ -8,8 +13,8 @@ def test_message_timeout_cleanup(broker):
     message = {"foo": "bar", "timeout_test": True}
 
     # Configure broker with very short timeout for testing
-    broker._message_timeout = 0.1  # 100ms timeout
-    broker._enable_dlq = True
+    broker._adapter._message_timeout = 0.1  # 100ms timeout
+    broker._adapter._enable_dlq = True
 
     # Publish a message
     identifier = broker.publish(stream, message)
@@ -20,13 +25,7 @@ def test_message_timeout_cleanup(broker):
     assert retrieved_message[0] == identifier
 
     # Check that message is in-flight
-    info = broker.info()
-    if consumer_group in info["consumer_groups"]:
-        in_flight_info = info["consumer_groups"][consumer_group].get(
-            "in_flight_messages", {}
-        )
-        if stream in in_flight_info:
-            assert in_flight_info[stream] >= 1
+    assert _in_flight_count(broker, consumer_group, stream) >= 1
 
     # Wait for timeout to expire
     time.sleep(0.15)
@@ -35,7 +34,7 @@ def test_message_timeout_cleanup(broker):
     broker.get_next(stream, consumer_group)
 
     # Check that the timed-out message was moved to DLQ
-    dlq_messages = broker.get_dlq_messages(consumer_group, stream)
+    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
     if stream in dlq_messages:
         assert len(dlq_messages[stream]) == 1
         dlq_entry = dlq_messages[stream][0]
@@ -44,12 +43,7 @@ def test_message_timeout_cleanup(broker):
         assert dlq_entry[2] == "timeout"
 
     # Verify message is no longer in-flight
-    info = broker.info()
-    in_flight_info = info["consumer_groups"][consumer_group].get(
-        "in_flight_messages", {}
-    )
-    if stream in in_flight_info:
-        assert in_flight_info[stream] == 0
+    assert _in_flight_count(broker, consumer_group, stream) == 0
 
 
 def test_message_timeout_without_dlq(broker):
@@ -59,8 +53,8 @@ def test_message_timeout_without_dlq(broker):
     message = {"foo": "bar", "no_dlq_test": True}
 
     # Configure broker with timeout but no DLQ
-    broker._message_timeout = 0.1  # 100ms timeout
-    broker._enable_dlq = False  # Disable DLQ
+    broker._adapter._message_timeout = 0.1  # 100ms timeout
+    broker._adapter._enable_dlq = False  # Disable DLQ
 
     # Publish a message
     identifier = broker.publish(stream, message)
@@ -77,29 +71,12 @@ def test_message_timeout_without_dlq(broker):
     broker.get_next(stream, consumer_group)
 
     # Verify no DLQ messages exist
-    dlq_messages = broker.get_dlq_messages(consumer_group, stream)
+    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
     if stream in dlq_messages:
         assert len(dlq_messages[stream]) == 0
 
     # Verify message is no longer in-flight (discarded)
-    info = broker.info()
-    if consumer_group in info["consumer_groups"]:
-        in_flight_info = info["consumer_groups"][consumer_group].get(
-            "in_flight_messages", {}
-        )
-        if stream in in_flight_info:
-            assert in_flight_info[stream] == 0
-
-
-def _assert_in_flight_count(broker, consumer_group, stream, expected):
-    """Check the in-flight count when ``info()`` reports one for the stream."""
-    info = broker.info()
-    if consumer_group in info["consumer_groups"]:
-        in_flight_info = info["consumer_groups"][consumer_group].get(
-            "in_flight_messages", {}
-        )
-        if stream in in_flight_info:
-            assert in_flight_info[stream] == expected
+    assert _in_flight_count(broker, consumer_group, stream) == 0
 
 
 def test_message_timeout_multiple_messages(broker):
@@ -109,8 +86,8 @@ def test_message_timeout_multiple_messages(broker):
     messages = [{"id": i, "timeout_test": True} for i in range(3)]
 
     # Configure broker with short timeout
-    broker._message_timeout = 0.1  # 100ms timeout
-    broker._enable_dlq = True
+    broker._adapter._message_timeout = 0.1  # 100ms timeout
+    broker._adapter._enable_dlq = True
 
     # Publish multiple messages
     identifiers = [broker.publish(stream, message) for message in messages]
@@ -125,7 +102,7 @@ def test_message_timeout_multiple_messages(broker):
     assert len(retrieved_messages) == 3
 
     # Check all messages are in-flight
-    _assert_in_flight_count(broker, consumer_group, stream, 3)
+    assert _in_flight_count(broker, consumer_group, stream) == 3
 
     # Wait for timeout to expire
     time.sleep(0.15)
@@ -134,7 +111,7 @@ def test_message_timeout_multiple_messages(broker):
     broker.get_next(stream, consumer_group)
 
     # Check that all timed-out messages were moved to DLQ
-    dlq_messages = broker.get_dlq_messages(consumer_group, stream)
+    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
     if stream in dlq_messages:
         assert len(dlq_messages[stream]) == 3
         dlq_identifiers = [entry[0] for entry in dlq_messages[stream]]
@@ -142,7 +119,7 @@ def test_message_timeout_multiple_messages(broker):
             assert identifier in dlq_identifiers
 
     # Verify no messages are in-flight
-    _assert_in_flight_count(broker, consumer_group, stream, 0)
+    assert _in_flight_count(broker, consumer_group, stream) == 0
 
 
 def test_message_timeout_cross_consumer_group_isolation(broker):
@@ -154,8 +131,8 @@ def test_message_timeout_cross_consumer_group_isolation(broker):
     message2 = {"group": 2, "timeout_test": True}
 
     # Configure broker with short timeout
-    broker._message_timeout = 0.1  # 100ms timeout
-    broker._enable_dlq = True
+    broker._adapter._message_timeout = 0.1  # 100ms timeout
+    broker._adapter._enable_dlq = True
 
     # Publish messages
     id1 = broker.publish(stream, message1)
@@ -180,8 +157,8 @@ def test_message_timeout_cross_consumer_group_isolation(broker):
     broker.get_next(stream, consumer_group_2)
 
     # Check DLQ isolation
-    dlq_messages_1 = broker.get_dlq_messages(consumer_group_1, stream)
-    dlq_messages_2 = broker.get_dlq_messages(consumer_group_2, stream)
+    dlq_messages_1 = broker._adapter.get_dlq_messages(consumer_group_1, stream)
+    dlq_messages_2 = broker._adapter.get_dlq_messages(consumer_group_2, stream)
 
     # Each group should have only its own timed-out message
     if stream in dlq_messages_1:
@@ -201,8 +178,8 @@ def test_message_timeout_does_not_affect_acked_messages(broker):
     message2 = {"id": 2, "status": "will_timeout"}
 
     # Configure broker with short timeout
-    broker._message_timeout = 0.1  # 100ms timeout
-    broker._enable_dlq = True
+    broker._adapter._message_timeout = 0.1  # 100ms timeout
+    broker._adapter._enable_dlq = True
 
     # Publish two messages
     id1 = broker.publish(stream, message1)
@@ -226,16 +203,10 @@ def test_message_timeout_does_not_affect_acked_messages(broker):
     broker.get_next(stream, consumer_group)
 
     # Check that only the second message went to DLQ
-    dlq_messages = broker.get_dlq_messages(consumer_group, stream)
+    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
     if stream in dlq_messages:
         assert len(dlq_messages[stream]) == 1
         assert dlq_messages[stream][0][0] == id2  # Only second message
 
     # Verify only one message is counted as in-flight initially, then zero after timeout
-    info = broker.info()
-    if consumer_group in info["consumer_groups"]:
-        in_flight_info = info["consumer_groups"][consumer_group].get(
-            "in_flight_messages", {}
-        )
-        if stream in in_flight_info:
-            assert in_flight_info[stream] == 0  # After cleanup
+    assert _in_flight_count(broker, consumer_group, stream) == 0  # After cleanup

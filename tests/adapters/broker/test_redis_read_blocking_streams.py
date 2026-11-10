@@ -231,7 +231,7 @@ class TestErrors:
         )
         broker = _broker(client)
         reconnects = []
-        broker._ensure_connection = lambda: reconnects.append(True) or True
+        broker.reconnect = lambda: reconnects.append(True) or True
 
         with caplog.at_level("ERROR", logger="protean.adapters.broker.redis"):
             assert _read(broker, 0) == EMPTY

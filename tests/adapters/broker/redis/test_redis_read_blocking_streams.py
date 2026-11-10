@@ -20,8 +20,8 @@ class TestReadBlockingStreamsAgainstRedis:
         group = "lanes-group"
         # Create the groups first, so the message published below is new to
         # the group and is returned by the ">" read.
-        broker._ensure_group(group, primary)
-        broker._ensure_group(group, backfill)
+        broker._create_group(primary, group)
+        broker._create_group(backfill, group)
 
         publisher = threading.Timer(0.1, broker.publish, args=(primary, {"n": 1}))
 
@@ -47,8 +47,8 @@ class TestReadBlockingStreamsAgainstRedis:
         primary = f"lanes-{uuid4().hex}"
         backfill = f"{primary}:backfill"
         group = "lanes-group"
-        broker._ensure_group(group, primary)
-        broker._ensure_group(group, backfill)
+        broker._create_group(primary, group)
+        broker._create_group(backfill, group)
         broker.publish(backfill, {"n": 1})
 
         # Deliver the backfill message without acking it, so it stays pending.

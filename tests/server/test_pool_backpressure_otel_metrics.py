@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
+import redis
 from opentelemetry.sdk.metrics import MeterProvider as SDKMeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import Resource
@@ -118,15 +119,25 @@ class RedisPool:
         self.max_connections = max_connections
 
 
-class RedisClient:
-    """Stands in for the Redis client a Redis broker holds."""
+class RedisClient(redis.Redis):
+    """Stands in for the Redis client a Redis broker holds.
+
+    It subclasses ``redis.Redis`` because the pool scrape reads only a broker
+    connection that is a Redis client. It does not call the parent
+    constructor, so it opens no connection.
+    """
 
     def __init__(self, pool: RedisPool):
         self.connection_pool = pool
 
 
-class UnreachableRedisClient:
+class UnreachableRedisClient(redis.Redis):
     """Stands in for a Redis client whose pool cannot be read."""
+
+    def __init__(self):
+        # The parent constructor would assign ``connection_pool``, which this
+        # stand-in makes read-only.
+        pass
 
     @property
     def connection_pool(self):
@@ -137,7 +148,7 @@ def _attach_redis(monkeypatch, domain, client) -> None:
     """Give the domain's default broker a Redis client stand-in."""
     with domain.domain_context():
         broker = domain.brokers.get("default")
-    monkeypatch.setattr(broker, "redis_instance", client, raising=False)
+    monkeypatch.setattr(broker._adapter, "get_connection", lambda: client)
 
 
 class Order(BaseAggregate):

@@ -64,9 +64,9 @@ with domain.domain_context():
         print("Broker is healthy")
 
     # Get detailed health statistics
-    health_stats = broker.health_stats()
-    print(f"Status: {health_stats['status']}")  # healthy, degraded or unhealthy
-    print(f"Connected: {health_stats['connected']}")
-    print(f"Details: {health_stats['details']}")  # broker-specific
+    health = broker.health()
+    print(f"Status: {health['status']}")  # healthy, degraded or unhealthy
+    print(f"Connected: {health['connected']}")
+    print(f"Details: {health['details']}")  # broker-specific
 # --8<-- [end:health]
 # --8<-- [end:full]

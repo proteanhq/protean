@@ -2,11 +2,13 @@
 ``_read_blocking_streams``, using a minimal broker that records its reads.
 
 The default reads every stream but the last without waiting, and waits on the
-last stream only when the others are empty. No server is needed.
+last stream only when the others are empty. The ``Broker`` service wraps the
+call and retries it once after a connection error. No server is needed.
 """
 
 import pytest
 
+from protean.infra.broker import Broker
 from protean.port.broker import BaseBroker, BrokerCapabilities
 
 pytestmark = pytest.mark.no_test_domain
@@ -39,45 +41,15 @@ class _RecordingBroker(BaseBroker):
             raise self.errors.pop(0)
         return self.messages.get(stream, [])
 
-    def _read(self, stream, consumer_group, no_of_messages):
-        self.read_calls.append((stream, no_of_messages))
+    def read(self, stream, consumer_group, limit, *, new_messages=False):
+        self.read_calls.append((stream, limit))
         return self.messages.get(stream, [])
 
-    def _is_connection_error(self, exception):
-        return isinstance(exception, ConnectionError)
-
-    def _ensure_connection(self):
+    def reconnect(self):
         self.reconnects += 1
         return True
 
     # Abstract methods the read paths never call
-    def _publish(self, stream, message):  # pragma: no cover
-        raise NotImplementedError
-
-    def _get_next(self, stream, consumer_group):  # pragma: no cover
-        raise NotImplementedError
-
-    def _ack(self, stream, identifier, consumer_group):  # pragma: no cover
-        raise NotImplementedError
-
-    def _nack(self, stream, identifier, consumer_group):  # pragma: no cover
-        raise NotImplementedError
-
-    def _ping(self):  # pragma: no cover
-        raise NotImplementedError
-
-    def _health_stats(self):  # pragma: no cover
-        raise NotImplementedError
-
-    def _ensure_group(self, group_name, stream):  # pragma: no cover
-        raise NotImplementedError
-
-    def _info(self):  # pragma: no cover
-        raise NotImplementedError
-
-    def _data_reset(self):  # pragma: no cover
-        raise NotImplementedError
-
     def _dlq_list(self, dlq_streams, limit):  # pragma: no cover
         raise NotImplementedError
 
@@ -166,31 +138,32 @@ class TestReadBlockingStreamsWrapper:
         assert broker.blocking_calls == []
 
     def test_connection_error_reconnects_and_retries_once(self):
-        broker = _RecordingBroker(
-            messages={"primary": [MESSAGE]}, errors=[ConnectionError("gone")]
+        adapter = _RecordingBroker(
+            messages={"primary": [MESSAGE]},
+            errors=[ConnectionError("connection gone")],
         )
 
-        result = broker.read_blocking_streams(
+        result = Broker(adapter).read_blocking_streams(
             ["primary", "backfill"], "g", "c", timeout_ms=750, count=3
         )
 
         assert result == {"primary": [MESSAGE], "backfill": []}
-        assert broker.reconnects == 1
+        assert adapter.reconnects == 1
         # The retry repeats the read with the same timeout and count.
-        assert broker.blocking_calls == [("primary", 0, 3), ("primary", 0, 3)]
+        assert adapter.blocking_calls == [("primary", 0, 3), ("primary", 0, 3)]
 
     def test_connection_error_is_raised_when_reconnect_fails(self):
-        broker = _RecordingBroker(errors=[ConnectionError("gone")])
-        broker._ensure_connection = lambda: False
+        adapter = _RecordingBroker(errors=[ConnectionError("connection gone")])
+        adapter.reconnect = lambda: False
 
         with pytest.raises(ConnectionError):
-            broker.read_blocking_streams(["primary", "backfill"], "g", "c")
+            Broker(adapter).read_blocking_streams(["primary", "backfill"], "g", "c")
 
     def test_other_errors_are_raised_without_retry(self):
-        broker = _RecordingBroker(errors=[ValueError("bad")])
+        adapter = _RecordingBroker(errors=[ValueError("bad")])
 
         with pytest.raises(ValueError):
-            broker.read_blocking_streams(["primary", "backfill"], "g", "c")
+            Broker(adapter).read_blocking_streams(["primary", "backfill"], "g", "c")
 
-        assert broker.reconnects == 0
-        assert len(broker.blocking_calls) == 1
+        assert adapter.reconnects == 0
+        assert len(adapter.blocking_calls) == 1

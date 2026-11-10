@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+import redis
 from fastapi.testclient import TestClient
 
 from protean import Domain
@@ -126,14 +127,14 @@ class _StatusDomain:
 
     def build(self) -> Domain:
         self.domain.init(traverse=False)
-        fake_redis = MagicMock()
+        fake_redis = MagicMock(spec=redis.Redis)
         fake_redis.xinfo_groups.side_effect = lambda stream: self._groups.get(
             stream, []
         )
         fake_redis.xlen.side_effect = lambda key: self._lengths.get(key, 0)
         with self.domain.domain_context():
             if self._redis:
-                self.domain.brokers.get("default").redis_instance = fake_redis
+                self.domain.brokers.get("default")._adapter.redis_instance = fake_redis
             store = self.domain.event_store.store
             for handler_cls, stream, events, position in self._event_store_writes:
                 for i in range(events):

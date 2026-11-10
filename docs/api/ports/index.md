@@ -16,13 +16,13 @@ For concrete adapter documentation, see
 
     [:material-arrow-right-box: ProviderPort](provider.md)
 
--   **:material-message-flash: BaseBroker**
+-   **:material-message-flash: BrokerPort**
 
     ---
 
     Message broker interface for event distribution.
 
-    [:material-arrow-right-box: BaseBroker](broker.md)
+    [:material-arrow-right-box: BrokerPort](broker.md)
 
 -   **:material-history: EventStorePort**
 

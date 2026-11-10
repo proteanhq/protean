@@ -133,3 +133,25 @@ def test_get_next_generates_uuid_identifier(broker):
     assert isinstance(retrieved_identifier, str)
     assert len(retrieved_identifier) > 0
     assert retrieved_identifier == identifier
+
+
+@pytest.mark.reliable_messaging
+def test_adapter_read_new_messages_skips_delivered_unacked_messages(broker):
+    """An adapter read with new_messages=True returns only undelivered messages"""
+    stream = "test_stream"
+    consumer_group = "test_consumer_group"
+
+    broker.publish(stream, {"key": "first"})
+
+    # Deliver the message to the group and leave it unacknowledged
+    delivered = broker.get_next(stream, consumer_group)
+    assert delivered is not None
+    assert delivered.payload == {"key": "first"}
+
+    # Only the delivered, unacknowledged message remains
+    assert broker._adapter.read(stream, consumer_group, 5, new_messages=True) == []
+
+    # A message published after that is returned
+    identifier = broker.publish(stream, {"key": "second"})
+    messages = broker._adapter.read(stream, consumer_group, 5, new_messages=True)
+    assert messages == [(identifier, {"key": "second"})]

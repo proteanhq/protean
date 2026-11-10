@@ -7,7 +7,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from protean.core.subscriber import BaseSubscriber
-from protean.port.broker import BaseBroker
+from protean.infra.broker import Broker
 from protean.utils import fqn
 from protean.utils.telemetry import get_domain_metrics
 
@@ -59,7 +59,7 @@ class BrokerSubscription(BaseSubscription):
     def __init__(
         self,
         engine: "Engine",
-        broker: BaseBroker,
+        broker: Broker,
         stream_name: str,
         handler: type[BaseSubscriber],
         messages_per_tick: int = 10,
@@ -98,12 +98,12 @@ class BrokerSubscription(BaseSubscription):
         )
 
         # Broker specific attributes
-        self.broker: BaseBroker = broker
+        self.broker: Broker = broker
         self.stream_name = stream_name
         self.dlq_stream = f"{stream_name}:dlq"
 
         # Ensure consumer group exists for this stream
-        self.broker._ensure_group(self.subscriber_name, self.stream_name)
+        self.broker._create_group(self.stream_name, self.subscriber_name)
 
         # The subscription owns retry and dead-lettering for this stream: it
         # counts handler failures and publishes exhausted messages to
@@ -179,7 +179,7 @@ class BrokerSubscription(BaseSubscription):
         messages = self.broker.read(
             self.stream_name,
             self.subscriber_name,  # Use subscriber_name as consumer group
-            no_of_messages=self.messages_per_tick,
+            limit=self.messages_per_tick,
         )
 
         return messages

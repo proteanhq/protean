@@ -54,6 +54,7 @@ paths = [
     "src/protean/infra/registry.py",
     "src/protean/adapters/__init__.py",
     "src/protean/adapters/broker/__init__.py",
+    "src/protean/infra/broker.py",
     "src/protean/adapters/broker/inline.py",
     "src/protean/adapters/cache/__init__.py",
     "src/protean/adapters/cache/memory.py",
@@ -98,7 +99,9 @@ services = ["redis"]
 paths = [
     "src/protean/infra/registry.py",
     "src/protean/adapters/broker/__init__.py",
+    "src/protean/infra/broker.py",
     "src/protean/adapters/broker/redis.py",
+    "src/protean/server/_redis.py",
     "src/protean/server/subscription/partitioned_stream_subscription.py",
     "tests/adapters/broker/generic/",
     "tests/adapters/broker/redis/",
@@ -113,6 +116,7 @@ services = ["redis"]
 paths = [
     "src/protean/infra/registry.py",
     "src/protean/adapters/broker/__init__.py",
+    "src/protean/infra/broker.py",
     "src/protean/adapters/broker/redis_pubsub.py",
     "tests/adapters/broker/redis_pubsub/",
 ]

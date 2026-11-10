@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from protean.server._redis import redis_client
 from protean.utils.globals import _domain_now
 
 logger = logging.getLogger(__name__)
@@ -150,8 +151,8 @@ class TraceEmitter:
         self._initialized = True
         try:
             broker = self._domain.brokers.get("default")
-            if broker and hasattr(broker, "redis_instance"):
-                self._redis = broker.redis_instance
+            self._redis = redis_client(broker)
+            if self._redis is not None:
                 return True
         except Exception as e:  # noqa: BLE001 - tracing must never break the engine
             logger.debug(f"TraceEmitter: Redis not available ({e})")

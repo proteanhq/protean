@@ -13,7 +13,7 @@ def retry_group_key(stream: str, consumer_group: str) -> str:
 
 
 def _retry_queue(broker, stream: str, consumer_group: str) -> list:
-    return broker._failed_messages[retry_group_key(stream, consumer_group)]
+    return broker._adapter._failed_messages[retry_group_key(stream, consumer_group)]
 
 
 def scheduled_retry_time(broker, stream, consumer_group, identifier) -> float:
@@ -27,7 +27,7 @@ def make_retry_due(broker, stream, consumer_group, identifier) -> None:
     """Bring a queued retry forward instead of sleeping until it is due."""
     group_key = retry_group_key(stream, consumer_group)
     queue = _retry_queue(broker, stream, consumer_group)
-    broker._failed_messages[group_key] = [
+    broker._adapter._failed_messages[group_key] = [
         (msg_id, msg, count, 0.0 if msg_id == identifier else due)
         for msg_id, msg, count, due in queue
     ]

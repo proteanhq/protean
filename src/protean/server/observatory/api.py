@@ -15,12 +15,15 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from protean.domain import Domain
-from protean.port.broker import BaseBroker, BrokerCapabilities
+from protean.port.broker import BrokerCapabilities
 
+from .._redis import redis_client
 from ..tracing import TRACE_STREAM, decode_trace, trace_number
 
 if TYPE_CHECKING:
     import redis
+
+    from protean.infra.broker import Broker
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +100,9 @@ def _get_redis(domains: list[Domain]) -> "redis.Redis[Any] | None":
         try:
             with d.domain_context():
                 broker = d.brokers.get("default")
-                if broker and hasattr(broker, "redis_instance"):
-                    # ``redis_instance`` is a dynamic attribute present only on
-                    # the Redis broker subclasses, not the ``BaseBroker`` port.
-                    instance: redis.Redis[Any] = broker.redis_instance
-                    return instance
+                client = redis_client(broker)
+                if client is not None:
+                    return client
         except Exception:  # try the next domain; logged at debug
             logger.debug(
                 "Could not get the Redis broker of domain %s", d.name, exc_info=True
@@ -156,7 +157,7 @@ def _broker_health(domain: Domain) -> dict[str, Any]:
             broker = domain.brokers.get("default")
             if broker is None:
                 return {"status": "error", "error": "No default broker configured"}
-            stats = broker.health_stats()
+            stats = broker.health()
             return {"status": "ok", **stats}
     except Exception:  # any broker error becomes an error status; logged
         logger.exception(f"Error querying broker for {domain.name}")
@@ -170,8 +171,7 @@ def _broker_info(domain: Domain) -> dict[str, Any]:
             broker = domain.brokers.get("default")
             if broker is None:
                 return {"status": "error", "error": "No default broker configured"}
-            info = broker.info()
-            return {"status": "ok", **info}
+            return {"status": "ok", "consumer_groups": broker._consumer_groups()}
     except Exception:  # any broker error becomes an error status; logged
         logger.exception(f"Error querying broker info for {domain.name}")
         return {"status": "error", "error": "Failed to query broker info"}
@@ -249,7 +249,7 @@ def _health(domains: list[Domain]) -> JSONResponse:
     # Use first domain's broker for health (they typically share infrastructure)
     broker_stats = _broker_health(domains[0])
 
-    # Public health_stats() returns {"status", "connected", "details": {...}}
+    # Public health() returns {"status", "connected", "details": {...}}
     broker_details = broker_stats.get("details", {})
     is_connected = broker_stats.get("connected", False)
 
@@ -1103,7 +1103,7 @@ def _no_subscription(subscription: str) -> JSONResponse:
     )
 
 
-def _dlq_broker(domain: Domain) -> BaseBroker | None:
+def _dlq_broker(domain: Domain) -> "Broker | None":
     """Return the default broker when it supports dead-letter queues, else None."""
     broker = domain.brokers.get("default")
     if broker is None or not broker.has_capability(

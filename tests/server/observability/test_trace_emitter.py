@@ -9,6 +9,7 @@ import logging
 import time
 
 import pytest
+import redis
 
 from protean.domain import Domain
 from protean.server.tracing import (
@@ -364,9 +365,10 @@ class TestEmitterInitializationEdgeCases:
         assert emitter._initialized is True  # Marked as attempted
         assert emitter._redis is None
 
-    def test_ensure_initialized_handles_missing_redis_instance(self, inline_domain):
-        """_ensure_initialized returns False when broker has no redis_instance."""
-        assert not hasattr(inline_domain.brokers.get("default"), "redis_instance")
+    def test_ensure_initialized_handles_missing_redis_client(self, inline_domain):
+        """_ensure_initialized returns False when the broker has no Redis client."""
+        connection = inline_domain.brokers.get("default").get_connection()
+        assert not isinstance(connection, redis.Redis)
 
         emitter = TraceEmitter(inline_domain)
         result = emitter._ensure_initialized()
@@ -378,16 +380,21 @@ class TestEmitterInitializationEdgeCases:
     def test_subscriber_check_failure_is_logged_and_reads_as_none(
         self, inline_domain, caplog, monkeypatch
     ):
-        class DroppedRedis:
+        # Subclasses redis.Redis without the parent constructor, so it opens
+        # no connection and the emitter still accepts it as a Redis client.
+        class DroppedRedis(redis.Redis):
+            def __init__(self):
+                pass
+
             def pubsub_numsub(self, channel):
                 raise ConnectionError("Redis is down")
 
         # The inline broker stands in for a Redis broker whose connection dropped
+        dropped = DroppedRedis()
         monkeypatch.setattr(
-            inline_domain.brokers.get("default"),
-            "redis_instance",
-            DroppedRedis(),
-            raising=False,
+            inline_domain.brokers.get("default")._adapter,
+            "get_connection",
+            lambda: dropped,
         )
 
         emitter = TraceEmitter(inline_domain)

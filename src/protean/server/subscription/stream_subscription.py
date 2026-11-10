@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
-from protean.port.broker import BaseBroker
+from protean.infra.broker import Broker
 from protean.utils import fqn
 from protean.utils.eventing import Message
 from protean.utils.telemetry import get_domain_metrics
@@ -184,7 +184,7 @@ class StreamSubscription(BaseSubscription):
         self.retry_counts: dict[str, int] = {}
 
         # Get broker from domain
-        self.broker: BaseBroker | None = None
+        self.broker: Broker | None = None
 
         # Priority lanes configuration
         lanes_config = server_config.get("priority_lanes", {})
@@ -272,7 +272,7 @@ class StreamSubscription(BaseSubscription):
 
         # Ensure consumer group exists for primary stream
         try:
-            self.broker._ensure_group(self.consumer_group, self.stream_category)
+            self.broker._create_group(self.stream_category, self.consumer_group)
         except Exception as e:  # logs which group failed, then re-raises
             logger.error(f"Failed to ensure consumer group {self.consumer_group}: {e}")
             raise
@@ -291,7 +291,7 @@ class StreamSubscription(BaseSubscription):
 
         # Clean up stale consumers from previous engine runs
         try:
-            removed = self.broker._cleanup_stale_consumers(
+            removed = self.broker._remove_stale_consumers(
                 self.stream_category, self.consumer_group, self.subscription_id
             )
             if removed > 0:
@@ -310,7 +310,7 @@ class StreamSubscription(BaseSubscription):
         # If priority lanes are enabled, also ensure consumer group for backfill stream
         if self._lanes_enabled:
             try:
-                self.broker._ensure_group(self.consumer_group, self.backfill_stream)
+                self.broker._create_group(self.backfill_stream, self.consumer_group)
             except Exception as e:  # logs which backfill group failed, then re-raises
                 logger.error(
                     f"Failed to ensure backfill consumer group "
@@ -327,7 +327,7 @@ class StreamSubscription(BaseSubscription):
 
             # Clean up stale consumers on backfill stream too
             try:
-                removed = self.broker._cleanup_stale_consumers(
+                removed = self.broker._remove_stale_consumers(
                     self.backfill_stream, self.consumer_group, self.subscription_id
                 )
                 if removed > 0:

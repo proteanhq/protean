@@ -64,6 +64,7 @@ from fastapi import Response
 
 from protean.domain import Domain
 from protean.port.health import PoolStats
+from protean.server._redis import redis_client
 from protean.utils.telemetry import (
     _TELEMETRY_INIT_KEY,
     create_observation,
@@ -73,7 +74,7 @@ from protean.utils.telemetry import (
 )
 
 if TYPE_CHECKING:
-    from protean.port.broker import BaseBroker
+    from protean.infra.broker import Broker
     from protean.server.projection_status import ProjectionStatus
     from protean.server.subscription_status import SubscriptionStatus
 
@@ -280,14 +281,12 @@ def _append_broker_pool_stats(
                     results.append(row)
 
 
-def _broker_pool_row(
-    name: str, broker: "BaseBroker"
-) -> tuple[str, int, int, int] | None:
+def _broker_pool_row(name: str, broker: "Broker") -> tuple[str, int, int, int] | None:
     """Return ``(name, active, available, max_conn)`` for *broker*'s Redis pool.
 
     Returns ``None`` when the broker has no Redis instance or no pool.
     """
-    redis_inst = getattr(broker, "redis_instance", None)
+    redis_inst = redis_client(broker)
     if redis_inst is None:
         return None
     pool = getattr(redis_inst, "connection_pool", None)
@@ -441,7 +440,7 @@ def _broker_observations(
         with target_domain.domain_context():
             broker = target_domain.brokers.get("default")
             if broker:
-                return [create_observation(read_value(broker.health_stats()))]
+                return [create_observation(read_value(broker.health()))]
     except Exception as exc:  # noqa: BLE001 - a gauge callback must not raise into the SDK
         logger.debug("Gauge callback: %s query failed: %s", query, exc)
     return [create_observation(0)]
@@ -677,7 +676,7 @@ def _append_broker_lines(lines: list[str], domains: list[Domain]) -> None:
         with first_domain.domain_context():
             broker = first_domain.brokers.get("default")
             if broker:
-                _append_broker_health_lines(lines, broker.health_stats())
+                _append_broker_health_lines(lines, broker.health())
     except Exception as e:  # noqa: BLE001 - one section's failure must not stop the scrape
         logger.debug(f"Metrics: broker query failed: {e}")
 

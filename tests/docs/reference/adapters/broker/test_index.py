@@ -66,12 +66,12 @@ def test_empty_message_is_rejected():
     assert example.error == {"message": ["Message cannot be empty"]}
 
 
-def test_health_stats_shape():
+def test_health_shape():
     example = load_example("adapters/broker/index/002.py")
 
-    assert example.health_stats["status"] == "healthy"
-    assert example.health_stats["connected"] is True
-    assert isinstance(example.health_stats["details"], dict)
+    assert example.health["status"] == "healthy"
+    assert example.health["connected"] is True
+    assert isinstance(example.health["details"], dict)
 
 
 @pytest.mark.redis
@@ -86,12 +86,12 @@ def test_configuration_shown_builds_three_brokers(tmp_path, monkeypatch):
             for name in ("default", "notifications", "analytics")
         }
 
-    assert type(brokers["default"]) is InlineBroker
-    assert type(brokers["notifications"]) is RedisPubSubBroker
-    assert type(brokers["analytics"]) is RedisBroker
+    assert type(brokers["default"]._adapter) is InlineBroker
+    assert type(brokers["notifications"]._adapter) is RedisPubSubBroker
+    assert type(brokers["analytics"]._adapter) is RedisBroker
     # The variable replaces the whole URI, database included
     dbs = {
-        name: brokers[name].redis_instance.connection_pool.connection_kwargs["db"]
+        name: brokers[name].get_connection().connection_pool.connection_kwargs["db"]
         for name in ("notifications", "analytics")
     }
     assert dbs == {"notifications": 7, "analytics": 7}

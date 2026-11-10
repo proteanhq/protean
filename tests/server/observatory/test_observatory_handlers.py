@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import redis as redis_py
 from fastapi.testclient import TestClient
 
 from protean import Domain
@@ -62,7 +63,7 @@ def client(observatory):
     return TestClient(observatory.app)
 
 
-class _FakeRedis:
+class _FakeRedis(redis_py.Redis):
     """In-memory stand-in for the raw ``redis.Redis`` client.
 
     The core test lane has no Redis server, so the stream reads the Observatory
@@ -215,7 +216,7 @@ def _build_domain(name="Handlers", *, redis=None, event_store_subscriptions=Fals
 
     domain.init(traverse=False)
     if redis is not None:
-        domain.brokers.get("default").redis_instance = redis
+        domain.brokers.get("default")._adapter.redis_instance = redis
 
     return domain, SimpleNamespace(
         Order=Order,

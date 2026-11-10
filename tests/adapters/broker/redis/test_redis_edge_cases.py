@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import redis
 
-from protean.adapters.broker.redis import RedisBroker
+from protean.adapters.broker.redis import RedisBroker, get_field_value
 from tests.shared import REDIS_URI
 
 
@@ -15,8 +15,8 @@ from tests.shared import REDIS_URI
 class TestRedisEdgeCases:
     """Test edge cases and error scenarios for Redis broker."""
 
-    def test_get_next_handle_redis_error_other_than_nogroup(self, test_domain):
-        """Test _get_next handling of non-NOGROUP Redis errors."""
+    def test_read_new_messages_handle_redis_error_other_than_nogroup(self, test_domain):
+        """Test _read_new_messages handling of non-NOGROUP Redis errors."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance to raise a non-NOGROUP error
@@ -29,15 +29,15 @@ class TestRedisEdgeCases:
         # Ensure group is mocked
         broker._created_groups_set.add("test-stream:test-group")
 
-        result = broker._get_next("test-stream", "test-group")
+        result = broker._read_new_messages("test-stream", "test-group", 1)
 
-        # Should return None and not retry
-        assert result is None
+        # Should return no messages and not retry
+        assert result == []
         # Should have been called only once (no retry)
         mock_redis.xreadgroup.assert_called_once()
 
-    def test_get_next_response_with_empty_inner_messages(self, test_domain):
-        """Test _get_next when response has empty inner messages."""
+    def test_read_new_messages_response_with_empty_inner_messages(self, test_domain):
+        """Test _read_new_messages when response has empty inner messages."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance to return response with empty messages
@@ -49,13 +49,13 @@ class TestRedisEdgeCases:
         # Ensure group is mocked
         broker._created_groups_set.add("test-stream:test-group")
 
-        result = broker._get_next("test-stream", "test-group")
+        result = broker._read_new_messages("test-stream", "test-group", 1)
 
-        # Should return None when messages list is empty
-        assert result is None
+        # Should return no messages when messages list is empty
+        assert result == []
 
     def test_read_with_fields_none(self, test_domain):
-        """Test _read when response contains None fields."""
+        """Test read when response contains None fields."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -81,7 +81,7 @@ class TestRedisEdgeCases:
         # Ensure group is mocked
         broker._created_groups_set.add("test-stream:test-group")
 
-        messages = broker._read("test-stream", "test-group", 3)
+        messages = broker.read("test-stream", "test-group", 3)
 
         # Should only return messages with valid fields
         assert len(messages) == 2
@@ -89,7 +89,7 @@ class TestRedisEdgeCases:
         assert messages[1][1]["test"] == "data2"
 
     def test_read_pending_with_none_fields(self, test_domain):
-        """Test _read with pending messages having None fields."""
+        """Test read with pending messages having None fields."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -124,7 +124,7 @@ class TestRedisEdgeCases:
         # Ensure group is mocked
         broker._created_groups_set.add("test-stream:test-group")
 
-        messages = broker._read("test-stream", "test-group", 3)
+        messages = broker.read("test-stream", "test-group", 3)
 
         # Should return 2 valid messages (1 new + 1 pending)
         assert len(messages) == 2
@@ -132,7 +132,7 @@ class TestRedisEdgeCases:
         assert messages[1][1]["test"] == "data2"
 
     def test_read_respects_message_limit(self, test_domain):
-        """Test _read stops when reaching message limit."""
+        """Test read stops when reaching message limit."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -168,7 +168,7 @@ class TestRedisEdgeCases:
         broker._created_groups_set.add("test-stream:test-group")
 
         # Request only 3 messages
-        messages = broker._read("test-stream", "test-group", 3)
+        messages = broker.read("test-stream", "test-group", 3)
 
         # Should return exactly 3 messages and stop
         assert len(messages) == 3
@@ -177,7 +177,7 @@ class TestRedisEdgeCases:
         assert messages[2][1]["test"] == "data3"
 
     def test_read_avoids_duplicates(self, test_domain):
-        """Test _read avoids duplicate message IDs."""
+        """Test read avoids duplicate message IDs."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -217,7 +217,7 @@ class TestRedisEdgeCases:
         # Ensure group is mocked
         broker._created_groups_set.add("test-stream:test-group")
 
-        messages = broker._read("test-stream", "test-group", 4)
+        messages = broker.read("test-stream", "test-group", 4)
 
         # Should return 3 unique messages (duplicate skipped)
         assert len(messages) == 3
@@ -325,9 +325,9 @@ class TestRedisEdgeCases:
         # Should retry after creating group
         assert messages == []
         # _read_blocking flow:
-        # 1. _ensure_group at top of method → xgroup_create #1
+        # 1. create_group at top of method → xgroup_create #1
         # 2. xreadgroup #1 (pending check) → raises NOGROUP
-        # 3. NOGROUP handler: discard + _ensure_group → xgroup_create #2
+        # 3. NOGROUP handler: discard + create_group → xgroup_create #2
         # 4. xreadgroup #2 (retry) → raises NOGROUP again, caught by inner handler
         assert call_count[0] == 2
         assert mock_redis.xgroup_create.call_count == 2
@@ -376,8 +376,8 @@ class TestRedisEdgeCases:
         assert messages == []
         assert "broker.redis.read_blocking_failed" in caplog.text
 
-    def test_ensure_group_existing_group_tracking(self, test_domain):
-        """Test _ensure_group tracks creation time for existing groups."""
+    def test_create_group_existing_group_tracking(self, test_domain):
+        """Test create_group tracks creation time for existing groups."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -391,8 +391,8 @@ class TestRedisEdgeCases:
         # Ensure group hasn't been tracked yet
         assert "test-group" not in broker._group_creation_times
 
-        # Call ensure_group
-        broker._ensure_group("test-group", "test-stream")
+        # Call create_group
+        broker.create_group("test-stream", "test-group")
 
         # Should track the creation time even for existing group
         assert "test-group" in broker._group_creation_times
@@ -413,17 +413,25 @@ class TestRedisEdgeCases:
             "also-invalid"
         )  # No separator - should be skipped
 
-        # Add a subscriber
-        broker._subscribers["subscriber-stream"] = set()
-
         streams = broker._get_streams_to_check()
 
         # Should only include valid streams
         assert "test-stream" in streams
         assert "another-stream" in streams
-        assert "subscriber-stream" in streams
         assert "invalid-entry" not in streams
         assert "also-invalid" not in streams
+
+    def test_get_streams_to_check_includes_published_streams(self, test_domain):
+        """A stream published to but never read is checked for health."""
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
+        broker.clear()
+
+        broker.publish("published-only-stream", {"n": 1})
+
+        assert broker._get_streams_to_check() == {"published-only-stream"}
+
+        broker.clear()
+        assert broker._get_streams_to_check() == set()
 
     def test_extract_group_data_non_dict(self, test_domain):
         """Test _extract_group_data skips non-dict entries."""
@@ -457,15 +465,13 @@ class TestRedisEdgeCases:
         assert "group2" in stream_info
         assert len(stream_info) == 2
 
-    def test_get_field_value_conversion_failure(self, test_domain, caplog):
-        """Test _get_field_value when int conversion fails."""
-        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
-
+    def test_get_field_value_conversion_failure(self, caplog):
+        """Test get_field_value when int conversion fails."""
         # Test with non-numeric value
         info_dict = {"pending": "not-a-number"}
 
         with caplog.at_level(logging.WARNING):
-            result = broker._get_field_value(info_dict, "pending", convert_to_int=True)
+            result = get_field_value(info_dict, "pending", convert_to_int=True)
 
         # Should return 0 and log warning
         assert result == 0
@@ -485,7 +491,7 @@ class TestRedisEdgeCases:
         broker.redis_instance = mock_redis
 
         for key in types:
-            broker._subscribers[key] = set()
+            broker._created_groups_set.add(f"{key}:test-group")
 
         counts = broker._calculate_message_counts()
 
@@ -503,7 +509,7 @@ class TestRedisEdgeCases:
         mock_redis.xlen.return_value = 100
         mock_redis.xinfo_groups.side_effect = redis.ResponseError("NOPERM denied")
         broker.redis_instance = mock_redis
-        broker._subscribers["test-stream"] = set()
+        broker._created_groups_set.add("test-stream:test-group")
 
         with caplog.at_level(logging.DEBUG, logger="protean.adapters.broker.redis"):
             counts = broker._calculate_message_counts()
@@ -526,7 +532,7 @@ class TestRedisEdgeCases:
         broker.redis_instance = mock_redis
 
         for key in types:
-            broker._subscribers[key] = set()
+            broker._created_groups_set.add(f"{key}:test-group")
 
         streams_info = broker._calculate_streams_info()
 
@@ -554,8 +560,8 @@ class TestRedisEdgeCases:
         assert "group2" in groups_info["names"]
         assert len(groups_info["names"]) == 2
 
-    def test_ensure_connection_reconnect_failure(self, test_domain, caplog):
-        """Test _ensure_connection when reconnection fails."""
+    def test_reconnect_failure(self, test_domain, caplog):
+        """Test reconnect when reconnection fails."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance that always fails ping
@@ -571,7 +577,7 @@ class TestRedisEdgeCases:
             ),
             caplog.at_level(logging.ERROR),
         ):
-            result = broker._ensure_connection()
+            result = broker.reconnect()
 
         # Should return False and log errors
         assert result is False
@@ -591,13 +597,14 @@ def test_read_blocking_connection_error_with_successful_retry(test_domain, caplo
     broker = test_domain.brokers["default"]
     broker.publish(stream, {"test": "data", "id": 1})
 
+    adapter = broker._adapter
+
     # Store original methods
-    original_read_blocking = broker._read_blocking
-    original_ensure_connection = broker._ensure_connection
+    original_read_blocking = adapter.read_blocking
 
     # Track method calls
     read_blocking_calls = []
-    ensure_connection_calls = []
+    reconnect_calls = []
 
     def mock_read_blocking(*args, **kwargs):
         read_blocking_calls.append((args, kwargs))
@@ -608,14 +615,14 @@ def test_read_blocking_connection_error_with_successful_retry(test_domain, caplo
             # Second call succeeds after recovery
             return original_read_blocking(*args, **kwargs)
 
-    def mock_ensure_connection():
-        ensure_connection_calls.append(True)
+    def mock_reconnect():
+        reconnect_calls.append(True)
         # Simulate successful reconnection
         return True
 
-    # Replace methods
-    broker._read_blocking = mock_read_blocking
-    broker._ensure_connection = mock_ensure_connection
+    # Replace the adapter's methods; the service retries around them
+    adapter.read_blocking = mock_read_blocking
+    adapter.reconnect = mock_reconnect
 
     try:
         with caplog.at_level("WARNING"):
@@ -630,11 +637,9 @@ def test_read_blocking_connection_error_with_successful_retry(test_domain, caplo
 
             # Verify the sequence of calls
             assert len(read_blocking_calls) == 2, (
-                "Should have called _read_blocking twice (initial + retry)"
+                "Should have called the adapter's read_blocking twice (initial + retry)"
             )
-            assert len(ensure_connection_calls) == 1, (
-                "Should have called _ensure_connection once"
-            )
+            assert len(reconnect_calls) == 1, "Should have called reconnect once"
 
             # Verify arguments were preserved on retry
             first_call_args = read_blocking_calls[0]
@@ -659,8 +664,8 @@ def test_read_blocking_connection_error_with_successful_retry(test_domain, caplo
 
     finally:
         # Restore original methods
-        broker._read_blocking = original_read_blocking
-        broker._ensure_connection = original_ensure_connection
+        del adapter.read_blocking
+        del adapter.reconnect
 
 
 @pytest.mark.redis
@@ -668,9 +673,9 @@ class TestRedisReconnectAfterClose:
     """Reviving a closed Redis connection against a live server.
 
     Engine shutdown closes the broker (``redis_instance`` becomes ``None``).
-    Reusing the broker afterwards — a straggler poll read, a publish, or a
-    test-teardown ``_data_reset`` — must reconnect transparently instead of
-    raising ``AttributeError: 'NoneType' object has no attribute ...``.
+    A straggler poll read, a publish, or a test-teardown ``clear`` can
+    reuse the broker afterwards. Each must reconnect instead of raising
+    ``AttributeError: 'NoneType' object has no attribute ...``.
     """
 
     def test_publish_and_read_revive_after_close(self, test_domain):
@@ -687,10 +692,10 @@ class TestRedisReconnectAfterClose:
         broker.publish(stream, {"second": "message"})
         assert broker.redis_instance is not None
 
-        messages = broker.read(stream, "revive-group", no_of_messages=10)
+        messages = broker.read(stream, "revive-group", limit=10)
         assert len(messages) >= 1
 
-    def test_data_reset_revives_after_close(self, test_domain):
+    def test_clear_revives_after_close(self, test_domain):
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
         broker.publish("some-stream", {"payload": "x"})
 
@@ -698,7 +703,7 @@ class TestRedisReconnectAfterClose:
         assert broker.redis_instance is None
 
         # Teardown reset after the connection was closed must not raise.
-        broker._data_reset()
+        broker.clear()
         assert broker.redis_instance is not None
 
     def test_poll_loop_survives_midrun_close(self, test_domain):
@@ -710,7 +715,7 @@ class TestRedisReconnectAfterClose:
         """
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
         stream, group = "survive-stream", "survive-group"
-        broker._ensure_group(group, stream)
+        broker.create_group(stream, group)
 
         for i in range(3):
             broker.publish(stream, {"n": i})
@@ -721,7 +726,7 @@ class TestRedisReconnectAfterClose:
         # Poll loop continues after the mid-run close: read and ACK each message.
         collected = []
         for _ in range(5):
-            batch = broker.read(stream, group, no_of_messages=10)
+            batch = broker.read(stream, group, limit=10)
             for identifier, payload in batch:
                 collected.append(payload)
                 broker.ack(stream, identifier, group)

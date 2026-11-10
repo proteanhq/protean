@@ -98,18 +98,18 @@ def _domain(**server: object) -> Domain:
 def domain():
     domain = _domain()
     with domain.domain_context():
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
         yield domain
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
 
 
 @pytest.fixture
 def lanes_domain():
     domain = _domain(priority_lanes={"enabled": True, "backfill_suffix": "backfill"})
     with domain.domain_context():
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
         yield domain
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
 
 
 def _stream_subscription(domain: Domain, **kwargs: object) -> StreamSubscription:
@@ -124,20 +124,20 @@ def _stream_subscription(domain: Domain, **kwargs: object) -> StreamSubscription
 
 def _publish(domain: Domain, stream: str, label: str, fail: bool = False) -> None:
     event = ShipmentBooked(shipment_id=str(uuid4()), label=label, fail=fail)
-    domain.brokers["default"]._publish(
+    domain.brokers["default"].publish(
         stream, Message.from_domain_object(event).to_dict()
     )
 
 
 def _leave_pending(domain: Domain, stream: str, group: str, count: int) -> None:
     """Read *count* entries as the stopped worker and never acknowledge them."""
-    client = domain.brokers["default"].redis_instance
+    client = domain.brokers["default"].get_connection()
     client.xreadgroup(group, STOPPED_CONSUMER, {stream: ">"}, count=count)
     time.sleep(RECLAIM_IDLE_SECONDS * 2)
 
 
 def _pending_by_consumer(domain: Domain, stream: str, group: str) -> dict[str, int]:
-    return _pending_on(domain.brokers["default"].redis_instance, stream, group)
+    return _pending_on(domain.brokers["default"].get_connection(), stream, group)
 
 
 def _pending_on(client: redis.Redis, stream: str, group: str) -> dict[str, int]:
@@ -208,7 +208,7 @@ class TestStreamSubscription:
 
         await _read_and_process(second)
 
-        client = domain.brokers["default"].redis_instance
+        client = domain.brokers["default"].get_connection()
         assert client.xlen(second.dlq_stream) == 1
         assert _pending_by_consumer(domain, category, second.consumer_group) == {}
 
@@ -268,7 +268,7 @@ class TestStoppedWorkerStates:
             assert list(worker.retry_counts.values()) == [attempt]
             await asyncio.sleep(RECLAIM_IDLE_SECONDS * 2)
 
-        client = domain.brokers["default"].redis_instance
+        client = domain.brokers["default"].get_connection()
         assert client.xlen(worker.dlq_stream) == 0
 
     async def test_claims_a_message_held_by_an_open_circuit_breaker(self, domain):
@@ -328,7 +328,7 @@ class TestShutdownMidBatch:
             _publish(domain, category, label)
         _pause_handling(sub, {"a": 0.05})
         # Shutdown closes the broker's connection.
-        client = domain.brokers["default"].redis_instance
+        client = domain.brokers["default"].get_connection()
 
         messages = await sub.get_next_batch_of_messages()
         assert len(messages) == 3
@@ -358,7 +358,7 @@ class TestShutdownMidBatch:
         traces = _attach_recording_redis(sub.engine.emitter)
         _pause_handling(sub, {"a": 0.05, "b": -1})
         # Shutdown closes the broker's connection.
-        client = domain.brokers["default"].redis_instance
+        client = domain.brokers["default"].get_connection()
 
         messages = await sub.get_next_batch_of_messages()
         batch = asyncio.ensure_future(sub.process_batch(messages))
@@ -413,7 +413,7 @@ class TestBrokerSubscription:
         assert list(first.retry_counts.values()) == [1]
 
         # A restarted process reads under a new consumer name.
-        broker._consumer_name = "restarted-worker"
+        broker._adapter._consumer_name = "restarted-worker"
         await asyncio.sleep(RECLAIM_IDLE_SECONDS * 2)
         second = BrokerSubscription(
             engine, broker, "labels", LabelPrinter, max_retries=3, retry_delay_seconds=0
@@ -423,19 +423,19 @@ class TestBrokerSubscription:
         await second.process_batch(await second.get_next_batch_of_messages())
 
         assert list(second.retry_counts.values()) == [2]
-        assert broker.redis_instance.xlen(second.dlq_stream) == 0
+        assert broker.get_connection().xlen(second.dlq_stream) == 0
 
 
 class TestBrokerReclaim:
     def test_pages_through_more_entries_than_one_claim_returns(self, domain):
         """The claim loop follows the cursor past the first page of entries."""
-        broker = domain.brokers["default"]
-        broker._ensure_group("group", "bulk")
+        broker = domain.brokers["default"]._adapter
+        broker.create_group("bulk", "group")
         for i in range(250):
             broker.redis_instance.xadd("bulk", {"i": str(i)})
         _leave_pending(domain, "bulk", "group", 250)
 
-        counts = broker._reclaim_idle_pending("bulk", "group", "new", 10)
+        counts = broker.reclaim_idle_pending("bulk", "group", "new", 10)
 
         assert len(counts) == 250
         assert set(counts.values()) == {1}
@@ -443,34 +443,34 @@ class TestBrokerReclaim:
 
     def test_a_claim_does_not_count_as_a_delivery(self, domain):
         """A worker that claims and stops before reading adds no delivery."""
-        broker = domain.brokers["default"]
-        broker._ensure_group("group", "again")
+        broker = domain.brokers["default"]._adapter
+        broker.create_group("again", "group")
         broker.redis_instance.xadd("again", {"i": "1"})
         _leave_pending(domain, "again", "group", 1)
 
         assert list(
-            broker._reclaim_idle_pending("again", "group", "a", 10).values()
+            broker.reclaim_idle_pending("again", "group", "a", 10).values()
         ) == [1]
         time.sleep(RECLAIM_IDLE_SECONDS * 2)
         assert list(
-            broker._reclaim_idle_pending("again", "group", "b", 10).values()
+            broker.reclaim_idle_pending("again", "group", "b", 10).values()
         ) == [1]
 
     def test_missing_group_claims_nothing(self, domain):
-        broker = domain.brokers["default"]
+        broker = domain.brokers["default"]._adapter
         broker.redis_instance.xadd("orphan", {"i": "1"})
 
-        assert broker._reclaim_idle_pending("orphan", "group", "new", 10) == {}
+        assert broker.reclaim_idle_pending("orphan", "group", "new", 10) == {}
 
     def test_group_deleted_after_caching_claims_nothing_and_recreates_it(self, domain):
         """A group removed behind the broker's group cache makes the claim fail
         with NOGROUP. The claim returns nothing and creates the group again."""
-        broker = domain.brokers["default"]
-        broker._ensure_group("group", "dropped")
+        broker = domain.brokers["default"]._adapter
+        broker.create_group("dropped", "group")
         broker.redis_instance.xadd("dropped", {"i": "1"})
         broker.redis_instance.xgroup_destroy("dropped", "group")
 
-        assert broker._reclaim_idle_pending("dropped", "group", "new", 10) == {}
+        assert broker.reclaim_idle_pending("dropped", "group", "new", 10) == {}
         groups = broker.redis_instance.xinfo_groups("dropped")
         assert [
             g["name"].decode() if isinstance(g["name"], bytes) else g["name"]
@@ -479,18 +479,18 @@ class TestBrokerReclaim:
 
     def test_other_claim_errors_are_raised(self, domain):
         """Negative: a claim error other than NOGROUP reaches the caller."""
-        broker = domain.brokers["default"]
+        broker = domain.brokers["default"]._adapter
         broker.redis_instance.set("not-a-stream", "x")
 
         with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
-            broker._reclaim_idle_pending("not-a-stream", "group", "new", 10)
+            broker.reclaim_idle_pending("not-a-stream", "group", "new", 10)
 
     def test_error_after_a_claimed_page_returns_that_pages_counts(self, domain, caplog):
         """A broker error on the second page stops the scan. The entries the
         first page claimed keep their delivery counts: each page reads its
         counts in the same call that claims it."""
-        broker = domain.brokers["default"]
-        broker._ensure_group("group", "partial")
+        broker = domain.brokers["default"]._adapter
+        broker.create_group("partial", "group")
         for i in range(150):
             broker.redis_instance.xadd("partial", {"i": str(i)})
         _leave_pending(domain, "partial", "group", 150)
@@ -512,7 +512,7 @@ class TestBrokerReclaim:
 
         broker._lua_autoclaim_justid = fail_second_page
         with caplog.at_level(logging.WARNING, logger="protean.adapters.broker.redis"):
-            counts = broker._reclaim_idle_pending("partial", "group", "new", 10)
+            counts = broker.reclaim_idle_pending("partial", "group", "new", 10)
 
         assert len(counts) == 100
         assert set(counts.values()) == {2}
@@ -521,12 +521,12 @@ class TestBrokerReclaim:
         )
 
     def test_none_claims_into_the_brokers_own_consumer(self, domain):
-        broker = domain.brokers["default"]
-        broker._ensure_group("group", "own")
+        broker = domain.brokers["default"]._adapter
+        broker.create_group("own", "group")
         broker.redis_instance.xadd("own", {"i": "1"})
         _leave_pending(domain, "own", "group", 1)
 
-        assert len(broker._reclaim_idle_pending("own", "group", None, 10)) == 1
+        assert len(broker.reclaim_idle_pending("own", "group", None, 10)) == 1
         assert _pending_by_consumer(domain, "own", "group") == {
             broker._consumer_name: 1
         }
@@ -539,7 +539,7 @@ async def test_claiming_first_lets_cleanup_remove_the_stopped_consumer(domain):
     first = _stream_subscription(domain)
     await _start(first)
     _publish(domain, category, "a")
-    client = domain.brokers["default"].redis_instance
+    client = domain.brokers["default"].get_connection()
     client.xreadgroup(first.consumer_group, first.consumer_name, {category: ">"})
     await asyncio.sleep(RECLAIM_IDLE_SECONDS * 2)
 

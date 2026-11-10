@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
+import redis
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
@@ -156,8 +157,8 @@ _REDIS_BROKER_CONFIG = {
 def traced_domain(tmp_path):
     """The correlated domain with a Redis broker whose raw client is a mock."""
     for domain, corr_id, _, _ in _correlated_domain(tmp_path, _REDIS_BROKER_CONFIG):
-        redis_conn = MagicMock()
-        domain.brokers.get("default").redis_instance = redis_conn
+        redis_conn = MagicMock(spec=redis.Redis)
+        domain.brokers.get("default")._adapter.redis_instance = redis_conn
         yield domain, corr_id, redis_conn
 
 

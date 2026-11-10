@@ -19,6 +19,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+import redis
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import Counter, Histogram
@@ -37,6 +38,7 @@ from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import CommandExpiredError
 from protean.fields import Identifier, String
+from protean.infra.broker import Broker
 from protean.server import Engine
 from protean.server.observatory.metrics import (
     _GAUGES_REGISTERED_KEY,
@@ -265,12 +267,14 @@ def _enqueue_open_account(test_domain) -> None:
     )
 
 
-class RedisServer:
+class RedisServer(redis.Redis):
     """Stands in for the Redis server behind a real ``RedisBroker``.
 
     It answers the commands the broker health check and the Observatory
     scrape send: PING, INFO, TYPE, XLEN, SCAN, XINFO GROUPS and
-    XINFO CONSUMERS.
+    XINFO CONSUMERS. It subclasses ``redis.Redis`` because the server reads
+    Redis-only views only from a broker whose connection is a Redis client.
+    It does not call the parent constructor, so it opens no connection.
     """
 
     def __init__(
@@ -318,10 +322,11 @@ class RedisServer:
         return self._consumers
 
 
-def _use_redis_broker(monkeypatch, domain, server: RedisServer) -> RedisBroker:
+def _use_redis_broker(monkeypatch, domain, server: RedisServer) -> Broker:
     """Make a real ``RedisBroker`` talking to ``server`` the default broker."""
-    broker = RedisBroker("default", domain, {"URI": "redis://localhost:6379/0"})
-    broker.redis_instance = server
+    adapter = RedisBroker("default", domain, {"URI": "redis://localhost:6379/0"})
+    adapter.redis_instance = server
+    broker = Broker(adapter)
     monkeypatch.setitem(domain.brokers, "default", broker)
     return broker
 
@@ -639,7 +644,7 @@ class TestHandRolledMetrics:
                 groups=[{"name": "TestGroup", "pending": 2}],
             ),
         )
-        broker._ensure_group("TestGroup", "test::stream")
+        broker._create_group("test::stream", "TestGroup")
 
         text = _hand_rolled_metrics([test_domain])
 
@@ -663,7 +668,7 @@ class TestHandRolledMetrics:
         """Hand-rolled metrics handle broker query failure."""
         with test_domain.domain_context():
             broker = test_domain.brokers.get("default")
-        monkeypatch.setattr(broker, "health_stats", _fail)
+        monkeypatch.setattr(broker, "health", _fail)
 
         text = _hand_rolled_metrics([test_domain])
 
@@ -893,7 +898,7 @@ class TestGaugeCallbacks:
             broker = test_domain.brokers.get("default")
         monkeypatch.setattr(
             broker,
-            "health_stats",
+            "health",
             lambda: {"connected": connected, "details": {"healthy": healthy}},
         )
 
@@ -923,7 +928,7 @@ class TestGaugeCallbacks:
         _, metric_reader = telemetry
         with test_domain.domain_context():
             broker = test_domain.brokers.get("default")
-        monkeypatch.setattr(broker, "health_stats", _fail)
+        monkeypatch.setattr(broker, "health", _fail)
 
         data = _register_gauges_and_collect(test_domain, metric_reader)
 

@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import redis as redis_py
 from fastapi.testclient import TestClient
 
 from protean import Domain
@@ -145,11 +146,11 @@ def fulfillment(test_domain):
     two stream categories becomes a Redis stream subscription. The broker's raw
     client is an empty fake, so the endpoints never read a live Redis server.
     """
-    test_domain.brokers.get("default").redis_instance = _FakeRedisStreams()
+    test_domain.brokers.get("default")._adapter.redis_instance = _FakeRedisStreams()
     return _register_fulfillment(test_domain)
 
 
-class _FakeRedisStreams:
+class _FakeRedisStreams(redis_py.Redis):
     """Stands in for the raw ``redis.Redis`` client the broker holds.
 
     ``groups`` maps a stream name to its consumer-group entries, ``lengths``
@@ -294,7 +295,7 @@ class TestCollectPMMetadata:
 
 def _use_redis(domain, fake):
     """Point the domain's Redis broker at a fake raw client."""
-    return patch.object(domain.brokers.get("default"), "redis_instance", fake)
+    return patch.object(domain.brokers.get("default")._adapter, "redis_instance", fake)
 
 
 class TestMergePMSubscriptionStatus:
@@ -914,7 +915,7 @@ class TestGetRedis:
         failing, patcher = _broken_domain("Failing")
         with patcher:
             result = _get_redis([failing, test_domain])
-        assert result is test_domain.brokers.get("default").redis_instance
+        assert result is test_domain.brokers.get("default").get_connection()
 
     @pytest.mark.no_test_domain
     def test_returns_none_without_a_redis_broker(self):

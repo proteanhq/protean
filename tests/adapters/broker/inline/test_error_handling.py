@@ -19,7 +19,9 @@ def test_exception_during_ack_returns_false(broker):
 
     # Mock an exception in ACK processing
     with patch.object(
-        broker, "_is_in_flight_message", side_effect=Exception("Test exception")
+        broker._adapter,
+        "_is_in_flight_message",
+        side_effect=Exception("Test exception"),
     ):
         result = broker.ack(stream, identifier, consumer_group)
         assert result is False
@@ -37,7 +39,9 @@ def test_exception_during_ack_cleanup_message_ownership_returns_false(broker):
 
     # Mock an exception in cleanup_message_ownership
     with patch.object(
-        broker, "_cleanup_message_ownership", side_effect=Exception("Cleanup failed")
+        broker._adapter,
+        "_cleanup_message_ownership",
+        side_effect=Exception("Cleanup failed"),
     ):
         result = broker.ack(stream, identifier, consumer_group)
         assert result is False
@@ -55,13 +59,15 @@ def test_ack_operation_state_cleanup_on_exception(broker):
 
     # Mock an exception in ACK processing
     with patch.object(
-        broker, "_remove_in_flight_message", side_effect=Exception("Test exception")
+        broker._adapter,
+        "_remove_in_flight_message",
+        side_effect=Exception("Test exception"),
     ):
         result = broker.ack(stream, identifier, consumer_group)
         assert result is False
 
         # Operation state should be cleaned up
-        state = broker._get_operation_state(consumer_group, identifier)
+        state = broker._adapter._get_operation_state(consumer_group, identifier)
         assert state is None
 
 
@@ -105,7 +111,9 @@ def test_exception_during_nack_returns_false(broker):
 
     # Mock an exception in NACK processing
     with patch.object(
-        broker, "_get_in_flight_message", side_effect=Exception("Test exception")
+        broker._adapter,
+        "_get_in_flight_message",
+        side_effect=Exception("Test exception"),
     ):
         result = broker.nack(stream, identifier, consumer_group)
         assert result is False
@@ -123,13 +131,13 @@ def test_exception_during_nack_operation_state_cleanup_on_exception(broker):
 
     # Mock an exception in NACK processing
     with patch.object(
-        broker, "_get_retry_count", side_effect=Exception("Test exception")
+        broker._adapter, "_get_retry_count", side_effect=Exception("Test exception")
     ):
         result = broker.nack(stream, identifier, consumer_group)
         assert result is False
 
         # Operation state should be cleaned up
-        state = broker._get_operation_state(consumer_group, identifier)
+        state = broker._adapter._get_operation_state(consumer_group, identifier)
         assert state is None
 
 
@@ -145,10 +153,12 @@ def test_exception_during_nack_with_retry_returns_false(broker):
 
     # Mock an exception in handle_nack_with_retry
     with patch.object(
-        broker, "_handle_nack_with_retry", side_effect=Exception("Retry failed")
+        broker._adapter,
+        "_handle_nack_with_retry",
+        side_effect=Exception("Retry failed"),
     ):
         # Ensure we trigger the retry path
-        broker._max_retries = 3
+        broker._adapter._max_retries = 3
         result = broker.nack(stream, identifier, consumer_group)
         assert result is False
 
@@ -165,7 +175,7 @@ def test_exception_during_nack_with_retry_store_failed_message_returns_false(bro
 
     # Mock an exception in store_failed_message
     with patch.object(
-        broker, "_store_failed_message", side_effect=Exception("Store failed")
+        broker._adapter, "_store_failed_message", side_effect=Exception("Store failed")
     ):
         result = broker.nack(stream, identifier, consumer_group)
         assert result is False
@@ -178,8 +188,8 @@ def test_exception_during_nack_max_retries_exceeded_with_retry_message(broker):
     message = {"foo": "bar"}
 
     # Configure broker with no retries
-    broker._max_retries = 0
-    broker._retry_delay = 0.01
+    broker._adapter._max_retries = 0
+    broker._adapter._retry_delay = 0.01
 
     # Publish and get message
     identifier = broker.publish(stream, message)
@@ -187,7 +197,7 @@ def test_exception_during_nack_max_retries_exceeded_with_retry_message(broker):
 
     # Mock an exception in handle_nack_max_retries_exceeded
     with patch.object(
-        broker,
+        broker._adapter,
         "_handle_nack_max_retries_exceeded",
         side_effect=Exception("Max retries failed"),
     ):
@@ -202,7 +212,7 @@ def test_exception_during_nack_max_retries_exceeded_with_simulated_condition(bro
     message = {"foo": "bar"}
 
     # Configure broker
-    broker._max_retries = 0
+    broker._adapter._max_retries = 0
 
     # Publish and get message
     identifier = broker.publish(stream, message)
@@ -210,7 +220,7 @@ def test_exception_during_nack_max_retries_exceeded_with_simulated_condition(bro
 
     # Mock DLQ storage to fail
     with patch.object(
-        broker, "_store_dlq_message", side_effect=Exception("DLQ failed")
+        broker._adapter, "_store_dlq_message", side_effect=Exception("DLQ failed")
     ):
         result = broker.nack(stream, identifier, consumer_group)
         assert result is False
@@ -247,13 +257,15 @@ def test_exception_during_requeue_failed_messages_returns_none(broker):
 
     # Mock an exception in get_retry_ready_messages
     with patch.object(
-        broker, "_get_retry_ready_messages", side_effect=Exception("Get ready failed")
+        broker._adapter,
+        "_get_retry_ready_messages",
+        side_effect=Exception("Get ready failed"),
     ):
         # Should not raise, just log error
         with patch.object(
             logging.getLogger("protean.adapters.broker.inline"), "error"
         ) as mock_error:
-            broker._requeue_failed_messages(stream, consumer_group)
+            broker._adapter._requeue_failed_messages(stream, consumer_group)
             mock_error.assert_called()
 
 
@@ -263,19 +275,19 @@ def test_exception_during_requeue_messages_returns_none(broker):
     consumer_group = "test_consumer_group"
 
     # Create messages that would be ready for retry
-    broker._failed_messages[f"{stream}:{consumer_group}"] = [
+    broker._adapter._failed_messages[f"{stream}:{consumer_group}"] = [
         ("id1", {"data": 1}, 1, 0)  # Past retry time
     ]
 
     # Mock an exception in _requeue_messages
     with patch.object(
-        broker, "_requeue_messages", side_effect=Exception("Requeue failed")
+        broker._adapter, "_requeue_messages", side_effect=Exception("Requeue failed")
     ):
         # This is called by _requeue_failed_messages which handles exceptions
         with patch.object(
             logging.getLogger("protean.adapters.broker.inline"), "error"
         ) as mock_error:
-            broker._requeue_failed_messages(stream, consumer_group)
+            broker._adapter._requeue_failed_messages(stream, consumer_group)
             # Should log the error but not raise
             mock_error.assert_called()
 
@@ -307,15 +319,15 @@ def test_exception_during_mixed_scenarios(broker):
 def test_validate_message_ownership_exception_handling(broker):
     """Test message ownership validation with edge cases."""
     # Test with None values
-    result = broker._validate_message_ownership(None, None)
+    result = broker._adapter._validate_message_ownership(None, None)
     assert result is False
 
     # Test with empty strings
-    result = broker._validate_message_ownership("", "")
+    result = broker._adapter._validate_message_ownership("", "")
     assert result is False
 
     # Test with valid identifier but no ownership
-    result = broker._validate_message_ownership("valid_id", "consumer_group")
+    result = broker._adapter._validate_message_ownership("valid_id", "consumer_group")
     assert result is False
 
 
@@ -326,11 +338,11 @@ def test_get_retry_count_exception_handling(broker):
     identifier = "test_id"
 
     # Should return 0 for non-existent entries
-    count = broker._get_retry_count(stream, consumer_group, identifier)
+    count = broker._adapter._get_retry_count(stream, consumer_group, identifier)
     assert count == 0
 
     # Test with None values
-    count = broker._get_retry_count(None, None, None)
+    count = broker._adapter._get_retry_count(None, None, None)
     assert count == 0
 
 
@@ -339,10 +351,10 @@ def test_cleanup_stale_messages_exception_in_processing(broker):
     consumer_group = "test_consumer_group"
 
     # Create invalid in-flight structure
-    broker._in_flight["invalid:group"] = "not_a_dict"
+    broker._adapter._in_flight["invalid:group"] = "not_a_dict"
 
     # Should handle gracefully
-    broker._cleanup_stale_messages(consumer_group, 1.0)
+    broker._adapter._cleanup_stale_messages(consumer_group, 1.0)
 
 
 def test_requeue_messages_exception_handling(broker):
@@ -351,11 +363,11 @@ def test_requeue_messages_exception_handling(broker):
     consumer_group = "test_consumer_group"
 
     # Test with empty message list
-    broker._requeue_messages(stream, consumer_group, [])
+    broker._adapter._requeue_messages(stream, consumer_group, [])
 
     # Test with None messages
     with contextlib.suppress(Exception):
-        broker._requeue_messages(
+        broker._adapter._requeue_messages(
             stream, consumer_group, None
         )  # Expected to handle or fail gracefully
 
@@ -367,15 +379,15 @@ def test_remove_failed_message_exception_handling(broker):
     identifier = "test_id"
 
     # Should handle non-existent message gracefully
-    broker._remove_failed_message(stream, consumer_group, identifier)
+    broker._adapter._remove_failed_message(stream, consumer_group, identifier)
 
     # Test with invalid group key
     group_key = f"{stream}:{consumer_group}"
-    broker._failed_messages[group_key] = None
+    broker._adapter._failed_messages[group_key] = None
 
     # Should handle gracefully
     with contextlib.suppress(Exception):
-        broker._remove_failed_message(stream, consumer_group, identifier)
+        broker._adapter._remove_failed_message(stream, consumer_group, identifier)
 
 
 def test_get_in_flight_message_nonexistent(broker):
@@ -384,7 +396,7 @@ def test_get_in_flight_message_nonexistent(broker):
     consumer_group = "test_consumer_group"
     identifier = "non_existent"
 
-    result = broker._get_in_flight_message(stream, consumer_group, identifier)
+    result = broker._adapter._get_in_flight_message(stream, consumer_group, identifier)
     assert result is None
 
 
@@ -398,15 +410,17 @@ def test_handle_nacked_message_for_ack_not_found(broker):
     identifier = "test_msg"
 
     # Call with non-existent message
-    result = broker._handle_nacked_message_for_ack(stream, consumer_group, identifier)
+    result = broker._adapter._handle_nacked_message_for_ack(
+        stream, consumer_group, identifier
+    )
     assert result is False
 
     # Test with exception during processing
     group_key = f"{stream}:{consumer_group}"
-    broker._failed_messages[group_key] = None  # Invalid data to cause error
+    broker._adapter._failed_messages[group_key] = None  # Invalid data to cause error
 
     with patch.object(logging.getLogger("protean.adapters.broker.inline"), "error"):
-        result = broker._handle_nacked_message_for_ack(
+        result = broker._adapter._handle_nacked_message_for_ack(
             stream, consumer_group, identifier
         )
         assert result is False
@@ -447,8 +461,8 @@ def test_stream_cleanup_behavior(broker):
     broker.ack(stream, identifier, consumer_group)
 
     # Stream should still exist in messages
-    assert stream in broker._messages
+    assert stream in broker._adapter._messages
 
     # Consumer group structures should exist
     group_key = f"{stream}:{consumer_group}"
-    assert group_key in broker._consumer_groups
+    assert group_key in broker._adapter._consumer_groups

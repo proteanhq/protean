@@ -54,12 +54,12 @@ def _fail_cleanup(test_domain, monkeypatch) -> list[str]:
     """Make the broker's stale-consumer cleanup raise; return the streams tried."""
     attempted: list[str] = []
 
-    def _raise(stream, consumer_group, subscription_id):
+    def _raise(stream, consumer_group, current_consumer):
         attempted.append(stream)
         raise ConnectionError("redis down")
 
     monkeypatch.setattr(
-        test_domain.brokers["default"], "_cleanup_stale_consumers", _raise
+        test_domain.brokers["default"], "_remove_stale_consumers", _raise
     )
     return attempted
 

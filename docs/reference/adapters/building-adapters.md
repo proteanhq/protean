@@ -37,8 +37,8 @@ for a complete guide with a worked DynamoDB example, including:
 
 ## Broker Adapters
 
-Broker adapters implement the `BaseBroker` interface and declare their
-capabilities through the `BrokerCapabilities` tier system.
+Broker adapters subclass `BaseBroker` and `BrokerPort`, in that order, and
+declare their capabilities through the `BrokerCapabilities` tier system.
 
 See [Building Custom Brokers](./broker/custom-brokers.md)
 for a complete guide with a worked Kafka example, including:

@@ -9,9 +9,11 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+import redis
 from fastapi.testclient import TestClient
 
 from protean import Domain
+from protean.server._redis import redis_client
 from protean.server.observatory import Observatory
 from protean.server.tracing import (
     DEFAULT_TRACE_RETENTION_DAYS,
@@ -50,8 +52,8 @@ def redis_conn(test_domain):
     """Get a raw Redis connection for test setup/teardown."""
     with test_domain.domain_context():
         broker = test_domain.brokers.get("default")
-        if broker and hasattr(broker, "redis_instance"):
-            conn = broker.redis_instance
+        conn = redis_client(broker)
+        if conn is not None:
             # Clean up trace stream before and after test
             with contextlib.suppress(Exception):
                 conn.delete(TRACE_STREAM)
@@ -680,8 +682,8 @@ def no_redis_client():
 def fake_redis(test_domain):
     """A fake Redis client in place of the test domain's real one, so a test
     can script what Redis returns or make a call fail."""
-    fake = MagicMock()
-    test_domain.brokers.get("default").redis_instance = fake
+    fake = MagicMock(spec=redis.Redis)
+    test_domain.brokers.get("default")._adapter.redis_instance = fake
     return fake
 
 
