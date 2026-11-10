@@ -2,8 +2,8 @@
 
 The MSSQL provider uses [SQLAlchemy](https://www.sqlalchemy.org/) with
 [pyodbc](https://github.com/mkleehammer/pyodbc) to talk to Microsoft SQL Server.
-It carries the same capability set as the PostgreSQL provider and is exercised
-by the same conformance tests.
+It carries the same capability set as the PostgreSQL provider, except
+`NATIVE_CLAIM`, and is exercised by the same conformance tests.
 
 ## Installation
 
