@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Accepted |
 | **Date** | 2026-03-11 |
-| **Last updated** | 2026-08-03 (post-1.0 policy: deprecation-managed 1.x, majors as eras) |
+| **Last updated** | 2026-11-09 (release calendar: quarterly minors, patches between them) |
 | **Author** | Subhash Bhushan |
 | **Applies to** | Protean Framework |
 | **Supersedes** | None |
@@ -26,7 +26,7 @@ Additionally, there is no systematic approach to handling breaking changes. Rele
 
 ## Decision
 
-We adopt a **continuous release model** with a **tiered breaking change policy** and **theme-based roadmap planning**, as described below.
+We adopt a **release calendar** with a **tiered breaking change policy** and **theme-based roadmap planning**, as described below.
 
 ---
 
@@ -34,26 +34,32 @@ We adopt a **continuous release model** with a **tiered breaking change policy**
 
 ### Core Principles
 
-Releases are cheap, frequent, and decoupled from epic completion. The guiding question for cutting a release is not "have we completed the epic?" but **"is this release better than what's currently on PyPI?"** If yes, ship it.
+Releases are cheap and decoupled from epic completion. A minor ships on its calendar date with the work that is done by then. Work that is not done moves to the next minor, and no release waits for an epic to finish.
 
-Version numbers are coordination signals, not milestones. Minor version bumps
-(0.15 → 0.16) can happen as often as meaningful work merges, weekly or even
-more often during periods of high velocity.
+Version numbers are coordination signals, not milestones. A minor version
+(0.15 → 0.16) marks a calendar date. A patch version (0.15.0 → 0.15.1) marks a
+set of fixes to the latest minor line.
 
 Development and stabilization run in parallel. Completing an epic and shipping a release are independent activities. Work on the next set of features begins immediately, without waiting for the current release to go through validation.
 
 ### Release Cadence
 
-There is no fixed schedule. Releases are cut when there is something worth
-telling users about: a meaningful feature, a significant fix, or an important
-behavioral improvement. The changelog is the release trigger: when the
-unreleased section has substantive entries, it's time to ship.
+Minor releases are cut in the first week of each quarter: January, April, July
+and October. The work for a minor is planned against its date and trimmed as
+the date nears. The date does not move for unfinished work. Reason: a fixed
+date lets users plan their upgrades and lets the project plan each release
+announcement.
+
+Patch releases are cut between minors, from the `release/0.X.x` branch of the
+latest minor. Only the latest minor line receives patches. The last patch on a
+line is cut before the next minor, and fixes still open at that cut move to the
+next minor's milestone.
 
 ### No Release Candidates
 
-Protean does **not** use release candidates. Minor versions are cut directly from `main` when the changelog has substantive entries. Patch releases on a `release/0.X.x` branch fix any bugs discovered after a minor ships.
+Protean does **not** use release candidates. Minor versions are cut directly from `main` on their calendar date. Patch releases on a `release/0.X.x` branch fix any bugs discovered after a minor ships.
 
-**Rationale:** RCs added ceremony without buying meaningful safety. In practice, the RC window became a bottleneck that delayed shipping without producing the early-adopter feedback it was meant to generate. With frequent minor releases, patch releases, and the three-tier breaking change policy (deprecations, flags, versioned schemas), users already have multiple layers of protection without needing an explicit pre-release phase.
+**Rationale:** RCs added ceremony without buying meaningful safety. In practice, the RC window became a bottleneck that delayed shipping without producing the early-adopter feedback it was meant to generate. With patch releases between minors and the three-tier breaking change policy (deprecations, flags, versioned schemas), users already have multiple layers of protection without needing an explicit pre-release phase.
 
 When a future change is large or risky enough to warrant pre-release
 validation, split it across more incremental releases. Do not hold the release
@@ -257,9 +263,9 @@ Use pytest's `filterwarnings` (or a programmatic `warnings.filterwarnings(..., c
    - Yes. Classify the tier and apply the appropriate mitigation in the same
      PR.
 3. Each PR adds an entry to the unreleased section of `CHANGELOG.md`.
-4. When the changelog has substantive entries, cut a release: bump version, tag, build, publish to PyPI.
+4. On the minor's calendar date, cut the release from `main`: bump version, tag, build, publish to PyPI.
 
-**Target: releasing should take less than 10 minutes of manual effort.** Invest in CI automation to achieve this.
+**Before its tag is pushed, every release passes CI and the nightly suite on the commit it tags.** A minor is checked on `main`, and a patch on its `release/0.X.x` branch.
 
 ### Releases That Remove
 
@@ -275,12 +281,12 @@ A release that removes something is the only kind that intentionally breaks user
 
 ### Hotfix Release
 
-For critical bugs discovered after a release:
+For bugs discovered after a minor ships:
 
 1. Fix on `main` through normal PR workflow.
 2. Cherry-pick the fix to the corresponding `release/0.X.x` branch. When the fix merges, the `Backport` workflow opens the cherry-pick PR if the fix PR or the issue it closes carries the patch milestone (such as `0.15.1`), while that milestone is open and the `release/0.X.x` branch exists. Setting the milestone on the issue after the merge opens the cherry-pick PR at that point. A `backport release/0.X.x` label on the PR does the same for a fix with no milestone. The author of a fix for a patch writes its migration note under the patch version in that minor's guide. Both branches have that file, so the note does not conflict. If the cherry-pick conflicts elsewhere, the `Backport` workflow opens the PR as a draft, and the maintainer resolves the conflict.
-3. Tag a patch version (e.g., `v0.15.1`) on the release branch.
-4. Publish immediately.
+3. At the patch cut, tag a patch version (e.g., `v0.15.1`) on the release branch.
+4. Publish to PyPI.
 
 Patch releases need no ceremony. The changelog entry on the release branch is the documentation. The release branch pattern keeps minor-version consumers on a stable line even while `main` continues to move.
 
@@ -336,7 +342,7 @@ A user who does that has turned "will my upgrade break?" into a test run. (Filte
 - **Minor** (1.2 → 1.3) carries change: new features, new deprecations, Tier 2 flag flips, Tier 3 schema changes with shipped migrations, and **the removal of anything already deprecated**. A minor may break code that ignored its warnings. It may not break code that had none.
 - **Majors are eras**, not accumulated breakage.
 
-**There is no fixed deprecation window.** Every deprecation already declares its own removal version and gets a dedicated warning class (`@deprecated(removal="0.20.0")` → `RemovedInProtean020Warning`). `protean check` reads those declarations. A blanket "survives two minors" rule adds nothing to a per-deprecation target that is explicit, machine-readable, and already shipping. Such a rule only adds false precision. Section 1 makes releases cheap and frequent, so "two minors" can be two weeks. Two weeks is less protection than the number implies.
+**There is no fixed deprecation window.** Every deprecation already declares its own removal version and gets a dedicated warning class (`@deprecated(removal="0.20.0")` → `RemovedInProtean020Warning`). `protean check` reads those declarations. A blanket "survives two minors" rule adds nothing to a per-deprecation target that is explicit, machine-readable, and already shipping.
 
 One invariant takes the place of a fixed window, and the contract depends on it:
 
@@ -344,7 +350,7 @@ One invariant takes the place of a fixed window, and the contract depends on it:
 
 Every removal is preceded by at least one released version that warned about it and named the release it was going away in. That is what makes "warning-free on 1.N runs on 1.N+1" mechanically true, and it is the only timing rule worth stating.
 
-**The cost, stated plainly.** Without a fixed window, a user who skips releases can miss the version that warned them: deprecated in 1.4, removed in 1.5, and someone going 1.3 → 1.5 never saw it. A counted window would have covered that case and this does not. Two facts make this cost acceptable. Upgrading minor by minor is the documented path, and it is cheap precisely because minors are frequent. `protean check` also covers this case. It reads the declared removal targets and does not replay the warnings you missed. So it tells a user on 1.3 what 1.5 will remove, which no fixed deprecation window could.
+**The cost, stated plainly.** Without a fixed window, a user who skips releases can miss the version that warned them: deprecated in 1.4, removed in 1.5, and someone going 1.3 → 1.5 never saw it. A counted window would have covered that case and this does not. Two facts make this cost acceptable. Upgrading minor by minor is the documented path, and each minor comes on a known date, so a user can plan each step. `protean check` also covers this case. It reads the declared removal targets and does not replay the warnings you missed. So it tells a user on 1.3 what 1.5 will remove, which no fixed deprecation window could.
 
 ### Why not strict SemVer
 
@@ -387,9 +393,8 @@ The taxonomy and both exceptions (operational defaults, silent correctness bugs)
 **What stays the same at 1.0:**
 
 - The tiered breaking change taxonomy.
-- The changelog-driven release trigger.
 - The theme-based roadmap organization.
-- The principle that releases are cheap and frequent.
+- The principle that releases are cheap and decoupled from epic completion.
 
 ### Related open question
 
@@ -404,7 +409,7 @@ Issue #841 tracks a separate question: how a developer *acknowledges* an intenti
 - Development velocity is no longer gated on release validation.
 - Early adopters have a clear, systematic path for handling upgrades.
 - The deprecation system creates a paper trail that builds trust.
-- Frequent releases mean smaller changes between versions, which are easier to debug when something goes wrong.
+- A fixed minor calendar lets users plan upgrades, and patches between minors keep fixes from waiting for the next minor.
 - The roadmap reflects strategic intent rather than release scheduling, reducing pressure to batch features.
 
 ### Negative
@@ -413,6 +418,7 @@ Issue #841 tracks a separate question: how a developer *acknowledges* an intenti
   changelog entry.
 - The tiered deprecation system adds overhead to PRs that touch public APIs.
 - `protean check` is an additional tool to build and maintain.
+- A feature that misses its minor's date waits up to a quarter for the next one.
 - Frequent releases may tire users who prefer stability ("update fatigue"). If
   needed, mitigate it after 1.0 with LTS versions.
 
