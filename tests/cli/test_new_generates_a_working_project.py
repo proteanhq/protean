@@ -411,14 +411,14 @@ with domain.domain_context():
 
     def money(op):
         result = op()
-        return [type(result.amount).__name__, str(result.amount)]
+        return [type(result.amount).__name__, str(result.amount), result.currency]
 
     usd, eur = Money(amount=Decimal("1"), currency="USD"), Money(amount=Decimal("1"), currency="EUR")
     print(json.dumps({
         "bad_email": outcome(lambda: EmailAddress(email="not-an-email").email),
         "good_email": outcome(lambda: EmailAddress(email="a@example.com").email),
-        "add": outcome(lambda: money(lambda: Money(amount=Decimal("10.10")).add(Money(amount=Decimal("0.20"))))),
-        "subtract": outcome(lambda: money(lambda: Money(amount=Decimal("10.30")).subtract(Money(amount=Decimal("0.20"))))),
+        "add": outcome(lambda: money(lambda: Money(amount=Decimal("10.10"), currency="EUR").add(Money(amount=Decimal("0.20"), currency="EUR")))),
+        "subtract": outcome(lambda: money(lambda: Money(amount=Decimal("10.30"), currency="EUR").subtract(Money(amount=Decimal("0.20"), currency="EUR")))),
         "add_mixed": outcome(lambda: usd.add(eur)),
         "subtract_mixed": outcome(lambda: usd.subtract(eur)),
     }))
@@ -442,7 +442,7 @@ def outcomes(tmp_path_factory) -> dict:
 
 
 class TestGeneratedSharedValueObjects:
-    """The generated `shared/value_objects.py` enforces its rules and adds money exactly."""
+    """The generated `shared/value_objects.py` enforces its rules and adds and subtracts money exactly."""
 
     def test_email_without_at_sign_is_rejected(self, outcomes):
         assert outcomes["bad_email"]["raised"] == "ValidationError"
@@ -452,10 +452,13 @@ class TestGeneratedSharedValueObjects:
         assert outcomes["good_email"] == {"raised": None, "value": "a@example.com"}
 
     def test_money_adds_exactly_as_decimal(self, outcomes):
-        assert outcomes["add"] == {"raised": None, "value": ["Decimal", "10.30"]}
+        assert outcomes["add"] == {"raised": None, "value": ["Decimal", "10.30", "EUR"]}
 
     def test_money_subtracts_exactly_as_decimal(self, outcomes):
-        assert outcomes["subtract"] == {"raised": None, "value": ["Decimal", "10.10"]}
+        assert outcomes["subtract"] == {
+            "raised": None,
+            "value": ["Decimal", "10.10", "EUR"],
+        }
 
     @pytest.mark.parametrize("case", ["add_mixed", "subtract_mixed"])
     def test_mixed_currencies_raise_validation_error(self, outcomes, case):
