@@ -126,14 +126,17 @@ class RedisCache(CacheTTLPort, CachePatternPort):
         # `SCAN` can return the same key more than once during a full iteration
         # (rehashing, concurrent writes), so dedupe before sorting.
         #
-        # The keys are `bytes` (this adapter does not set `decode_responses`).
-        # Sort the raw bytes, then decode: UTF-8 byte order preserves Unicode
-        # code-point order, so the result is in the same order as the memory
-        # adapter's `str` sort. The `Cache` service writes every key as a `str`,
-        # so a key that does not decode was written by another client, and the
-        # `UnicodeDecodeError` propagates.
+        # The keys are `bytes` unless the `URI` sets `decode_responses`, which
+        # `from_url` passes through to the client. Sort the raw keys, then
+        # decode: UTF-8 byte order preserves Unicode code-point order, so the
+        # result is in the same order as the memory adapter's `str` sort. The
+        # `Cache` service writes every key as a `str`, so a key that does not
+        # decode was written by another client, and the `UnicodeDecodeError`
+        # propagates.
         raw_keys = sorted(set(self._client.scan_iter(match=pattern)))
-        return [key.decode("utf-8") for key in raw_keys]
+        return [
+            key.decode("utf-8") if isinstance(key, bytes) else key for key in raw_keys
+        ]
 
     def count_matching(self, pattern: str) -> int:
         # `SCAN` can return the same key more than once, so dedupe before
@@ -141,9 +144,9 @@ class RedisCache(CacheTTLPort, CachePatternPort):
         return len(set(self._client.scan_iter(match=pattern)))
 
     def delete_matching(self, pattern: str) -> None:
-        # `scan_iter` yields `bytes`: this adapter does not enable
-        # `decode_responses`. `delete()` takes bytes keys directly.
-        batch: list[bytes] = []
+        # `scan_iter` yields `bytes`, or `str` when the `URI` sets
+        # `decode_responses`. `delete()` takes either directly.
+        batch: list[bytes | str] = []
         for key in self._client.scan_iter(match=pattern, count=self._DELETE_BATCH_SIZE):
             batch.append(key)
             if len(batch) >= self._DELETE_BATCH_SIZE:

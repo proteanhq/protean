@@ -171,6 +171,26 @@ class TestCachePersistenceFlows:
 
         assert cache.count("token:::batch-*") == 0
 
+    def test_key_patterns_work_when_the_uri_decodes_responses(self, test_domain):
+        # `from_url` passes `decode_responses` from the URI to the client, so
+        # `SCAN` yields `str` keys in place of `bytes`.
+        cache = RedisCache(
+            "decoding", test_domain, {"URI": f"{REDIS_URI}/5?decode_responses=True"}
+        )
+        try:
+            cache.clear()
+            for key in ("token:::b", "token:::a", "other:::c"):
+                cache.put(key, {"key": key}, None)
+
+            assert cache.keys_matching("token:::*") == ["token:::a", "token:::b"]
+            assert cache.count_matching("token:::*") == 2
+
+            cache.delete_matching("token:::*")
+            assert cache.keys_matching("*") == ["other:::c"]
+        finally:
+            cache.clear()
+            cache.close()
+
     def test_get_ttl_on_key(self, test_domain):
         cache = test_domain.cache_for(Token)
 

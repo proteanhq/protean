@@ -347,6 +347,13 @@ class TestSetTTLTakesTheSameShapesAsAdd:
         cache.set_ttl(key, "45")
         assert cache.get_ttl(key) == pytest.approx(45, abs=1)
 
+    @pytest.mark.parametrize("unset", [None, ""])
+    def test_an_unset_ttl_uses_the_cache_ttl(self, test_domain, unset):
+        cache, key = self._stored(test_domain)
+        cache.set_ttl(key, 45)
+        cache.set_ttl(key, unset)
+        assert cache.get_ttl(key) == pytest.approx(300, abs=1)
+
     @pytest.mark.parametrize("bad", [0, -5, "nan", "inf", "later"])
     def test_a_bad_ttl_is_rejected_the_same_way_as_in_add(self, test_domain, bad):
         from protean.exceptions import ConfigurationError

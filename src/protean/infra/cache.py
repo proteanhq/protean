@@ -369,7 +369,7 @@ class Cache:
         """Remove every entry in the cache."""
         self._adapter.clear()
 
-    def set_ttl(self, key: str, ttl: TTLValue) -> None:
+    def set_ttl(self, key: str, ttl: TTLValue | None) -> None:
         """Set a TTL explicitly on a key.
 
         Takes the same shapes as `add`: a number, or a string holding one.
