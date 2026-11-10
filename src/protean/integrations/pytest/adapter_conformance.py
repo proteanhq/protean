@@ -48,8 +48,13 @@ from typing import Any, cast
 
 import pytest
 
+from protean._deprecation import warn_from_registry
 from protean.domain import Domain
 from protean.port.provider import DatabaseCapabilities
+
+warn_from_registry(
+    "adapter_conformance_plugin", "protean.integrations.pytest.adapter_conformance"
+)
 
 # ---------------------------------------------------------------------------
 # Built-in provider configurations (mirrors tests/conftest.py)

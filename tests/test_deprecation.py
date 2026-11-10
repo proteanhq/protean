@@ -352,7 +352,12 @@ _TO_0_19 = (
     "list_pickled",
     "utils_plumbing",
 )
-_TO_0_20 = ("dao_update", "queryset_update")
+_TO_0_20 = (
+    "dao_update",
+    "queryset_update",
+    "adapter_conformance_plugin",
+    "get_generic_test_dir",
+)
 
 
 class TestRegistryRemovalVersions:

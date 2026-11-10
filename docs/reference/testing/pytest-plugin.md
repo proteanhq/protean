@@ -35,7 +35,8 @@ behavior on their own.
 
 The autouse `test_domain` fixture described in some Protean test suites
 is defined in `protean.integrations.pytest.adapter_conformance` and is
-**not** auto-loaded by this plugin. It is function-scoped: every test gets
+**not** auto-loaded by this plugin. That module is deprecated and removed in
+0.20.0; see [Adapter Conformance Testing](./conformance.md#pytest-plugin). It is function-scoped: every test gets
 a fresh, initialized domain. It activates only when your root `conftest.py`
 opts in explicitly:
 

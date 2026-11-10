@@ -84,6 +84,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
+from protean._deprecation import warn_from_registry
 from protean.core.process_manager import (
     BaseProcessManager,
     _resolve_correlation_value,
@@ -1343,6 +1344,10 @@ def get_generic_test_dir() -> Path:
     correctly implements the required capabilities.  Use this path with
     ``pytest`` or pass it to ``protean test test-adapter``.
 
+    Deprecated since 0.19.0 and removed in 0.20.0. Each call raises
+    ``RemovedInProtean020Warning``. Run the suites under ``tests/conformance/``
+    from a source checkout instead.
+
     Returns:
         Path to the ``tests/adapters/repository/generic/`` directory.
 
@@ -1359,6 +1364,7 @@ def get_generic_test_dir() -> Path:
         generic_dir = get_generic_test_dir()
         # Pass to pytest: pytest.main([str(generic_dir), "--db=MY_ADAPTER"])
     """
+    warn_from_registry("get_generic_test_dir", "protean.testing.get_generic_test_dir()")
     # Relative to this file: src/protean/testing.py
     # Tests live at: <repo>/tests/adapters/repository/generic/
     candidate = Path(__file__).resolve().parent.parent.parent / (

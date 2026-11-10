@@ -8,15 +8,19 @@ in isolated subprocess pytest sessions, verifying that the plugin
 fixtures and hooks work end-to-end.
 """
 
+import importlib
 import shutil
 import subprocess
 import sys
+import warnings
 from importlib import metadata
 from pathlib import Path
 from unittest import mock
 
 import pytest
 
+from protean._deprecation import RemovedInProtean020Warning
+from protean.integrations.pytest import adapter_conformance
 from protean.integrations.pytest.adapter_conformance import (
     BUILTIN_DB_CONFIGS,
     MARKER_TO_CAPABILITY,
@@ -33,6 +37,24 @@ DOCS_OPT_IN = (
     Path(__file__).parents[3]
     / "docs_src/reference/testing/conformance/opt_in/conftest.py"
 ).read_text()
+
+
+class TestDeprecation:
+    def test_importing_the_plugin_warns_once_naming_the_removal_version(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            importlib.reload(adapter_conformance)
+
+        deprecations = [
+            w for w in caught if issubclass(w.category, RemovedInProtean020Warning)
+        ]
+        assert len(deprecations) == 1
+        message = str(deprecations[0].message)
+        assert message.startswith(
+            "protean.integrations.pytest.adapter_conformance is deprecated."
+        )
+        assert "protean test test-adapter --port database" in message
+        assert message.endswith("Will be removed in v0.20.0.")
 
 
 class TestOptionRegistration:

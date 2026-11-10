@@ -32,6 +32,7 @@ all = [
     "pyproject.toml",
     "src/protean/cli/test.py",
     "tests/adapters.toml",
+    "tests/conformance/conftest.py",
     "tests/conftest.py",
     "tests/shared.py",
     "uv.lock",

@@ -4,10 +4,11 @@ Provides `DomainFixture` for managing the domain lifecycle in tests,
 and an auto-registered pytest plugin that sets ``PROTEAN_ENV`` before
 test collection.
 
-For running generic database adapter conformance tests from an external
-adapter package, load the conformance plugin in your ``conftest.py``::
-
-    pytest_plugins = ["protean.integrations.pytest.adapter_conformance"]
+The adapter conformance suites of every port run from a source checkout under
+``tests/conformance/``, whose ``conftest.py`` is their plugin. The older
+database-only plugin, ``protean.integrations.pytest.adapter_conformance``, is
+deprecated: importing it raises ``RemovedInProtean020Warning``, and it is
+removed in 0.20.0.
 
 For event-sourcing test DSL, use [`protean.testing`][protean.testing]::
 
