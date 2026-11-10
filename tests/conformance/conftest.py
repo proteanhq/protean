@@ -117,11 +117,11 @@ BUILTIN_ADAPTER_CONFIGS: dict[tuple[str, str], dict[str, Any]] = {
     ("broker", "redis"): {"provider": "redis", "URI": f"{REDIS_URI}/8", "TTL": 300},
     ("broker", "redis_pubsub"): {
         "provider": "redis_pubsub",
-        "URI": f"{REDIS_URI}/9",
+        "URI": f"{REDIS_URI}/11",
         "TTL": 300,
     },
     ("cache", "memory"): {"provider": "memory", "TTL": 300},
-    ("cache", "redis"): {"provider": "redis", "URI": f"{REDIS_URI}/10", "TTL": 300},
+    ("cache", "redis"): {"provider": "redis", "URI": f"{REDIS_URI}/15", "TTL": 300},
     ("event_store", "memory"): {"provider": "memory"},
     ("event_store", "message_db"): {
         "provider": "message_db",

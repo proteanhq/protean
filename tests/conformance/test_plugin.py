@@ -267,11 +267,15 @@ class TestResolveAdapterConfig:
             assert resolve_adapter_config(port, adapter, {})["provider"] == adapter
 
     def test_unknown_adapter_raises_the_registry_error(self):
-        with pytest.raises(
-            ConfigurationError,
-            match=r"Unknown broker 'nosuch'\. Available: inline, redis, redis_pubsub",
-        ):
+        with pytest.raises(ConfigurationError) as exc_info:
             resolve_adapter_config("broker", "nosuch", {})
+
+        # Other tests in the same worker register extra brokers on the shared
+        # registry, so check the built-in names are listed, not the whole list.
+        message = str(exc_info.value)
+        assert message.startswith("Unknown broker 'nosuch'. Available: ")
+        available = message.split("Available: ", 1)[1].split(". ", 1)[0].split(", ")
+        assert {"inline", "redis", "redis_pubsub"} <= set(available)
 
 
 class TestPortOf:
