@@ -1345,8 +1345,8 @@ def get_generic_test_dir() -> Path:
     ``pytest`` or pass it to ``protean test test-adapter``.
 
     Deprecated since 0.19.0 and removed in 0.20.0. Each call raises
-    ``RemovedInProtean020Warning``. Run the suites under ``tests/conformance/``
-    from a source checkout instead.
+    ``RemovedInProtean020Warning``. Run ``protean test test-adapter --provider
+    <name>`` from a source checkout instead.
 
     Returns:
         Path to the ``tests/adapters/repository/generic/`` directory.

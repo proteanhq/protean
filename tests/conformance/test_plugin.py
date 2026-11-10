@@ -62,6 +62,11 @@ def test_requires_tier():
     pass
 
 
+@pytest.mark.requires(Caps.CRUD | Caps.NATIVE_ARRAY)
+def test_requires_union():
+    pass
+
+
 @pytest.mark.requires_any(Caps.TRANSACTIONS, Caps.SIMULATED_TRANSACTIONS)
 def test_requires_any_one_declared():
     pass
@@ -364,6 +369,7 @@ class TestRunWithoutOptions:
         assert result.stdout.count("::test_ungated") == 4
         assert sorted(reason for reason in found.values() if reason != "passed") == [
             "memory declares no capabilities",
+            "memory does not declare CRUD|NATIVE_ARRAY",
             "memory does not declare NATIVE_ARRAY",
             "memory does not declare NATIVE_JSON",
             "memory does not declare NATIVE_JSON or NATIVE_ARRAY",
@@ -456,6 +462,7 @@ class TestCapabilityOption:
         assert result.returncode == 0, result.stdout + result.stderr
         assert collected(result) == {
             "conformance/database/test_database.py::test_requires_several",
+            "conformance/database/test_database.py::test_requires_union",
             "conformance/database/test_database.py::test_requires_any_none_declared",
             "outside/test_outside.py::test_outside",
         }
@@ -473,6 +480,21 @@ class TestCapabilityOption:
         )
 
         assert "conformance/database/test_database.py::test_requires_several" in crud
+
+    def test_a_composite_flag_is_kept_for_each_of_its_flags(self, suite):
+        crud = collected(
+            run(
+                suite,
+                "conformance",
+                "outside",
+                "--collect-only",
+                "--capability",
+                "CRUD",
+            )
+        )
+
+        assert "conformance/database/test_database.py::test_requires_union" in crud
+        assert "conformance/database/test_database.py::test_requires_tier" in crud
 
     def test_a_tier_is_matched_by_its_own_name(self, suite):
         result = run(

@@ -52,7 +52,7 @@ from protean.infra.registry import (
     event_stores,
     providers,
 )
-from tests.conformance.flag_coverage import marked_flags
+from tests.conformance.flag_coverage import named_flags
 from tests.shared import (
     ELASTICSEARCH_URI,
     MESSAGE_DB_URI,
@@ -246,7 +246,7 @@ def _keeps(item: pytest.Item, port: str | None, capability: str | None) -> bool:
     if capability is None:
         return True
 
-    names = {flag.name for flag in marked_flags(item)}
+    names = {flag.name for flag in named_flags(item)}
     if capability == "none":
         return not names
     return capability in names

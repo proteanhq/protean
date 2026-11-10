@@ -92,7 +92,7 @@ class TestUntestedFlags:
             SyntheticCapabilities.DELTA
         ]
 
-    def test_a_tier_marker_does_not_cover_its_flags(self, request, tmp_path):
+    def test_a_tier_marker_covers_its_flags(self, request, tmp_path):
         path = tmp_path / "test_tier_suite.py"
         path.write_text(
             "import pytest\n"
@@ -106,10 +106,26 @@ class TestUntestedFlags:
         items = collect_items(request.session, path)
 
         assert untested_flags(SyntheticCapabilities, items) == [
-            SyntheticCapabilities.ALPHA,
-            SyntheticCapabilities.BETA,
             SyntheticCapabilities.GAMMA,
             SyntheticCapabilities.DELTA,
+        ]
+
+    def test_a_union_marker_covers_its_flags(self, request, tmp_path):
+        path = tmp_path / "test_union_suite.py"
+        path.write_text(
+            "import pytest\n"
+            "from tests.conformance.test_every_flag_is_tested import "
+            "SyntheticCapabilities as Caps\n\n"
+            "@pytest.mark.requires(Caps.GAMMA | Caps.DELTA)\n"
+            "def test_union():\n"
+            "    pass\n"
+        )
+
+        items = collect_items(request.session, path)
+
+        assert untested_flags(SyntheticCapabilities, items) == [
+            SyntheticCapabilities.ALPHA,
+            SyntheticCapabilities.BETA,
         ]
 
     def test_collects_every_test_file_in_a_folder(self, request, tmp_path):

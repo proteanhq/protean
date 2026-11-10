@@ -34,6 +34,15 @@ def marked_flags(item: pytest.Item) -> list[Flag]:
     ]
 
 
+def named_flags(item: pytest.Item) -> set[Flag]:
+    """Return every flag the item's markers name, with each composite's bits.
+
+    A composite flag, such as a named tier or ``A | B``, names itself and each
+    of its single-bit members, because the test is gated on every one of them.
+    """
+    return {bit for flag in marked_flags(item) for bit in (flag, *flag)}
+
+
 def collect_items(session: pytest.Session, path: Path) -> list[pytest.Item]:
     """Collect the test items of the ``test_*.py`` file or folder at ``path``.
 
@@ -57,10 +66,11 @@ def untested_flags(flag_type: type[FlagT], items: Iterable[pytest.Item]) -> list
     """Return the single-bit members of ``flag_type`` that no item's marker names.
 
     Composite members, such as a named tier, are left out: they are sets of
-    other members, not capabilities of their own. The result keeps the order
-    in which ``flag_type`` defines its members.
+    other members, not capabilities of their own. A marker that names a
+    composite covers each of its members. The result keeps the order in which
+    ``flag_type`` defines its members.
     """
-    named = {flag for item in items for flag in marked_flags(item)}
+    named = {flag for item in items for flag in named_flags(item)}
     return [
         member
         for member in flag_type.__members__.values()
