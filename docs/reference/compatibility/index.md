@@ -16,12 +16,12 @@ Protean classifies changes to persisted domain elements using these rules:
 
 | Change | Classification |
 |--------|---------------|
-| Add optional field (or with default) | Safe |
+| Add optional field (or with default) | Safe, unless it moves an event's Protobuf field number (see the `field_number_changed` row) |
 | Add required field without default | **Breaking** |
 | Remove field from any persisted element | **Breaking** |
-| Remove a field deprecated past its removal version | Safe (expected removal) |
+| Remove a field deprecated past its removal version | Safe (expected removal), unless it moves an event's Protobuf field number (see the `field_number_changed` row) |
 | Remove a field from an event-sourced aggregate that declares the name `reserved` | Safe (`reserved`) |
-| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`), unless the rename also changes a `Dict` or `List` value type, or a `Decimal` field's precision or scale in a breaking way (see the rows below) |
+| Rename a field via [`renamed_from`](../fields/arguments.md#renamed_from), same type | Safe (`field_renamed`), unless the rename also changes a `Dict` or `List` value type, or a `Decimal` field's precision or scale in a breaking way (see the rows below), or moves an event's Protobuf field number (see the `field_number_changed` row) |
 | Rename a field *and* change its type | **Breaking** (`field_type_changed`) |
 | Change field type | **Breaking** |
 | Raise or remove a `Decimal` field's `precision`, same `scale` | Safe (`field_precision_widened`) |
@@ -40,12 +40,21 @@ Protean classifies changes to persisted domain elements using these rules:
 | Point an event-sourced aggregate's identity at another field | **Breaking** (`identity_field_changed`) |
 | Drop an `@apply` handler while its event survives | **Breaking** (`apply_handler_removed`) |
 | Drop a name from an event-sourced aggregate's `reserved` | **Breaking** (`reservation_removed`) |
+| Add, remove or rename an event's field so that a field it keeps gets a different Protobuf field number, without a `__version__` bump | **Breaking** (`field_number_changed`). Protean numbers an event's Protobuf fields in sorted name order, and the numbers must not change within one `__version__`. To fix it, bump `__version__` and register an upcaster for the old version, which may return the payload unchanged. To land the change on purpose, see [Landing a deliberate breaking change](../../guides/compatibility-checking.md#landing-a-deliberate-breaking-change). |
 
 Most of these rules apply to every persisted element: aggregates, entities,
-value objects, commands, events, database models, and projections. Six rows are
-the exception: the last five, and the `reserved` field-removal row above them.
-They read attributes only an aggregate has, so they are checked on event-sourced
-aggregates and nowhere else.
+value objects, commands, events, database models, and projections. Seven rows
+are the exception. The five rows above the last one, and the `reserved`
+field-removal row, read attributes only an aggregate has, so they are checked on
+event-sourced aggregates and nowhere else. The last row, `field_number_changed`,
+is checked on events only, and only on an event's own fields. A field change
+inside a value object the event holds can move the numbers in that value
+object's nested message, and the check does not report it. Events the
+framework generates, such as fact events and process-manager transition
+events, are not checked, because nobody can bump their `__version__`. The check runs whether or not the project generates Protobuf
+schemas. A field added, removed or renamed on a command, aggregate,
+entity, value object or projection can still move that element's Protobuf field
+numbers, and the check does not report it.
 
 ### Decimal precision and scale
 
@@ -121,7 +130,8 @@ lists the breaks in `contracts.breaking_changes`. `diff_ir()` sets
 applies the same field rules as the compatibility report: a field type change,
 a `Dict` or `List` value type change, a breaking `Decimal` precision or scale
 change, and a required field added without a default. So for a published
-event's fields, the two lists flag the same breaks, with these exceptions:
+event's fields, the two lists flag the same field breaks, with these
+exceptions:
 
 - An event version bump covered by an upcaster: the report marks those field
   changes as mitigated, and the contract check does not.
@@ -133,6 +143,10 @@ event's fields, the two lists flag the same breaks, with these exceptions:
 - `exclude` in `.protean/config.toml` filters the compatibility report only. A
   contract break on an excluded published event still counts as breaking.
   `protean ir diff` and the `protean-check-compat` hook still print it.
+- A change that moves an event's Protobuf field number within one
+  `__version__`: the report flags it as `field_number_changed` for every event
+  you define and do not list in `exclude`, published or not, and the contract
+  check has no matching entry.
 
 The contract check writes these field entries. In the table, the List column
 names the key under `contracts` that holds each entry:
@@ -205,7 +219,10 @@ The checker understands three evolution mechanisms:
 - **Deprecation grace**: A field marked `deprecated` and removed at or past its
   `removal` version is an *expected removal* (safe), not a breaking one. This
   applies to every persisted element, including internal and event-sourced
-  events (not only published event contracts). The checker compares the
+  events (not only published event contracts). On an event at the same
+  `__version__`, an expected removal can still move the Protobuf numbers of the
+  fields that sort after it, and the checker reports that as a breaking
+  `field_number_changed`. The checker compares the
   `removal` version against the release version. The `protean ir diff` CLI does
   not yet supply a release version, so this downgrade applies when the diff is
   run with an explicit current version. Write the `removal` version as a

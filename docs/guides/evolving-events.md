@@ -65,9 +65,13 @@ union (Avro's mechanism for "may be absent").
     A field you *added* is part of the current schema, so it decodes fine.
 
 !!! tip "Rule of thumb"
-    Adding an **optional** field, or a **field with a default**, never breaks
-    anyone. Adding a **required field with no default** breaks readers of old
-    data. They have no value to supply. Prefer a default.
+    Adding an **optional** field, or a **field with a default**, keeps old
+    data readable. Adding a **required field with no default** breaks readers of
+    old data. They have no value to supply. Prefer a default. On an event, an
+    added field that does not sort last by name moves the Protobuf numbers of
+    the fields after it. `ir diff` reports that as breaking unless you bump
+    `__version__` and register an upcaster (see
+    [Bump the version](#bump-the-version-and-write-upcasters)).
 
 ## Rename a field with `renamed_from`
 
@@ -93,7 +97,13 @@ remove-plus-add (more on that [below](#check-compatibility-protean-ir-diff)).
 
 ## Bump the version and write upcasters
 
-A rename is handled by `renamed_from` alone, shown above, with no version bump.
+A rename is handled by `renamed_from` alone, shown above, with no version bump,
+as long as it moves no Protobuf field number. Protean numbers an event's
+Protobuf fields in sorted name order. A rename that changes where a field sorts
+moves its own number and the numbers of the fields that sort between its old
+and new name, and `ir diff` reports that as breaking (`field_number_changed`).
+That rename also needs a version bump and an upcaster for the old version, which
+may return the payload unchanged.
 Weak schema cannot express some structural changes (a newly required field, a
 type change, a field split). For those changes, bump the version so that an
 upcaster transforms stored events on read. Set `__version__` and register an
@@ -105,8 +115,12 @@ upcasters: it converts a `v1` payload step by step to the current `v3` before
 your handler receives it.
 
 The running example bumps `OrderPlaced` to show this chaining. Its rename and
-defaulted fields would load under weak schema without a bump, so the version bump
-here illustrates the mechanism; those two changes do not require it.
+defaulted fields would load under weak schema without a bump. The bump to v2 is
+still required: `currency` and `customer` sort before `order_id`, so two
+Protobuf field numbers move. `customer` takes number 3 where `customer_name`
+had 2, and `order_id` moves from 3 to 4. `ir diff` reports that as breaking
+without a bump. The v2 to v3 change adds `placed_at`, which sorts last and moves
+no number, so that bump only illustrates the mechanism.
 
 ```python
 --8<-- "guides/evolving-events/002.py:upcasters"
@@ -297,9 +311,9 @@ change: weak schema, versioning with an upcaster, or an operator migration.
 
 | Change | How | Compatibility |
 |--------|-----|---------------|
-| Add an optional / defaulted field | add it | `FULL`, nobody breaks |
+| Add an optional / defaulted field | add it; also bump the version and add an upcaster if the new field moves a Protobuf field number | `FULL` for Avro readers |
 | Add a required field, no default | give it a default, an upcaster for a computable value, or a new event type | breaks `BACKWARD` if unmitigated |
-| Rename a field | `renamed_from=[...]` (no version bump) | `BACKWARD` via Avro `aliases`; `FULL` if the field was optional or defaulted |
+| Rename a field | `renamed_from=[...]`, with no version bump unless the rename moves a Protobuf field number | `BACKWARD` via Avro `aliases`; `FULL` if the field was optional or defaulted |
 | Change a field's type | new field or new event version + upcaster | `NONE` without an upcaster |
 | Retire an event | `deprecated=` + `superseded_by=` | deprecation-aware removal |
 | Read old payloads with dropped fields | `lenient_deserialization` (opt-in) | read-path escape hatch |

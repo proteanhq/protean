@@ -3,6 +3,8 @@
 **Status:** Accepted. Compatibility semantics are settled by the schema-evolution
 ladder in [ADR-0040](0040-schema-evolution-ladder.md).
 
+> Amended November 2026, see the Consequences note on Protobuf field numbers.
+
 **Date:** March 2026
 
 ## Context
@@ -35,7 +37,8 @@ attribute on message classes is an integer starting at 1, incremented by 1 for a
 needs a new version. The schema-evolution ladder (ADR-0040) lists which changes
 need a new version: a structural change bumps the version. A change that weak
 schema supports keeps the current version: a field added with a default, a
-rename via `renamed_from`, or a removed field read leniently. Upcasters apply
+rename via `renamed_from`, or a removed field read leniently. The exception is
+an event change that moves a Protobuf field number, which needs a new version. Upcasters apply
 to stored events: an upcaster transforms an old event payload to the new
 version, or the event becomes a new type when no value can be supplied.
 Commands are versioned the same way, but
@@ -75,7 +78,9 @@ identity marker.
 
 Versioning is simple and unambiguous. There is no debate about whether a change is a minor
 or patch version: the number increments by 1 when a change needs a new version, and ADR-0040
-decides which changes do. Adding an optional or defaulted field, like renaming one, does not.
+decides which changes do. Adding an optional or defaulted field, like renaming one, does not,
+unless the change moves a Protobuf field number of a field the event keeps (see the
+amendment to rung 1 in ADR-0040).
 
 The `__type__` string (`{Domain}.{ClassName}.v{version}`) is stable across code refactoring. Moving
 `UserRegistered` from `auth.events` to `auth.domain.events` does not change its `__type__`,

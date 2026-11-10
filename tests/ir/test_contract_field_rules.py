@@ -2,7 +2,9 @@
 
 ``diff_ir()`` builds ``contracts.breaking_changes`` for published events, and
 ``classify_changes()`` builds the compatibility report over every persisted
-element. For a published event's fields, both lists must flag the same breaks.
+element. For a published event's fields, both lists must flag the same breaks,
+with one exception: a moved Protobuf field number (``field_number_changed``)
+is in the report only and has no contract entry.
 """
 
 from __future__ import annotations
@@ -56,8 +58,11 @@ def _build(
             {"__module__": "shop", "name": String(), **(order_fields or {})},
         )
     )
+    # Each case keeps the same field names on both sides, or adds, removes
+    # or renames one field that sorts after ``account_id``. No case moves a
+    # Protobuf field number, so none adds ``field_number_changed``.
     placed = type(
-        "Placed", (), {"__module__": "shop", "order_id": Identifier(), **fields}
+        "Placed", (), {"__module__": "shop", "account_id": Identifier(), **fields}
     )
     domain.event(placed, part_of=order, published=published, version=version)
     domain.init(traverse=False)
@@ -601,7 +606,7 @@ class Order:
 
 @domain.event(part_of=Order, published=True, version=1)
 class Placed:
-    order_id = Identifier()
+    account_id = Identifier()
     qty = String()
 """
 

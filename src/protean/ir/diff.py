@@ -19,6 +19,7 @@ from typing import Any, Literal
 
 from protean.exceptions import ConfigurationError
 from protean.ir.generators.avro import has_emittable_default
+from protean.ir.generators.protobuf import field_numbers
 from protean.utils import _require_version_string
 from protean.utils.upcasting import missing_upcaster_source_versions
 
@@ -1106,6 +1107,9 @@ _AVRO_CHANGE_SAFETY: dict[str, tuple[bool, bool]] = {
     "identity_field_changed": (True, True),
     "apply_handler_removed": (True, True),
     "reservation_removed": (True, True),
+    # A Protobuf field number is not part of an Avro schema, so moving one
+    # leaves Avro bytes unchanged.
+    "field_number_changed": (True, True),
 }
 
 
@@ -1241,6 +1245,7 @@ def classify_changes(
     # than the diff, because the question is about the aggregate's state on both
     # sides (is it event-sourced at all?), not only about what moved.
     _classify_replay_hazards(report, left_ir, right_ir)
+    _classify_field_number_changes(report, left_ir, right_ir)
 
     # Downgrade breaking changes on an event whose version bump is covered by a
     # registered upcaster (the upcaster transforms old payloads to the new
@@ -1558,6 +1563,103 @@ def _classify_replay_hazards(
                 removed_events,
             )
         )
+
+
+def _classify_field_number_changes(
+    report: CompatibilityReport,
+    left_ir: dict[str, Any],
+    right_ir: dict[str, Any],
+) -> None:
+    """Flag an event whose Protobuf field numbers move within one version.
+
+    Appends one breaking ``field_number_changed`` change for each event present
+    in both IRs with the same ``__version__`` on both sides, when a field kept
+    by name or by a declared ``renamed_from`` rename gets a different number.
+    An event with a missing ``__version__`` on either side is skipped, and so
+    is a fact event or other framework-generated event, whose version nobody
+    can bump. Other element types are not checked.
+    """
+    left_events = _events_by_fqn(left_ir)
+    for fqn, right_entry in _events_by_fqn(right_ir).items():
+        left_entry = left_events.get(fqn)
+        if (
+            left_entry is None
+            or _is_generated_event(right_entry)
+            or not _same_event_version(left_entry, right_entry)
+        ):
+            continue
+        moved = _moved_field_numbers(
+            left_entry.get("fields", {}), right_entry.get("fields", {})
+        )
+        if moved:
+            report.breaking_changes.append(
+                CompatibilityChange(
+                    severity="breaking",
+                    element_fqn=fqn,
+                    change_type="field_number_changed",
+                    message=_field_number_message(
+                        fqn, right_entry["__version__"], moved
+                    ),
+                )
+            )
+
+
+def _is_generated_event(entry: dict[str, Any]) -> bool:
+    """Whether the framework, not the user, defines the event class."""
+    return bool(entry.get("is_fact_event") or entry.get("auto_generated"))
+
+
+def _same_event_version(
+    left_entry: dict[str, Any], right_entry: dict[str, Any]
+) -> bool:
+    """Whether both entries carry a ``__version__`` and the two are equal."""
+    left_v = left_entry.get("__version__")
+    right_v = right_entry.get("__version__")
+    return left_v is not None and right_v is not None and left_v == right_v
+
+
+def _moved_field_numbers(
+    left_fields: dict[str, dict[str, Any]],
+    right_fields: dict[str, dict[str, Any]],
+) -> list[tuple[str, str, int, int]]:
+    """List ``(new_name, old_name, old_number, new_number)`` for each moved field.
+
+    A right field matches the left field of the same name, or each left field
+    its ``renamed_from`` names when that field is gone from the right, so one
+    field can appear once per old name it replaces. The list is ordered by the
+    new number.
+    """
+    left_numbers = field_numbers(left_fields)
+    right_numbers = field_numbers(right_fields)
+    added = {n: f for n, f in right_fields.items() if n not in left_fields}
+    removed = [n for n in left_fields if n not in right_fields]
+    pairs = [(n, n) for n in right_fields if n in left_fields]
+    pairs.extend(
+        (new, old) for old, new in _detect_field_renames(added, removed).items()
+    )
+    moved = [
+        (new, old, left_numbers[old], right_numbers[new])
+        for new, old in pairs
+        if left_numbers[old] != right_numbers[new]
+    ]
+    return sorted(moved, key=lambda m: (m[3], m[2]))
+
+
+def _field_number_message(
+    fqn: str, version: object, moved: list[tuple[str, str, int, int]]
+) -> str:
+    """Word a ``field_number_changed`` change, naming each moved field."""
+    listing = ", ".join(
+        f"{new} (from {old}) {old_no} -> {new_no}"
+        if new != old
+        else f"{new} {old_no} -> {new_no}"
+        for new, old, old_no, new_no in moved
+    )
+    return (
+        f"Protobuf field numbers changed in event '{fqn}' within version "
+        f"{version}: {listing}. Bump `__version__` and register an upcaster for "
+        "the old version, which may return the payload unchanged"
+    )
 
 
 def _aggregate_replay_hazards(

@@ -194,8 +194,10 @@ Adding an optional field (or a required field with a static default) is `FULL`;
 adding a required field without a default is not `BACKWARD`; removing a required
 field is not `FORWARD`; a type change is `NONE`. A declared rename is `BACKWARD`
 (the emitted schema carries Avro `aliases`), or `FULL` when the old field was
-optional or carried a static default. Visibility flips are payload-neutral for
-the verdict (they stay breaking).
+optional or carried a static default. Visibility flips and moved Protobuf
+field numbers (`field_number_changed`) do not change Avro bytes, so the verdict
+ignores them. A public-to-internal flip and a moved field number stay
+breaking, so the verdict can read `FULL` while the command still exits 1.
 
 One rule is **Protean-specific**: an upcaster that covers the version bump
 makes an otherwise-incompatible change `BACKWARD`, because Protean rewrites old

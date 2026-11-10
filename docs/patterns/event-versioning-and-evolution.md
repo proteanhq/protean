@@ -69,7 +69,10 @@ The golden rules:
 
 ## Backward-Compatible Changes
 
-These changes are safe and require no versioning strategy:
+These changes keep old events readable without an upcaster. One exception
+applies to events: an added field that does not sort last, or a rename that
+moves a field to a different place in the sorted order, moves Protobuf field
+numbers, and that needs a version bump (see below).
 
 ### Adding Optional Fields with Defaults
 
@@ -84,6 +87,14 @@ the behavior of events written before the field existed:
 Old events deserialize successfully: `discount_code` is `None`, `channel` is
 `"web"`. Consumers that don't know about the new fields ignore them. Consumers
 that do know about them treat `None` / `"web"` as the legacy case.
+
+Protean numbers an event's Protobuf fields in sorted name order. `channel` and
+`discount_code` sort before `order_id`, so this change moves the numbers of the
+fields after them, and `protean ir diff` reports it as breaking
+(`field_number_changed`) while `__version__` stays the same. To ship this change,
+bump `__version__` and register an upcaster for the old version, which may return
+the payload unchanged. A new field whose name sorts after every existing field
+moves no number and needs no bump.
 
 **Rules for adding fields:**
 
@@ -135,9 +146,9 @@ A stored payload written with the old `name` key now deserializes into
 `customer_name` without an upcaster. `renamed_from` also accepts a list of
 aliases (`renamed_from=["name", "full_name"]`) when a field has been renamed
 more than once. The compatibility checker reads the declared rename and reports
-a safe `field_renamed` change rather than a breaking remove + add. Keep
-the `renamed_from` declaration for as long as payloads written under the old
-name may still be read.
+a safe `field_renamed` change rather than a breaking remove + add, with the
+exceptions below. Keep the `renamed_from` declaration for as long as payloads
+written under the old name may still be read.
 
 A rename only stays safe when the field type is unchanged: renaming *and*
 changing the type (say `String` to `Integer`) is still breaking, because an
@@ -146,6 +157,14 @@ old payload's value cannot satisfy the new type. The checker reports that as a
 new type. A `Decimal` field renamed with a lower or newly added `precision`, or
 a different `scale`, is breaking the same way. So is a `Dict` or `List` field
 renamed with a value type that was added, changed or removed.
+
+A rename on an event also needs a version bump when it moves a Protobuf field
+number. Protean numbers an event's Protobuf fields in sorted name order, so a
+rename that changes where a field sorts moves the numbers of the fields that
+sort between its old and new name. Within one `__version__` the checker reports
+that as a breaking `field_number_changed` change. Bump `__version__` and
+register an upcaster for the old version, which may return the payload
+unchanged.
 
 ---
 
@@ -224,7 +243,7 @@ of which version was originally stored.
 **When to use:** Type changes, field splits or merges, or calculated new fields
 where a reasonable transformation exists. Useful when you don't want handlers to
 know about historical schemas. A pure rename uses `renamed_from` and needs no
-upcaster.
+upcaster, unless it moves a Protobuf field number.
 
 **Trade-off:** Upcasting adds a processing layer and must be maintained as
 schemas evolve further. Each version needs an upcaster to the next.
@@ -512,10 +531,10 @@ This diagram shows the schema-evolution ladder:
 
 | Change Type | Safe? | Strategy |
 |-------------|-------|----------|
-| Add optional field with default | Yes | add it |
+| Add optional field with default | Yes | add it (bump the version and add an upcaster if the new field moves a Protobuf field number) |
 | Add new event type | Yes | Add handler methods |
 | Add more choices to a field | Yes | Consumers handle unknowns |
-| Rename a field | Yes | `renamed_from` (same type, no version bump) |
+| Rename a field | Yes | `renamed_from` (same type, no version bump unless the rename moves a Protobuf field number) |
 | Remove a field | With lenient mode | Deprecate, or read old payloads leniently (drops its data) |
 | Change field type | No | Version bump + upcaster, or a new field / event type |
 | Change field semantics | No | New field name |
@@ -537,9 +556,9 @@ This diagram shows the schema-evolution ladder:
 | Large migrations | In-place transformation, copy-transform, or dual-write transition |
 | Stored events | Appended to in normal operation; rewritten only by an operator migration |
 
-Events are permanent contracts. Evolve them the way you evolve APIs. Additive
-changes are safe; structural changes are versioned or replaced. New fields get
-defaults. Old fields stay unless you opt into lenient reads, which drop them.
+Events are permanent contracts. Evolve them the way you evolve APIs. Adding an
+optional field is safe, unless it moves a Protobuf field number, which needs a
+version bump. Structural changes are versioned or replaced. New fields get defaults. Old fields stay unless you opt into lenient reads, which drop them.
 Semantics never change. When in doubt, create a new event type.
 
 ---

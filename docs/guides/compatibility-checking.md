@@ -237,6 +237,36 @@ breaking release.
 
 ---
 
+## Landing a deliberate breaking change
+
+You may decide to ship a change that the check reports as breaking. One
+example is an event change that `protean ir diff` reports as
+`field_number_changed` when no consumer reads the event through the generated
+`.proto` files. Protean stores events as JSON, so only those consumers depend
+on the numbers. To land it:
+
+1. Refresh the baseline so `.protean/ir.json` holds the change, with the
+   `--fix` staleness hook or by hand:
+
+    ```bash
+    protean ir show --domain myapp.domain --canonical > .protean/ir.json
+    ```
+
+2. Commit the change and the refreshed `.protean/ir.json` together, skipping
+   the compatibility hook for this one commit:
+
+    ```bash
+    SKIP=protean-check-compat git commit -m "Rename PointsEarned.amount to points"
+    ```
+
+3. Open the pull request. The `protean ir diff --base origin/main` CI step
+   fails on it, because `origin/main` still holds the old IR. The reviewer
+   reads the reported change and accepts that failure for this pull request.
+4. Merge the pull request. The baseline at `HEAD` now holds the change, so
+   later commits pass the hook and the CI step.
+
+---
+
 ## Using the CLI
 
 ### `protean ir check`
@@ -297,8 +327,11 @@ upcaster covers the version bump, Protean reports an otherwise-incompatible
 change as `BACKWARD`. This rule is **Protean-specific**: Protean rewrites old
 payloads at read time, and a plain schema registry (which knows nothing of
 upcasters) would still report the underlying change. A change to an element's
-visibility changes no payload field, so the verdict ignores it. The visibility
-change still counts as a breaking change.
+visibility changes no payload field, so the verdict ignores it. A moved
+Protobuf field number (`field_number_changed`) does not change Avro bytes, so
+the verdict ignores it too. A move from public to internal and a moved field
+number still count as breaking changes, so the verdict can read `FULL` while
+the command fails.
 
 The verdict is **informational**. The command prints the verdict, and under
 `--format json` includes it in a `compatibility` block with the full classified
