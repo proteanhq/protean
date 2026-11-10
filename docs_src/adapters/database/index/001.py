@@ -30,8 +30,7 @@ with domain.domain_context():
     # Check for all of multiple capabilities (AND logic)
     if (
         DatabaseCapabilities.NATIVE_JSON | DatabaseCapabilities.NATIVE_ARRAY
-        in provider.capabilities
-    ):
+    ) in provider.capabilities:
         # Use native JSON and array columns
         ...
 

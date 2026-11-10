@@ -100,7 +100,7 @@ MySQL.
   JSON, which is what the MSSQL provider does too.
 - :white_check_mark: **FILTERED_CLAIM_CANDIDATES**: Leaves held rows out of a claim's candidates.
 - :x: **NATIVE_CLAIM**: Claims rows in one statement.
-- :x: **BOUNDED_DELETE**: Deletes up to `limit` rows in one statement.
+- :x: **BOUNDED_DELETE**: Deletes up to `limit` rows in one operation, without a separate read of their ids.
 
 ## Collation and case sensitivity
 

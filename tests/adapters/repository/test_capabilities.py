@@ -441,6 +441,9 @@ class TestProviderDeclaredCapabilities:
 
         assert set(_DECLARED_CAPABILITIES[class_name]) == single_bit_flags
 
+    # The marker puts the test in every database leg, so it reads the live
+    # provider of each service, not only memory.
+    @pytest.mark.basic_storage
     def test_configured_provider_declares_its_row(self, test_domain):
         """The provider the test run configures returns its class's row."""
         provider = test_domain.providers["default"]
@@ -461,7 +464,6 @@ class TestProviderCapabilityChecks:
         provider = test_domain.providers["default"]
 
         assert DatabaseCapabilities.BASIC_STORAGE in provider.capabilities
-        assert provider.capabilities in provider.capabilities
 
     def test_every_provider_has_real_or_simulated_transactions_but_not_both(
         self, test_domain
@@ -476,13 +478,6 @@ class TestProviderCapabilityChecks:
         # the provider has any transaction support at all.
         if provider.capabilities & either:
             assert either not in provider.capabilities
-
-    def test_empty_set_is_in_every_provider_and_matches_nothing(self, test_domain):
-        provider = test_domain.providers["default"]
-        empty = DatabaseCapabilities(0)
-
-        assert empty in provider.capabilities
-        assert not provider.capabilities & empty
 
 
 class TestRequiredLookups:

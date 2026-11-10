@@ -175,8 +175,8 @@ No convenience set includes these flags. Each provider declares them on its own.
 | Flag | Description |
 |------|-------------|
 | `NATIVE_CLAIM` | Claims rows in one statement |
-| `BOUNDED_DELETE` | Deletes up to `limit` rows in one statement |
-| `FILTERED_CLAIM_CANDIDATES` | Leaves held rows out of a claim's candidate page |
+| `BOUNDED_DELETE` | Deletes up to `limit` rows in one operation, without a separate read of their ids |
+| `FILTERED_CLAIM_CANDIDATES` | Leaves held rows out of a claim's candidates |
 
 ### Convenience Sets
 

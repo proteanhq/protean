@@ -48,7 +48,7 @@ class DatabaseCapabilities(Flag):
 
     # Claim and delete
     NATIVE_CLAIM = auto()  # Claims rows in one statement
-    BOUNDED_DELETE = auto()  # Deletes up to ``limit`` rows in one statement
+    BOUNDED_DELETE = auto()  # Deletes up to ``limit`` rows in one operation, without a separate read of their ids
     FILTERED_CLAIM_CANDIDATES = auto()  # Leaves held rows out of a claim's candidates
 
     # Convenience Capability Sets
