@@ -237,8 +237,10 @@ class BrokerPort(Protocol):
         """Read up to ``limit`` messages from ``stream`` for ``consumer_group``.
 
         Creates the consumer group if it does not exist. With
-        ``new_messages=True``, returns only messages no consumer in the group
-        has received, and an empty list when only pending messages remain.
+        ``new_messages=True``, skips messages that are pending in the group
+        (delivered and not acknowledged), and returns an empty list when only
+        pending messages remain. A broker that redelivers a nacked message by
+        putting it back on the stream returns it as a new message.
         """
 
     @abstractmethod

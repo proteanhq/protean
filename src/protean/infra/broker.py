@@ -157,10 +157,10 @@ class Broker:
         )
 
     def get_next(self, stream: str, consumer_group: str) -> BrokerMessage | None:
-        """Return the next message no consumer in the group has received.
+        """Return the next message the adapter reads with ``new_messages=True``.
 
-        Returns ``None`` when there is none, or when the broker lacks
-        ``CONSUMER_GROUPS``. Never returns a message that is pending.
+        Skips messages that are pending in the group. Returns ``None`` when
+        there is none, or when the broker lacks ``CONSUMER_GROUPS``.
         """
         if BrokerCapabilities.CONSUMER_GROUPS not in self.capabilities:
             logger.warning(f"Broker {self.name} does not support consumer groups")

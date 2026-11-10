@@ -35,9 +35,11 @@ queue methods.
 nothing. Override them when your backend keeps connections or per-consumer
 pending lists.
 
-`read` takes a `new_messages` flag. When it is `True`, the broker returns only
-messages no consumer in the group has received yet, and an empty list when
-only redelivered messages remain.
+`read` takes a `new_messages` flag. When it is `True`, the broker skips
+messages that are pending in the group, meaning delivered and not yet
+acknowledged, and returns an empty list when only pending messages remain. A
+broker that redelivers a nacked message by putting it back on the stream, as
+the inline broker does, returns that message as a new one.
 
 Your code does not call the adapter. `domain.brokers["default"]` returns a
 `Broker` service that wraps it. The service records messages published inside
