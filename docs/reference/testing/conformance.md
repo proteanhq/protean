@@ -20,10 +20,14 @@ optimistic locking, value objects, associations, and more.
 
 ## Port suites under `tests/conformance/`
 
-The conformance suites of the four ports live in the Protean repository under
-`tests/conformance/`, one folder per port: `database`, `broker`, `cache` and
-`event_store`. The plugin for all four is `tests/conformance/conftest.py`.
-pytest loads it as the folder's `conftest.py`, so you do not register it.
+The Protean repository has one folder per port under `tests/conformance/`:
+`database`, `broker`, `cache` and `event_store`. The plugin for all four is
+`tests/conformance/conftest.py`. pytest loads it as the folder's `conftest.py`,
+so you do not register it.
+
+Each folder holds one placeholder test until its port's suite moves in. The
+database suite is still in `tests/adapters/repository/generic/`, and
+`protean test test-adapter` runs it.
 
 Each test runs against one adapter. With no options, a test runs against the
 default adapter of its folder's port: `inline` for `broker`, `memory` for the
@@ -45,7 +49,7 @@ not include them. Run them from a source checkout.
 Tests elsewhere in the same run are kept.
 
 ```bash
-# Run the database suite against PostgreSQL
+# Run the database folder's tests against PostgreSQL
 pytest tests/conformance --port database --adapter postgresql
 
 # Point the adapter at another database
