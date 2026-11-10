@@ -40,7 +40,7 @@ not include them. Run them from a source checkout.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--port` | none | One of `database`, `broker`, `cache` or `event_store`. Tests in the other ports' folders are deselected. |
+| `--port` | none | One of `database`, `broker`, `cache` or `event_store`. Every test in `tests/conformance/` outside that port's folder is deselected, including the tests that sit directly in `tests/conformance/`. |
 | `--adapter` | `memory`, or `inline` for `broker` | The adapter's registered name, such as `postgresql` or `redis`. A name the port's registry does not know raises `ConfigurationError`, which lists the registered names. |
 | `--adapter-config` | none | A JSON object merged over the adapter's built-in configuration, for example `'{"database_uri": "postgresql://localhost/test"}'`. Anything other than a JSON object stops the run with a usage error. |
 | `--capability` | none | A flag name, such as `NATIVE_JSON`. pytest keeps only the tests whose `requires` or `requires_any` marker names that flag. `none` keeps only the tests with neither marker. |
