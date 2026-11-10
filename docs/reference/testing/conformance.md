@@ -43,7 +43,7 @@ not include them. Run them from a source checkout.
 | `--port` | none | One of `database`, `broker`, `cache` or `event_store`. Every test in `tests/conformance/` outside that port's folder is deselected, including the tests that sit directly in `tests/conformance/`. |
 | `--adapter` | `memory`, or `inline` for `broker` | The adapter's registered name, such as `postgresql` or `redis`. A name the port's registry does not know raises `ConfigurationError`, which lists the registered names. |
 | `--adapter-config` | none | A JSON object merged over the adapter's built-in configuration, for example `'{"database_uri": "postgresql://localhost/test"}'`. Anything other than a JSON object stops the run with a usage error. |
-| `--capability` | none | A flag name, such as `NATIVE_JSON`. pytest keeps only the tests whose `requires` or `requires_any` marker names that flag. A marker that names a composite flag, such as `BASIC_STORAGE` or `CRUD \| NATIVE_JSON`, names each flag in it. `none` keeps only the tests with neither marker. |
+| `--capability` | none | A flag name, such as `NATIVE_JSON`. pytest keeps only the tests whose `requires` or `requires_any` marker names that flag. A marker that names a composite flag, such as `BASIC_STORAGE` or <code>CRUD &#124; NATIVE_JSON</code>, names each flag in it. `none` keeps only the tests with neither marker. |
 
 `--port` and `--capability` deselect tests only inside `tests/conformance/`.
 Tests elsewhere in the same run are kept.
