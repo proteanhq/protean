@@ -53,7 +53,7 @@ class TestDeprecation:
         assert message.startswith(
             "protean.integrations.pytest.adapter_conformance is deprecated."
         )
-        assert "protean test test-adapter --port database" in message
+        assert "protean test test-adapter --provider <name>" in message
         assert message.endswith("Will be removed in v0.20.0.")
 
 

@@ -444,7 +444,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             removal="0.20.0",
             detection="runtime",
             alternative=(
-                "Run `protean test test-adapter --port database` from a source "
+                "Run `protean test test-adapter --provider <name>` from a source "
                 "checkout instead."
             ),
             reason=(
@@ -460,7 +460,7 @@ DEPRECATIONS: dict[str, Deprecation] = {
             removal="0.20.0",
             detection="runtime",
             alternative=(
-                "Run `protean test test-adapter --port database` from a source "
+                "Run `protean test test-adapter --provider <name>` from a source "
                 "checkout instead."
             ),
             reason=(
