@@ -106,11 +106,13 @@ are not durations, and every adapter answers them the same way:
 |-------|--------------|-------------|
 | Key exists, expiry pending | seconds remaining | seconds remaining |
 | No such key | returns `None` | returns `None` |
-| Key exists, no expiry set | not reachable, every entry is written with one | returns `math.inf` |
+| Key exists, no expiry set | returns `math.inf` | returns `math.inf` |
 
 An expired entry counts as absent, so `get_ttl` returns `None` for it, the same
-way `get` does. `math.inf` only ever comes from Redis: the memory cache writes
-every entry with a concrete TTL, so it never holds a key without an expiry.
+way `get` does. The `Cache` service passes the configured TTL with every write
+to an adapter that declares `TTL`, so through the service a memory entry always
+has an expiry. A key without one comes from a direct adapter write with
+`ttl=None`, or on Redis from a write outside Protean.
 
 So code reads the same on either adapter:
 

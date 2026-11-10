@@ -73,7 +73,8 @@ embedders can call directly.
   adapter-defined. Callers should not call `Domain.close()` more than
   once per domain instance.
 - Custom adapters inherit a no-op `close()` on `BaseBroker`,
-  `BaseCache`, and the provider/event-store base classes. Adapters
+  `BaseCache` (now the `CachePort` protocol), and the
+  provider/event-store base classes. Adapters
   that hold sockets, file handles, or background threads must
   override.
 
