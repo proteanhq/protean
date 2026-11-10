@@ -7,7 +7,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 import redis
 
-from protean.adapters.broker.redis import RedisBroker, get_field_value
+from protean.adapters.broker.redis import (
+    _PUBLISHED_STREAMS_LIMIT,
+    RedisBroker,
+    get_field_value,
+)
 from tests.shared import REDIS_URI
 
 
@@ -432,6 +436,26 @@ class TestRedisEdgeCases:
 
         broker.clear()
         assert broker._get_streams_to_check() == set()
+
+    def test_published_streams_keep_only_the_most_recent(self, test_domain):
+        """The record keeps the last ``_PUBLISHED_STREAMS_LIMIT`` streams, so
+        publishing to one stream per partition key does not grow it."""
+        broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
+        broker.clear()
+
+        for index in range(_PUBLISHED_STREAMS_LIMIT + 2):
+            broker._record_published_stream(f"order:key-{index}")
+        # Publishing again moves a stream to the newest end
+        broker._record_published_stream("order:key-2")
+        broker._record_published_stream("order:new")
+
+        streams = broker._get_streams_to_check()
+        assert len(streams) == _PUBLISHED_STREAMS_LIMIT
+        assert "order:key-2" in streams
+        assert "order:new" in streams
+        assert {"order:key-0", "order:key-1", "order:key-3"}.isdisjoint(streams)
+
+        broker.clear()
 
     def test_extract_group_data_non_dict(self, test_domain):
         """Test _extract_group_data skips non-dict entries."""

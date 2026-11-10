@@ -3,8 +3,8 @@
 Message broker interface. Every broker adapter (Inline, Redis Stream,
 Redis PubSub, or your own) subclasses `BaseBroker` and `BrokerPort`, in that
 order. `BrokerPort` lists the operations Protean calls on every broker.
-`BaseBroker` holds the optional ones: blocking reads, dead letters,
-partitions and trimming.
+`BaseBroker` holds the blocking reads, partitions and trimming, and declares
+the dead letter queue hooks that every adapter implements.
 
 `domain.brokers[name]` returns a `Broker` service that wraps the adapter.
 Application code calls the service, not the adapter.

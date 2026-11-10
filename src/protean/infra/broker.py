@@ -136,11 +136,14 @@ class Broker:
 
     def _dispatch_sync(self, stream: str, message: dict[str, Any]) -> None:
         """In synchronous processing, hand ``message`` to each subscriber of ``stream``."""
+        # ``get`` keeps a publish to a stream with no subscriber from adding a
+        # key to the defaultdict.
+        subscribers = self._subscribers.get(stream)
         if (
             self.domain.config["message_processing"] == Processing.SYNC.value
-            and self._subscribers[stream]
+            and subscribers
         ):
-            for subscriber_cls in self._subscribers[stream]:
+            for subscriber_cls in subscribers:
                 dispatch_to_subscriber(subscriber_cls, message)
 
     def read(self, stream: str, consumer_group: str, limit: int) -> list[BrokerMessage]:
@@ -224,7 +227,8 @@ class Broker:
 
         The envelope has ``status`` (``healthy``, ``degraded`` or
         ``unhealthy``), ``connected``, ``last_ping_ms``, ``uptime_seconds`` and
-        ``details``, the adapter's health record as a dict. A failure while
+        ``details``, the adapter's health record as a dict with its free-form
+        details at the top level. A failure while
         gathering it is reported as ``unhealthy`` and not raised.
         """
         try:
@@ -465,12 +469,16 @@ class Broker:
 
 
 def _health_details(record: BrokerHealth) -> dict[str, Any]:
-    """Flatten a health record into the ``details`` dict of the envelope."""
+    """Flatten a health record into the ``details`` dict of the envelope.
+
+    An adapter detail named ``healthy``, ``message_counts`` or
+    ``consumer_groups`` does not replace the record's own field.
+    """
     return {
+        **record.details,
         "healthy": record.healthy,
         "message_counts": dict(record.message_counts),
         "consumer_groups": dict(record.consumer_groups),
-        **record.details,
     }
 
 

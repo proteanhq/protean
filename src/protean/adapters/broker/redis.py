@@ -42,6 +42,11 @@ PENDING_MESSAGES_MARK = "0"
 # a stopped consumer's pending entries on startup.
 _RECLAIM_BATCH_SIZE = 100
 
+# How many recently published streams ``health()`` keeps counting. The outbox
+# publishes to one stream per partition key, so an unbounded record would grow
+# for the life of the process and send three commands per stream on each check.
+_PUBLISHED_STREAMS_LIMIT = 100
+
 # A stream entry ID, ``<ms>`` or ``<ms>-<seq>``, never a range bound. XRANGE
 # also accepts ``-``, ``+`` and ``(`` prefixes as range bounds, so a DLQ ID is
 # checked against this before it is passed as both bounds of a single-entry
@@ -235,7 +240,8 @@ class RedisBroker(BaseBroker, BrokerPort):
         self._consumer_name = f"consumer-{int(time.time() * 1000)}"
         self._created_groups_set: set[str] = set()
         self._group_creation_times: dict[str, float] = {}  # creation times
-        self._published_streams: set[str] = set()
+        # Recently published streams, oldest first; the values are unused.
+        self._published_streams: dict[str, None] = {}
 
         # Partition-per-key Lua scripts (ADR-0028), registered once. redis-py's
         # register_script only wraps the source (the SHA is derived from it, no
@@ -299,8 +305,15 @@ class RedisBroker(BaseBroker, BrokerPort):
         """Publish a message to Redis Stream using XADD"""
         serialized_message = {DATA_FIELD: json.dumps(message or {})}
         redis_stream_id = self._client.xadd(stream, serialized_message)
-        self._published_streams.add(stream)
+        self._record_published_stream(stream)
         return self._decode_if_bytes(redis_stream_id)
+
+    def _record_published_stream(self, stream: str) -> None:
+        """Keep ``stream`` among the last ``_PUBLISHED_STREAMS_LIMIT`` published."""
+        self._published_streams.pop(stream, None)
+        self._published_streams[stream] = None
+        if len(self._published_streams) > _PUBLISHED_STREAMS_LIMIT:
+            del self._published_streams[next(iter(self._published_streams))]
 
     def _read_new_messages(
         self, stream: str, consumer_group: str, limit: int
@@ -1143,7 +1156,8 @@ class RedisBroker(BaseBroker, BrokerPort):
 
         ``pending`` is summed over the group's streams, and a consumer that
         reads several streams appears once with its pending entries summed.
-        ``last_delivered_id`` is the one from the last stream read. A Redis
+        When the group reads several streams, ``last_delivered_id`` comes from
+        one of them, and which one is not defined. A Redis
         error is logged, and the groups read before it are returned.
         """
         groups: dict[str, ConsumerGroupInfo] = {}
@@ -1165,7 +1179,8 @@ class RedisBroker(BaseBroker, BrokerPort):
         return groups
 
     def _get_streams_to_check(self) -> set[str]:
-        """Return the streams this broker published to or created consumer groups on."""
+        """Return the streams this broker created consumer groups on, and the
+        last ``_PUBLISHED_STREAMS_LIMIT`` streams it published to."""
         streams = set(self._published_streams)
 
         # Group keys are
@@ -1476,9 +1491,13 @@ class RedisBroker(BaseBroker, BrokerPort):
         )
         return False
 
-    def get_connection(self) -> "redis.Redis[Any]":
-        """Return the Redis client, reconnecting if the broker was closed."""
-        return self._client
+    def get_connection(self) -> "redis.Redis[Any] | None":
+        """Return the Redis client, or ``None`` after ``close()``.
+
+        Does not reconnect: a view that reads a closed broker must not open a
+        pool nothing will close.
+        """
+        return self.redis_instance
 
     def close(self) -> None:
         """Close the Redis connection and release resources."""

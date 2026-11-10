@@ -605,6 +605,19 @@ class TestBrokerStatusWithoutRedis:
         assert status.consumer_count == 1
         assert status.status == "lagging"
 
+    def test_counts_a_broker_leaves_out_are_zero(self, test_domain):
+        """A third-party adapter that leaves out ``pending`` and reports
+        ``consumer_count`` as ``None`` reads as zero, not as unknown."""
+        reply = {fqn(PartnerFeed): {"name": fqn(PartnerFeed), "consumer_count": None}}
+
+        with patch.object(self.broker, "_consumer_groups", return_value=reply):
+            status = _statuses(test_domain)[fqn(PartnerFeed)]
+
+        assert status.status == "ok"
+        assert status.lag == 0
+        assert status.pending == 0
+        assert status.consumer_count == 0
+
     def test_consumer_groups_failure_is_unknown(self, test_domain):
         with patch.object(
             self.broker, "_consumer_groups", side_effect=RuntimeError("down")

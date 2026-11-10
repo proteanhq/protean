@@ -207,7 +207,8 @@ class OutboxProcessor(BaseSubscription):
 
         self.broker = self.engine.domain.brokers[self.broker_provider_name]
         logger.debug(
-            "outbox.broker_selected", extra={"broker": self.broker.__class__.__name__}
+            "outbox.broker_selected",
+            extra={"broker": type(self.broker._adapter).__name__},
         )
 
         # Get the outbox repository for this database provider

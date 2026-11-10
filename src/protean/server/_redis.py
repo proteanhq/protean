@@ -12,7 +12,8 @@ def redis_client(broker: "Broker | None") -> "redis.Redis[Any] | None":
     """Return the broker's Redis client, or ``None`` if it has none.
 
     Returns ``None`` for a missing broker, for a broker whose connection is not
-    a Redis client, and when the ``redis`` package is not installed.
+    a Redis client, and when the ``redis`` package is not installed. An error
+    the broker's ``get_connection()`` raises is not caught.
     """
     if broker is None:
         return None

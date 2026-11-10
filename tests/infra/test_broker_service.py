@@ -42,6 +42,7 @@ class StubAdapter(BrokerPort):
         self.healthy = True
         self.ping_result = True
         self.ping_error: Exception | None = None
+        self.details: dict[str, Any] = {"region": "local"}
 
     @property
     def capabilities(self) -> BrokerCapabilities:
@@ -89,7 +90,7 @@ class StubAdapter(BrokerPort):
             healthy=self.healthy,
             message_counts={"total_messages": 3},
             consumer_groups={"count": 1, "names": ["billing"]},
-            details={"region": "local"},
+            details=self.details,
         )
 
     def get_connection(self) -> object:
@@ -101,6 +102,32 @@ class StubAdapter(BrokerPort):
 
     def clear(self) -> None:
         self.calls.append(("clear",))
+
+    def close(self) -> None:
+        self.calls.append(("close",))
+
+    def mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
+        self.calls.append(("mark_subscription_owned", stream, consumer_group))
+
+    def remove_stale_consumers(
+        self, stream: str, consumer_group: str, current_consumer: str
+    ) -> int:
+        self.calls.append(
+            ("remove_stale_consumers", stream, consumer_group, current_consumer)
+        )
+        return 2
+
+    def reclaim_idle_pending(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str | None,
+        min_idle_ms: int,
+    ) -> dict[str, int]:
+        self.calls.append(
+            ("reclaim_idle_pending", stream, consumer_group, consumer_name, min_idle_ms)
+        )
+        return {"claimed": 1}
 
 
 def _calls_named(adapter: StubAdapter, name: str) -> list[tuple[Any, ...]]:
@@ -230,31 +257,66 @@ class TestSynchronousDispatch:
         broker.publish("invoices", {"n": 1})
 
         assert received == []
+        assert "invoices" not in broker._subscribers
 
 
 class TestCapabilityGates:
+    """Each gate is checked on an adapter that lacks only the flag it reads."""
+
     @pytest.fixture
-    def adapter(self, test_domain):
+    def without_consumer_groups(self, test_domain):
         return StubAdapter(
             "stub",
             test_domain,
             {"provider": "stub"},
-            capabilities=BrokerCapabilities.SIMPLE_QUEUING
+            capabilities=BrokerCapabilities.RELIABLE_MESSAGING
             & ~BrokerCapabilities.CONSUMER_GROUPS,
         )
 
-    def test_read_without_consumer_groups_returns_empty(self, broker, adapter):
+    @pytest.fixture
+    def without_ack_nack(self, test_domain):
+        return StubAdapter(
+            "stub",
+            test_domain,
+            {"provider": "stub"},
+            capabilities=BrokerCapabilities.RELIABLE_MESSAGING
+            & ~BrokerCapabilities.ACK_NACK,
+        )
+
+    def test_read_without_consumer_groups_returns_empty(self, without_consumer_groups):
+        broker = Broker(without_consumer_groups)
+
         assert broker.read("orders", "billing", 5) == []
-        assert adapter.calls == []
+        assert without_consumer_groups.calls == []
 
-    def test_get_next_without_consumer_groups_returns_none(self, broker, adapter):
+    def test_get_next_without_consumer_groups_returns_none(
+        self, without_consumer_groups
+    ):
+        broker = Broker(without_consumer_groups)
+
         assert broker.get_next("orders", "billing") is None
-        assert adapter.calls == []
+        assert without_consumer_groups.calls == []
 
-    def test_ack_and_nack_without_ack_nack_return_false(self, broker, adapter):
+    def test_ack_and_nack_without_consumer_groups_still_forward(
+        self, without_consumer_groups
+    ):
+        broker = Broker(without_consumer_groups)
+
+        assert broker.ack("orders", "msg-1", "billing") is True
+        assert broker.nack("orders", "msg-1", "billing") is True
+
+    def test_ack_and_nack_without_ack_nack_return_false(self, without_ack_nack):
+        broker = Broker(without_ack_nack)
+
         assert broker.ack("orders", "msg-1", "billing") is False
         assert broker.nack("orders", "msg-1", "billing") is False
-        assert adapter.calls == []
+        assert without_ack_nack.calls == []
+
+    def test_read_without_ack_nack_still_forwards(self, without_ack_nack):
+        broker = Broker(without_ack_nack)
+
+        assert broker.read("orders", "billing", 5) == [BrokerMessage("msg-1", {"n": 1})]
+        assert broker.get_next("orders", "billing") == BrokerMessage("msg-1", {"n": 1})
 
 
 class TestReads:
@@ -307,6 +369,24 @@ class TestHealth:
         assert health["status"] == "unhealthy"
         assert health["connected"] is False
 
+    def test_adapter_details_do_not_replace_the_record_fields(self, broker, adapter):
+        adapter.healthy = False
+        adapter.details = {
+            "healthy": True,
+            "message_counts": "overwritten",
+            "consumer_groups": "overwritten",
+            "region": "local",
+        }
+
+        details = broker.health()["details"]
+
+        assert details == {
+            "healthy": False,
+            "message_counts": {"total_messages": 3},
+            "consumer_groups": {"count": 1, "names": ["billing"]},
+            "region": "local",
+        }
+
     def test_ping_that_raises_returns_false(self, broker, adapter):
         adapter.ping_error = RuntimeError("socket closed")
 
@@ -329,6 +409,25 @@ class TestBaseBrokerForwarders:
 
         assert adapter.calls == [("create_group", "orders", "billing"), ("clear",)]
 
+    def test_subscription_forwarders_reach_the_adapter(self, broker, adapter):
+        broker._mark_subscription_owned("orders", "billing")
+        removed = broker._remove_stale_consumers("orders", "billing", "worker-1")
+        reclaimed = broker._reclaim_idle_pending("orders", "billing", None, 500)
+
+        assert removed == 2
+        assert reclaimed == {"claimed": 1}
+        assert adapter.calls == [
+            ("mark_subscription_owned", "orders", "billing"),
+            ("remove_stale_consumers", "orders", "billing", "worker-1"),
+            ("reclaim_idle_pending", "orders", "billing", None, 500),
+        ]
+
+    def test_close_and_reconnect_reach_the_adapter(self, broker, adapter):
+        assert broker._reconnect() is True
+        broker._close()
+
+        assert adapter.calls == [("reconnect",), ("close",)]
+
 
 class TestBrokers:
     def test_domain_brokers_returns_a_broker_service(self, test_domain):
@@ -336,6 +435,28 @@ class TestBrokers:
 
         assert isinstance(broker, Broker)
         assert isinstance(broker._adapter, InlineBroker)
+
+    def test_brokers_publish_inside_a_unit_of_work_records_and_sends_nothing(
+        self, test_domain
+    ):
+        adapter = test_domain.brokers["default"]._adapter
+        uow = UnitOfWork()
+        uow.start()
+        try:
+            assert test_domain.brokers.publish("orders", {"n": 1}) is None
+            assert uow._messages_to_dispatch == [("orders", {"n": 1}, None)]
+        finally:
+            uow.rollback()
+
+        assert adapter._messages["orders"] == []
+
+    def test_brokers_publish_outside_a_unit_of_work_sends_to_the_default_broker(
+        self, test_domain
+    ):
+        test_domain.brokers.publish("orders", {"n": 1})
+
+        adapter = test_domain.brokers["default"]._adapter
+        assert [message for _, message in adapter._messages["orders"]] == [{"n": 1}]
 
     def test_unchanged_config_reuses_the_broker(self, test_domain):
         before = test_domain.brokers["default"]

@@ -641,11 +641,15 @@ def _dlq_depth(redis_conn: Any, stream_category: str) -> int:
 
 
 def _group_counts(broker: Broker, consumer_group: str) -> tuple[int, int]:
-    """Return ``(pending, consumer_count)`` for ``consumer_group``, or zeros if unknown."""
+    """Return ``(pending, consumer_count)`` for ``consumer_group``.
+
+    A count the broker does not report, or reports as ``None``, is 0.
+    """
     info = broker._consumer_groups().get(consumer_group)
     if info is None:
         return 0, 0
-    return info["pending"], info["consumer_count"]
+    # A third-party adapter may leave out a key ``ConsumerGroupInfo`` requires
+    return info.get("pending") or 0, info.get("consumer_count") or 0
 
 
 def _collect_broker_status(

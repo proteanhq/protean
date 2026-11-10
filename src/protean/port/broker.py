@@ -125,8 +125,14 @@ class ConsumerInfo(TypedDict):
 class ConsumerGroupInfo(TypedDict):
     """One consumer group, summed over the streams it reads.
 
-    ``pending`` counts the messages delivered to the group and not yet
-    acknowledged. A broker without acknowledgement reports ``0``.
+    ``pending`` is the broker's own count of messages delivered to the group
+    and not yet settled, so it differs between brokers. The inline broker
+    counts messages delivered and not yet acknowledged or nacked. The Redis
+    broker reports the length of the Redis pending list, which keeps a nacked
+    message. A broker without acknowledgement reports ``0``.
+
+    ``consumer_count`` counts the consumers the broker tracks. The inline
+    broker tracks none and reports ``0``.
     """
 
     name: str
@@ -160,10 +166,17 @@ class BrokerHealth:
 class BrokerPort(Protocol):
     """The operations a broker adapter implements.
 
-    An adapter subclasses this Protocol explicitly. The ``Broker`` service in
-    ``protean.infra.broker`` wraps the adapter and adds unit-of-work recording,
-    the retry after a connection error, capability checks and synchronous
-    dispatch to subscribers. Only the service calls these members.
+    An adapter subclasses this Protocol explicitly, and also subclasses
+    ``BaseBroker``, which holds the blocking reads, the dead-letter queue,
+    stream trimming and partitions. The ``Broker`` service raises
+    ``NotSupportedError`` for those operations on an adapter that is not a
+    ``BaseBroker``, and every stream subscription uses the blocking reads.
+
+    The ``Broker`` service in ``protean.infra.broker`` wraps the adapter and
+    adds unit-of-work recording, the retry after a connection error,
+    capability checks and synchronous dispatch to subscribers. Code outside
+    the adapter calls these members through the service. The adapter's own
+    methods may call them directly.
     """
 
     name: str

@@ -496,7 +496,7 @@ class TestRedisBrokerReconnectAfterClose:
         broker._consumer_name = "consumer-test"
         broker._created_groups_set = set()
         broker._group_creation_times = {}
-        broker._published_streams = set()
+        broker._published_streams = {}
         return broker
 
     def test_client_reuses_live_instance_without_reconnecting(self):

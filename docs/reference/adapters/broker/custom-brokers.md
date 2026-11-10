@@ -14,9 +14,12 @@ Custom brokers allow you to:
 
 A broker adapter subclasses `BaseBroker` and `BrokerPort`, in that order.
 `BrokerPort` holds the operations Protean calls on every broker. `BaseBroker`
-holds the optional ones: blocking reads, dead letters, partitions and
-trimming. The adapter implements these methods, plus the `capabilities`
-property:
+holds the blocking reads, partitions and trimming, and declares the dead
+letter queue hooks as abstract methods. A blocking read falls back to `read`
+when the broker does not advertise `BLOCKING_READ`. The partition methods
+raise `NotSupportedError` unless the broker advertises `STREAM_PARTITIONING`.
+`trim` does nothing and returns 0 until the adapter overrides it. The adapter
+implements these methods, plus the `capabilities` property:
 
 - Publishing and reading: `publish`, `read`
 - Acknowledgment: `ack`, `nack`
@@ -44,7 +47,7 @@ the inline broker does, returns that message as a new one.
 Your code does not call the adapter. `domain.brokers["default"]` returns a
 `Broker` service that wraps it. The service records messages published inside
 a unit of work, retries once after a connection error, checks capabilities
-before `read`, `ack` and `nack`, and passes messages to subscribers when the
+before `read`, `get_next`, `ack` and `nack`, and passes messages to subscribers when the
 broker runs synchronously. End the adapter module with
 `_PORT_CHECK: type[BrokerPort] = YourBroker` so mypy reports a missing or
 mistyped method.
@@ -88,7 +91,7 @@ version = "0.1.0"
 description = "Kafka broker for Protean"
 requires-python = ">=3.11"
 dependencies = [
-    "protean>=0.14",
+    "protean>=0.19",
     "kafka-python>=2.0",
 ]
 

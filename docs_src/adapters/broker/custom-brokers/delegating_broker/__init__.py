@@ -79,6 +79,31 @@ class DelegatingBroker(BaseBroker, BrokerPort):
     def clear(self) -> None:
         self._delegate.clear()
 
+    def close(self) -> None:
+        self._delegate.close()
+
+    # Subscription hooks
+    def mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
+        self._delegate.mark_subscription_owned(stream, consumer_group)
+
+    def remove_stale_consumers(
+        self, stream: str, consumer_group: str, current_consumer: str
+    ) -> int:
+        return self._delegate.remove_stale_consumers(
+            stream, consumer_group, current_consumer
+        )
+
+    def reclaim_idle_pending(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str | None,
+        min_idle_ms: int,
+    ) -> dict[str, int]:
+        return self._delegate.reclaim_idle_pending(
+            stream, consumer_group, consumer_name, min_idle_ms
+        )
+
     # Dead letter queue
     def _dlq_list(self, dlq_streams: list[str], limit: int) -> list[DLQEntry]:
         return self._delegate._dlq_list(dlq_streams, limit)

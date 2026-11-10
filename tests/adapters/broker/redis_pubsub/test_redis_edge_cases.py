@@ -187,3 +187,20 @@ def test_redis_independent_consumer_group_positions(broker):
 
     assert int(position1) == 1  # Group 1 has advanced
     assert int(position2) == 1  # Group 2 has also advanced
+
+
+@pytest.mark.redis
+def test_consumer_groups_report_no_pending_messages(broker):
+    """The broker has no acknowledgement, so a read message that is never
+    acknowledged leaves ``pending`` at 0."""
+    stream = "test_stream"
+    consumer_group = "test_consumer_group"
+    broker.publish(stream, {"data": "first"})
+    broker.publish(stream, {"data": "second"})
+
+    assert broker.get_next(stream, consumer_group) is not None
+
+    group = broker._consumer_groups()[consumer_group]
+    assert group["name"] == consumer_group
+    assert group["pending"] == 0
+    assert all(consumer["pending"] == 0 for consumer in group["consumers"])
