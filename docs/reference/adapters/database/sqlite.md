@@ -29,10 +29,11 @@ pip install sqlalchemy
 ## Configuration
 
 ```toml
-[databases.default]
-provider = "sqlite"
-database_uri = "sqlite:///app.db"
+--8<-- "adapters/database/sqlite/configuration.toml"
 ```
+
+`${DATABASE_URL|...}` reads the URI from the `DATABASE_URL` environment
+variable, and uses the value after `|` when it is not set.
 
 ### Configuration Options
 

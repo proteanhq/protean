@@ -27,14 +27,11 @@ pip install "redis>=8.0.0,<8.2.0"
 ## Configuration
 
 ```toml
-[brokers.default]
-provider = "redis"
-URI = "redis://localhost:6379/0"
-
-# Optional connection pool settings
-max_connections = 10
-socket_timeout = 5
+--8<-- "adapters/broker/redis/configuration.toml"
 ```
+
+`${REDIS_URL|...}` reads the URI from the `REDIS_URL` environment
+variable, and uses the value after `|` when it is not set.
 
 ### Configuration Options
 

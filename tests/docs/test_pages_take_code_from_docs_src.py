@@ -4,6 +4,12 @@ On each page in ``PAGES``, a Python block either is marked ``# fragment`` or
 holds nothing but named-section includes, such as
 ``--8<-- "guides/x/001.py:full"``. A line-range include or inline code that is
 not a fragment fails the test, so a converted page cannot drift back.
+
+On each page under ``docs/reference/adapters/``, a TOML block either is marked
+``# fragment`` or holds exactly one include of a whole ``.toml`` file, such as
+``--8<-- "adapters/database/sqlite/configuration.toml"``. The tests next to
+each page load that file as a ``domain.toml``, so a line-range or section
+include fails: the page would show text the tests do not load.
 """
 
 from __future__ import annotations
@@ -13,7 +19,7 @@ import re
 import pytest
 
 from tests.docs.support import DOCS
-from tests.support.snippets import extract_blocks
+from tests.support.snippets import extract_blocks, extract_toml_blocks
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -243,6 +249,12 @@ PAGES = (
 )
 
 _SECTION_INCLUDE = re.compile(r'^--8<-- "[^":]+\.py:[A-Za-z_][\w-]*"$')
+_WHOLE_TOML_INCLUDE = re.compile(r'^--8<-- "[^":]+\.toml"$')
+
+ADAPTER_PAGES = sorted(
+    page.relative_to(DOCS).as_posix()
+    for page in (DOCS / "reference/adapters").rglob("*.md")
+)
 
 
 def block_problems(text: str) -> list[str]:
@@ -290,3 +302,49 @@ def test_a_fragment_or_a_section_include_is_accepted():
     )
 
     assert block_problems(source) == []
+
+
+def toml_block_problems(text: str) -> list[str]:
+    """Return a line per TOML block that is neither a fragment nor one include."""
+    problems = []
+    for block in extract_toml_blocks(text):
+        if block.fragment:
+            continue
+        lines = [line.strip() for line in block.source.splitlines() if line.strip()]
+        if len(lines) != 1 or not _WHOLE_TOML_INCLUDE.match(lines[0]):
+            problems.append(
+                f"line {block.line}: {lines[0] if lines else 'empty block'}"
+            )
+    return problems
+
+
+@pytest.mark.parametrize("page", ADAPTER_PAGES)
+def test_adapter_page_toml_blocks_are_fragments_or_whole_file_includes(page: str):
+    text = (DOCS / page).read_text(encoding="utf-8")
+
+    assert toml_block_problems(text) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '```toml\n[databases.default]\nprovider = "memory"\n```\n',
+        '```toml\n--8<-- "adapters/x/domain.toml:1:3"\n```\n',
+        '```toml\n--8<-- "adapters/x/domain.toml:default"\n```\n',
+        '```toml\n--8<-- "adapters/x/a.toml"\n--8<-- "adapters/x/b.toml"\n```\n',
+        '```toml\n--8<-- "adapters/x/001.py"\n```\n',
+    ],
+    ids=["inline", "line-range", "section", "two-includes", "not-toml"],
+)
+def test_a_toml_block_that_is_not_one_whole_file_include_is_reported(source: str):
+    assert len(toml_block_problems(source)) == 1
+
+
+def test_a_toml_fragment_or_a_whole_file_include_is_accepted():
+    source = (
+        '```toml\n--8<-- "adapters/x/domain.toml"\n```\n'
+        '```toml\n# fragment\nconnect_args = { ssl_ca = "ca.pem" }\n```\n'
+        '    ```toml\n    --8<-- "adapters/x/nested.toml"\n    ```\n'
+    )
+
+    assert toml_block_problems(source) == []

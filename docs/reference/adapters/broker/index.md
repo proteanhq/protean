@@ -42,19 +42,11 @@ The `redis_pubsub` broker uses Redis Lists for simple queuing with basic consume
 Brokers are configured in your domain configuration file (`domain.toml` or `.domain.toml`):
 
 ```toml
-# Default broker configuration (required)
-[brokers.default]
-provider = "inline"
-
-# Additional named brokers
-[brokers.notifications]
-provider = "redis_pubsub"
-URI = "redis://localhost:6379/0"
-
-[brokers.analytics]
-provider = "redis"
-URI = "redis://localhost:6379/1"
+--8<-- "adapters/broker/index/multiple_brokers.toml"
 ```
+
+`${REDIS_URL|...}` reads the URI from the `REDIS_URL` environment
+variable, and uses the value after `|` when it is not set.
 
 Each broker configuration must specify:
 
@@ -192,6 +184,7 @@ be pip-installed and automatically discovered by Protean.
 Protean's built-in brokers are registered in `pyproject.toml`:
 
 ```toml
+# fragment
 [project.entry-points."protean.brokers"]
 inline = "protean.adapters.broker.inline:register"
 redis = "protean.adapters.broker.redis:register"

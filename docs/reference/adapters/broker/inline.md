@@ -20,15 +20,7 @@ The Inline broker maintains messages in memory using Python data structures:
 ## Configuration
 
 ```toml
-[brokers.default]
-provider = "inline"
-
-# Optional configuration for retry behavior
-max_retries = 3  # Maximum retry attempts for failed messages
-retry_delay = 1.0  # Initial retry delay in seconds
-backoff_multiplier = 2.0  # Exponential backoff multiplier
-message_timeout = 300.0  # Message timeout in seconds (5 minutes default)
-enable_dlq = true  # Enable dead letter queue for failed messages
+--8<-- "adapters/broker/inline/retry_options.toml"
 ```
 
 ### Configuration Options
@@ -109,15 +101,11 @@ message, and within a group each message is handed out once:
 The Inline broker is designed to be easily replaced with production-ready brokers:
 
 ```toml
-# Development configuration
-[dev.brokers.default]
-provider = "inline"
-
-# Production configuration (same code works!)
-[prod.brokers.default]
-provider = "redis"
-URI = "redis://localhost:6379/0"
+--8<-- "adapters/broker/inline/environments.toml"
 ```
+
+`${REDIS_URL|...}` reads the URI from the `REDIS_URL` environment
+variable, and uses the value after `|` when it is not set.
 
 Your application code remains unchanged when switching brokers, as long as you:
 

@@ -1,0 +1,5 @@
+# Production: Redis cache
+[caches.default]
+provider = "redis"
+URI = "${REDIS_URL|redis://localhost:6379/2}"
+TTL = 300  # Default TTL in seconds

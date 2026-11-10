@@ -30,9 +30,7 @@ the DBAPI module to use in place of the URL's driver.
 ## Configuration
 
 ```toml
-[databases.default]
-provider = "mssql"
-database_uri = "mssql+pyodbc://sa:${MSSQL_PASSWORD}@localhost:1433/appdb?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes&Encrypt=yes&MARS_Connection=yes"
+--8<-- "adapters/database/mssql/configuration.toml"
 ```
 
 | Option | Default | Description |

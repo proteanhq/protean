@@ -59,6 +59,7 @@ protean-kafka-broker/
 ### pyproject.toml
 
 ```toml
+# fragment
 [project]
 name = "protean-kafka-broker"
 version = "0.1.0"
@@ -215,6 +216,7 @@ pip install protean-kafka-broker
 Then configure it in their domain:
 
 ```toml
+# fragment
 # domain.toml
 [brokers.default]
 provider = "kafka"
@@ -230,6 +232,7 @@ If adding a broker to Protean itself:
 3. Add entry point in `pyproject.toml`:
 
 ```toml
+# fragment
 [project.entry-points."protean.brokers"]
 mybroker = "protean.adapters.broker.mybroker:register"
 ```

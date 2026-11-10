@@ -1,0 +1,4 @@
+# After: Redis Streams
+[brokers.notifications]
+provider = "redis"
+URI = "${REDIS_URL|redis://localhost:6379/0}"

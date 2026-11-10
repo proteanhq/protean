@@ -180,6 +180,7 @@ protean-dynamodb/
 ### pyproject.toml
 
 ```toml
+# fragment
 [project]
 name = "protean-dynamodb"
 version = "0.1.0"
@@ -330,6 +331,7 @@ pip install protean-dynamodb
 Then configure it in their domain:
 
 ```toml
+# fragment
 # domain.toml
 [databases.default]
 provider = "dynamodb"

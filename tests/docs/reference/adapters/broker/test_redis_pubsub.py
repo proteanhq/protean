@@ -3,7 +3,9 @@
 import pytest
 import redis
 
-from tests.docs.support import load_example
+from protean.adapters.broker.redis import RedisBroker
+from protean.adapters.broker.redis_pubsub import RedisPubSubBroker
+from tests.docs.support import domain_from_config, load_example
 from tests.shared import REDIS_URI
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.redis]
@@ -55,3 +57,47 @@ def test_health_check_reads_redis_details(example):
     assert example.health["status"] == "healthy"
     assert isinstance(example.health["connected_clients"], int)
     assert example.health["used_memory"].endswith(("B", "K", "M", "G"))
+
+
+@pytest.mark.parametrize(
+    "path, broker_class",
+    [
+        ("adapters/broker/redis-pubsub/configuration.toml", RedisPubSubBroker),
+        ("adapters/broker/redis-pubsub/before.toml", RedisPubSubBroker),
+        ("adapters/broker/redis-pubsub/after.toml", RedisBroker),
+    ],
+    ids=["configuration", "before", "after"],
+)
+def test_configuration_shown_builds_the_notifications_broker(
+    path, broker_class, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("REDIS_URL", REDIS_URL)
+    domain = domain_from_config(path, tmp_path)
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        broker = domain.brokers["notifications"]
+
+    assert type(broker) is broker_class
+    kwargs = broker.redis_instance.connection_pool.connection_kwargs
+    assert kwargs["port"] == int(REDIS_URI.rsplit(":", 1)[1])
+    assert kwargs["db"] == 7
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "adapters/broker/redis-pubsub/configuration.toml",
+        "adapters/broker/redis-pubsub/before.toml",
+        "adapters/broker/redis-pubsub/after.toml",
+    ],
+    ids=["configuration", "before", "after"],
+)
+def test_configuration_shown_defaults_to_the_documented_uri(
+    path, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    domain = domain_from_config(path, tmp_path)
+
+    uri = domain.config["brokers"]["notifications"]["URI"]
+    assert uri == "redis://localhost:6379/0"

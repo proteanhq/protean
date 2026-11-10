@@ -56,16 +56,17 @@ same `URI` sees the same entries, and they remain after an adapter closes.
 Caches are configured in the `[caches]` section of your domain configuration:
 
 ```toml
-# Default: in-memory cache
-[caches.default]
-provider = "memory"
-
-# Production: Redis cache
-[caches.default]
-provider = "redis"
-URI = "redis://localhost:6379/2"
-TTL = 300  # Default TTL in seconds
+--8<-- "adapters/cache/index/memory.toml"
 ```
+
+In production, use the Redis cache:
+
+```toml
+--8<-- "adapters/cache/index/redis.toml"
+```
+
+`${REDIS_URL|...}` reads the URI from the `REDIS_URL` environment
+variable, and uses the value after `|` when it is not set.
 
 ### Configuration Options
 
@@ -81,9 +82,7 @@ A TTL must be a positive, finite number of seconds. It may also be a string
 holding one, so an environment variable works:
 
 ```toml
-[caches.default]
-provider = "redis"
-TTL = "${CACHE_TTL|3600}"
+--8<-- "adapters/cache/index/ttl_from_env.toml"
 ```
 
 Substitution runs on TOML strings after parsing, so a TTL from the environment

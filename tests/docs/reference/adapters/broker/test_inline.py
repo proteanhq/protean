@@ -5,7 +5,10 @@ import sys
 
 import pytest
 
-from tests.docs.support import DOCS_SRC, REPO_ROOT, load_example
+from protean.adapters.broker.inline import InlineBroker
+from protean.adapters.broker.redis import RedisBroker
+from tests.docs.support import DOCS_SRC, REPO_ROOT, domain_from_config, load_example
+from tests.shared import REDIS_URI
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -71,3 +74,83 @@ def test_domain_fixture_example_passes_under_pytest():
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "1 passed" in result.stdout
+
+
+RETRY_OPTIONS = "adapters/broker/inline/retry_options.toml"
+
+
+def _inline_broker(tmp_path, text=None):
+    domain = domain_from_config(RETRY_OPTIONS, tmp_path, text=text)
+    domain.init(traverse=False)
+    with domain.domain_context():
+        broker = domain.brokers["default"]
+    assert type(broker) is InlineBroker
+    return broker
+
+
+def _retry_options(broker):
+    return (
+        broker._max_retries,
+        broker._retry_delay,
+        broker._backoff_multiplier,
+        broker._message_timeout,
+        broker._enable_dlq,
+    )
+
+
+def test_retry_options_shown_reach_the_broker(tmp_path):
+    broker = _inline_broker(tmp_path)
+
+    assert _retry_options(broker) == (3, 1.0, 2.0, 300.0, True)
+
+
+def test_changed_retry_options_reach_the_broker(tmp_path):
+    # The documented values equal the broker's defaults, so change each one
+    # to show that the broker reads the key.
+    text = (DOCS_SRC / RETRY_OPTIONS).read_text()
+    for old, new in [
+        ("max_retries = 3", "max_retries = 5"),
+        ("retry_delay = 1.0", "retry_delay = 0.5"),
+        ("backoff_multiplier = 2.0", "backoff_multiplier = 3.0"),
+        ("message_timeout = 300.0", "message_timeout = 60.0"),
+        ("enable_dlq = true", "enable_dlq = false"),
+    ]:
+        assert old in text
+        text = text.replace(old, new)
+    broker = _inline_broker(tmp_path, text)
+
+    assert _retry_options(broker) == (5, 0.5, 3.0, 60.0, False)
+
+
+def test_development_section_uses_the_inline_broker(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTEAN_ENV", "dev")
+    domain = domain_from_config("adapters/broker/inline/environments.toml", tmp_path)
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        assert type(domain.brokers["default"]) is InlineBroker
+
+
+@pytest.mark.redis
+def test_production_section_uses_the_redis_broker(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTEAN_ENV", "prod")
+    monkeypatch.setenv("REDIS_URL", f"{REDIS_URI}/7")
+    domain = domain_from_config("adapters/broker/inline/environments.toml", tmp_path)
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        broker = domain.brokers["default"]
+
+    assert type(broker) is RedisBroker
+    assert broker.redis_instance.connection_pool.connection_kwargs["db"] == 7
+
+
+def test_production_section_defaults_to_the_documented_uri(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTEAN_ENV", "prod")
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    domain = domain_from_config("adapters/broker/inline/environments.toml", tmp_path)
+
+    assert domain.config["brokers"]["default"] == {
+        "provider": "redis",
+        "URI": "redis://localhost:6379/0",
+    }

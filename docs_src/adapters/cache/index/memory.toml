@@ -1,0 +1,3 @@
+# Default: in-memory cache
+[caches.default]
+provider = "memory"

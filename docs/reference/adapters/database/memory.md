@@ -26,8 +26,7 @@ domain uses the Memory provider automatically.
 ## Configuration
 
 ```toml
-[databases.default]
-provider = "memory"
+--8<-- "adapters/database/memory/configuration.toml"
 ```
 
 ### Configuration Options
@@ -120,15 +119,17 @@ The Memory provider is designed to be easily replaced with production-ready
 providers:
 
 ```toml
-# Development configuration (default)
-[databases.default]
-provider = "memory"
-
-# Production configuration (same domain code works!)
-[databases.default]
-provider = "postgresql"
-database_uri = "postgresql://user:pass@db.example.com:5432/myapp"
+--8<-- "adapters/database/memory/development.toml"
 ```
+
+In production, switch the provider:
+
+```toml
+--8<-- "adapters/database/memory/production.toml"
+```
+
+`${DATABASE_URL|...}` reads the URI from the `DATABASE_URL` environment
+variable, and uses the value after `|` when it is not set.
 
 All providers implement the same `BaseProvider` interface, so your domain code
 stays the same when you switch providers. To switch, update the configuration,

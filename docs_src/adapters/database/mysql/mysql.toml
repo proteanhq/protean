@@ -1,0 +1,3 @@
+[databases.default]
+provider = "mysql"
+database_uri = "mysql+pymysql://app:${MYSQL_PASSWORD}@localhost:3306/appdb"

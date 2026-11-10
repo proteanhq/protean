@@ -2,7 +2,11 @@
 
 import pytest
 
-from tests.docs.support import load_example
+from protean.adapters.broker.inline import InlineBroker
+from protean.adapters.broker.redis import RedisBroker
+from protean.adapters.broker.redis_pubsub import RedisPubSubBroker
+from tests.docs.support import domain_from_config, load_example
+from tests.shared import REDIS_URI
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -68,3 +72,32 @@ def test_health_stats_shape():
     assert example.health_stats["status"] == "healthy"
     assert example.health_stats["connected"] is True
     assert isinstance(example.health_stats["details"], dict)
+
+
+@pytest.mark.redis
+def test_configuration_shown_builds_three_brokers(tmp_path, monkeypatch):
+    monkeypatch.setenv("REDIS_URL", f"{REDIS_URI}/7")
+    domain = domain_from_config("adapters/broker/index/multiple_brokers.toml", tmp_path)
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        brokers = {
+            name: domain.brokers[name]
+            for name in ("default", "notifications", "analytics")
+        }
+
+    assert type(brokers["default"]) is InlineBroker
+    assert type(brokers["notifications"]) is RedisPubSubBroker
+    assert type(brokers["analytics"]) is RedisBroker
+    for name in ("notifications", "analytics"):
+        kwargs = brokers[name].redis_instance.connection_pool.connection_kwargs
+        assert kwargs["db"] == 7
+
+
+def test_configuration_shown_defaults_to_the_documented_uris(tmp_path, monkeypatch):
+    monkeypatch.delenv("REDIS_URL", raising=False)
+    domain = domain_from_config("adapters/broker/index/multiple_brokers.toml", tmp_path)
+
+    brokers = domain.config["brokers"]
+    assert brokers["notifications"]["URI"] == "redis://localhost:6379/0"
+    assert brokers["analytics"]["URI"] == "redis://localhost:6379/1"
