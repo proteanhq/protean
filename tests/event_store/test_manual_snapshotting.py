@@ -106,7 +106,7 @@ class TestCreateSnapshot:
         result = test_domain.create_snapshot(User, identifier)
         assert result is True
 
-        snapshot = test_domain.event_store.store._read_last_message(
+        snapshot = test_domain.event_store.store.get_last_stream_message(
             f"test::user:snapshot-{identifier}"
         )
         assert snapshot is not None
@@ -132,7 +132,7 @@ class TestCreateSnapshot:
 
         test_domain.create_snapshot(User, identifier)
 
-        snapshot = test_domain.event_store.store._read_last_message(
+        snapshot = test_domain.event_store.store.get_last_stream_message(
             f"test::user:snapshot-{identifier}"
         )
         assert snapshot["data"]["name"] == "Jane Smith"
@@ -206,11 +206,11 @@ class TestCreateSnapshot:
 
 
 class TestStreamIdentifiers:
-    """Tests for event store _stream_identifiers()."""
+    """Tests for event store stream_ids()."""
 
     @pytest.mark.eventstore
     def test_returns_empty_when_no_events(self, test_domain):
-        identifiers = test_domain.event_store.store._stream_identifiers("test::user")
+        identifiers = test_domain.event_store.store.stream_ids("test::user")
         assert identifiers == []
 
     @pytest.mark.eventstore
@@ -224,7 +224,7 @@ class TestStreamIdentifiers:
                 user = User.register(user_id=uid, name="User", email="u@example.com")
                 repo.add(user)
 
-        identifiers = test_domain.event_store.store._stream_identifiers("test::user")
+        identifiers = test_domain.event_store.store.stream_ids("test::user")
         assert sorted(identifiers) == sorted(ids)
 
     @pytest.mark.eventstore
@@ -238,7 +238,7 @@ class TestStreamIdentifiers:
             user.activate()
             repo.add(user)
 
-        identifiers = test_domain.event_store.store._stream_identifiers("test::user")
+        identifiers = test_domain.event_store.store.stream_ids("test::user")
         assert identifiers == [identifier]
 
     @pytest.mark.eventstore
@@ -252,10 +252,12 @@ class TestStreamIdentifiers:
             repo.add(user)
 
         # Write a raw message with a malformed stream name (trailing dash,
-        # no identifier) to exercise the guard in _stream_identifiers.
-        test_domain.event_store.store._write("test::user-", "SomeType", {"key": "val"})
+        # no identifier) to exercise the guard in stream_ids.
+        test_domain.event_store.store.write_message(
+            "test::user-", "SomeType", {"key": "val"}
+        )
 
-        identifiers = test_domain.event_store.store._stream_identifiers("test::user")
+        identifiers = test_domain.event_store.store.stream_ids("test::user")
         # Only the valid identifier should appear
         assert identifiers == [identifier]
 
@@ -278,7 +280,7 @@ class TestCreateSnapshots:
         assert count == 3
 
         for uid in ids:
-            snapshot = test_domain.event_store.store._read_last_message(
+            snapshot = test_domain.event_store.store.get_last_stream_message(
                 f"test::user:snapshot-{uid}"
             )
             assert snapshot is not None

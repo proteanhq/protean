@@ -81,7 +81,7 @@ def _write_events(store, n: int) -> int:
     for i in range(n):
         # Events live in per-aggregate streams (``category-<id>``) that the
         # category head aggregates.
-        store._write(f"{category}-{i}", "Registered", {"user_id": str(i)})
+        store.write_message(f"{category}-{i}", "Registered", {"user_id": str(i)})
     return store.stream_head_position(category)
 
 
@@ -89,7 +89,7 @@ def _write_position(store, position: int, *, when: str | None = None) -> None:
     """Simulate the projector having processed up to ``position`` at time ``when``."""
     when = when or datetime.now(UTC).isoformat()
     position_stream = f"position-{fqn(BalancesProjector)}-{_stream_category()}"
-    store._write(
+    store.write_message(
         position_stream,
         "Read",
         {"position": position},

@@ -19,11 +19,13 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, overload
 from uuid import uuid4
 
+from protean.port.event_store import row_data
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.event_store_subscription import (
     checkpoint_ahead_of_failed_stream,
@@ -210,8 +212,8 @@ def _collect_event_store_status(
                 )
 
             # Current position (and when it was last written) from the stream
-            last_msg = store._read_last_message(position_stream)
-            current_position = last_msg["data"]["position"] if last_msg else -1
+            last_msg = store.get_last_stream_message(position_stream)
+            current_position = row_data(last_msg)["position"] if last_msg else -1
             last_updated = _extract_position_time(last_msg)
 
             # Head of the category stream
@@ -1005,7 +1007,7 @@ def reset_checkpoint_to_head(domain: Domain, status: SubscriptionStatus) -> int:
                 f"event store configured."
             )
 
-        store._write(
+        store.write_message(
             status.position_stream,
             "Read",
             {"position": head},
@@ -1340,7 +1342,7 @@ def _as_dict(value: object) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def _extract_position_time(last_msg: dict[str, Any] | None) -> str | None:
+def _extract_position_time(last_msg: Mapping[str, Any] | None) -> str | None:
     """Pull the ISO timestamp of a position write from its stored message.
 
     ``write_position`` stamps ``metadata.headers.time``; some stores also expose a

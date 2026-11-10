@@ -87,7 +87,7 @@ def _cleanup(domain) -> None:
 
     if domain.event_store.store:
         try:
-            domain.event_store.store._data_reset()
+            domain.event_store.store.clear()
         finally:
             domain.event_store.store.close()
 

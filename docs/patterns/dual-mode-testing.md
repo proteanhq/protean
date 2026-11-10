@@ -267,7 +267,7 @@ following all work identically in memory and real mode:
 - **Event handling**: Handlers fire during UoW commit (sync mode)
 - **Projections**: Projectors update read models from domain events
 - **Outbox pattern**: Events written to outbox table in same transaction
-- **Data reset**: `clear()` on providers and `_data_reset()` on brokers and event stores clear all state between tests
+- **Data reset**: `clear()` on providers and the event store and `_data_reset()` on brokers remove all state between tests
 
 ---
 

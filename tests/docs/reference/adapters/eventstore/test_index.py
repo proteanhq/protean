@@ -51,7 +51,9 @@ def test_snapshots_are_created(example):
     snapshot_stream = f"banking::account:snapshot-{example.account.id}"
     with example.domain.domain_context():
         # Snapshots are raw records, not domain messages, so read them raw
-        snapshots = example.domain.event_store.store._read(snapshot_stream)
+        snapshots = example.domain.event_store.store.get_stream_messages(
+            snapshot_stream
+        )
 
     assert len(snapshots) == 2
     assert [m["data"]["balance"] for m in snapshots] == [150.0, 150.0]
@@ -81,10 +83,10 @@ def test_message_db_configuration_connects(tmp_path, monkeypatch):
     stream = f"doc_check-{uuid4()}"
     with domain.domain_context():
         store = domain.event_store.store
-        store._write(stream, "Checked", {"n": 1})
+        store.write_message(stream, "Checked", {"n": 1})
 
         assert isinstance(store, MessageDBStore)
-        assert [m["data"] for m in store._read(stream)] == [{"n": 1}]
+        assert [m["data"] for m in store.get_stream_messages(stream)] == [{"n": 1}]
 
 
 def _first_column_of_table_headed(header: str) -> set[str]:

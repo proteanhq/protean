@@ -75,7 +75,7 @@ def domain(request):
     domain.init(traverse=False)
     with domain.domain_context():
         yield domain
-        domain.event_store.store._data_reset()
+        domain.event_store.store.clear()
         domain.event_store.store.close()
 
 

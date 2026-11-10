@@ -1,16 +1,27 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import logging
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import parse_qsl, urlparse
 
 import psycopg2
 from message_db.client import MessageDB
 
 from protean.exceptions import ConfigurationError, ExpectedVersionError
-from protean.port.event_store import BaseEventStore, EventStoreCapabilities
+from protean.port.event_store import (
+    BaseEventStore,
+    EventStoreCapabilities,
+    EventStoreHealth,
+    EventStorePort,
+    RawMessage,
+)
+from protean.port.health import PoolStats
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+
+logger = logging.getLogger(__name__)
 
 
 def _superuser_connection(database_uri: str) -> psycopg2.extensions.connection:
@@ -56,35 +67,40 @@ def _truncate_message_store(database_uri: str) -> None:
 class MessageDBStore(BaseEventStore):
     """MessageDB event store adapter.
 
-    Connection pool parameters can be configured via conn_info:
+    Connection pool parameters can be configured via config:
         - max_connections: Maximum number of connections in the pool
     """
 
-    # Keys from conn_info that are forwarded to MessageDB connection pool
+    # Keys from config that are forwarded to MessageDB connection pool
     _POOL_KEYS = frozenset({"max_connections"})
 
-    def __init__(self, domain: Domain, conn_info: dict[str, Any]) -> None:
-        super().__init__("MessageDB", domain, conn_info)
+    def __init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None:
+        super().__init__(name, domain, config)
 
         self._client: MessageDB | None = None
         self._pool_kwargs: dict[str, Any] = {
-            key: value for key, value in conn_info.items() if key in self._POOL_KEYS
+            key: value for key, value in config.items() if key in self._POOL_KEYS
         }
 
     @property
     def capabilities(self) -> EventStoreCapabilities:
-        # No CONSUMER_GROUPS: the client's category read accepts a group member
-        # and a group size, but ``_read`` does not pass them. No
+        # CONSUMER_GROUPS: ``get_category_messages`` passes the group member and
+        # size to Message DB's ``get_category_messages`` function. No
         # SCHEMA_MANAGEMENT: Message DB's own scripts install the schema.
-        return EventStoreCapabilities.PRODUCTION
+        return (
+            EventStoreCapabilities.PRODUCTION | EventStoreCapabilities.CONSUMER_GROUPS
+        )
 
-    @property
-    def client(self) -> MessageDB:
-        """Return the MessageDB client instance."""
+    def get_connection(self) -> MessageDB:
+        """Return the MessageDB client, creating it on first use.
+
+        Raises:
+            ConfigurationError: When the client cannot connect to the database.
+        """
         if self._client is None:
             try:
                 self._client = MessageDB.from_url(
-                    self.conn_info["database_uri"], **self._pool_kwargs
+                    self.config["database_uri"], **self._pool_kwargs
                 )
             except psycopg2.OperationalError as exc:
                 raise ConfigurationError(
@@ -93,18 +109,22 @@ class MessageDBStore(BaseEventStore):
 
         return self._client
 
-    def _write(
+    def write_message(
         self,
         stream_name: str,
         message_type: str,
-        data: dict[str, Any],
-        metadata: dict[str, Any] | None = None,
+        data: Mapping[str, Any],
+        metadata: Mapping[str, Any] | None = None,
         expected_version: int | None = None,
     ) -> int:
         """Write a message to the event store."""
         try:
-            position: int = self.client.write(
-                stream_name, message_type, data, metadata, expected_version
+            position: int = self.get_connection().write(
+                stream_name,
+                message_type,
+                dict(data),
+                dict(metadata) if metadata is not None else None,
+                expected_version,
             )
         except ValueError as exc:
             # The client re-raises every database error as a ValueError and
@@ -119,77 +139,107 @@ class MessageDBStore(BaseEventStore):
             raise
         return position
 
-    # The message-db client's built-in ``$all`` query filters ``global_position >
-    # position``, so it skips the first position. Protean's read contract is an
-    # inclusive, ``global_position``-ordered page (subscriptions and outbox
-    # reconciliation page from ``last_global_position + 1``), consistent with
-    # category reads (``get_category_messages`` uses ``global_position >= position
-    # ORDER BY global_position ASC``) and the memory adapter, so supply an
-    # inclusive statement.
-    _ALL_STREAM_SQL = (
-        "SELECT "
-        "id::varchar, stream_name::varchar, type::varchar, position::bigint, "
-        "global_position::bigint, data::varchar, metadata::varchar, time::timestamp "
-        "FROM messages "
-        "WHERE global_position >= %(position)s "
-        "ORDER BY global_position ASC "
-        "LIMIT %(batch_size)s"
-    )
-
-    def _read(
-        self,
-        stream_name: str,
-        sql: str | None = None,
-        position: int = 0,
-        no_of_messages: int = 1000,
-    ) -> list[dict[str, Any]]:
-        """Read messages from the event store.
-
-        Category and specific-stream reads use the client's own (already
-        inclusive, ``global_position``/stream-position ordered) statements; only
-        ``$all`` needs a corrected query (see :attr:`_ALL_STREAM_SQL`).
-        """
-        if sql is None and stream_name == "$all":
-            sql = self._ALL_STREAM_SQL
-        messages: list[dict[str, Any]] = self.client.read(
-            stream_name, sql=sql, position=position, no_of_messages=no_of_messages
+    def get_stream_messages(
+        self, stream_name: str, position: int = 0, limit: int = 1000
+    ) -> list[RawMessage]:
+        return _raw(
+            self.get_connection().read_stream(
+                stream_name, position=position, no_of_messages=limit
+            )
         )
-        return messages
 
-    def _read_last_message(self, stream_name: str) -> dict[str, Any] | None:
-        """Read the last message from ``stream_name``.
+    def get_category_messages(
+        self,
+        category: str,
+        position: int = 0,
+        limit: int = 1000,
+        *,
+        consumer_group_member: int | None = None,
+        consumer_group_size: int | None = None,
+    ) -> list[RawMessage]:
+        # Message DB's ``category()`` matches the category exactly, so
+        # ``poweruser`` streams never answer a read of ``user``.
+        return _raw(
+            self.get_connection().read_category(
+                category,
+                position=position,
+                no_of_messages=limit,
+                consumer_group_member=consumer_group_member,
+                consumer_group_size=consumer_group_size,
+            )
+        )
 
-        The client's ``get_last_stream_message()`` resolves only *specific*
-        streams (``category-id``); it returns ``None`` for category streams
-        (``$all`` or a bare ``category``). Fall back to reading the stream and
-        taking the last message so callers reading a category stream — notably
-        ``reconcile_outbox``, which reads ``$all`` (ADR-0015) — get the newest
-        message instead of a spurious ``None``.
-        """
-        message: dict[str, Any] | None = self.client.read_last_message(stream_name)
-        if message is not None:
-            return message
+    def get_all_messages(
+        self, position: int = 0, limit: int = 1000
+    ) -> list[RawMessage]:
+        # The client's own ``$all`` query filters ``global_position > position``
+        # and so skips a row. Reads include ``position`` (ADR-0024), so supply
+        # a query that does.
+        return _raw(
+            self.get_connection().read(
+                "$all", sql=_ALL_SQL, position=position, no_of_messages=limit
+            )
+        )
 
-        # TODO(subhashb/message-db-py#4): page-in the whole stream only because
-        # the message-db client has no category tail-read; replace with a
-        # bounded reverse read when it does.
-        messages = self._read(stream_name, no_of_messages=1_000_000)
-        if not messages:
-            return None
-        return max(messages, key=lambda m: m["global_position"])
+    def get_last_stream_message(self, stream_name: str) -> RawMessage | None:
+        message = self.get_connection().read_last_message(stream_name)
+        return cast(RawMessage, message) if message is not None else None
 
-    def _stream_head_position(self, stream_category: str) -> int:
-        message = self._read_last_message(stream_category)
-        return message.get("global_position", -1) if message else -1
+    def get_last_category_message(self, category: str) -> RawMessage | None:
+        return _first(
+            self.get_connection().read(
+                category, sql=_LAST_IN_CATEGORY_SQL, no_of_messages=1
+            )
+        )
 
-    def _stream_identifiers(self, stream_category: str) -> list[str]:
+    def get_last_message(self) -> RawMessage | None:
+        return _first(
+            self.get_connection().read("$all", sql=_LAST_SQL, no_of_messages=1)
+        )
+
+    def stream_ids(self, category: str) -> list[str]:
         """Return unique aggregate identifiers for a stream category.
 
         Delegates to the MessageDB client which uses an efficient SQL
         DISTINCT query, avoiding loading all messages into memory.
         """
-        identifiers: list[str] = self.client.stream_identifiers(stream_category)
+        identifiers: list[str] = self.get_connection().stream_identifiers(category)
         return identifiers
+
+    def ping(self) -> bool:
+        """Run ``SELECT 1`` on a pooled connection. Never raises."""
+        try:
+            pool = self.get_connection().connection_pool
+            conn = pool.get_connection()
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                    cursor.fetchone()
+                conn.rollback()
+            finally:
+                pool.release(conn)
+        except Exception:  # an unreachable database reports False; logged
+            logger.warning("Message DB ping failed", exc_info=True)
+            return False
+        return True
+
+    def health(self) -> EventStoreHealth:
+        return EventStoreHealth(reachable=self.ping(), pool=self._pool_stats())
+
+    def _pool_stats(self) -> PoolStats | None:
+        if self._client is None:
+            return None
+        # The client exposes no pool counters, so read them off the psycopg2
+        # ``ThreadedConnectionPool`` it wraps: ``_used`` holds the connections
+        # in use and ``_pool`` the idle ones. That pool never opens more than
+        # ``maxconn`` connections, so nothing overflows.
+        pool = self._client.connection_pool._connection_pool
+        return PoolStats(
+            size=pool.maxconn,
+            checked_out=len(pool._used),
+            overflow=0,
+            checked_in=len(pool._pool),
+        )
 
     def close(self) -> None:
         """Close the event store and release all pooled connections."""
@@ -197,10 +247,45 @@ class MessageDBStore(BaseEventStore):
             self._client.connection_pool.closeall()
             self._client = None
 
-    def _data_reset(self) -> None:
+    def clear(self) -> None:
         """Empty the store's messages. Test-harness use only.
 
         Delegates to :func:`_truncate_message_store`; see its docstring for the
         Docker-only connection convention.
         """
         _truncate_message_store(self.domain.config["event_store"]["database_uri"])
+
+
+_SELECT_COLUMNS = (
+    "SELECT "
+    "id::varchar, stream_name::varchar, type::varchar, position::bigint, "
+    "global_position::bigint, data::varchar, metadata::varchar, time::timestamp "
+    "FROM messages "
+)
+
+_ALL_SQL = (
+    _SELECT_COLUMNS + "WHERE global_position >= %(position)s "
+    "ORDER BY global_position ASC "
+    "LIMIT %(batch_size)s"
+)
+
+# ``category()`` is Message DB's own function, so the match is exact. A
+# ``LIKE 'user%'`` filter would also match ``poweruser``.
+_LAST_IN_CATEGORY_SQL = (
+    _SELECT_COLUMNS + "WHERE category(stream_name) = %(stream_name)s "
+    "ORDER BY global_position DESC "
+    "LIMIT %(batch_size)s"
+)
+
+_LAST_SQL = _SELECT_COLUMNS + "ORDER BY global_position DESC LIMIT %(batch_size)s"
+
+
+def _raw(rows: list[dict[str, Any]]) -> list[RawMessage]:
+    return cast("list[RawMessage]", rows)
+
+
+def _first(rows: list[dict[str, Any]]) -> RawMessage | None:
+    return cast(RawMessage, rows[0]) if rows else None
+
+
+_PORT_CHECK: type[EventStorePort] = MessageDBStore

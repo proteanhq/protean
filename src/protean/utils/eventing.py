@@ -4,7 +4,7 @@ import inspect
 import json
 import logging
 from collections import defaultdict
-from collections.abc import Callable, Container
+from collections.abc import Callable, Container, Mapping
 from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Union, cast
@@ -673,7 +673,7 @@ class Message(Element, BaseModel, OptionsMixin):
 
     @classmethod
     def _build_envelope(
-        cls, metadata_dict: dict[str, Any], message: dict[str, Any]
+        cls, metadata_dict: dict[str, Any], message: Mapping[str, Any]
     ) -> None:
         """Build envelope within metadata if not present."""
         if "envelope" not in metadata_dict:
@@ -686,7 +686,7 @@ class Message(Element, BaseModel, OptionsMixin):
 
     @classmethod
     def _build_headers(
-        cls, metadata_dict: dict[str, Any], message: dict[str, Any]
+        cls, metadata_dict: dict[str, Any], message: Mapping[str, Any]
     ) -> None:
         """Build headers within metadata if not present."""
         if "headers" not in metadata_dict:
@@ -708,7 +708,7 @@ class Message(Element, BaseModel, OptionsMixin):
 
     @classmethod
     def _build_event_store_meta(
-        cls, metadata_dict: dict[str, Any], message: dict[str, Any]
+        cls, metadata_dict: dict[str, Any], message: Mapping[str, Any]
     ) -> None:
         """Add EventStoreMeta if position and global_position are present."""
         if "position" in message or "global_position" in message:
@@ -718,7 +718,7 @@ class Message(Element, BaseModel, OptionsMixin):
             )
 
     @classmethod
-    def _validate_and_raise(cls, msg: "Message", message: dict[str, Any]) -> None:
+    def _validate_and_raise(cls, msg: "Message", message: Mapping[str, Any]) -> None:
         """Validate message integrity and raise error if validation fails."""
         assert msg.metadata is not None
         assert msg.metadata.envelope is not None
@@ -739,7 +739,7 @@ class Message(Element, BaseModel, OptionsMixin):
             )
 
     @classmethod
-    def _extract_message_id(cls, msg: "Message", message: dict[str, Any]) -> str:
+    def _extract_message_id(cls, msg: "Message", message: Mapping[str, Any]) -> str:
         """Extract message ID from message or return 'unknown'."""
         assert msg.metadata is not None
         if msg.metadata.headers and msg.metadata.headers.id:
@@ -747,7 +747,7 @@ class Message(Element, BaseModel, OptionsMixin):
         return str(message.get("id", "unknown"))
 
     @classmethod
-    def _extract_message_type(cls, msg: "Message", message: dict[str, Any]) -> str:
+    def _extract_message_type(cls, msg: "Message", message: Mapping[str, Any]) -> str:
         """Extract message type from message or return 'unknown'."""
         assert msg.metadata is not None
         if msg.metadata.headers and msg.metadata.headers.type:
@@ -760,7 +760,7 @@ class Message(Element, BaseModel, OptionsMixin):
         return str(metadata_dict.get("headers", {}).get("stream", "unknown"))
 
     @classmethod
-    def _handle_key_error(cls, e: KeyError, message: dict[str, Any]) -> NoReturn:
+    def _handle_key_error(cls, e: KeyError, message: Mapping[str, Any]) -> NoReturn:
         """Handle KeyError by converting to DeserializationError with context."""
         headers_data = message.get("headers", {})
         message_id = headers_data.get("id") or message.get("id", "unknown")
@@ -786,7 +786,9 @@ class Message(Element, BaseModel, OptionsMixin):
         ) from e
 
     @classmethod
-    def deserialize(cls, message: dict[str, Any], validate: bool = True) -> "Message":
+    def deserialize(
+        cls, message: Mapping[str, Any], validate: bool = True
+    ) -> "Message":
         """Deserialize a message from its dictionary representation."""
         try:
             metadata_dict = message["metadata"]

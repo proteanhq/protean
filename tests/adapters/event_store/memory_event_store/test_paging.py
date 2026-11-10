@@ -24,7 +24,7 @@ def _metadata(stream_name, message_type, message_id):
 def _write_n(store, stream_name, count):
     """Write ``count`` messages to ``stream_name``."""
     for i in range(count):
-        store._write(
+        store.write_message(
             stream_name,
             "Ticked",
             {"n": i},
@@ -65,7 +65,7 @@ def test_read_all_exact_multiple_of_page_size(test_domain):
     page_size = 5
     _write_n(store, "counter-1", page_size * 2)
 
-    with patch.object(store, "_read", wraps=store._read) as spy:
+    with patch.object(store, "_read_raw", wraps=store._read_raw) as spy:
         paged = list(store.read_all("$all", page_size=page_size))
 
     gpos = _global_positions(paged)
@@ -97,7 +97,7 @@ def test_read_all_empty_stream_yields_nothing_in_one_read(test_domain):
     """An empty stream yields nothing and issues a single underlying read."""
     store = test_domain.event_store.store
 
-    with patch.object(store, "_read", wraps=store._read) as spy:
+    with patch.object(store, "_read_raw", wraps=store._read_raw) as spy:
         result = list(store.read_all("$all", page_size=10))
 
     assert result == []

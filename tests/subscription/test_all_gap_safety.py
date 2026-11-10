@@ -637,7 +637,7 @@ async def test_tick_steps_over_a_real_snapshot_without_waiting(
     thing.raise_(Pinged(id="t1"))
     store.append(thing._events[-1])
 
-    raw = store._read("$all")
+    raw = store.get_all_messages()
     snapshot_rows = [row for row in raw if row["type"] == "SNAPSHOT"]
     assert len(snapshot_rows) == 1
     event_positions = [

@@ -14,7 +14,7 @@ def _write(store, data: dict, record_type: str | None) -> None:
     headers = {"id": str(uuid4())}
     if record_type is not None:
         headers["type"] = record_type
-    store._write(
+    store.write_message(
         FAILED_STREAM,
         record_type or "Unknown",
         data,

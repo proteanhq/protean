@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 import time as _time
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -61,12 +61,10 @@ def _unique_store_domains(domains: list[Domain]) -> list[Domain]:
             # Use the database URI as the identity key — object identity
             # doesn't work because each domain creates its own store instance.
             store_key = (
-                store.conn_info.get("database_uri", "")
-                if store is not None and hasattr(store, "conn_info")
-                else ""
+                store.config.get("database_uri", "") if store is not None else ""
             )
             if not store_key:
-                store_key = str(id(store))  # Fallback for stores without conn_info
+                store_key = str(id(store))  # Fallback for stores without a URI
         except Exception as exc:  # noqa: BLE001 - the store is set up from user config
             logger.debug(
                 "Cannot read the event store of domain %s: %r", domain.name, exc
@@ -103,7 +101,7 @@ def _domain_from_stream(stream: str | None) -> str | None:
     return stream.split("::")[0]
 
 
-def _serialize_message(raw_msg: dict[str, Any], domain_name: str) -> dict[str, Any]:
+def _serialize_message(raw_msg: Mapping[str, Any], domain_name: str) -> dict[str, Any]:
     """Convert a raw event store message dict to a JSON-safe timeline entry."""
     metadata = raw_msg.get("metadata", {})
     if not isinstance(metadata, dict):
@@ -139,7 +137,7 @@ def _serialize_message(raw_msg: dict[str, Any], domain_name: str) -> dict[str, A
 
 
 def _serialize_message_detail(
-    raw_msg: dict[str, Any], domain_name: str
+    raw_msg: Mapping[str, Any], domain_name: str
 ) -> dict[str, Any]:
     """Convert a raw event store message dict to a full detail response."""
     summary = _serialize_message(raw_msg, domain_name)
@@ -148,7 +146,7 @@ def _serialize_message_detail(
     return summary
 
 
-def _extract_message_id(msg: dict[str, Any]) -> str | None:
+def _extract_message_id(msg: Mapping[str, Any]) -> str | None:
     """Extract the Protean message ID (headers.id) from a raw message dict."""
     metadata = msg.get("metadata")
     if not metadata or not isinstance(metadata, dict):
@@ -160,7 +158,7 @@ def _extract_message_id(msg: dict[str, Any]) -> str | None:
     return message_id
 
 
-def _extract_stream_category(msg: dict[str, Any]) -> str:
+def _extract_stream_category(msg: Mapping[str, Any]) -> str:
     """Extract the stream category from a raw message."""
     metadata = msg.get("metadata", {})
     if isinstance(metadata, dict):
@@ -177,7 +175,7 @@ def _extract_stream_category(msg: dict[str, Any]) -> str:
     return ""
 
 
-def _extract_kind(msg: dict[str, Any]) -> str | None:
+def _extract_kind(msg: Mapping[str, Any]) -> str | None:
     """Extract the kind (EVENT/COMMAND) from a raw message."""
     metadata = msg.get("metadata", {})
     if isinstance(metadata, dict):
@@ -187,12 +185,12 @@ def _extract_kind(msg: dict[str, Any]) -> str | None:
     return None
 
 
-def _extract_event_type(msg: dict[str, Any]) -> str | None:
+def _extract_event_type(msg: Mapping[str, Any]) -> str | None:
     """Extract the event type from a raw message."""
     return msg.get("type")
 
 
-def _extract_aggregate_id(msg: dict[str, Any]) -> str | None:
+def _extract_aggregate_id(msg: Mapping[str, Any]) -> str | None:
     """Extract the aggregate ID from the stream name (part after '-')."""
     stream: str = msg.get("stream_name", "")
     if not stream:
@@ -247,13 +245,13 @@ def collect_all_events(
     return page, _next_cursor(filtered, page, limit, order)
 
 
-def _is_snapshot(stream: str, msg: dict[str, Any]) -> bool:
+def _is_snapshot(stream: str, msg: Mapping[str, Any]) -> bool:
     return ":snapshot-" in stream or msg.get("type") == "SNAPSHOT"
 
 
 def _timeline_messages(
-    raw_messages: list[dict[str, Any]], domain_name: str
-) -> Iterator[tuple[dict[str, Any], str]]:
+    raw_messages: Sequence[Mapping[str, Any]], domain_name: str
+) -> Iterator[tuple[Mapping[str, Any], str]]:
     """Yield each non-snapshot message with the domain it belongs to."""
     for msg in raw_messages:
         # Exclude snapshot messages from the timeline
@@ -265,9 +263,11 @@ def _timeline_messages(
         yield msg, _domain_from_stream(stream) or domain_name
 
 
-def _read_timeline_messages(domains: list[Domain]) -> list[tuple[dict[str, Any], str]]:
+def _read_timeline_messages(
+    domains: list[Domain],
+) -> list[tuple[Mapping[str, Any], str]]:
     """Read ``(raw_msg, domain_name)`` pairs from every unique event store."""
-    all_events: list[tuple[dict[str, Any], str]] = []
+    all_events: list[tuple[Mapping[str, Any], str]] = []
 
     for domain in _unique_store_domains(domains):
         try:
@@ -275,7 +275,7 @@ def _read_timeline_messages(domains: list[Domain]) -> list[tuple[dict[str, Any],
                 store = domain.event_store.store
                 if store is None:
                     continue
-                raw_messages = store._read("$all", no_of_messages=1_000_000)
+                raw_messages = store.get_all_messages(limit=1_000_000)
                 all_events.extend(_timeline_messages(raw_messages, domain.name))
         except Exception:  # one unreadable store must not empty the timeline; logged
             logger.debug("Failed to read events from %s", domain.name, exc_info=True)
@@ -284,8 +284,8 @@ def _read_timeline_messages(domains: list[Domain]) -> list[tuple[dict[str, Any],
 
 
 def _apply_cursor(
-    all_events: list[tuple[dict[str, Any], str]], cursor: int, order: str
-) -> list[tuple[dict[str, Any], str]]:
+    all_events: list[tuple[Mapping[str, Any], str]], cursor: int, order: str
+) -> list[tuple[Mapping[str, Any], str]]:
     """Drop the messages on the far side of ``cursor`` for the given order."""
     if cursor > 0:
         if order == "desc":
@@ -303,7 +303,7 @@ def _apply_cursor(
 
 
 def _matches_event_filters(
-    msg: dict[str, Any],
+    msg: Mapping[str, Any],
     stream_category: str | None,
     event_type: str | None,
     aggregate_id: str | None,
@@ -345,7 +345,7 @@ def find_event_by_id(domains: list[Domain], message_id: str) -> dict[str, Any] |
                 store = domain.event_store.store
                 if store is None:
                     continue
-                raw_messages = store._read("$all", no_of_messages=1_000_000)
+                raw_messages = store.get_all_messages(limit=1_000_000)
 
                 for msg in raw_messages:
                     if _extract_message_id(msg) == message_id:
@@ -371,7 +371,7 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
                 store = domain.event_store.store
                 if store is None:
                     continue
-                raw_messages = store._read("$all", no_of_messages=1_000_000)
+                raw_messages = store.get_all_messages(limit=1_000_000)
 
                 for msg in raw_messages:
                     _record_stats_message(stats, msg)
@@ -397,7 +397,7 @@ class _TimelineStats:
     first_event_datetime: datetime | None = None
 
 
-def _message_time(msg: dict[str, Any], stream: str) -> tuple[datetime, str] | None:
+def _message_time(msg: Mapping[str, Any], stream: str) -> tuple[datetime, str] | None:
     """Return the message time as a datetime and as its original string.
 
     Returns None when the message has no time or the time cannot be parsed.
@@ -421,7 +421,7 @@ def _message_time(msg: dict[str, Any], stream: str) -> tuple[datetime, str] | No
     return None
 
 
-def _record_stats_message(stats: _TimelineStats, msg: dict[str, Any]) -> None:
+def _record_stats_message(stats: _TimelineStats, msg: Mapping[str, Any]) -> None:
     """Add one raw message to ``stats``, skipping snapshot messages."""
     # Exclude snapshot messages from stats
     stream = msg.get("stream_name", "")
@@ -468,7 +468,7 @@ def _events_per_minute(stats: _TimelineStats) -> float | None:
 
 def _build_causation_tree_from_group(
     store: Any,
-    group: list[dict[str, Any]],
+    group: Sequence[Mapping[str, Any]],
     traces_by_message_id: dict[str, dict[str, Any]] | None = None,
 ) -> CausationNode | None:
     """Build a causation tree from a pre-loaded correlation group.
@@ -503,20 +503,20 @@ def _build_causation_tree_from_group(
 
 
 def _index_group(
-    store: Any, group: list[dict[str, Any]]
+    store: Any, group: Sequence[Mapping[str, Any]]
 ) -> tuple[
-    dict[str, dict[str, Any]],
-    dict[str, list[dict[str, Any]]],
-    list[dict[str, Any]],
+    dict[str, Mapping[str, Any]],
+    dict[str, list[Mapping[str, Any]]],
+    list[Mapping[str, Any]],
 ]:
     """Index a correlation group by message ID and by causation ID.
 
     Returns the messages by their ID, the children of each message sorted by
     global position, and the messages that have no causation ID.
     """
-    by_id: dict[str, dict[str, Any]] = {}
-    children_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    roots: list[dict[str, Any]] = []
+    by_id: dict[str, Mapping[str, Any]] = {}
+    children_map: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    roots: list[Mapping[str, Any]] = []
 
     for m in group:
         hid = store._extract_message_id(m)
@@ -561,7 +561,7 @@ def _node_time_str(time_val: Any) -> str | None:
 
 
 def _headers_and_domain_meta(
-    raw_msg: dict[str, Any],
+    raw_msg: Mapping[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return the ``headers`` and ``domain`` metadata, each as a dict."""
     metadata = raw_msg.get("metadata", {})
@@ -578,9 +578,9 @@ def _headers_and_domain_meta(
 
 def _build_causation_node(
     store: Any,
-    raw_msg: dict[str, Any],
+    raw_msg: Mapping[str, Any],
     parent_time_ms: float | None,
-    children_map: dict[str, list[dict[str, Any]]],
+    children_map: dict[str, list[Mapping[str, Any]]],
     traces: dict[str, dict[str, Any]],
     visited: set[str],
 ) -> CausationNode:
@@ -755,7 +755,7 @@ def _correlation_response_from_group(
     domains: list[Domain],
     correlation_id: str,
     store: Any,
-    group: list[dict[str, Any]],
+    group: Sequence[Mapping[str, Any]],
     domain_name: str,
 ) -> dict[str, Any]:
     """Build the ``build_correlation_response`` body from a loaded group."""
@@ -808,7 +808,7 @@ def collect_aggregate_history(
                 store = domain.event_store.store
                 if store is None:
                     continue
-                raw_messages = store._read(stream_name, no_of_messages=1_000_000)
+                raw_messages = store.get_stream_messages(stream_name, limit=1_000_000)
                 if not raw_messages:
                     continue
 
@@ -841,7 +841,7 @@ def collect_aggregate_history(
 # ---------------------------------------------------------------------------
 
 
-def _extract_correlation_id(msg: dict[str, Any]) -> str | None:
+def _extract_correlation_id(msg: Mapping[str, Any]) -> str | None:
     """Extract correlation_id from a raw message dict."""
     metadata = msg.get("metadata")
     if not metadata or not isinstance(metadata, dict):
@@ -855,14 +855,14 @@ def _extract_correlation_id(msg: dict[str, Any]) -> str | None:
 
 def _group_by_correlation(
     domains: list[Domain],
-) -> dict[str, list[tuple[dict[str, Any], str]]]:
+) -> dict[str, list[tuple[Mapping[str, Any], str]]]:
     """Read all events from the event store and group by correlation_id.
 
     Returns a dict mapping each correlation_id to its list of
     ``(raw_msg, domain_name)`` tuples, sorted by global_position within
     each group.  Messages without a correlation_id are excluded.
     """
-    groups: dict[str, list[tuple[dict[str, Any], str]]] = defaultdict(list)
+    groups: dict[str, list[tuple[Mapping[str, Any], str]]] = defaultdict(list)
 
     for domain in _unique_store_domains(domains):
         try:
@@ -870,7 +870,7 @@ def _group_by_correlation(
                 store = domain.event_store.store
                 if store is None:
                     continue
-                raw_messages = store._read("$all", no_of_messages=1_000_000)
+                raw_messages = store.get_all_messages(limit=1_000_000)
 
                 for cid, msg, msg_domain in _correlated_messages(
                     raw_messages, domain.name
@@ -891,8 +891,8 @@ def _group_by_correlation(
 
 
 def _correlated_messages(
-    raw_messages: list[dict[str, Any]], domain_name: str
-) -> Iterator[tuple[str, dict[str, Any], str]]:
+    raw_messages: Sequence[Mapping[str, Any]], domain_name: str
+) -> Iterator[tuple[str, Mapping[str, Any], str]]:
     """Yield ``(correlation_id, raw_msg, domain_name)`` for each correlated message.
 
     Skips snapshot messages and messages without a correlation ID.
@@ -908,7 +908,7 @@ def _correlated_messages(
 
 def _build_trace_summary(
     correlation_id: str,
-    group: list[tuple[dict[str, Any], str]],
+    group: list[tuple[Mapping[str, Any], str]],
 ) -> dict[str, Any]:
     """Build a trace summary dict from a correlation group.
 
@@ -1031,7 +1031,7 @@ def search_traces(
 
 
 def _chain_matches(
-    grp: list[tuple[dict[str, Any], str]],
+    grp: list[tuple[Mapping[str, Any], str]],
     aggregate_id: str | None,
     event_type: str | None,
     command_type: str | None,

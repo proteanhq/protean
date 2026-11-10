@@ -84,7 +84,7 @@ eventstoredb = "protean_eventstoredb:register"
 ```
 
 The `provider` key in `[event_store]` or `[caches.<name>]` then selects the
-adapter by that name. An event store class takes `(domain, conn_info)` in its
+adapter by that name. An event store class takes `(name, domain, config)` in its
 constructor. A cache class takes `(name, domain, config)`, where `config`
 is the cache's table from the domain configuration.
 

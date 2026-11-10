@@ -298,7 +298,7 @@ def test_event_store_forwards_max_connections(load_toml):
     }
 
     # The pool is opened lazily, on first use
-    store = MessageDBStore(domain, dict(conf))
+    store = MessageDBStore("default", domain, dict(conf))
     assert store._pool_kwargs == {"max_connections": 20}
 
 

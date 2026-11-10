@@ -74,8 +74,9 @@ The built-in stores declare:
   `CATEGORY_COMMIT_ORDER` guarantees hold only while one Unit of Work writes at
   a time. Two overlapping Units of Work can both pass the expected-version
   check and commit out of global-position order.
-- **Message DB**: `PRODUCTION`. See [Message DB](./message-db.md#what-message-db-guarantees)
-  for the flags it leaves out.
+- **Message DB**: `PRODUCTION | CONSUMER_GROUPS`. See
+  [Message DB](./message-db.md#what-message-db-guarantees) for the flag it
+  leaves out.
 
 An event store written outside Protean must define `capabilities`. Creating an
 instance of a subclass that does not define it raises `TypeError`.

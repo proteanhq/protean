@@ -25,7 +25,7 @@ def example():
     with module.compliance.domain_context():
         module.record_account_history()
         yield module
-        module.compliance.event_store.store._data_reset()
+        module.compliance.event_store.store.clear()
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def write_times(example):
 
     These are the timestamps ``as_of`` compares against.
     """
-    rows = example.compliance.event_store.store._read(STREAM)
+    rows = example.compliance.event_store.store.get_stream_messages(STREAM)
     assert [row["position"] for row in rows] == [0, 1, 2, 3, 4]
     return [datetime.fromisoformat(row["time"]) for row in rows]
 
@@ -208,12 +208,12 @@ def api():
     module = load_example("patterns/temporal-queries/001.py")
     with module.compliance.domain_context():
         module.record_account_history()
-        rows = module.compliance.event_store.store._read(STREAM)
+        rows = module.compliance.event_store.store.get_stream_messages(STREAM)
         times = [datetime.fromisoformat(row["time"]) for row in rows]
     assert len(times) == 5
     yield TestClient(module.app), times
     with module.compliance.domain_context():
-        module.compliance.event_store.store._data_reset()
+        module.compliance.event_store.store.clear()
 
 
 def test_api_returns_the_account_at_a_version(api):

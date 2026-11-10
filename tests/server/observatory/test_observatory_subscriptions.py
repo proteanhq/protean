@@ -134,9 +134,9 @@ class _StatusDomain:
             store = self.domain.event_store.store
             for handler_cls, stream, events, position in self._event_store_writes:
                 for i in range(events):
-                    store._write(f"{stream}-{i}", "Placed", {"i": i})
+                    store.write_message(f"{stream}-{i}", "Placed", {"i": i})
                 if position is not None:
-                    store._write(
+                    store.write_message(
                         f"position-{fqn(handler_cls)}-{stream}",
                         "Read",
                         {"position": position},

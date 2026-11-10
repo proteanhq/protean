@@ -337,7 +337,7 @@ Note that there can be only one event store per domain.
 
 Default provider: `memory`
 
-MessageDB forwards `max_connections` through `conn_info` to cap the
+MessageDB forwards `max_connections` from the `[event_store]` settings to cap the
 connection pool used for event reads and writes.
 
 Read more in [Adapters → Event Store](../adapters/eventstore/index.md) section.

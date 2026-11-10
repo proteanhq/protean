@@ -39,35 +39,48 @@ class _ListStore(BaseEventStore):
     def capabilities(self) -> EventStoreCapabilities:  # pragma: no cover
         return EventStoreCapabilities.BASIC
 
-    def _read(
-        self,
-        stream_name: str,
-        sql: str | None = None,
-        position: int = 0,
-        no_of_messages: int = 1000,
-    ) -> list[dict[str, Any]]:
-        assert stream_name == "$all"
+    def get_all_messages(self, position: int = 0, limit: int = 1000) -> list[Any]:
         page = [m for m in self._messages if m["global_position"] >= position]
-        return page[:no_of_messages]
+        return page[:limit]
 
-    # Unused abstract methods: verify never calls them.
-    def _write(self, *args: Any, **kwargs: Any) -> int:  # pragma: no cover
+    # Unused abstract members: verify never calls them.
+    def write_message(self, *args: Any, **kwargs: Any) -> int:  # pragma: no cover
         raise NotImplementedError
 
-    def _read_last_message(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
+    def get_stream_messages(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
         raise NotImplementedError
 
-    def _stream_identifiers(
+    def get_category_messages(
         self, *args: Any, **kwargs: Any
-    ) -> list[str]:  # pragma: no cover
+    ) -> Any:  # pragma: no cover
         raise NotImplementedError
 
-    def _stream_head_position(
+    def get_last_stream_message(
         self, *args: Any, **kwargs: Any
-    ) -> int:  # pragma: no cover
+    ) -> Any:  # pragma: no cover
         raise NotImplementedError
 
-    def _data_reset(self) -> None:  # pragma: no cover
+    def get_last_category_message(
+        self, *args: Any, **kwargs: Any
+    ) -> Any:  # pragma: no cover
+        raise NotImplementedError
+
+    def get_last_message(self) -> Any:  # pragma: no cover
+        raise NotImplementedError
+
+    def stream_ids(self, *args: Any, **kwargs: Any) -> list[str]:  # pragma: no cover
+        raise NotImplementedError
+
+    def ping(self) -> bool:  # pragma: no cover
+        raise NotImplementedError
+
+    def health(self) -> Any:  # pragma: no cover
+        raise NotImplementedError
+
+    def get_connection(self) -> object:  # pragma: no cover
+        raise NotImplementedError
+
+    def clear(self) -> None:  # pragma: no cover
         raise NotImplementedError
 
 

@@ -124,7 +124,7 @@ class TestDomainContext:
         with bed.domain_context():
             pass
 
-        mock_event_store.store._data_reset.assert_called_once()
+        mock_event_store.store.clear.assert_called_once()
 
     def test_cleanup_on_exception(self, domain):
         """Data stores are reset even when the test raises an exception."""
@@ -143,7 +143,7 @@ class TestDomainContext:
         # Cleanup still happens
         mock_provider.clear.assert_called_once()
         mock_broker._data_reset.assert_called_once()
-        mock_event_store.store._data_reset.assert_called_once()
+        mock_event_store.store.clear.assert_called_once()
 
     def test_activates_domain_context(self, domain):
         """current_domain resolves to the correct domain inside the context."""
@@ -228,10 +228,10 @@ class TestDomainContextIsolation:
 
         provider_a.clear.assert_called_once()
         broker_a._data_reset.assert_called_once()
-        store_a._data_reset.assert_called_once()
+        store_a.clear.assert_called_once()
         provider_b.clear.assert_not_called()
         broker_b._data_reset.assert_not_called()
-        store_b._data_reset.assert_not_called()
+        store_b.clear.assert_not_called()
 
     @pytest.mark.no_test_domain
     def test_leaked_context_keeps_the_other_domain_data(self):

@@ -365,7 +365,7 @@ def run_around_tests(test_domain: Domain | None) -> Iterator[None]:
 
         if test_domain.event_store.store:
             try:
-                test_domain.event_store.store._data_reset()
+                test_domain.event_store.store.clear()
             finally:
                 test_domain.event_store.store.close()
 

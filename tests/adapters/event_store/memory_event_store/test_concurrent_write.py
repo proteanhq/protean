@@ -17,7 +17,7 @@ def test_concurrent_writes_with_expected_version(test_domain):
     stream = "testStream-concurrent"
 
     # Seed the stream so version is 0
-    test_domain.event_store.store._write(stream, "Event1", {"seq": "seed"})
+    test_domain.event_store.store.write_message(stream, "Event1", {"seq": "seed"})
 
     barrier = threading.Barrier(2, timeout=5)
     results: dict[str, Exception | None] = {"t1": None, "t2": None}
@@ -27,7 +27,7 @@ def test_concurrent_writes_with_expected_version(test_domain):
         ctx.push()
         try:
             barrier.wait()  # synchronize both threads
-            test_domain.event_store.store._write(
+            test_domain.event_store.store.write_message(
                 stream, "Event1", {"seq": key}, expected_version=0
             )
         except Exception as exc:
@@ -58,10 +58,10 @@ def test_write_with_wrong_expected_version_raises_expected_version_error(
     test_domain,
 ):
     stream = "testStream-wrong-version"
-    test_domain.event_store.store._write(stream, "Event1", {"seq": "seed"})
+    test_domain.event_store.store.write_message(stream, "Event1", {"seq": "seed"})
 
     with pytest.raises(ExpectedVersionError) as exc_info:
-        test_domain.event_store.store._write(
+        test_domain.event_store.store.write_message(
             stream, "Event1", {"seq": "stale"}, expected_version=5
         )
 

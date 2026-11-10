@@ -73,7 +73,7 @@ def test_rebuild_replays_an_older_event_version_through_its_upcaster():
     assert message.metadata.headers.type == "Rebuild.Opened.v1"
 
     with domain.domain_context():
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             message.metadata.headers.stream,
             message.metadata.headers.type,
             message.data,

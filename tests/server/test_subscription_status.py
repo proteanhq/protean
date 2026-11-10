@@ -168,12 +168,14 @@ def _register_order(domain: Domain) -> str:
 def _write_events(store, stream_category: str, count: int) -> None:
     with_metadata = {"headers": {"id": str(uuid4()), "type": "OrderPlaced"}}
     for n in range(count):
-        store._write(f"{stream_category}-1", "OrderPlaced", {"n": n}, with_metadata)
+        store.write_message(
+            f"{stream_category}-1", "OrderPlaced", {"n": n}, with_metadata
+        )
 
 
 def _write_checkpoint(store, position_stream: str, position: int) -> None:
     """Write a ``Read`` position record, the shape a live subscription writes."""
-    store._write(position_stream, "Read", {"position": position})
+    store.write_message(position_stream, "Read", {"position": position})
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +508,9 @@ class TestEventStoreStatus:
         self, test_domain
     ):
         with patch.object(
-            self.store, "_read_last_message", side_effect=RuntimeError("store down")
+            self.store,
+            "get_last_stream_message",
+            side_effect=RuntimeError("store down"),
         ):
             status = _statuses(test_domain)[fqn(OrderNotifier)]
 
@@ -1486,7 +1490,7 @@ def _es_status(
 
 def _seed_checkpoint(store, position_stream: str, position: int) -> None:
     """Write a ``Read`` position record, the shape a live subscription writes."""
-    store._write(position_stream, "Read", {"position": position})
+    store.write_message(position_stream, "Read", {"position": position})
 
 
 class TestResetCheckpointToHead:
@@ -1499,8 +1503,8 @@ class TestResetCheckpointToHead:
         with test_domain.domain_context():
             # Live store head for `order` is 2; the status carries head 7 from
             # verification. The reset must write 7, not the live 2.
-            store._write("order-1", "Placed", {"n": 1})
-            store._write("order-1", "Placed", {"n": 2})
+            store.write_message("order-1", "Placed", {"n": 1})
+            store.write_message("order-1", "Placed", {"n": 2})
             assert store.stream_head_position("order") == 2
             # A stale checkpoint sitting well past the head.
             _seed_checkpoint(store, "position-Handler-order", 99)
@@ -1515,7 +1519,7 @@ class TestResetCheckpointToHead:
 
         assert new_position == 7
         with test_domain.domain_context():
-            last = store._read_last_message("position-Handler-order")
+            last = store.get_last_stream_message("position-Handler-order")
         assert last is not None
         assert last["data"]["position"] == 7
         # Same record type the runtime EventStoreSubscription.write_position writes.
@@ -1526,7 +1530,7 @@ class TestResetCheckpointToHead:
         consistent against the same head."""
         store = test_domain.event_store.store
         with test_domain.domain_context():
-            store._write("order-1", "Placed", {"n": 1})
+            store.write_message("order-1", "Placed", {"n": 1})
             head = store.stream_head_position("order")
             _seed_checkpoint(store, "position-RT-order", head + 5)
 
@@ -1541,7 +1545,9 @@ class TestResetCheckpointToHead:
         reset_checkpoint_to_head(test_domain, stale)
 
         with test_domain.domain_context():
-            written = store._read_last_message("position-RT-order")["data"]["position"]
+            written = store.get_last_stream_message("position-RT-order")["data"][
+                "position"
+            ]
         verified = _es_status(
             stream_category="order",
             current_position=str(written),
@@ -1568,7 +1574,7 @@ class TestResetCheckpointToHead:
 
         assert new_position == -1
         with test_domain.domain_context():
-            last = store._read_last_message("position-Handler-empty")
+            last = store.get_last_stream_message("position-Handler-empty")
         assert last is not None
         assert last["data"]["position"] == -1
 
@@ -1610,8 +1616,8 @@ class TestPerformResetsScope:
     def test_only_beyond_head_checkpoint_is_modified(self, test_domain):
         store = test_domain.event_store.store
         with test_domain.domain_context():
-            store._write("order-1", "Placed", {"n": 1})
-            store._write("payment-1", "Paid", {"n": 1})
+            store.write_message("order-1", "Placed", {"n": 1})
+            store.write_message("payment-1", "Paid", {"n": 1})
             order_head = store.stream_head_position("order")
             payment_head = store.stream_head_position("payment")
 
@@ -1620,8 +1626,8 @@ class TestPerformResetsScope:
             _seed_checkpoint(store, "position-Healthy-payment", payment_head)
             _seed_checkpoint(store, "position-Unknown-order", 3)
             _seed_checkpoint(store, "position-Bad-order", order_head + 5)
-            healthy_before = store._read_last_message("position-Healthy-payment")
-            unknown_before = store._read_last_message("position-Unknown-order")
+            healthy_before = store.get_last_stream_message("position-Healthy-payment")
+            unknown_before = store.get_last_stream_message("position-Unknown-order")
 
         bad = _es_status(
             name="bad",
@@ -1662,9 +1668,9 @@ class TestPerformResetsScope:
         assert resets[0]["new_position"] == str(order_head)
 
         with test_domain.domain_context():
-            bad_after = store._read_last_message("position-Bad-order")
-            healthy_after = store._read_last_message("position-Healthy-payment")
-            unknown_after = store._read_last_message("position-Unknown-order")
+            bad_after = store.get_last_stream_message("position-Bad-order")
+            healthy_after = store.get_last_stream_message("position-Healthy-payment")
+            unknown_after = store.get_last_stream_message("position-Unknown-order")
 
         # The beyond-head checkpoint advanced to head.
         assert bad_after["data"]["position"] == order_head
@@ -1712,7 +1718,7 @@ def _seed_recovery_checkpoint(
     store, recovery_stream: str, watermark: int, unresolved: dict, category="order"
 ) -> None:
     """Write a ``Checkpoint`` record, the shape a live subscription writes."""
-    store._write(
+    store.write_message(
         recovery_stream,
         "Checkpoint",
         {"watermark": watermark, "unresolved": unresolved},
@@ -1746,7 +1752,7 @@ def _seed_failed_record(
     falls back to the category stream at ``position``; pass a specific stream to
     exercise the specific-stream re-read path.
     """
-    store._write(
+    store.write_message(
         failed_stream,
         record_type,
         {
@@ -1778,7 +1784,7 @@ def _seed_event(
     """Write a domain event to a specific stream, with the metadata a real event
     carries so ``store.read`` can deserialize it back (the recovery re-read does).
     """
-    store._write(
+    store.write_message(
         stream_name,
         event_type,
         data,
@@ -2031,7 +2037,7 @@ class TestReconstructUnresolved:
         cannot advance the cursor. Rather than silently return a partial scan as
         if complete, it raises so the CLI reports the subscription unverified."""
         store = MagicMock()
-        store._read_last_message.return_value = None  # no checkpoint
+        store.get_last_stream_message.return_value = None  # no checkpoint
         msg = MagicMock()
         msg.data.get.side_effect = lambda k, default=None: {
             "position": 5,
@@ -2054,7 +2060,7 @@ class TestReconstructUnresolved:
         returned best-effort so one malformed trailing record does not fail
         subscription startup. (A full page in this state still raises.)"""
         store = MagicMock()
-        store._read_last_message.return_value = None  # no checkpoint
+        store.get_last_stream_message.return_value = None  # no checkpoint
         msg = MagicMock()
         msg.data.get.side_effect = lambda k, default=None: {
             "position": 5,
@@ -2084,7 +2090,7 @@ class TestReconstructUnresolved:
         non-monotonic or duplicate position) would loop forever; it raises so the
         CLI reports the subscription unverified instead of hanging."""
         store = MagicMock()
-        store._read_last_message.return_value = None  # cursor starts at 0
+        store.get_last_stream_message.return_value = None  # cursor starts at 0
         msg = MagicMock()
         msg.data.get.side_effect = lambda k, default=None: {
             "position": 9,
@@ -2114,7 +2120,7 @@ class TestCheckpointAheadOfFailedStream:
         reconstruction to handle, not read as ahead-of-stream (which would compare
         a string to an int and raise)."""
         store = test_domain.event_store.store
-        store._write("rec", "Checkpoint", {"watermark": "oops"})
+        store.write_message("rec", "Checkpoint", {"watermark": "oops"})
         assert checkpoint_ahead_of_failed_stream(store, "rec", "failed") is False
 
 
@@ -2463,7 +2469,9 @@ class TestCollectRecoveryCheckpointStatuses:
         # non-numeric status head (a foreign store) is reported as -1 rather than
         # crashing the int parse.
         with (
-            patch.object(store, "_read_last_message", side_effect=RuntimeError("boom")),
+            patch.object(
+                store, "get_last_stream_message", side_effect=RuntimeError("boom")
+            ),
             patch.object(
                 store, "stream_head_position", side_effect=RuntimeError("head boom")
             ),
@@ -2544,7 +2552,7 @@ class TestCollectRecoveryCheckpointStatuses:
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             # A metadata-less message makes ``store.read`` raise on that stream.
-            store._write("order-corrupt", "Placed", {"n": 1})
+            store.write_message("order-corrupt", "Placed", {"n": 1})
             _seed_recovery_checkpoint(
                 store,
                 "recovery-checkpoint-Handler-order",
@@ -2579,7 +2587,7 @@ class TestCollectRecoveryCheckpointStatuses:
         store = test_domain.event_store.store
         with test_domain.domain_context():
             head = self._seed_order_head(store)
-            store._write("order-corrupt", "Placed", {"n": 1})
+            store.write_message("order-corrupt", "Placed", {"n": 1})
             _seed_recovery_checkpoint(
                 store,
                 "recovery-checkpoint-Handler-order",
@@ -2607,7 +2615,7 @@ class TestCollectRecoveryCheckpointStatuses:
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             # A record whose data carries no position at all.
-            store._write(
+            store.write_message(
                 "failed-Handler-order",
                 "Failed",
                 {"position": None, "retry_count": 1},
@@ -2647,14 +2655,14 @@ class TestCollectRecoveryCheckpointStatuses:
                     },
                 },
             )
-            before = store._read_last_message("recovery-checkpoint-Handler-order")
+            before = store.get_last_stream_message("recovery-checkpoint-Handler-order")
 
         collect_recovery_checkpoint_statuses(
             test_domain, [_rec_status(head_position=str(head))]
         )
 
         with test_domain.domain_context():
-            after = store._read_last_message("recovery-checkpoint-Handler-order")
+            after = store.get_last_stream_message("recovery-checkpoint-Handler-order")
 
         # No new record appended: same global_position, same content.
         assert after["global_position"] == before["global_position"]
@@ -2702,7 +2710,7 @@ class TestResetRecoveryCheckpoint:
 
         # The healthy entry survived, the stale one is gone.
         with test_domain.domain_context():
-            last = store._read_last_message("recovery-checkpoint-Handler-order")
+            last = store.get_last_stream_message("recovery-checkpoint-Handler-order")
         assert set(last["data"]["unresolved"]) == {"1"}
 
         # A later collection is clean.
@@ -2728,7 +2736,7 @@ class TestResetRecoveryCheckpoint:
         # The rewritten checkpoint carries a watermark past the failed record, so
         # reconstruction no longer re-reads it.
         with test_domain.domain_context():
-            last = store._read_last_message("recovery-checkpoint-Handler-order")
+            last = store.get_last_stream_message("recovery-checkpoint-Handler-order")
         assert last["data"]["watermark"] == 1
         assert last["data"]["unresolved"] == {}
         assert collect_recovery_checkpoint_statuses(test_domain, [status]) == []
@@ -2771,7 +2779,7 @@ class TestResetRecoveryCheckpoint:
                     }
                 },
             )
-            before = store._read_last_message("recovery-checkpoint-Handler-order")
+            before = store.get_last_stream_message("recovery-checkpoint-Handler-order")
 
         finding = RecoveryCheckpointStatus(
             name="sub",
@@ -2789,5 +2797,5 @@ class TestResetRecoveryCheckpoint:
 
         # The real snapshot was not overwritten with the finding's empty one.
         with test_domain.domain_context():
-            after = store._read_last_message("recovery-checkpoint-Handler-order")
+            after = store.get_last_stream_message("recovery-checkpoint-Handler-order")
         assert after["data"] == before["data"]

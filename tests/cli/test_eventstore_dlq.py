@@ -99,7 +99,7 @@ def _create_message(global_position: int, stream_position: int, stream_name: str
 
 
 def _write_event_to_store(test_domain, msg: Message) -> None:
-    test_domain.event_store.store._write(
+    test_domain.event_store.store.write_message(
         msg.metadata.headers.stream,
         msg.metadata.headers.type,
         msg.data,
@@ -306,7 +306,7 @@ class TestEventstoreDlqList:
             p for p in collect_failed_streams(test_domain) if p[0].is_command_handler
         )
         category = info.stream_category
-        test_domain.event_store.store._write(
+        test_domain.event_store.store.write_message(
             stream,
             FailedPositionStatus.EXHAUSTED.value,
             {
@@ -416,7 +416,7 @@ class TestEventstoreDlqInspect:
 
         # The failing event lives in a stream under the origin category, so a
         # category read by global position can find it.
-        store._write(
+        store.write_message(
             f"{category}-abc",
             "Test.Registered.v1",
             {"id": "abc", "email": "old@example.com", "name": "Old"},
@@ -438,7 +438,7 @@ class TestEventstoreDlqInspect:
         failed_stream = failed_positions_stream(
             fqn(AlwaysFailingEventHandler), category
         )
-        store._write(
+        store.write_message(
             failed_stream,
             FailedPositionStatus.EXHAUSTED.value,
             {
@@ -489,7 +489,7 @@ class TestEventstoreDlqInspect:
         category = User.meta_.stream_category
         stream = f"{category}-abc"
 
-        store._write(
+        store.write_message(
             stream,
             "Test.Registered.v1",
             {"id": "abc", "email": "only@example.com", "name": "Only"},
@@ -506,7 +506,7 @@ class TestEventstoreDlqInspect:
         failed_stream = failed_positions_stream(
             fqn(AlwaysFailingEventHandler), category
         )
-        store._write(
+        store.write_message(
             failed_stream,
             FailedPositionStatus.EXHAUSTED.value,
             {
@@ -554,7 +554,7 @@ class TestEventstoreDlqInspect:
         store = test_domain.event_store.store
         category = User.meta_.stream_category
 
-        store._write(
+        store.write_message(
             f"{category}-abc",
             "Test.Registered.v1",
             {"id": "abc", "email": "later@example.com", "name": "Later"},
@@ -575,7 +575,7 @@ class TestEventstoreDlqInspect:
         failed_stream = failed_positions_stream(
             fqn(AlwaysFailingEventHandler), category
         )
-        store._write(
+        store.write_message(
             failed_stream,
             FailedPositionStatus.EXHAUSTED.value,
             {
@@ -624,7 +624,7 @@ class TestEventstoreDlqInspect:
         _register(test_domain)
         _drive_to_exhaustion(test_domain)
         failed_stream = collect_failed_streams(test_domain)[0][1]
-        test_domain.event_store.store._write(
+        test_domain.event_store.store.write_message(
             failed_stream,
             later.value,
             {"position": 1, "message_id": str(uuid4()), "retry_count": 2},
@@ -679,7 +679,7 @@ class TestEventstoreDlqInspect:
         failed_stream = failed_positions_stream(
             fqn(AlwaysFailingEventHandler), category
         )
-        store._write(
+        store.write_message(
             failed_stream,
             FailedPositionStatus.EXHAUSTED.value,
             {
@@ -722,7 +722,7 @@ class TestEventstoreDlqInspect:
         failed_stream = failed_positions_stream(
             fqn(AlwaysFailingEventHandler), category
         )
-        store._write(
+        store.write_message(
             failed_stream,
             FailedPositionStatus.EXHAUSTED.value,
             {"message_type": "Test.Registered.v1"},  # no "position"

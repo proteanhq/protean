@@ -14,7 +14,7 @@ from uuid import uuid4
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
-from protean.port.event_store import BaseEventStore
+from protean.port.event_store import BaseEventStore, row_data
 from protean.utils import checkpoint_trace, fqn, recovery_trace
 from protean.utils.backoff import AdaptiveBackoff
 from protean.utils.dlq import failed_positions_stream, recovery_checkpoint_stream
@@ -94,9 +94,9 @@ def reconstruct_unresolved(
     watermark = 0
     unresolved: dict[int, dict[str, Any]] = {}
 
-    checkpoint = store._read_last_message(recovery_checkpoint_stream)
+    checkpoint = store.get_last_stream_message(recovery_checkpoint_stream)
     if checkpoint:
-        stored_watermark = checkpoint["data"].get("watermark", 0)
+        stored_watermark = row_data(checkpoint).get("watermark", 0)
         # A corrupt checkpoint can carry a non-integer watermark (a float, a
         # string, or a bool, which is an int subclass). Used as a read cursor it
         # would skip failed-position records: a store compares 1.5 or True against
@@ -109,7 +109,7 @@ def reconstruct_unresolved(
             watermark = 0
         else:
             watermark = stored_watermark
-        snapshot = checkpoint["data"].get("unresolved", {})
+        snapshot = row_data(checkpoint).get("unresolved", {})
         unresolved = {int(pos): info for pos, info in snapshot.items()}
 
     cursor = watermark
@@ -199,7 +199,7 @@ def write_recovery_checkpoint_record(
     function, so the record shape stays a single definition.
     """
     snapshot = {str(pos): info for pos, info in unresolved.items()}
-    store._write(
+    store.write_message(
         recovery_checkpoint_stream,
         "Checkpoint",
         {
@@ -246,7 +246,7 @@ def write_recovery_status_record(
     marker through this same function without an engine, so the two paths produce
     the identical record shape.
     """
-    store._write(
+    store.write_message(
         failed_positions_stream,
         status.value,
         {
@@ -312,13 +312,13 @@ def checkpoint_ahead_of_failed_stream(
     Returns False when the watermark is at or below ``tail + 1``, when there is no
     checkpoint, and when the stored watermark is not an integer.
     """
-    checkpoint = store._read_last_message(recovery_checkpoint_stream)
+    checkpoint = store.get_last_stream_message(recovery_checkpoint_stream)
     if not checkpoint:
         return False
-    stored_watermark = checkpoint["data"].get("watermark", 0)
+    stored_watermark = row_data(checkpoint).get("watermark", 0)
     if not isinstance(stored_watermark, int):
         return False
-    last_failed = store._read_last_message(failed_positions_stream)
+    last_failed = store.get_last_stream_message(failed_positions_stream)
     tail = last_failed.get("position") if last_failed else None
     if not isinstance(tail, int):
         tail = -1
@@ -626,10 +626,10 @@ class EventStoreSubscription(BaseSubscription):
             int: The last read position from the store.
         """
         message = await asyncio.to_thread(
-            self.store._read_last_message, self.subscriber_stream_name
+            self.store.get_last_stream_message, self.subscriber_stream_name
         )
         if message:
-            position: int = message["data"]["position"]
+            position: int = row_data(message)["position"]
             return position
 
         return -1
@@ -687,7 +687,7 @@ class EventStoreSubscription(BaseSubscription):
         self.messages_since_last_position_write = 0  # Reset counter
 
         result = await asyncio.to_thread(
-            self.store._write,
+            self.store.write_message,
             self.subscriber_stream_name,
             "Read",
             {"position": position},
@@ -1159,7 +1159,7 @@ class EventStoreSubscription(BaseSubscription):
         )
 
         await asyncio.to_thread(
-            self.store._write,
+            self.store.write_message,
             self.failed_positions_stream,
             FailedPositionStatus.FAILED.value,
             {
@@ -1304,7 +1304,7 @@ class EventStoreSubscription(BaseSubscription):
         """Write a recovery checkpoint with the current watermark and unresolved positions.
 
         The checkpoint is an append-only record in the checkpoint stream. Only the
-        last record is read on startup (via ``_read_last_message``), so earlier
+        last record is read on startup (via ``get_last_stream_message``), so earlier
         checkpoint records are harmless but never cleaned up. Since the event store
         is append-only with no truncation, the checkpoint stream grows by one
         record per restart — negligible in practice.

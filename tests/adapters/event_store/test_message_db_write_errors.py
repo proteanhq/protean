@@ -11,7 +11,7 @@ pytestmark = pytest.mark.no_test_domain
 
 
 def _store_whose_write_raises(exc: Exception) -> MessageDBStore:
-    store = MessageDBStore(Mock(), {"database_uri": "postgresql://unused"})
+    store = MessageDBStore("default", Mock(), {"database_uri": "postgresql://unused"})
     store._client = MagicMock()
     store._client.write.side_effect = exc
     return store
@@ -43,7 +43,7 @@ def test_wrong_expected_version_raises_expected_version_error(text):
     store = _store_whose_write_raises(_client_error(text, "P0001"))
 
     with pytest.raises(ExpectedVersionError) as exc_info:
-        store._write("s-1", "Event", {}, expected_version=5)
+        store.write_message("s-1", "Event", {}, expected_version=5)
 
     assert str(exc_info.value) == (
         "Wrong expected version: 5 (Stream: s, Stream Version: 0)"
@@ -55,7 +55,7 @@ def test_other_database_error_stays_a_value_error():
     store = _store_whose_write_raises(error)
 
     with pytest.raises(ValueError) as exc_info:
-        store._write("s-1", "Event", {})
+        store.write_message("s-1", "Event", {})
 
     assert exc_info.value is error
 
@@ -65,6 +65,6 @@ def test_p0001_text_without_a_database_cause_stays_a_value_error():
     store = _store_whose_write_raises(error)
 
     with pytest.raises(ValueError) as exc_info:
-        store._write("s-1", "Event", {})
+        store.write_message("s-1", "Event", {})
 
     assert exc_info.value is error

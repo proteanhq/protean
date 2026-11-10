@@ -354,7 +354,7 @@ class TestResetAndClose:
             ("database", "clear"),
             ("broker", "_data_reset"),
             ("cache", "clear"),
-            ("event_store", "_data_reset"),
+            ("event_store", "clear"),
         ],
     )
     def test_clears_then_closes_the_adapter(self, port, clear):

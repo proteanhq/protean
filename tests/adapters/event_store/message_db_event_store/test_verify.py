@@ -34,9 +34,9 @@ class TestMessageDBVerify:
             "domain": {"kind": "EVENT"},
             "headers": {"type": "Registered", "stream": "test::user-abc"},
         }
-        store._write("test::user-abc", "Registered", {"n": 1}, metadata)
-        store._write("test::user-abc", "Renamed", {"n": 2}, metadata)
-        store._write("test::user:snapshot-abc", "SNAPSHOT", {"_version": 1})
+        store.write_message("test::user-abc", "Registered", {"n": 1}, metadata)
+        store.write_message("test::user-abc", "Renamed", {"n": 2}, metadata)
+        store.write_message("test::user:snapshot-abc", "SNAPSHOT", {"_version": 1})
 
         report = store.verify()
 
@@ -62,7 +62,7 @@ class TestMessageDBVerify:
             "headers": {"type": "Registered", "stream": "test::user-abc"},
         }
         for n in range(3):
-            store._write("test::user-abc", "Registered", {"n": n}, metadata)
+            store.write_message("test::user-abc", "Registered", {"n": n}, metadata)
 
         # The ``message_store`` role cannot UPDATE, so connect as ``postgres``.
         conn = _superuser_connection(test_domain.config["event_store"]["database_uri"])

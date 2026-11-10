@@ -23,7 +23,7 @@ def _metadata(stream_name, message_type, message_id):
 
 def _write_event(store, stream_name, n):
     """Write one event carrying ``{"n": n}`` to ``stream_name``."""
-    store._write(
+    store.write_message(
         stream_name,
         "Ticked",
         {"n": n},
@@ -33,7 +33,9 @@ def _write_event(store, stream_name, n):
 
 def _write_snapshot(store, category, identifier, version=0):
     """Write a snapshot row the way the store does: type SNAPSHOT, no metadata."""
-    store._write(f"{category}:snapshot-{identifier}", "SNAPSHOT", {"_version": version})
+    store.write_message(
+        f"{category}:snapshot-{identifier}", "SNAPSHOT", {"_version": version}
+    )
 
 
 def _types(messages):
@@ -190,7 +192,7 @@ def test_read_last_message_scan_is_bounded_near_the_tail(test_domain):
     _write_snapshot(store, "user", "1")  # tail, global position 7
 
     with patch.object(event_store_module, "_SNAPSHOT_TAIL_WINDOW", 2):
-        with patch.object(store, "_read", wraps=store._read) as spy:
+        with patch.object(store, "_read_raw", wraps=store._read_raw) as spy:
             last = store.read_last_message("$all")
 
     assert last is not None
@@ -201,7 +203,7 @@ def test_read_last_message_scan_is_bounded_near_the_tail(test_domain):
     assert spy.call_args_list, "the snapshot tail should have triggered a scan"
     for call in spy.call_args_list:
         assert call.kwargs["position"] > 0
-        assert call.kwargs["no_of_messages"] == 2
+        assert call.kwargs["limit"] == 2
 
 
 def test_read_last_message_none_when_only_snapshots(test_domain):
@@ -268,14 +270,14 @@ def test_read_with_snapshot_positions_leaves_out_a_snapshot_with_no_position(
     the reported positions."""
     store = test_domain.event_store.store
     _write_event(store, "user-1", 0)
-    rows = store._read("$all")
+    rows = store.get_all_messages()
     snapshot_rows = [
         {"type": "SNAPSHOT", "global_position": None},
         {"type": "SNAPSHOT"},
         {"type": "SNAPSHOT", "global_position": 7},
     ]
 
-    with patch.object(store, "_read", return_value=rows + snapshot_rows):
+    with patch.object(store, "_read_raw", return_value=rows + snapshot_rows):
         messages, snapshot_positions = store._read_with_snapshot_positions("$all")
 
     assert _ns(messages) == [0]

@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from abc import ABCMeta, abstractmethod
+from abc import abstractmethod
 from collections import defaultdict, deque
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass
 from dataclasses import field as dc_field
 from datetime import datetime
 from enum import Flag, auto
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.port.health import PoolStats
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -138,27 +139,56 @@ class EventStoreCapabilities(Flag):
     PRODUCTION = CONSISTENT | DURABLE
 
 
-class BaseEventStore(metaclass=ABCMeta):
-    """This class outlines the base event store capabilities
-    to be implemented in all supported event store adapters.
+class RawMessage(TypedDict):
+    """One row as an event store returns it.
 
-    It is also a marker interface for registering event store
-    classes with the domain.
+    ``position`` is the row's place in its stream, from 0 with no gaps.
+    ``global_position`` is its place in the whole store and may have gaps. A
+    snapshot row has ``type == "SNAPSHOT"`` and ``metadata`` of ``None``.
     """
 
-    def __init__(self, name: str, domain: Domain, conn_info: dict[str, str]) -> None:
-        self.name = name
-        self.domain = domain
-        self.conn_info = conn_info
+    id: str
+    stream_name: str
+    type: str
+    position: int
+    global_position: int
+    data: dict[str, Any] | None
+    metadata: dict[str, Any] | None
+    time: datetime
 
-    def close(self) -> None:
-        """Close the event store and release all connections.
 
-        Subclasses that hold external resources (connection pools, sockets,
-        etc.) should override this to perform cleanup.  The default
-        implementation is a no-op so that adapters without external
-        resources (e.g. the in-memory store) work without changes.
-        """
+def row_data(row: RawMessage) -> dict[str, Any]:
+    """Return the row's ``data``, or an empty dict when the row has none."""
+    return row["data"] or {}
+
+
+@dataclass(frozen=True)
+class EventStoreHealth:
+    """The health of an event store.
+
+    ``reachable`` is the result of ``ping()``. ``pool`` describes the
+    adapter's connection pool, or is ``None`` for an adapter without one or
+    whose pool does not exist yet.
+    """
+
+    reachable: bool
+    pool: PoolStats | None
+
+
+class EventStorePort(Protocol):
+    """The operations an event-store adapter implements.
+
+    Every read includes the row at ``position``. A stream read pages by the
+    stream ``position``. A category read and an all read page by
+    ``global_position`` (ADR-0024). A category read returns only streams whose
+    category equals ``category`` exactly, and never a snapshot stream
+    (``<category>:snapshot-<id>``).
+    """
+
+    name: str
+
+    def __init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None:
+        """Build the adapter named ``name`` for ``domain`` from ``config``."""
 
     @property
     @abstractmethod
@@ -166,40 +196,146 @@ class BaseEventStore(metaclass=ABCMeta):
         """The guarantees this event store makes."""
 
     @abstractmethod
-    def _write(
+    def write_message(
         self,
         stream_name: str,
         message_type: str,
-        data: dict[str, Any],
-        metadata: dict[str, Any] | None = None,
+        data: Mapping[str, Any],
+        metadata: Mapping[str, Any] | None = None,
         expected_version: int | None = None,
     ) -> int:
-        """Write a message to the event store.
+        """Append a message to ``stream_name`` and return its stream position.
 
-        Returns the position of the message in the stream.
-
-        Implemented by the concrete event store adapter.
+        Raises:
+            ExpectedVersionError: When ``expected_version`` is given and is not
+                the stream's current version. Nothing is written.
         """
 
     @abstractmethod
-    def _read(
+    def get_stream_messages(
+        self, stream_name: str, position: int = 0, limit: int = 1000
+    ) -> list[RawMessage]:
+        """Return up to ``limit`` rows of one stream from stream ``position``."""
+
+    @abstractmethod
+    def get_category_messages(
         self,
-        stream_name: str,
-        sql: str | None = None,
+        category: str,
         position: int = 0,
-        no_of_messages: int = 1000,
-    ) -> list[dict[str, Any]]:
-        """Read messages from the event store.
+        limit: int = 1000,
+        *,
+        consumer_group_member: int | None = None,
+        consumer_group_size: int | None = None,
+    ) -> list[RawMessage]:
+        """Return up to ``limit`` rows of ``category`` from ``global_position``.
 
-        Implemented by the concrete event store adapter.
+        With ``consumer_group_member`` and ``consumer_group_size``, return only
+        the streams that belong to that member of the group.
+
+        Raises:
+            NotSupportedError: When a consumer-group argument is given and the
+                adapter does not declare ``CONSUMER_GROUPS``.
         """
 
     @abstractmethod
-    def _read_last_message(self, stream_name: str) -> dict[str, Any] | None:
-        """Read the last message from the event store.
+    def get_all_messages(
+        self, position: int = 0, limit: int = 1000
+    ) -> list[RawMessage]:
+        """Return up to ``limit`` rows of the whole store from ``global_position``."""
 
-        Implemented by the concrete event store adapter.
+    @abstractmethod
+    def get_last_stream_message(self, stream_name: str) -> RawMessage | None:
+        """Return the newest row of one stream, or ``None`` when it is empty."""
+
+    @abstractmethod
+    def get_last_category_message(self, category: str) -> RawMessage | None:
+        """Return the row of ``category`` with the highest ``global_position``.
+
+        Returns ``None`` when the category is empty.
         """
+
+    @abstractmethod
+    def get_last_message(self) -> RawMessage | None:
+        """Return the row with the highest ``global_position`` in the store.
+
+        Returns ``None`` when the store is empty.
+        """
+
+    @abstractmethod
+    def stream_ids(self, category: str) -> list[str]:
+        """Return the sorted, unique identifiers of the streams in ``category``.
+
+        A stream ``<category>-<id>`` gives ``<id>``. Snapshot streams are left
+        out.
+        """
+
+    @abstractmethod
+    def ping(self) -> bool:
+        """Return whether the store answers. Never raises."""
+
+    @abstractmethod
+    def health(self) -> EventStoreHealth:
+        """Return the store's health record."""
+
+    @abstractmethod
+    def get_connection(self) -> object:
+        """Return the native client, or ``None`` for an adapter without one."""
+
+    @abstractmethod
+    def clear(self) -> None:
+        """Delete every message. Test-harness use only."""
+
+    def close(self) -> None:
+        """Release the store's connections. The default does nothing."""
+        return
+
+    def create_schema(self) -> None:
+        """Create the store's tables, behind ``SCHEMA_MANAGEMENT``.
+
+        The default does nothing.
+        """
+        return
+
+    def drop_schema(self) -> None:
+        """Drop the store's tables, behind ``SCHEMA_MANAGEMENT``.
+
+        The default does nothing.
+        """
+        return
+
+
+class BaseEventStore(EventStorePort):
+    """The event-store features, built on the `EventStorePort` members.
+
+    Each event-store adapter subclasses this class and implements the Port.
+    """
+
+    def __init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None:
+        self.name = name
+        self.domain = domain
+        self.config = config
+
+    def _read_raw(
+        self, stream: str, position: int = 0, limit: int = 1000
+    ) -> list[RawMessage]:
+        """Read ``stream`` through the Port member for its scope.
+
+        ``$all`` reads the whole store, a name with no ``-`` reads a category,
+        and any other name reads one stream.
+        """
+        if stream == "$all":
+            return self.get_all_messages(position, limit)
+        if "-" not in stream:
+            return self.get_category_messages(stream, position, limit)
+        return self.get_stream_messages(stream, position, limit)
+
+    def _read_last_raw(self, stream: str) -> RawMessage | None:
+        """Read the newest row of ``stream``, with the scope rule of ``_read_raw``."""
+        if stream == "$all":
+            return self.get_last_message()
+        if "-" not in stream:
+            return self.get_last_category_message(stream)
+        return self.get_last_stream_message(stream)
 
     def category(self, stream: str) -> str:
         if not stream:
@@ -209,7 +345,7 @@ class BaseEventStore(metaclass=ABCMeta):
         return stream_category
 
     @staticmethod
-    def _is_snapshot_row(raw_message: dict[str, Any]) -> bool:
+    def _is_snapshot_row(raw_message: Mapping[str, Any]) -> bool:
         """Whether a raw store row is a snapshot rather than an event/command.
 
         Keys strictly on ``type == "SNAPSHOT"``: a row with genuinely missing or
@@ -221,19 +357,17 @@ class BaseEventStore(metaclass=ABCMeta):
     def read(
         self,
         stream: str,
-        sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
     ) -> list[Message]:
         messages, _ = self._read_with_snapshot_positions(
-            stream, sql=sql, position=position, no_of_messages=no_of_messages
+            stream, position=position, no_of_messages=no_of_messages
         )
         return messages
 
     def _read_with_snapshot_positions(
         self,
         stream: str,
-        sql: str | None = None,
         position: int = 0,
         no_of_messages: int = 1000,
     ) -> tuple[list[Message], list[int]]:
@@ -243,9 +377,7 @@ class BaseEventStore(metaclass=ABCMeta):
         ``global_position`` of every snapshot row the read skipped. A snapshot
         row with no ``global_position`` is left out of the position list.
         """
-        raw_messages = self._read(
-            stream, sql=sql, position=position, no_of_messages=no_of_messages
-        )
+        raw_messages = self._read_raw(stream, position=position, limit=no_of_messages)
 
         # Skip snapshot rows: they carry an aggregate's state with no metadata,
         # so they are neither events nor commands and would raise on deserialize.
@@ -290,7 +422,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
     def _read_all_raw(
         self, stream: str = "$all", *, page_size: int = 1000
-    ) -> Iterator[dict[str, Any]]:
+    ) -> Iterator[RawMessage]:
         """Yield every raw row in ``stream`` except snapshot rows, paging like ``read_all``.
 
         A caller that filters on a raw field such as ``type`` uses this to
@@ -316,7 +448,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
         cursor = 0
         while True:
-            raw_page = self._read(stream, position=cursor, no_of_messages=page_size)
+            raw_page = self._read_raw(stream, position=cursor, limit=page_size)
             for raw_message in raw_page:
                 if self._is_snapshot_row(raw_message):
                     continue
@@ -332,7 +464,7 @@ class BaseEventStore(metaclass=ABCMeta):
             cursor = self._next_cursor(raw_page[-1], pages_by_global_position)
 
     @staticmethod
-    def _next_cursor(raw_message: dict[str, Any], by_global_position: bool) -> int:
+    def _next_cursor(raw_message: Mapping[str, Any], by_global_position: bool) -> int:
         """The ``position`` to resume a paged read after ``raw_message``.
 
         Reads are inclusive, so resume one past the last raw row seen. The row's
@@ -350,7 +482,7 @@ class BaseEventStore(metaclass=ABCMeta):
         return last + 1
 
     def read_last_message(self, stream: str) -> Message | None:
-        raw_message = self._read_last_message(stream)
+        raw_message = self._read_last_raw(stream)
         if raw_message is None:
             return None
 
@@ -369,11 +501,11 @@ class BaseEventStore(metaclass=ABCMeta):
         return Message.deserialize(raw_message)
 
     def _last_non_snapshot_message(
-        self, stream: str, tail: dict[str, Any]
-    ) -> dict[str, Any] | None:
+        self, stream: str, tail: RawMessage
+    ) -> RawMessage | None:
         """The newest event/command row in ``stream`` at or before ``tail``.
 
-        Consulted when ``_read_last_message`` returns a snapshot as the tail
+        Consulted when ``_read_last_raw`` returns a snapshot as the tail
         row, which is the ``$all`` scan, where snapshot streams interleave with
         event streams. Walks backward from the tail in
         ``_SNAPSHOT_TAIL_WINDOW``-sized windows keyed on ``global_position``, so
@@ -386,14 +518,14 @@ class BaseEventStore(metaclass=ABCMeta):
         hi: int = tail.get("global_position", -1)
         while hi >= 0:
             low = max(0, hi - _SNAPSHOT_TAIL_WINDOW + 1)
-            # ``_read`` returns rows with ``global_position >= low`` in ascending
+            # ``_read_raw`` returns rows with ``global_position >= low`` in ascending
             # order, so the first ``_SNAPSHOT_TAIL_WINDOW`` of them cover all of
             # ``[low, hi]`` (that range spans at most that many positions); the
             # ``<= hi`` filter drops any row past the tail that a gap let in.
             candidates = [
                 raw_message
-                for raw_message in self._read(
-                    stream, position=low, no_of_messages=_SNAPSHOT_TAIL_WINDOW
+                for raw_message in self._read_raw(
+                    stream, position=low, limit=_SNAPSHOT_TAIL_WINDOW
                 )
                 if raw_message.get("global_position", -1) <= hi
                 and not self._is_snapshot_row(raw_message)
@@ -425,7 +557,7 @@ class BaseEventStore(metaclass=ABCMeta):
             span.set_attribute("protean.event_store.message_type", message_type)
 
             try:
-                position = self._write(
+                position = self.write_message(
                     stream,
                     message_type,
                     message.data,
@@ -505,27 +637,27 @@ class BaseEventStore(metaclass=ABCMeta):
         max_rows: int | None = None,
         *,
         page_size: int = 1000,
-    ) -> deque[dict[str, Any]]:
+    ) -> deque[RawMessage]:
         """Read the rows of ``stream``, paging past the per-read page size.
 
-        A single ``_read`` returns at most one page, and an aggregate that
+        A single ``_read_raw`` returns at most one page, and an aggregate that
         warranted a snapshot can hold more events than one page, so a caller that
         needs the whole stream (or a bounded prefix of it) has to page or it
         rebuilds an incomplete aggregate. ``start_position`` begins the read past
         a snapshot's version to pick up only later events; ``max_rows`` bounds the
         read to a prefix, which a temporal query uses to stop at the requested
         version; ``None`` reads to the end. ``page_size`` is the number of rows
-        per ``_read``. A continuation shorter than one page still costs a single
+        per ``_read_raw``. A continuation shorter than one page still costs a single
         read. Reads are inclusive, so each page resumes one
         position past the last row seen.
         """
-        rows: deque[dict[str, Any]] = deque()
+        rows: deque[RawMessage] = deque()
         position = start_position
         while max_rows is None or len(rows) < max_rows:
             batch = (
                 page_size if max_rows is None else min(page_size, max_rows - len(rows))
             )
-            page = self._read(stream, position=position, no_of_messages=batch)
+            page = self._read_raw(stream, position=position, limit=batch)
             if not page:
                 break
             rows.extend(page)
@@ -538,19 +670,19 @@ class BaseEventStore(metaclass=ABCMeta):
         self, part_of: type[BaseAggregate], identifier: str
     ) -> BaseAggregate | None:
         """Load the aggregate at its latest version (existing behaviour)."""
-        snapshot_message = self._read_last_message(
+        snapshot_message = self.get_last_stream_message(
             f"{part_of.meta_.stream_category}:snapshot-{identifier}"
         )
 
         aggregate: BaseAggregate | None = None
         position_in_snapshot: int = 0
-        event_stream: deque[dict[str, Any]] = deque()
+        event_stream: deque[RawMessage] = deque()
 
         if snapshot_message:
             try:
                 # We have a snapshot, so initialize aggregate from snapshot
                 #   and apply subsequent events
-                aggregate = part_of(**snapshot_message["data"])
+                aggregate = part_of(**(snapshot_message["data"] or {}))
             except ValidationError as exc:
                 # The snapshot predates the current schema (a field was
                 # renamed, removed, or newly required), so it no longer
@@ -610,7 +742,7 @@ class BaseEventStore(metaclass=ABCMeta):
             # This makes reconstruction of the aggregate from the snapshot easier,
             #   and also avoids spurious data just to satisfy Metadata's structure
             #   and conditions.
-            self._write(
+            self.write_message(
                 f"{part_of.meta_.stream_category}:snapshot-{identifier}",
                 "SNAPSHOT",
                 aggregate.to_dict(),
@@ -769,7 +901,7 @@ class BaseEventStore(metaclass=ABCMeta):
         events = [Message.deserialize(msg).to_domain_object() for msg in event_stream]
         aggregate = part_of.from_events(events)
 
-        self._write(
+        self.write_message(
             f"{part_of.meta_.stream_category}:snapshot-{identifier}",
             "SNAPSHOT",
             aggregate.to_dict(),
@@ -789,23 +921,6 @@ class BaseEventStore(metaclass=ABCMeta):
         unless its own aggregate also emits fact events.
         """
         return identifier.startswith("fact-")
-
-    @abstractmethod
-    def _stream_identifiers(self, stream_category: str) -> list[str]:
-        """Return all unique aggregate identifiers for a given stream category.
-
-        Stream names follow the pattern ``{category}-{identifier}``.
-        Snapshot streams (``{category}:snapshot-{identifier}``) must be
-        excluded.
-
-        Implemented by the concrete event store adapter.
-
-        Args:
-            stream_category: The stream category to scan (e.g. ``test::user``)
-
-        Returns:
-            Sorted list of unique aggregate identifiers.
-        """
 
     def create_snapshots(self, part_of: type[BaseAggregate]) -> int:
         """Create snapshots for all instances of an event-sourced aggregate.
@@ -827,7 +942,7 @@ class BaseEventStore(metaclass=ABCMeta):
                 f"`{part_of.__name__}` is not an event-sourced aggregate"
             )
 
-        identifiers = self._stream_identifiers(part_of.meta_.stream_category)
+        identifiers = self.stream_ids(part_of.meta_.stream_category)
 
         # With fact_events enabled, persisting also writes a
         # ``{category}-fact-{id}`` stream that shares the category prefix. Those
@@ -853,7 +968,7 @@ class BaseEventStore(metaclass=ABCMeta):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _extract_message_id(msg: dict[str, Any]) -> str | None:
+    def _extract_message_id(msg: Mapping[str, Any]) -> str | None:
         """Extract the Protean message ID (headers.id) from a raw message dict."""
         metadata = msg.get("metadata")
         if not metadata or not isinstance(metadata, dict):
@@ -865,7 +980,7 @@ class BaseEventStore(metaclass=ABCMeta):
         return message_id
 
     @staticmethod
-    def _extract_causation_id(msg: dict[str, Any]) -> str | None:
+    def _extract_causation_id(msg: Mapping[str, Any]) -> str | None:
         """Extract causation_id from a raw message dict."""
         metadata = msg.get("metadata")
         if not metadata or not isinstance(metadata, dict):
@@ -877,7 +992,7 @@ class BaseEventStore(metaclass=ABCMeta):
         return causation_id
 
     @staticmethod
-    def _extract_correlation_id(msg: dict[str, Any]) -> str | None:
+    def _extract_correlation_id(msg: Mapping[str, Any]) -> str | None:
         """Extract correlation_id from a raw message dict."""
         metadata = msg.get("metadata")
         if not metadata or not isinstance(metadata, dict):
@@ -888,20 +1003,20 @@ class BaseEventStore(metaclass=ABCMeta):
         correlation_id: str | None = domain.get("correlation_id")
         return correlation_id
 
-    def _load_correlation_group(self, correlation_id: str) -> list[dict[str, Any]]:
+    def _load_correlation_group(self, correlation_id: str) -> list[RawMessage]:
         """Load all raw messages sharing a correlation_id from the event store.
 
         Reads ``$all`` and filters by ``correlation_id``.
         This is a debugging/inspection utility, not optimized for high-throughput.
         """
-        all_messages = self._read("$all", no_of_messages=1_000_000)
+        all_messages = self.get_all_messages(limit=1_000_000)
         return [
             m for m in all_messages if self._extract_correlation_id(m) == correlation_id
         ]
 
     def _resolve_and_load_group(
         self, message_id: str | Message
-    ) -> tuple[str, list[dict[str, Any]]]:
+    ) -> tuple[str, list[RawMessage]]:
         """Resolve a message identifier and load its full correlation group.
 
         When ``message_id`` is a `Message`, the correlation ID is read
@@ -946,14 +1061,14 @@ class BaseEventStore(metaclass=ABCMeta):
         mid, group = self._resolve_and_load_group(message_id)
 
         # Build lookup: headers.id -> raw_message
-        by_id: dict[str, dict[str, Any]] = {}
+        by_id: dict[str, RawMessage] = {}
         for m in group:
             hid = self._extract_message_id(m)
             if hid:
                 by_id[hid] = m
 
         # Walk up from target to root
-        chain: list[dict[str, Any]] = []
+        chain: list[RawMessage] = []
         current_id: str | None = mid
         visited: set[str] = set()
 
@@ -991,7 +1106,7 @@ class BaseEventStore(metaclass=ABCMeta):
         mid, group = self._resolve_and_load_group(message_id)
 
         # Build children lookup: causation_id -> [raw_messages]
-        children: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        children: dict[str, list[RawMessage]] = defaultdict(list)
         for m in group:
             cid = self._extract_causation_id(m)
             if cid:
@@ -1003,7 +1118,7 @@ class BaseEventStore(metaclass=ABCMeta):
             return [Message.deserialize(m) for m in direct]
 
         # BFS for full subtree
-        result: list[dict[str, Any]] = []
+        result: list[RawMessage] = []
         queue: deque[str] = deque([mid])
         visited: set[str] = {mid}
 
@@ -1040,8 +1155,7 @@ class BaseEventStore(metaclass=ABCMeta):
         visited: set[str] = set()
         return _causation_node(self, roots[0], children_map, visited)
 
-    @abstractmethod
-    def _stream_head_position(self, stream_category: str) -> int:
+    def stream_head_position(self, stream_category: str) -> int:
         """Return the global_position of the newest message in a category stream.
 
         Used by subscription lag monitoring to determine how far behind
@@ -1055,20 +1169,8 @@ class BaseEventStore(metaclass=ABCMeta):
             The ``global_position`` of the latest message, or ``-1`` if the
             stream has no messages.
         """
-
-    def stream_head_position(self, stream_category: str) -> int:
-        """Return the global_position of the newest message in a category stream.
-
-        Public wrapper around `_stream_head_position`.
-
-        Args:
-            stream_category: The stream category to check.
-
-        Returns:
-            The ``global_position`` of the latest message, or ``-1`` if the
-            stream has no messages.
-        """
-        return self._stream_head_position(stream_category)
+        message = self._read_last_raw(stream_category)
+        return message["global_position"] if message else -1
 
     # ------------------------------------------------------------------
     # Integrity verification
@@ -1092,7 +1194,7 @@ class BaseEventStore(metaclass=ABCMeta):
     # is never returned to check (see ``_iter_all_messages``).
     _REQUIRED_FIELDS = ("id", "stream_name", "position")
 
-    def _iter_all_messages(self, batch_size: int = 1000) -> Iterator[dict[str, Any]]:
+    def _iter_all_messages(self, batch_size: int = 1000) -> Iterator[RawMessage]:
         """Yield every raw row in the store, ordered by ``global_position``.
 
         Rows come back as stored dicts, not deserialized, so snapshot rows and
@@ -1101,7 +1203,7 @@ class BaseEventStore(metaclass=ABCMeta):
         """
         position = 0
         while True:
-            batch = self._read("$all", position=position, no_of_messages=batch_size)
+            batch = self._read_raw("$all", position=position, limit=batch_size)
             if not batch:
                 return
             yield from batch
@@ -1115,7 +1217,7 @@ class BaseEventStore(metaclass=ABCMeta):
 
     def _check_body(
         self,
-        msg: dict[str, Any],
+        msg: Mapping[str, Any],
         stream: str,
         position: int,
         snapshot_version: dict[str, int],
@@ -1255,13 +1357,6 @@ class BaseEventStore(metaclass=ABCMeta):
             violations=tuple(violations),
         )
 
-    @abstractmethod
-    def _data_reset(self) -> None:
-        """Flush all events.
-
-        Useful for running tests with a clean slate.
-        """
-
     def _last_event_of_type(
         self, event_cls: type[BaseEvent], stream_category: str | None = None
     ) -> BaseEvent | BaseCommand | None:
@@ -1313,19 +1408,20 @@ def _aggregate_from_snapshot(
     Returns ``None`` when there is no snapshot, the snapshot is past
     ``at_version``, or the snapshot no longer constructs.
     """
-    snapshot_message = store._read_last_message(
+    snapshot_message = store.get_last_stream_message(
         f"{part_of.meta_.stream_category}:snapshot-{identifier}"
     )
     if not snapshot_message:
         return None
 
-    snapshot_version: int = snapshot_message["data"].get("_version", -1)
+    snapshot_data = snapshot_message["data"] or {}
+    snapshot_version: int = snapshot_data.get("_version", -1)
     if snapshot_version > at_version:
         return None
 
     try:
         # Snapshot is usable: initialize from it
-        aggregate = part_of(**snapshot_message["data"])
+        aggregate = part_of(**snapshot_data)
     except ValidationError as exc:
         # Stale snapshot (predates the current schema). Discard it,
         # log a warning, and let the caller rebuild from the
@@ -1379,14 +1475,14 @@ def _ids_from_message(message: Message) -> tuple[str | None, str | None]:
     return mid, cid
 
 
-def _scan_for_group(store: BaseEventStore, message_id: str) -> list[dict[str, Any]]:
+def _scan_for_group(store: BaseEventStore, message_id: str) -> list[RawMessage]:
     """Return the correlation group of the message with ID ``message_id``.
 
     Raises:
         ValueError: No message in the store has that ID.
     """
     # String ID: single pass to find the target and its group
-    all_messages = store._read("$all", no_of_messages=1_000_000)
+    all_messages = store.get_all_messages(limit=1_000_000)
     target_correlation_id: str | None = None
     for m in all_messages:
         if store._extract_message_id(m) == message_id:
@@ -1404,11 +1500,11 @@ def _scan_for_group(store: BaseEventStore, message_id: str) -> list[dict[str, An
 
 
 def _index_group(
-    store: BaseEventStore, group: list[dict[str, Any]]
+    store: BaseEventStore, group: list[RawMessage]
 ) -> tuple[
-    dict[str, dict[str, Any]],
-    dict[str, list[dict[str, Any]]],
-    list[dict[str, Any]],
+    dict[str, RawMessage],
+    dict[str, list[RawMessage]],
+    list[RawMessage],
 ]:
     """Index a correlation group for the causation tree.
 
@@ -1416,9 +1512,9 @@ def _index_group(
     its ID sorted by ``global_position``, and the messages with no
     causation ID.
     """
-    by_id: dict[str, dict[str, Any]] = {}
-    children_map: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    roots: list[dict[str, Any]] = []
+    by_id: dict[str, RawMessage] = {}
+    children_map: dict[str, list[RawMessage]] = defaultdict(list)
+    roots: list[RawMessage] = []
 
     for m in group:
         hid = store._extract_message_id(m)
@@ -1439,10 +1535,10 @@ def _index_group(
 
 def _pick_roots(
     store: BaseEventStore,
-    group: list[dict[str, Any]],
-    by_id: dict[str, dict[str, Any]],
-    roots: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+    group: list[RawMessage],
+    by_id: dict[str, RawMessage],
+    roots: list[RawMessage],
+) -> list[RawMessage]:
     """Return the root candidates of the causation tree, sorted by
     ``global_position``. The list is never empty for a non-empty group."""
     if not roots:
@@ -1463,8 +1559,8 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
 
 def _causation_node(
     store: BaseEventStore,
-    raw_msg: dict[str, Any],
-    children_map: dict[str, list[dict[str, Any]]],
+    raw_msg: RawMessage,
+    children_map: dict[str, list[RawMessage]],
     visited: set[str],
 ) -> CausationNode:
     """Build the node for ``raw_msg`` and, recursively, its unvisited children.
@@ -1520,7 +1616,7 @@ def _global_order_violation(
 
 
 def _missing_fields_violation(
-    store: BaseEventStore, msg: dict[str, Any], stream: Any, position: Any
+    store: BaseEventStore, msg: Mapping[str, Any], stream: Any, position: Any
 ) -> IntegrityViolation | None:
     """Return a violation when ``msg`` lacks a required field."""
     # Only absence is checked: every adapter types these columns, so a

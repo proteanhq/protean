@@ -100,7 +100,7 @@ def test_that_multiple_events_are_raised_per_aggregate_in_the_same_uow(test_doma
         )
     )
 
-    messages = test_domain.event_store.store._read("user")
+    messages = test_domain.event_store.store.get_category_messages("user")
 
     assert len(messages) == 3
     assert messages[0]["type"] == Registered.__type__

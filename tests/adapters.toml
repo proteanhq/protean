@@ -253,6 +253,7 @@ paths = [
     "src/protean/adapters/event_store/__init__.py",
     "src/protean/adapters/event_store/message_db.py",
     "src/protean/port/event_store.py",
+    "src/protean/port/health.py",
     "tests/adapters/event_store/",
     "tests/adapters/test_pool_configuration.py",
     "tests/conformance/event_store/",

@@ -23,7 +23,9 @@ def example():
 
 def snapshot_rows(module, aggregate_cls, identifier):
     category = aggregate_cls.meta_.stream_category
-    return module.domain.event_store.store._read(f"{category}:snapshot-{identifier}")
+    return module.domain.event_store.store.get_stream_messages(
+        f"{category}:snapshot-{identifier}"
+    )
 
 
 def test_create_snapshots_returns_the_number_of_users(example):

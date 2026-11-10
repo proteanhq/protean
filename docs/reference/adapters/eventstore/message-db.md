@@ -20,18 +20,17 @@ for append-only stream operations.
 
 ## What Message DB guarantees
 
-Message DB declares `EventStoreCapabilities.PRODUCTION`: it writes and
-reads streams, categories and the whole store, checks expected versions, makes
-category writes visible in global-position order, and keeps messages across restarts.
-See [What each event store guarantees](./index.md#what-each-event-store-guarantees)
+Message DB declares
+`EventStoreCapabilities.PRODUCTION | EventStoreCapabilities.CONSUMER_GROUPS`.
+It writes and reads streams, categories and the whole store, checks expected
+versions, makes category writes visible in global-position order, and keeps
+messages across restarts. A category read with `consumer_group_member` and
+`consumer_group_size` returns only the streams that belong to that member of
+the group. See [What each event store guarantees](./index.md#what-each-event-store-guarantees)
 for each flag.
 
-It does not declare two flags:
-
-- `CONSUMER_GROUPS`: the `message-db-py` client can split a category read
-  across group members, but Protean's adapter does not pass the member and
-  group size to it.
-- `SCHEMA_MANAGEMENT`: Message DB's own install scripts create its schema.
+It does not declare `SCHEMA_MANAGEMENT`, because Message DB's own install
+scripts create its schema.
 
 ## Installation
 

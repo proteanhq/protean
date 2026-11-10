@@ -602,9 +602,9 @@ def _seed_lagging(test_domain, seconds_behind: int = 120) -> None:
         store = test_domain.event_store.store
         category = LagProjector.meta_.stream_categories[0]
         for i in range(3):
-            store._write(f"{category}-{i}", "Registered", {"user_id": str(i)})
+            store.write_message(f"{category}-{i}", "Registered", {"user_id": str(i)})
         old = (datetime.now(UTC) - timedelta(seconds=seconds_behind)).isoformat()
-        store._write(
+        store.write_message(
             f"position-{fqn(LagProjector)}-{category}",
             "Read",
             {"position": 0},
@@ -699,7 +699,9 @@ class TestSubscriptionLagSecondsGauge:
             store = test_domain.event_store.store
             category = LagProjector.meta_.stream_categories[0]
             for i in range(3):
-                store._write(f"{category}-{i}", "Registered", {"user_id": str(i)})
+                store.write_message(
+                    f"{category}-{i}", "Registered", {"user_id": str(i)}
+                )
         _, metric_reader = _init_telemetry_in_memory(test_domain)
 
         _register_infrastructure_gauges([test_domain])

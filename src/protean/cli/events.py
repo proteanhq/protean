@@ -27,6 +27,7 @@ Usage::
 
 import json
 import logging
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -98,7 +99,7 @@ def _data_keys_summary(data: dict[str, Any] | None) -> str:
     return summary
 
 
-def _extract_trace_ids(msg: dict[str, Any]) -> tuple[str, str]:
+def _extract_trace_ids(msg: Mapping[str, Any]) -> tuple[str, str]:
     """Extract correlation and causation IDs from message metadata."""
     metadata = msg.get("metadata")
     if not metadata or not isinstance(metadata, dict):
@@ -119,7 +120,7 @@ def _truncate_id(value: str, length: int = 8) -> str:
 
 
 def _build_events_table(
-    messages: list[dict[str, Any]],
+    messages: Sequence[Mapping[str, Any]],
     *,
     show_data: bool = False,
     show_stream: bool = False,
@@ -159,7 +160,7 @@ def _build_events_table(
     return table
 
 
-def _print_event_data(messages: list[dict[str, Any]]) -> None:
+def _print_event_data(messages: Sequence[Mapping[str, Any]]) -> None:
     """Print the full data payload for each message."""
     for msg in messages:
         event_type = msg.get("type", "<unknown>")
@@ -231,7 +232,7 @@ def read(
     with derived_domain.domain_context():
         store = derived_domain.event_store.store
         assert store is not None  # guaranteed by load_domain -> init()
-        messages = store._read(stream, position=position, no_of_messages=limit)
+        messages = store._read_raw(stream, position=position, limit=limit)
 
         if not messages:
             print(f"No events found in stream '{stream}'")
@@ -286,7 +287,7 @@ def stats(
             # A failed read on one aggregate leaves its row at zero and the
             # rest of the table still renders.
             try:
-                identifiers = store._stream_identifiers(stream_category)
+                identifiers = store.stream_ids(stream_category)
                 instance_count = len(identifiers)
             except Exception as exc:  # noqa: BLE001 - one stream's failure must not stop the table
                 logger.warning(
@@ -295,7 +296,9 @@ def stats(
                 instance_count = 0
 
             try:
-                all_events = store._read(stream_category, no_of_messages=1_000_000)
+                all_events = store.get_category_messages(
+                    stream_category, limit=1_000_000
+                )
                 event_count = len(all_events)
                 latest = all_events[-1] if all_events else None
             except Exception as exc:  # noqa: BLE001 - one stream's failure must not stop the table
@@ -354,7 +357,7 @@ def search(
         store = derived_domain.event_store.store
         assert store is not None  # guaranteed by load_domain -> init()
         stream = category if category else "$all"
-        all_messages = store._read(stream, no_of_messages=1_000_000)
+        all_messages = store._read_raw(stream, limit=1_000_000)
 
         # Filter by type: exact match if dots present, partial otherwise
         if "." in type_name:
@@ -452,9 +455,9 @@ def history(
 
         # Check for snapshot
         snapshot_stream = f"{stream_category}:snapshot-{identifier}"
-        snapshot = store._read_last_message(snapshot_stream)
+        snapshot = store.get_last_stream_message(snapshot_stream)
         if snapshot:
-            snap_version = snapshot.get("data", {}).get("_version", "?")
+            snap_version = (snapshot["data"] or {}).get("_version", "?")
             print(f"Snapshot exists at version {snap_version}")
 
         last_position = messages[-1].get("position", "?")
@@ -485,7 +488,7 @@ def trace(
 
         if flat:
             # Flat table display (original behavior)
-            all_messages = store._read("$all", no_of_messages=1_000_000)
+            all_messages = store.get_all_messages(limit=1_000_000)
 
             matched = [
                 m for m in all_messages if _extract_trace_ids(m)[0] == correlation_id

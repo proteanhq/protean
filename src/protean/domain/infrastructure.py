@@ -196,7 +196,7 @@ class InfrastructureManager:
                 continue
             provider.clear()
 
-        domain._require_event_store()._data_reset()
+        domain._require_event_store().clear()
 
     def drop_database(self) -> None:
         """Drop all database tables for managed providers.

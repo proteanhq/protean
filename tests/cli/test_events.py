@@ -38,7 +38,7 @@ def _make_raw_event(
     stream_name: str = "test::user-abc123",
     data: dict | None = None,
 ) -> dict:
-    """Create a raw event dict matching the format returned by `_read()`."""
+    """Create a raw event dict matching the format returned by `_read_raw()`."""
     return {
         "data": data or {"name": "John", "email": "john@example.com"},
         "type": event_type,
@@ -61,10 +61,12 @@ def _mock_domain_with_store(
     mock_store = MagicMock()
     mock_domain.event_store.store = mock_store
 
-    mock_store._read.return_value = read_return or []
+    mock_store._read_raw.return_value = read_return or []
+    mock_store.get_category_messages.return_value = read_return or []
+    mock_store.get_all_messages.return_value = read_return or []
     mock_store._read_stream_fully.return_value = read_return or []
-    mock_store._read_last_message.return_value = read_last_return
-    mock_store._stream_identifiers.return_value = identifiers_return or []
+    mock_store.get_last_stream_message.return_value = read_last_return
+    mock_store.stream_ids.return_value = identifiers_return or []
 
     if aggregates is not None:
         mock_domain.registry._elements = {"AGGREGATE": aggregates}
@@ -152,8 +154,8 @@ class TestEventsRead:
                 ],
             )
             assert result.exit_code == 0
-            mock_domain.event_store.store._read.assert_called_once_with(
-                "test::user-abc123", position=5, no_of_messages=20
+            mock_domain.event_store.store._read_raw.assert_called_once_with(
+                "test::user-abc123", position=5, limit=20
             )
 
     def test_read_with_limit(self):
@@ -175,8 +177,8 @@ class TestEventsRead:
                 ],
             )
             assert result.exit_code == 0
-            mock_domain.event_store.store._read.assert_called_once_with(
-                "test::user-abc123", position=0, no_of_messages=5
+            mock_domain.event_store.store._read_raw.assert_called_once_with(
+                "test::user-abc123", position=0, limit=5
             )
 
     def test_read_with_data_flag(self):
@@ -253,14 +255,14 @@ class TestEventsStats:
                 return events_user
             return []
 
-        store._read.side_effect = side_effect_read
+        store.get_category_messages.side_effect = side_effect_read
 
         def side_effect_identifiers(stream_category):
             if stream_category == "test::user":
                 return ["id1", "id2"]
             return []
 
-        store._stream_identifiers.side_effect = side_effect_identifiers
+        store.stream_ids.side_effect = side_effect_identifiers
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
@@ -407,8 +409,8 @@ class TestEventsSearch:
                 ],
             )
             assert result.exit_code == 0
-            mock_domain.event_store.store._read.assert_called_once_with(
-                "test::user", no_of_messages=1_000_000
+            mock_domain.event_store.store._read_raw.assert_called_once_with(
+                "test::user", limit=1_000_000
             )
 
     def test_search_no_results(self):
@@ -500,8 +502,8 @@ class TestEventsHistory:
             read_return=events,
             aggregates=aggregates,
         )
-        # _read_last_message for snapshot check returns None
-        mock_domain.event_store.store._read_last_message.return_value = None
+        # get_last_stream_message for the snapshot check returns None
+        mock_domain.event_store.store.get_last_stream_message.return_value = None
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
@@ -626,7 +628,7 @@ class TestEventsHistory:
             read_return=events,
             aggregates=aggregates,
         )
-        mock_domain.event_store.store._read_last_message.return_value = None
+        mock_domain.event_store.store.get_last_stream_message.return_value = None
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
@@ -721,7 +723,7 @@ class TestEventsStatsExceptions:
         sys.path[:] = original_path
         os.chdir(cwd)
 
-    def test_stats_handles_stream_identifiers_exception(self, caplog):
+    def test_stats_handles_stream_ids_exception(self, caplog):
         change_working_directory_to("test7")
 
         user_record = _make_aggregate_record("User", "test::user")
@@ -729,8 +731,8 @@ class TestEventsStatsExceptions:
 
         mock_domain = _mock_domain_with_store(aggregates=aggregates)
         store = mock_domain.event_store.store
-        store._stream_identifiers.side_effect = Exception("Connection error")
-        store._read.return_value = [_make_raw_event(0, 1)]
+        store.stream_ids.side_effect = Exception("Connection error")
+        store.get_category_messages.return_value = [_make_raw_event(0, 1)]
 
         with (
             patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
@@ -756,8 +758,8 @@ class TestEventsStatsExceptions:
 
         mock_domain = _mock_domain_with_store(aggregates=aggregates)
         store = mock_domain.event_store.store
-        store._stream_identifiers.return_value = ["id1"]
-        store._read.side_effect = Exception("Connection error")
+        store.stream_ids.return_value = ["id1"]
+        store.get_category_messages.side_effect = Exception("Connection error")
 
         with (
             patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
@@ -1111,7 +1113,7 @@ class TestEventsHistoryTrace:
             read_return=events,
             aggregates=aggregates,
         )
-        mock_domain.event_store.store._read_last_message.return_value = None
+        mock_domain.event_store.store.get_last_stream_message.return_value = None
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
@@ -1153,7 +1155,7 @@ class TestEventsHistoryTrace:
             read_return=events,
             aggregates=aggregates,
         )
-        mock_domain.event_store.store._read_last_message.return_value = None
+        mock_domain.event_store.store.get_last_stream_message.return_value = None
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(

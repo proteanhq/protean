@@ -103,9 +103,9 @@ def _seed_caught_up(test_domain):
         store = test_domain.event_store.store
         category = BalancesProjector.meta_.stream_categories[0]
         for i in range(3):
-            store._write(f"{category}-{i}", "Registered", {"user_id": str(i)})
+            store.write_message(f"{category}-{i}", "Registered", {"user_id": str(i)})
         head = store.stream_head_position(category)
-        store._write(
+        store.write_message(
             f"position-{fqn(BalancesProjector)}-{category}",
             "Read",
             {"position": head},

@@ -23,7 +23,7 @@ def test_empty_stream_returns_minus_one(test_domain):
 def test_single_message(test_domain):
     """stream_head_position returns the global_position of the only message."""
     store = test_domain.event_store.store
-    store._write(
+    store.write_message(
         "testStream-123",
         "Event1",
         {"foo": "bar"},
@@ -39,7 +39,7 @@ def test_multiple_messages_returns_latest(test_domain):
     store = test_domain.event_store.store
 
     for i in range(5):
-        store._write(
+        store.write_message(
             "testStream-123",
             "Event1",
             {"count": i},
@@ -49,7 +49,7 @@ def test_multiple_messages_returns_latest(test_domain):
     result = store.stream_head_position("testStream")
 
     # Read all to verify it's the position of the last message
-    all_msgs = store._read("testStream", no_of_messages=1_000_000)
+    all_msgs = store.get_category_messages("testStream", limit=1_000_000)
     expected = all_msgs[-1].get("global_position", -1)
     assert result == expected
 
@@ -60,7 +60,7 @@ def test_head_position_with_multiple_streams(test_domain):
 
     # Write to stream A
     for i in range(3):
-        store._write(
+        store.write_message(
             f"streamA-{i}",
             "EventA",
             {"idx": i},
@@ -69,7 +69,7 @@ def test_head_position_with_multiple_streams(test_domain):
 
     # Write to stream B
     for i in range(2):
-        store._write(
+        store.write_message(
             f"streamB-{i}",
             "EventB",
             {"idx": i},
@@ -79,8 +79,8 @@ def test_head_position_with_multiple_streams(test_domain):
     head_a = store.stream_head_position("streamA")
     head_b = store.stream_head_position("streamB")
 
-    all_a = store._read("streamA", no_of_messages=1_000_000)
-    all_b = store._read("streamB", no_of_messages=1_000_000)
+    all_a = store.get_category_messages("streamA", limit=1_000_000)
+    all_b = store.get_category_messages("streamB", limit=1_000_000)
 
     assert head_a == all_a[-1]["global_position"]
     assert head_b == all_b[-1]["global_position"]

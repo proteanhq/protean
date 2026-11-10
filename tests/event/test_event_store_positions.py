@@ -146,7 +146,7 @@ def test_writing_a_rebuilt_event_again_stores_the_new_positions(test_domain):
 
     test_domain.event_store.store.append(second_write)
 
-    raw_rows = test_domain.event_store.store._read(stream)
+    raw_rows = test_domain.event_store.store.get_stream_messages(stream)
     assert len(raw_rows) == 2
     assert [row["metadata"].get("event_store") for row in raw_rows] == [None, None]
 

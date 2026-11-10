@@ -123,7 +123,7 @@ def _register_and_snapshot(test_domain, identifier, *, extra_events=0):
 
     test_domain.create_snapshot(User, identifier)
     store = test_domain.event_store.store
-    snapshot = store._read_last_message(_snapshot_stream(identifier))
+    snapshot = store.get_last_stream_message(_snapshot_stream(identifier))
     assert snapshot is not None, "Precondition: a valid snapshot must exist"
     return store, snapshot["data"]
 
@@ -131,10 +131,10 @@ def _register_and_snapshot(test_domain, identifier, *, extra_events=0):
 def _write_stale_snapshot(store, identifier, data):
     """Overwrite the snapshot stream with a payload the current schema rejects.
 
-    ``_read_last_message`` returns the newest snapshot row, so this drifted row
+    ``get_last_stream_message`` returns the newest snapshot row, so this drifted row
     is the one the load path reads.
     """
-    store._write(_snapshot_stream(identifier), "SNAPSHOT", data)
+    store.write_message(_snapshot_stream(identifier), "SNAPSHOT", data)
 
 
 def _discard_records(caplog, identifier):
@@ -281,7 +281,7 @@ class TestStaleSnapshotRecovers:
         # intermediate rather than at the stream head.
         test_domain.create_snapshot(User, identifier)
         store = test_domain.event_store.store
-        valid = store._read_last_message(_snapshot_stream(identifier))["data"]
+        valid = store.get_last_stream_message(_snapshot_stream(identifier))["data"]
         snapshot_version = valid["_version"]
         for i in range(3):
             with UnitOfWork():
@@ -346,7 +346,7 @@ class TestValidSnapshotKeepsFastPath:
         store = test_domain.event_store.store
         snapshot_version = data["_version"]
 
-        with patch.object(store, "_read", wraps=store._read) as spy:
+        with patch.object(store, "_read_raw", wraps=store._read_raw) as spy:
             store.load_aggregate(User, identifier)
 
         aggregate_reads = [
@@ -385,7 +385,7 @@ class TestStaleSnapshotSelfHeals:
 
         assert user is not None
         assert _discard_records(caplog, identifier) == []
-        rebuilt = store._read_last_message(_snapshot_stream(identifier))
+        rebuilt = store.get_last_stream_message(_snapshot_stream(identifier))
         assert "obsolete_field" not in rebuilt["data"]
 
     @pytest.mark.eventstore
@@ -402,7 +402,7 @@ class TestStaleSnapshotSelfHeals:
             store.load_aggregate(User, identifier)
 
         assert len(_discard_records(caplog, identifier)) == 2
-        current = store._read_last_message(_snapshot_stream(identifier))
+        current = store.get_last_stream_message(_snapshot_stream(identifier))
         assert "obsolete_field" in current["data"]  # the stale row was not rebuilt
 
 
@@ -424,7 +424,7 @@ class TestFullReplayPaging:
         page1 = [{"position": i} for i in range(1000)]
         page2 = [{"position": i} for i in range(1000, 1500)]
 
-        with patch.object(store, "_read", side_effect=[page1, page2]) as spy:
+        with patch.object(store, "_read_raw", side_effect=[page1, page2]) as spy:
             rows = store._read_stream_fully("test::user-x")
 
         assert len(rows) == 1500
@@ -438,7 +438,7 @@ class TestFullReplayPaging:
         store = test_domain.event_store.store
         page1 = [{"position": i} for i in range(1000)]
 
-        with patch.object(store, "_read", side_effect=[page1, []]) as spy:
+        with patch.object(store, "_read_raw", side_effect=[page1, []]) as spy:
             rows = store._read_stream_fully("test::user-x")
 
         assert len(rows) == 1000
@@ -450,15 +450,15 @@ class TestFullReplayPaging:
         shrinks the last request so it never reads past the bound."""
         store = test_domain.event_store.store
 
-        def fake_read(stream, sql=None, position=0, no_of_messages=1000):
-            # An adapter that honors ``no_of_messages`` over an endless stream.
-            return [{"position": position + k} for k in range(no_of_messages)]
+        def fake_read(stream, position=0, limit=1000):
+            # An adapter that honors ``limit`` over an endless stream.
+            return [{"position": position + k} for k in range(limit)]
 
-        with patch.object(store, "_read", side_effect=fake_read) as spy:
+        with patch.object(store, "_read_raw", side_effect=fake_read) as spy:
             rows = store._read_stream_fully("test::user-x", max_rows=1500)
 
         assert len(rows) == 1500
-        assert [c.kwargs["no_of_messages"] for c in spy.call_args_list] == [1000, 500]
+        assert [c.kwargs["limit"] for c in spy.call_args_list] == [1000, 500]
 
     @pytest.mark.eventstore
     def test_read_stream_fully_starts_at_given_position(self, test_domain):
@@ -467,7 +467,7 @@ class TestFullReplayPaging:
         store = test_domain.event_store.store
         page = [{"position": i} for i in range(50, 300)]  # 250 rows, under one page
 
-        with patch.object(store, "_read", side_effect=[page]) as spy:
+        with patch.object(store, "_read_raw", side_effect=[page]) as spy:
             rows = store._read_stream_fully("test::user-x", start_position=50)
 
         assert len(rows) == 250

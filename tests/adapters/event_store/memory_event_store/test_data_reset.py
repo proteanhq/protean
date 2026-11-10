@@ -1,5 +1,5 @@
 def test_write_to_event_store(test_domain):
-    test_domain.event_store.store._write(
+    test_domain.event_store.store.write_message(
         "testStream-123",
         "Event1",
         {"foo": "bar"},
@@ -12,7 +12,7 @@ def test_write_to_event_store(test_domain):
             },
         },
     )
-    assert len(test_domain.event_store.store._read("testStream-123")) == 1
+    assert len(test_domain.event_store.store.get_stream_messages("testStream-123")) == 1
 
-    test_domain.event_store.store._data_reset()
-    assert len(test_domain.event_store.store._read("testStream-123")) == 0
+    test_domain.event_store.store.clear()
+    assert len(test_domain.event_store.store.get_stream_messages("testStream-123")) == 0

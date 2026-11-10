@@ -21,7 +21,7 @@ from protean.utils.globals import current_domain
 def investigate_account_state(account_id: str, target_version: int):
     """Quick-and-dirty reconstruction for an incident investigation."""
     store = current_domain.event_store.store
-    raw_events = store._read(f"account-{account_id}")
+    raw_events = store.get_stream_messages(f"account-{account_id}")
 
     state = {}
     for i, raw_event in enumerate(raw_events):
@@ -201,7 +201,7 @@ Temporal queries **bypass** this cache:
 # Anti-pattern: hand-rolled event replay
 def get_account_at_version(account_id: str, version: int) -> dict:
     store = current_domain.event_store.store
-    events = store._read(f"account-{account_id}")
+    events = store.get_stream_messages(f"account-{account_id}")
 
     state = {}
     for i, event in enumerate(events):
@@ -228,7 +228,7 @@ account = repo.get(account_id, at_version=version)
 # Anti-pattern: reading raw events and filtering by timestamp
 def get_account_as_of(account_id: str, cutoff: datetime) -> dict:
     store = current_domain.event_store.store
-    events = store._read(f"account-{account_id}")
+    events = store.get_stream_messages(f"account-{account_id}")
 
     state = {}
     for event in events:
