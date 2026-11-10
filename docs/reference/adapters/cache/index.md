@@ -27,10 +27,11 @@ within the process. No external dependencies are needed.
 
 - **Use cases**: Development, testing, prototyping
 - All data is lost on process restart
-- TTL is enforced lazily: every entry the `Cache` service writes has an expiry,
-  and an expired entry is dropped the next time it is read, iterated or
-  counted. There is no background sweep, so an expired entry nobody touches
-  still occupies memory.
+- TTL is enforced lazily: every entry the `Cache` service writes has an expiry.
+  Reads, key matches and counts skip an expired entry. A call that names the
+  key, such as `get`, `get_ttl`, `set_ttl` or `delete`, removes it. There is no
+  background sweep, so an expired entry whose key no call names still occupies
+  memory.
 
 ### Redis
 
