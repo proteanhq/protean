@@ -399,6 +399,16 @@ class Cache:
         return self._ttl_port().get_ttl(key)
 
 
+def _close_quietly(name: str, adapter: CachePort) -> None:
+    try:
+        adapter.close()
+    # Cleanup on the way to re-raising a validation error: a failure here is
+    # logged and must not replace that error. An adapter written for the
+    # earlier cache base class may have no `close`, which lands here too.
+    except Exception:
+        logger.exception("Error closing cache '%s'", name)
+
+
 class Caches(MutableMapping[str, Cache]):
     """The domain's caches, by name, each a `Cache` around its adapter."""
 
@@ -455,7 +465,15 @@ class Caches(MutableMapping[str, Cache]):
             for cache_name, config in configured_caches.items():
                 cache_cls = cache_registry.get(config["provider"])
                 adapter = cache_cls(cache_name, self.domain, config)
-                cache_objects[cache_name] = Cache(adapter)
+                try:
+                    cache_objects[cache_name] = Cache(adapter)
+                except ConfigurationError:
+                    # The failed adapter and the caches built before it never
+                    # reach `self._caches`, so `close()` would not see them.
+                    _close_quietly(cache_name, adapter)
+                    for built_name, built in cache_objects.items():
+                        _close_quietly(built_name, built._adapter)
+                    raise
 
         self._caches = cache_objects
 

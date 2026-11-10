@@ -352,6 +352,47 @@ class TestADeclaredCapabilityNeedsItsSubProtocol:
             assert name not in message
 
 
+class ClosingKeyValueCache(KeyValueCache):
+    """Records which adapters were closed."""
+
+    closed: list[str] = []
+
+    def close(self) -> None:
+        ClosingKeyValueCache.closed.append(self.name)
+
+
+class ClosingTTLWithoutGetTTL(TTLWithoutGetTTL):
+    def close(self) -> None:
+        ClosingKeyValueCache.closed.append(self.name)
+
+
+@pytest.mark.no_test_domain
+class TestAFailedCapabilityCheckClosesTheAdapters:
+    @pytest.fixture(autouse=True)
+    def registered(self):
+        ClosingKeyValueCache.closed = []
+        for name, cls in (
+            ("closing", ClosingKeyValueCache),
+            ("closing_invalid", ClosingTTLWithoutGetTTL),
+        ):
+            cache_registry.register(name, f"{cls.__module__}.{cls.__qualname__}")
+        yield
+        for name in ("closing", "closing_invalid"):
+            cache_registry._paths.pop(name, None)
+
+    def test_the_failed_adapter_and_the_caches_built_before_it_are_closed(self):
+        domain = Domain(name="Test")
+        domain.config["caches"] = {
+            "default": {"provider": "closing"},
+            "broken": {"provider": "closing_invalid"},
+        }
+
+        with pytest.raises(ConfigurationError, match="Cache 'broken'"):
+            domain.init(traverse=False)
+
+        assert sorted(ClosingKeyValueCache.closed) == ["broken", "default"]
+
+
 @pytest.mark.no_test_domain
 class TestTheContainerBuildsTheAdapter:
     def test_the_adapter_gets_the_domain_and_an_unmodified_config(self):
