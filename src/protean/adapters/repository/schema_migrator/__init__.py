@@ -8,6 +8,7 @@ lives in ``alembic_migrator``.
 
 from __future__ import annotations
 
+import configparser
 import contextlib
 import os
 import string
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
 __all__ = [
     "PROVIDER_ATTRIBUTE",
     "migration_provider",
+    "migrations_provider_name",
     "run_migrations",
     "write_migrations_folder",
 ]
@@ -147,6 +149,36 @@ def _remove_created(created: list[Path]) -> None:
             path.unlink(missing_ok=True)
 
 
+def migrations_provider_name(directory: Path) -> str:
+    """The name of the provider the migrations folder ``directory`` belongs to.
+
+    Reads the ``protean_provider`` option that ``write_migrations_folder``
+    records in ``alembic.ini``.
+
+    Raises:
+        ConfigurationError: ``directory`` has no ``alembic.ini``, or the file
+            cannot be read or has no ``protean_provider`` option.
+    """
+    ini = directory / "alembic.ini"
+    if not ini.is_file():
+        raise ConfigurationError(
+            f"No migrations found in '{directory}': it has no alembic.ini. "
+            "Create them with `protean db init`, or name the folder with "
+            "--directory."
+        )
+    parser = configparser.ConfigParser()
+    try:
+        parser.read(ini, encoding="utf-8")
+        name = parser.get("alembic", "protean_provider", fallback="")
+    except (configparser.Error, OSError, UnicodeDecodeError) as exc:
+        raise ConfigurationError(f"Cannot read '{ini}': {exc}") from exc
+    if not name:
+        raise ConfigurationError(
+            f"'{ini}' has no 'protean_provider' option in its [alembic] section."
+        )
+    return name
+
+
 def migration_provider(domain: Domain, provider_name: str) -> BaseProvider:
     """Return the provider of ``domain`` that migrations run against.
 
@@ -221,7 +253,7 @@ def run_migrations() -> None:
     # function loads it. Neither import may start a run, and the first must
     # not import Alembic.
     global _running_thread
-    context = sys.modules.get("alembic.context")
+    context: Any = sys.modules.get("alembic.context")
     # Alembic sets ``context.config`` only while it runs ``env.py``.
     config = getattr(context, "config", None)
     if config is None:
@@ -246,7 +278,7 @@ def run_migrations() -> None:
             # folder. That folder stays current for the whole run, because the
             # engine opens a relative SQLite file only when it connects.
             with _working_directory(config.get_main_option("protean_root")):
-                _run(context, _provider_from_ini(config))
+                _run(context, _provider_from_ini(config, context.is_offline_mode()))
     finally:
         _running_thread = None
 
@@ -275,8 +307,11 @@ def _working_directory(path: str | None) -> Iterator[None]:
         os.chdir(previous)
 
 
-def _provider_from_ini(config: Any) -> SAProvider:
-    """The provider that ``alembic.ini`` names, from the domain it names."""
+def _provider_from_ini(config: Any, offline: bool) -> SAProvider:
+    """The provider that ``alembic.ini`` names, from the domain it names.
+
+    When ``offline``, the domain opens no database connection.
+    """
     # A plain ``alembic`` run sets up its own logging from ``alembic.ini``.
     if config.config_file_name is not None and config.file_config.has_section(
         "loggers"
@@ -297,25 +332,35 @@ def _provider_from_ini(config: Any) -> SAProvider:
     # A non-empty path raises NoDomainException when nothing is found, so
     # derive_domain does not return None here.
     domain = cast("Domain", domain)
-    domain.init()
+    domain._init(connect=not offline)
     return cast("SAProvider", migration_provider(domain, provider_name))
 
 
 def _run(context: Any, provider: SAProvider) -> None:
+    # Alembic is running, so the module that imports it can be imported.
+    from protean.adapters.repository.schema_migrator.autogenerate import (  # noqa: PLC0415
+        configure_options,
+        expression_index_warnings_hidden,
+    )
+
     with provider.domain.domain_context():
         metadata = provider.metadata
+        dialect_name = provider._engine.dialect.name
         if context.is_offline_mode():
             context.configure(
                 url=provider._engine.url,
-                target_metadata=metadata,
                 literal_binds=True,
                 dialect_opts={"paramstyle": "named"},
+                **configure_options(metadata, dialect_name, None),
             )
             with context.begin_transaction():
                 context.run_migrations()
             return
 
         with provider._engine.connect() as connection:
-            context.configure(connection=connection, target_metadata=metadata)
-            with context.begin_transaction():
+            context.configure(
+                connection=connection,
+                **configure_options(metadata, dialect_name, connection),
+            )
+            with expression_index_warnings_hidden(), context.begin_transaction():
                 context.run_migrations()

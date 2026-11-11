@@ -90,8 +90,11 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
                     logger.exception("Error closing provider '%s'", name)
             logger.debug("All providers closed")
 
-    def _initialize(self) -> None:
-        """Read config file and initialize providers"""
+    def _initialize(self, connect: bool = True) -> None:
+        """Read config file and initialize providers.
+
+        Each provider is checked with ``is_alive`` unless ``connect`` is False.
+        """
         # Close existing providers before re-initializing to prevent
         # connection leaks (e.g., when domain.init() is called again).
         self.close()
@@ -109,8 +112,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
                 provider = provider_cls(provider_name, self.domain, conn_info)
 
                 # Initialize a connection to check if everything is ok
-                conn = provider.is_alive()
-                if not conn:
+                if connect and not provider.is_alive():
                     raise ConfigurationError(
                         f"Could not connect to database at {conn_info['database_uri']}"
                     )

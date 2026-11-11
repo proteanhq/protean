@@ -2,18 +2,34 @@
 
 from __future__ import annotations
 
+import contextlib
+from argparse import Namespace
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from alembic import command
 from alembic.config import Config
+from alembic.script import Script
+from alembic.util import CommandError
 
 from protean.adapters.repository.schema_migrator import (
     PROVIDER_ATTRIBUTE,
     write_migrations_folder,
 )
+from protean.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from protean.adapters.repository.sqlalchemy import SAProvider
+
+
+@contextlib.contextmanager
+def _command_errors() -> Iterator[None]:
+    """Raise an Alembic ``CommandError`` as ``ConfigurationError``, message unchanged."""
+    try:
+        yield
+    except CommandError as exc:
+        raise ConfigurationError(str(exc)) from exc
 
 
 class AlembicSchemaMigrator:
@@ -30,6 +46,46 @@ class AlembicSchemaMigrator:
         and leaves it unchanged.
         """
         write_migrations_folder(self.directory, domain_path, self.provider.name)
+
+    def migrate(self, message: str) -> Path | None:
+        """Autogenerate a revision named by ``message``.
+
+        Returns the path of the revision file, or None when autogenerate found
+        no change and no file was written.
+
+        Raises:
+            ConfigurationError: Alembic reports an error, such as a database
+                that is not at the latest revision.
+        """
+        config = self.alembic_config()
+        # The caller reports the file; ``quiet`` stops Alembic reporting it too.
+        config.cmd_opts = Namespace(quiet=True, x=None)
+        with _command_errors():
+            script = command.revision(config, message=message, autogenerate=True)
+        # Alembic returns a list when the runner dropped the revision.
+        if not isinstance(script, Script):
+            return None
+        return Path(script.path)
+
+    def upgrade(self, revision: str = "head", sql: bool = False) -> None:
+        """Upgrade the database to ``revision``, or print the SQL with ``sql``.
+
+        Raises:
+            ConfigurationError: Alembic reports an error, such as an unknown
+                revision.
+        """
+        with _command_errors():
+            command.upgrade(self.alembic_config(), revision, sql=sql)
+
+    def downgrade(self, revision: str, sql: bool = False) -> None:
+        """Downgrade the database to ``revision``, or print the SQL with ``sql``.
+
+        Raises:
+            ConfigurationError: Alembic reports an error, such as an offline
+                downgrade without a ``<from>:<to>`` range.
+        """
+        with _command_errors():
+            command.downgrade(self.alembic_config(), revision, sql=sql)
 
     def alembic_config(self) -> Config:
         """Alembic's configuration for the folder, carrying this provider.

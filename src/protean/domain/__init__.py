@@ -676,12 +676,20 @@ class Domain:
                 element registers only when your code imports its module, so
                 import subscribers and event handlers where the domain runs.
         """
+        self._init(traverse)
+
+    def _init(self, traverse: bool = True, *, connect: bool = True) -> None:
+        """Run ``init``; with ``connect=False``, open no database connection.
+
+        A command that only renders SQL uses ``connect=False``, so it works
+        while the database is unreachable.
+        """
         self._auto_configure_logging()
 
         self._prepare(traverse=traverse)
 
         # Initialize adapters after loading domain
-        self._initialize()
+        self._initialize(connect=connect)
 
         # An identity a SQL column cannot hold (an integer under the uuid
         # strategy overflows every SQL integer column) would only fail on the
@@ -934,9 +942,13 @@ class Domain:
 
         return False
 
-    def _initialize(self) -> None:
-        """Initialize domain dependencies and adapters."""
-        self.providers._initialize()
+    def _initialize(self, connect: bool = True) -> None:
+        """Initialize domain dependencies and adapters.
+
+        With ``connect=False``, the database providers are created without
+        the connection check.
+        """
+        self.providers._initialize(connect=connect)
         self.caches._initialize()
         self.brokers._initialize()
         self.event_store._initialize()
