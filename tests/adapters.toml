@@ -131,6 +131,7 @@ paths = [
     "tests/adapters/database_model/sqlalchemy_model/sqlite/",
     "tests/adapters/repository/generic/",
     "tests/adapters/repository/sqlalchemy_repo/",
+    "tests/adapters/repository/test_schema_autogenerate.py",
     "tests/adapters/repository/test_schema_migrator.py",
     "tests/cli/test_db_init.py",
     "tests/cli/test_db_migrations.py",
