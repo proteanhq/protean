@@ -188,11 +188,11 @@ gets a migration that creates it, and the downgrade drops it. An index declared
 for another database is left out.
 
 The table copy on SQLite loses an expression index and the DESC order of an
-index column. After each copy, in the upgrade and in the downgrade, the
-migration drops and creates again each named `Index.from_sql` index and each
-index with a `desc=` column. Give every `Index.from_sql` index on SQLite a
-`name=`: the migration cannot rebuild an unnamed one, so a table copy can
-lose it.
+index column. The migration rebuilds these indexes after each copy, in the
+upgrade and in the downgrade. It drops and creates again each named
+`Index.from_sql` index and each index with a `desc=` column. The migration
+cannot rebuild an unnamed `Index.from_sql` index, so a table copy can lose it.
+Give each one on SQLite a `name=`.
 
 Autogenerate does not detect these changes, so write the migration by hand:
 
