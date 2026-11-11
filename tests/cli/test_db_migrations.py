@@ -1,6 +1,7 @@
 """Tests for ``protean db migrate``, ``upgrade`` and ``downgrade`` on SQLite."""
 
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -24,6 +25,17 @@ from tests.support.migrations import (
 )
 
 pytestmark = [pytest.mark.sqlite, pytest.mark.no_test_domain]
+
+# Rich styles Click usage errors and draws them in a panel that wraps to the
+# terminal width, so a match on the raw output depends on colour and width.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+_PANEL_RE = re.compile(r"[\s\u2500-\u257f]+")
+
+
+def plain(output: str) -> str:
+    """Return ``output`` without ANSI codes, panel borders or line breaks."""
+    return _PANEL_RE.sub(" ", _ANSI_RE.sub("", output))
+
 
 PRODUCT_WITH_LONGER_NAME = """
 @domain.aggregate
@@ -188,7 +200,7 @@ class TestMigrateAndUpgrade:
         result = project.run("migrate")
 
         assert result.exit_code == 2
-        assert "Missing option '--message'" in result.output
+        assert "Missing option '--message'" in plain(result.output)
         assert project.versions() == []
 
     def test_migrate_refuses_a_blank_message(self, project):
@@ -198,7 +210,7 @@ class TestMigrateAndUpgrade:
         result = project.run("migrate", "-m", "  ")
 
         assert result.exit_code == 2
-        assert "describe what the migration changes" in result.output
+        assert "describe what the migration changes" in plain(result.output)
         assert project.versions() == []
 
     def test_the_provider_comes_from_the_folder(self, project, tmp_path):
