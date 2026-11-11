@@ -259,9 +259,11 @@ command does not read the database to learn where it is. Without a range, the
 command stops with Alembic's message:
 `downgrade with --sql requires <fromrev>:<torev>`.
 
-The command reads any word after `downgrade` that it does not know as the
-revision, so `-1` works. A mistyped option, such as `--sqll`, is read as the
-revision too, and Alembic then reports it as an unknown revision.
+When no revision is given, the command reads the first word it does not know
+as the revision, so `-1` works. A mistyped option, such as `--sqll`, is then
+read as the revision too, and Alembic reports it as an unknown revision. When a
+revision is also given, as in `downgrade --sqll head:base`, the command stops
+with an "unexpected extra argument" error and exits 2.
 
 **Options**
 
