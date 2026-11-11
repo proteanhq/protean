@@ -392,13 +392,13 @@ def _skip_if_provider_lacks_capability(
     provider = test_domain.providers["default"]
 
     if marker_name == "transactional":
-        if not provider.has_any_capability(required_caps):
+        if not provider.capabilities & required_caps:
             pytest.skip(
                 f"Provider '{provider.name}' ({provider.__class__.__name__}) "
                 f"lacks transaction support (real or simulated)"
             )
     else:
-        if not provider.has_all_capabilities(required_caps):
+        if required_caps not in provider.capabilities:
             pytest.skip(
                 f"Provider '{provider.name}' ({provider.__class__.__name__}) "
                 f"lacks required capability: {marker_name}"

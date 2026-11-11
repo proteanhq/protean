@@ -46,6 +46,24 @@ def test_rollback_restores_versions_when_the_provider_undoes_the_write(test_doma
     assert tally._next_version == 1
 
 
+def test_rollback_restores_versions_when_the_provider_has_real_transactions(
+    test_domain,
+):
+    tally = _saved_tally(test_domain)
+    provider_cls = type(test_domain.providers["default"])
+
+    with patch.object(
+        provider_cls,
+        "capabilities",
+        new_callable=PropertyMock,
+        return_value=DatabaseCapabilities.RELATIONAL,
+    ):
+        _add_and_roll_back(test_domain, tally)
+
+    assert tally._version == 0
+    assert tally._next_version == 1
+
+
 def test_rollback_keeps_the_written_version_when_the_provider_has_no_transactions(
     test_domain,
 ):

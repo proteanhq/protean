@@ -430,10 +430,15 @@ def capabilities(self) -> DatabaseCapabilities:
     return DatabaseCapabilities.RELATIONAL | DatabaseCapabilities.NATIVE_JSON | DatabaseCapabilities.NATIVE_ARRAY
 ```
 
+The claim and delete flags `NATIVE_CLAIM`, `BOUNDED_DELETE` and
+`FILTERED_CLAIM_CANDIDATES` are in no convenience set. A provider declares each
+of them on its own, next to the set it returns.
+
 !!!warning
     Only declare capabilities you actually implement. The conformance test
     suite checks most declared capabilities. It does not check
-    `OPTIMISTIC_LOCKING`, `CONNECTION_POOLING` or `SCHEMA_MIGRATIONS`.
+    `OPTIMISTIC_LOCKING`, `CONNECTION_POOLING`, `SCHEMA_MIGRATIONS`,
+    `NATIVE_CLAIM`, `BOUNDED_DELETE` or `FILTERED_CLAIM_CANDIDATES`.
 
 ### Supporting schema migrations (optional)
 

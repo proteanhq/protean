@@ -67,6 +67,9 @@ The SQLite provider supports the following capabilities:
 - :x: **SIMULATED_TRANSACTIONS**: Uses real transactions instead
 - :x: **NATIVE_JSON**: No native JSON column type (stored as text)
 - :x: **NATIVE_ARRAY**: No native array column type (stored as text)
+- :white_check_mark: **BOUNDED_DELETE**: Deletes up to `limit` rows in one operation, without a separate read of their ids
+- :white_check_mark: **FILTERED_CLAIM_CANDIDATES**: Leaves held rows out of a claim's candidates
+- :x: **NATIVE_CLAIM**: Claims rows in one statement
 
 ## Timestamps
 

@@ -127,7 +127,8 @@ You can combine individual flags freely.
 
 ### Capability Flags
 
-Capabilities are organized into five tiers:
+Capabilities are organized into five tiers, plus a group of claim and delete
+flags:
 
 **Tier 1: Universal Foundation**, Every provider supports these.
 
@@ -167,6 +168,16 @@ Capabilities are organized into five tiers:
 | `NATIVE_JSON` | Native JSON column support (e.g. PostgreSQL `JSONB`) |
 | `NATIVE_ARRAY` | Native array column support (e.g. PostgreSQL `ARRAY`) |
 
+**Claim and delete**
+
+No convenience set includes these flags. Each provider declares them on its own.
+
+| Flag | Description |
+|------|-------------|
+| `NATIVE_CLAIM` | Claims rows in one statement |
+| `BOUNDED_DELETE` | Deletes up to `limit` rows in one operation, without a separate read of their ids |
+| `FILTERED_CLAIM_CANDIDATES` | Leaves held rows out of a claim's candidates |
+
 ### Convenience Sets
 
 Common capability combinations are bundled as convenience sets:
@@ -180,7 +191,10 @@ Common capability combinations are bundled as convenience sets:
 
 ### Checking Capabilities at Runtime
 
-You can check provider capabilities programmatically:
+You can check provider capabilities with `in` and `&` on
+`provider.capabilities`. `in` with one flag, or with a set of flags joined by
+`|`, is true when the provider declares all of them. `&` with a set of flags is
+true when the provider declares at least one of them:
 
 ```python
 --8<-- "adapters/database/index/001.py:full"
@@ -211,6 +225,9 @@ On the memory provider, `results` holds one record, Ada's.
 | SCHEMA_MIGRATIONS |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
 | NATIVE_JSON |  |  | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
 | NATIVE_ARRAY |  |  | :white_check_mark: | :white_check_mark: |  |  |
+| NATIVE_CLAIM |  |  | :white_check_mark: |  |  |  |
+| BOUNDED_DELETE | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  | :white_check_mark: |
+| FILTERED_CLAIM_CANDIDATES |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
 
 ## Provider Registry
 

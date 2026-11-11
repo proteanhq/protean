@@ -102,8 +102,11 @@ The PostgreSQL provider supports the following capabilities:
 - :white_check_mark: **SCHEMA_MIGRATIONS**: Versioned migrations through Alembic
 - :white_check_mark: **NATIVE_JSON**: PostgreSQL `JSONB` column type
 - :white_check_mark: **NATIVE_ARRAY**: PostgreSQL `ARRAY` column type
+- :white_check_mark: **NATIVE_CLAIM**: Claims rows in one statement
+- :white_check_mark: **BOUNDED_DELETE**: Deletes up to `limit` rows in one operation, without a separate read of their ids
+- :white_check_mark: **FILTERED_CLAIM_CANDIDATES**: Leaves held rows out of a claim's candidates
 
-PostgreSQL supports **12 of the 13 capability flags**. It does not declare
+PostgreSQL supports **15 of the 16 capability flags**. It does not declare
 `SIMULATED_TRANSACTIONS`, which is specific to the Memory provider.
 
 ## Indexes

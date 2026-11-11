@@ -33,7 +33,7 @@ class TestRawQueries:
     def test_provider_declares_raw_queries_capability(self, test_domain):
         """Verify the provider has the RAW_QUERIES capability flag."""
         provider = test_domain.providers["default"]
-        assert provider.has_capability(DatabaseCapabilities.RAW_QUERIES)
+        assert DatabaseCapabilities.RAW_QUERIES in provider.capabilities
 
     def test_raw_does_not_raise_not_supported_error(self, test_domain):
         """Verify raw() does not raise NotSupportedError for capable providers."""

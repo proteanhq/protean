@@ -163,13 +163,12 @@ def migration_provider(domain: Domain, provider_name: str) -> BaseProvider:
         )
 
     provider = domain.providers[provider_name]
-    if not provider.has_capability(DatabaseCapabilities.SCHEMA_MIGRATIONS):
+    if DatabaseCapabilities.SCHEMA_MIGRATIONS not in provider.capabilities:
         capable = [
             name
             for name in configured
-            if domain.providers[name].has_capability(
-                DatabaseCapabilities.SCHEMA_MIGRATIONS
-            )
+            if DatabaseCapabilities.SCHEMA_MIGRATIONS
+            in domain.providers[name].capabilities
         ]
         alternatives = (
             f"Providers that declare it: {', '.join(capable)}."

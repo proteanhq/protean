@@ -32,7 +32,7 @@ class TestRawQueryCapabilityGating:
     def test_provider_raw_succeeds_when_capable(self, test_domain):
         """Providers with RAW_QUERIES can call raw() without error."""
         provider = test_domain.providers["default"]
-        if not provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
+        if DatabaseCapabilities.RAW_QUERIES not in provider.capabilities:
             return  # Not applicable to this provider
 
         # Should not raise — exact query format varies by adapter,
@@ -49,7 +49,7 @@ class TestRawQueryCapabilityGating:
     def test_provider_raw_raises_when_not_capable(self, test_domain):
         """Providers without RAW_QUERIES raise NotSupportedError from raw()."""
         provider = test_domain.providers["default"]
-        if provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
+        if DatabaseCapabilities.RAW_QUERIES in provider.capabilities:
             return  # Not applicable to this provider
 
         with pytest.raises(NotSupportedError, match="does not support raw queries"):
@@ -58,7 +58,7 @@ class TestRawQueryCapabilityGating:
     def test_queryset_raw_raises_when_not_capable(self, test_domain):
         """QuerySet.raw() raises NotSupportedError for providers without RAW_QUERIES."""
         provider = test_domain.providers["default"]
-        if provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
+        if DatabaseCapabilities.RAW_QUERIES in provider.capabilities:
             return  # Not applicable to this provider
 
         dao = test_domain.repository_for(Widget)._dao
@@ -68,7 +68,7 @@ class TestRawQueryCapabilityGating:
     def test_queryset_raw_succeeds_when_capable(self, test_domain):
         """QuerySet.raw() works for providers with RAW_QUERIES."""
         provider = test_domain.providers["default"]
-        if not provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
+        if DatabaseCapabilities.RAW_QUERIES not in provider.capabilities:
             return  # Not applicable to this provider
 
         # Create a record first
@@ -134,7 +134,7 @@ class TestTransactionCapabilityWarnings:
     def test_simulated_transactions_logs_debug(self, test_domain, caplog):
         """Provider with SIMULATED_TRANSACTIONS logs a debug message."""
         provider = test_domain.providers["default"]
-        if not provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
+        if DatabaseCapabilities.SIMULATED_TRANSACTIONS not in provider.capabilities:
             return  # Not applicable to this provider
 
         from protean.core.unit_of_work import UnitOfWork
@@ -151,9 +151,10 @@ class TestTransactionCapabilityWarnings:
     def test_no_transactions_logs_warning(self, test_domain, caplog):
         """Provider without TRANSACTIONS or SIMULATED_TRANSACTIONS logs a warning."""
         provider = test_domain.providers["default"]
-        if provider.has_capability(
-            DatabaseCapabilities.TRANSACTIONS
-        ) or provider.has_capability(DatabaseCapabilities.SIMULATED_TRANSACTIONS):
+        if (
+            DatabaseCapabilities.TRANSACTIONS in provider.capabilities
+            or DatabaseCapabilities.SIMULATED_TRANSACTIONS in provider.capabilities
+        ):
             return  # Not applicable to this provider
 
         from protean.core.unit_of_work import UnitOfWork
@@ -171,7 +172,7 @@ class TestTransactionCapabilityWarnings:
     def test_real_transactions_no_warning(self, test_domain, caplog):
         """Provider with TRANSACTIONS should not emit any transaction warning."""
         provider = test_domain.providers["default"]
-        if not provider.has_capability(DatabaseCapabilities.TRANSACTIONS):
+        if DatabaseCapabilities.TRANSACTIONS not in provider.capabilities:
             return  # Not applicable to this provider
 
         from protean.core.unit_of_work import UnitOfWork

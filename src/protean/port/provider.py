@@ -46,6 +46,11 @@ class DatabaseCapabilities(Flag):
     NATIVE_JSON = auto()  # Native JSON column support
     NATIVE_ARRAY = auto()  # Native array column support
 
+    # Claim and delete
+    NATIVE_CLAIM = auto()  # Claims rows in one statement
+    BOUNDED_DELETE = auto()  # Deletes up to ``limit`` rows in one operation, without a separate read of their ids
+    FILTERED_CLAIM_CANDIDATES = auto()  # Leaves held rows out of a claim's candidates
+
     # Convenience Capability Sets
     BASIC_STORAGE = CRUD | FILTER | BULK_OPERATIONS | ORDERING
 
@@ -161,18 +166,6 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     def capabilities(self) -> DatabaseCapabilities:
         """Return the capabilities of this database provider."""
 
-    def has_capability(self, capability: DatabaseCapabilities) -> bool:
-        """Check if provider has a specific capability."""
-        return capability in self.capabilities
-
-    def has_all_capabilities(self, capabilities: DatabaseCapabilities) -> bool:
-        """Check if provider has all the specified capabilities."""
-        return (self.capabilities & capabilities) == capabilities
-
-    def has_any_capability(self, capabilities: DatabaseCapabilities) -> bool:
-        """Check if provider has any of the specified capabilities."""
-        return bool(self.capabilities & capabilities)
-
     @classmethod
     def validate_lookups(cls) -> list[str]:
         """Check that all required lookups are registered.
@@ -276,7 +269,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
 
         Raises NotSupportedError if the provider does not support raw queries.
         """
-        if not self.has_capability(DatabaseCapabilities.RAW_QUERIES):
+        if DatabaseCapabilities.RAW_QUERIES not in self.capabilities:
             raise NotSupportedError(
                 f"Provider '{self.name}' ({self.__class__.__name__}) "
                 "does not support raw queries"
@@ -298,7 +291,7 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         Raises NotSupportedError if the provider does not declare
         ``SCHEMA_MIGRATIONS``.
         """
-        if not self.has_capability(DatabaseCapabilities.SCHEMA_MIGRATIONS):
+        if DatabaseCapabilities.SCHEMA_MIGRATIONS not in self.capabilities:
             raise NotSupportedError(
                 f"Provider '{self.name}' ({self.__class__.__name__}) "
                 "does not support schema migrations"

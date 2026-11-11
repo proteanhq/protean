@@ -443,7 +443,7 @@ class QuerySet:
             NotSupportedError: The provider does not support raw queries.
         """
         provider = self._owner_dao.provider
-        if not provider.has_capability(DatabaseCapabilities.RAW_QUERIES):
+        if DatabaseCapabilities.RAW_QUERIES not in provider.capabilities:
             raise NotSupportedError(
                 f"Provider '{provider.name}' ({provider.__class__.__name__}) "
                 "does not support raw queries"
