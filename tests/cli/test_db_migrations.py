@@ -31,6 +31,32 @@ class Product:
     name = String(max_length=100)
 """
 
+SHOP_PRODUCT = """
+@domain.aggregate(provider="shop")
+class Product:
+    name = String(max_length=50)
+"""
+
+# Each index kind a SQLite table copy would lose, on a ``name`` of ``max_length``.
+COPIED_INDEXES_MODEL = """
+@domain.aggregate(indexes=[
+    Index("price", desc=["price"], name="ix_product_price_desc"),
+    Index.from_sql(
+        "sqlite",
+        "CREATE INDEX ix_product_raw ON product (lower(name))",
+        name="ix_product_raw",
+    ),
+    Index.from_sql(
+        "sqlite",
+        "CREATE INDEX ix_product_raw_price ON product (price)",
+        name="ix_product_raw_price",
+    ),
+])
+class Product:
+    name = String(max_length={max_length})
+    price = Integer()
+"""
+
 WITH_EVENT_SOURCED_LEDGER = """
 @domain.aggregate
 class Product:
@@ -77,6 +103,18 @@ def run_alembic(cwd: Path, *args: str) -> subprocess.CompletedProcess:
         text=True,
         env=env,
     )
+
+
+def index_sql(database: Path) -> dict[str, str]:
+    """The ``CREATE INDEX`` statement of each named index, from ``sqlite_master``."""
+    connection = sqlite3.connect(database)
+    try:
+        rows = connection.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL"
+        ).fetchall()
+    finally:
+        connection.close()
+    return dict(rows)
 
 
 def start_at_head(project: MigrationsProject, model: str) -> None:
@@ -153,6 +191,30 @@ class TestMigrateAndUpgrade:
         assert "Missing option '--message'" in result.output
         assert project.versions() == []
 
+    def test_migrate_refuses_a_blank_message(self, project):
+        project.write(PRODUCT)
+        project.run_ok("init")
+
+        result = project.run("migrate", "-m", "  ")
+
+        assert result.exit_code == 2
+        assert "describe what the migration changes" in result.output
+        assert project.versions() == []
+
+    def test_the_provider_comes_from_the_folder(self, project, tmp_path):
+        shop = tmp_path / "shop.db"
+        project.databases = {
+            "default": {"provider": "memory"},
+            "shop": {"provider": "sqlite", "database_uri": sqlite_url(shop)},
+        }
+        project.write(SHOP_PRODUCT)
+        project.run_ok("init", "--provider", "shop", "--directory", "migrations/shop")
+
+        project.run_ok("migrate", "-m", "initial", "--directory", "migrations/shop")
+        project.run_ok("upgrade", "--directory", "migrations/shop")
+
+        assert "product" in table_names(sqlite_url(shop))
+
 
 class TestMigrateFindsNoChange:
     def test_an_unchanged_model_writes_no_file(self, project):
@@ -188,6 +250,54 @@ class TestRawIndexes:
         source = initial.read_text(encoding="utf-8")
         assert "CREATE INDEX ix_product_raw ON product (lower(name))" in source
         assert "ix_product_other" not in source
+
+
+class TestATableCopyKeepsItsIndexes:
+    """On SQLite, a column change copies the table, and the copy is built from
+    reflection, which leaves out expression indexes and DESC order."""
+
+    def test_upgrade_and_downgrade_keep_every_index(self, project, database):
+        start_at_head(project, COPIED_INDEXES_MODEL.format(max_length=50))
+        before = index_sql(database)
+        assert {"ix_product_price_desc", "ix_product_raw", "ix_product_raw_price"} <= (
+            before.keys()
+        )
+        project.write(COPIED_INDEXES_MODEL.format(max_length=100))
+
+        project.run_ok("migrate", "-m", "longer name")
+        project.run_ok("upgrade")
+
+        latest = next(v for v in project.versions() if "longer_name" in v.name)
+        assert "batch_alter_table" in latest.read_text(encoding="utf-8")
+        assert index_sql(database) == before
+        result = project.run_ok("migrate", "-m", "nothing")
+        assert "No changes detected; no migration written." in result.output
+
+        project.run_ok("downgrade", "-1")
+
+        assert index_sql(database) == before
+
+    def test_only_the_dropped_column_rebuilds_the_indexes(self, project, database):
+        """Adding a column runs without a copy; dropping it in the downgrade copies."""
+        start_at_head(project, raw_index_model("sqlite"))
+        project.write(
+            raw_index_model("sqlite").replace(
+                "price = Integer()", "price = Integer()\n    stock = Integer()"
+            )
+        )
+
+        project.run_ok("migrate", "-m", "add stock")
+        project.run_ok("upgrade")
+
+        latest = next(v for v in project.versions() if "add_stock" in v.name)
+        upgrade, downgrade = latest.read_text(encoding="utf-8").split("def downgrade")
+        assert "DROP INDEX IF EXISTS" not in upgrade
+        assert "DROP INDEX IF EXISTS ix_product_raw" in downgrade
+        assert "ix_product_raw" in index_sql(database)
+
+        project.run_ok("downgrade", "-1")
+
+        assert "ix_product_raw" in index_sql(database)
 
 
 class TestDowngrade:

@@ -187,6 +187,13 @@ the migration that creates its table. A named one added to an existing table
 gets a migration that creates it, and the downgrade drops it. An index declared
 for another database is left out.
 
+The table copy on SQLite loses an expression index and the DESC order of an
+index column. After each copy, in the upgrade and in the downgrade, the
+migration drops and creates again each named `Index.from_sql` index and each
+index with a `desc=` column. Give every `Index.from_sql` index on SQLite a
+`name=`: the migration cannot rebuild an unnamed one, so a table copy can
+lose it.
+
 Autogenerate does not detect these changes, so write the migration by hand:
 
 - A changed `Index.from_sql` statement that keeps its name. The command

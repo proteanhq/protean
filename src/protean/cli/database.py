@@ -9,8 +9,8 @@ import typer
 from rich import print
 
 from protean.adapters.repository.schema_migrator import (
+    _migrations_provider_name,
     migration_provider,
-    migrations_provider_name,
 )
 from protean.cli._helpers import handle_cli_exceptions, load_domain
 from protean.exceptions import ConfigurationError, NotSupportedError
@@ -120,7 +120,7 @@ def _with_migrator(
             name = (
                 provider
                 if provider is not None
-                else migrations_provider_name(directory)
+                else _migrations_provider_name(directory)
             )
             checked = migration_provider(derived_domain, name)
             return action(checked.schema_migrator(directory))
@@ -167,12 +167,24 @@ def init(
     typer.echo(f"Created migrations for provider '{provider}' in {directory}.")
 
 
+def _require_message(value: str) -> str:
+    # A blank message would name the migration file by its hash alone.
+    if not value.strip():
+        raise typer.BadParameter("describe what the migration changes")
+    return value
+
+
 @app.command(name="migrate")
 @handle_cli_exceptions("db migrate")
 def migrate(
     message: Annotated[
         str,
-        typer.Option("--message", "-m", help="What the migration changes"),
+        typer.Option(
+            "--message",
+            "-m",
+            help="What the migration changes",
+            callback=_require_message,
+        ),
     ],
     domain: DomainOption = ".",
     directory: DirectoryOption = "migrations",

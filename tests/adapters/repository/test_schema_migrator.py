@@ -4,6 +4,7 @@ import configparser
 import contextlib
 import importlib
 import logging
+import os
 import sys
 import textwrap
 
@@ -214,19 +215,33 @@ class TestMigrationsProviderName:
     def test_reads_the_provider_the_folder_records(self, tmp_path):
         write_migrations_folder(tmp_path / "m", "domain.py", "analytics")
 
-        assert schema_migrator.migrations_provider_name(tmp_path / "m") == "analytics"
+        assert schema_migrator._migrations_provider_name(tmp_path / "m") == "analytics"
 
     def test_ini_without_the_option_is_refused(self, tmp_path):
         (tmp_path / "alembic.ini").write_text("[alembic]\nscript_location = .\n")
 
         with pytest.raises(ConfigurationError, match="no 'protean_provider' option"):
-            schema_migrator.migrations_provider_name(tmp_path)
+            schema_migrator._migrations_provider_name(tmp_path)
 
     def test_ini_that_cannot_be_parsed_is_refused(self, tmp_path):
         (tmp_path / "alembic.ini").write_text("protean_provider = default\n")
 
         with pytest.raises(ConfigurationError, match="Cannot read"):
-            schema_migrator.migrations_provider_name(tmp_path)
+            schema_migrator._migrations_provider_name(tmp_path)
+
+    @pytest.mark.skipif(
+        sys.platform == "win32" or os.geteuid() == 0,
+        reason="needs POSIX file permissions that apply to the user",
+    )
+    def test_ini_that_cannot_be_opened_is_refused(self, tmp_path):
+        write_migrations_folder(tmp_path / "m", "domain.py", "analytics")
+        ini = tmp_path / "m" / "alembic.ini"
+        ini.chmod(0)
+        try:
+            with pytest.raises(ConfigurationError, match="Cannot read .*Permission"):
+                schema_migrator._migrations_provider_name(tmp_path / "m")
+        finally:
+            ini.chmod(0o644)
 
 
 class TestMigratingThroughTheProvider:

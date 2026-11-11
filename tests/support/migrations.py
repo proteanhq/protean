@@ -13,6 +13,7 @@ shared server and drop it afterwards.
 from __future__ import annotations
 
 import contextlib
+import shutil
 import sys
 import textwrap
 import uuid
@@ -211,6 +212,9 @@ class MigrationsProject:
         (self.root / "domain.py").write_text(
             textwrap.dedent(header) + textwrap.dedent(model), encoding="utf-8"
         )
+        # A rewrite of the same size within the same second matches the cached
+        # bytecode's size and timestamp, so the import would load the old model.
+        shutil.rmtree(self.root / "__pycache__", ignore_errors=True)
 
     def run(self, *args: str) -> Result:
         """Run ``protean db <args> --domain domain.py`` and return the result."""

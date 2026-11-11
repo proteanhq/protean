@@ -847,7 +847,7 @@ _raw_indexes_by_table: weakref.WeakKeyDictionary[Table, list[RawIndex]] = (
 )
 
 
-def raw_indexes_of(table: Table) -> list[RawIndex]:
+def _raw_indexes_of(table: Table) -> list[RawIndex]:
     """The raw indexes ``table`` declares for its provider's dialect."""
     return _raw_indexes_by_table.get(table, [])
 
@@ -1895,7 +1895,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
                 DDL(raw.ddl),  # type: ignore[no-untyped-call]
             )
         if matching:
-            # Migrations read them through ``raw_indexes_of``:
+            # Migrations read them through ``_raw_indexes_of``:
             # ``op.create_table`` fires no ``after_create``, and the table's
             # ``indexes`` does not hold them.
             _raw_indexes_by_table[typing.cast("Table", cls.__table__)] = matching

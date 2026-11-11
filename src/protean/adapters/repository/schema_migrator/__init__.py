@@ -32,7 +32,6 @@ if TYPE_CHECKING:
 __all__ = [
     "PROVIDER_ATTRIBUTE",
     "migration_provider",
-    "migrations_provider_name",
     "run_migrations",
     "write_migrations_folder",
 ]
@@ -149,7 +148,7 @@ def _remove_created(created: list[Path]) -> None:
             path.unlink(missing_ok=True)
 
 
-def migrations_provider_name(directory: Path) -> str:
+def _migrations_provider_name(directory: Path) -> str:
     """The name of the provider the migrations folder ``directory`` belongs to.
 
     Reads the ``protean_provider`` option that ``write_migrations_folder``
@@ -168,7 +167,9 @@ def migrations_provider_name(directory: Path) -> str:
         )
     parser = configparser.ConfigParser()
     try:
-        parser.read(ini, encoding="utf-8")
+        # ``read_file`` and not ``read``, which skips a file it cannot open.
+        with ini.open(encoding="utf-8") as file:
+            parser.read_file(file)
         name = parser.get("alembic", "protean_provider", fallback="")
     except (configparser.Error, OSError, UnicodeDecodeError) as exc:
         raise ConfigurationError(f"Cannot read '{ini}': {exc}") from exc

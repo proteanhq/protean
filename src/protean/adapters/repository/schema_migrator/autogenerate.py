@@ -13,10 +13,11 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from alembic.operations import ops
-from sqlalchemy import MetaData, Table, inspect, text
+from sqlalchemy import Column, Computed, DefaultClause, MetaData, Table, inspect, text
 from sqlalchemy.exc import SAWarning
+from sqlalchemy.sql import ClauseElement
 
-from protean.adapters.repository.sqlalchemy import raw_indexes_of
+from protean.adapters.repository.sqlalchemy import _raw_indexes_of
 from protean.core.index import RawIndex
 
 if TYPE_CHECKING:
@@ -86,6 +87,8 @@ class _Comparison:
             return
         _drop_primary_key_nullability(self.metadata, script.upgrade_ops)
         _drop_primary_key_nullability(self.metadata, script.downgrade_ops)
+        if context.dialect.name == "sqlite":
+            _rebuild_indexes_after_copy(context, self.metadata, self.schema, script)
         created = _add_raw_indexes_to_new_tables(self.metadata, script.upgrade_ops.ops)
         _add_missing_raw_indexes(context, self.metadata, self.schema, script, created)
         # An empty migration adds a step to the history that does nothing.
@@ -101,7 +104,7 @@ def _table(metadata: MetaData, name: str) -> Table | None:
 
 
 def _raw_indexes(table: Table | None) -> list[RawIndex]:
-    return [] if table is None else raw_indexes_of(table)
+    return [] if table is None else _raw_indexes_of(table)
 
 
 def _raw_index_names(metadata: MetaData, table_name: str) -> set[str]:
@@ -160,6 +163,88 @@ def _add_raw_indexes_to_new_tables(metadata: MetaData, upgrade: list[Any]) -> se
             ]
             upgrade[position + 1 : position + 1] = sql
     return created
+
+
+def _rebuild_indexes_after_copy(
+    context: MigrationContext, metadata: MetaData, schema: str | None, script: Any
+) -> None:
+    """Rebuild the indexes a SQLite table copy drops or changes, in ``script``.
+
+    Alembic's batch mode copies a SQLite table from reflection, and reflection
+    leaves out expression indexes and the sort order of an index column. After
+    each op that copies a table, in the upgrade and in the downgrade, each index
+    the database holds before the migration is dropped and created again from
+    the model when it is a named raw index or a declared index with an
+    expression, such as a DESC column.
+    """
+    connection = context.connection
+    assert connection is not None
+    for container in (script.upgrade_ops, script.downgrade_ops):
+        for position in range(len(container.ops) - 1, -1, -1):
+            op = container.ops[position]
+            if isinstance(op, ops.ModifyTableOps) and _copies_table(op):
+                rebuilt = _index_rebuild(connection, metadata, schema, op.table_name)
+                container.ops[position + 1 : position + 1] = rebuilt
+
+
+def _index_rebuild(
+    connection: Connection, metadata: MetaData, schema: str | None, table_name: str
+) -> list[Any]:
+    """The ops that drop and create again each index a copy of the table loses.
+
+    Only the indexes the database holds are rebuilt. The others are created by
+    the migration's own ops, or do not exist at this point of the downgrade.
+    """
+    table = _table(metadata, table_name)
+    assert table is not None
+    present = _index_names(connection, table_name, schema)
+    rebuilt: list[Any] = []
+    for name, create in _lossy_indexes(table):
+        if name in present:
+            # The copy keeps an index it can reflect, in its reflected form.
+            drop = f"DROP INDEX IF EXISTS {_qualified(connection, name, schema)}"
+            rebuilt += [ops.ExecuteSQLOp(drop), create]
+    return rebuilt
+
+
+def _qualified(connection: Connection, name: str, schema: str | None) -> str:
+    preparer = connection.dialect.identifier_preparer
+    quoted = preparer.quote(name)
+    return quoted if schema is None else f"{preparer.quote_schema(schema)}.{quoted}"
+
+
+def _copies_table(op: ops.ModifyTableOps) -> bool:
+    """Whether Alembic copies the SQLite table to apply ``op``.
+
+    The same rule as Alembic's ``SQLiteImpl.requires_recreate_in_batch``: only
+    a plain added column and an index change run without a copy.
+    """
+    for child in op.ops:
+        if isinstance(child, ops.AddColumnOp):
+            default = child.column.server_default
+            if isinstance(default, DefaultClause) and isinstance(
+                default.arg, ClauseElement
+            ):
+                return True
+            if isinstance(default, Computed) and default.persisted:
+                return True
+        elif not isinstance(child, (ops.CreateIndexOp, ops.DropIndexOp)):
+            return True
+    return False
+
+
+def _lossy_indexes(table: Table) -> list[tuple[str, Any]]:
+    """The named indexes of ``table`` a SQLite copy loses, with the op creating each."""
+    lossy: list[tuple[str, Any]] = [
+        (index.name, ops.CreateIndexOp.from_index(index))
+        for index in sorted(table.indexes, key=lambda index: str(index.name))
+        if index.name
+        and not all(isinstance(column, Column) for column in index.expressions)
+    ]
+    lossy += [
+        (raw.name, ops.ExecuteSQLOp(raw.ddl)) for raw in _raw_indexes(table) if raw.name
+    ]
+    return lossy
 
 
 def _add_missing_raw_indexes(

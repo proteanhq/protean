@@ -2,15 +2,17 @@
 
 import pytest
 import sqlalchemy
-from sqlalchemy import Column, MetaData, String, Table, text
+from sqlalchemy import Column, Computed, Integer, MetaData, String, Table, text
 
 pytest.importorskip("alembic")
 from alembic.operations import ops
 
 from protean.adapters.repository.schema_migrator.autogenerate import (
     _Comparison,
+    _copies_table,
     _drop_primary_key_nullability,
     _index_names,
+    _qualified,
     _raw_index_names,
 )
 
@@ -80,3 +82,50 @@ class TestProcessRevisionDirectives:
         _Comparison(metadata, None).process_revision_directives(None, None, directives)
 
         assert directives == [script]
+
+
+def modify(*children):
+    return ops.ModifyTableOps("product", list(children))
+
+
+class TestCopiesTable:
+    def test_a_plain_added_column_or_an_index_change_does_not_copy(self):
+        op = modify(
+            ops.AddColumnOp("product", Column("stock", Integer)),
+            ops.CreateIndexOp("ix_stock", "product", ["stock"]),
+            ops.DropIndexOp("ix_old", "product"),
+        )
+
+        assert _copies_table(op) is False
+
+    def test_a_changed_column_copies(self):
+        assert _copies_table(modify(ops.AlterColumnOp("product", "name"))) is True
+
+    def test_an_added_column_with_an_sql_default_copies(self):
+        column = Column("stock", Integer, server_default=text("0"))
+
+        assert _copies_table(modify(ops.AddColumnOp("product", column))) is True
+
+    def test_an_added_column_with_a_literal_default_does_not_copy(self):
+        column = Column("stock", Integer, server_default="0")
+
+        assert _copies_table(modify(ops.AddColumnOp("product", column))) is False
+
+    def test_an_added_stored_computed_column_copies(self):
+        column = Column("double", Integer, Computed("stock * 2", persisted=True))
+
+        assert _copies_table(modify(ops.AddColumnOp("product", column))) is True
+
+    def test_an_added_virtual_computed_column_does_not_copy(self):
+        column = Column("double", Integer, Computed("stock * 2"))
+
+        assert _copies_table(modify(ops.AddColumnOp("product", column))) is False
+
+
+class TestQualified:
+    def test_names_the_schema_of_an_attached_database(self):
+        engine = sqlalchemy.create_engine("sqlite://")
+        with engine.connect() as connection:
+            assert _qualified(connection, "ix_name", None) == "ix_name"
+            assert _qualified(connection, "ix_name", "shop") == "shop.ix_name"
+            assert _qualified(connection, "ix name", "my shop") == '"my shop"."ix name"'
