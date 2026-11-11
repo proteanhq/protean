@@ -15,6 +15,7 @@ entry at its warn site at all), this audit fails.
 """
 
 import ast
+import importlib
 import re
 import warnings
 from collections.abc import Callable
@@ -29,9 +30,11 @@ from protean._deprecation import (
     Deprecation,
 )
 from protean.fields import Identifier, List, String
+from protean.integrations.pytest import adapter_conformance
 from protean.ir.builder import IRBuilder
 from protean.server.reloader import Reloader
 from protean.server.supervisor import Supervisor
+from protean.testing import get_generic_test_dir
 from protean.utils.mixins import handle
 from tests.ir.support import deprecated_usage_domain, infra_import_domain
 
@@ -77,8 +80,8 @@ def _deprecation_diagnostics(ir: dict) -> list[dict]:
 
 
 class TestRegistryCompleteness:
-    def test_registry_holds_eleven_active_deprecations(self) -> None:
-        assert len(DEPRECATIONS) == 11
+    def test_registry_holds_thirteen_active_deprecations(self) -> None:
+        assert len(DEPRECATIONS) == 13
 
     def test_every_entry_is_well_formed(self) -> None:
         for slug, entry in DEPRECATIONS.items():
@@ -398,6 +401,10 @@ def _trigger_pm_sequential_by_non_boolean() -> None:
     domain.init(traverse=False)
 
 
+def _trigger_adapter_conformance_plugin() -> None:
+    importlib.reload(adapter_conformance)
+
+
 # Each runtime deprecation's slug → a callable that exercises its deprecated
 # path. Keyed by slug so the completeness test below can prove the map and the
 # registry's runtime arm stay in lock-step: adding a runtime entry without a
@@ -408,6 +415,8 @@ _RUNTIME_TRIGGERS: dict[str, Callable[[], None]] = {
     "supervisor_debug": _trigger_supervisor_debug,
     "reloader_debug": _trigger_reloader_debug,
     "pm_sequential_by_non_boolean": _trigger_pm_sequential_by_non_boolean,
+    "adapter_conformance_plugin": _trigger_adapter_conformance_plugin,
+    "get_generic_test_dir": get_generic_test_dir,
 }
 
 

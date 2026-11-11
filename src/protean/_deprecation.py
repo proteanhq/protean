@@ -437,6 +437,38 @@ DEPRECATIONS: dict[str, Deprecation] = {
                 "RemovedInProtean020Warning at init is the only detector."
             ),
         ),
+        Deprecation(
+            slug="adapter_conformance_plugin",
+            name="`protean.integrations.pytest.adapter_conformance` plugin",
+            since="0.19.0",
+            removal="0.20.0",
+            detection="runtime",
+            alternative=(
+                "Run `protean test test-adapter --provider <name>` from a source "
+                "checkout instead."
+            ),
+            reason=(
+                "A pytest plugin loaded by name has no declaration site on a "
+                "built domain for a rule to read; the RemovedInProtean020Warning "
+                "raised on import is the only detector."
+            ),
+        ),
+        Deprecation(
+            slug="get_generic_test_dir",
+            name="`protean.testing.get_generic_test_dir()`",
+            since="0.19.0",
+            removal="0.20.0",
+            detection="runtime",
+            alternative=(
+                "Run `protean test test-adapter --provider <name>` from a source "
+                "checkout instead."
+            ),
+            reason=(
+                "An imperative function call has no static declaration site for "
+                "a rule to read off a built domain; the per-call "
+                "RemovedInProtean020Warning is the only detector."
+            ),
+        ),
     )
 }
 

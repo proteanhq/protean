@@ -18,6 +18,87 @@ The generic test suite is in `tests/adapters/repository/generic/` and covers
 CRUD, filtering, ordering, transactions, raw queries, schema management,
 optimistic locking, value objects, associations, and more.
 
+## Port suites under `tests/conformance/`
+
+The Protean repository has one folder per port under `tests/conformance/`:
+`database`, `broker`, `cache` and `event_store`. The plugin for all four is
+`tests/conformance/conftest.py`. pytest loads it as the folder's `conftest.py`,
+so you do not register it.
+
+Each folder holds one placeholder test until its port's suite moves in. The
+database suite is still in `tests/adapters/repository/generic/`, and
+`protean test test-adapter` runs it.
+
+Each test runs against one adapter. With no options, a test runs against the
+default adapter of its folder's port: `inline` for `broker`, `memory` for the
+other three. A plain `pytest tests/conformance` needs no services.
+
+The suites are tests, so the wheel that `pip install protean` fetches does
+not include them. Run them from a source checkout.
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--port` | none | One of `database`, `broker`, `cache` or `event_store`. Every test in `tests/conformance/` outside that port's folder is deselected, including the tests that sit directly in `tests/conformance/`. |
+| `--adapter` | `memory`, or `inline` for `broker` | The adapter's registered name, such as `postgresql` or `redis`. A name the port's registry does not know raises `ConfigurationError`, which lists the registered names. |
+| `--adapter-config` | none | A JSON object merged over the adapter's built-in configuration, for example `'{"database_uri": "postgresql://localhost/test"}'`. Anything other than a JSON object stops the run with a usage error. |
+| `--capability` | none | A flag name, such as `NATIVE_JSON`. pytest keeps only the tests whose `requires` or `requires_any` marker names that flag. A marker that names a composite flag, such as `BASIC_STORAGE` or <code>CRUD &#124; NATIVE_JSON</code>, names each flag in it. `none` keeps only the tests with neither marker. |
+
+`--port` and `--capability` deselect tests only inside `tests/conformance/`.
+Tests elsewhere in the same run are kept.
+
+```bash
+# Run the database folder's tests against PostgreSQL
+pytest tests/conformance --port database --adapter postgresql
+
+# Point the adapter at another database
+pytest tests/conformance --port database --adapter postgresql \
+    --adapter-config '{"database_uri": "postgresql://localhost:5432/other"}'
+
+# Run only the tests that need one flag
+pytest tests/conformance --port database --adapter postgresql --capability NATIVE_JSON
+```
+
+### Fixtures
+
+| Fixture | Scope | Description |
+|---------|-------|-------------|
+| `adapter_config` | function | The adapter's configuration: its built-in row with `--adapter-config` merged over it |
+| `test_domain` | function, autouse | A `Domain` with the adapter under test as the port's `default` adapter |
+| `adapter` | function | The adapter under test: the domain's default provider, broker or cache, or its event store |
+| `run_around_tests` | function, autouse | Resets the adapter's data after each test |
+
+A test marked `@pytest.mark.no_test_domain` gets no domain, and `test_domain`
+yields `None`.
+
+### Capability markers
+
+A test names the capability flags it needs with a marker. The flags are the
+port's capability type: `DatabaseCapabilities`, `BrokerCapabilities`,
+`CacheCapabilities` or `EventStoreCapabilities`.
+
+- `@pytest.mark.requires(Flag.A, Flag.B)` runs the test only when the adapter
+  declares every flag given.
+- `@pytest.mark.requires_any(Flag.A, Flag.B)` runs the test when the adapter
+  declares at least one of them.
+
+```python
+# fragment
+--8<-- "reference/testing/conformance/port_suite/test_capability_gates.py:test"
+```
+
+When the adapter lacks a flag, the test is skipped, and the skip reason names
+the adapter and the flag:
+
+```
+SKIPPED [1] test_capability_gates.py:16: memory does not declare NATIVE_JSON
+```
+
+For a `requires_any` marker the reason names every flag, joined by `or`. An
+adapter with no `capabilities` member skips every marked test with the reason
+`<adapter> declares no capabilities`.
+
 ## CLI: `protean test test-adapter`
 
 The quickest way to test any provider is the `test-adapter` CLI command:
@@ -100,6 +181,14 @@ capabilities are executed; the rest are automatically skipped.
     marker requires real database-level ACID transactions.
 
 ## Pytest Plugin
+
+!!! warning "Deprecated since 0.19.0, removed in 0.20.0"
+    `protean.integrations.pytest.adapter_conformance` raises
+    `RemovedInProtean020Warning` when it is imported. It keeps working until
+    0.20.0. Run `protean test test-adapter --provider <name>` from a source
+    checkout instead. The database suite moves into `tests/conformance/database/`
+    in a later release; see
+    [Port suites under `tests/conformance/`](#port-suites-under-testsconformance).
 
 For more control, use the conformance testing pytest plugin directly in your
 test suite.
@@ -244,6 +333,11 @@ pip install -e ./protean
 ```
 
 ### 2. Create `conftest.py`
+
+!!! warning "Deprecated since 0.19.0, removed in 0.20.0"
+    Steps 2 and 3 load `protean.integrations.pytest.adapter_conformance` and
+    call `protean.testing.get_generic_test_dir()`. Both raise
+    `RemovedInProtean020Warning` and are removed in 0.20.0.
 
 ```python
 # fragment

@@ -485,6 +485,11 @@ reference.
 
 ### Using the Pytest Plugin Directly
 
+!!! warning "Deprecated since 0.19.0, removed in 0.20.0"
+    `protean.integrations.pytest.adapter_conformance` and
+    `protean.testing.get_generic_test_dir()` raise `RemovedInProtean020Warning`.
+    See [Adapter Conformance Testing](../../testing/conformance.md#port-suites-under-testsconformance).
+
 For more control, use the conformance pytest plugin in your own test suite:
 
 ```python

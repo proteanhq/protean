@@ -45,6 +45,11 @@ natural join point in a test. They run the engine until it is idle, so a test
 does not sleep for a guessed duration. Prefer them to a bare `sleep`, which is
 the single most common cause of a test that passes locally and flakes in CI.
 
+!!! warning "`get_generic_test_dir` is deprecated"
+    `get_generic_test_dir()` is deprecated since 0.19.0 and removed in 0.20.0.
+    Each call raises `RemovedInProtean020Warning`. See
+    [Adapter Conformance Testing](../reference/testing/conformance.md#port-suites-under-testsconformance).
+
 ::: protean.testing
     options:
       show_root_heading: false
