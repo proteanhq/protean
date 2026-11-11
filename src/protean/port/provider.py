@@ -109,7 +109,6 @@ class SchemaMigrator(Protocol):
         Raises ``ConfigurationError`` when the folder exists and is not empty,
         and leaves it unchanged.
         """
-        ...
 
     def migrate(self, message: str) -> pathlib.Path | None:
         """Write a migration from the change between the model and the database.
@@ -119,7 +118,6 @@ class SchemaMigrator(Protocol):
 
         Raises ``ConfigurationError`` when the migration tool reports an error.
         """
-        ...
 
     def upgrade(self, revision: str = "head", sql: bool = False) -> None:
         """Apply migrations up to ``revision``.
@@ -128,7 +126,6 @@ class SchemaMigrator(Protocol):
 
         Raises ``ConfigurationError`` when the migration tool reports an error.
         """
-        ...
 
     def downgrade(self, revision: str, sql: bool = False) -> None:
         """Revert migrations down to ``revision``.
@@ -137,7 +134,6 @@ class SchemaMigrator(Protocol):
 
         Raises ``ConfigurationError`` when the migration tool reports an error.
         """
-        ...
 
 
 class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):

@@ -116,10 +116,10 @@ def _is_primary_key(constraint: Any) -> bool:
 def _drop_primary_key_nullability(metadata: MetaData, container: Any) -> None:
     """Remove the nullability changes autogenerate finds on primary key columns.
 
-    Protean declares an identifier column nullable, and every database stores a
-    primary key column as NOT NULL, so the two always differ and the difference
-    means nothing. An op left with no change, and a table left with no op, are
-    removed.
+    Protean declares an identifier column nullable. PostgreSQL, MySQL and SQL
+    Server store a primary key column as NOT NULL, so on them the model and the
+    database differ there and the difference means nothing. An op left with no
+    change, and a table left with no op, are removed.
     """
     if container is None:
         return

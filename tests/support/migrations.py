@@ -250,7 +250,7 @@ class MigrationsProject:
                 repository.add(product_cls(name=name))
 
     def versions(self) -> list[Path]:
-        """The migration files in ``migrations/versions``, oldest name first."""
+        """The migration files in ``migrations/versions``, sorted by file name."""
         return sorted((self.root / "migrations" / "versions").glob("*.py"))
 
     def forget_modules(self) -> None:

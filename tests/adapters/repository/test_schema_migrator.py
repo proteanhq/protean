@@ -210,6 +210,25 @@ class TestWriteMigrationsFolder:
         assert (target / "env.py").read_text(encoding="utf-8") == "theirs"
 
 
+class TestMigrationsProviderName:
+    def test_reads_the_provider_the_folder_records(self, tmp_path):
+        write_migrations_folder(tmp_path / "m", "domain.py", "analytics")
+
+        assert schema_migrator.migrations_provider_name(tmp_path / "m") == "analytics"
+
+    def test_ini_without_the_option_is_refused(self, tmp_path):
+        (tmp_path / "alembic.ini").write_text("[alembic]\nscript_location = .\n")
+
+        with pytest.raises(ConfigurationError, match="no 'protean_provider' option"):
+            schema_migrator.migrations_provider_name(tmp_path)
+
+    def test_ini_that_cannot_be_parsed_is_refused(self, tmp_path):
+        (tmp_path / "alembic.ini").write_text("protean_provider = default\n")
+
+        with pytest.raises(ConfigurationError, match="Cannot read"):
+            schema_migrator.migrations_provider_name(tmp_path)
+
+
 class TestMigratingThroughTheProvider:
     def test_stamp_uses_the_attached_provider(self, provider, tmp_path):
         migrator = provider.schema_migrator(tmp_path / "migrations")
