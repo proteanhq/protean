@@ -42,7 +42,7 @@ def test_memory_configuration_shown_builds_a_memory_cache(tmp_path):
     domain.init(traverse=False)
 
     with domain.domain_context():
-        assert type(domain.caches["default"]) is MemoryCache
+        assert type(domain.caches["default"]._adapter) is MemoryCache
 
 
 def test_changed_memory_provider_is_read(tmp_path):
@@ -65,8 +65,8 @@ def _redis_cache(path, tmp_path, monkeypatch, text=None):
     domain.init(traverse=False)
     with domain.domain_context():
         cache = domain.caches["default"]
-    assert type(cache) is RedisCache
-    assert cache.r.connection_pool.connection_kwargs["db"] == 7
+    assert type(cache._adapter) is RedisCache
+    assert cache._adapter.r.connection_pool.connection_kwargs["db"] == 7
     return cache
 
 
@@ -74,7 +74,7 @@ def _redis_cache(path, tmp_path, monkeypatch, text=None):
 def test_redis_configuration_shown_sets_the_uri_and_ttl(tmp_path, monkeypatch):
     cache = _redis_cache("adapters/cache/index/redis.toml", tmp_path, monkeypatch)
 
-    assert cache.ttl == 300
+    assert cache._resolved_ttl(None) == 300
 
 
 @pytest.mark.redis
@@ -87,7 +87,7 @@ def test_changed_ttl_reaches_the_cache(tmp_path, monkeypatch):
         "adapters/cache/index/redis.toml", tmp_path, monkeypatch, text=text
     )
 
-    assert cache.ttl == 120
+    assert cache._resolved_ttl(None) == 120
 
 
 @pytest.mark.redis
@@ -103,7 +103,7 @@ def test_ttl_from_the_environment_reaches_the_cache(
         "adapters/cache/index/ttl_from_env.toml", tmp_path, monkeypatch
     )
 
-    assert cache.ttl == ttl
+    assert cache._resolved_ttl(None) == ttl
 
 
 @pytest.mark.parametrize(

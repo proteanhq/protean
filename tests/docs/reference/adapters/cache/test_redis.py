@@ -63,8 +63,8 @@ def _cache_from(path, tmp_path, monkeypatch, text=None):
     domain.init(traverse=False)
     with domain.domain_context():
         cache = domain.caches["default"]
-    assert type(cache) is RedisCache
-    assert cache.r.connection_pool.connection_kwargs["db"] == 7
+    assert type(cache._adapter) is RedisCache
+    assert cache._adapter.r.connection_pool.connection_kwargs["db"] == 7
     return cache
 
 
@@ -73,7 +73,7 @@ def test_configuration_shown_sets_the_uri_and_ttl(tmp_path, monkeypatch):
         "adapters/cache/redis/configuration.toml", tmp_path, monkeypatch
     )
 
-    assert cache.ttl == 300
+    assert cache._resolved_ttl(None) == 300
 
 
 def test_changed_ttl_reaches_the_cache(tmp_path, monkeypatch):
@@ -85,7 +85,7 @@ def test_changed_ttl_reaches_the_cache(tmp_path, monkeypatch):
         "adapters/cache/redis/configuration.toml", tmp_path, monkeypatch, text=text
     )
 
-    assert cache.ttl == 120
+    assert cache._resolved_ttl(None) == 120
 
 
 @pytest.mark.parametrize("cache_ttl, ttl", [(None, 3600), ("60", 60)])
@@ -98,7 +98,7 @@ def test_ttl_from_the_environment_reaches_the_cache(
         monkeypatch.setenv("CACHE_TTL", cache_ttl)
     cache = _cache_from("adapters/cache/redis/ttl_from_env.toml", tmp_path, monkeypatch)
 
-    assert cache.ttl == ttl
+    assert cache._resolved_ttl(None) == ttl
 
 
 @pytest.mark.parametrize(
