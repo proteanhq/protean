@@ -40,10 +40,11 @@ source. Both provide the same `psycopg2` module, so install only one. See the
 ## Configuration
 
 ```toml
-[databases.default]
-provider = "postgresql"
-database_uri = "postgresql://postgres:postgres@localhost:5432/postgres"
+--8<-- "adapters/database/postgresql/configuration.toml"
 ```
+
+`${DATABASE_URL|...}` reads the URI from the `DATABASE_URL` environment
+variable, and uses the value after `|` when it is not set.
 
 ### Configuration Options
 
@@ -170,9 +171,7 @@ tracing logger silent in production.
 Tune the behavior via the ``[logging]`` section of ``domain.toml``:
 
 ```toml
-[logging]
-slow_query_threshold_ms = 100    # WARN when a query exceeds this (ms)
-slow_query_truncate_chars = 500  # max statement length in log events
+--8<-- "adapters/database/postgresql/slow_queries.toml"
 ```
 
 Set ``slow_query_threshold_ms = 0`` to WARN on every query (useful during

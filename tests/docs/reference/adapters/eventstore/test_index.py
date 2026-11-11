@@ -6,9 +6,11 @@ from uuid import uuid4
 import pytest
 
 from protean import Domain
+from protean.adapters.event_store.memory import MemoryEventStore
 from protean.adapters.event_store.message_db import MessageDBStore
+from protean.exceptions import ConfigurationError
 from protean.port.event_store import EventStoreCapabilities
-from tests.docs.support import DOCS, DOCS_SRC, load_example
+from tests.docs.support import DOCS, DOCS_SRC, domain_from_config, load_example
 from tests.shared import MESSAGE_DB_URI
 
 MESSAGE_DB_CONFIG = DOCS_SRC / "adapters/eventstore/index/message_db.toml"
@@ -111,3 +113,27 @@ def test_set_table_lists_every_named_set():
         name for name in EventStoreCapabilities.__members__ if name not in single
     }
     assert names == named_sets
+
+
+def test_memory_configuration_shown_builds_a_memory_event_store(tmp_path):
+    domain = domain_from_config("adapters/eventstore/index/memory.toml", tmp_path)
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        assert type(domain.event_store.store) is MemoryEventStore
+
+
+def test_changed_memory_provider_is_read(tmp_path):
+    # The memory event store is also the default, so an unknown name shows the
+    # key is read.
+    text = (DOCS_SRC / "adapters/eventstore/index/memory.toml").read_text()
+    assert 'provider = "memory"' in text
+    text = text.replace('provider = "memory"', 'provider = "nosuch"')
+    domain = domain_from_config(
+        "adapters/eventstore/index/memory.toml", tmp_path, text=text
+    )
+
+    with pytest.raises(ConfigurationError, match="Unknown event store 'nosuch'"):
+        domain.init(traverse=False)
+        with domain.domain_context():
+            domain.event_store.store

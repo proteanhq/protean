@@ -1,0 +1,7 @@
+[brokers.default]
+provider = "redis"
+URI = "${REDIS_URL|redis://localhost:6379/0}"
+
+# Optional connection pool settings
+max_connections = 10
+socket_timeout = 5

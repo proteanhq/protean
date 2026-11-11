@@ -1,0 +1,8 @@
+# Development configuration
+[dev.brokers.default]
+provider = "inline"
+
+# Production configuration (same code works)
+[prod.brokers.default]
+provider = "redis"
+URI = "${REDIS_URL|redis://localhost:6379/0}"

@@ -93,19 +93,12 @@ Providers are configured in your domain configuration file (`domain.toml` or
 `.domain.toml`):
 
 ```toml
-# Default database configuration (required)
-[databases.default]
-provider = "memory"
-
-# Additional named databases
-[databases.analytics]
-provider = "elasticsearch"
-database_uri = { hosts = ["http://localhost:9200"] }
-
-[databases.reporting]
-provider = "postgresql"
-database_uri = "postgresql://postgres:postgres@localhost:5432/reports"
+--8<-- "adapters/database/index/multiple_databases.toml"
 ```
+
+`${ELASTICSEARCH_HOST|...}` and `${DATABASE_URL|...}` read the host and the URI
+from those environment variables, and use the value after `|` when a variable
+is not set.
 
 Each database configuration must specify:
 
@@ -242,6 +235,7 @@ code changes.
 Protean's built-in providers are registered in `pyproject.toml`:
 
 ```toml
+# fragment
 [project.entry-points."protean.providers"]
 memory = "protean.adapters.repository.memory:register"
 postgresql = "protean.adapters.repository.sqlalchemy:register_postgresql"
@@ -264,6 +258,7 @@ External packages can register their own providers by adding an entry point in
 their `pyproject.toml`:
 
 ```toml
+# fragment
 [project.entry-points."protean.providers"]
 dynamodb = "my_package:register"
 ```
@@ -271,6 +266,7 @@ dynamodb = "my_package:register"
 After `pip install my-package`, the provider becomes available:
 
 ```toml
+# fragment
 [databases.default]
 provider = "dynamodb"
 database_uri = "dynamodb://localhost:8000"

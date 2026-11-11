@@ -24,11 +24,11 @@ pip install "redis>=8.0.0,<8.2.0"
 ## Configuration
 
 ```toml
-[caches.default]
-provider = "redis"
-URI = "redis://localhost:6379/2"
-TTL = 300
+--8<-- "adapters/cache/redis/configuration.toml"
 ```
+
+`${REDIS_URL|...}` reads the URI from the `REDIS_URL` environment
+variable, and uses the value after `|` when it is not set.
 
 ### Configuration Options
 
@@ -44,9 +44,7 @@ A TTL must be a positive, finite number of seconds. It may also be a string
 holding one, so an environment variable works:
 
 ```toml
-[caches.default]
-provider = "redis"
-TTL = "${CACHE_TTL|3600}"
+--8<-- "adapters/cache/redis/ttl_from_env.toml"
 ```
 
 Substitution runs over already-parsed TOML strings, so a TTL sourced from the

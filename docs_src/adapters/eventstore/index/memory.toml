@@ -1,0 +1,3 @@
+# Default: in-memory event store
+[event_store]
+provider = "memory"

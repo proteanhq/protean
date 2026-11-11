@@ -3,7 +3,8 @@
 import pytest
 import sqlalchemy as sa
 
-from tests.docs.support import load_example
+from protean.adapters.repository.sqlalchemy import SqliteProvider
+from tests.docs.support import domain_from_config, load_example
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.sqlite]
 
@@ -22,3 +23,21 @@ def test_custom_model_uses_its_own_columns(monkeypatch, tmp_path):
     assert columns["email"].type.length == 255
     assert columns["email"].unique is True
     assert not columns["name"].unique
+
+
+def test_configuration_shown_builds_a_sqlite_provider(tmp_path, monkeypatch):
+    database = tmp_path / "app.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database}")
+    domain = domain_from_config("adapters/database/sqlite/configuration.toml", tmp_path)
+    domain.init(traverse=False)
+
+    provider = domain.providers["default"]
+    assert type(provider) is SqliteProvider
+    assert provider._engine.url.database == str(database)
+
+
+def test_configuration_shown_defaults_to_the_documented_uri(tmp_path, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    domain = domain_from_config("adapters/database/sqlite/configuration.toml", tmp_path)
+
+    assert domain.config["databases"]["default"]["database_uri"] == "sqlite:///app.db"

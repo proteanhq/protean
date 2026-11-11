@@ -26,10 +26,11 @@ pip install "redis>=8.0.0,<8.2.0"
 ## Configuration
 
 ```toml
-[brokers.notifications]
-provider = "redis_pubsub"
-URI = "redis://localhost:6379/0"
+--8<-- "adapters/broker/redis-pubsub/configuration.toml"
 ```
+
+`${REDIS_URL|...}` reads the URI from the `REDIS_URL` environment
+variable, and uses the value after `|` when it is not set.
 
 ### Configuration Options
 
@@ -174,17 +175,11 @@ it to `DEBUG` with the standard `logging` module when you troubleshoot.
 When you need persistence and reliability, change the provider:
 
 ```toml
-# Before: Redis PubSub
-[brokers.notifications]
-provider = "redis_pubsub"
-URI = "redis://localhost:6379/0"
+--8<-- "adapters/broker/redis-pubsub/before.toml"
 ```
 
 ```toml
-# After: Redis Streams
-[brokers.notifications]
-provider = "redis"
-URI = "redis://localhost:6379/0"
+--8<-- "adapters/broker/redis-pubsub/after.toml"
 ```
 
 Subscribers stay the same. Two things change:

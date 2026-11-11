@@ -1,0 +1,9 @@
+[brokers.default]
+provider = "inline"
+
+# Optional configuration for retry behavior
+max_retries = 3  # Maximum retry attempts for failed messages
+retry_delay = 1.0  # Initial retry delay in seconds
+backoff_multiplier = 2.0  # Exponential backoff multiplier
+message_timeout = 300.0  # Message timeout in seconds (5 minutes default)
+enable_dlq = true  # Enable dead letter queue for failed messages

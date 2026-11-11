@@ -1,0 +1,3 @@
+[logging]
+slow_query_threshold_ms = 100    # WARN when a query exceeds this (ms)
+slow_query_truncate_chars = 500  # max statement length in log events

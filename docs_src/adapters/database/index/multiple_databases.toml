@@ -1,0 +1,12 @@
+# Default database configuration (required)
+[databases.default]
+provider = "memory"
+
+# Additional named databases
+[databases.analytics]
+provider = "elasticsearch"
+database_uri = { hosts = ["${ELASTICSEARCH_HOST|http://localhost:9200}"] }
+
+[databases.reporting]
+provider = "postgresql"
+database_uri = "${DATABASE_URL|postgresql://postgres:postgres@localhost:5432/reports}"

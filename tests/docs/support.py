@@ -13,6 +13,8 @@ import types
 from collections.abc import Sequence
 from pathlib import Path
 
+from protean import Domain
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS_SRC = REPO_ROOT / "docs_src"
 DOCS = REPO_ROOT / "docs"
@@ -61,6 +63,25 @@ def load_example(path: str, root: Path = DOCS_SRC) -> types.ModuleType:
         sys.modules.pop(name, None)
         raise
     return module
+
+
+def domain_from_config(
+    path: str, folder: Path, *, text: str | None = None, name: str = "Docs"
+) -> Domain:
+    """Return a ``Domain`` configured by the ``docs_src`` TOML file at ``path``.
+
+    The file is written to ``folder/domain.toml`` and the domain is built with
+    ``root_path=folder``, so ``Config2.load_from_path`` reads it as a reader's
+    project would, ``${VAR}`` substitution included. ``text`` replaces the
+    file's content, for a test that edits a value. The domain is not
+    initialized, so no adapter is built.
+    """
+    filepath = DOCS_SRC / path
+    if not filepath.is_file():
+        raise FileNotFoundError(f"no docs_src file at {path}")
+    content = filepath.read_text(encoding="utf-8") if text is None else text
+    (folder / "domain.toml").write_text(content, encoding="utf-8")
+    return Domain(root_path=str(folder), name=name)
 
 
 def run_example_tests(

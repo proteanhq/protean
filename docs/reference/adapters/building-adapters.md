@@ -73,6 +73,7 @@ def register():
 ```
 
 ```toml
+# fragment
 [project.entry-points."protean.event_stores"]
 eventstoredb = "protean_eventstoredb:register"
 ```

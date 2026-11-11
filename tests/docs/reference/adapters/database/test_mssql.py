@@ -4,7 +4,8 @@ import pytest
 from sqlalchemy.dialects import mssql
 
 from protean.exceptions import IncorrectUsageError
-from tests.docs.support import load_example
+from protean.infra import registry
+from tests.docs.support import domain_from_config, load_example
 from tests.shared import MSSQL_URI
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.mssql]
@@ -53,3 +54,24 @@ def test_custom_model_uses_mssql_column_types():
     assert columns["email"].type.length == 255
     assert columns["email"].unique is True
     assert not columns["name"].unique
+
+
+def test_configuration_shown_carries_the_password(tmp_path, monkeypatch):
+    monkeypatch.setenv("MSSQL_PASSWORD", "Secret-Pass1")
+    domain = domain_from_config("adapters/database/mssql/configuration.toml", tmp_path)
+    conn_info = dict(domain.config["databases"]["default"])
+
+    provider = registry.providers.get(conn_info["provider"])(
+        "default", domain, conn_info
+    )
+
+    url = provider._engine.url
+    assert url.drivername == "mssql+pyodbc"
+    assert (url.username, url.password) == ("sa", "Secret-Pass1")
+    assert (url.host, url.port, url.database) == ("localhost", 1433, "appdb")
+    assert dict(url.query) == {
+        "driver": "ODBC Driver 18 for SQL Server",
+        "TrustServerCertificate": "yes",
+        "Encrypt": "yes",
+        "MARS_Connection": "yes",
+    }

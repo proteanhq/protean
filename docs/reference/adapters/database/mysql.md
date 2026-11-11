@@ -41,6 +41,7 @@ transport deliberately:
 Add the CA to the database block, alongside the keys above:
 
 ```toml
+# fragment
 connect_args = { ssl_ca = "/etc/ssl/certs/mysql-ca.pem" }
 ```
 
@@ -56,17 +57,13 @@ An empty value means the connection is in the clear.
 ## Configuration
 
 ```toml
-[databases.default]
-provider = "mysql"
-database_uri = "mysql+pymysql://app:${MYSQL_PASSWORD}@localhost:3306/appdb"
+--8<-- "adapters/database/mysql/mysql.toml"
 ```
 
 For MariaDB, use the `mariadb+pymysql://` scheme:
 
 ```toml
-[databases.default]
-provider = "mysql"
-database_uri = "mariadb+pymysql://app:${MYSQL_PASSWORD}@localhost:3306/appdb"
+--8<-- "adapters/database/mysql/mariadb.toml"
 ```
 
 | Option | Default | Description |

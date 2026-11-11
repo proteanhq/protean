@@ -86,9 +86,7 @@ Event stores are configured in the `[event_store]` section of your domain
 configuration:
 
 ```toml
-# Default: in-memory event store
-[event_store]
-provider = "memory"
+--8<-- "adapters/eventstore/index/memory.toml"
 ```
 
 For production, point it at Message DB instead:

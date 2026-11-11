@@ -65,6 +65,8 @@ paths = [
     "tests/adapters/database_model/sqlalchemy_model/postgresql/",
     "tests/adapters/repository/generic/",
     "tests/adapters/repository/sqlalchemy_repo/",
+    "docs_src/adapters/database/index/multiple_databases.toml",
+    "tests/docs/reference/adapters/database/test_index.py",
 ]
 markers = ["postgresql"]
 # POSTGRESQL runs on psycopg 3, the default driver. POSTGRESQL_PSYCOPG2 runs
@@ -194,6 +196,8 @@ paths = [
     "tests/repository/test_repository_registration.py",
     "docs_src/adapters/database/elasticsearch/",
     "tests/docs/reference/adapters/database/test_elasticsearch.py",
+    "docs_src/adapters/database/index/multiple_databases.toml",
+    "tests/docs/reference/adapters/database/test_index.py",
     "docs_src/guides/change-state/database-models/",
     "tests/docs/guides/change_state/test_database_models_elasticsearch.py",
     "docs_src/reference/migration/v0-15/005.py",
@@ -219,6 +223,8 @@ paths = [
     "tests/workflows/test_event_flows.py",
     "docs_src/adapters/eventstore/index/",
     "tests/docs/reference/adapters/eventstore/test_index.py",
+    "docs_src/adapters/eventstore/message-db/",
+    "tests/docs/reference/adapters/eventstore/test_message_db.py",
 ]
 markers = ["message_db"]
 stores = ["MESSAGE_DB"]

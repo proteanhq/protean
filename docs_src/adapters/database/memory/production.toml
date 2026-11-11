@@ -1,0 +1,3 @@
+[databases.default]
+provider = "postgresql"
+database_uri = "${DATABASE_URL|postgresql://user:pass@db.example.com:5432/myapp}"
