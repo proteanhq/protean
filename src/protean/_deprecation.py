@@ -492,8 +492,8 @@ DEPRECATIONS: dict[str, Deprecation] = {
             removal="0.20.0",
             detection="runtime",
             alternative=(
-                "Omit it: each port's conformance suite has one fixed folder under "
-                "`tests/conformance/`."
+                "Omit it: the command runs each port's conformance suite from "
+                "one fixed folder in the Protean repository."
             ),
             reason=(
                 "A command-line option has no static declaration site for a rule "
