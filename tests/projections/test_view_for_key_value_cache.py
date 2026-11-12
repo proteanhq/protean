@@ -23,11 +23,13 @@ def key_value_cache(test_domain):
     cache_registry.register(
         "key_value_only", f"{KeyValueCache.__module__}.{KeyValueCache.__qualname__}"
     )
-    test_domain.config["caches"]["plain"] = {"provider": "key_value_only"}
-    test_domain.register(Contact, cache="plain")
-    test_domain.init(traverse=False)
-    yield
-    cache_registry._paths.pop("key_value_only", None)
+    try:
+        test_domain.config["caches"]["plain"] = {"provider": "key_value_only"}
+        test_domain.register(Contact, cache="plain")
+        test_domain.init(traverse=False)
+        yield
+    finally:
+        cache_registry._paths.pop("key_value_only", None)
 
 
 class TestAKeyValueOnlyCacheBehindAReadView:

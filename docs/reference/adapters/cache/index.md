@@ -166,8 +166,8 @@ The `Cache` service that `domain.caches[name]` returns has these methods:
 
 ### Key Format
 
-The `Cache` service builds every key. Ask it for a key instead of writing one
-by hand:
+The `Cache` service builds every key. Get a key from `key_for` and a pattern
+from `pattern_for`:
 
 ```python
 # fragment
@@ -179,8 +179,10 @@ cache.pattern_for(OrderSummary)         # "order_summary:::*"
 A key is the projection class name in snake case, then `:::`, then the
 identifier formatted with `str()`. `add`, `remove` and `view_for(...).get` use
 `key_for`. `view_for(...).count` and a projection rebuild use `pattern_for`.
-Code that asks the service for keys keeps working when a projection class is
-renamed.
+Code that asks the service for keys needs no edit when a projection class is
+renamed. The entries cached before the rename stay under the old prefix, and
+reads and rebuilds of the renamed class do not see them. Clear the cache and
+rebuild the projection after a rename.
 
 The `key_pattern` on `_get_all`, `count`, and `remove_by_key_pattern` is a glob.
 `*` matches any run of characters, `?` matches one, `[...]` is a character
@@ -201,7 +203,9 @@ without it, they raise `NotSupportedError` naming the cache and the flag:
 `PATTERN_MATCH` also gates two callers of those methods on a cache-backed
 projection. `view_for(Projection).count()` calls `count`, and
 `protean projection rebuild` calls `remove_by_key_pattern` before it replays
-any event. `add` without a `ttl`, `get`, `remove`, `remove_by_key`, `clear`,
+any event. A rebuild of every projection checks the cache of each
+cache-backed projection that has a projector before it truncates any
+projection. `add` without a `ttl`, `get`, `remove`, `remove_by_key`, `clear`,
 `key_for` and `pattern_for` work on every cache.
 
 ### Writing a cache adapter

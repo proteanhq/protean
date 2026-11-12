@@ -5,7 +5,9 @@ from unittest.mock import patch
 import pytest
 
 from protean import current_domain
+from protean.core.projection import BaseProjection
 from protean.exceptions import ConfigurationError
+from protean.fields import Identifier, String
 from protean.utils.projection_rebuilder import (
     RebuildResult,
     _replay_projector,
@@ -144,21 +146,32 @@ class TestLargeEventCount:
         assert paged == single_page == float(count)
 
 
+class OtherCachedSummary(BaseProjection):
+    user_id: Identifier(identifier=True)
+    name: String()
+
+
 class TestCacheBackedProjectionTruncation:
     def test_truncate_removes_every_entry_of_a_cache_backed_projection(
         self, test_domain
     ):
         """_truncate_projection removes the projection's entries from its cache."""
         test_domain.register(CachedSummary, cache="default")
+        test_domain.register(OtherCachedSummary, cache="default")
         test_domain.init(traverse=False)
         cache = test_domain.cache_for(CachedSummary)
         cache.add(CachedSummary(user_id="1", name="Ada"))
         cache.add(CachedSummary(user_id="2", name="Grace"))
+        other_cache = test_domain.cache_for(OtherCachedSummary)
+        assert other_cache is cache
+        other = OtherCachedSummary(user_id="3", name="Linus")
+        cache.add(other)
         assert cache.count(cache.pattern_for(CachedSummary)) == 2
 
         _truncate_projection(test_domain, CachedSummary, [])
 
         assert cache.count(cache.pattern_for(CachedSummary)) == 0
+        assert cache.get(cache.key_for(OtherCachedSummary, "3")) == other
 
     def test_truncate_deletes_rows_when_database_backed(self, test_domain):
         """_truncate_projection deletes every row of a database-backed projection."""

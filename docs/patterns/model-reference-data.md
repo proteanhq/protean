@@ -224,7 +224,8 @@ changes:
 A cache-backed projection has no repository, so the projector writes through
 `cache_for()` and readers use `view_for()`. The projector asks the cache for
 the key it removes, with `cache.key_for(CurrencyOption, event.code)`. If you
-rename the projection class, the projector needs no change.
+rename the projection class, the projector needs no change. The entries cached
+under the old name stay in the cache, so clear it and rebuild the projection.
 
 The projection names its cache `catalog`. Configure that name in the
 `[caches]` section, on the memory provider for tests and on Redis in

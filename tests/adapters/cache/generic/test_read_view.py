@@ -19,11 +19,17 @@ class OrderSummary(BaseProjection):
     status: String(required=True)
 
 
+class CustomerSummary(BaseProjection):
+    customer_id: Identifier(identifier=True)
+    name: String(required=True)
+
+
 @pytest.fixture(params=CACHE_CONFIGS)
 def domain(request):
     domain = Domain(name="Test")
     domain.config["caches"]["default"] = request.param
     domain.register(OrderSummary, cache="default")
+    domain.register(CustomerSummary, cache="default")
     domain.init(traverse=False)
 
     with domain.domain_context():
@@ -39,6 +45,8 @@ def seeded(domain):
     cache = domain.cache_for(OrderSummary)
     cache.add(OrderSummary(order_id="ord-1", status="placed"))
     cache.add(OrderSummary(order_id="ord-2", status="shipped"))
+    # Another projection's entry in the same cache, which `count` must skip.
+    cache.add(CustomerSummary(customer_id="cus-1", name="Ada"))
 
 
 class TestAReadViewOverACache:

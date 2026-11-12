@@ -198,6 +198,8 @@ class TestCurrencyCatalogProjector:
 
     def test_a_deactivated_currency_leaves_the_catalog(self, catalog):
         usd = self.add_usd(catalog)
+        eur = catalog.Currency.add(code="EUR", name="Euro", symbol="€")
+        catalog.domain.repository_for(catalog.Currency).add(eur)
         cache = catalog.domain.cache_for(catalog.CurrencyOption)
         key = cache.key_for(catalog.CurrencyOption, "USD")
         assert cache.get(key) is not None
@@ -206,3 +208,4 @@ class TestCurrencyCatalogProjector:
         catalog.domain.repository_for(catalog.Currency).add(usd)
 
         assert cache.get(key) is None
+        assert catalog.domain.view_for(catalog.CurrencyOption).get("EUR").name == "Euro"

@@ -250,7 +250,10 @@ Existing projection data is cleared:
   `cache.pattern_for(projection)` returns, such as `order_summary:::*`, are
   removed via `remove_by_key_pattern()`. This needs a cache that supports
   `CacheCapabilities.PATTERN_MATCH`. On a cache without it, the rebuild
-  raises `NotSupportedError` before it replays any event.
+  raises `NotSupportedError` before it replays any event. Without
+  `--projection`, the command first checks the cache of every cache-backed
+  projection that has a projector, and raises before it truncates any
+  projection.
 
 ### 3. Replay events
 
