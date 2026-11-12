@@ -69,6 +69,15 @@ class Product:
     price = Integer()
 """
 
+# A ``name`` of ``max_length``, with or without a named DESC index.
+DESC_INDEX_MODEL = """
+@domain.aggregate(indexes=[{index}])
+class Product:
+    name = String(max_length={max_length})
+    price = Integer()
+"""
+DESC_INDEX = 'Index("price", desc=["price"], name="ix_product_price_desc")'
+
 WITH_EVENT_SOURCED_LEDGER = """
 @domain.aggregate
 class Product:
@@ -284,6 +293,24 @@ class TestATableCopyKeepsItsIndexes:
         assert index_sql(database) == before
         result = project.run_ok("migrate", "-m", "nothing")
         assert "No changes detected; no migration written." in result.output
+
+        project.run_ok("downgrade", "-1")
+
+        assert index_sql(database) == before
+
+    def test_downgrade_restores_an_index_the_model_no_longer_declares(
+        self, project, database
+    ):
+        """The downgrade rebuilds the index from the database, not the model."""
+        start_at_head(project, DESC_INDEX_MODEL.format(index=DESC_INDEX, max_length=50))
+        before = index_sql(database)
+        assert "DESC" in before["ix_product_price_desc"]
+        project.write(DESC_INDEX_MODEL.format(index="", max_length=100))
+
+        project.run_ok("migrate", "-m", "drop index")
+        project.run_ok("upgrade")
+
+        assert "ix_product_price_desc" not in index_sql(database)
 
         project.run_ok("downgrade", "-1")
 

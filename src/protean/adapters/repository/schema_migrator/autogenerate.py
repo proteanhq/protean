@@ -172,18 +172,24 @@ def _rebuild_indexes_after_copy(
 
     Alembic's batch mode copies a SQLite table from reflection, and reflection
     leaves out expression indexes and the sort order of an index column. After
-    each op that copies a table, in the upgrade and in the downgrade, each index
-    the database holds before the migration is dropped and created again from
-    the model when it is a named raw index or a declared index with an
-    expression, such as a DESC column.
+    each op that copies a table in the upgrade, each index the database holds
+    before the migration is dropped and created again from the model when it
+    is a named raw index or a declared index with an expression, such as a DESC
+    column. After each op that copies a table in the downgrade, each index the
+    database holds before the migration is dropped and created again from the
+    statement SQLite stored for it, so the downgrade restores the old
+    definition of an index the migration changes.
     """
     connection = context.connection
     assert connection is not None
-    for container in (script.upgrade_ops, script.downgrade_ops):
+    for container, rebuild in (
+        (script.upgrade_ops, _index_rebuild),
+        (script.downgrade_ops, _stored_index_rebuild),
+    ):
         for position in range(len(container.ops) - 1, -1, -1):
             op = container.ops[position]
             if isinstance(op, ops.ModifyTableOps) and _copies_table(op):
-                rebuilt = _index_rebuild(connection, metadata, schema, op.table_name)
+                rebuilt = rebuild(connection, metadata, schema, op.table_name)
                 container.ops[position + 1 : position + 1] = rebuilt
 
 
@@ -193,7 +199,7 @@ def _index_rebuild(
     """The ops that drop and create again each index a copy of the table loses.
 
     Only the indexes the database holds are rebuilt. The others are created by
-    the migration's own ops, or do not exist at this point of the downgrade.
+    the migration's own ops.
     """
     table = _table(metadata, table_name)
     assert table is not None
@@ -202,9 +208,30 @@ def _index_rebuild(
     for name, create in _lossy_indexes(table):
         if name in present:
             # The copy keeps an index it can reflect, in its reflected form.
-            drop = f"DROP INDEX IF EXISTS {_qualified(connection, name, schema)}"
-            rebuilt += [ops.ExecuteSQLOp(drop), create]
+            rebuilt += [_drop_if_exists(connection, name, schema), create]
     return rebuilt
+
+
+def _stored_index_rebuild(
+    connection: Connection, metadata: MetaData, schema: str | None, table_name: str
+) -> list[Any]:
+    """The ops that drop and create again each index the database holds now.
+
+    Each index is created from its statement in ``sqlite_master``. An index
+    SQLite creates for a constraint has no statement, and the copy keeps it.
+    """
+    rebuilt: list[Any] = []
+    for name, sql in _stored_index_sql(connection, table_name, schema):
+        rebuilt += [_drop_if_exists(connection, name, schema), ops.ExecuteSQLOp(sql)]
+    return rebuilt
+
+
+def _drop_if_exists(
+    connection: Connection, name: str, schema: str | None
+) -> ops.ExecuteSQLOp:
+    return ops.ExecuteSQLOp(
+        f"DROP INDEX IF EXISTS {_qualified(connection, name, schema)}"
+    )
 
 
 def _qualified(connection: Connection, name: str, schema: str | None) -> str:
@@ -281,20 +308,37 @@ def _index_names(
     """The names of every index on a table, expression indexes included."""
     if connection.dialect.name == "sqlite":
         # SQLAlchemy's SQLite reflection leaves expression indexes out.
-        master = "sqlite_master"
-        if schema is not None:
-            quoted = connection.dialect.identifier_preparer.quote_schema(schema)
-            master = f"{quoted}.sqlite_master"
-        rows = connection.execute(
-            text(f"SELECT name FROM {master} WHERE type = 'index' AND tbl_name = :t"),
-            {"t": table_name},
-        )
-        return {row[0] for row in rows}
+        return {name for name, _ in _sqlite_indexes(connection, table_name, schema)}
     return {
         index["name"]
         for index in inspect(connection).get_indexes(table_name, schema=schema)
         if index["name"]
     }
+
+
+def _stored_index_sql(
+    connection: Connection, table_name: str, schema: str | None
+) -> list[tuple[str, str]]:
+    """The name and ``CREATE INDEX`` statement of each SQLite index with one."""
+    return sorted(
+        (name, sql)
+        for name, sql in _sqlite_indexes(connection, table_name, schema)
+        if sql is not None
+    )
+
+
+def _sqlite_indexes(
+    connection: Connection, table_name: str, schema: str | None
+) -> list[tuple[str, str | None]]:
+    master = "sqlite_master"
+    if schema is not None:
+        quoted = connection.dialect.identifier_preparer.quote_schema(schema)
+        master = f"{quoted}.sqlite_master"
+    rows = connection.execute(
+        text(f"SELECT name, sql FROM {master} WHERE type = 'index' AND tbl_name = :t"),
+        {"t": table_name},
+    )
+    return [(row[0], row[1]) for row in rows]
 
 
 @contextlib.contextmanager
