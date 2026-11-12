@@ -342,8 +342,10 @@ protean test test-adapter --port event_store --provider message_db --uri "postgr
 `--port` picks the port: `database` (the default), `broker`, `cache` or
 `event_store`. `--provider` names the adapter registered for that port, `--uri`
 sets its connection URI, and `--config` merges a JSON object into its
-configuration. The command runs the port's conformance suite once per
-capability flag and reports a flag the adapter does not declare as SKIP.
+configuration. For `broker`, `cache` and `event_store`, the command runs the
+port's conformance suite once per capability flag. For `database`, it runs once
+per capability marker, such as `basic_storage`. A flag or marker the adapter
+does not declare is reported as SKIP.
 
 The suites are not in the wheel, so the command runs from a source checkout.
 See [Adapter Conformance Testing](../../reference/testing/conformance.md) for

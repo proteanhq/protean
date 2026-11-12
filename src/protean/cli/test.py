@@ -1290,8 +1290,9 @@ def test_adapter(
 
     ``--port`` picks the port: ``database`` (the default), ``broker``,
     ``cache`` or ``event_store``. ``--provider`` names the adapter registered
-    for that port. Tests run once per capability flag, and a flag the adapter
-    does not declare is reported as SKIP.
+    for that port. Tests run once per capability flag, or once per capability
+    marker for ``database``, and a flag or marker the adapter does not declare
+    is reported as SKIP.
 
     Examples:
 
