@@ -1,9 +1,9 @@
 from unittest.mock import Mock, patch
 
 from protean.adapters.broker import Brokers
-from protean.adapters.cache import Caches
 from protean.adapters.event_store import EventStore
 from protean.adapters.repository import Providers
+from protean.infra.cache import Caches
 
 
 class TestDomainInitMethodCalls:

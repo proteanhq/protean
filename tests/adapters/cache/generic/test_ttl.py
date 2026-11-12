@@ -1,6 +1,6 @@
 """Cross-adapter TTL behaviour.
 
-Every TTL on this port is documented as seconds (`BaseCache.get_ttl`), and
+Every TTL on this port is documented as seconds (`CacheTTLPort.get_ttl`), and
 #1307 was exactly this suite's blind spot: each adapter's own tests asserted
 their own units, and both passed. These tests read a TTL set on one adapter
 back through the same assertion used for the other, so a future split fails
@@ -126,9 +126,9 @@ class TestSetTTLOnAMissingKey:
     def test_set_ttl_rejects_an_invalid_ttl_even_when_the_key_is_absent(
         self, cache, bad_ttl
     ):
-        # TTL validation must run whether or not the key exists: Redis
-        # resolves the TTL before touching the key (`_ttl_for` runs ahead of
-        # `pexpire`), so an absent key does not excuse a malformed TTL.
+        # TTL validation must run whether or not the key exists: the `Cache`
+        # service resolves the TTL before it calls the adapter, so an absent
+        # key does not excuse a malformed TTL.
         with pytest.raises(ConfigurationError):
             cache.set_ttl(_key("does-not-exist"), bad_ttl)
 
@@ -158,24 +158,12 @@ class TestGetTTLOnAMissingKey:
 
 
 class TestGetTTLOnANeverExpiringKey:
-    """Redis can hold a key with no expiry; the memory cache structurally
-    cannot (`_resolve_ttl` never returns `None`, so `MemoryCache.__init__`
-    always builds its `TTLDict` with a concrete default TTL and every entry
-    gets one). A missing capability, not a disagreement, so this is skipped
-    on memory rather than xfailed.
-    """
+    """An entry written through the Port with no TTL never expires, and
+    `get_ttl` reports that as `math.inf` on every adapter."""
 
-    def test_get_ttl_of_a_never_expiring_key_is_math_inf(self, cache, request):
-        if request.node.callspec.params["cache"]["provider"] == "memory":
-            pytest.skip(
-                "The memory cache cannot hold a key with no expiry: "
-                "_resolve_ttl never returns None, so every entry gets a "
-                "concrete default TTL. Redis can."
-            )
-
+    def test_get_ttl_of_a_never_expiring_key_is_math_inf(self, cache):
         # Bypass `add()`, which always resolves and applies a TTL, and write
-        # the key directly through the raw connection so it has no expiry.
-        conn = cache.get_connection()
-        conn.set("cache_entry:::forever", "1")
+        # the key through the adapter with no expiry.
+        cache._adapter.put("cache_entry:::forever", {"key": "forever"}, None)
 
         assert cache.get_ttl("cache_entry:::forever") == math.inf

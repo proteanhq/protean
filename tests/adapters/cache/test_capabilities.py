@@ -10,7 +10,8 @@ from typing import Any
 import pytest
 
 from protean.domain import Domain
-from protean.port.cache import BaseCache, CacheCapabilities
+from protean.infra.cache import Cache
+from protean.port.cache import CacheCapabilities, CachePort
 from tests.shared import REDIS_URI
 
 # The Redis test reads a property and writes no keys, so sharing a DB number
@@ -18,7 +19,7 @@ from tests.shared import REDIS_URI
 REDIS_DB = 6
 
 
-def _cache_for(config: dict[str, Any]) -> BaseCache:
+def _cache_for(config: dict[str, Any]) -> Cache:
     domain = Domain(name="Test")
     domain.config["caches"]["default"] = config
     domain.init(traverse=False)
@@ -76,30 +77,30 @@ class TestAdapterDeclarations:
         try:
             assert cache.capabilities == CacheCapabilities.DISTRIBUTED
         finally:
-            cache.close()
+            cache._close()
 
 
-def _stub_cache(*, with_capabilities: bool) -> type[BaseCache]:
-    """A `BaseCache` subclass that implements every abstract member, except
+def _stub_cache(*, with_capabilities: bool) -> type[CachePort]:
+    """A `CachePort` subclass that implements every abstract member, except
     `capabilities` when `with_capabilities` is false.
 
-    The member set comes from `BaseCache.__abstractmethods__`, so a member
+    The member set comes from `CachePort.__abstractmethods__`, so a member
     added to the port later cannot make the missing-`capabilities` case fail
     for the wrong reason.
     """
     members: dict[str, Any] = {
         name: (lambda self, *args, **kwargs: None)
-        for name in BaseCache.__abstractmethods__
+        for name in CachePort.__abstractmethods__
         if name != "capabilities"
     }
     if with_capabilities:
         members["capabilities"] = property(lambda self: CacheCapabilities.LOCAL)
-    return type("StubCache", (BaseCache,), members)
+    return type("StubCache", (CachePort,), members)
 
 
 class TestCapabilitiesIsRequired:
     def test_an_adapter_without_capabilities_cannot_be_built(self):
-        assert "capabilities" in BaseCache.__abstractmethods__
+        assert "capabilities" in CachePort.__abstractmethods__
         with pytest.raises(TypeError, match="capabilities"):
             _stub_cache(with_capabilities=False)("stub", None, {})
 

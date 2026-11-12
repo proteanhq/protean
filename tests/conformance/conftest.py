@@ -156,7 +156,7 @@ CONFIGURE: dict[str, Callable[[Domain, dict[str, Any]], None]] = {
 ADAPTER_OF: dict[str, Callable[[Domain], Any]] = {
     "database": lambda domain: domain.providers["default"],
     "broker": lambda domain: domain.brokers["default"],
-    "cache": lambda domain: domain.caches["default"],
+    "cache": lambda domain: domain.caches["default"]._adapter,
     "event_store": lambda domain: domain.event_store.store,
 }
 
@@ -164,7 +164,7 @@ ADAPTER_OF: dict[str, Callable[[Domain], Any]] = {
 RESET: dict[str, Callable[[Any], None]] = {
     "database": lambda provider: provider._data_reset(),
     "broker": lambda broker: broker._data_reset(),
-    "cache": lambda cache: cache.flush_all(),
+    "cache": lambda cache: cache.clear(),
     "event_store": lambda store: store._data_reset(),
 }
 

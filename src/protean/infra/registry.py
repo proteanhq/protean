@@ -9,7 +9,7 @@ Instance            Entry-point group         Port base class
 ``providers``       ``protean.providers``     ``BaseProvider``
 ``brokers``         ``protean.brokers``       ``BaseBroker``
 ``event_stores``    ``protean.event_stores``  ``BaseEventStore``
-``caches``          ``protean.caches``        ``BaseCache``
+``caches``          ``protean.caches``        ``CachePort``
 ==================  ========================  ==========================
 """
 
@@ -23,7 +23,7 @@ from protean.exceptions import ConfigurationError
 if TYPE_CHECKING:
     # Runtime imports would cycle: the adapter modules import this one.
     from protean.port.broker import BaseBroker
-    from protean.port.cache import BaseCache
+    from protean.port.cache import CachePort
     from protean.port.event_store import BaseEventStore
     from protean.port.provider import BaseProvider
 
@@ -170,4 +170,4 @@ brokers: AdapterRegistry["BaseBroker"] = AdapterRegistry("protean.brokers", "bro
 event_stores: AdapterRegistry["BaseEventStore"] = AdapterRegistry(
     "protean.event_stores", "event store"
 )
-caches: AdapterRegistry["BaseCache"] = AdapterRegistry("protean.caches", "cache")
+caches: AdapterRegistry["CachePort"] = AdapterRegistry("protean.caches", "cache")

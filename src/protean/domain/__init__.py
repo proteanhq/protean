@@ -73,7 +73,7 @@ from typing import (
 if TYPE_CHECKING:
     from types import FrameType
 
-    from protean.port.cache import BaseCache
+    from protean.infra.cache import Cache
     from protean.port.event_store import BaseEventStore
     from protean.utils.outbox import OutboxRepository
     from protean.utils.projection_rebuilder import RebuildResult
@@ -2432,7 +2432,7 @@ class Domain:
     # Cache Functionality #
     #######################
 
-    def cache_for(self, projection_cls: type[BaseProjection]) -> "BaseCache":
+    def cache_for(self, projection_cls: type[BaseProjection]) -> "Cache":
         return self.caches.cache_for(projection_cls)
 
     ################################

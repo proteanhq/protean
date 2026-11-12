@@ -432,7 +432,7 @@ def run_around_tests(test_domain, request):
 
         for cache_name in test_domain.caches:
             cache = test_domain.caches[cache_name]
-            cache.flush_all()
+            cache.clear()
 
         if test_domain.event_store.store:
             try:

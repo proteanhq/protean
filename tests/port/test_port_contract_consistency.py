@@ -1,6 +1,6 @@
 """Tests for Bucket G: Port Contract Consistency.
 
-Finding #18: cache _get_all/count signatures match port.
+Finding #18: cache service _get_all/count take only a key pattern.
 Finding #19: Broker _get_next() return type matches implementations.
 Finding #21: Port abstract methods have complete type hints.
 """
@@ -8,45 +8,28 @@ Finding #21: Port abstract methods have complete type hints.
 import inspect
 from typing import Any, get_type_hints
 
+import pytest
+
 from protean.adapters.broker.inline import InlineBroker
-from protean.adapters.cache.memory import MemoryCache
-from protean.adapters.cache.redis import RedisCache
+from protean.infra.cache import Cache
 from protean.port.broker import BaseBroker
-from protean.port.cache import BaseCache
+from protean.port.cache import CachePatternPort, CachePort, CacheTTLPort
 from protean.port.provider import BaseProvider
 
 
 # ---------------------------------------------------------------------------
-# Finding #18: Cache adapter signatures match port
+# Finding #18: Cache service signatures take only a key pattern
 # ---------------------------------------------------------------------------
 class TestCacheParameterConsistency:
-    def test_port__get_all_takes_only_key_pattern(self):
-        """Port declares `_get_all(key_pattern)` with no pagination params."""
-        sig = inspect.signature(BaseCache._get_all)
+    def test_service__get_all_takes_only_key_pattern(self):
+        """`Cache._get_all(key_pattern)` takes no pagination params."""
+        sig = inspect.signature(Cache._get_all)
         param_names = [p for p in sig.parameters if p != "self"]
         assert param_names == ["key_pattern"]
 
-    def test_memory_cache__get_all_matches_port(self):
-        """MemoryCache._get_all matches the port signature."""
-        sig = inspect.signature(MemoryCache._get_all)
-        param_names = [p for p in sig.parameters if p != "self"]
-        assert param_names == ["key_pattern"]
-
-    def test_redis_cache__get_all_matches_port(self):
-        """RedisCache._get_all matches the port signature."""
-        sig = inspect.signature(RedisCache._get_all)
-        param_names = [p for p in sig.parameters if p != "self"]
-        assert param_names == ["key_pattern"]
-
-    def test_port_count_has_no_extra_parameters(self):
-        """Port declares count(self, key_pattern) with no extra params."""
-        sig = inspect.signature(BaseCache.count)
-        param_names = [p for p in sig.parameters if p != "self"]
-        assert param_names == ["key_pattern"]
-
-    def test_memory_cache_count_matches_port(self):
-        """MemoryCache.count matches port signature."""
-        sig = inspect.signature(MemoryCache.count)
+    def test_service_count_has_no_extra_parameters(self):
+        """`Cache.count(key_pattern)` takes no extra params."""
+        sig = inspect.signature(Cache.count)
         param_names = [p for p in sig.parameters if p != "self"]
         assert param_names == ["key_pattern"]
 
@@ -81,41 +64,28 @@ class TestBrokerGetNextReturnType:
 # ---------------------------------------------------------------------------
 # Finding #21: Port abstract methods have type hints
 # ---------------------------------------------------------------------------
+CACHE_PORT_MEMBERS = sorted(
+    (port.__name__, name)
+    for port in (CachePort, CacheTTLPort, CachePatternPort)
+    for name in port.__abstractmethods__
+)
+
+
 class TestCachePortTypeHints:
-    def test_ping_has_return_type(self):
-        hints = get_type_hints(BaseCache.ping)
-        assert "return" in hints
+    def test_every_cache_port_declares_abstract_members(self):
+        ports = {port for port, _name in CACHE_PORT_MEMBERS}
+        assert ports == {"CachePort", "CacheTTLPort", "CachePatternPort"}
 
-    def test_get_connection_has_return_type(self):
-        hints = get_type_hints(BaseCache.get_connection)
-        assert "return" in hints
-
-    def test_get_has_return_type(self):
-        hints = get_type_hints(BaseCache.get)
-        assert "return" in hints
-
-    def test__get_all_has_return_type(self):
-        hints = get_type_hints(BaseCache._get_all)
-        assert "return" in hints
-
-    def test_count_has_return_type(self):
-        hints = get_type_hints(BaseCache.count)
-        assert "return" in hints
-
-    def test_remove_has_return_type(self):
-        hints = get_type_hints(BaseCache.remove)
-        assert "return" in hints
-
-    def test_flush_all_has_return_type(self):
-        hints = get_type_hints(BaseCache.flush_all)
-        assert "return" in hints
-
-    def test_set_ttl_has_return_type(self):
-        hints = get_type_hints(BaseCache.set_ttl)
-        assert "return" in hints
-
-    def test_get_ttl_has_return_type(self):
-        hints = get_type_hints(BaseCache.get_ttl)
+    @pytest.mark.parametrize(("port_name", "member"), CACHE_PORT_MEMBERS)
+    def test_member_has_return_type(self, port_name, member):
+        port = {
+            "CachePort": CachePort,
+            "CacheTTLPort": CacheTTLPort,
+            "CachePatternPort": CachePatternPort,
+        }[port_name]
+        attribute = getattr(port, member)
+        function = attribute.fget if isinstance(attribute, property) else attribute
+        hints = get_type_hints(function)
         assert "return" in hints
 
 

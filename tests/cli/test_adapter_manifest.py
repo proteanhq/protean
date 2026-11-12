@@ -147,10 +147,14 @@ class TestManifestIsCurrent:
     def test_every_cache_adapter_includes_the_shared_modules_it_runs_on(self, manifest):
         # Caches have no capability suite, so an entry counts as a cache
         # adapter when it names a cache module. Every cache loads through the
-        # Caches collection, which resolves its class through the registry.
+        # Caches collection, which resolves its class through the registry,
+        # and every call goes through the Cache service to the cache ports.
         shared = [
             "src/protean/adapters/cache/__init__.py",
+            "src/protean/infra/cache.py",
             "src/protean/infra/registry.py",
+            "src/protean/port/cache.py",
+            "src/protean/port/health.py",
         ]
         cache_entries = [
             entry

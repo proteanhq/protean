@@ -24,13 +24,13 @@ class TestCacheInitialization:
 
     def test_that_domain_initializes_cache_from_config(self, test_domain):
         assert len(list(test_domain.caches)) == 1
-        assert isinstance(next(iter(test_domain.caches.values())), RedisCache)
+        assert isinstance(next(iter(test_domain.caches.values()))._adapter, RedisCache)
 
     def test_that_cache_can_be_retrieved(self, test_domain):
         cache_name = next(iter(test_domain.caches))
         assert cache_name is not None
         assert cache_name == "default"
-        assert isinstance(test_domain.caches[cache_name], RedisCache)
+        assert isinstance(test_domain.caches[cache_name]._adapter, RedisCache)
 
 
 @pytest.mark.redis
@@ -40,9 +40,10 @@ class TestCacheProvider:
         assert provider is not None
         assert provider.ping() is True
 
-    def test_conn_info(self, test_domain):
+    def test_config(self, test_domain):
         provider = test_domain.caches.get("default")
-        assert provider.conn_info["cache"] == "redis"
+        assert provider._adapter.config["provider"] == "redis"
+        assert "cache" not in provider._adapter.config
 
     def test_connection_via_provider(self, test_domain):
         provider = test_domain.caches.get("default")
@@ -161,7 +162,7 @@ class TestCachePersistenceFlows:
         monkeypatch.setattr(RedisCache, "_DELETE_BATCH_SIZE", 2)
 
         cache = test_domain.cache_for(Token)
-        cache.flush_all()
+        cache.clear()
         for i in range(5):
             cache.add(Token(key=f"batch-{i}", user_id="foo", email="bar@baz.com"))
         assert cache.count("token:::batch-*") == 5
@@ -169,6 +170,26 @@ class TestCachePersistenceFlows:
         cache.remove_by_key_pattern("token:::batch-*")
 
         assert cache.count("token:::batch-*") == 0
+
+    def test_key_patterns_work_when_the_uri_decodes_responses(self, test_domain):
+        # `from_url` passes `decode_responses` from the URI to the client, so
+        # `SCAN` yields `str` keys in place of `bytes`.
+        cache = RedisCache(
+            "decoding", test_domain, {"URI": f"{REDIS_URI}/5?decode_responses=True"}
+        )
+        try:
+            cache.clear()
+            for key in ("token:::b", "token:::a", "other:::c"):
+                cache.put(key, {"key": key}, None)
+
+            assert cache.keys_matching("token:::*") == ["token:::a", "token:::b"]
+            assert cache.count_matching("token:::*") == 2
+
+            cache.delete_matching("token:::*")
+            assert cache.keys_matching("*") == ["other:::c"]
+        finally:
+            cache.clear()
+            cache.close()
 
     def test_get_ttl_on_key(self, test_domain):
         cache = test_domain.cache_for(Token)
@@ -224,7 +245,7 @@ class TestCachePersistenceFlows:
         total = cache.count("token:::qu*")
         assert total == 2
 
-        cache.flush_all()
+        cache.clear()
 
         total = cache.count("token:::qu*")
         assert total == 0
@@ -241,7 +262,7 @@ class TestCachePersistenceFlows:
             cache.add(Token(key="flushed", user_id="foo", email="bar@baz.com"))
             assert cache.get("token:::flushed") is not None
 
-            cache.flush_all()
+            cache.clear()
 
             assert cache.get("token:::flushed") is None
             assert other_db.get(other_key) == b"kept"

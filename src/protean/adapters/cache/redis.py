@@ -1,29 +1,46 @@
 import json
 import logging
 import math
-from typing import Any
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
 
 import redis
 
-from protean.core.projection import BaseProjection
-from protean.port.cache import BaseCache, CacheCapabilities, TTLValue
-from protean.utils.inflection import underscore
-from protean.utils.reflection import id_field
+from protean.port.cache import (
+    CacheCapabilities,
+    CacheEntry,
+    CacheHealth,
+    CachePatternPort,
+    CachePort,
+    CacheTTLPort,
+)
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
 
 
-class RedisCache(BaseCache):
+def _milliseconds(ttl: float) -> int:
+    """`ttl` seconds as whole milliseconds, rounded up to at least 1.
+
+    Redis rejects a `PSETEX` of 0 ms, and a `PEXPIRE` of 0 ms deletes the key,
+    so a TTL under 1 ms must not truncate to 0.
+    """
+    return max(1, math.ceil(ttl * 1000))
+
+
+class RedisCache(CacheTTLPort, CachePatternPort):
     """Redis-backed cache adapter.
 
-    Connection pool parameters can be configured via conn_info:
+    Connection pool parameters can be configured via config:
         - max_connections: Maximum number of connections in the pool
         - socket_timeout: Timeout for reading from a connection in seconds
         - socket_connect_timeout: Timeout for connecting to Redis in seconds
         - retry_on_timeout: Whether to retry on timeout (default: False)
     """
 
-    # Keys from conn_info that are forwarded to Redis connection pool
+    # Keys from config that are forwarded to Redis connection pool
     _POOL_KEYS = frozenset(
         {
             "max_connections",
@@ -38,18 +55,16 @@ class RedisCache(BaseCache):
     # at once.
     _DELETE_BATCH_SIZE = 500
 
-    def __init__(self, name: str, domain: Any, conn_info: dict[str, Any]) -> None:
-        """Initialize Cache with Connection/Adapter details"""
-
-        # In case of `RedisCache`, the `cache` value will always be `redis`.
-        conn_info["cache"] = "redis"
-        super().__init__(name, domain, conn_info)
+    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
+        self.name = name
+        self.domain = domain
+        self.config = config
 
         pool_kwargs = {
-            key: value for key, value in conn_info.items() if key in self._POOL_KEYS
+            key: value for key, value in config.items() if key in self._POOL_KEYS
         }
         self.r: redis.Redis[Any] | None = redis.Redis.from_url(
-            conn_info["URI"], **pool_kwargs
+            config["URI"], **pool_kwargs
         )
 
     @property
@@ -81,95 +96,58 @@ class RedisCache(BaseCache):
     def get_connection(self) -> "redis.Redis[Any]":
         return self._client
 
-    def add(self, projection: BaseProjection, ttl: TTLValue | None = None) -> None:
-        """Cache the projection's `to_dict()` data as JSON.
+    def health(self) -> CacheHealth:
+        """redis-py exposes no public counters for its connection pool, so the
+        record carries no pool."""
+        return CacheHealth(pool=None)
 
-        The key is `<projection_name>:::<id>`, where `<projection_name>` is the
-        projection class name in snake case.
+    def get(self, key: str) -> CacheEntry | None:
+        value = self._client.get(key)
+        if value is None:
+            return None
+        entry: CacheEntry = json.loads(value)
+        return entry
 
-        Args:
-            projection: The projection to cache.
-            ttl: Seconds the entry lives, as a number or a string holding one.
-                `None` or `""` uses this cache's `TTL`, which is 300 seconds
-                when the cache configures none.
-
-        Raises:
-            ConfigurationError: If `ttl` is not a positive, finite number of
-                seconds. The message names the cache, and nothing is cached.
-        """
-        id_f = id_field(projection)
-        assert id_f is not None
-        assert id_f.field_name is not None
-        identifier = getattr(projection, id_f.field_name)
-        key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
-
-        resolved_ttl: int | float = self._ttl_for(ttl)
-
+    def put(self, key: str, value: CacheEntry, ttl: float | None) -> None:
+        payload = json.dumps(value)
+        if ttl is None:
+            self._client.set(key, payload)
+            return
         # redis-py ships `py.typed` but leaves `psetex` without a return
-        # annotation, so mypy --strict flags the call as untyped. Not our bug.
+        # annotation, so mypy --strict flags the call as untyped.
         self._client.psetex(  # type: ignore[no-untyped-call]
-            key, int(resolved_ttl * 1000), json.dumps(projection.to_dict())
+            key, _milliseconds(ttl), payload
         )
 
-    def get(self, key: str) -> BaseProjection | None:
-        projection_name = key.split(":::")[0]
-        projection_cls = self._projections[projection_name]
+    def delete(self, key: str) -> None:
+        self._client.delete(key)
 
-        value = self._client.get(key)
-        return projection_cls(json.loads(value)) if value else None
-
-    def _get_all(self, key_pattern: str) -> list[BaseProjection]:
-        projection_name = key_pattern.split(":::")[0]
-        projection_cls = self._projections[projection_name]
-
-        # Redis has no native key ordering, so read every matching key, sort,
-        # and materialise. That is a full keyspace scan; `_get_all` is a bounded
-        # utility, not a production read path. `SCAN` can return the same key
-        # more than once during a full iteration (rehashing, concurrent writes),
-        # so dedupe before sorting, or an entry would repeat in the result.
-        #
-        # The keys are `bytes` (this adapter does not set `decode_responses`).
-        # Sorting them by raw bytes matches the memory adapter's `str` sort:
-        # UTF-8 byte order preserves Unicode code-point order, so both adapters
-        # return keys in the same order, non-ASCII included. Decoding to `str`
-        # first would change nothing and would raise on a non-UTF-8 key.
-        keys = sorted(set(self._client.scan_iter(match=key_pattern)))
-        # Cap to the first GET_ALL_MAX in key order, warning if it truncated, so
-        # only that many GET round trips run below.
-        keys = self._capped(keys, key_pattern)
-
-        results: list[BaseProjection] = []
-        for key in keys:
-            raw = self._client.get(key)
-            if raw is not None:
-                results.append(projection_cls(json.loads(raw)))
-        return results
-
-    def count(self, key_pattern: str) -> int:
+    def keys_matching(self, pattern: str) -> list[str]:
         # `SCAN` can return the same key more than once during a full iteration
-        # (rehashing, concurrent writes), so dedupe before counting. Without
-        # this, `count` overcounts and disagrees with the number of distinct
-        # entries `_get_all` returns, which dedupes the same scan.
-        return len(set(self._client.scan_iter(match=key_pattern)))
+        # (rehashing, concurrent writes), so dedupe before sorting.
+        #
+        # The keys are `bytes` unless the `URI` sets `decode_responses`, which
+        # `from_url` passes through to the client. Sort the raw keys, then
+        # decode: UTF-8 byte order preserves Unicode code-point order, so the
+        # result is in the same order as the memory adapter's `str` sort. The
+        # `Cache` service writes every key as a `str`, so a key that does not
+        # decode was written by another client, and the `UnicodeDecodeError`
+        # propagates.
+        raw_keys = sorted(set(self._client.scan_iter(match=pattern)))
+        return [
+            key.decode("utf-8") if isinstance(key, bytes) else key for key in raw_keys
+        ]
 
-    def remove(self, projection: BaseProjection) -> None:
-        id_f = id_field(projection)
-        assert id_f is not None
-        assert id_f.field_name is not None
-        identifier = getattr(projection, id_f.field_name)
-        key = f"{underscore(projection.__class__.__name__)}:::{identifier}"
-        self._client.delete(key)
+    def count_matching(self, pattern: str) -> int:
+        # `SCAN` can return the same key more than once, so dedupe before
+        # counting, or `count_matching` would disagree with `keys_matching`.
+        return len(set(self._client.scan_iter(match=pattern)))
 
-    def remove_by_key(self, key: str) -> None:
-        self._client.delete(key)
-
-    def remove_by_key_pattern(self, key_pattern: str) -> None:
-        # `scan_iter` yields `bytes`: this adapter does not enable
-        # `decode_responses`. `delete()` takes bytes keys directly.
-        batch: list[bytes] = []
-        for key in self._client.scan_iter(
-            match=key_pattern, count=self._DELETE_BATCH_SIZE
-        ):
+    def delete_matching(self, pattern: str) -> None:
+        # `scan_iter` yields `bytes`, or `str` when the `URI` sets
+        # `decode_responses`. `delete()` takes either directly.
+        batch: list[bytes | str] = []
+        for key in self._client.scan_iter(match=pattern, count=self._DELETE_BATCH_SIZE):
             batch.append(key)
             if len(batch) >= self._DELETE_BATCH_SIZE:
                 self._client.delete(*batch)
@@ -179,7 +157,7 @@ class RedisCache(BaseCache):
         if batch:
             self._client.delete(*batch)
 
-    def flush_all(self) -> None:
+    def clear(self) -> None:
         """Remove every key in the configured Redis database with `FLUSHDB`.
 
         Cache keys carry no cache-specific namespace, so this also removes any
@@ -187,13 +165,13 @@ class RedisCache(BaseCache):
         """
         self._client.flushdb()
 
-    def set_ttl(self, key: str, ttl: TTLValue) -> None:
-        self._client.pexpire(key, int(self._ttl_for(ttl) * 1000))
+    def set_ttl(self, key: str, ttl: float) -> None:
+        self._client.pexpire(key, _milliseconds(ttl))
 
     def get_ttl(self, key: str) -> float | None:
         # `PTTL` answers milliseconds. Every other TTL on this port is seconds
-        # (the `TTL` config key, `add(ttl=)`, `set_ttl`), and the memory cache
-        # returns seconds here too, so convert to keep one unit across adapters.
+        # (`put`, `set_ttl`), and the memory cache returns seconds here too, so
+        # convert to keep one unit across adapters.
         remaining_ms = self._client.pttl(key)
 
         # Two of Redis' answers are not durations: `-2` means there is no such
@@ -208,3 +186,6 @@ class RedisCache(BaseCache):
         if remaining_ms < 0:
             raise ValueError(f"Unexpected PTTL value from Redis: {remaining_ms}")
         return float(remaining_ms) / 1000
+
+
+_PORT_CHECK: type[CachePort] = RedisCache

@@ -353,7 +353,7 @@ class TestResetAndClose:
         [
             ("database", "_data_reset"),
             ("broker", "_data_reset"),
-            ("cache", "flush_all"),
+            ("cache", "clear"),
             ("event_store", "_data_reset"),
         ],
     )
@@ -366,7 +366,7 @@ class TestResetAndClose:
 
     def test_closes_the_adapter_when_the_clear_fails(self):
         adapter = MagicMock()
-        adapter.flush_all.side_effect = RuntimeError("down")
+        adapter.clear.side_effect = RuntimeError("down")
 
         with pytest.raises(RuntimeError):
             reset_and_close("cache", adapter)

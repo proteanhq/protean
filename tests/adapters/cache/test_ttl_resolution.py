@@ -5,7 +5,7 @@ environment substitution runs over already-parsed TOML strings, so the value
 reaches the adapter as `"3600"` with no type to restore. Neither cache adapter
 coped: the Redis one computed `"3600" * 1000`, a 4000-digit expiry, and the
 memory one raised `TypeError` on the first write. Both failures happen well away
-from the config that caused them, which is why the coercion sits in `BaseCache`.
+from the config that caused them, which is why the coercion sits in the `Cache` service.
 """
 
 from __future__ import annotations
@@ -13,8 +13,9 @@ from __future__ import annotations
 import pytest
 
 from protean.adapters.cache.memory import MemoryCache
+from protean.adapters.cache.redis import _milliseconds
 from protean.exceptions import ConfigurationError
-from protean.port.cache import DEFAULT_TTL, _resolve_ttl
+from protean.infra.cache import DEFAULT_TTL, Cache, _resolve_ttl
 
 
 class TestTTLCoercion:
@@ -64,22 +65,27 @@ class TestTTLIsRejectedWhenItIsNotSeconds:
         assert "number of seconds" in str(exc.value)
 
 
+def _cache(name, config):
+    return Cache(MemoryCache(name, None, config))
+
+
 class TestTheAdaptersUseTheResolvedValue:
     def test_memory_cache_accepts_a_string_ttl(self):
         """Previously `TypeError: unsupported operand type(s) for +`."""
-        cache = MemoryCache("default", None, {"provider": "memory", "TTL": "3600"})
-        assert cache.ttl == 3600
-        cache._db["k"] = {"a": 1}
-        assert cache._db["k"] == {"a": 1}
+        cache = _cache("default", {"provider": "memory", "TTL": "3600"})
+        assert cache._resolved_ttl(None) == 3600
+        cache._adapter.put("k", {"a": 1}, cache._write_ttl(None))
+        assert cache._adapter.get("k") == {"a": 1}
+        assert 3590 <= cache._adapter.get_ttl("k") <= 3600
 
     def test_memory_cache_without_a_ttl_still_works(self):
-        cache = MemoryCache("default", None, {"provider": "memory"})
-        assert cache.ttl == DEFAULT_TTL
+        cache = _cache("default", {"provider": "memory"})
+        assert cache._resolved_ttl(None) == DEFAULT_TTL
 
     def test_the_redis_expiry_is_computable_from_a_string_ttl(self):
-        """`int(ttl * 1000)` is what `psetex` receives."""
+        """`_milliseconds(ttl)` is what `psetex` receives."""
         resolved = _resolve_ttl("3600", "default")
-        assert int(resolved * 1000) == 3_600_000
+        assert _milliseconds(resolved) == 3_600_000
 
 
 class TestTTLMustBePositiveAndFinite:
@@ -104,6 +110,14 @@ class TestTTLMustBePositiveAndFinite:
         with pytest.raises(ConfigurationError, match="finite"):
             _resolve_ttl(configured, "Cache 'default'")
 
+    @pytest.mark.parametrize(
+        "configured",
+        [pytest.param(10**400, id="int"), pytest.param("1" + "0" * 400, id="str")],
+    )
+    def test_an_int_too_large_for_a_float_is_rejected(self, configured):
+        with pytest.raises(ConfigurationError, match="finite"):
+            _resolve_ttl(configured, "Cache 'default'")
+
     @pytest.mark.parametrize("configured", ["-5", -5, "0", 0, -0.5])
     def test_zero_and_negative_are_rejected(self, configured):
         with pytest.raises(ConfigurationError, match="positive"):
@@ -116,29 +130,29 @@ class TestTTLMustBePositiveAndFinite:
 
     def test_a_nan_ttl_no_longer_reaches_the_memory_cache(self):
         with pytest.raises(ConfigurationError):
-            MemoryCache("default", None, {"provider": "memory", "TTL": "nan"})
+            _cache("default", {"provider": "memory", "TTL": "nan"})
 
 
 class TestAPerCallTTL:
     """`ttl or self.ttl` treated an explicit `0` as "not supplied"."""
 
     def test_an_explicit_ttl_is_used(self):
-        cache = MemoryCache("default", None, {"provider": "memory", "TTL": 300})
-        assert cache._ttl_for(60) == 60
+        cache = _cache("default", {"provider": "memory", "TTL": 300})
+        assert cache._resolved_ttl(60) == 60
 
     def test_omitting_it_falls_back_to_the_cache_default(self):
-        cache = MemoryCache("default", None, {"provider": "memory", "TTL": 900})
-        assert cache._ttl_for(None) == 900
+        cache = _cache("default", {"provider": "memory", "TTL": 900})
+        assert cache._resolved_ttl(None) == 900
 
     def test_a_string_per_call_ttl_is_coerced_like_config(self):
-        cache = MemoryCache("default", None, {"provider": "memory"})
-        assert cache._ttl_for("60") == 60
+        cache = _cache("default", {"provider": "memory"})
+        assert cache._resolved_ttl("60") == 60
 
     def test_zero_is_rejected_rather_than_silently_becoming_the_default(self):
         """It used to return 300, so "expire immediately" cached for 5 minutes."""
-        cache = MemoryCache("default", None, {"provider": "memory", "TTL": 300})
+        cache = _cache("default", {"provider": "memory", "TTL": 300})
         with pytest.raises(ConfigurationError, match="positive"):
-            cache._ttl_for(0)
+            cache._resolved_ttl(0)
 
     def test_an_empty_string_falls_back_to_the_cache_not_the_global_default(self):
         """`ttl=os.getenv("CACHE_TTL", "")` must not shorten a configured TTL.
@@ -148,18 +162,18 @@ class TestAPerCallTTL:
         path the cache already has a TTL, so deferring to `_resolve_ttl` here
         quietly cached for five minutes on a cache configured for an hour.
         """
-        cache = MemoryCache("sessions", None, {"provider": "memory", "TTL": 3600})
+        cache = _cache("sessions", {"provider": "memory", "TTL": 3600})
 
-        assert cache._ttl_for("") == 3600
-        assert cache._ttl_for(None) == 3600
+        assert cache._resolved_ttl("") == 3600
+        assert cache._resolved_ttl(None) == 3600
 
     def test_an_empty_string_still_reaches_the_global_default_when_unconfigured(self):
-        cache = MemoryCache("plain", None, {"provider": "memory"})
+        cache = _cache("plain", {"provider": "memory"})
 
-        assert cache._ttl_for("") == DEFAULT_TTL
+        assert cache._resolved_ttl("") == DEFAULT_TTL
 
     def test_a_string_zero_is_still_rejected(self):
         """Only `""` means unset; `"0"` is a value, and a bad one."""
-        cache = MemoryCache("sessions", None, {"provider": "memory", "TTL": 3600})
+        cache = _cache("sessions", {"provider": "memory", "TTL": 3600})
         with pytest.raises(ConfigurationError, match="positive"):
-            cache._ttl_for("0")
+            cache._resolved_ttl("0")

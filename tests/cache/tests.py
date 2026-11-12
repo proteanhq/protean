@@ -3,10 +3,11 @@ import time
 import pytest
 
 from protean import Domain
-from protean.adapters.cache.memory import MemoryCache
+from protean.adapters.cache.memory import MemoryCache, TTLDict
 from protean.core.projection import BaseProjection
 from protean.fields import Identifier, String
-from protean.port.cache import BaseCache
+from protean.infra.cache import DEFAULT_TTL, Cache
+from protean.port.cache import CachePort
 
 
 class Token(BaseProjection):
@@ -16,9 +17,9 @@ class Token(BaseProjection):
 
 
 class TestCacheInitialization:
-    def test_that_base_repository_class_cannot_be_instantiated(self):
-        with pytest.raises(TypeError):
-            BaseCache()
+    def test_that_the_cache_port_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="abstract class CachePort"):
+            CachePort()
 
     def test_that_a_concrete_cache_can_be_initialized_successfully(self, test_domain):
         cache = MemoryCache("dummy_name", test_domain, {})
@@ -26,13 +27,15 @@ class TestCacheInitialization:
 
     def test_that_domain_initializes_cache_from_config(self, test_domain):
         assert len(list(test_domain.caches)) == 1
-        assert isinstance(next(iter(test_domain.caches.values())), MemoryCache)
+        cache = next(iter(test_domain.caches.values()))
+        assert isinstance(cache, Cache)
+        assert isinstance(cache._adapter, MemoryCache)
 
     def test_that_cache_can_be_retrieved(self, test_domain):
         cache_name = next(iter(test_domain.caches))
         assert cache_name is not None
         assert cache_name == "default"
-        assert isinstance(test_domain.caches[cache_name], MemoryCache)
+        assert isinstance(test_domain.caches[cache_name]._adapter, MemoryCache)
 
 
 class TestCacheProvider:
@@ -41,9 +44,10 @@ class TestCacheProvider:
         assert provider is not None
         assert provider.ping() is True
 
-    def test_conn_info(self, test_domain):
+    def test_config(self, test_domain):
         provider = test_domain.caches.get("default")
-        assert provider.conn_info["cache"] == "memory"
+        assert provider._adapter.config["provider"] == "memory"
+        assert "cache" not in provider._adapter.config
 
     def test_connection_via_provider(self, test_domain):
         provider = test_domain.caches.get("default")
@@ -109,14 +113,14 @@ class TestCachePersistenceFlows:
         cache.add(Token(key="qux", user_id="foo", email="bar@baz.com"))
         cache.add(Token(key="quux", user_id="fooo", email="baar@baz.com"))
 
-        original_get = cache._db.get
+        original_get = cache._adapter._db.get
 
         def get_with_one_eviction(key, default=None):
             if key == "token:::qux":
                 return None
             return original_get(key, default)
 
-        monkeypatch.setattr(cache._db, "get", get_with_one_eviction)
+        monkeypatch.setattr(cache._adapter._db, "get", get_with_one_eviction)
 
         tokens = cache._get_all("token:::qu*")
 
@@ -238,26 +242,27 @@ class TestCachePersistenceFlows:
         total = cache.count("token:::qu*")
         assert total == 2
 
-        cache.flush_all()
+        cache.clear()
 
         total = cache.count("token:::qu*")
         assert total == 0
 
-    def test_flush_all_keeps_backend_usable(self, test_domain):
-        """The cache must stay fully usable after ``flush_all``.
+    def test_clear_keeps_backend_usable(self, test_domain):
+        """The cache must stay fully usable after ``clear``.
 
-        Regression: ``MemoryCache.flush_all`` reassigned ``_db`` to a plain
-        ``{}``, so ``set_ttl``/``get_ttl`` (used by ``add(..., ttl=...)``)
-        raised ``AttributeError`` on the next operation.
+        Regression: clearing ``MemoryCache`` reassigned ``_db`` to a plain
+        ``{}``, so the next TTL write, ``set_ttl`` or ``get_ttl`` raised
+        ``AttributeError``.
         """
         cache = test_domain.cache_for(Token)
         cache.add(Token(key="qux", user_id="foo", email="bar@baz.com"))
 
-        cache.flush_all()
+        cache.clear()
 
-        # add-with-ttl exercises set_ttl; must not raise after a flush.
         cache.add(Token(key="quux", user_id="foo", email="bar@baz.com"), ttl=100)
+        cache.set_ttl("token:::quux", 200)
         assert cache.count("token:::qu*") == 1
+        assert 190 <= cache.get_ttl("token:::quux") <= 200
 
 
 class TestCacheSerialization:
@@ -307,7 +312,7 @@ class TestAddWithAnExplicitTTL:
         cache = test_domain.cache_for(Token)
         cache.add(self._token())
 
-        assert cache.get_ttl("token:::tok-1") == pytest.approx(cache.ttl, abs=1)
+        assert cache.get_ttl("token:::tok-1") == pytest.approx(DEFAULT_TTL, abs=1)
 
     def test_a_zero_ttl_is_rejected_not_silently_replaced(self, test_domain):
         """It used to fall through to the default, caching for 5 minutes."""
@@ -341,6 +346,13 @@ class TestSetTTLTakesTheSameShapesAsAdd:
         cache, key = self._stored(test_domain)
         cache.set_ttl(key, "45")
         assert cache.get_ttl(key) == pytest.approx(45, abs=1)
+
+    @pytest.mark.parametrize("unset", [None, ""])
+    def test_an_unset_ttl_uses_the_cache_ttl(self, test_domain, unset):
+        cache, key = self._stored(test_domain)
+        cache.set_ttl(key, 45)
+        cache.set_ttl(key, unset)
+        assert cache.get_ttl(key) == pytest.approx(300, abs=1)
 
     @pytest.mark.parametrize("bad", [0, -5, "nan", "inf", "later"])
     def test_a_bad_ttl_is_rejected_the_same_way_as_in_add(self, test_domain, bad):
@@ -480,3 +492,46 @@ class TestCachesMapping:
             del domain.caches["missing"]
 
         assert list(domain.caches) == ["default"]
+
+
+class TestTTLDictSetTTL:
+    def test_an_expired_key_is_not_revived(self):
+        store = TTLDict(None)
+        store.put("k", {"a": 1}, 1)
+
+        store.set_ttl("k", 60, now=time.time() + 5)
+
+        assert store.get_ttl_or_none("k") is None
+        assert "k" not in store._values
+
+    def test_an_absent_key_is_not_created(self):
+        store = TTLDict(None)
+
+        store.set_ttl("absent", 60)
+
+        assert store._values == {}
+
+    def test_an_entry_that_expires_while_set_ttl_waits_for_the_lock_stays_expired(
+        self, monkeypatch
+    ):
+        """`set_ttl` reads the clock after it takes the lock, so an entry that
+        expires while the call waits for the lock is evicted, not revived."""
+        import threading
+
+        from protean.adapters.cache import memory
+
+        clock = [100.0]
+        monkeypatch.setattr(memory.time, "time", lambda: clock[0])
+
+        ttl_dict = TTLDict(default_ttl=300)
+        ttl_dict.put("k", "v", ttl=10)  # expires at 110
+
+        ttl_dict._lock.acquire()
+        worker = threading.Thread(target=ttl_dict.set_ttl, args=("k", 60))
+        worker.start()
+        worker.join(timeout=0.2)  # the worker is now blocked on the lock
+        clock[0] = 200.0  # the entry expires while the worker waits
+        ttl_dict._lock.release()
+        worker.join()
+
+        assert "k" not in ttl_dict._values

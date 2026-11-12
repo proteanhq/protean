@@ -52,8 +52,12 @@ for a complete guide with a worked Kafka example, including:
 Event store adapters extend `BaseEventStore`, implement stream write/read
 operations, and declare the guarantees they make on a `capabilities` property.
 See [What each event store guarantees](./eventstore/index.md#what-each-event-store-guarantees).
-Cache adapters extend `BaseCache`, implement key-value operations with TTL
-support, and declare their capabilities through `CacheCapabilities`.
+Cache adapters subclass the `CachePort` protocol, implement its key-value
+operations, and declare their capabilities through `CacheCapabilities`. An
+adapter that declares `TTL` also subclasses `CacheTTLPort`, and one that declares
+`PATTERN_MATCH` also subclasses `CachePatternPort`. `Domain.init()` raises
+`ConfigurationError` when an adapter declares `TTL` or `PATTERN_MATCH` and does
+not subclass the matching protocol.
 
 They register the same way as database and broker adapters. An event store's
 `register()` function calls `protean.infra.registry.event_stores`, and its entry
@@ -80,8 +84,8 @@ eventstoredb = "protean_eventstoredb:register"
 
 The `provider` key in `[event_store]` or `[caches.<name>]` then selects the
 adapter by that name. An event store class takes `(domain, conn_info)` in its
-constructor. A cache class takes `(name, caches, conn_info)`, where `caches`
-is the domain's collection of configured caches.
+constructor. A cache class takes `(name, domain, config)`, where `config`
+is the cache's table from the domain configuration.
 
 When `Domain.init()` loads the class, the registry checks that the class
 implements every abstract method and property it inherits. If any are missing,

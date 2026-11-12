@@ -47,6 +47,9 @@ paths = [
     "src/protean/adapters/broker/inline.py",
     "src/protean/adapters/cache/__init__.py",
     "src/protean/adapters/cache/memory.py",
+    "src/protean/infra/cache.py",
+    "src/protean/port/cache.py",
+    "src/protean/port/health.py",
     "src/protean/adapters/event_store/__init__.py",
     "src/protean/adapters/event_store/memory.py",
     "src/protean/adapters/repository/__init__.py",
@@ -110,6 +113,9 @@ paths = [
     "src/protean/infra/registry.py",
     "src/protean/adapters/cache/__init__.py",
     "src/protean/adapters/cache/redis.py",
+    "src/protean/infra/cache.py",
+    "src/protean/port/cache.py",
+    "src/protean/port/health.py",
     "tests/adapters/cache/",
 ]
 markers = ["redis"]

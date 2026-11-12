@@ -6,15 +6,17 @@ access to the denormalized views that projectors build.
 
 ## Overview
 
-Protean's cache adapters store
-[Projection](../../../guides/consume-state/projections.md) instances keyed by
-their identifier. The `BaseCache` interface provides:
+Protean caches store
+[Projection](../../../guides/consume-state/projections.md) data keyed by the
+projection's identifier. Each adapter implements the `CachePort` protocol and
+stores dicts under string keys. The `Cache` service that wraps it turns
+projections into dicts and back, and provides:
 
 - **Add/Get/Remove**: Store and retrieve projections by key
 - **Pattern matching**: Retrieve or remove projections by key pattern
 - **TTL management**: Set time-to-live on cached entries
 - **Health checks**: Verify cache connectivity
-- **Bulk operations**: Flush all entries
+- **Bulk operations**: Clear all entries
 
 ## Available Caches
 
@@ -25,9 +27,11 @@ within the process. No external dependencies are needed.
 
 - **Use cases**: Development, testing, prototyping
 - All data is lost on process restart
-- TTL is enforced lazily: every entry is written with an expiry, and an expired
-  entry is dropped the next time it is read, iterated or counted. There is no
-  background sweep, so an expired entry nobody touches still occupies memory.
+- TTL is enforced lazily: every entry the `Cache` service writes has an expiry.
+  Reads, key matches and counts skip an expired entry. A call that names the
+  key, such as `get`, `get_ttl`, `set_ttl` or `delete`, removes it. There is no
+  background sweep, so an expired entry whose key no call names still occupies
+  memory.
 
 ### Redis
 
@@ -105,11 +109,13 @@ are not durations, and every adapter answers them the same way:
 |-------|--------------|-------------|
 | Key exists, expiry pending | seconds remaining | seconds remaining |
 | No such key | returns `None` | returns `None` |
-| Key exists, no expiry set | not reachable, every entry is written with one | returns `math.inf` |
+| Key exists, no expiry set | returns `math.inf` | returns `math.inf` |
 
 An expired entry counts as absent, so `get_ttl` returns `None` for it, the same
-way `get` does. `math.inf` only ever comes from Redis: the memory cache writes
-every entry with a concrete TTL, so it never holds a key without an expiry.
+way `get` does. The `Cache` service passes the configured TTL with every write
+to an adapter that declares `TTL`, so through the service a memory entry always
+has an expiry. A key without one comes from a direct adapter write with
+`ttl=None`, or on Redis from a write outside Protean.
 
 So code reads the same on either adapter:
 
@@ -139,7 +145,7 @@ To page a large projection set, query the projection's repository
 
 ## Interface
 
-All cache adapters implement these methods:
+The `Cache` service that `domain.caches[name]` returns has these methods:
 
 | Method | Description |
 |--------|-------------|
@@ -152,7 +158,7 @@ All cache adapters implement these methods:
 | `remove(projection)` | Remove a cached projection. Does nothing if no record exists for it |
 | `remove_by_key(key)` | Remove an entry by key. Does nothing if the key is absent |
 | `remove_by_key_pattern(key_pattern)` | Remove entries matching a pattern. Does nothing if the pattern matches no keys |
-| `flush_all()` | Remove every key in the cache's backing store. On Redis that is every key in the configured database |
+| `clear()` | Remove every key in the cache's backing store. On Redis that is every key in the configured database |
 | `set_ttl(key, ttl)` | Set a TTL on a specific key. Does nothing if the key is absent, but still rejects an invalid TTL |
 | `get_ttl(key)` | Seconds remaining before a key expires; `None` if there is no such key, `math.inf` if it never expires. See below |
 

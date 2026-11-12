@@ -1,8 +1,9 @@
-"""`_get_all` reads Redis keys in sorted key order, deduped.
+"""`RedisCache.keys_matching` returns distinct keys, sorted, decoded as UTF-8.
 
-Redis has no native ordering, so `_get_all` collects every matching key with
-`scan_iter`, dedupes, sorts them ascending, and materialises them. That sort and
-dedupe is the whole behaviour, so it is worth covering on its own.
+Redis has no native ordering, so `keys_matching` collects every matching key
+with `scan_iter`, dedupes, sorts the raw bytes ascending, then decodes them.
+That sort, dedupe and decode is the whole behaviour, so it is worth covering
+on its own.
 
 Driven through a stub client rather than a live Redis, so the logic runs in the
 core suite the way `test_redis_ttl_units.py` covers `get_ttl`. The cross-adapter
@@ -27,14 +28,19 @@ class CacheEntry(BaseProjection):
     value: String(required=True)
 
 
+def _encoded(key: str | bytes) -> bytes:
+    return key if isinstance(key, bytes) else key.encode()
+
+
 class _StubClient:
-    """The parts of the Redis client `_get_all`/`add`/`count` touch, backed by a dict.
+    """The parts of the Redis client `put`/`get`/`keys_matching` touch, backed
+    by a dict.
 
     Keys and values come back as `bytes`, the way redis-py answers without
     `decode_responses`, so the test exercises the same bytes sort the live
     adapter does. `scan_iter` yields keys in insertion order, deliberately not
-    sorted, so a `_get_all` that forgot to sort would return them in the wrong
-    order and the order assertion would catch it.
+    sorted, so a `keys_matching` that forgot to sort would return them in the
+    wrong order and the order assertion would catch it.
     """
 
     def __init__(self) -> None:
@@ -44,15 +50,15 @@ class _StubClient:
         return True
 
     def psetex(self, key: str, ttl_ms: int, value: str) -> None:
-        self._store[key.encode()] = value.encode()
+        self._store[_encoded(key)] = value.encode()
 
     def scan_iter(self, match: str | None = None):
         for key in self._store:  # insertion order, not sorted
-            if match is None or fnmatch.fnmatchcase(key.decode(), match):
+            if match is None or fnmatch.fnmatchcase(key.decode("latin-1"), match):
                 yield key
 
-    def get(self, key: bytes) -> bytes | None:
-        return self._store.get(key)
+    def get(self, key: str | bytes) -> bytes | None:
+        return self._store.get(_encoded(key))
 
 
 def _install(monkeypatch, stub):
@@ -90,6 +96,15 @@ def _load(cache):
         cache.add(CacheEntry(key=f"k{i}", value=str(i)))
 
 
+def test_keys_matching_returns_every_match_in_key_order_as_str(cache):
+    _load(cache)
+
+    keys = cache._adapter.keys_matching(PATTERN)
+
+    assert keys == [f"cache_entry:::{key}" for key in EXPECTED_ORDER]
+    assert all(isinstance(key, str) for key in keys)
+
+
 def test__get_all_returns_every_match_in_key_order(cache):
     _load(cache)
 
@@ -98,13 +113,38 @@ def test__get_all_returns_every_match_in_key_order(cache):
     assert [entry.key for entry in results] == EXPECTED_ORDER
 
 
+def test_keys_matching_sorts_non_ascii_keys_by_code_point(cache):
+    """UTF-8 byte order is code-point order, so sorting the raw bytes and
+    then decoding gives the same order as the memory adapter's `str` sort."""
+    adapter = cache._adapter
+    for key in ["k:::é", "k:::z", "k:::a", "k:::日"]:
+        adapter.put(key, {"key": key}, 60.0)
+
+    assert adapter.keys_matching("k:::*") == sorted(
+        ["k:::é", "k:::z", "k:::a", "k:::日"]
+    )
+
+
+def test_a_key_that_is_not_utf8_raises(monkeypatch):
+    """The `Cache` service writes every key as a `str`, so a key that does not
+    decode was written by another client and is not silently mangled."""
+    stub = _StubClient()
+    stub._store[b"cache_entry:::\xff"] = b"{}"
+    domain = _install(monkeypatch, stub)
+    with domain.domain_context():
+        adapter = domain.caches["default"]._adapter
+
+        with pytest.raises(UnicodeDecodeError):
+            adapter.keys_matching(PATTERN)
+
+
 class _DuplicatingStub(_StubClient):
     """A stub whose `scan_iter` yields the first matching key twice.
 
     Redis `SCAN` is documented to return the same element more than once during
     a full iteration (rehashing, concurrent writes), and `scan_iter` inherits
-    that. This reproduces it so the dedup in `_get_all` and `count` is covered
-    on the core leg, not only against a live server.
+    that. This reproduces it so the dedup in `keys_matching` and
+    `count_matching` is covered on the core leg, not only against a live server.
     """
 
     def scan_iter(self, match=None):
@@ -121,11 +161,12 @@ def test_scan_returning_a_key_twice_is_deduplicated(monkeypatch):
         cache.add(CacheEntry(key="k0", value="0"))
         cache.add(CacheEntry(key="k1", value="1"))
 
-        results = cache._get_all(PATTERN)
-
-        # Without dedup the result would be [k0, k0, k1]: the duplicate repeats
-        # a projection.
-        assert [entry.key for entry in results] == ["k0", "k1"]
+        # Without dedup the result would be [k0, k0, k1].
+        assert cache._adapter.keys_matching(PATTERN) == [
+            "cache_entry:::k0",
+            "cache_entry:::k1",
+        ]
+        assert [entry.key for entry in cache._get_all(PATTERN)] == ["k0", "k1"]
 
 
 def test_count_deduplicates_a_key_scan_returns_twice(monkeypatch):
@@ -136,5 +177,5 @@ def test_count_deduplicates_a_key_scan_returns_twice(monkeypatch):
         cache.add(CacheEntry(key="k1", value="1"))
 
         # `scan_iter` yields k0 twice. Without dedup `count` returns 3 and
-        # disagrees with the two distinct entries `_get_all` returns.
+        # disagrees with the two distinct keys `keys_matching` returns.
         assert cache.count(PATTERN) == 2
