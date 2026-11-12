@@ -997,8 +997,9 @@ GENERIC_TEST_DIR = Path(__file__).resolve().parent.parent.parent.parent / (
     "tests/adapters/repository/generic"
 )
 
-# The per-port conformance suites. They are not in the wheel, so the command
-# needs a source checkout for any port but ``database``.
+# The per-port conformance suites for every port but ``database``. Like the
+# generic database suite, they are not in the wheel, so the command needs a
+# source checkout.
 CONFORMANCE_DIR = REPO_ROOT / "tests" / "conformance"
 
 CONFORMANCE_PORTS = ("database", "broker", "cache", "event_store")
