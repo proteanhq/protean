@@ -158,7 +158,7 @@ def _add_raw_indexes_to_new_tables(metadata: MetaData, upgrade: list[Any]) -> se
         if isinstance(op, ops.CreateTableOp):
             created.add(op.table_name)
             sql = [
-                ops.ExecuteSQLOp(raw.ddl)
+                _execute_sql(raw.ddl)
                 for raw in _raw_indexes(_table(metadata, op.table_name))
             ]
             upgrade[position + 1 : position + 1] = sql
@@ -222,8 +222,16 @@ def _stored_index_rebuild(
     """
     rebuilt: list[Any] = []
     for name, sql in _stored_index_sql(connection, table_name, schema):
-        rebuilt += [_drop_if_exists(connection, name, schema), ops.ExecuteSQLOp(sql)]
+        rebuilt += [_drop_if_exists(connection, name, schema), _execute_sql(sql)]
     return rebuilt
+
+
+def _execute_sql(sql: str) -> ops.ExecuteSQLOp:
+    """An op that runs ``sql`` verbatim."""
+    # Alembic runs a string through ``text()``, which reads a colon before a
+    # word as a bind parameter, even inside a quoted literal. ``text()`` turns
+    # each escaped colon back into a plain one.
+    return ops.ExecuteSQLOp(sql.replace(":", r"\:"))
 
 
 def _drop_if_exists(
@@ -269,7 +277,7 @@ def _lossy_indexes(table: Table) -> list[tuple[str, Any]]:
         and not all(isinstance(column, Column) for column in index.expressions)
     ]
     lossy += [
-        (raw.name, ops.ExecuteSQLOp(raw.ddl)) for raw in _raw_indexes(table) if raw.name
+        (raw.name, _execute_sql(raw.ddl)) for raw in _raw_indexes(table) if raw.name
     ]
     return lossy
 
@@ -296,7 +304,7 @@ def _add_missing_raw_indexes(
         present = _index_names(connection, table.name, schema)
         for raw in _raw_indexes(table):
             if raw.name and raw.name not in present:
-                script.upgrade_ops.ops.append(ops.ExecuteSQLOp(raw.ddl))
+                script.upgrade_ops.ops.append(_execute_sql(raw.ddl))
                 script.downgrade_ops.ops.insert(
                     0, ops.DropIndexOp(raw.name, table.name, schema=table.schema)
                 )

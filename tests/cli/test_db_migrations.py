@@ -333,6 +333,33 @@ class TestATableCopyKeepsItsIndexes:
 
         assert index_sql(database) == before
 
+    def test_index_sql_with_a_colon_literal_runs_verbatim(self, project, database):
+        """A ``:word`` inside a quoted literal is not read as a bind parameter."""
+        model = """
+@domain.aggregate(indexes=[
+    Index.from_sql(
+        "sqlite",
+        "CREATE INDEX ix_product_tagged ON product (name) WHERE name != ':draft'",
+        name="ix_product_tagged",
+    ),
+])
+class Product:
+    name = String(max_length={max_length})
+"""
+        start_at_head(project, model.format(max_length=50))
+        before = index_sql(database)
+        assert "':draft'" in before["ix_product_tagged"]
+        project.write(model.format(max_length=100))
+
+        project.run_ok("migrate", "-m", "longer name")
+        project.run_ok("upgrade")
+
+        assert index_sql(database) == before
+
+        project.run_ok("downgrade", "-1")
+
+        assert index_sql(database) == before
+
     def test_only_the_dropped_column_rebuilds_the_indexes(self, project, database):
         """Adding a column runs without a copy; dropping it in the downgrade copies."""
         start_at_head(project, raw_index_model("sqlite"))
