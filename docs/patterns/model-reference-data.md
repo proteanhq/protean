@@ -216,6 +216,8 @@ into a cache-backed read model, refreshed by a projector when the aggregate
 changes:
 
 ```python
+--8<-- "patterns/model-reference-data/004.py:imports"
+--8<-- "patterns/model-reference-data/004.py:added_event"
 --8<-- "patterns/model-reference-data/004.py:projector"
 ```
 

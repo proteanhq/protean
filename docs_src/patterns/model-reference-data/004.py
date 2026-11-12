@@ -1,17 +1,24 @@
+# --8<-- [start:imports]
 from protean import Domain, current_domain
 from protean.core.projector import on
 from protean.fields import Boolean, String
+
+# --8<-- [end:imports]
 
 domain = Domain(name="ReferenceDataCatalog")
 domain.config["event_processing"] = "sync"
 domain.config["caches"]["catalog"] = {"provider": "memory"}
 
 
+# --8<-- [start:added_event]
 @domain.event(part_of="Currency")
 class CurrencyAdded:
     code: String(required=True)
     name: String(required=True)
     symbol: String(max_length=4)
+
+
+# --8<-- [end:added_event]
 
 
 @domain.event(part_of="Currency")
