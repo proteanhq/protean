@@ -135,10 +135,11 @@ the conformance suites need a source checkout.
 
 For `broker`, `cache` and `event_store`, the command runs pytest once per row
 of the report. The first row, `unmarked`, runs the tests that need no flag.
-Then each single flag of the port's capability type gets a row, in the order the
-type defines them. A flag the adapter declares runs the tests whose `requires`
-or `requires_any` marker names it. A flag the adapter does not declare is
-reported as `SKIP (not declared)` without a run. A declared flag with no test
+Then each flag the adapter declares gets a row, in the order the port's
+capability type defines them. A declared flag runs the tests whose `requires`
+or `requires_any` marker names it. Each flag the adapter does not declare gets
+a `SKIP (not declared)` row after all the run rows, and the command does not
+run pytest for it. A declared flag with no test
 yet is reported as `SKIP (no tests collected)`.
 
 With `--capabilities`, the report has only the rows of the named flags and no
