@@ -13,7 +13,6 @@ from protean.adapters.repository.schema_migrator.autogenerate import (
     _drop_primary_key_nullability,
     _index_names,
     _qualified,
-    _raw_index_names,
 )
 
 pytestmark = [pytest.mark.sqlite, pytest.mark.no_test_domain]
@@ -38,11 +37,6 @@ class TestIndexNames:
 
             assert _index_names(connection, "product", "shop") == {"ix_lower_name"}
             assert _index_names(connection, "product", None) == set()
-
-
-class TestRawIndexNames:
-    def test_a_table_the_metadata_lacks_has_none(self, metadata):
-        assert _raw_index_names(metadata, "order") == set()
 
 
 class TestDropPrimaryKeyNullability:

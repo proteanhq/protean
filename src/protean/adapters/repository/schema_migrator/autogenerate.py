@@ -71,8 +71,12 @@ class _Comparison:
     ) -> bool:
         if type_ == "index" and reflected and compare_to is None:
             # A raw index is in the database and not in ``Table.indexes``, so
-            # without this autogenerate would drop it.
-            return name not in _raw_index_names(self.metadata, obj.table.name)
+            # without this autogenerate would drop it. Only its DDL names an
+            # unnamed raw index, so a table that declares one drops no index.
+            raw = _raw_indexes(_table(self.metadata, obj.table.name))
+            if any(not index.name for index in raw):
+                return False
+            return name not in {index.name for index in raw}
         if type_ == "unique_constraint" and not reflected:
             # The identifier field is marked unique as well as primary, and the
             # primary key already makes it unique in the database.
@@ -105,10 +109,6 @@ def _table(metadata: MetaData, name: str) -> Table | None:
 
 def _raw_indexes(table: Table | None) -> list[RawIndex]:
     return [] if table is None else _raw_indexes_of(table)
-
-
-def _raw_index_names(metadata: MetaData, table_name: str) -> set[str]:
-    return {raw.name for raw in _raw_indexes(_table(metadata, table_name)) if raw.name}
 
 
 def _is_primary_key(constraint: Any) -> bool:

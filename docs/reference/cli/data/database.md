@@ -185,7 +185,9 @@ copying the table, because SQLite cannot change most columns in place.
 An index declared with `Index.from_sql` for the provider's database goes into
 the migration that creates its table. A named one added to an existing table
 gets a migration that creates it, and the downgrade drops it. An index declared
-for another database is left out.
+for another database is left out. Only the statement of an unnamed
+`Index.from_sql` index gives its name, so on a table that declares one, the
+migration drops no index. Drop an index you remove from such a table by hand.
 
 The table copy on SQLite loses an expression index and the DESC order of an
 index column. The migration rebuilds these indexes after each copy. In the

@@ -272,6 +272,23 @@ class TestRawIndexes:
         assert "CREATE INDEX ix_product_raw ON product (lower(name))" in source
         assert "ix_product_other" not in source
 
+    def test_an_unchanged_unnamed_raw_index_is_not_dropped(self, project, database):
+        start_at_head(
+            project,
+            """
+@domain.aggregate(indexes=[
+    Index.from_sql("sqlite", "CREATE UNIQUE INDEX ix_product_raw ON product (name)"),
+])
+class Product:
+    name = String(max_length=50)
+""",
+        )
+        assert "ix_product_raw" in index_sql(database)
+
+        result = project.run_ok("migrate", "-m", "nothing")
+
+        assert "No changes detected; no migration written." in result.output
+
 
 class TestATableCopyKeepsItsIndexes:
     """On SQLite, a column change copies the table, and the copy is built from
