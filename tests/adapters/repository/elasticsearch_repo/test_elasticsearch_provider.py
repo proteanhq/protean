@@ -1,5 +1,7 @@
 """Module to test Elasticsearch Provider specific functionality"""
 
+import traceback
+
 import pytest
 from elasticsearch import Elasticsearch
 
@@ -280,9 +282,15 @@ class TestElasticsearchHostNormalization:
         assert _base_urls([host]) == ["http://es:9201"]
 
     def test_non_numeric_port_is_left_for_the_client_to_reject(self):
+        # The host sits on its own line so the traceback's source line for
+        # the call below does not quote it.
+        host = "http://elastic:secret@imaginary:abc"
         with pytest.raises(ConfigurationError) as exc:
-            _base_urls(["http://elastic:secret@imaginary:abc"])
+            _base_urls([host])
 
         assert "Invalid Elasticsearch connection configuration" in str(exc.value)
         assert "imaginary" not in str(exc.value)
         assert "secret" not in str(exc.value)
+        # A logged traceback must not print the client's message either.
+        formatted = "".join(traceback.format_exception(exc.value))
+        assert "secret" not in formatted

@@ -867,17 +867,19 @@ class ESProvider(BaseProvider):
         # malformed host raises here rather than at first use. Surface it as a
         # ConfigurationError so misconfiguration is reported like any other bad
         # provider config. The client's own message is left out, because for a
-        # URL it cannot parse it repeats the URL, credentials included.
+        # URL it cannot parse it repeats the URL, credentials included. The
+        # exception chain is dropped for the same reason, since a logged
+        # traceback would print the client's message.
         try:
             self._client = Elasticsearch(
                 hosts,
                 verify_certs=self.conn_info.get("VERIFY_CERTS", False),
             )
-        except ValueError as exc:
+        except ValueError:
             raise ConfigurationError(
                 "Invalid Elasticsearch connection configuration: each host must "
                 "be a URL with a scheme, a host name and a numeric port"
-            ) from exc
+            ) from None
 
     def namespaced_schema_name(self, schema_name: str) -> str:
         # Prepend Namespace prefix if one has been provided
