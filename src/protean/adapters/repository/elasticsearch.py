@@ -806,12 +806,12 @@ def _normalize_host(host: str, scheme: str) -> str:
     """Return ``host`` as a URL the client accepts.
 
     A host without ``://`` gets ``scheme`` and, when it has no port, port 9200.
-    An ``http://`` URL without a port also gets 9200. An ``https://`` URL
-    without a port is returned unchanged, because the client gives it port 443.
-    A port that is present is kept as written, even one that is not a number,
-    so the client rejects it.
+    An ``http://`` URL without a port also gets 9200, whatever the case of its
+    scheme. A URL with any other scheme is returned unchanged: the client gives
+    an ``https://`` URL without a port port 443. A port that is present is kept
+    as written, even one that is not a number, so the client rejects it.
     """
-    if "://" in host and not host.startswith("http://"):
+    if "://" in host and not host.lower().startswith("http://"):
         return host
     if "://" not in host:
         host = f"{scheme}://{host}"

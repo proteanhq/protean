@@ -246,6 +246,7 @@ class TestElasticsearchHostNormalization:
             ("localhost:9201", "http://localhost:9201"),
             ("http://es", "http://es:9200"),
             ("http://es:9200", "http://es:9200"),
+            ("HTTP://es", "http://es:9200"),
             ("http://[::1]", "http://[::1]:9200"),
             ("http://[::1]:9201", "http://[::1]:9201"),
         ],

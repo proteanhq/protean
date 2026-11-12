@@ -12,6 +12,10 @@ each page load that file as a ``domain.toml``, so a line-range or section
 include fails: the page would show text the tests do not load. The included
 file must exist under ``docs_src``, and a string literal in a test module under
 ``tests/docs/reference/adapters/`` must name its path.
+
+Each guide and pattern page in ``GUIDE_TOML_INCLUDES`` must include the
+``docs_src`` TOML files its tests load. Other inline TOML fences stay allowed
+on those pages.
 """
 
 from __future__ import annotations
@@ -392,6 +396,36 @@ def test_adapter_page_toml_includes_name_a_tested_file(page: str):
 
     assert [path for path in paths if not (DOCS_SRC / path).is_file()] == []
     assert [path for path in paths if path not in tested] == []
+
+
+GUIDE_TOML_INCLUDES = {
+    "guides/compose-a-domain/choosing-adapters.md": [
+        "guides/compose-a-domain/choosing-adapters/production.toml",
+    ],
+    "guides/compose-a-domain/production-configuration.md": [
+        "guides/compose-a-domain/production-configuration/elasticsearch.toml",
+        "guides/compose-a-domain/production-configuration/multiple_databases.toml",
+    ],
+    "guides/multi-domain-applications.md": [
+        "guides/multi-domain-applications/catalogue.toml",
+    ],
+    "patterns/eventual-consistency-in-uis.md": [
+        "patterns/eventual-consistency-in-uis/sync.toml",
+    ],
+    "patterns/publishing-events-to-external-brokers.md": [
+        "patterns/publishing-events-to-external-brokers/partner_broker.toml",
+        "patterns/publishing-events-to-external-brokers/two_external_brokers.toml",
+    ],
+}
+
+
+@pytest.mark.parametrize("page", sorted(GUIDE_TOML_INCLUDES))
+def test_guide_page_includes_the_toml_files_its_tests_load(page: str):
+    included = toml_includes((DOCS / page).read_text(encoding="utf-8"))
+    expected = GUIDE_TOML_INCLUDES[page]
+
+    assert [path for path in expected if not (DOCS_SRC / path).is_file()] == []
+    assert [path for path in expected if path not in included] == []
 
 
 def test_toml_includes_lists_the_included_paths():
