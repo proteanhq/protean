@@ -120,6 +120,11 @@ The suites are not in the wheel, so run the command from a Protean source
 checkout. When the suite's folder is missing, the command exits 1, prints the
 missing folder and says that the conformance suites need a source checkout.
 
+For `broker`, `cache` and `event_store`, the suite clears the adapter's data
+after every test. The Redis broker and cache run `FLUSHDB`, and the Message DB
+event store empties its message store. Point `--uri` or `--config` only at a
+test database that holds nothing else.
+
 ### Options
 
 | Option | Required | Description |
@@ -180,9 +185,9 @@ protean test test-adapter --provider=memory \
 # Test the memory event store
 protean test test-adapter --port=event_store --provider=memory
 
-# Test the Redis broker against a local server
+# Test the Redis broker against a test-only Redis database
 protean test test-adapter --port=broker --provider=redis \
-    --uri="redis://localhost:6379/0"
+    --uri="redis://localhost:6379/15"
 
 # Verbose output for debugging failures
 protean test test-adapter --provider=postgresql \
