@@ -4,9 +4,16 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from protean import Engine
+from protean import Engine, handle
+from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ObjectNotFoundError
-from tests.docs.support import load_example, outcome_counts, run_example_tests
+from protean.fields import Identifier, String
+from tests.docs.support import (
+    domain_from_config,
+    load_example,
+    outcome_counts,
+    run_example_tests,
+)
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -113,3 +120,54 @@ def test_sync_processing_test_passes():
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert outcome_counts(result) == {"passed": 1}
+
+
+SYNC = "patterns/eventual-consistency-in-uis/sync.toml"
+
+
+def _handled_after_commit(domain):
+    """Raise an event inside a unit of work and return the ids the handler saw by its exit."""
+    handled = []
+
+    @domain.aggregate
+    class Order:
+        status: String(default="PLACED")
+
+        def place(self):
+            self.raise_(OrderPlaced(order_id=self.id))
+
+    @domain.event(part_of=Order)
+    class OrderPlaced:
+        order_id: Identifier(required=True)
+
+    @domain.event_handler(part_of=Order)
+    class OrderPlacedHandler:
+        @handle(OrderPlaced)
+        def record(self, event):
+            handled.append(event.order_id)
+
+    domain.init(traverse=False)
+    with domain.domain_context():
+        order = Order()
+        order.place()
+        with UnitOfWork():
+            domain.repository_for(Order).add(order)
+        return handled, order.id
+
+
+def test_sync_configuration_runs_handlers_when_the_unit_of_work_exits(tmp_path):
+    domain = domain_from_config(SYNC, tmp_path)
+
+    assert domain.config["event_processing"] == "sync"
+    # The block sets events only, so commands stay asynchronous.
+    assert domain.config["command_processing"] == "async"
+    handled, order_id = _handled_after_commit(domain)
+    assert handled == [order_id]
+
+
+def test_without_the_sync_setting_handlers_wait_for_the_engine(tmp_path):
+    domain = domain_from_config(SYNC, tmp_path, text="")
+
+    assert domain.config["event_processing"] == "async"
+    handled, _ = _handled_after_commit(domain)
+    assert handled == []

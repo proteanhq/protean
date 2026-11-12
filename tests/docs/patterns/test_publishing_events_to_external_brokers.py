@@ -2,9 +2,11 @@
 
 import pytest
 
+from protean import Engine
 from protean.core.unit_of_work import UnitOfWork
+from protean.fields import Identifier, String
 from protean.utils.eventing import Message
-from tests.docs.support import load_example
+from tests.docs.support import domain_from_config, load_example
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -98,3 +100,87 @@ def test_the_subscriber_ignores_other_event_types(event_type):
         )
 
     assert shipments == []
+
+
+ONE_PARTNER = "patterns/publishing-events-to-external-brokers/partner_broker.toml"
+TWO_PARTNERS = (
+    "patterns/publishing-events-to-external-brokers/two_external_brokers.toml"
+)
+
+
+def _outbox_domain(path, folder):
+    """Build a domain from the TOML at ``path`` with inline brokers in place of Redis."""
+    domain = domain_from_config(path, folder)
+    for broker in domain.config["brokers"].values():
+        broker["provider"] = "inline"
+
+    @domain.aggregate
+    class Order:
+        status: String(default="PLACED")
+
+        def ship(self):
+            self.status = "SHIPPED"
+            self.raise_(OrderShipped(order_id=self.id))
+
+    @domain.event(part_of=Order, published=True)
+    class OrderShipped:
+        order_id: Identifier(required=True)
+
+    domain.init(traverse=False)
+    return domain, Order
+
+
+def _shipped_targets(domain, order_cls):
+    with domain.domain_context():
+        order = order_cls()
+        order.ship()
+        with UnitOfWork():
+            domain.repository_for(order_cls).add(order)
+        rows = domain._get_outbox_repo("default").find_unprocessed()
+    return sorted(row.target_broker for row in rows)
+
+
+def _processors(domain, *, external):
+    with domain.domain_context():
+        engine = Engine(domain, test_mode=True)
+    return {
+        processor.broker_provider_name: processor
+        for processor in engine._outbox_processors.values()
+        if processor.is_external is external
+    }
+
+
+@pytest.mark.parametrize(
+    "path, targets",
+    [
+        (ONE_PARTNER, ["default", "partner_events"]),
+        (TWO_PARTNERS, ["analytics_broker", "default", "fulfillment_broker"]),
+    ],
+    ids=["one-partner", "two-partners"],
+)
+def test_a_published_event_targets_every_configured_broker(tmp_path, path, targets):
+    domain, order_cls = _outbox_domain(path, tmp_path)
+
+    assert domain.config["server"]["default_subscription_type"] == "stream"
+    assert domain.has_outbox
+    assert _shipped_targets(domain, order_cls) == targets
+
+
+def test_the_outbox_settings_reach_the_external_processor(tmp_path):
+    domain, _ = _outbox_domain(ONE_PARTNER, tmp_path)
+
+    assert sorted(_processors(domain, external=False)) == ["default"]
+    [(broker, processor)] = _processors(domain, external=True).items()
+    assert broker == "partner_events"
+    assert processor.messages_per_tick == 50
+    assert processor.tick_interval == 1
+
+
+def test_two_external_brokers_get_one_processor_each(tmp_path):
+    domain, _ = _outbox_domain(TWO_PARTNERS, tmp_path)
+
+    assert sorted(_processors(domain, external=False)) == ["default"]
+    assert sorted(_processors(domain, external=True)) == [
+        "analytics_broker",
+        "fulfillment_broker",
+    ]

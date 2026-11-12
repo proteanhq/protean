@@ -21,10 +21,8 @@ identity values.
 
 ```toml
 # domain.toml
-...
-identity_strategy="uuid"
-identity_type="string"
-...
+identity_strategy = "uuid"
+identity_type = "string"
 ```
 
 ### Strategy

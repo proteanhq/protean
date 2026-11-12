@@ -252,8 +252,7 @@ that slows feedback cycles. Protean supports synchronous event processing
 that eliminates the gap entirely for non-production environments:
 
 ```toml
-# domain.toml -- development/test configuration
-event_processing = "sync"
+--8<-- "patterns/eventual-consistency-in-uis/sync.toml"
 ```
 
 Or in test fixtures:

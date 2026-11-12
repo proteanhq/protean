@@ -42,7 +42,7 @@ class TestElasticsearchProvider:
         domain = Domain()
         domain.config["databases"]["default"] = {
             "provider": "elasticsearch",
-            "database_uri": '{"hosts": ["imaginary"]}',
+            "database_uri": '{"hosts": ["imaginary:abc"]}',
         }
         with pytest.raises(ConfigurationError) as exc:
             domain.init(traverse=False)
@@ -220,3 +220,68 @@ class TestCreateArtifactsCacheBackedProjectionFilter:
                 assert conn.indices.exists(index=person_model._index._name)
             finally:
                 provider._drop_database_artifacts()
+
+
+def _base_urls(hosts, **options):
+    """Build an ``ESProvider`` for ``hosts`` and return its client's node base URLs.
+
+    Building the provider creates the client and opens no connection.
+    """
+    conn_info = {
+        "provider": "elasticsearch",
+        "database_uri": {"hosts": hosts},
+        **options,
+    }
+    provider = ESProvider("default", Domain(), conn_info)
+    return [node.base_url for node in provider._client.transport.node_pool.all()]
+
+
+@pytest.mark.elasticsearch
+@pytest.mark.no_test_domain
+class TestElasticsearchHostNormalization:
+    @pytest.mark.parametrize(
+        "host, base_url",
+        [
+            ("localhost", "http://localhost:9200"),
+            ("localhost:9201", "http://localhost:9201"),
+            ("http://es", "http://es:9200"),
+            ("http://es:9200", "http://es:9200"),
+            ("http://[::1]", "http://[::1]:9200"),
+            ("http://[::1]:9201", "http://[::1]:9201"),
+        ],
+    )
+    def test_string_host_gets_a_scheme_and_a_port(self, host, base_url):
+        assert _base_urls([host]) == [base_url]
+
+    def test_https_url_without_a_port_keeps_the_client_default(self):
+        # The client gives an https URL without a port port 443, which hosted
+        # services such as Elastic Cloud listen on.
+        assert _base_urls(["https://es"]) == ["https://es:443"]
+
+    def test_bare_host_with_use_ssl_gets_https_and_port_9200(self):
+        assert _base_urls(["localhost"], USE_SSL=True) == ["https://localhost:9200"]
+
+    def test_credentials_are_kept_when_the_port_is_added(self):
+        conn_info = {
+            "provider": "elasticsearch",
+            "database_uri": {"hosts": ["http://elastic:secret@es"]},
+        }
+        provider = ESProvider("default", Domain(), conn_info)
+
+        [node] = provider._client.transport.node_pool.all()
+        # The client moves the credentials into an authorization header.
+        assert node.base_url == "http://es:9200"
+        assert node.config.headers["authorization"].startswith("Basic ")
+
+    def test_dict_host_is_passed_unchanged(self):
+        host = {"host": "es", "port": 9201, "scheme": "http"}
+
+        assert _base_urls([host]) == ["http://es:9201"]
+
+    def test_non_numeric_port_is_left_for_the_client_to_reject(self):
+        with pytest.raises(ConfigurationError) as exc:
+            _base_urls(["http://elastic:secret@imaginary:abc"])
+
+        assert "Invalid Elasticsearch connection configuration" in str(exc.value)
+        assert "imaginary" not in str(exc.value)
+        assert "secret" not in str(exc.value)

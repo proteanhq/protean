@@ -1,0 +1,18 @@
+[server]
+default_subscription_type = "stream"
+
+[brokers.default]
+provider = "redis"
+URI = "redis://localhost:6379/0"
+
+[brokers.fulfillment_broker]
+provider = "redis"
+URI = "redis://fulfillment-redis:6379/0"
+
+[brokers.analytics_broker]
+provider = "redis"
+URI = "redis://analytics-redis:6379/0"
+
+[outbox]
+broker = "default"
+external_brokers = ["fulfillment_broker", "analytics_broker"]

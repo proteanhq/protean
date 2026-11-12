@@ -49,13 +49,7 @@ reporting stores).
 Elasticsearch as a named database for search-optimized projections:
 
 ```toml
-[databases.default]
-provider = "postgresql"
-database_uri = "${DATABASE_URL}"
-
-[databases.search]
-provider = "elasticsearch"
-database_uri = { hosts = ["${ES_HOST}"] }
+--8<-- "guides/compose-a-domain/choosing-adapters/production.toml"
 ```
 
 Then route specific aggregates or projections to the named database:
