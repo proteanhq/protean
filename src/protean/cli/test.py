@@ -1388,7 +1388,12 @@ def _test_database_adapter(
     verbose: bool,
     test_dir: str | None,
 ) -> None:
-    """Run the generic database suite once per entry of ``CAPABILITY_MARKER_MAP``."""
+    """Run the generic database suite once per capability marker the provider declares.
+
+    ``capabilities`` narrows the run to the requested markers. Prints a
+    conformance report and exits with code 1 when any marker fails, or with
+    code 0 without running pytest when no marker applies.
+    """
     provider_capabilities, provider_class_name = _load_provider_capabilities(
         provider, db_config
     )
