@@ -116,7 +116,8 @@ with the plugin described in
 [Port suites under `tests/conformance/`](#port-suites-under-testsconformance).
 
 The suites are not in the wheel, so run the command from a Protean source
-checkout. When the port's folder is missing, the command exits 1 and says that
+checkout. When the suite's folder is missing, the command exits 1. For
+`database` it prints the missing folder. For the other ports it also says that
 the conformance suites need a source checkout.
 
 ### Options
