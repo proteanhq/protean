@@ -213,11 +213,13 @@ Consumers get a typed list or a typed map, never raw rows:
 Reference data is read on nearly every request and written a handful of times a
 month. Reading it from the write aggregate on every call is wasteful. Project it
 into a cache-backed read model, refreshed by a projector when the aggregate
-changes:
+changes. The projector reacts to events, so the aggregate raises
+`CurrencyAdded` from its `add()` method. Create and seed currencies with
+`Currency.add(...)`, not the constructor, or the catalog stays empty:
 
 ```python
 --8<-- "patterns/model-reference-data/004.py:imports"
---8<-- "patterns/model-reference-data/004.py:added_event"
+--8<-- "patterns/model-reference-data/004.py:write_side"
 --8<-- "patterns/model-reference-data/004.py:projector"
 ```
 

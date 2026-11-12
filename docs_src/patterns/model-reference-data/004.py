@@ -10,15 +10,12 @@ domain.config["event_processing"] = "sync"
 domain.config["caches"]["catalog"] = {"provider": "memory"}
 
 
-# --8<-- [start:added_event]
+# --8<-- [start:write_side]
 @domain.event(part_of="Currency")
 class CurrencyAdded:
     code: String(required=True)
     name: String(required=True)
     symbol: String(max_length=4)
-
-
-# --8<-- [end:added_event]
 
 
 @domain.event(part_of="Currency")
@@ -42,6 +39,9 @@ class Currency:
     def deactivate(self) -> None:
         self.is_active = False
         self.raise_(CurrencyDeactivated(code=self.code))
+
+
+# --8<-- [end:write_side]
 
 
 # --8<-- [start:projector]
