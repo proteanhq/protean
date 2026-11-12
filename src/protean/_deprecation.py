@@ -476,8 +476,9 @@ DEPRECATIONS: dict[str, Deprecation] = {
             removal="0.20.0",
             detection="runtime",
             alternative=(
-                "Pass `DatabaseCapabilities` flag names, such as `CRUD` or "
-                "`TRANSACTIONS`, instead."
+                "Pass a `DatabaseCapabilities` flag that a marker row lists, "
+                "such as `CRUD` or `TRANSACTIONS`, or a named set such as "
+                "`BASIC_STORAGE`, instead."
             ),
             reason=(
                 "A command-line value has no static declaration site for a rule "

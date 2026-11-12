@@ -1004,6 +1004,8 @@ CONFORMANCE_DIR = REPO_ROOT / "tests" / "conformance"
 
 CONFORMANCE_PORTS = ("database", "broker", "cache", "event_store")
 
+CHECKOUT_HINT = " The conformance suites need a Protean source checkout."
+
 # The configuration key ``--uri`` sets for each port's adapter.
 URI_KEYS = {
     "database": "database_uri",
@@ -1245,9 +1247,11 @@ def test_adapter(
         str,
         typer.Option(
             help=(
-                "Connection URI of the adapter (default: the adapter's default). "
-                "Sets database_uri for database and event_store, URI for broker "
-                "and cache, and wins over the same key in --config."
+                "Connection URI of the adapter, required by an adapter with no "
+                "default URI such as redis. Sets database_uri for database and "
+                "event_store, URI for broker and cache, and wins over the same "
+                "key in --config. On --port database it sets only the "
+                "configuration that reads the provider's capabilities."
             )
         ),
     ] = "",
@@ -1256,7 +1260,7 @@ def test_adapter(
         typer.Option(
             help=(
                 "Comma-separated capability flag names of the port to test "
-                "(default: all)"
+                "(default: every flag; undeclared ones are reported as SKIP)"
             )
         ),
     ] = None,
@@ -1278,7 +1282,13 @@ def test_adapter(
     ] = "database",
     config: Annotated[
         str | None,
-        typer.Option(help="JSON object merged into the adapter configuration"),
+        typer.Option(
+            help=(
+                "JSON object merged into the adapter configuration. On --port "
+                "database it sets only the configuration that reads the "
+                "provider's capabilities."
+            )
+        ),
     ] = None,
 ) -> None:
     """[Framework development] Run a port's conformance test suite against an adapter.
@@ -1290,9 +1300,10 @@ def test_adapter(
 
     ``--port`` picks the port: ``database`` (the default), ``broker``,
     ``cache`` or ``event_store``. ``--provider`` names the adapter registered
-    for that port. Tests run once per capability flag, or once per capability
-    marker for ``database``, and a flag or marker the adapter does not declare
-    is reported as SKIP.
+    for that port. Tests run once for the tests that need no flag, the
+    ``unmarked`` row, and then once per capability flag. For ``database`` they
+    run once per capability marker instead. A flag or marker the adapter does
+    not declare is reported as SKIP.
 
     Examples:
 
@@ -1306,7 +1317,7 @@ def test_adapter(
 
         protean test test-adapter --port=broker --provider=redis --uri="redis://localhost:6379/0"
 
-        protean test test-adapter --port=cache --provider=redis --config='{"TTL": 60}' -v
+        protean test test-adapter --port=cache --provider=redis --uri="redis://localhost:6379/0" --config='{"TTL": 60}' -v
     """
     _check_port(port)
     overrides = _parse_config_option(config)
@@ -1363,7 +1374,9 @@ def _warn_deprecated_option(slug: str, subject: str) -> None:
     # Python's default filters hide a deprecation warning raised outside
     # ``__main__``, so the command would print nothing without this filter.
     with warnings.catch_warnings():
-        warnings.simplefilter("default", ProteanDeprecationWarning)
+        # A ``-W`` option or ``PYTHONWARNINGS`` keeps the user's own filters.
+        if not sys.warnoptions:
+            warnings.simplefilter("default", ProteanDeprecationWarning)
         warn_from_registry(slug, subject, stacklevel=3)
 
 
@@ -1493,10 +1506,14 @@ def _requested_capabilities(capabilities: str | None) -> list[str] | None:
 def _database_markers_for(name: str) -> list[str]:
     """Return the marker names a ``--capabilities`` name selects on ``database``.
 
-    A ``DatabaseCapabilities`` flag name selects every marker whose flags
-    include it. A marker name selects itself and emits a deprecation warning.
-    Raises ``typer.Exit(1)`` with the valid flag names on any other name.
+    A ``DatabaseCapabilities`` name, a single flag or a named set such as
+    ``BASIC_STORAGE``, selects every marker whose flags include one of its
+    flags. A marker name selects itself and emits a deprecation warning.
+    Raises ``typer.Exit(1)`` with the flag names that select a marker on any
+    other name, including a flag that selects no marker.
     """
+    from protean.port.provider import DatabaseCapabilities  # noqa: PLC0415
+
     if name in CAPABILITY_MARKER_MAP:
         _warn_deprecated_option(
             "test_adapter_marker_capabilities",
@@ -1504,12 +1521,24 @@ def _database_markers_for(name: str) -> list[str]:
         )
         return [name]
 
-    markers = [m for m, flags in CAPABILITY_MARKER_MAP.items() if name in flags]
+    markers: list[str] = []
+    if name in DatabaseCapabilities.__members__:
+        selected = DatabaseCapabilities[name]
+        markers = [
+            marker
+            for marker, flags in CAPABILITY_MARKER_MAP.items()
+            if any(DatabaseCapabilities[f] in selected for f in flags)
+        ]
     if not markers:
+        problem = (
+            "selects no database conformance test"
+            if name in DatabaseCapabilities.__members__
+            else "is unknown"
+        )
         flags = dict.fromkeys(f for fs in CAPABILITY_MARKER_MAP.values() for f in fs)
         print(
-            f"Error: Unknown capability '{name}'. "
-            f"Valid capabilities: {', '.join(flags)}"
+            f"Error: Capability '{name}' {problem}. "
+            f"Valid capabilities: {', '.join(flags)}, or a named set of them"
         )
         raise typer.Exit(code=1)
     return markers
@@ -1519,7 +1548,8 @@ def _generic_test_dir(test_dir: str | None) -> Path:
     """Return the generic test directory; raises ``typer.Exit(1)`` when missing."""
     generic_dir = Path(test_dir) if test_dir else GENERIC_TEST_DIR
     if not generic_dir.is_dir():
-        print(f"Error: Generic test directory not found: {generic_dir}")
+        hint = "" if test_dir else CHECKOUT_HINT
+        print(f"Error: Generic test directory not found: {generic_dir}.{hint}")
         raise typer.Exit(code=1)
     return generic_dir
 
@@ -1600,10 +1630,7 @@ def _conformance_suite_dir(port: str) -> Path:
     """Return ``tests/conformance/<port>``; raises ``typer.Exit(1)`` when missing."""
     suite_dir = CONFORMANCE_DIR / port
     if not suite_dir.is_dir():
-        print(
-            f"Error: Conformance suite not found: {suite_dir}. "
-            f"The conformance suites need a Protean source checkout."
-        )
+        print(f"Error: Conformance suite not found: {suite_dir}.{CHECKOUT_HINT}")
         raise typer.Exit(code=1)
     return suite_dir
 
@@ -1707,6 +1734,14 @@ def _load_port_capabilities(suite: PortSuite) -> tuple[Flag, str]:
         with domain.domain_context():
             adapter = _port_adapter(domain, suite.port)
             return adapter.capabilities, type(adapter).__name__
+    except KeyError as e:
+        # An adapter with no default for a key, such as the redis URI, reads
+        # it straight from the configuration.
+        print(
+            f"Error initializing {suite.port} adapter '{suite.adapter}': "
+            f"the configuration has no {e} key. Set it with --uri or --config."
+        )
+        raise typer.Exit(code=1) from e
     except Exception as e:  # any setup error exits 1 with the message
         print(f"Error initializing {suite.port} adapter '{suite.adapter}': {e}")
         raise typer.Exit(code=1) from e

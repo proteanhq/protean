@@ -1,7 +1,8 @@
 # Adapter Conformance Testing
 
-Protean provides a generic test suite and tooling to verify that any database
-provider correctly implements its declared capabilities. This is essential for
+Protean provides conformance test suites and tooling to verify that an
+adapter of any port (database, broker, cache or event store) correctly
+implements its declared capabilities. This is essential for
 third-party adapter authors and useful for validating built-in adapters across
 environments.
 
@@ -116,9 +117,8 @@ with the plugin described in
 [Port suites under `tests/conformance/`](#port-suites-under-testsconformance).
 
 The suites are not in the wheel, so run the command from a Protean source
-checkout. When the suite's folder is missing, the command exits 1. For
-`database` it prints the missing folder. For the other ports it also says that
-the conformance suites need a source checkout.
+checkout. When the suite's folder is missing, the command exits 1, prints the
+missing folder and says that the conformance suites need a source checkout.
 
 ### Options
 
@@ -126,9 +126,9 @@ the conformance suites need a source checkout.
 |--------|:--------:|-------------|
 | `--provider` | Yes | The adapter's registered name for the port, such as `memory`, `postgresql` or `redis`. A name the port's registry does not know exits 1 with the registered names. |
 | `--port` | No | `database` (the default), `broker`, `cache` or `event_store`. Any other value exits 1 and lists the four ports. |
-| `--uri` | No | The adapter's connection URI: `database_uri` for `database` and `event_store`, `URI` for `broker` and `cache`. It replaces the same key in `--config`. |
+| `--uri` | No | The adapter's connection URI: `database_uri` for `database` and `event_store`, `URI` for `broker` and `cache`. It replaces the same key in `--config`. An adapter with no default URI, such as the Redis broker and cache, needs it, and without it the command exits 1 and names the missing key. |
 | `--config` | No | A JSON object merged into the adapter configuration, for example `'{"TTL": 60}'`. Anything other than a JSON object exits 1. |
-| `--capabilities` | No | Comma-separated capability flag names of the port, such as `EXPECTED_VERSION` (default: every flag). See below for `--port database`. |
+| `--capabilities` | No | Comma-separated capability flag names of the port, such as `EXPECTED_VERSION` (default: every flag, and the flags the adapter does not declare are reported as SKIP). See below for `--port database`. |
 | `--verbose` / `-v` | No | Show detailed test output |
 | `--test-dir` | No | Deprecated. Path to a custom database test directory (default: built-in generic tests). `--port database` only. |
 
@@ -144,14 +144,22 @@ run pytest for it. A declared flag with no test
 yet is reported as `SKIP (no tests collected)`.
 
 With `--capabilities`, the report has only the rows of the named flags and no
-`unmarked` row. A named set, such as `BASIC`, stands for each flag in it.
+`unmarked` row. A named set of the port's capability type, such as `BASIC`
+for `event_store`, stands for each flag in it.
 
 For `--port database`, the rows are the marker names in
 [Capability Markers](#capability-markers). A `DatabaseCapabilities` flag name
 in `--capabilities` selects every row whose flags include it, so `TRANSACTIONS`
-selects `transactional` and `atomic_transactions`. The marker names, such as
+selects `transactional` and `atomic_transactions`. A named set, such as
+`BASIC_STORAGE`, selects every row whose flags include one of its flags. A
+flag that no row lists, such as `OPTIMISTIC_LOCKING`, exits 1. The marker names, such as
 `basic_storage`, still work and raise `RemovedInProtean020Warning`; they are
 removed in 0.20.0.
+
+On `--port database`, `--uri` and `--config` set only the configuration the
+command uses to read the provider's capabilities. The suite runs with
+`--db=<NAME>` against the database the repository's test configuration names
+for that provider.
 
 The command exits 1 when any row fails.
 
