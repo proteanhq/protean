@@ -1891,6 +1891,34 @@ class TestPortConformance:
             capsys.readouterr().out
         )
 
+    def test_adapter_setup_failure_closes_the_probe_domain(self):
+        with (
+            patch(
+                "protean.domain.Domain._initialize",
+                side_effect=RuntimeError("cannot connect"),
+            ),
+            patch("protean.domain.Domain.close") as close,
+            pytest.raises(typer.Exit),
+        ):
+            cli_test_adapter(port="cache", provider="memory")
+        close.assert_called_once_with()
+
+    def test_the_probe_domain_closes_before_the_rows_run(self):
+        calls: list[str] = []
+        with (
+            patch(
+                "protean.domain.Domain.close",
+                autospec=True,
+                side_effect=lambda domain: calls.append("close"),
+            ),
+            patch(
+                "protean.cli.test._run_port_rows",
+                side_effect=lambda *args: calls.append("rows") or [],
+            ),
+        ):
+            cli_test_adapter(port="cache", provider="memory")
+        assert calls == ["close", "rows"]
+
     def test_requested_flags_restrict_the_rows(self, capsys):
         cli_test_adapter(
             port="event_store", provider="memory", capabilities="DURABLE,WRITE"
@@ -1921,7 +1949,7 @@ class TestPortConformance:
 
         out = capsys.readouterr().out
         assert "No applicable capabilities to test for adapter 'memory'." in out
-        assert "Skipped capabilities (not declared): DURABLE" in out
+        assert _report_rows(out) == [("DURABLE", "SKIP", "(not declared)")]
 
     def test_unknown_flag_exits_with_the_port_flags(self, capsys):
         with pytest.raises(typer.Exit) as exc_info:

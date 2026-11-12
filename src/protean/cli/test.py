@@ -1608,7 +1608,7 @@ def _test_port_adapter(
 
     if not rows_to_run:
         print(f"No applicable capabilities to test for adapter '{provider}'.")
-        print(f"Skipped capabilities (not declared): {', '.join(rows_to_skip)}")
+        _print_conformance_report(provider, class_name, [], rows_to_skip)
         raise typer.Exit(code=0)
 
     print(
@@ -1724,8 +1724,8 @@ def _load_port_capabilities(suite: PortSuite) -> tuple[Flag, str]:
     """
     from protean.domain import Domain  # noqa: PLC0415
 
+    domain = Domain(name="ConformanceTest")
     try:
-        domain = Domain(name="ConformanceTest")
         # The domain adds keys to the configuration it is given, and the
         # pytest runs need the configuration as the user gave it.
         _configure_port(domain, suite.port, copy.deepcopy(suite.adapter_config))
@@ -1745,6 +1745,10 @@ def _load_port_capabilities(suite: PortSuite) -> tuple[Flag, str]:
     except Exception as e:  # any setup error exits 1 with the message
         print(f"Error initializing {suite.port} adapter '{suite.adapter}': {e}")
         raise typer.Exit(code=1) from e
+    finally:
+        # Leaving the domain context does not close the adapters, and the
+        # pytest runs each open their own.
+        domain.close()
 
 
 def _plan_port_rows(
