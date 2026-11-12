@@ -89,10 +89,16 @@ example needs a running Redis server:
 --8<-- "adapters/cache/redis/001.py:usage"
 ```
 
-`domain.cache_for(OrderSummary)` returns the cache that holds the projection.
-Each entry's key is the projection's name in snake case, then `:::`, then its
-identifier. `get_ttl` returns the seconds left as a float, so right after
+`domain.cache_for(OrderSummary)` returns the `Cache` service that holds the
+projection, and every call above is a method of that service. The service
+builds the keys: `cache.key_for(OrderSummary, "ord-123")` returns the key of
+one entry, and `cache.pattern_for(OrderSummary)` returns the glob over all of
+them. `get_ttl` returns the seconds left as a float, so right after
 `set_ttl(..., ttl=600)` it returns a value just under or equal to `600.0`.
+
+`RedisCache` is the adapter inside the service. It implements `CachePort`,
+`CacheTTLPort` and `CachePatternPort`, described in the
+[cache port API reference](../../../api/ports/cache.md).
 
 ## Limitations
 

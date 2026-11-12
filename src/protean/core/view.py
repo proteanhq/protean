@@ -12,7 +12,6 @@ from typing_extensions import TypeVar
 
 from protean.core.queryset import ReadOnlyQuerySet
 from protean.exceptions import NotSupportedError, ObjectNotFoundError
-from protean.utils.inflection import underscore
 
 if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
@@ -99,9 +98,8 @@ class ReadView(Generic[_ProjectionT]):
         Raises ``ObjectNotFoundError`` if the record does not exist.
         """
         if self._is_cache_backed:
-            projection_name = underscore(self._projection_cls.__name__)
-            key = f"{projection_name}:::{identifier}"
-            result = self._cache().get(key)
+            cache = self._cache()
+            result = cache.get(cache.key_for(self._projection_cls, identifier))
             if result is None:
                 raise ObjectNotFoundError(
                     f"`{self._projection_cls.__name__}` object with identifier "
@@ -132,13 +130,15 @@ class ReadView(Generic[_ProjectionT]):
         return cast(_ProjectionT, self._repo()._dao.find_by(**kwargs))
 
     def count(self) -> int:
-        """Return the total number of projection records."""
+        """Return the total number of projection records.
+
+        Raises:
+            NotSupportedError: The projection is cache-backed and its cache
+                does not support ``CacheCapabilities.PATTERN_MATCH``.
+        """
         if self._is_cache_backed:
-            projection_name = underscore(self._projection_cls.__name__)
-            # Keys are `name:::identifier`; count every entry for this
-            # projection with the glob the cache port expects.
-            key_pattern = f"{projection_name}:::*"
-            return self._cache().count(key_pattern)
+            cache = self._cache()
+            return cache.count(cache.pattern_for(self._projection_cls))
         else:
             return self.query.count()
 

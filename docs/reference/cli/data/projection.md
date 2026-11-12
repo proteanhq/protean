@@ -246,8 +246,11 @@ Existing projection data is cleared:
   failed marker delete rolls back the row delete. Elasticsearch has no
   transactions, so there a failed marker delete leaves the rows deleted and
   the markers in place.
-- **Cache-backed projections**: Keys matching the projection's naming
-  pattern are removed via `remove_by_key_pattern()`.
+- **Cache-backed projections**: The entries matching the pattern
+  `cache.pattern_for(projection)` returns, such as `order_summary:::*`, are
+  removed via `remove_by_key_pattern()`. This needs a cache that supports
+  `CacheCapabilities.PATTERN_MATCH`. On a cache without it, the rebuild
+  raises `NotSupportedError` before it replays any event.
 
 ### 3. Replay events
 

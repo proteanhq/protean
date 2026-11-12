@@ -33,7 +33,6 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ConfigurationError
 from protean.utils import DomainObjects, fqn
 from protean.utils.eventing import Message
-from protean.utils.inflection import underscore
 from protean.utils.query import Q
 from protean.utils.telemetry import describe_exception
 
@@ -103,6 +102,11 @@ def rebuild_projection(
 
     Returns:
         RebuildResult with counts and any errors.
+
+    Raises:
+        NotSupportedError: The projection is cache-backed and its cache does
+            not support ``CacheCapabilities.PATTERN_MATCH``. It is raised
+            before any event is replayed.
     """
     result = RebuildResult(projection_name=projection_cls.__name__)
 
@@ -180,10 +184,7 @@ def _truncate_projection(
     """
     if projection_cls.meta_.cache:
         cache = domain.cache_for(projection_cls)
-        # Keys are `name:::identifier`, so the glob for every entry of this
-        # projection is the name, the three-colon separator, then `*`.
-        key_pattern = f"{underscore(projection_cls.__name__)}:::*"
-        cache.remove_by_key_pattern(key_pattern)
+        cache.remove_by_key_pattern(cache.pattern_for(projection_cls))
         return
 
     # A marker left behind makes the replay skip its event as an

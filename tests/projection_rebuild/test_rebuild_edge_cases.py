@@ -1,6 +1,6 @@
 """Edge case tests for projection rebuilding."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -14,6 +14,7 @@ from protean.utils.projection_rebuilder import (
 
 from .elements import (
     Balances,
+    CachedSummary,
     Registered,
     Transacted,
     Transaction,
@@ -144,22 +145,20 @@ class TestLargeEventCount:
 
 
 class TestCacheBackedProjectionTruncation:
-    def test_truncate_uses_cache_when_cache_backed(self):
-        """_truncate_projection uses cache.remove_by_key_pattern for cached projections."""
-        mock_cache = MagicMock()
-        mock_projection_cls = MagicMock()
-        mock_projection_cls.meta_.cache = "default"
-        mock_projection_cls.__name__ = "CachedView"
+    def test_truncate_removes_every_entry_of_a_cache_backed_projection(
+        self, test_domain
+    ):
+        """_truncate_projection removes the projection's entries from its cache."""
+        test_domain.register(CachedSummary, cache="default")
+        test_domain.init(traverse=False)
+        cache = test_domain.cache_for(CachedSummary)
+        cache.add(CachedSummary(user_id="1", name="Ada"))
+        cache.add(CachedSummary(user_id="2", name="Grace"))
+        assert cache.count(cache.pattern_for(CachedSummary)) == 2
 
-        mock_domain = MagicMock()
-        mock_domain.cache_for.return_value = mock_cache
+        _truncate_projection(test_domain, CachedSummary, [])
 
-        _truncate_projection(mock_domain, mock_projection_cls, [])
-
-        mock_domain.cache_for.assert_called_once_with(mock_projection_cls)
-        # Keys are `name:::identifier`, so the truncation glob is the name,
-        # the three-colon separator, then `*`.
-        mock_cache.remove_by_key_pattern.assert_called_once_with("cached_view:::*")
+        assert cache.count(cache.pattern_for(CachedSummary)) == 0
 
     def test_truncate_deletes_rows_when_database_backed(self, test_domain):
         """_truncate_projection deletes every row of a database-backed projection."""
