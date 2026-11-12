@@ -27,7 +27,9 @@ so you do not register it.
 
 Each folder holds one placeholder test until its port's suite moves in. The
 database suite is still in `tests/adapters/repository/generic/`, and
-`protean test test-adapter` runs it.
+`protean test test-adapter` runs it. For the other three ports,
+`protean test test-adapter --port <port>` runs the port's folder; see
+[CLI: `protean test test-adapter`](#cli-protean-test-test-adapter).
 
 Each test runs against one adapter. With no options, a test runs against the
 default adapter of its folder's port: `inline` for `broker`, `memory` for the
@@ -101,21 +103,55 @@ adapter with no `capabilities` member skips every marked test with the reason
 
 ## CLI: `protean test test-adapter`
 
-The quickest way to test any provider is the `test-adapter` CLI command:
+The quickest way to test an adapter is the `test-adapter` CLI command:
 
 ```bash
 protean test test-adapter --provider=memory
 ```
 
+`--port` picks the port whose suite runs. It defaults to `database`, which runs
+the generic database suite in `tests/adapters/repository/generic/`. `broker`,
+`cache` and `event_store` run the port's folder under `tests/conformance/`
+with the plugin described in
+[Port suites under `tests/conformance/`](#port-suites-under-testsconformance).
+
+The suites are not in the wheel, so run the command from a Protean source
+checkout. When the port's folder is missing, the command exits 1 and says that
+the conformance suites need a source checkout.
+
 ### Options
 
 | Option | Required | Description |
 |--------|:--------:|-------------|
-| `--provider` | Yes | Provider name (e.g. `memory`, `postgresql`, `dynamodb`) |
-| `--uri` | No | Database connection URI (uses provider default if omitted) |
-| `--capabilities` | No | Comma-separated list of capabilities to test (default: all declared) |
+| `--provider` | Yes | The adapter's registered name for the port, such as `memory`, `postgresql` or `redis`. A name the port's registry does not know exits 1 with the registered names. |
+| `--port` | No | `database` (the default), `broker`, `cache` or `event_store`. Any other value exits 1 and lists the four ports. |
+| `--uri` | No | The adapter's connection URI: `database_uri` for `database` and `event_store`, `URI` for `broker` and `cache`. It replaces the same key in `--config`. |
+| `--config` | No | A JSON object merged into the adapter configuration, for example `'{"TTL": 60}'`. Anything other than a JSON object exits 1. |
+| `--capabilities` | No | Comma-separated capability flag names of the port, such as `EXPECTED_VERSION` (default: every flag). See below for `--port database`. |
 | `--verbose` / `-v` | No | Show detailed test output |
-| `--test-dir` | No | Path to a custom test directory (default: built-in generic tests) |
+| `--test-dir` | No | Deprecated. Path to a custom database test directory (default: built-in generic tests). `--port database` only. |
+
+### Rows of the report
+
+For `broker`, `cache` and `event_store`, the command runs pytest once per row
+of the report. The first row, `unmarked`, runs the tests that need no flag.
+Then each single flag of the port's capability type gets a row, in the order the
+type defines them. A flag the adapter declares runs the tests whose `requires`
+or `requires_any` marker names it. A flag the adapter does not declare is
+reported as `SKIP (not declared)` without a run. A declared flag with no test
+yet is reported as `SKIP (no tests collected)`.
+
+With `--capabilities`, the report has only the rows of the named flags and no
+`unmarked` row. A named set, such as `BASIC`, stands for each flag in it.
+
+For `--port database`, the rows are the marker names in
+[Capability Markers](#capability-markers). A `DatabaseCapabilities` flag name
+in `--capabilities` selects every row whose flags include it, so `TRANSACTIONS`
+selects `transactional` and `atomic_transactions`. The marker names, such as
+`basic_storage`, still work and raise `RemovedInProtean020Warning`; they are
+removed in 0.20.0.
+
+The command exits 1 when any row fails.
 
 ### Examples
 
@@ -129,7 +165,14 @@ protean test test-adapter --provider=postgresql \
 
 # Test only specific capabilities
 protean test test-adapter --provider=memory \
-    --capabilities=basic_storage,transactional
+    --capabilities=CRUD,SIMULATED_TRANSACTIONS
+
+# Test the memory event store
+protean test test-adapter --port=event_store --provider=memory
+
+# Test the Redis broker against a local server
+protean test test-adapter --port=broker --provider=redis \
+    --uri="redis://localhost:6379/0"
 
 # Verbose output for debugging failures
 protean test test-adapter --provider=postgresql \
@@ -157,6 +200,25 @@ native_json              SKIP       (not declared)
 native_array             SKIP       (not declared)
 --------------------------------------------------------
 Total: 62 passed, 0 failed, 0 errors, 4 capabilities skipped
+```
+
+For the memory cache, the rows are `unmarked` and then the `CacheCapabilities`
+flags:
+
+```
+Conformance Report: memory
+==========================
+
+Capability               Status     Tests
+--------------------------------------------------------
+unmarked                 PASS       1/1
+KEY_VALUE                SKIP       (no tests collected)
+TTL                      SKIP       (no tests collected)
+PATTERN_MATCH            SKIP       (no tests collected)
+SHARED                   SKIP       (not declared)
+DURABLE                  SKIP       (not declared)
+--------------------------------------------------------
+Total: 1 passed, 0 failed, 0 errors, 2 capabilities skipped
 ```
 
 ## Capability Markers

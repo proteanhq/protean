@@ -469,6 +469,38 @@ DEPRECATIONS: dict[str, Deprecation] = {
                 "RemovedInProtean020Warning is the only detector."
             ),
         ),
+        Deprecation(
+            slug="test_adapter_marker_capabilities",
+            name="The pytest marker names of `protean test test-adapter --capabilities`",
+            since="0.19.0",
+            removal="0.20.0",
+            detection="runtime",
+            alternative=(
+                "Pass `DatabaseCapabilities` flag names, such as `CRUD` or "
+                "`TRANSACTIONS`, instead."
+            ),
+            reason=(
+                "A command-line value has no static declaration site for a rule "
+                "to read off a built domain; the per-call "
+                "RemovedInProtean020Warning is the only detector."
+            ),
+        ),
+        Deprecation(
+            slug="test_adapter_test_dir",
+            name="`protean test test-adapter --test-dir`",
+            since="0.19.0",
+            removal="0.20.0",
+            detection="runtime",
+            alternative=(
+                "Omit it: each port's conformance suite has one fixed folder under "
+                "`tests/conformance/`."
+            ),
+            reason=(
+                "A command-line option has no static declaration site for a rule "
+                "to read off a built domain; the per-call "
+                "RemovedInProtean020Warning is the only detector."
+            ),
+        ),
     )
 }
 

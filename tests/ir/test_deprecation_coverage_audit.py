@@ -29,6 +29,7 @@ from protean._deprecation import (
     DEPRECATIONS,
     Deprecation,
 )
+from protean.cli.test import _check_test_dir, _database_markers_for
 from protean.fields import Identifier, List, String
 from protean.integrations.pytest import adapter_conformance
 from protean.ir.builder import IRBuilder
@@ -80,8 +81,8 @@ def _deprecation_diagnostics(ir: dict) -> list[dict]:
 
 
 class TestRegistryCompleteness:
-    def test_registry_holds_thirteen_active_deprecations(self) -> None:
-        assert len(DEPRECATIONS) == 13
+    def test_registry_holds_fifteen_active_deprecations(self) -> None:
+        assert len(DEPRECATIONS) == 15
 
     def test_every_entry_is_well_formed(self) -> None:
         for slug, entry in DEPRECATIONS.items():
@@ -405,6 +406,14 @@ def _trigger_adapter_conformance_plugin() -> None:
     importlib.reload(adapter_conformance)
 
 
+def _trigger_test_adapter_marker_capabilities() -> None:
+    _database_markers_for("basic_storage")
+
+
+def _trigger_test_adapter_test_dir() -> None:
+    _check_test_dir("database", "tests/adapters/repository/generic")
+
+
 # Each runtime deprecation's slug → a callable that exercises its deprecated
 # path. Keyed by slug so the completeness test below can prove the map and the
 # registry's runtime arm stay in lock-step: adding a runtime entry without a
@@ -417,6 +426,8 @@ _RUNTIME_TRIGGERS: dict[str, Callable[[], None]] = {
     "pm_sequential_by_non_boolean": _trigger_pm_sequential_by_non_boolean,
     "adapter_conformance_plugin": _trigger_adapter_conformance_plugin,
     "get_generic_test_dir": get_generic_test_dir,
+    "test_adapter_marker_capabilities": _trigger_test_adapter_marker_capabilities,
+    "test_adapter_test_dir": _trigger_test_adapter_test_dir,
 }
 
 

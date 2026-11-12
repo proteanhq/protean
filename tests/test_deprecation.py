@@ -357,6 +357,8 @@ _TO_0_20 = (
     "queryset_update",
     "adapter_conformance_plugin",
     "get_generic_test_dir",
+    "test_adapter_marker_capabilities",
+    "test_adapter_test_dir",
 )
 
 
