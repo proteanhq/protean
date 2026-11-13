@@ -342,7 +342,8 @@ runs:
     # The PR lane's legs each keep their coverage data, and ci.yml's `Coverage`
     # job combines them into one upload. Saved even when tests fail (`-c PR`
     # then leaves the raw `.coverage.*` files uncombined), so partial coverage
-    # still reaches Codecov.
+    # still reaches Codecov. Kept for 7 days so a stuck Codecov check can be
+    # fixed by re-running only the `Coverage` job, which needs these files.
     - name: Save coverage data
       if: ${{ !cancelled() && inputs.coverage-artifact != '' }}
       uses: actions/upload-artifact@v7
@@ -351,7 +352,7 @@ runs:
         path: .coverage*
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 1
+        retention-days: 7
 
     # Project coverage floor. `protean test -c FULL` already ran `coverage
     # combine`, so the merged `.coverage` exists; re-report it with a hard
