@@ -209,6 +209,13 @@ paths = [
     "tests/docs/guides/change_state/test_database_models_elasticsearch.py",
     "docs_src/reference/migration/v0-15/005.py",
     "tests/docs/reference/migration/test_v0_15.py",
+    "docs_src/guides/compose-a-domain/choosing-adapters/production.toml",
+    "tests/docs/guides/compose_a_domain/test_choosing_adapters.py",
+    "docs_src/guides/compose-a-domain/production-configuration/elasticsearch.toml",
+    "docs_src/guides/compose-a-domain/production-configuration/multiple_databases.toml",
+    "tests/docs/guides/compose_a_domain/test_production_configuration.py",
+    "docs_src/guides/multi-domain-applications/catalogue.toml",
+    "tests/docs/guides/test_multi_domain_applications.py",
 ]
 markers = ["elasticsearch"]
 databases = ["ELASTICSEARCH"]

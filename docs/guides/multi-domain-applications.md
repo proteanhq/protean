@@ -76,14 +76,7 @@ URI = "redis://localhost:6379/0"
 ```
 
 ```toml
-# my_app/catalogue/domain.toml
-[databases.default]
-provider = "elasticsearch"
-database_uri = { hosts = ["http://localhost:9200"] }
-
-[brokers.default]
-provider = "redis"
-URI = "redis://localhost:6379/1"
+--8<-- "guides/multi-domain-applications/catalogue.toml"
 ```
 
 Alternatively, pass configuration programmatically:

@@ -101,21 +101,24 @@ is missing and no default is provided.
 # In-memory (default, no external dependencies)
 [databases.default]
 provider = "memory"
+```
 
+```toml
 # PostgreSQL
 [databases.default]
 provider = "postgresql"
 database_uri = "postgresql://user:pass@host:5432/db"
+```
 
+```toml
 # SQLite
 [databases.default]
 provider = "sqlite"
 database_uri = "sqlite:///path/to/db.sqlite3"
+```
 
-# Elasticsearch
-[databases.default]
-provider = "elasticsearch"
-database_uri = { hosts = ["localhost"] }
+```toml
+--8<-- "guides/compose-a-domain/production-configuration/elasticsearch.toml"
 ```
 
 ### Brokers
@@ -124,12 +127,16 @@ database_uri = { hosts = ["localhost"] }
 # Inline (synchronous, no external service)
 [brokers.default]
 provider = "inline"
+```
 
+```toml
 # Redis Streams (ordered, consumer groups, DLQ support)
 [brokers.default]
 provider = "redis"
 URI = "redis://localhost:6379/0"
+```
 
+```toml
 # Redis Pub/Sub (simple fan-out)
 [brokers.default]
 provider = "redis_pubsub"
@@ -142,7 +149,9 @@ URI = "redis://localhost:6379/0"
 # In-memory (default)
 [event_store]
 provider = "memory"
+```
 
+```toml
 # Message DB (production, requires PostgreSQL + Message DB extension)
 [event_store]
 provider = "message_db"
@@ -155,7 +164,9 @@ database_uri = "postgresql://message_store@localhost:5433/message_store"
 # In-memory (default)
 [caches.default]
 provider = "memory"
+```
 
+```toml
 # Redis
 [caches.default]
 provider = "redis"
@@ -171,13 +182,7 @@ Register adapters under named keys to use different providers for
 different aggregates:
 
 ```toml
-[databases.default]
-provider = "postgresql"
-database_uri = "${DATABASE_URL}"
-
-[databases.analytics]
-provider = "elasticsearch"
-database_uri = { hosts = ["${ES_HOST|localhost}"] }
+--8<-- "guides/compose-a-domain/production-configuration/multiple_databases.toml"
 ```
 
 Then associate elements with specific databases in your domain:

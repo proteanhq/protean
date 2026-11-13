@@ -1,0 +1,8 @@
+# my_app/catalogue/domain.toml
+[databases.default]
+provider = "elasticsearch"
+database_uri = { hosts = ["http://localhost:9200"] }
+
+[brokers.default]
+provider = "redis"
+URI = "redis://localhost:6379/1"

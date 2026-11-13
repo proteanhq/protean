@@ -1,0 +1,17 @@
+# domain.toml
+[server]
+default_subscription_type = "stream"     # Turns on the outbox
+
+[brokers.default]
+provider = "redis"
+URI = "redis://localhost:6379/0"
+
+[brokers.partner_events]
+provider = "redis"
+URI = "redis://partner-redis:6379/0"
+
+[outbox]
+broker = "default"                       # Internal broker
+external_brokers = ["partner_events"]    # External broker(s) for published events
+messages_per_tick = 50
+tick_interval = 1

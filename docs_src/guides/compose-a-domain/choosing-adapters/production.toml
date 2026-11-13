@@ -1,0 +1,7 @@
+[databases.default]
+provider = "postgresql"
+database_uri = "${DATABASE_URL}"
+
+[databases.search]
+provider = "elasticsearch"
+database_uri = { hosts = ["${ES_HOST}"] }

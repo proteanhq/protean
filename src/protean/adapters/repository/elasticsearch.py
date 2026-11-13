@@ -799,6 +799,36 @@ class ElasticsearchDAO(BaseDAO):
         return bool(conn.indices.exists(index=self.database_model_cls._index._name))
 
 
+_DEFAULT_ES_PORT = 9200
+
+
+def _normalize_host(host: str, scheme: str) -> str:
+    """Return ``host`` as a URL the client accepts.
+
+    A host without ``://`` gets ``scheme`` and, when it has no port, port 9200.
+    An ``http://`` URL without a port also gets 9200, whatever the case of its
+    scheme. A URL with any other scheme is returned unchanged: the client gives
+    an ``https://`` URL without a port port 443. A port that is present is kept
+    as written, even one that is not a number, so the client rejects it.
+    """
+    if "://" in host and not host.lower().startswith("http://"):
+        return host
+    if "://" not in host:
+        host = f"{scheme}://{host}"
+    prefix, _, rest = host.partition("://")
+    netloc, slash, path = rest.partition("/")
+    # A colon in credentials (``user:pass@``) or in an IPv6 literal
+    # (``[::1]``) is not a port separator.
+    host_part = netloc.rpartition("@")[2]
+    if host_part.startswith("["):
+        has_port = "]:" in host_part
+    else:
+        has_port = ":" in host_part
+    if not has_port:
+        netloc = f"{netloc}:{_DEFAULT_ES_PORT}"
+    return f"{prefix}://{netloc}{slash}{path}"
+
+
 class ESProvider(BaseProvider):
     __database__ = "elasticsearch"
 
@@ -823,30 +853,33 @@ class ESProvider(BaseProvider):
 
         # Create a persistent Elasticsearch client. The v8 client requires each
         # host to be a full ``scheme://host:port`` URL and no longer accepts a
-        # ``use_ssl`` flag. To keep pre-v8 configuration working, bare hosts are
-        # normalized here, using ``USE_SSL`` to pick the scheme (so a host like
-        # ``localhost:9200`` still connects, and ``USE_SSL`` keeps its meaning).
+        # ``use_ssl`` flag. To keep pre-v8 configuration working, string hosts
+        # are normalized here, using ``USE_SSL`` to pick the scheme and 9200 as
+        # the port (so ``localhost``, ``localhost:9200`` and ``http://es`` all
+        # connect, and ``USE_SSL`` keeps its meaning).
         use_ssl = self.conn_info.get("USE_SSL", False)
         scheme = "https" if use_ssl else "http"
         hosts = [
-            host if not isinstance(host, str) or "://" in host else f"{scheme}://{host}"
+            _normalize_host(host, scheme) if isinstance(host, str) else host
             for host in self.conn_info["database_uri"]["hosts"]
         ]
         # The v8 client validates host URLs eagerly (scheme + host + port), so a
         # malformed host raises here rather than at first use. Surface it as a
         # ConfigurationError so misconfiguration is reported like any other bad
-        # provider config. The host configuration is deliberately not echoed in
-        # the message, since it may contain credentials; the underlying
-        # validation error is generic and credential-safe.
+        # provider config. The client's own message is left out, because for a
+        # URL it cannot parse it repeats the URL, credentials included. The
+        # exception chain is dropped for the same reason, since a logged
+        # traceback would print the client's message.
         try:
             self._client = Elasticsearch(
                 hosts,
                 verify_certs=self.conn_info.get("VERIFY_CERTS", False),
             )
-        except ValueError as exc:
+        except ValueError:
             raise ConfigurationError(
-                f"Invalid Elasticsearch connection configuration: {exc}"
-            ) from exc
+                "Invalid Elasticsearch connection configuration: each host must "
+                "be a URL with a scheme, a host name and a numeric port"
+            ) from None
 
     def namespaced_schema_name(self, schema_name: str) -> str:
         # Prepend Namespace prefix if one has been provided

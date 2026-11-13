@@ -1,0 +1,2 @@
+# domain.toml -- development/test configuration
+event_processing = "sync"
