@@ -134,7 +134,7 @@ the `code → value` map" queries once, in one place, instead of scattering
 ### Cache-backed projections for app-wide reads
 
 Reference data is read constantly and written rarely, which makes it an ideal
-projection. A cache-backed projection (`@domain.projection(cache="redis")`)
+projection. A cache-backed projection (`@domain.projection(cache="catalog")`)
 keeps lookups off the write model and out of the hot path, refreshed by a
 projector when the underlying aggregate changes.
 
@@ -213,36 +213,25 @@ Consumers get a typed list or a typed map, never raw rows:
 Reference data is read on nearly every request and written a handful of times a
 month. Reading it from the write aggregate on every call is wasteful. Project it
 into a cache-backed read model, refreshed by a projector when the aggregate
-changes:
+changes. The projector reacts to events, so the aggregate raises
+`CurrencyAdded` from its `add()` method. Create and seed currencies with
+`Currency.add(...)`, not the constructor, or the catalog stays empty:
 
 ```python
-# fragment
-@domain.projection(cache="redis")
-class CurrencyOption:
-    code: String(identifier=True)
-    name: String(required=True)
-    symbol: String(max_length=4)
-
-
-@domain.projector(projector_for=CurrencyOption, aggregates=[Currency])
-class CurrencyCatalogProjector:
-    @on(CurrencyAdded)
-    def add_option(self, event: CurrencyAdded) -> None:
-        cache = current_domain.cache_for(CurrencyOption)
-        cache.add(CurrencyOption(code=event.code, name=event.name,
-                                 symbol=event.symbol))
-
-    @on(CurrencyDeactivated)
-    def remove_option(self, event: CurrencyDeactivated) -> None:
-        cache = current_domain.cache_for(CurrencyOption)
-        cache.remove_by_key(f"currency_option:::{event.code}")
+--8<-- "patterns/model-reference-data/004.py:imports"
+--8<-- "patterns/model-reference-data/004.py:write_side"
+--8<-- "patterns/model-reference-data/004.py:projector"
 ```
 
 A cache-backed projection has no repository, so the projector writes through
-`cache_for()` and readers use `view_for()`. Cache keys have the form
-`<prefix>:::<identifier>`, where the prefix is the projection's class name in
-snake case (`CurrencyOption` becomes `currency_option`). Renaming the class
-changes the key the projector must remove.
+`cache_for()` and readers use `view_for()`. The projector asks the cache for
+the key it removes, with `cache.key_for(CurrencyOption, event.code)`. If you
+rename the projection class, the projector needs no change. The entries cached
+under the old name stay in the cache, so clear it and rebuild the projection.
+
+The projection names its cache `catalog`. Configure that name in the
+`[caches]` section, on the memory provider for tests and on Redis in
+production.
 
 The read side is now a fast, cache-resident `code → option` catalog, decoupled
 from the write model, with a single invalidation point (the projector). When

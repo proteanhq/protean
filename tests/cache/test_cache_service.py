@@ -265,7 +265,7 @@ class TestReads:
         message = str(exc.value)
         assert f"under {prefix!r}" in message
         assert "Cache 'scan'" in message
-        assert "'user_profile:::*'" in message
+        assert "`pattern_for`" in message
 
 
 class TestADuckTypedAdapter:

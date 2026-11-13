@@ -30,6 +30,6 @@ with domain.domain_context():
     cache = domain.cache_for(Dashboard)
     cache.add(Dashboard(user_id="u-1", summary="3 open orders"), ttl=60)
 
-    present = describe_ttl(cache, "dashboard:::u-1")
-    missing = describe_ttl(cache, "dashboard:::u-2")
+    present = describe_ttl(cache, cache.key_for(Dashboard, "u-1"))
+    missing = describe_ttl(cache, cache.key_for(Dashboard, "u-2"))
 # --8<-- [end:full]

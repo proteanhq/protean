@@ -30,6 +30,13 @@ def currencies():
         yield module
 
 
+@pytest.fixture
+def catalog():
+    module = load_example("patterns/model-reference-data/004.py")
+    with module.domain.domain_context():
+        yield module
+
+
 class TestFieldChoices:
     def test_status_defaults_to_draft(self, choices):
         assert choices.Order().status == "draft"
@@ -166,3 +173,39 @@ class TestCurrencyRepository:
 
         with pytest.raises(ValidationError):
             currencies.validate_currency("EUR")
+
+
+class TestCurrencyCatalogProjector:
+    def add_usd(self, module):
+        usd = module.Currency.add(code="USD", name="US Dollar", symbol="$")
+        module.domain.repository_for(module.Currency).add(usd)
+        return usd
+
+    def test_an_added_currency_lands_under_its_key(self, catalog):
+        self.add_usd(catalog)
+        cache = catalog.domain.cache_for(catalog.CurrencyOption)
+
+        option = cache.get(cache.key_for(catalog.CurrencyOption, "USD"))
+
+        assert (option.code, option.name, option.symbol) == ("USD", "US Dollar", "$")
+
+    def test_the_catalog_reads_through_view_for(self, catalog):
+        self.add_usd(catalog)
+
+        option = catalog.domain.view_for(catalog.CurrencyOption).get("USD")
+
+        assert option.name == "US Dollar"
+
+    def test_a_deactivated_currency_leaves_the_catalog(self, catalog):
+        usd = self.add_usd(catalog)
+        eur = catalog.Currency.add(code="EUR", name="Euro", symbol="€")
+        catalog.domain.repository_for(catalog.Currency).add(eur)
+        cache = catalog.domain.cache_for(catalog.CurrencyOption)
+        key = cache.key_for(catalog.CurrencyOption, "USD")
+        assert cache.get(key) is not None
+
+        usd.deactivate()
+        catalog.domain.repository_for(catalog.Currency).add(usd)
+
+        assert cache.get(key) is None
+        assert catalog.domain.view_for(catalog.CurrencyOption).get("EUR").name == "Euro"

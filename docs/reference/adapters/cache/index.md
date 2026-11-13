@@ -151,6 +151,8 @@ The `Cache` service that `domain.caches[name]` returns has these methods:
 |--------|-------------|
 | `ping()` | Health check, returns `True` if cache is accessible |
 | `get_connection()` | Return the underlying cache connection |
+| `key_for(projection_cls, identifier)` | The key of one entry, such as `order_summary:::ord-123`. See [Key Format](#key-format) |
+| `pattern_for(projection_cls)` | The glob over every entry of a projection, such as `order_summary:::*` |
 | `add(projection, ttl=None)` | Store a projection with optional TTL override |
 | `get(key)` | Retrieve a projection by key |
 | `_get_all(key_pattern)` | Private. Up to 1000 matching projections, in key order, then it truncates and warns. A bounded utility for tests and small stores, not a production read path |
@@ -164,18 +166,55 @@ The `Cache` service that `domain.caches[name]` returns has these methods:
 
 ### Key Format
 
-Cache keys follow the pattern `{projection_name}:::{identifier}`:
+The `Cache` service builds every key. Get a key from `key_for` and a pattern
+from `pattern_for`:
 
+```python
+# fragment
+cache = domain.cache_for(OrderSummary)
+cache.key_for(OrderSummary, "ord-123")  # "order_summary:::ord-123"
+cache.pattern_for(OrderSummary)         # "order_summary:::*"
 ```
-order_summary:::ord-123
-user_profile:::usr-456
-```
+
+A key is the projection class name in snake case, then `:::`, then the
+identifier formatted with `str()`. `add`, `remove` and `view_for(...).get` use
+`key_for`. `view_for(...).count` and a projection rebuild use `pattern_for`.
+Code that asks the service for keys needs no edit when a projection class is
+renamed. The entries cached before the rename stay under the old prefix, and
+reads and rebuilds of the renamed class do not see them. Clear the cache and
+rebuild the projection after a rename.
 
 The `key_pattern` on `_get_all`, `count`, and `remove_by_key_pattern` is a glob.
 `*` matches any run of characters, `?` matches one, `[...]` is a character
-class, and other characters are literal. Every entry of one projection is
-`order_summary:::*`. Adapters agree on `*`, `?`, and literal characters; bracket
-negation and escaping can differ, so keep patterns to the `name:::*` shape.
+class, and other characters are literal. Adapters agree on `*`, `?`, and
+literal characters; bracket negation and escaping can differ, so pass the
+pattern `pattern_for` returns.
+
+### Methods that need a capability
+
+Some methods need a capability the adapter may not declare. On a cache
+without it, they raise `NotSupportedError` naming the cache and the flag:
+
+| Capability | Methods |
+|------------|---------|
+| `TTL` | `set_ttl`, `get_ttl`, and `add` with an explicit `ttl` |
+| `PATTERN_MATCH` | `_get_all`, `count`, `remove_by_key_pattern` |
+
+`PATTERN_MATCH` also gates two callers of those methods on a cache-backed
+projection. `view_for(Projection).count()` calls `count`, and
+`protean projection rebuild` calls `remove_by_key_pattern` before it replays
+any event. A rebuild of every projection checks the cache of each
+cache-backed projection that has a projector before it truncates any
+projection. `add` without a `ttl`, `get`, `remove`, `remove_by_key`, `clear`,
+`key_for` and `pattern_for` work on every cache.
+
+### Writing a cache adapter
+
+An adapter implements the `CachePort` protocol from `protean.port.cache`. An
+adapter that declares `TTL` also subclasses `CacheTTLPort`, and one that
+declares `PATTERN_MATCH` also subclasses `CachePatternPort`. The
+[cache port API reference](../../../api/ports/cache.md) lists the members of
+each.
 
 ## Configuring a cache
 
