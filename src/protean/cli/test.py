@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import re
@@ -6,17 +7,22 @@ import sys
 import threading
 import time
 import tomllib
+import warnings
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, Flag
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 
+from protean._deprecation import ProteanDeprecationWarning, warn_from_registry
+
 if TYPE_CHECKING:
+    from protean.domain import Domain
+    from protean.infra.registry import AdapterRegistry
     from protean.port.provider import DatabaseCapabilities
 
 # Configuration constants
@@ -991,6 +997,26 @@ GENERIC_TEST_DIR = Path(__file__).resolve().parent.parent.parent.parent / (
     "tests/adapters/repository/generic"
 )
 
+# The per-port conformance suites for every port but ``database``. Like the
+# generic database suite, they are not in the wheel, so the command needs a
+# source checkout.
+CONFORMANCE_DIR = REPO_ROOT / "tests" / "conformance"
+
+CONFORMANCE_PORTS = ("database", "broker", "cache", "event_store")
+
+CHECKOUT_HINT = " The conformance suites need a Protean source checkout."
+
+# The configuration key ``--uri`` sets for each port's adapter.
+URI_KEYS = {
+    "database": "database_uri",
+    "broker": "URI",
+    "cache": "URI",
+    "event_store": "database_uri",
+}
+
+# The first row of a port report: the tests that need no capability flag.
+UNMARKED_ROW = "unmarked"
+
 
 @dataclass
 class CapabilityResult:
@@ -1070,6 +1096,15 @@ def _run_pytest_for_marker(
     summary line pytest prints to stdout.
     """
     cmd = _marker_command(marker, db_name, generic_test_dir, verbose)
+    return _run_capability_command(marker, cmd)
+
+
+def _run_capability_command(name: str, cmd: list[str]) -> CapabilityResult:
+    """Run one pytest command and return its result as the row ``name``.
+
+    Exit code 0 is PASS, exit code 5 (no tests collected) is SKIP, and any
+    other exit code is FAIL.
+    """
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     passed, failed, errors, skipped = _parse_summary_counts(result.stdout)
 
@@ -1081,7 +1116,7 @@ def _run_pytest_for_marker(
         # Exit code 5 means no tests collected
         status = "SKIP"
         return CapabilityResult(
-            name=marker,
+            name=name,
             status=status,
             reason="no tests collected",
         )
@@ -1089,7 +1124,7 @@ def _run_pytest_for_marker(
         status = "FAIL"
 
     return CapabilityResult(
-        name=marker,
+        name=name,
         status=status,
         passed=passed,
         failed=failed,
@@ -1203,34 +1238,72 @@ def _print_conformance_report(
 @app.command("test-adapter")
 def test_adapter(
     provider: Annotated[
-        str, typer.Option(help="Provider name to test (e.g. memory, postgresql)")
+        str,
+        typer.Option(
+            help="Registered adapter name of the port (e.g. memory, postgresql, redis)"
+        ),
     ],
     uri: Annotated[
         str,
-        typer.Option(help="Database connection URI (default: provider's default)"),
+        typer.Option(
+            help=(
+                "Connection URI of the adapter, required by an adapter with no "
+                "default URI such as redis. Sets database_uri for database and "
+                "event_store, URI for broker and cache, and wins over the same "
+                "key in --config. On --port database it sets only the "
+                "configuration that reads the provider's capabilities."
+            )
+        ),
     ] = "",
     capabilities: Annotated[
         str | None,
         typer.Option(
-            help="Comma-separated capabilities to test (default: all declared)"
+            help=(
+                "Comma-separated capability flag names of the port to test "
+                "(default: every flag; undeclared ones are reported as SKIP)"
+            )
         ),
     ] = None,
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
     test_dir: Annotated[
         str | None,
         typer.Option(
-            help="Path to generic test directory (default: built-in tests)",
+            help=(
+                "Deprecated. Path to the database test directory "
+                "(default: built-in tests); --port database only"
+            ),
+        ),
+    ] = None,
+    port: Annotated[
+        str,
+        typer.Option(
+            help="Port whose suite runs: database, broker, cache or event_store"
+        ),
+    ] = "database",
+    config: Annotated[
+        str | None,
+        typer.Option(
+            help=(
+                "JSON object merged into the adapter configuration. On --port "
+                "database it sets only the configuration that reads the "
+                "provider's capabilities."
+            )
         ),
     ] = None,
 ) -> None:
-    """[Framework development] Run the generic conformance test suite against a database provider.
+    """[Framework development] Run a port's conformance test suite against an adapter.
 
-    This command is for contributors building or validating a database adapter
-    against Protean's own conformance tests; it is not part of an end-user
-    application workflow.
+    This command is for contributors building or validating an adapter against
+    Protean's own conformance tests; it is not part of an end-user application
+    workflow. It needs a Protean source checkout, because the conformance
+    suites are not part of the installed package.
 
-    Tests are automatically selected based on the provider's declared
-    capabilities. Results show which capability areas pass or fail.
+    ``--port`` picks the port: ``database`` (the default), ``broker``,
+    ``cache`` or ``event_store``. ``--provider`` names the adapter registered
+    for that port. Tests run once for the tests that need no flag, the
+    ``unmarked`` row, and then once per capability flag. For ``database`` they
+    run once per capability marker instead. A flag or marker the adapter does
+    not declare is reported as SKIP.
 
     Examples:
 
@@ -1238,12 +1311,106 @@ def test_adapter(
 
         protean test test-adapter --provider=postgresql --uri="postgresql://localhost/test"
 
-        protean test test-adapter --provider=memory --capabilities=basic_storage,transactional
+        protean test test-adapter --provider=memory --capabilities=CRUD,TRANSACTIONS
 
-        protean test test-adapter --provider=postgresql --uri="postgresql://localhost/test" -v
+        protean test test-adapter --port=event_store --provider=memory
+
+        protean test test-adapter --port=broker --provider=redis --uri="redis://localhost:6379/0"
+
+        protean test test-adapter --port=cache --provider=redis --uri="redis://localhost:6379/0" --config='{"TTL": 60}' -v
+    """
+    _check_port(port)
+    overrides = _parse_config_option(config)
+    _check_test_dir(port, test_dir)
+    adapter_config = _adapter_config(port, provider, uri, overrides)
+
+    if port == "database":
+        _test_database_adapter(
+            provider, adapter_config, capabilities, verbose, test_dir
+        )
+    else:
+        _test_port_adapter(port, provider, adapter_config, capabilities, verbose)
+
+
+def _check_port(port: str) -> None:
+    """Raise ``typer.Exit(1)`` with the valid ports when ``port`` is not one."""
+    if port not in CONFORMANCE_PORTS:
+        valid = ", ".join(sorted(CONFORMANCE_PORTS))
+        print(f"Error: Unknown port '{port}'. Valid ports: {valid}")
+        raise typer.Exit(code=1)
+
+
+def _parse_config_option(config: str | None) -> dict[str, Any]:
+    """Parse the ``--config`` value; raises ``typer.Exit(1)`` unless a JSON object."""
+    if config is None:
+        return {}
+    try:
+        value = json.loads(config)
+    except json.JSONDecodeError as e:
+        print(f"Error: --config is not valid JSON: {e}")
+        raise typer.Exit(code=1) from e
+    if not isinstance(value, dict):
+        print(f"Error: --config must be a JSON object, got {type(value).__name__}")
+        raise typer.Exit(code=1)
+    return value
+
+
+def _adapter_config(
+    port: str, provider: str, uri: str, overrides: dict[str, Any]
+) -> dict[str, Any]:
+    """Return the adapter configuration: ``overrides``, the URI and the provider.
+
+    ``--uri`` sets the port's URI key over the same key in ``overrides``, and
+    ``provider`` always names the adapter under test.
+    """
+    adapter_config: dict[str, Any] = {**overrides, "provider": provider}
+    if uri:
+        adapter_config[URI_KEYS[port]] = uri
+    return adapter_config
+
+
+def _warn_deprecated_option(slug: str, subject: str) -> None:
+    """Emit the registered deprecation ``slug`` so the CLI user sees it."""
+    # Python's default filters hide a deprecation warning raised outside
+    # ``__main__``, so the command would print nothing without this filter.
+    with warnings.catch_warnings():
+        # A ``-W`` option or ``PYTHONWARNINGS`` keeps the user's own filters.
+        if not sys.warnoptions:
+            warnings.simplefilter("default", ProteanDeprecationWarning)
+        warn_from_registry(slug, subject, stacklevel=3)
+
+
+def _check_test_dir(port: str, test_dir: str | None) -> None:
+    """Warn that ``--test-dir`` is deprecated when it is given.
+
+    Raises ``typer.Exit(1)`` when it is given for a port other than ``database``.
+    """
+    if test_dir is None:
+        return
+    _warn_deprecated_option(
+        "test_adapter_test_dir",
+        "The `--test-dir` option of `protean test test-adapter`",
+    )
+    if port != "database":
+        print("Error: --test-dir applies to --port database only.")
+        raise typer.Exit(code=1)
+
+
+def _test_database_adapter(
+    provider: str,
+    db_config: dict[str, Any],
+    capabilities: str | None,
+    verbose: bool,
+    test_dir: str | None,
+) -> None:
+    """Run the generic database suite once per capability marker the provider declares.
+
+    ``capabilities`` narrows the run to the requested markers. Prints a
+    conformance report and exits with code 1 when any marker fails, or with
+    code 0 without running pytest when no marker applies.
     """
     provider_capabilities, provider_class_name = _load_provider_capabilities(
-        provider, uri
+        provider, db_config
     )
     requested = _requested_capabilities(capabilities)
 
@@ -1284,7 +1451,7 @@ def test_adapter(
 
 
 def _load_provider_capabilities(
-    provider: str, uri: str
+    provider: str, db_config: dict[str, Any]
 ) -> tuple["DatabaseCapabilities", str]:
     """Return the provider's capabilities and class name.
 
@@ -1307,10 +1474,7 @@ def _load_provider_capabilities(
         domain = Domain(name="ConformanceTest")
 
         # Configure the provider
-        db_config: dict[str, str | dict[str, str]] = {"provider": provider}
-        if uri:
-            db_config["database_uri"] = uri
-        domain.config["databases"]["default"] = db_config
+        domain.config["databases"]["default"] = copy.deepcopy(db_config)
 
         domain._initialize()
 
@@ -1326,28 +1490,66 @@ def _load_provider_capabilities(
 
 
 def _requested_capabilities(capabilities: str | None) -> list[str] | None:
-    """Parse the comma-separated ``--capabilities`` value.
+    """Parse the comma-separated ``--capabilities`` value into marker names.
 
     Raises ``typer.Exit(1)`` with a message on an unknown capability.
     """
     # Determine which capabilities to test
     if not capabilities:
         return None
-    requested = [c.strip() for c in capabilities.split(",")]
-    # Validate requested capabilities
-    for cap in requested:
-        if cap not in CAPABILITY_MARKER_MAP:
-            valid = ", ".join(sorted(CAPABILITY_MARKER_MAP.keys()))
-            print(f"Error: Unknown capability '{cap}'. Valid capabilities: {valid}")
-            raise typer.Exit(code=1)
+    requested: list[str] = []
+    for name in (c.strip() for c in capabilities.split(",")):
+        requested.extend(_database_markers_for(name))
     return requested
+
+
+def _database_markers_for(name: str) -> list[str]:
+    """Return the marker names a ``--capabilities`` name selects on ``database``.
+
+    A ``DatabaseCapabilities`` name, a single flag or a named set such as
+    ``BASIC_STORAGE``, selects every marker whose flags include one of its
+    flags. A marker name selects itself and emits a deprecation warning.
+    Raises ``typer.Exit(1)`` with the flag names that select a marker on any
+    other name, including a flag that selects no marker.
+    """
+    from protean.port.provider import DatabaseCapabilities  # noqa: PLC0415
+
+    if name in CAPABILITY_MARKER_MAP:
+        _warn_deprecated_option(
+            "test_adapter_marker_capabilities",
+            f"The `--capabilities` name `{name}` of `protean test test-adapter`",
+        )
+        return [name]
+
+    markers: list[str] = []
+    if name in DatabaseCapabilities.__members__:
+        selected = DatabaseCapabilities[name]
+        markers = [
+            marker
+            for marker, flags in CAPABILITY_MARKER_MAP.items()
+            if any(DatabaseCapabilities[f] in selected for f in flags)
+        ]
+    if not markers:
+        problem = (
+            "selects no database conformance test"
+            if name in DatabaseCapabilities.__members__
+            else "is unknown"
+        )
+        flags = dict.fromkeys(f for fs in CAPABILITY_MARKER_MAP.values() for f in fs)
+        print(
+            f"Error: Capability '{name}' {problem}. "
+            f"Valid capabilities: {', '.join(flags)}, or a named set of them"
+        )
+        raise typer.Exit(code=1)
+    return markers
 
 
 def _generic_test_dir(test_dir: str | None) -> Path:
     """Return the generic test directory; raises ``typer.Exit(1)`` when missing."""
     generic_dir = Path(test_dir) if test_dir else GENERIC_TEST_DIR
     if not generic_dir.is_dir():
-        print(f"Error: Generic test directory not found: {generic_dir}")
+        hint = "" if test_dir else CHECKOUT_HINT
+        print(f"Error: Generic test directory not found: {generic_dir}.{hint}")
         raise typer.Exit(code=1)
     return generic_dir
 
@@ -1368,5 +1570,234 @@ def _run_markers(
                 generic_test_dir=generic_dir,
                 verbose=verbose,
             )
+        )
+    return results
+
+
+# --- Conformance suites of the broker, cache and event_store ports ---
+
+
+@dataclass
+class PortSuite:
+    """One port's conformance suite, run against one adapter."""
+
+    port: str
+    adapter: str
+    adapter_config: dict[str, Any]
+    suite_dir: Path
+
+
+def _test_port_adapter(
+    port: str,
+    provider: str,
+    adapter_config: dict[str, Any],
+    capabilities: str | None,
+    verbose: bool,
+) -> None:
+    """Run ``tests/conformance/<port>`` once per row and print the report.
+
+    Raises ``typer.Exit(1)`` when a row fails, or when the suite, the adapter
+    or a requested flag is missing.
+    """
+    suite = PortSuite(port, provider, adapter_config, _conformance_suite_dir(port))
+    flag_class = _port_flag_class(port)
+    requested = _requested_port_flags(flag_class, capabilities)
+    _check_registered(port, provider)
+    declared, class_name = _load_port_capabilities(suite)
+    rows_to_run, rows_to_skip = _plan_port_rows(flag_class, declared, requested)
+
+    if not rows_to_run:
+        print(f"No applicable capabilities to test for adapter '{provider}'.")
+        _print_conformance_report(provider, class_name, [], rows_to_skip)
+        raise typer.Exit(code=0)
+
+    print(
+        f"Running {port} conformance tests for adapter '{provider}' ({class_name})..."
+    )
+    print(f"Capabilities to test: {', '.join(rows_to_run)}")
+    if rows_to_skip:
+        print(f"Capabilities to skip: {', '.join(rows_to_skip)}")
+    print()
+
+    results = _run_port_rows(suite, rows_to_run, verbose)
+    _print_conformance_report(provider, class_name, results, rows_to_skip)
+
+    if any(r.status == "FAIL" for r in results):
+        raise typer.Exit(code=1)
+
+
+def _conformance_suite_dir(port: str) -> Path:
+    """Return ``tests/conformance/<port>``; raises ``typer.Exit(1)`` when missing."""
+    suite_dir = CONFORMANCE_DIR / port
+    if not suite_dir.is_dir():
+        print(f"Error: Conformance suite not found: {suite_dir}.{CHECKOUT_HINT}")
+        raise typer.Exit(code=1)
+    return suite_dir
+
+
+def _port_flag_class(port: str) -> type[Flag]:
+    """Return the capability flag class of ``port``."""
+    from protean.port.broker import BrokerCapabilities  # noqa: PLC0415
+    from protean.port.cache import CacheCapabilities  # noqa: PLC0415
+    from protean.port.event_store import EventStoreCapabilities  # noqa: PLC0415
+
+    flag_classes: dict[str, type[Flag]] = {
+        "broker": BrokerCapabilities,
+        "cache": CacheCapabilities,
+        "event_store": EventStoreCapabilities,
+    }
+    return flag_classes[port]
+
+
+def _port_registry(port: str) -> "AdapterRegistry[Any]":
+    """Return the adapter registry of ``port``."""
+    from protean.infra.registry import brokers, caches, event_stores  # noqa: PLC0415
+
+    registries: dict[str, AdapterRegistry[Any]] = {
+        "broker": brokers,
+        "cache": caches,
+        "event_store": event_stores,
+    }
+    return registries[port]
+
+
+def _check_registered(port: str, provider: str) -> None:
+    """Raise ``typer.Exit(1)`` with the registry's message when ``provider`` is unknown."""
+    from protean.exceptions import ConfigurationError  # noqa: PLC0415
+
+    try:
+        _port_registry(port).get(provider)
+    except ConfigurationError as e:
+        print(f"Error: {e}")
+        raise typer.Exit(code=1) from e
+
+
+def _requested_port_flags(
+    flag_class: type[Flag], capabilities: str | None
+) -> list[Flag] | None:
+    """Parse ``--capabilities`` into single flags of ``flag_class``, in definition order.
+
+    A named set, such as ``BASIC``, stands for each flag in it. Raises
+    ``typer.Exit(1)`` with the valid flag names on an unknown name.
+    """
+    if not capabilities:
+        return None
+    selected = flag_class(0)
+    for name in (c.strip() for c in capabilities.split(",")):
+        if name not in flag_class.__members__:
+            valid = ", ".join(str(flag.name) for flag in flag_class)
+            print(f"Error: Unknown capability '{name}'. Valid capabilities: {valid}")
+            raise typer.Exit(code=1)
+        selected |= flag_class[name]
+    return [flag for flag in flag_class if flag in selected]
+
+
+def _configure_port(
+    domain: "Domain", port: str, adapter_config: dict[str, Any]
+) -> None:
+    """Make ``adapter_config`` the default adapter of ``port`` in ``domain``."""
+    match port:
+        case "broker":
+            domain.config["brokers"]["default"] = adapter_config
+        case "cache":
+            domain.config["caches"]["default"] = adapter_config
+        case _:
+            domain.config["event_store"] = adapter_config
+
+
+def _port_adapter(domain: "Domain", port: str) -> Any:
+    """Return the adapter of ``port`` that ``domain`` built."""
+    match port:
+        case "broker":
+            return domain.brokers["default"]
+        case "cache":
+            # The cache container holds a ``Cache`` service around the adapter.
+            return domain.caches["default"]._adapter
+        case _:
+            return domain.event_store.store
+
+
+def _load_port_capabilities(suite: PortSuite) -> tuple[Flag, str]:
+    """Return the flags the adapter declares and its class name.
+
+    Raises ``typer.Exit(1)`` with a message when the adapter does not initialize.
+    """
+    from protean.domain import Domain  # noqa: PLC0415
+
+    domain = Domain(name="ConformanceTest")
+    try:
+        # The domain adds keys to the configuration it is given, and the
+        # pytest runs need the configuration as the user gave it.
+        _configure_port(domain, suite.port, copy.deepcopy(suite.adapter_config))
+        domain._initialize()
+
+        with domain.domain_context():
+            adapter = _port_adapter(domain, suite.port)
+            return adapter.capabilities, type(adapter).__name__
+    except KeyError as e:
+        # An adapter with no default for a key, such as the redis URI, reads
+        # it straight from the configuration.
+        print(
+            f"Error initializing {suite.port} adapter '{suite.adapter}': "
+            f"the configuration has no {e} key. Set it with --uri or --config."
+        )
+        raise typer.Exit(code=1) from e
+    except Exception as e:  # any setup error exits 1 with the message
+        print(f"Error initializing {suite.port} adapter '{suite.adapter}': {e}")
+        raise typer.Exit(code=1) from e
+    finally:
+        # Leaving the domain context does not close the adapters, and the
+        # pytest runs each open their own.
+        domain.close()
+
+
+def _plan_port_rows(
+    flag_class: type[Flag], declared: Flag, requested: list[Flag] | None
+) -> tuple[list[str], list[str]]:
+    """Return the rows to run and the flag rows to skip as not declared.
+
+    Without ``requested``, the rows are ``unmarked`` and then each single flag
+    of ``flag_class``. With it, the rows are the requested flags only.
+    """
+    flags = requested if requested is not None else list(flag_class)
+    rows_to_run = [] if requested is not None else [UNMARKED_ROW]
+    rows_to_skip: list[str] = []
+    for flag in flags:
+        (rows_to_run if flag in declared else rows_to_skip).append(str(flag.name))
+    return rows_to_run, rows_to_skip
+
+
+def _port_row_command(suite: PortSuite, row: str, verbose: bool) -> list[str]:
+    """Build the pytest command that runs one row of a port's suite."""
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        str(suite.suite_dir),
+        "--port",
+        suite.port,
+        "--adapter",
+        suite.adapter,
+        "--adapter-config",
+        json.dumps(suite.adapter_config),
+        "--capability",
+        "none" if row == UNMARKED_ROW else row,
+        "--cache-clear",
+        "--no-header",
+    ]
+    cmd.extend(["-v"] if verbose else ["--tb=no", "-q"])
+    return cmd
+
+
+def _run_port_rows(
+    suite: PortSuite, rows: list[str], verbose: bool
+) -> list[CapabilityResult]:
+    """Run pytest once per row of a port's suite and collect the results."""
+    results: list[CapabilityResult] = []
+    for row in rows:
+        if verbose:
+            print(f"Testing capability: {row}...")
+        results.append(
+            _run_capability_command(row, _port_row_command(suite, row, verbose))
         )
     return results

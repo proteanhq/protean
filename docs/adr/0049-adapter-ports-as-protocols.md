@@ -233,7 +233,9 @@ Each port's conformance suite lives under `tests/conformance/<port>/` and stays
 out of the wheel. `protean test test-adapter --port <port>` runs it from a
 source checkout. One pytest plugin selects the adapter for every port. A test
 declares the flag it needs with one marker, and the plugin checks that marker
-against the adapter's declared capabilities.
+against the adapter's declared capabilities. Until the database suite moves
+into `tests/conformance/database/`, `--port database` runs the generic database
+suite in `tests/adapters/repository/generic/`.
 
 One plugin and one marker give every port the same way to select an adapter
 and skip a test.

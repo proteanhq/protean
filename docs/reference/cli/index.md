@@ -55,4 +55,4 @@ follow the standard today.
     | :----------------------------- | :----------------------------------|
     | [`protean docs`](project/docs.md)      | Documentation helpers              |
     | [`protean test`](../../community/contributing/testing.md) | Framework test runner |
-    | [`protean test test-adapter`](../../community/contributing/testing.md) | Database adapter conformance runner |
+    | [`protean test test-adapter`](../../community/contributing/testing.md) | Adapter conformance runner for every port |

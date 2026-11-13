@@ -1,7 +1,9 @@
+import json
 import subprocess
 import sys
 import threading
 import time
+import warnings
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -9,21 +11,27 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
+from protean._deprecation import ProteanDeprecationWarning, RemovedInProtean020Warning
 from protean.cli import app
 from protean.cli.test import (
     CAPABILITY_MARKER_MAP,
     COVERAGE_BASE_CMD,
     FULL_MATRIX_IN_MEMORY,
     FULL_MATRIX_SERVICES,
+    GENERIC_TEST_DIR,
     PYTEST_BASE_CMD,
     TEST_CONFIGS,
     CapabilityResult,
+    PortSuite,
     RunCategory,
     TestRunner,
     TestSuite,
+    _adapter_config,
     _get_applicable_markers,
+    _port_row_command,
     _print_conformance_report,
     _provider_has_capability_for_marker,
+    _requested_capabilities,
     _run_pytest_for_marker,
     validate_category,
     validate_workers,
@@ -31,6 +39,9 @@ from protean.cli.test import (
 from protean.cli.test import (
     test_adapter as cli_test_adapter,
 )
+from protean.port.broker import BrokerCapabilities
+from protean.port.cache import CacheCapabilities
+from protean.port.event_store import EventStoreCapabilities
 from tests.conftest import SERVICE_KEYWORDS, _select_service_tests
 
 
@@ -1631,7 +1642,7 @@ class TestTestAdapterCommand:
     def test_success_with_single_capability(self, capsys):
         """Run conformance against memory for a single capability."""
         # On success, the function returns normally (no exit raised)
-        cli_test_adapter(provider="memory", capabilities="basic_storage")
+        cli_test_adapter(provider="memory", capabilities="CRUD")
 
         captured = capsys.readouterr()
         assert "Conformance Report" in captured.out
@@ -1667,11 +1678,14 @@ class TestTestAdapterCommand:
         assert exc_info.value.exit_code == 1
 
         captured = capsys.readouterr()
-        assert "Unknown capability" in captured.out
+        assert "Capability 'nonexistent_cap' is unknown" in captured.out
 
     def test_nonexistent_test_dir_exits(self, capsys):
         """Missing test directory exits with code 1."""
-        with pytest.raises(typer.Exit) as exc_info:
+        with (
+            pytest.warns(RemovedInProtean020Warning, match="--test-dir"),
+            pytest.raises(typer.Exit) as exc_info,
+        ):
             cli_test_adapter(provider="memory", test_dir="/nonexistent/path")
         assert exc_info.value.exit_code == 1
 
@@ -1682,7 +1696,7 @@ class TestTestAdapterCommand:
         """Requested capability not declared by provider exits cleanly."""
         # Memory doesn't have native_json
         with pytest.raises(typer.Exit) as exc_info:
-            cli_test_adapter(provider="memory", capabilities="native_json")
+            cli_test_adapter(provider="memory", capabilities="NATIVE_JSON")
         assert exc_info.value.exit_code == 0
 
         captured = capsys.readouterr()
@@ -1692,7 +1706,7 @@ class TestTestAdapterCommand:
         """Verbose flag prints per-marker progress."""
         cli_test_adapter(
             provider="memory",
-            capabilities="basic_storage",
+            capabilities="CRUD",
             verbose=True,
         )
 
@@ -1701,10 +1715,551 @@ class TestTestAdapterCommand:
 
     def test_skipped_capabilities_in_report(self, capsys):
         """Report includes skipped capabilities in output."""
-        cli_test_adapter(provider="memory", capabilities="basic_storage")
+        cli_test_adapter(provider="memory", capabilities="CRUD")
 
         captured = capsys.readouterr()
         assert "Conformance Report" in captured.out
+
+
+def _report_rows(output: str) -> list[tuple[str, str, str]]:
+    """Return the (capability, status, detail) rows of a conformance report."""
+    lines = output.split("Conformance Report", 1)[1].splitlines()
+    rules = [i for i, line in enumerate(lines) if line.startswith("-" * 56)]
+    rows = []
+    for line in lines[rules[0] + 1 : rules[1]]:
+        name, status, *detail = line.split(maxsplit=2)
+        rows.append((name, status, detail[0] if detail else ""))
+    return rows
+
+
+def _pytest_calls(mock_run: Mock) -> list[list[str]]:
+    return [call.args[0] for call in mock_run.call_args_list]
+
+
+def _option(cmd: list[str], name: str) -> str:
+    return cmd[cmd.index(name) + 1]
+
+
+@pytest.mark.no_test_domain
+class TestPortConformance:
+    """`test-adapter --port` runs a port's suite under tests/conformance/.
+
+    Uses the real memory and inline adapters and real subprocess pytest runs
+    against the placeholder suites.
+    """
+
+    @pytest.mark.parametrize(
+        "port, provider, flag_class, not_declared",
+        [
+            (
+                "event_store",
+                "memory",
+                EventStoreCapabilities,
+                ["CONSUMER_GROUPS", "DURABLE", "SCHEMA_MANAGEMENT"],
+            ),
+            ("cache", "memory", CacheCapabilities, ["SHARED", "DURABLE"]),
+            (
+                "broker",
+                "inline",
+                BrokerCapabilities,
+                ["MESSAGE_ORDERING", "BLOCKING_READ", "REPLAY", "STREAM_PARTITIONING"],
+            ),
+        ],
+    )
+    def test_reports_unmarked_then_one_row_per_flag(
+        self, capsys, port, provider, flag_class, not_declared
+    ):
+        cli_test_adapter(port=port, provider=provider)
+
+        rows = _report_rows(capsys.readouterr().out)
+        assert rows[0] == ("unmarked", "PASS", "1/1")
+        # Declared flags in definition order, then the undeclared ones.
+        flag_names = [flag.name for flag in flag_class]
+        assert [name for name, _, _ in rows[1:]] == [
+            name for name in flag_names if name not in not_declared
+        ] + not_declared
+        skipped = [name for name, status, detail in rows if detail == "(not declared)"]
+        assert skipped == not_declared
+        assert all(status == "SKIP" for name, status, _ in rows if name in skipped)
+        # A declared flag with no gated test yet shows as not collected.
+        declared_rows = [r for r in rows[1:] if r[0] not in skipped]
+        assert declared_rows
+        assert all(r[1:] == ("SKIP", "(no tests collected)") for r in declared_rows)
+
+    def test_runs_one_pytest_call_per_declared_row(self):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="1 passed\n", stderr="")
+            cli_test_adapter(port="cache", provider="memory")
+
+        calls = _pytest_calls(mock_run)
+        assert [_option(cmd, "--capability") for cmd in calls] == [
+            "none",
+            "KEY_VALUE",
+            "TTL",
+            "PATTERN_MATCH",
+        ]
+        cmd = calls[0]
+        assert cmd[3].endswith(str(Path("tests", "conformance", "cache")))
+        assert _option(cmd, "--port") == "cache"
+        assert _option(cmd, "--adapter") == "memory"
+        assert json.loads(_option(cmd, "--adapter-config")) == {"provider": "memory"}
+
+    def test_the_pytest_call_gets_the_configuration_as_given(self):
+        # The inline broker adds ``IS_ASYNC`` to the configuration it is
+        # built with; that key must not reach the pytest call.
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="1 passed\n", stderr="")
+            cli_test_adapter(port="broker", provider="inline", config='{"TTL": 5}')
+
+        calls = _pytest_calls(mock_run)
+        assert calls
+        for cmd in calls:
+            assert json.loads(_option(cmd, "--adapter-config")) == {
+                "TTL": 5,
+                "provider": "inline",
+            }
+
+    @pytest.mark.parametrize("port", ["cache", "broker"])
+    def test_an_adapter_without_a_default_uri_names_the_missing_key(self, capsys, port):
+        # The redis adapters read ``URI`` before they connect, so no server
+        # is needed.
+        with pytest.raises(typer.Exit) as exc_info:
+            cli_test_adapter(port=port, provider="redis")
+        assert exc_info.value.exit_code == 1
+
+        assert (
+            f"Error initializing {port} adapter 'redis': the configuration has no "
+            "'URI' key. Set it with --uri or --config."
+        ) in capsys.readouterr().out
+
+    def test_the_adapter_is_built_from_the_given_configuration(self, capsys):
+        with pytest.raises(typer.Exit) as exc_info:
+            cli_test_adapter(
+                port="cache", provider="redis", config='{"URI": "notaurl"}'
+            )
+        assert exc_info.value.exit_code == 1
+
+        out = capsys.readouterr().out
+        assert "Error initializing cache adapter 'redis': Redis URL must specify" in out
+
+    def test_default_port_prints_the_database_marker_rows(self, capsys):
+        cli_test_adapter(provider="memory")
+
+        rows = _report_rows(capsys.readouterr().out)
+        assert sorted(name for name, _, _ in rows) == sorted(CAPABILITY_MARKER_MAP)
+        assert "unmarked" not in [name for name, _, _ in rows]
+
+    def test_unknown_port_exits_with_the_valid_ports(self, capsys):
+        with pytest.raises(typer.Exit) as exc_info:
+            cli_test_adapter(port="nope", provider="memory")
+        assert exc_info.value.exit_code == 1
+
+        assert (
+            "Unknown port 'nope'. Valid ports: broker, cache, database, event_store"
+            in capsys.readouterr().out
+        )
+
+    def test_unknown_port_exits_1_through_the_cli(self, cli_runner):
+        result = cli_runner.invoke(
+            app, ["test", "test-adapter", "--port", "nope", "--provider", "memory"]
+        )
+
+        assert result.exit_code == 1
+        assert "Valid ports: broker, cache, database, event_store" in result.output
+
+    def test_unknown_adapter_exits_with_the_registry_message(self, capsys):
+        with pytest.raises(typer.Exit) as exc_info:
+            cli_test_adapter(port="cache", provider="nope")
+        assert exc_info.value.exit_code == 1
+
+        assert "Error: Unknown cache 'nope'. Available: memory" in (
+            capsys.readouterr().out
+        )
+
+    def test_adapter_setup_failure_exits(self, capsys):
+        with (
+            patch(
+                "protean.domain.Domain._initialize",
+                side_effect=RuntimeError("cannot connect"),
+            ),
+            pytest.raises(typer.Exit) as exc_info,
+        ):
+            cli_test_adapter(port="cache", provider="memory")
+        assert exc_info.value.exit_code == 1
+
+        assert "Error initializing cache adapter 'memory': cannot connect" in (
+            capsys.readouterr().out
+        )
+
+    def test_adapter_setup_failure_closes_the_probe_domain(self):
+        with (
+            patch(
+                "protean.domain.Domain._initialize",
+                side_effect=RuntimeError("cannot connect"),
+            ),
+            patch("protean.domain.Domain.close") as close,
+            pytest.raises(typer.Exit),
+        ):
+            cli_test_adapter(port="cache", provider="memory")
+        close.assert_called_once_with()
+
+    def test_the_probe_domain_closes_before_the_rows_run(self):
+        calls: list[str] = []
+        with (
+            patch(
+                "protean.domain.Domain.close",
+                autospec=True,
+                side_effect=lambda domain: calls.append("close"),
+            ),
+            patch(
+                "protean.cli.test._run_port_rows",
+                side_effect=lambda *args: calls.append("rows") or [],
+            ),
+        ):
+            cli_test_adapter(port="cache", provider="memory")
+        assert calls == ["close", "rows"]
+
+    def test_requested_flags_restrict_the_rows(self, capsys):
+        cli_test_adapter(
+            port="event_store", provider="memory", capabilities="DURABLE,WRITE"
+        )
+
+        assert _report_rows(capsys.readouterr().out) == [
+            ("WRITE", "SKIP", "(no tests collected)"),
+            ("DURABLE", "SKIP", "(not declared)"),
+        ]
+
+    def test_a_named_set_stands_for_its_flags(self, capsys):
+        cli_test_adapter(port="event_store", provider="memory", capabilities="BASIC")
+
+        rows = _report_rows(capsys.readouterr().out)
+        assert [name for name, _, _ in rows] == [
+            "WRITE",
+            "READ_STREAM",
+            "READ_CATEGORY",
+            "READ_ALL",
+        ]
+
+    def test_only_undeclared_flags_requested_exits_0(self, capsys):
+        with pytest.raises(typer.Exit) as exc_info:
+            cli_test_adapter(
+                port="event_store", provider="memory", capabilities="DURABLE"
+            )
+        assert exc_info.value.exit_code == 0
+
+        out = capsys.readouterr().out
+        assert "No applicable capabilities to test for adapter 'memory'." in out
+        assert _report_rows(out) == [("DURABLE", "SKIP", "(not declared)")]
+
+    def test_unknown_flag_exits_with_the_port_flags(self, capsys):
+        with pytest.raises(typer.Exit) as exc_info:
+            cli_test_adapter(port="event_store", provider="memory", capabilities="NOPE")
+        assert exc_info.value.exit_code == 1
+
+        out = capsys.readouterr().out
+        assert "Unknown capability 'NOPE'" in out
+        assert "EXPECTED_VERSION" in out
+        # A database flag is not a flag of the event store port.
+        assert "CRUD" not in out
+
+    def test_a_failing_row_exits_1(self, capsys):
+        with (
+            patch("subprocess.run") as mock_run,
+            pytest.raises(typer.Exit) as exc_info,
+        ):
+            mock_run.return_value = Mock(returncode=1, stdout="1 failed\n", stderr="")
+            cli_test_adapter(port="cache", provider="memory")
+        assert exc_info.value.exit_code == 1
+
+        rows = _report_rows(capsys.readouterr().out)
+        assert rows[0] == ("unmarked", "FAIL", "0/1 (1 failed)")
+
+    def test_verbose_prints_each_row(self, capsys):
+        cli_test_adapter(
+            port="cache", provider="memory", capabilities="TTL", verbose=True
+        )
+
+        assert "Testing capability: TTL" in capsys.readouterr().out
+
+    def test_missing_suite_folder_needs_a_source_checkout(
+        self, capsys, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr("protean.cli.test.CONFORMANCE_DIR", tmp_path)
+
+        with pytest.raises(typer.Exit) as exc_info:
+            cli_test_adapter(port="cache", provider="memory")
+        assert exc_info.value.exit_code == 1
+
+        out = capsys.readouterr().out
+        assert f"Conformance suite not found: {tmp_path / 'cache'}" in out
+        assert "need a Protean source checkout" in out
+
+    def test_missing_database_suite_needs_a_source_checkout(
+        self, capsys, monkeypatch, tmp_path
+    ):
+        monkeypatch.setattr("protean.cli.test.GENERIC_TEST_DIR", tmp_path / "generic")
+
+        with pytest.raises(typer.Exit) as exc_info:
+            cli_test_adapter(provider="memory")
+        assert exc_info.value.exit_code == 1
+
+        out = capsys.readouterr().out
+        assert f"Generic test directory not found: {tmp_path / 'generic'}" in out
+        assert "need a Protean source checkout" in out
+
+    def test_missing_test_dir_gives_no_checkout_hint(self, capsys, tmp_path):
+        with (
+            pytest.warns(RemovedInProtean020Warning, match="--test-dir"),
+            pytest.raises(typer.Exit) as exc_info,
+        ):
+            cli_test_adapter(provider="memory", test_dir=str(tmp_path / "x"))
+        assert exc_info.value.exit_code == 1
+
+        out = capsys.readouterr().out
+        assert f"Generic test directory not found: {tmp_path / 'x'}" in out
+        assert "source checkout" not in out
+
+    def test_test_dir_is_rejected_for_other_ports(self, capsys):
+        with (
+            pytest.warns(RemovedInProtean020Warning, match="--test-dir"),
+            pytest.raises(typer.Exit) as exc_info,
+        ):
+            cli_test_adapter(port="cache", provider="memory", test_dir="x")
+        assert exc_info.value.exit_code == 1
+
+        assert "--test-dir applies to --port database only" in (capsys.readouterr().out)
+
+
+@pytest.mark.no_test_domain
+class TestPortAdapterConfig:
+    """`--uri` and `--config` reach the adapter configuration of the pytest call."""
+
+    @pytest.mark.parametrize(
+        "port, provider, uri, flags, key",
+        [
+            (
+                "broker",
+                "redis",
+                "redis://localhost:6379/0",
+                BrokerCapabilities.PUBLISH,
+                "URI",
+            ),
+            (
+                "event_store",
+                "message_db",
+                "postgresql://message_store@localhost:5433/message_store",
+                EventStoreCapabilities.WRITE,
+                "database_uri",
+            ),
+        ],
+    )
+    def test_uri_sets_the_port_key_on_the_pytest_call(
+        self, port, provider, uri, flags, key
+    ):
+        # The capability read would connect to the service, so it is stubbed;
+        # the pytest call is built from the real options.
+        with (
+            patch(
+                "protean.cli.test._load_port_capabilities",
+                return_value=(flags, "Adapter"),
+            ),
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = Mock(returncode=0, stdout="1 passed\n", stderr="")
+            cli_test_adapter(port=port, provider=provider, uri=uri)
+
+        calls = _pytest_calls(mock_run)
+        assert len(calls) == 2  # unmarked and the one declared flag
+        for cmd in calls:
+            assert _option(cmd, "--adapter") == provider
+            assert json.loads(_option(cmd, "--adapter-config")) == {
+                "provider": provider,
+                key: uri,
+            }
+
+    @pytest.mark.parametrize(
+        "port, key",
+        [
+            ("database", "database_uri"),
+            ("event_store", "database_uri"),
+            ("broker", "URI"),
+            ("cache", "URI"),
+        ],
+    )
+    def test_uri_key_per_port(self, port, key):
+        assert _adapter_config(port, "x", "scheme://host", {}) == {
+            "provider": "x",
+            key: "scheme://host",
+        }
+
+    def test_uri_wins_over_the_same_key_in_config(self):
+        config = _adapter_config("cache", "redis", "redis://b", {"URI": "redis://a"})
+        assert config["URI"] == "redis://b"
+
+    def test_provider_wins_over_provider_in_config(self):
+        assert _adapter_config("cache", "memory", "", {"provider": "redis"}) == {
+            "provider": "memory"
+        }
+
+    def test_no_uri_leaves_the_key_out(self):
+        assert _adapter_config("broker", "inline", "", {}) == {"provider": "inline"}
+
+    def test_config_merges_into_the_pytest_call(self):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="1 passed\n", stderr="")
+            cli_test_adapter(
+                port="cache",
+                provider="memory",
+                config='{"TTL": 60}',
+                capabilities="TTL",
+            )
+
+        (cmd,) = _pytest_calls(mock_run)
+        assert json.loads(_option(cmd, "--adapter-config")) == {
+            "provider": "memory",
+            "TTL": 60,
+        }
+
+    @pytest.mark.parametrize(
+        "config, message",
+        [
+            ("{not json", "--config is not valid JSON"),
+            ("[1, 2]", "--config must be a JSON object, got list"),
+        ],
+    )
+    def test_config_that_is_not_a_json_object_exits(self, capsys, config, message):
+        with pytest.raises(typer.Exit) as exc_info:
+            cli_test_adapter(port="cache", provider="memory", config=config)
+        assert exc_info.value.exit_code == 1
+
+        assert message in capsys.readouterr().out
+
+    def test_row_command_quiet_and_verbose(self, tmp_path):
+        suite = PortSuite("cache", "memory", {"provider": "memory"}, tmp_path)
+
+        quiet = _port_row_command(suite, "unmarked", verbose=False)
+        verbose = _port_row_command(suite, "TTL", verbose=True)
+
+        assert _option(quiet, "--capability") == "none"
+        assert quiet[-2:] == ["--tb=no", "-q"]
+        assert _option(verbose, "--capability") == "TTL"
+        assert verbose[-1] == "-v"
+
+
+@pytest.mark.no_test_domain
+class TestDatabaseCapabilityNames:
+    """`--port database` takes flag names; the old marker names warn."""
+
+    def test_a_marker_name_warns_and_still_runs(self, capsys):
+        with pytest.warns(RemovedInProtean020Warning, match=r"v0\.20\.0") as record:
+            cli_test_adapter(
+                port="database", provider="memory", capabilities="basic_storage"
+            )
+
+        (deprecation,) = [w for w in record if w.category is RemovedInProtean020Warning]
+        assert "`basic_storage`" in str(deprecation.message)
+        rows = _report_rows(capsys.readouterr().out)
+        assert [(name, status) for name, status, _ in rows] == [
+            ("basic_storage", "PASS")
+        ]
+
+    def test_a_flag_name_runs_without_a_warning(self, capsys):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            cli_test_adapter(port="database", provider="memory", capabilities="CRUD")
+
+        assert not [
+            w for w in caught if issubclass(w.category, ProteanDeprecationWarning)
+        ]
+        rows = _report_rows(capsys.readouterr().out)
+        assert [(name, status) for name, status, _ in rows] == [
+            ("basic_storage", "PASS")
+        ]
+
+    def test_a_flag_selects_every_marker_whose_flags_include_it(self):
+        assert _requested_capabilities("TRANSACTIONS") == [
+            "transactional",
+            "atomic_transactions",
+        ]
+
+    @pytest.mark.parametrize(
+        "name, markers",
+        [
+            ("BASIC_STORAGE", ["basic_storage"]),
+            ("DOCUMENT_STORE", ["basic_storage", "schema_management"]),
+        ],
+    )
+    def test_a_named_set_selects_every_marker_of_its_flags(self, name, markers):
+        assert _requested_capabilities(name) == markers
+
+    def test_unknown_name_lists_the_flag_names(self, capsys):
+        with pytest.raises(typer.Exit) as exc_info:
+            _requested_capabilities("OPTIMISTIC")
+        assert exc_info.value.exit_code == 1
+
+        assert (
+            "Capability 'OPTIMISTIC' is unknown. Valid capabilities: CRUD, FILTER, "
+            "BULK_OPERATIONS, ORDERING, TRANSACTIONS, SIMULATED_TRANSACTIONS, "
+            "RAW_QUERIES, SCHEMA_MANAGEMENT, NATIVE_JSON, NATIVE_ARRAY, or a "
+            "named set of them"
+        ) in capsys.readouterr().out
+
+    def test_a_flag_no_marker_lists_exits(self, capsys):
+        with pytest.raises(typer.Exit) as exc_info:
+            _requested_capabilities("OPTIMISTIC_LOCKING")
+        assert exc_info.value.exit_code == 1
+
+        assert (
+            "Capability 'OPTIMISTIC_LOCKING' selects no database conformance test."
+        ) in capsys.readouterr().out
+
+    def test_test_dir_warns_and_still_runs(self, capsys):
+        with pytest.warns(RemovedInProtean020Warning, match="--test-dir"):
+            cli_test_adapter(
+                provider="memory",
+                capabilities="RAW_QUERIES",
+                test_dir=str(GENERIC_TEST_DIR),
+            )
+
+        rows = _report_rows(capsys.readouterr().out)
+        assert [(name, status) for name, status, _ in rows] == [("raw_queries", "PASS")]
+
+
+@pytest.mark.no_test_domain
+class TestDeprecationWarningVisibility:
+    """The real CLI prints the deprecation warnings of `test-adapter`.
+
+    pytest installs its own warning filters, so these run a fresh interpreter.
+    """
+
+    SCRIPT = (
+        "from protean.cli.test import _warn_deprecated_option; "
+        "_warn_deprecated_option('test_adapter_test_dir', 'The option')"
+    )
+
+    def test_the_warning_prints_under_default_filters(self):
+        result = subprocess.run(
+            [sys.executable, "-c", self.SCRIPT],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 0
+        assert "RemovedInProtean020Warning: The option" in result.stderr
+        assert "v0.20.0" in result.stderr
+
+    def test_a_warning_filter_from_the_user_still_applies(self):
+        result = subprocess.run(
+            [sys.executable, "-W", "error::DeprecationWarning", "-c", self.SCRIPT],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        assert result.returncode == 1
+        assert "Traceback" in result.stderr
+        assert "RemovedInProtean020Warning: The option" in result.stderr
 
 
 class TestFrameworkDevelopmentHelp:

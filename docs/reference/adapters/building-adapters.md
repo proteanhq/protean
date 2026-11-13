@@ -99,13 +99,16 @@ logs a warning. Use a name no installed package declares.
 
 ## Conformance Testing
 
-Protean provides a generic conformance test suite that validates any database
+Protean provides a conformance test suite for each port that validates an
 adapter against its declared capabilities. Use it to verify your adapter
-during development and in CI:
+during development and in CI, from a Protean source checkout:
 
 ```bash
 protean test test-adapter --provider=your-adapter-name
+protean test test-adapter --port=broker --provider=your-broker-name
 ```
+
+`--port` is `database` (the default), `broker`, `cache` or `event_store`.
 
 See [Adapter Conformance Testing](../testing/conformance.md) for
 the full reference.

@@ -332,15 +332,24 @@ claim, so those tests are deselected.
 ### `protean test test-adapter`
 
 In addition to `protean test`, Protean provides a dedicated subcommand for
-validating that a database adapter correctly implements its declared
-capabilities:
+validating that an adapter correctly implements its declared capabilities:
 
 ```shell
 protean test test-adapter --provider postgresql --uri "postgresql://..."
+protean test test-adapter --port event_store --provider message_db --uri "postgresql://..."
 ```
 
-This runs the generic adapter conformance suite against the specified provider,
-automatically skipping tests for capabilities the provider does not declare.
+`--port` picks the port: `database` (the default), `broker`, `cache` or
+`event_store`. `--provider` names the adapter registered for that port, `--uri`
+sets its connection URI, and `--config` merges a JSON object into its
+configuration. For `broker`, `cache` and `event_store`, the command runs the
+port's conformance suite once for the tests that need no flag (the `unmarked`
+row) and then once per capability flag. For `database`, it runs once per
+capability marker, such as `basic_storage`, and `--uri` and `--config` set only
+the configuration that reads the provider's capabilities. A flag or marker the adapter
+does not declare is reported as SKIP.
+
+The suites are not in the wheel, so the command runs from a source checkout.
 See [Adapter Conformance Testing](../../reference/testing/conformance.md) for
 full CLI reference and usage examples.
 
