@@ -11,6 +11,7 @@ import time
 import types
 import typing
 import uuid
+import weakref
 from abc import abstractmethod
 from collections.abc import Callable, Sequence
 from datetime import UTC
@@ -836,6 +837,19 @@ def _index_dialect_kwargs(
             )
 
     return kwargs
+
+
+# The ``RawIndex`` declarations of each model table whose dialect matches the
+# provider's. They are kept beside the table, not in ``Table.info``, because
+# Alembic writes ``info`` into every migration that creates the table.
+_raw_indexes_by_table: weakref.WeakKeyDictionary[Table, list[RawIndex]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _raw_indexes_of(table: Table) -> list[RawIndex]:
+    """The raw indexes ``table`` declares for its provider's dialect."""
+    return _raw_indexes_by_table.get(table, [])
 
 
 def _make_sa_indexes(
@@ -1870,16 +1884,21 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
 
         # Emit verbatim DDL for RawIndex escape-hatch declarations whose
         # dialect matches the configured engine, on table creation.
-        for raw in raw_indexes:
-            if raw.dialect == raw_dialect:
-                # ``DDL`` is declared without full annotations in SQLAlchemy,
-                # so mypy reports the call as untyped. Scoped-ignore per the
-                # external-lib precedent in the redis adapter.
-                event.listen(
-                    cls.__table__,
-                    "after_create",
-                    DDL(raw.ddl),  # type: ignore[no-untyped-call]
-                )
+        matching = [raw for raw in raw_indexes if raw.dialect == raw_dialect]
+        for raw in matching:
+            # ``DDL`` is declared without full annotations in SQLAlchemy,
+            # so mypy reports the call as untyped. Scoped-ignore per the
+            # external-lib precedent in the redis adapter.
+            event.listen(
+                cls.__table__,
+                "after_create",
+                DDL(raw.ddl),  # type: ignore[no-untyped-call]
+            )
+        if matching:
+            # Migrations read them through ``_raw_indexes_of``:
+            # ``op.create_table`` fires no ``after_create``, and the table's
+            # ``indexes`` does not hold them.
+            _raw_indexes_by_table[typing.cast("Table", cls.__table__)] = matching
 
     @orm.declared_attr.directive
     def __tablename__(cls) -> str:
