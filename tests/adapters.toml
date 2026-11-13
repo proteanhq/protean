@@ -21,6 +21,13 @@
 # - markers: pytest markers to enable and select (`-m <m> --<m>`).
 # - databases, brokers, stores: capability suites (`--db=`, `--broker=`,
 #   `--store=`), as `protean test -c FULL` runs them.
+# - conformance: "<port>:<adapter>" pairs, such as "event_store:message_db".
+#   For each pair, `protean test` runs `tests/conformance/<port>/` with
+#   `--port <port> --adapter <adapter>` under coverage, in the entry's leg and
+#   in `-c FULL`. The adapter must be registered in the port's entry-point
+#   group. Add `tests/conformance/<port>/` to the entry's paths. The memory
+#   entry lists no pair, because the core run already runs each suite on the
+#   in-memory adapter.
 #
 # Pushes to main and the nightly run still run every adapter (`-c FULL`).
 
@@ -223,6 +230,7 @@ paths = [
     "src/protean/port/event_store.py",
     "tests/adapters/event_store/",
     "tests/adapters/test_pool_configuration.py",
+    "tests/conformance/event_store/",
     "tests/event_sourced_repository/test_all_default_vo_roundtrip.py",
     "tests/outbox/test_reconciliation.py",
     "tests/server/test_event_store_subscription_backoff.py",
@@ -235,3 +243,4 @@ paths = [
 ]
 markers = ["message_db"]
 stores = ["MESSAGE_DB"]
+conformance = ["event_store:message_db"]
