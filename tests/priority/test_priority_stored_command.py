@@ -48,6 +48,28 @@ class GadgetCommandHandler(BaseCommandHandler):
         current_domain.repository_for(Gadget).add(gadget)
 
 
+class RegisterGadget(BaseCommand):
+    gadget_id: Identifier(identifier=True)
+    name: String(required=True)
+
+
+class GadgetRegistrationHandler(BaseCommandHandler):
+    @handle(RegisterGadget)
+    def register_gadget(self, command: RegisterGadget):
+        current_domain.process(
+            CreateGadget(gadget_id=f"{command.gadget_id}-child", name=command.name)
+        )
+
+
+def _run_on_engine(domain, handler_cls, message):
+    engine = Engine(domain=domain, test_mode=True)
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(engine.handle_message(handler_cls, message))
+    finally:
+        loop.close()
+
+
 def _build_domain(command_processing: str):
     from protean.domain import Domain
 
@@ -61,6 +83,8 @@ def _build_domain(command_processing: str):
     domain.register(GadgetActivated, part_of=Gadget)
     domain.register(CreateGadget, part_of=Gadget)
     domain.register(GadgetCommandHandler, part_of=Gadget)
+    domain.register(RegisterGadget, part_of=Gadget)
+    domain.register(GadgetRegistrationHandler, part_of=Gadget)
     domain.init(traverse=False)
     return domain
 
@@ -139,19 +163,26 @@ class TestAsyncCommandKeepsPriority:
         assert _outbox_records_for(async_domain, GadgetActivated) == []
 
         stored = _stored_command(async_domain, "g-6")
-        engine = Engine(domain=async_domain, test_mode=True)
-        loop = asyncio.new_event_loop()
-        try:
-            result = loop.run_until_complete(
-                engine.handle_message(GadgetCommandHandler, stored)
-            )
-        finally:
-            loop.close()
+        result = _run_on_engine(async_domain, GadgetCommandHandler, stored)
 
         assert result is True
         records = _outbox_records_for(async_domain, GadgetActivated)
         assert len(records) == 1
         assert records[0].priority == Priority.BULK
+
+    def test_child_command_from_server_handler_keeps_stored_priority(
+        self, async_domain
+    ):
+        async_domain.process(
+            RegisterGadget(gadget_id="g-7", name="G"), priority=Priority.BULK
+        )
+
+        stored = _stored_command(async_domain, "g-7")
+        result = _run_on_engine(async_domain, GadgetRegistrationHandler, stored)
+
+        assert result is True
+        child = _stored_command(async_domain, "g-7-child")
+        assert child.metadata.domain.priority == Priority.BULK
 
 
 class TestSyncCommandKeepsPriority:

@@ -187,8 +187,8 @@ class BaseCommand(BaseMessageType):
         else:
             headers = MessageHeaders(type=self.__class__.__type__, time=_domain_now())
 
-        # If metadata already has domain with sequence_id and asynchronous set (from enrich),
-        # preserve those values
+        # If metadata already has domain with sequence_id, asynchronous and
+        # priority set (from enrich), preserve those values
         existing_domain = (
             incoming.domain if incoming and hasattr(incoming, "domain") else None
         )
