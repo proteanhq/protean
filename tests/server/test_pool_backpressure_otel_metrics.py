@@ -24,6 +24,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.domain import Domain
 from protean.fields import Identifier, String
+from protean.port.provider import ProviderHealth
 from protean.server.observatory.metrics import (
     _collect_broker_pool_stats,
     _collect_pool_stats,
@@ -255,10 +256,11 @@ class TestSAProviderHealth:
             provider = sqlite_domain.providers["default"]
         engine = provider._engine
         provider._engine = create_engine("sqlite://", poolclass=NullPool)
-
-        assert provider.health().pool is None
-
-        provider._engine = engine
+        try:
+            assert provider.health().pool is None
+        finally:
+            provider._engine.dispose()
+            provider._engine = engine
 
     def test_reports_no_pool_for_in_memory_sqlite(self, sqlite_domain):
         """An in-memory SQLite engine uses ``SingletonThreadPool``, whose
@@ -270,14 +272,12 @@ class TestSAProviderHealth:
             provider = sqlite_domain.providers["default"]
         engine = provider._engine
         provider._engine = create_engine("sqlite://")
-        assert isinstance(provider._engine.pool, SingletonThreadPool)
-
-        assert provider.health().pool is None
-
-        provider._engine = engine
-
-        provider._engine.dispose()
-        provider._engine = engine
+        try:
+            assert isinstance(provider._engine.pool, SingletonThreadPool)
+            assert provider.health().pool is None
+        finally:
+            provider._engine.dispose()
+            provider._engine = engine
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +302,13 @@ class TestCollectPoolStats:
         assert test_domain.providers["default"].health().pool is None
 
         assert _collect_pool_stats([test_domain]) == []
+
+    def test_skips_provider_reporting_an_empty_pool(self, sqlite_domain, monkeypatch):
+        with sqlite_domain.domain_context():
+            provider = sqlite_domain.providers["default"]
+        monkeypatch.setattr(provider, "health", lambda: ProviderHealth(pool={}))
+
+        assert _collect_pool_stats([sqlite_domain]) == []
 
     def test_handles_domain_exception(self, sqlite_domain, monkeypatch):
         with sqlite_domain.domain_context():
@@ -409,6 +416,28 @@ class TestDBPoolOTELGauges:
         assert points["protean.db.pool_checked_out"][0].value == 1
         assert points["protean.db.pool_overflow"][0].value == expected["overflow"]
         assert points["protean.db.pool_checked_in"][0].value == expected["checked_in"]
+
+        _clean_gauges(sqlite_domain)
+
+    def test_pool_gauges_read_a_missing_counter_as_zero(
+        self, sqlite_domain, monkeypatch
+    ):
+        with sqlite_domain.domain_context():
+            provider = sqlite_domain.providers["default"]
+        monkeypatch.setattr(
+            provider, "health", lambda: ProviderHealth(pool={"size": 3})
+        )
+        metric_reader = _init_telemetry_in_memory(sqlite_domain)
+        _clean_gauges(sqlite_domain)
+        _register_infrastructure_gauges([sqlite_domain])
+
+        size = _get_metric_data_points(metric_reader, "protean.db.pool_size")
+        checked_out = _get_metric_data_points(
+            metric_reader, "protean.db.pool_checked_out"
+        )
+
+        assert [point.value for point in size] == [3]
+        assert [point.value for point in checked_out] == [0]
 
         _clean_gauges(sqlite_domain)
 

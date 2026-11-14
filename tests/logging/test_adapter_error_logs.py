@@ -25,7 +25,7 @@ class TestSqlAlchemyCredentialRedaction:
             pytest.skip("sqlalchemy not installed")
 
         # Build a mock that passes isinstance checks but has the attrs
-        # ping() needs — avoids instantiating the abstract class.
+        # ping() needs, so the test does not instantiate the abstract class.
         provider = MagicMock(spec=SAProvider)
         provider.config = {
             "database_uri": "postgresql://admin:s3cret@localhost:5432/mydb"

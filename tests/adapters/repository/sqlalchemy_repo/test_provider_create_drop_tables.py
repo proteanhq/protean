@@ -27,9 +27,7 @@ def provider(test_domain):
 
 
 @patch("protean.adapters.repository.sqlalchemy.create_engine")
-def test_create_database_artifacts_creates_tables(
-    mock_create_engine, test_domain, provider
-):
+def test_create_schema_creates_tables(mock_create_engine, test_domain, provider):
     # Setup
     provider.domain = test_domain
     mock_engine = Mock()
@@ -54,9 +52,7 @@ def test_create_database_artifacts_creates_tables(
 
 
 @patch("protean.adapters.repository.sqlalchemy.create_engine")
-def test_drop_database_artifacts_drops_tables(
-    mock_create_engine, test_domain, provider
-):
+def test_drop_schema_drops_tables(mock_create_engine, test_domain, provider):
     # Setup
     provider.domain = test_domain
     mock_engine = Mock()

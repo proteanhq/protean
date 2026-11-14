@@ -193,7 +193,7 @@ class ProviderPort(Protocol):
 
     @abstractmethod
     def get_session(self) -> SessionProtocol:
-        """A new session, which the Unit of Work commits or rolls back.
+        """The session the Unit of Work commits or rolls back.
 
         A backend without transactions returns a session whose methods do
         nothing and whose `is_active` is `True`.
@@ -255,7 +255,8 @@ class ProviderPort(Protocol):
 
         With `model_cls`, a user-defined model, it returns that model with the
         adapter's internals added. Without it, it builds a model from the
-        entity's fields. Repeated calls for one entity return the same class.
+        entity's fields. The first call for an entity fixes the class, and
+        later calls for that entity return it.
         """
 
     @abstractmethod
@@ -268,18 +269,8 @@ class RawQueryProviderPort(ProviderPort, Protocol):
 
     @abstractmethod
     def raw(self, query: Any, data: Any = None) -> Any:
-        """Run `query` on the database in its own transaction and return the
-        database's result unchanged."""
-
-
-CAPABILITY_PORTS: dict[DatabaseCapabilities, type[object]] = {
-    DatabaseCapabilities.RAW_QUERIES: RawQueryProviderPort,
-}
-"""The sub-protocol a provider subclasses when it declares each flag.
-
-Typed `type[object]` because mypy in strict mode rejects a Protocol with
-abstract members where `type[ProviderPort]` is expected.
-"""
+        """Run `query` on the provider's connection and return the database's
+        result unchanged."""
 
 
 class BaseProvider(RegisterLookupMixin, ProviderPort):
@@ -311,6 +302,18 @@ class BaseProvider(RegisterLookupMixin, ProviderPort):
             "isnull",
         }
     )
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Raise `TypeError` when a subclass names `RawQueryProviderPort` but
+        defines no `raw` of its own."""
+        super().__init_subclass__(**kwargs)
+        # `BaseProvider.raw` satisfies the Port's abstract `raw` in the MRO, so
+        # without this check such a provider builds and fails at call time.
+        if RawQueryProviderPort in cls.__mro__ and cls.raw is BaseProvider.raw:
+            raise TypeError(
+                f"{cls.__name__} subclasses RawQueryProviderPort but does not "
+                "implement raw"
+            )
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
         self.name = name

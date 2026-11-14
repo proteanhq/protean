@@ -542,9 +542,10 @@ endpoint. See [Observability](./observability.md).
 The gauges read `provider.health().pool`, which holds `{size, checked_out,
 overflow, checked_in}`. SQLAlchemy providers return live counts from the
 engine's `QueuePool`. An in-memory SQLite database uses a pool that keeps no
-counts, so its provider returns `None`. Memory and Elasticsearch providers keep
-no connection pool and also return `None`. The gauges skip every provider that
-returns `None`.
+counts, so its provider returns `None`. The memory provider keeps no connection
+pool, and the Elasticsearch client reports no pool counts, so both return `None`.
+The gauges skip every provider that returns `None` or an empty dict, and read a
+missing count as `0`.
 
 ## Shutdown sequence
 

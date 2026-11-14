@@ -23,11 +23,11 @@ def register_elements(test_domain):
 class TestProviderIsAlive:
     """Verify ping() returns True when provider is operational."""
 
-    def test_is_alive_after_initialization(self, test_domain):
+    def test_ping_after_initialization(self, test_domain):
         provider = test_domain.providers["default"]
         assert provider.ping() is True
 
-    def test_is_alive_after_operations(self, test_domain):
+    def test_ping_after_operations(self, test_domain):
         # Perform some operations
         test_domain.repository_for(LifecycleUser).add(LifecycleUser(name="Alice"))
         results = test_domain.repository_for(LifecycleUser)._dao.query.all()
@@ -37,7 +37,7 @@ class TestProviderIsAlive:
         provider = test_domain.providers["default"]
         assert provider.ping() is True
 
-    def test_is_alive_after_multiple_operations(self, test_domain):
+    def test_ping_after_multiple_operations(self, test_domain):
         # Multiple sequential operations
         for i in range(3):
             test_domain.repository_for(LifecycleUser).add(

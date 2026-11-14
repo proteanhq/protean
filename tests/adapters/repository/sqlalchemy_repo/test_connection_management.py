@@ -343,7 +343,7 @@ class TestPoolConfiguration:
 class TestIsAliveConnectionHandling:
     """Test that ping() properly manages connections."""
 
-    def test_is_alive_returns_true_for_valid_connection(self):
+    def test_ping_returns_true_for_valid_connection(self):
         """ping() should return True for a valid database."""
         domain = Domain("IsAlive Test")
         domain.config["databases"]["default"] = {
@@ -360,7 +360,7 @@ class TestIsAliveConnectionHandling:
                 p.close()
 
     @pytest.mark.postgresql
-    def test_is_alive_closes_connection_on_success_postgresql(self):
+    def test_ping_closes_connection_on_success_postgresql(self):
         """ping() should close its connection after a successful check."""
         domain = Domain("PG IsAlive Test")
         domain.config["databases"]["default"] = {

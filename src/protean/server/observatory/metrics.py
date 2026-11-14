@@ -222,7 +222,8 @@ def _collect_pool_stats(
 def _append_provider_pool_stats(
     results: list[tuple[str, str, PoolStats]], domain: Domain
 ) -> None:
-    """Append a row for each provider of *domain* whose health reports a pool.
+    """Append a row for each provider of *domain* whose health reports a
+    non-empty pool.
 
     Rows go into *results* one at a time, so a provider that raises leaves the
     rows of the providers before it in place.
@@ -232,8 +233,10 @@ def _append_provider_pool_stats(
         if providers and providers._providers:
             for name, provider in providers._providers.items():
                 pool = provider.health().pool
-                if pool is not None:
-                    results.append((name, provider.database_type, pool))
+                # An empty dict carries no counters, so it gets no row either.
+                if pool:
+                    db_type = getattr(provider, "database_type", "unknown")
+                    results.append((name, db_type, pool))
 
 
 def _collect_broker_pool_stats(
@@ -564,7 +567,7 @@ def _pool_observations(
     observations: list[Any] = []
     for name, db_type, stats in _collect_pool_stats(domains):
         attrs = {"provider_name": name, "database_type": db_type}
-        observations.append(create_observation(stats[stat_key], attrs))
+        observations.append(create_observation(stats.get(stat_key, 0), attrs))
     return observations
 
 

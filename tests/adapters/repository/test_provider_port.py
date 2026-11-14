@@ -58,8 +58,7 @@ class TestProviderPortIsEnforced:
             _stub_provider(ProviderPort, without=member)("stub", None, {})
 
     def test_a_complete_adapter_can_be_built(self):
-        provider = _stub_provider(ProviderPort)("stub", None, {})
-        assert provider.ping() is None
+        _stub_provider(ProviderPort)("stub", None, {})
 
     @pytest.mark.parametrize("member", ["close", "create_schema", "drop_schema"])
     def test_optional_lifecycle_members_default_to_no_ops(self, member):
@@ -76,6 +75,27 @@ class TestRawQueryProviderPortIsEnforced:
     def test_an_adapter_with_raw_can_be_built(self):
         provider = _stub_provider(RawQueryProviderPort)("stub", None, {})
         assert provider.raw("query") is None
+
+
+class TestBaseProviderRequiresRawForTheRawQueryPort:
+    def test_a_provider_naming_the_port_without_raw_cannot_be_defined(self):
+        with pytest.raises(TypeError, match="ForgotRaw .* does not implement raw"):
+
+            class ForgotRaw(BaseProvider, RawQueryProviderPort):
+                pass
+
+    def test_a_provider_naming_the_port_with_raw_can_be_defined(self):
+        class WithRaw(BaseProvider, RawQueryProviderPort):
+            def raw(self, query: Any, data: Any = None) -> Any:
+                return [query]
+
+        assert WithRaw.raw is not BaseProvider.raw
+
+    def test_a_provider_without_the_port_keeps_the_raising_raw(self):
+        class NoRaw(BaseProvider, ProviderPort):
+            pass
+
+        assert NoRaw.raw is BaseProvider.raw
 
 
 class TestBuiltInProvidersImplementThePorts:

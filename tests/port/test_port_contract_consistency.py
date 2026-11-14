@@ -117,6 +117,10 @@ class TestProviderPortTypeHints:
         function = attribute.fget if isinstance(attribute, property) else attribute
         assert "return" in function.__annotations__
 
+    @pytest.mark.parametrize("member", ["close", "create_schema", "drop_schema"])
+    def test_optional_member_has_return_type(self, member):
+        assert "return" in getattr(ProviderPort, member).__annotations__
+
     def test_base_provider_raw_has_return_type(self):
         hints = get_type_hints(BaseProvider.raw)
         assert "return" in hints

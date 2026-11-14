@@ -2,7 +2,7 @@
 
 Database providers abstract the underlying persistence technology, allowing
 Protean to support various databases without changing domain or application
-logic. Each provider implements the `BaseProvider` interface and declares the
+logic. Each provider implements `ProviderPort` and declares the
 capabilities it supports.
 
 ## Overview

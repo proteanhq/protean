@@ -295,10 +295,10 @@ class DynamoDBProvider(BaseProvider, ProviderPort):
         # boto3 manages connections internally and exposes no pool counters
         return ProviderHealth(pool=None)
 
-    def dao_for(self, entity_cls, database_model_cls):
+    def dao_for(self, entity_cls, model_cls):
         from protean_dynamodb.dao import DynamoDBDAO
 
-        return DynamoDBDAO(self.domain, self, entity_cls, database_model_cls)
+        return DynamoDBDAO(self.domain, self, entity_cls, model_cls)
 
     def model_for(self, entity_cls, model_cls=None):
         if model_cls is not None:
@@ -352,8 +352,7 @@ region = "us-east-1"
 
 ## Session Protocol
 
-The objects returned by `get_session()` and `get_connection()` must support
-three methods:
+The object returned by `get_session()` must support three methods:
 
 - `commit()`: Flush pending changes to the database
 - `rollback()`: Discard pending changes

@@ -58,7 +58,8 @@ classes for each of these components with its own implementation.
 
 ### Provider
 
-**Base Class**: `protean.port.provider.BaseProvider`
+**Port**: `protean.port.provider.ProviderPort`, with
+`protean.port.provider.RawQueryProviderPort` for raw queries
 
 The Provider is the main component responsible for interfacing with the
 specific database technology. It contains the configuration and setup needed
@@ -70,8 +71,8 @@ connections the application needs. It also implements the behavior
 specific to its database, such as connection pooling, transaction management,
 and query optimization.
 
-To add a new provider, subclass from the Provider Base class and implement
-methods for your database technology.
+To add a new provider, subclass `BaseProvider` first, then `ProviderPort`, and
+implement the Port's members for your database technology.
 
 ### Data Access Object (DAO)
 
