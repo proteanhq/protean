@@ -1,12 +1,23 @@
-"""Cross-adapter key-pattern behaviour for `_get_all`/`count`/`remove_by_key_pattern`."""
+"""Key-pattern behaviour of `_get_all`/`count`/`remove_by_key_pattern`, and of
+the adapter's glob members."""
 
 from __future__ import annotations
 
 import logging
+import time
 
-from .conftest import CacheEntry
+import pytest
+
+from protean.port.cache import CacheCapabilities
+
+from .conftest import PAST_SHORT_TTL, SHORT_TTL, CacheEntry
+
+PATTERNS = pytest.mark.requires(
+    CacheCapabilities.KEY_VALUE, CacheCapabilities.PATTERN_MATCH
+)
 
 
+@PATTERNS
 class TestSharedPatternBehaviour:
     def test__get_all_returns_matching_entries(self, cache):
         alpha = CacheEntry(key="alpha", value="one")
@@ -34,7 +45,20 @@ class TestSharedPatternBehaviour:
 
         assert cache.count("cache_entry:::*") == 0
 
+    @pytest.mark.requires(CacheCapabilities.TTL)
+    def test_an_expired_entry_drops_out_of_every_pattern_read(self, cache, adapter):
+        cache.add(CacheEntry(key="alpha", value="one"))
+        cache.add(CacheEntry(key="beta", value="two"), ttl=SHORT_TTL)
+        assert cache.count("cache_entry:::*") == 2
 
+        time.sleep(PAST_SHORT_TTL)
+
+        assert cache.count("cache_entry:::*") == 1
+        assert adapter.keys_matching("cache_entry:::*") == ["cache_entry:::alpha"]
+        assert [entry.key for entry in cache._get_all("cache_entry:::*")] == ["alpha"]
+
+
+@PATTERNS
 class TestRemoveByKeyPatternOnNoMatch:
     def test_remove_by_key_pattern_is_silent_when_nothing_matches(self, cache):
         """`remove_by_key_pattern` on a pattern that matches nothing is a
@@ -57,6 +81,7 @@ class TestRemoveByKeyPatternOnNoMatch:
         assert cache.count("cache_entry:::*") == 1
 
 
+@PATTERNS
 class TestGetAllReturnsEveryMatchInKeyOrder:
     """`_get_all` returns every matching entry, in key order, on every adapter.
 
@@ -99,6 +124,7 @@ class TestGetAllReturnsEveryMatchInKeyOrder:
         assert [entry.key for entry in results] == sorted(keys)
 
 
+@PATTERNS
 class TestGetAllHardCap:
     """`_get_all` returns at most `GET_ALL_MAX` entries and warns when it caps.
 
@@ -149,6 +175,7 @@ class TestGetAllHardCap:
         ]
 
 
+@PATTERNS
 class TestPatternLanguageIsAGlobOnEveryAdapter:
     def test_pattern_is_a_glob_on_every_adapter(self, cache):
         """A literal `.` is where glob and regex disagree.
@@ -194,3 +221,22 @@ class TestPatternLanguageIsAGlobOnEveryAdapter:
 
         assert cache.get("cache_entry:::abc") is not None
         assert cache.get("cache_entry:::a.c") is None
+
+
+@PATTERNS
+class TestTheAdapterGlobMembers:
+    def test_keys_matching_returns_each_key_once_in_ascending_order(self, adapter):
+        for key in ("b", "a", "c"):
+            adapter.put(key, {"key": key}, 60.0)
+        # A rewrite of a key must not make it appear twice.
+        adapter.put("a", {"key": "a"}, 60.0)
+
+        assert adapter.keys_matching("*") == ["a", "b", "c"]
+        assert adapter.count_matching("*") == 3
+
+    def test_keys_matching_leaves_out_keys_that_do_not_match(self, adapter):
+        adapter.put("order:::1", {"key": "1"}, 60.0)
+        adapter.put("user:::1", {"key": "1"}, 60.0)
+
+        assert adapter.keys_matching("order:::*") == ["order:::1"]
+        assert adapter.count_matching("order:::*") == 1

@@ -51,7 +51,7 @@ An entry in `tests/adapters.toml` names the other adapters with its `conformance
 - in the entry's leg, such as `protean test -c PR --no-core -a message-db`. An entry whose lane is `core` or `off` has no leg.
 - in `protean test -c FULL` and `protean test -c COVERAGE`, unless the entry's lane is `off`.
 
-The `message-db` entry lists `event_store:message_db`, so both run the event-store suite on Message DB.
+The `redis-cache` entry lists `cache:redis`, so both run the cache suite on Redis. The `message-db` entry lists `event_store:message_db`, so both run the event-store suite on Message DB.
 
 `protean test -c EVENTSTORE` does not read `tests/adapters.toml`. It runs the event-store suite on each event store in its own store list except memory, without coverage, like its `eventstore` runs. Its list holds `MEMORY` and `MESSAGE_DB`, so it runs the suite on Message DB.
 

@@ -577,3 +577,68 @@ class TestCapabilityOption:
             "conformance/event_store/test_event_store.py::test_ungated",
             "outside/test_outside.py::test_outside",
         }
+
+
+FORGETFUL_CACHE = """
+from protean.adapters.cache.memory import MemoryCache
+from protean.port.cache import CacheCapabilities
+
+
+class ForgetfulCache(MemoryCache):
+    @property
+    def capabilities(self):
+        return CacheCapabilities.LOCAL | CacheCapabilities.DURABLE
+"""
+
+REGISTER_FORGETFUL_CACHE = """
+from protean.infra.registry import caches
+
+caches.register("forgetful", "forgetful_cache.ForgetfulCache")
+"""
+
+
+@pytest.fixture
+def cache_suite(tmp_path: Path) -> Path:
+    """The real cache suite, with a memory cache that claims to be durable."""
+    root = tmp_path / "conformance"
+    root.mkdir()
+    (root / "__init__.py").write_text("")
+    shutil.copy(PLUGIN, root / "conftest.py")
+    shutil.copytree(
+        CONFORMANCE_DIR / "cache",
+        root / "cache",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    (tmp_path / "forgetful_cache.py").write_text(FORGETFUL_CACHE)
+    (tmp_path / "conftest.py").write_text(REGISTER_FORGETFUL_CACHE)
+    (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = --strict-markers\n")
+    return tmp_path
+
+
+class TestTheCacheSuite:
+    def test_fails_a_cache_that_declares_durable_and_keeps_nothing(self, cache_suite):
+        result = run(
+            cache_suite,
+            "conformance/cache",
+            "--port",
+            "cache",
+            "--adapter",
+            "forgetful",
+            "--adapter-config",
+            '{"TTL": 300}',
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        failed = [
+            line.split(" - ")[0].removeprefix("FAILED ")
+            for line in result.stdout.splitlines()
+            if line.startswith("FAILED ")
+        ]
+        durable_test = "test_an_entry_outlasts_the_adapter_that_wrote_it"
+        assert failed == [
+            f"conformance/cache/test_shared_and_durable.py::{durable_test}"
+        ]
+        found = outcomes(result)
+        assert found["test_add_then_get_round_trips"] == "passed"
+        skipped = [reason for reason in found.values() if reason != "passed"]
+        assert skipped == ["forgetful does not declare SHARED"]

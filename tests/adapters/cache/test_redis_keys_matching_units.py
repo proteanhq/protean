@@ -6,9 +6,10 @@ That sort, dedupe and decode is the whole behaviour, so it is worth covering
 on its own.
 
 Driven through a stub client rather than a live Redis, so the logic runs in the
-core suite the way `test_redis_ttl_units.py` covers `get_ttl`. The cross-adapter
-`TestGetAllReturnsEveryMatchInKeyOrder` in `generic/test_key_patterns.py` still
-pins the same contract against a real Redis on the `--redis` leg.
+core suite the way `test_redis_ttl_units.py` covers `get_ttl`. The conformance
+suite's `TestGetAllReturnsEveryMatchInKeyOrder` in
+`tests/conformance/cache/test_key_patterns.py` checks the same contract against a
+real Redis when the suite runs on Redis.
 """
 
 import fnmatch

@@ -130,8 +130,10 @@ paths = [
     "src/protean/port/cache.py",
     "src/protean/port/health.py",
     "tests/adapters/cache/",
+    "tests/conformance/cache/",
 ]
 markers = ["redis"]
+conformance = ["cache:redis"]
 
 [adapters.sqlite]
 lane = "touched"

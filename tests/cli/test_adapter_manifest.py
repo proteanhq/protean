@@ -356,7 +356,7 @@ class TestLoadAdapterManifest:
         ):
             manifest = load_adapter_manifest()
         pairs = [p for e in manifest.adapters for p in e.conformance]
-        assert pairs == ["event_store:message_db"]
+        assert pairs == ["cache:redis", "event_store:message_db"]
 
     def test_a_manifest_without_triggers_has_none(self, tmp_path):
         path = tmp_path / "adapters.toml"
@@ -500,6 +500,7 @@ class TestBuildAdapterSuites:
             "Marker: redis",
             "Broker: REDIS",
             "Broker: REDIS_PUBSUB",
+            "Conformance: cache/redis",
         ]
 
     def test_suites_are_coverage_wrapped_and_select_their_tests(self):

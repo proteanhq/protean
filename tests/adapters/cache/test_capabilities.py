@@ -15,7 +15,7 @@ from protean.port.cache import CacheCapabilities, CachePort
 from tests.shared import REDIS_URI
 
 # The Redis test reads a property and writes no keys, so sharing a DB number
-# with another suite cannot collide. This is the generic cache suite's number.
+# with another suite cannot collide.
 REDIS_DB = 6
 
 
@@ -99,6 +99,10 @@ def _stub_cache(*, with_capabilities: bool) -> type[CachePort]:
 
 
 class TestCapabilitiesIsRequired:
+    def test_the_port_itself_cannot_be_built(self):
+        with pytest.raises(TypeError, match="abstract class CachePort"):
+            CachePort()
+
     def test_an_adapter_without_capabilities_cannot_be_built(self):
         assert "capabilities" in CachePort.__abstractmethods__
         with pytest.raises(TypeError, match="capabilities"):

@@ -1,17 +1,15 @@
 """`view_for` on a cache-backed projection reads keys the service builds.
 
-Runs on every adapter in `CACHE_CONFIGS`, so a key `add` writes is the key
-`view_for(...).get` and `view_for(...).count` read on memory and on Redis.
+A key `add` writes is the key `view_for(...).get` and `view_for(...).count`
+read on the adapter under test.
 """
 
 import pytest
 
 from protean.core.projection import BaseProjection
-from protean.domain import Domain
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import Identifier, String
-
-from .conftest import CACHE_CONFIGS
+from protean.port.cache import CacheCapabilities
 
 
 class OrderSummary(BaseProjection):
@@ -24,20 +22,11 @@ class CustomerSummary(BaseProjection):
     name: String(required=True)
 
 
-@pytest.fixture(params=CACHE_CONFIGS)
-def domain(request):
-    domain = Domain(name="Test")
-    domain.config["caches"]["default"] = request.param
-    domain.register(OrderSummary, cache="default")
-    domain.register(CustomerSummary, cache="default")
-    domain.init(traverse=False)
-
-    with domain.domain_context():
-        cache = domain.cache_for(OrderSummary)
-        cache.clear()
-        yield domain
-        cache.clear()
-        cache._close()
+@pytest.fixture
+def domain(test_domain):
+    test_domain.register(OrderSummary, cache="default")
+    test_domain.register(CustomerSummary, cache="default")
+    return test_domain
 
 
 @pytest.fixture
@@ -49,7 +38,9 @@ def seeded(domain):
     cache.add(CustomerSummary(customer_id="cus-1", name="Ada"))
 
 
+@pytest.mark.requires(CacheCapabilities.KEY_VALUE)
 class TestAReadViewOverACache:
+    @pytest.mark.requires(CacheCapabilities.PATTERN_MATCH)
     def test_count_counts_the_projection_s_entries(self, domain, seeded):
         assert domain.view_for(OrderSummary).count() == 2
 

@@ -43,7 +43,6 @@ from protean.cli.test import (
     test_adapter as cli_test_adapter,
 )
 from protean.port.broker import BrokerCapabilities
-from protean.port.cache import CacheCapabilities
 from protean.port.event_store import EventStoreCapabilities
 from tests.conftest import SERVICE_KEYWORDS, _select_service_tests
 
@@ -1759,7 +1758,7 @@ class TestPortConformance:
     """`test-adapter --port` runs a port's suite under tests/conformance/.
 
     Uses the real memory and inline adapters and real subprocess pytest runs
-    against the placeholder suites.
+    against the suites under tests/conformance/.
     """
 
     @pytest.mark.parametrize(
@@ -1771,7 +1770,6 @@ class TestPortConformance:
                 EventStoreCapabilities,
                 ["CONSUMER_GROUPS", "DURABLE", "SCHEMA_MANAGEMENT"],
             ),
-            ("cache", "memory", CacheCapabilities, ["SHARED", "DURABLE"]),
             (
                 "broker",
                 "inline",
@@ -1799,6 +1797,21 @@ class TestPortConformance:
         declared_rows = [r for r in rows[1:] if r[0] not in skipped]
         assert declared_rows
         assert all(r[1:] == ("SKIP", "(no tests collected)") for r in declared_rows)
+
+    def test_the_cache_suite_passes_every_declared_flag_on_memory(self, capsys):
+        cli_test_adapter(port="cache", provider="memory")
+
+        rows = _report_rows(capsys.readouterr().out)
+        # Every cache test needs a flag, so the unmarked row collects nothing.
+        assert rows[0] == ("unmarked", "SKIP", "(no tests collected)")
+        assert [(name, status) for name, status, _ in rows[1:]] == [
+            ("KEY_VALUE", "PASS"),
+            ("TTL", "PASS"),
+            ("PATTERN_MATCH", "PASS"),
+            ("SHARED", "SKIP"),
+            ("DURABLE", "SKIP"),
+        ]
+        assert [detail for _, _, detail in rows[4:]] == ["(not declared)"] * 2
 
     def test_runs_one_pytest_call_per_declared_row(self):
         with patch("subprocess.run") as mock_run:
