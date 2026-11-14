@@ -11,8 +11,9 @@ import warnings
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, Flag
+from importlib import metadata
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -79,6 +80,10 @@ TEST_CONFIGS = {
     ],
 }
 
+# The adapter registry name of each ``TEST_CONFIGS["eventstores"]`` value, for
+# the conformance run of ``-c EVENTSTORE``.
+EVENT_STORE_ADAPTERS = {"MEMORY": "memory", "MESSAGE_DB": "message_db"}
+
 # The two suites of FULL's first phase, split by the suite's own
 # ``--service-tests`` option (tests/conftest.py). The in-memory suite needs no
 # service, so it can spread over every CPU. The services suite stays in one
@@ -100,11 +105,16 @@ class RunCategory(Enum):
     PR = "PR"
 
 
-# Database suites that point at the same server and database. Suites that share
-# a database cannot run at the same time: they create and drop the same tables.
+# Database and event-store suites that point at the same server and database,
+# keyed by the ``TEST_CONFIGS`` name. A conformance run looks up its adapter's
+# registry name in upper case. Suites that share a database cannot run at the
+# same time: they create, drop or truncate the same tables.
 SHARED_DATABASES = {
     "POSTGRESQL": "postgresql",
     "POSTGRESQL_PSYCOPG2": "postgresql",
+    # The event-store suite and the event-store conformance suite both
+    # truncate the whole Message DB store between tests.
+    "MESSAGE_DB": "message_db",
 }
 
 
@@ -356,8 +366,15 @@ class TestRunner:
             cmd = self.build_coverage_command(
                 self.build_test_command("eventstore", f"--store={store}")
             )
-            suites.append(TestSuite(f"Event Store: {store}", cmd))
+            suites.append(
+                TestSuite(
+                    f"Event Store: {store}",
+                    cmd,
+                    shared_database=SHARED_DATABASES.get(store),
+                )
+            )
 
+        suites.extend(build_full_conformance_suites(self))
         return suites
 
     def _database_lock(self, database: str) -> threading.Lock:
@@ -456,6 +473,7 @@ class TestRunner:
                 print(f"Running tests for EVENTSTORE: {store}…")
                 cmd = self.build_test_command("eventstore", f"--store={store}")
                 self.track_exit_code(self.run_command(cmd))
+            self._run_event_store_conformance()
         elif category == "DATABASE":
             for db in TEST_CONFIGS["databases"]:
                 marker_expression = self.get_database_marker_expression(db)
@@ -484,6 +502,20 @@ class TestRunner:
                     self.track_exit_code(self.run_command(cmd))
 
         return self.exit_status
+
+    def _run_event_store_conformance(self) -> None:
+        """Run the event-store conformance suite on each event store but memory.
+
+        The core run already runs the suite on the memory store.
+        """
+        for store in TEST_CONFIGS["eventstores"]:
+            if store == "MEMORY":
+                continue
+            name, cmd = conformance_run(
+                self, f"event_store:{EVENT_STORE_ADAPTERS[store]}"
+            )
+            print(f"Running tests for EVENTSTORE: {name}…")
+            self.track_exit_code(self.run_command(cmd))
 
     def run_full_suite_with_matrix_first(self, suites: list[TestSuite]) -> int:
         """Run full matrix test first, then remaining suites in parallel."""
@@ -581,6 +613,27 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 ADAPTER_MANIFEST = REPO_ROOT / "tests" / "adapters.toml"
 ADAPTER_LANES = ("core", "pr", "touched", "off")
 
+# The entry-point group each port's adapters register under, as in
+# ``protean.infra.registry``. The manifest check reads only the names in these
+# groups, so it works without the adapters' optional dependencies.
+CONFORMANCE_PORT_GROUPS = {
+    "database": "protean.providers",
+    "broker": "protean.brokers",
+    "cache": "protean.caches",
+    "event_store": "protean.event_stores",
+}
+CONFORMANCE_PORTS = tuple(CONFORMANCE_PORT_GROUPS)
+
+# The adapter each conformance suite runs on with no ``--adapter``, as in
+# tests/conformance/conftest.py. The core run covers it, so no manifest entry
+# may list it.
+CONFORMANCE_DEFAULT_ADAPTERS = {
+    "database": "memory",
+    "broker": "inline",
+    "cache": "memory",
+    "event_store": "memory",
+}
+
 
 @dataclass
 class AdapterEntry:
@@ -597,6 +650,8 @@ class AdapterEntry:
     databases: list[str]
     brokers: list[str]
     stores: list[str]
+    # "<port>:<adapter>" pairs, each a run of tests/conformance/<port>/.
+    conformance: list[str] = field(default_factory=list)
 
     def matches(self, path: str) -> bool:
         """Whether a changed file is one of this adapter's paths."""
@@ -679,12 +734,107 @@ def load_adapter_manifest(path: Path = ADAPTER_MANIFEST) -> AdapterManifest:
                 databases=list(raw.get("databases", [])),
                 brokers=list(raw.get("brokers", [])),
                 stores=list(raw.get("stores", [])),
+                conformance=_conformance_pairs(name, raw.get("conformance", [])),
             )
         )
     return AdapterManifest(
         adapters=adapters,
         trigger_all=list(data.get("triggers", {}).get("all", [])),
     )
+
+
+def _registered_adapters(group: str) -> set[str]:
+    """The adapter names in an entry-point group, read without loading any."""
+    return {ep.name for ep in metadata.entry_points(group=group)}
+
+
+def _conformance_pairs(name: str, pairs: object) -> list[str]:
+    """Check an entry's ``conformance`` value and return its pairs.
+
+    Raises ``ValueError`` naming the entry when the value is not a list, when a
+    pair is not ``"<port>:<adapter>"``, names an unknown port, names the port's
+    default adapter, or names an adapter that is not registered in the port's
+    entry-point group. No adapter module is imported.
+    """
+    if not isinstance(pairs, list):
+        # A wrong type gets the same ValueError naming the entry as every
+        # other bad conformance value.
+        raise ValueError(  # noqa: TRY004
+            f"Adapter '{name}' has conformance {pairs!r}; "
+            "use a list of '<port>:<adapter>' pairs"
+        )
+    for pair in pairs:
+        _check_conformance_pair(name, pair)
+    return list(pairs)
+
+
+def _check_conformance_pair(name: str, pair: object) -> None:
+    """Raise ``ValueError`` naming the entry unless ``pair`` is a valid pair."""
+    port, _, adapter = str(pair).partition(":")
+    if not isinstance(pair, str) or not port or not adapter:
+        raise ValueError(
+            f"Adapter '{name}' has conformance pair {pair!r}; use '<port>:<adapter>'"
+        )
+    group = CONFORMANCE_PORT_GROUPS.get(port)
+    if group is None:
+        raise ValueError(
+            f"Adapter '{name}' has conformance port '{port}'; "
+            f"use one of {list(CONFORMANCE_PORTS)}"
+        )
+    if adapter == CONFORMANCE_DEFAULT_ADAPTERS[port]:
+        raise ValueError(
+            f"Adapter '{name}' has conformance pair '{pair}'; the core run "
+            f"already runs the {port} suite on '{adapter}'"
+        )
+    registered = _registered_adapters(group)
+    if not registered:
+        raise ValueError(
+            f"Adapter '{name}' has conformance pair '{pair}', but no adapter is "
+            f"registered in {group}, so the package metadata is missing; "
+            "run `uv sync`"
+        )
+    if adapter not in registered:
+        raise ValueError(
+            f"Adapter '{name}' has conformance adapter '{adapter}', "
+            f"which is not registered in {group}; use one of {sorted(registered)}"
+        )
+
+
+def conformance_run(runner: TestRunner, pair: str) -> tuple[str, list[str]]:
+    """The suite name and pytest command of one ``"<port>:<adapter>"`` pair.
+
+    The command runs ``tests/conformance/<port>/`` with ``--port`` and
+    ``--adapter``.
+    """
+    port, _, adapter = pair.partition(":")
+    cmd = runner.build_test_command(
+        extra_flags=[f"tests/conformance/{port}", "--port", port, "--adapter", adapter]
+    )
+    return f"Conformance: {port}/{adapter}", cmd
+
+
+def build_conformance_suites(
+    runner: TestRunner, adapters: list[AdapterEntry]
+) -> list[TestSuite]:
+    """The coverage-wrapped conformance runs these adapters list, without repeats."""
+    pairs = dict.fromkeys(pair for entry in adapters for pair in entry.conformance)
+    suites = []
+    for pair in pairs:
+        name, cmd = conformance_run(runner, pair)
+        suites.append(
+            TestSuite(
+                name,
+                runner.build_coverage_command(cmd),
+                shared_database=SHARED_DATABASES.get(pair.partition(":")[2].upper()),
+            )
+        )
+    return suites
+
+
+def build_full_conformance_suites(runner: TestRunner) -> list[TestSuite]:
+    """The conformance suites of ``-c FULL``: those of every adapter not "off"."""
+    adapters = load_adapter_manifest().adapters
+    return build_conformance_suites(runner, [e for e in adapters if e.lane != "off"])
 
 
 def build_adapter_matrix(
@@ -760,6 +910,7 @@ def build_adapter_suites(
                 f"Event Store: {store}",
                 runner.build_test_command("eventstore", f"--store={store}"),
             )
+    suites.extend(build_conformance_suites(runner, adapters))
     return suites
 
 
@@ -1001,8 +1152,6 @@ GENERIC_TEST_DIR = Path(__file__).resolve().parent.parent.parent.parent / (
 # generic database suite, they are not in the wheel, so the command needs a
 # source checkout.
 CONFORMANCE_DIR = REPO_ROOT / "tests" / "conformance"
-
-CONFORMANCE_PORTS = ("database", "broker", "cache", "event_store")
 
 CHECKOUT_HINT = " The conformance suites need a Protean source checkout."
 

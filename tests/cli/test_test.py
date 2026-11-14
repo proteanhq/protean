@@ -16,6 +16,7 @@ from protean.cli import app
 from protean.cli.test import (
     CAPABILITY_MARKER_MAP,
     COVERAGE_BASE_CMD,
+    EVENT_STORE_ADAPTERS,
     FULL_MATRIX_IN_MEMORY,
     FULL_MATRIX_SERVICES,
     GENERIC_TEST_DIR,
@@ -33,6 +34,8 @@ from protean.cli.test import (
     _provider_has_capability_for_marker,
     _requested_capabilities,
     _run_pytest_for_marker,
+    build_full_conformance_suites,
+    load_adapter_manifest,
     validate_category,
     validate_workers,
 )
@@ -186,14 +189,24 @@ class TestTestRunner:
         suites = mock_runner.generate_test_suites()
 
         # The two full matrix suites, one per database, one per broker, one
-        # per non-memory event store. Every term is derived, so adding an
-        # adapter to TEST_CONFIGS that the generator does not pick up fails here.
+        # per non-memory event store, and one per conformance pair in the
+        # manifest. Every term is derived, so adding an adapter to TEST_CONFIGS
+        # or a pair to the manifest that the generator does not pick up fails
+        # here.
         event_stores = [s for s in TEST_CONFIGS["eventstores"] if s != "MEMORY"]
+        pairs = {
+            p
+            for e in load_adapter_manifest().adapters
+            if e.lane != "off"
+            for p in e.conformance
+        }
+        assert pairs
         expected = (
             2
             + len(TEST_CONFIGS["databases"])
             + len(TEST_CONFIGS["brokers"])
             + len(event_stores)
+            + len(pairs)
         )
         assert len(suites) == expected
         suite_names = [suite.name for suite in suites]
@@ -228,18 +241,19 @@ class TestTestRunner:
         assert "❌ Failed tests for Failing Suite (exit code: 1)" in captured.out
 
     @pytest.mark.parametrize(
-        "category,expected_configs",
+        "category,expected_runs",
         [
-            ("DATABASE", TEST_CONFIGS["databases"]),
-            ("BROKER", TEST_CONFIGS["brokers"]),
-            ("EVENTSTORE", TEST_CONFIGS["eventstores"]),
+            ("DATABASE", len(TEST_CONFIGS["databases"])),
+            ("BROKER", len(TEST_CONFIGS["brokers"])),
+            # A marker run per store, and a conformance run per store but memory.
+            ("EVENTSTORE", 2 * len(TEST_CONFIGS["eventstores"]) - 1),
         ],
     )
-    def test_run_category_tests(self, mock_runner, category, expected_configs):
+    def test_run_category_tests(self, mock_runner, category, expected_runs):
         """Test category-specific test execution."""
         result = mock_runner.run_category_tests(category)
         assert result == 0
-        assert mock_runner.run_command.call_count == len(expected_configs)
+        assert mock_runner.run_command.call_count == expected_runs
 
     def test_run_category_tests_invalid_category(self, mock_runner):
         """Test run_category_tests with invalid category returns 0."""
@@ -2410,3 +2424,176 @@ class TestCoreWorkers:
         commands = [call.args[0] for call in run.call_args_list]
         assert commands
         assert not any("-n" in cmd or "--dist" in cmd for cmd in commands)
+
+
+class TestConformanceRuns:
+    """Which runs ``protean test`` builds for the port conformance suites."""
+
+    MEMORY_SUITE = "Conformance: event_store/memory"
+
+    def _invoke(self, args: list[str], return_value: int = 0):
+        with (
+            patch(
+                "protean.cli.test.TestRunner.run_command", return_value=return_value
+            ) as run,
+            patch(
+                "protean.cli.test.TestRunner.run_single_suite",
+                autospec=True,
+                side_effect=lambda runner, suite, quiet=False: (
+                    names.append(suite.name) or runner.run_command(suite.command)
+                ),
+            ),
+            patch("protean.cli.test.TestRunner.generate_diff_coverage_report"),
+        ):
+            names: list[str] = []
+            result = CliRunner().invoke(app, ["test", *args])
+        return result, names, [call.args[0] for call in run.call_args_list]
+
+    def test_full_runs_the_message_db_conformance_suite_under_coverage(self):
+        suites = {s.name: s for s in TestRunner().generate_test_suites()}
+        suite = suites["Conformance: event_store/message_db"]
+        assert suite.command[:4] == COVERAGE_BASE_CMD
+        assert suite.command[-5:] == [
+            "tests/conformance/event_store",
+            "--port",
+            "event_store",
+            "--adapter",
+            "message_db",
+        ]
+        # It and the event-store suite truncate the same store, so they never
+        # run at the same time.
+        assert suite.shared_database == "message_db"
+        assert suites["Event Store: MESSAGE_DB"].shared_database == "message_db"
+        assert suites["Event Store: MESSAGE_DB"].command == [
+            *COVERAGE_BASE_CMD,
+            *PYTEST_BASE_CMD,
+            "-m",
+            "eventstore",
+            "--store=MESSAGE_DB",
+        ]
+
+    def test_full_skips_the_conformance_pairs_of_an_off_adapter(self, tmp_path):
+        manifest = tmp_path / "adapters.toml"
+        manifest.write_text(
+            '[adapters.parked]\nlane = "off"\n'
+            'conformance = ["event_store:message_db"]\n'
+            '[adapters.live]\nlane = "touched"\n'
+            'conformance = ["cache:redis"]\n'
+        )
+        with patch(
+            "protean.cli.test.load_adapter_manifest",
+            side_effect=lambda: load_adapter_manifest(manifest),
+        ):
+            suites = build_full_conformance_suites(TestRunner())
+        assert [s.name for s in suites] == ["Conformance: cache/redis"]
+
+    def test_full_runs_and_combines_the_conformance_suite(self):
+        result, names, commands = self._invoke(["-c", "FULL"])
+        assert result.exit_code == 0, result.output
+        assert "Conformance: event_store/message_db" in names
+        assert ["coverage", "combine"] in commands
+
+    def test_eventstore_runs_the_conformance_suite_on_message_db(self):
+        result, _, commands = self._invoke(["-c", "EVENTSTORE"])
+        assert result.exit_code == 0, result.output
+        assert [*PYTEST_BASE_CMD, "-m", "eventstore", "--store=MEMORY"] in commands
+        assert [*PYTEST_BASE_CMD, "-m", "eventstore", "--store=MESSAGE_DB"] in commands
+        assert [
+            *PYTEST_BASE_CMD,
+            "tests/conformance/event_store",
+            "--port",
+            "event_store",
+            "--adapter",
+            "message_db",
+        ] in commands
+
+    def test_eventstore_fails_when_the_conformance_suite_fails(self):
+        runner = TestRunner()
+        with patch.object(
+            runner,
+            "run_command",
+            side_effect=lambda cmd: 1 if "--adapter" in cmd else 0,
+        ):
+            assert runner.run_category_tests("EVENTSTORE") == 1
+
+    def test_eventstore_maps_its_stores_to_registry_names(self):
+        assert EVENT_STORE_ADAPTERS == {"MEMORY": "memory", "MESSAGE_DB": "message_db"}
+        assert set(EVENT_STORE_ADAPTERS) == set(TEST_CONFIGS["eventstores"])
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            [],
+            ["-c", "PR"],
+            ["-c", "PR", "--no-adapters"],
+            ["-c", "PR", "--no-core", "-a", "message-db"],
+            ["-c", "FULL"],
+            ["-c", "COVERAGE"],
+            ["-c", "EVENTSTORE"],
+            ["-c", "DATABASE"],
+            ["-c", "BROKER"],
+        ],
+    )
+    def test_no_category_runs_the_memory_suite_a_second_time(self, args):
+        result, names, commands = self._invoke(args)
+        assert result.exit_code == 0, result.output
+        assert commands
+        assert self.MEMORY_SUITE not in names
+        # A command that names a conformance folder runs it on one adapter,
+        # and with no --adapter the plugin picks the port's default adapter.
+        for command in commands:
+            if any(arg.startswith("tests/conformance") for arg in command):
+                assert "--adapter" in command, command
+                adapter = command[command.index("--adapter") + 1]
+                assert adapter not in ("memory", "inline"), command
+
+    def test_the_core_command_names_no_path(self):
+        command = TestRunner().build_core_command("logical")
+        assert command == [*PYTEST_BASE_CMD, "-n", "logical", "--dist", "loadfile"]
+        assert not any("conformance" in arg for arg in command)
+
+    @staticmethod
+    def _collected_ids(*paths: str) -> list[str]:
+        """The test ids the core command's flags collect from ``paths``."""
+        command = TestRunner().build_core_command("0")
+        command.remove("--cache-clear")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                *command,
+                "-p",
+                "no:cacheprovider",
+                "--collect-only",
+                "-q",
+                *paths,
+            ],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).resolve().parents[2],
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        return [line for line in result.stdout.splitlines() if "::" in line]
+
+    def test_core_collects_each_event_store_test_once(self):
+        # The core command names no path, so pytest collects the testpaths.
+        # Collecting the folder by name gives the full list to look for.
+        suite = self._collected_ids("tests/conformance/event_store")
+        assert suite
+        core = self._collected_ids()
+        for test_id in suite:
+            assert core.count(test_id) == 1, test_id
+
+    def test_core_fails_when_a_conformance_test_fails(self, tmp_path, monkeypatch):
+        # The core command collects the working directory when it finds no
+        # pytest configuration, so it runs this failing suite test.
+        suite = tmp_path / "tests" / "conformance" / "event_store"
+        suite.mkdir(parents=True)
+        (suite / "test_fails.py").write_text("def test_fails():\n    assert False\n")
+        (tmp_path / "tests" / "test_passes.py").write_text(
+            "def test_passes():\n    pass\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        result = CliRunner().invoke(app, ["test", "--workers", "0"])
+        assert result.exit_code == 1, result.output

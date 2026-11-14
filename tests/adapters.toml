@@ -1,7 +1,7 @@
 # The adapter manifest: which adapter suites a PR runs.
 #
-# Read by `protean test -c PR` and `protean test select-adapters`
-# (src/protean/cli/test.py), and by the `Adapters` job in ci.yml. The guard
+# Read by `protean test -c PR`, `-c FULL`, `-c COVERAGE` and
+# `protean test select-adapters` (src/protean/cli/test.py), and by the `Adapters` job in ci.yml. The guard
 # test tests/cli/test_adapter_manifest.py fails when a module under
 # src/protean/adapters/ is in no entry, when a test marked for a "touched"
 # adapter is outside that adapter's paths, or when a database, broker,
@@ -21,6 +21,14 @@
 # - markers: pytest markers to enable and select (`-m <m> --<m>`).
 # - databases, brokers, stores: capability suites (`--db=`, `--broker=`,
 #   `--store=`), as `protean test -c FULL` runs them.
+# - conformance: "<port>:<adapter>" pairs, such as "event_store:message_db".
+#   For each pair, `protean test` runs `tests/conformance/<port>/` with
+#   `--port <port> --adapter <adapter>` under coverage, in the entry's leg (a
+#   "core" or "off" entry has none) and in `-c FULL` and `-c COVERAGE` (unless
+#   the lane is "off"). The adapter must be registered in the port's
+#   entry-point group. Add `tests/conformance/<port>/` to the entry's paths.
+#   No pair names a port's default adapter (`inline` for `broker`, `memory`
+#   for the others), because the core run already runs each suite on it.
 #
 # Pushes to main and the nightly run still run every adapter (`-c FULL`).
 
@@ -32,7 +40,9 @@ all = [
     "pyproject.toml",
     "src/protean/cli/test.py",
     "tests/adapters.toml",
+    "tests/conformance/__init__.py",
     "tests/conformance/conftest.py",
+    "tests/conformance/flag_coverage.py",
     "tests/conftest.py",
     "tests/shared.py",
     "uv.lock",
@@ -242,6 +252,7 @@ paths = [
     "src/protean/port/event_store.py",
     "tests/adapters/event_store/",
     "tests/adapters/test_pool_configuration.py",
+    "tests/conformance/event_store/",
     "tests/event_sourced_repository/test_all_default_vo_roundtrip.py",
     "tests/outbox/test_reconciliation.py",
     "tests/server/test_event_store_subscription_backoff.py",
@@ -254,3 +265,4 @@ paths = [
 ]
 markers = ["message_db"]
 stores = ["MESSAGE_DB"]
+conformance = ["event_store:message_db"]
