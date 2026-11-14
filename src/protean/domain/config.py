@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import tomllib
-import warnings
 from typing import Any
 
 from protean.exceptions import ConfigurationError
@@ -17,6 +16,26 @@ from protean.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_CONFIG_FILENAMES = (".domain.toml", "domain.toml", "pyproject.toml")
+
+
+def _find_config_file(path: str) -> str | None:
+    """Return the config file that ``Config2.load_from_path`` reads for ``path``.
+
+    Checks ``path`` and up to 2 parent directories, and in each directory
+    picks the first of ``.domain.toml``, ``domain.toml`` and ``pyproject.toml``
+    that exists. Returns ``None`` when none of them holds a config file.
+    """
+    current_dir = path
+    for _ in range(3):
+        for config_file in _CONFIG_FILENAMES:
+            config_file_path = os.path.join(current_dir, config_file)
+            if os.path.exists(config_file_path):
+                return config_file_path
+        current_dir = os.path.dirname(current_dir)
+    return None
 
 
 def _default_config() -> dict[str, Any]:
@@ -403,32 +422,13 @@ class Config2(dict[str, Any]):
 
     @classmethod
     def load_from_path(cls, path: str) -> "Config2":
-        def find_config_file(directory: str) -> str | None:
-            config_files = [".domain.toml", "domain.toml", "pyproject.toml"]
-            for config_file in config_files:
-                config_file_path = os.path.join(directory, config_file)
-                if os.path.exists(config_file_path):
-                    return config_file_path
-            return None
+        """Load configuration from the first config file found from ``path``.
 
-        # Start checking from the provided path up to 2 parent directories
-        current_dir = path
-        config_file_name = None
-
-        for _ in range(3):  # Check the current directory and up to 2 parent directories
-            config_file_name = find_config_file(current_dir)
-            if config_file_name:
-                break
-
-            current_dir = os.path.dirname(current_dir)  # Move to the parent directory
-
+        Returns the default configuration when ``_find_config_file`` finds no
+        config file.
+        """
+        config_file_name = _find_config_file(path)
         if not config_file_name:
-            warnings.warn(
-                f"No configuration file found in {os.path.dirname(path)}"
-                f" or its immediate 2 parent directories. Using default configuration.",
-                stacklevel=2,
-            )
-            # Return default config when no config file is found
             return cls(**_default_config())
 
         config_dict = {}

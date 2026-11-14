@@ -180,7 +180,8 @@ from protean.utils.telemetry import (
 )
 
 from .command_processor import CommandProcessor
-from .config import Config2, ConfigAttribute
+from .config import Config2, ConfigAttribute, _find_config_file
+from .config import logger as config_logger
 from .context import DomainContext, _DomainContextGlobals
 from .handler_setup import HandlerConfigurator
 from .infrastructure import InfrastructureManager
@@ -360,6 +361,10 @@ class Domain:
 
         # Registry for all domain Objects
         self._domain_registry = _DomainRegistry()
+
+        # The directory searched for a config file when none was found; the
+        # next ``init`` logs it once, after logging is configured.
+        self._missing_config_dir: str | None = None
 
         #: The configuration dictionary as ``Config``.  This behaves
         #: exactly like a regular dictionary but supports additional methods
@@ -686,6 +691,14 @@ class Domain:
         """
         self._auto_configure_logging()
 
+        if self._missing_config_dir is not None:
+            config_logger.debug(
+                "No configuration file found in %s or its immediate 2 parent "
+                "directories. Using default configuration.",
+                self._missing_config_dir,
+            )
+            self._missing_config_dir = None
+
         self._prepare(traverse=traverse)
 
         # Initialize adapters after loading domain
@@ -984,8 +997,11 @@ class Domain:
         """Load configuration from a dict or a .toml file."""
         config_obj: Config2
         if config is not None:
+            self._missing_config_dir = None
             config_obj = Config2.load_from_dict(config)
         else:
+            found = _find_config_file(self.root_path)
+            self._missing_config_dir = None if found else self.root_path
             config_obj = Config2.load_from_path(self.root_path)
 
         # Load Constants

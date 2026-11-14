@@ -1,14 +1,28 @@
 """Tests to load domain configuration from .toml file"""
 
+import logging
 import os
 import sys
+import warnings
 from pathlib import Path
 
 import pytest
 
-from protean.domain.config import Config2
+from protean import Domain
+from protean.domain.config import Config2, _find_config_file
 from protean.utils.domain_discovery import derive_domain
 from tests.shared import change_working_directory_to
+
+NO_CONFIG_MESSAGE = "No configuration file found"
+
+
+def _no_config_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [
+        record
+        for record in caplog.records
+        if record.name == "protean.domain.config"
+        and NO_CONFIG_MESSAGE in record.getMessage()
+    ]
 
 
 class TestLoadingTOML:
@@ -84,15 +98,96 @@ class TestLoadingTOML:
         assert domain.config["custom"]["FOO"] == "quux"
 
     @pytest.mark.no_test_domain
-    @pytest.mark.filterwarnings("always::UserWarning")
-    def test_warning_if_config_file_not_found(self):
+    def test_no_warning_if_config_file_not_found(self):
         change_working_directory_to("test19")
 
         # Clean cached module so the Domain is freshly created
         sys.modules.pop("domain19", None)
 
-        with pytest.warns(UserWarning, match="No configuration file found in"):
-            derive_domain("domain19")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            domain = derive_domain("domain19")
+
+        assert _find_config_file(domain.root_path) is None
+        assert domain.config["databases"]["default"]["provider"] == "memory"
+        assert not [w for w in caught if NO_CONFIG_MESSAGE in str(w.message)]
+
+
+@pytest.mark.no_test_domain
+class TestDomainWithoutConfigFile:
+    @pytest.fixture(autouse=True)
+    def no_config_in_reach(self, tmp_path):
+        # A config file in tmp_path or its 2 parents would make every test
+        # here pass without exercising the no-config path.
+        assert _find_config_file(str(tmp_path)) is None
+
+    def test_construction_raises_no_warning(self, tmp_path):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            Domain(name="Test", root_path=str(tmp_path))
+
+        assert not [w for w in caught if NO_CONFIG_MESSAGE in str(w.message)]
+
+    def test_load_from_path_returns_defaults_without_warning(self, tmp_path):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            config = Config2.load_from_path(str(tmp_path))
+
+        assert config["databases"]["default"]["provider"] == "memory"
+        assert not [w for w in caught if NO_CONFIG_MESSAGE in str(w.message)]
+
+    def test_construction_logs_nothing(self, tmp_path, caplog):
+        caplog.set_level(logging.DEBUG, logger="protean.domain.config")
+
+        Domain(name="Test", root_path=str(tmp_path))
+
+        assert _no_config_records(caplog) == []
+
+    def test_init_logs_the_searched_directory_at_debug(self, tmp_path, caplog):
+        caplog.set_level(logging.DEBUG, logger="protean.domain.config")
+        domain = Domain(name="Test", root_path=str(tmp_path))
+
+        domain.init(traverse=False)
+
+        records = _no_config_records(caplog)
+        assert len(records) == 1
+        assert records[0].levelno == logging.DEBUG
+        assert records[0].getMessage() == (
+            f"No configuration file found in {domain.root_path} or its "
+            "immediate 2 parent directories. Using default configuration."
+        )
+
+    def test_second_init_does_not_log_again(self, tmp_path, caplog):
+        caplog.set_level(logging.DEBUG, logger="protean.domain.config")
+        domain = Domain(name="Test", root_path=str(tmp_path))
+        domain.init(traverse=False)
+        assert len(_no_config_records(caplog)) == 1
+
+        domain.init(traverse=False)
+
+        assert len(_no_config_records(caplog)) == 1
+
+    def test_explicit_config_logs_nothing(self, tmp_path, caplog):
+        caplog.set_level(logging.DEBUG, logger="protean.domain.config")
+        domain = Domain(
+            name="Test",
+            root_path=str(tmp_path),
+            config={"databases": {"default": {"provider": "memory"}}},
+        )
+
+        domain.init(traverse=False)
+
+        assert _no_config_records(caplog) == []
+
+    def test_config_file_present_logs_nothing(self, tmp_path, caplog):
+        (tmp_path / "domain.toml").write_text('[custom]\nFOO = "bar"\n')
+        caplog.set_level(logging.DEBUG, logger="protean.domain.config")
+        domain = Domain(name="Test", root_path=str(tmp_path))
+        assert domain.config["custom"]["FOO"] == "bar"
+
+        domain.init(traverse=False)
+
+        assert _no_config_records(caplog) == []
 
 
 class TestLoadingDefaults:

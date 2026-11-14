@@ -385,7 +385,6 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 filterwarnings = [
     "ignore::sqlalchemy.exc.SAWarning",
-    "ignore:No configuration file found.*Using default configuration.*:UserWarning",
     "ignore:Working outside of domain context",
     "ignore:.*was never awaited:RuntimeWarning",
     # Guardrail: the `is_event_sourced` decorator/register alias is deprecated in

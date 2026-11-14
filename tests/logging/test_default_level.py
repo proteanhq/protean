@@ -68,8 +68,7 @@ def _run_script(tmp_path: Path, **env_overrides: str) -> subprocess.CompletedPro
     env = {k: v for k, v in os.environ.items() if k not in _ENV_VARS}
     env.update(env_overrides)
     result = subprocess.run(
-        # The "No configuration file found" UserWarning is not a log line.
-        [sys.executable, "-W", "ignore::UserWarning", str(script)],
+        [sys.executable, str(script)],
         cwd=tmp_path,
         env=env,
         capture_output=True,
