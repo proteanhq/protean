@@ -23,8 +23,9 @@
 #   `--store=`), as `protean test -c FULL` runs them.
 # - conformance: "<port>:<adapter>" pairs, such as "event_store:message_db".
 #   For each pair, `protean test` runs `tests/conformance/<port>/` with
-#   `--port <port> --adapter <adapter>` under coverage, in the entry's leg and
-#   in `-c FULL` and `-c COVERAGE`, unless the lane is "off". The adapter
+#   `--port <port> --adapter <adapter>` under coverage, in the entry's leg (a
+#   "core" or "off" entry has none) and in `-c FULL` and `-c COVERAGE` (unless
+#   the lane is "off"). The adapter
 #   must be registered in the port's entry-point group. Add
 #   `tests/conformance/<port>/` to the entry's paths. No pair names a port's
 #   default adapter (`inline` for `broker`, `memory` for the others), because

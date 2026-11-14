@@ -46,10 +46,10 @@ protean test -c DATABASE
 
 The port conformance suites live in `tests/conformance/<port>/` (see [Adapter Conformance Testing](../../reference/testing/conformance.md)). The core run collects `tests/`, so it runs each suite once on the port's default adapter: `inline` for `broker`, `memory` for the other three. That covers `CORE`, `PR` with or without `--no-adapters`, and the in-memory pass of `FULL` and `COVERAGE`. No category adds a second run on a default adapter.
 
-An entry in `tests/adapters.toml` names the other adapters with its `conformance` key, a list of `"<port>:<adapter>"` pairs. For each pair, `protean test` runs pytest over `tests/conformance/<port>/` with `--port <port> --adapter <adapter>`, under coverage, in two places unless the entry's lane is `off`:
+An entry in `tests/adapters.toml` names the other adapters with its `conformance` key, a list of `"<port>:<adapter>"` pairs. For each pair, `protean test` runs pytest over `tests/conformance/<port>/` with `--port <port> --adapter <adapter>`, under coverage:
 
-- the entry's leg, such as `protean test -c PR --no-core -a message-db`
-- `protean test -c FULL` and `protean test -c COVERAGE`
+- in the entry's leg, such as `protean test -c PR --no-core -a message-db`. An entry whose lane is `core` or `off` has no leg.
+- in `protean test -c FULL` and `protean test -c COVERAGE`, unless the entry's lane is `off`.
 
 The `message-db` entry lists `event_store:message_db`, so both run the event-store suite on Message DB.
 
