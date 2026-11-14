@@ -20,6 +20,7 @@ class Order:
 
 # --8<-- [start:inventory]
 from protean.core.event import BaseEvent
+from protean.exceptions import ValidationError
 from protean.fields import Identifier, Integer
 
 
@@ -37,6 +38,13 @@ class Inventory:
     reserved: Integer(default=0)
 
     def reserve(self, quantity: int) -> None:
+        if quantity <= 0:
+            raise ValidationError({"quantity": ["Quantity must be greater than zero"]})
+        if quantity > self.available:
+            raise ValidationError(
+                {"quantity": [f"Only {self.available} units of {self.product_id} left"]}
+            )
+
         self.available -= quantity
         self.reserved += quantity
 

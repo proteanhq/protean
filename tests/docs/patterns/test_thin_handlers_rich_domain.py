@@ -513,8 +513,8 @@ def test_repeated_lines_over_stock_are_rejected_and_stock_is_unchanged(warehouse
 def test_reserve_twice_for_one_order_reserves_once(warehouse):
     inventory = warehouse.Inventory(product_id="prod-1", available=5)
 
-    inventory.reserve(order_id="ord-1", quantity=2)
-    inventory.reserve(order_id="ord-1", quantity=2)
+    inventory.reserve(order_id="ord-1", quantities=[2])
+    inventory.reserve(order_id="ord-1", quantities=[2])
 
     assert (inventory.available, inventory.reserved) == (3, 2)
 
@@ -523,11 +523,60 @@ def test_reserve_more_than_available_is_rejected_and_stock_is_unchanged(warehous
     inventory = warehouse.Inventory(product_id="prod-1", available=1)
 
     with pytest.raises(ValidationError) as exc:
-        inventory.reserve(order_id="ord-1", quantity=2)
+        inventory.reserve(order_id="ord-1", quantities=[2])
 
     assert exc.value.messages == {"quantity": ["Only 1 units of prod-1 left"]}
     assert (inventory.available, inventory.reserved) == (1, 0)
     assert inventory.reserved_for == []
+
+
+def test_reserve_rejects_a_negative_line_even_when_the_total_fits(warehouse):
+    inventory = warehouse.Inventory(product_id="prod-1", available=5)
+
+    with pytest.raises(ValidationError) as exc:
+        inventory.reserve(order_id="ord-1", quantities=[5, -3])
+
+    assert exc.value.messages == {"quantity": ["Line quantity -3 is not positive"]}
+    assert (inventory.available, inventory.reserved) == (5, 0)
+    assert inventory.reserved_for == []
+
+
+def test_reserve_rejects_an_empty_list_of_lines(warehouse):
+    inventory = warehouse.Inventory(product_id="prod-1", available=5)
+
+    with pytest.raises(ValidationError) as exc:
+        inventory.reserve(order_id="ord-1", quantities=[])
+
+    assert exc.value.messages == {"quantity": ["An order needs at least one line"]}
+    assert (inventory.available, inventory.reserved) == (5, 0)
+    assert inventory.reserved_for == []
+
+
+def _validation_error(error):
+    """Return the first ``ValidationError`` in ``error``'s ``__cause__`` chain."""
+    while error is not None and not isinstance(error, ValidationError):
+        error = error.__cause__
+    assert error is not None, "no ValidationError in the cause chain"
+    return error
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [[0], [-2], [6], [5, -3]],
+    ids=["zero", "negative", "over-stock", "negative-line-in-a-fitting-total"],
+)
+def test_order_placed_with_a_bad_quantity_is_rejected_and_stock_is_unchanged(
+    warehouse, lines
+):
+    _stock(warehouse, "prod-1", 5)
+
+    with pytest.raises(TransactionError) as exc:
+        _place(warehouse, [{"product_id": "prod-1", "quantity": q} for q in lines])
+
+    assert "quantity" in _validation_error(exc.value).messages
+    stored = warehouse.domain.repository_for(warehouse.Inventory).get("prod-1")
+    assert (stored.available, stored.reserved) == (5, 0)
+    assert stored.reserved_for == []
 
 
 # --- Application Services Follow the Same Pattern ---
