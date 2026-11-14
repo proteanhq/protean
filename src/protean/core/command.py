@@ -218,6 +218,7 @@ class BaseCommand(BaseMessageType):
             asynchronous=existing_domain.asynchronous
             if existing_domain and hasattr(existing_domain, "asynchronous")
             else True,
+            priority=existing_domain.priority if existing_domain else 0,
             correlation_id=correlation_id,
             causation_id=causation_id,
         )
