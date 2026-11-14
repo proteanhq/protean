@@ -13,7 +13,13 @@ from protean.adapters.repository.schema_migrator import (
     migration_provider,
 )
 from protean.cli._helpers import handle_cli_exceptions, load_domain
-from protean.exceptions import ConfigurationError, NotSupportedError
+from protean.cli.result import EXIT_FAILURE, emit_usage_error
+from protean.exceptions import (
+    ConfigurationError,
+    NoDomainException,
+    NotSupportedError,
+)
+from protean.utils.domain_discovery import derive_domain
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -255,3 +261,57 @@ def downgrade(
 
     if not sql:
         typer.echo(f"Downgraded the database to {revision}.")
+
+
+@app.command(name="check")
+@handle_cli_exceptions("db check")
+def check(
+    domain: DomainOption = ".",
+    directory: DirectoryOption = "migrations",
+) -> None:
+    """Report the differences between the database and the table definitions.
+
+    Exits 0 when they agree, 1 when they differ, and 2 on a usage or
+    environment error, with the message on stderr.
+    """
+    found = _differences(domain, Path(directory))
+    if not found:
+        typer.echo("The database matches the table definitions.")
+        return
+    for line in found:
+        typer.echo(line)
+    raise typer.Exit(code=EXIT_FAILURE)
+
+
+def _differences(domain_path: str, directory: Path) -> list[str]:
+    """The differences ``check`` reports; every failure exits 2 on stderr."""
+    # ``load_domain`` and ``_with_migrator`` abort, which exits 1, the code
+    # for a difference, so this loads the domain and the migrator itself.
+    try:
+        derived_domain = derive_domain(domain_path)
+    except NoDomainException as exc:
+        emit_usage_error(
+            as_json=False, message=f"Error loading Protean domain: {exc.args[0]}"
+        )
+    except Exception as exc:  # noqa: BLE001 - importing the domain runs user code
+        emit_usage_error(
+            as_json=False,
+            message=f"Error loading Protean domain: {type(exc).__name__}: {exc}",
+        )
+    assert derived_domain is not None
+
+    try:
+        derived_domain.init()
+    except Exception as exc:  # noqa: BLE001 - an environment error, such as an unreachable database
+        emit_usage_error(
+            as_json=False, message=f"Error initialising Protean domain: {exc}"
+        )
+
+    try:
+        with derived_domain.domain_context():
+            provider = migration_provider(
+                derived_domain, _migrations_provider_name(directory)
+            )
+            return provider.schema_migrator(directory).check()
+    except (ConfigurationError, NotSupportedError) as exc:
+        emit_usage_error(as_json=False, message=f"Error: {exc.args[0]}")

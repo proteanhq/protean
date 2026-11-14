@@ -135,6 +135,19 @@ class SchemaMigrator(Protocol):
         Raises ``ConfigurationError`` when the migration tool reports an error.
         """
 
+    def check(self) -> list[str]:
+        """Compare the database with the provider's table definitions.
+
+        Returns one line per difference, in the form
+        ``<operation> <table>[.<column or index>]``, such as
+        ``add_column order.discount``, or an empty list when they agree.
+        Writes nothing to the database.
+
+        Raises ``ConfigurationError`` when the database is not at the latest
+        migration, when it cannot be read, or when the migration tool reports
+        an error.
+        """
+
 
 class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
     """Base class for database providers.

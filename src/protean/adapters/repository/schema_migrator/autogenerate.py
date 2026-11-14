@@ -2,7 +2,8 @@
 
 Autogenerate compares the provider's ``MetaData`` with the database. These
 options keep that comparison to the tables the provider owns, in the schema it
-owns, and add the raw indexes autogenerate cannot see.
+owns, and add the raw indexes autogenerate cannot see. ``differences`` runs
+the same comparison for ``protean db check`` and reports it as text.
 """
 
 from __future__ import annotations
@@ -12,16 +13,30 @@ import warnings
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
+from alembic.autogenerate import compare_metadata
 from alembic.operations import ops
-from sqlalchemy import Column, Computed, DefaultClause, MetaData, Table, inspect, text
+from sqlalchemy import (
+    Column,
+    Computed,
+    Constraint,
+    DefaultClause,
+    Index,
+    MetaData,
+    Table,
+    inspect,
+    text,
+)
 from sqlalchemy.exc import SAWarning
 from sqlalchemy.sql import ClauseElement
+from sqlalchemy.sql.schema import ColumnCollectionConstraint
 
 from protean.adapters.repository.sqlalchemy import _raw_indexes_of
 from protean.core.index import RawIndex
+from protean.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
     from sqlalchemy.engine import Connection
 
 
@@ -51,10 +66,7 @@ class _Comparison:
 
     def __init__(self, metadata: MetaData, connection: Connection | None) -> None:
         self.metadata = metadata
-        default_schema = connection.dialect.default_schema_name if connection else None
-        # Reflection reports the default schema as None, so the provider's
-        # schema is compared as None when it is the default one.
-        self.schema = None if metadata.schema == default_schema else metadata.schema
+        self.schema = _compared_schema(metadata, connection)
         self.known_tables = {table.name for table in metadata.tables.values()}
 
     def include_name(self, name: str | None, type_: str, parent_names: Any) -> bool:
@@ -100,6 +112,121 @@ class _Comparison:
             directives[:] = []
 
 
+def _compared_schema(metadata: MetaData, connection: Connection | None) -> str | None:
+    """The schema of ``metadata`` as reflection names it on ``connection``."""
+    default_schema = connection.dialect.default_schema_name if connection else None
+    # Reflection reports the default schema as None, so the provider's schema
+    # is compared as None when it is the default one.
+    return None if metadata.schema == default_schema else metadata.schema
+
+
+def differences(context: Any, metadata: MetaData) -> list[str]:
+    """The differences between the database and ``metadata``, one line each.
+
+    ``context`` is Alembic's environment context, configured online with
+    ``configure_options``. Each line is the operation, then the table, then
+    ``.<column>`` or ``.<index or constraint name>`` where there is one, such
+    as ``add_column order.discount``. The lines are sorted. The comparison
+    drops the same differences ``migrate`` drops, and reports a named raw
+    index an existing table lacks as ``add_index``. Nothing is written to the
+    database.
+
+    Raises:
+        ConfigurationError: The database is not at the latest revision of the
+            migrations folder.
+    """
+    migration_context = context.get_context()
+    database_heads = set(migration_context.get_current_heads())
+    folder_heads = set(context.script.get_heads())
+    if database_heads != folder_heads:
+        raise ConfigurationError(
+            "The database is not at the latest migration, so it cannot be "
+            "compared with the table definitions. "
+            + _behind_head_hint(context.script, database_heads, folder_heads)
+        )
+
+    return _compare(migration_context, metadata)
+
+
+def _behind_head_hint(
+    script: ScriptDirectory, database_heads: set[str], folder_heads: set[str]
+) -> str:
+    """What to do about a database whose heads are not the folder's heads."""
+    known = {revision.revision for revision in script.walk_revisions()}
+    unknown = sorted(database_heads - known)
+    if unknown:
+        return (
+            f"The database is at revision {', '.join(unknown)}, which the "
+            "migrations folder does not have."
+        )
+    if len(folder_heads) > 1:
+        return (
+            "The migrations folder has more than one head. Run "
+            "`protean db upgrade heads` first."
+        )
+    return "Run `protean db upgrade` first."
+
+
+def _compare(migration_context: MigrationContext, metadata: MetaData) -> list[str]:
+    """The sorted lines of ``differences``, without the check on the heads."""
+    connection = migration_context.connection
+    assert connection is not None
+    diffs = _flatten(compare_metadata(migration_context, metadata))
+    lines = [
+        _diff_line(diff)
+        for diff in diffs
+        if not _changes_primary_key_nullability(metadata, diff)
+    ]
+    schema = _compared_schema(metadata, connection)
+    lines += [
+        f"add_index {table.name}.{name}"
+        for table, name, _ in _missing_raw_indexes(connection, metadata, schema, set())
+    ]
+    return sorted(lines)
+
+
+def _flatten(diffs: list[Any]) -> list[tuple[Any, ...]]:
+    """``diffs`` with each list of column changes replaced by its changes."""
+    flat: list[tuple[Any, ...]] = []
+    for diff in diffs:
+        flat += diff if isinstance(diff, list) else [diff]
+    return flat
+
+
+def _changes_primary_key_nullability(metadata: MetaData, diff: tuple[Any, ...]) -> bool:
+    # ``("modify_nullable", schema, table, column, kw, existing, new)``
+    return diff[0] == "modify_nullable" and _is_primary_key_column(
+        metadata, diff[2], diff[3]
+    )
+
+
+def _diff_line(diff: tuple[Any, ...]) -> str:
+    """``diff``, one entry of ``compare_metadata``, as ``<operation> <table>[.<name>]``."""
+    operation, subject = diff[0], diff[1]
+    if isinstance(subject, Table):
+        return f"{operation} {subject.name}"
+    if isinstance(subject, (Index, Constraint)):
+        table = subject.table
+        assert table is not None
+        if isinstance(subject.name, str):
+            return f"{operation} {table.name}.{subject.name}"
+        # An unnamed constraint has the name None when it is reflected and a
+        # placeholder that is not a string when it is declared, so the line
+        # names its columns.
+        columns: list[Column[Any]] = (
+            list(subject.columns)
+            if isinstance(subject, ColumnCollectionConstraint)
+            else []
+        )
+        if not columns:
+            return f"{operation} {table.name}"
+        return f"{operation} {table.name}.{','.join(column.name for column in columns)}"
+    # A column change: ``(operation, schema, table, column, ...)``, where the
+    # column is a ``Column`` or, in a ``modify_*`` change, its name.
+    table, column = diff[2], diff[3]
+    return f"{operation} {table}.{column if isinstance(column, str) else column.name}"
+
+
 def _table(metadata: MetaData, name: str) -> Table | None:
     for table in metadata.tables.values():
         if table.name == name:
@@ -143,8 +270,12 @@ def _drop_primary_key_nullability(metadata: MetaData, container: Any) -> None:
 
 
 def _alters_primary_key(metadata: MetaData, op: ops.AlterColumnOp) -> bool:
-    table = _table(metadata, op.table_name)
-    return table is not None and op.column_name in table.primary_key.columns
+    return _is_primary_key_column(metadata, op.table_name, op.column_name)
+
+
+def _is_primary_key_column(metadata: MetaData, table_name: str, column: str) -> bool:
+    table = _table(metadata, table_name)
+    return table is not None and column in table.primary_key.columns
 
 
 def _add_raw_indexes_to_new_tables(metadata: MetaData, upgrade: list[Any]) -> set[str]:
@@ -297,17 +428,33 @@ def _add_missing_raw_indexes(
     """
     connection = context.connection
     assert connection is not None
+    for table, name, ddl in _missing_raw_indexes(connection, metadata, schema, created):
+        script.upgrade_ops.ops.append(_execute_sql(ddl))
+        script.downgrade_ops.ops.insert(
+            0, ops.DropIndexOp(name, table.name, schema=table.schema)
+        )
+
+
+def _missing_raw_indexes(
+    connection: Connection, metadata: MetaData, schema: str | None, created: set[str]
+) -> list[tuple[Table, str, str]]:
+    """The table, name and DDL of each named raw index an existing table lacks.
+
+    A table exists when the database has it and its name is not in
+    ``created``. A raw index is lacking when the table has no index of its name.
+    """
     existing = set(inspect(connection).get_table_names(schema=schema)) - created
+    missing: list[tuple[Table, str, str]] = []
     for table in metadata.tables.values():
         if table.name not in existing:
             continue
         present = _index_names(connection, table.name, schema)
-        for raw in _raw_indexes(table):
-            if raw.name and raw.name not in present:
-                script.upgrade_ops.ops.append(_execute_sql(raw.ddl))
-                script.downgrade_ops.ops.insert(
-                    0, ops.DropIndexOp(raw.name, table.name, schema=table.schema)
-                )
+        missing += [
+            (table, raw.name, raw.ddl)
+            for raw in _raw_indexes(table)
+            if raw.name and raw.name not in present
+        ]
+    return missing
 
 
 def _index_names(

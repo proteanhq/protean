@@ -2,6 +2,7 @@
 
 import collections.abc
 import logging
+import re
 from collections import defaultdict
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
@@ -17,6 +18,32 @@ if TYPE_CHECKING:
     from protean.utils.container import OptionsMixin
 
 logger = logging.getLogger(__name__)
+
+
+def _without_password(uri: Any) -> str:
+    """Return ``uri`` with any password replaced by ``***``, safe to show.
+
+    The query string and fragment are left out, because a driver can read
+    credentials from them. A URI that is not a string, such as
+    Elasticsearch's dict of hosts, is replaced as a whole, because its
+    credentials can sit anywhere in it.
+    """
+    if not isinstance(uri, str):
+        return "<not shown>"
+    scheme, separator, rest = uri.partition("://")
+    if not separator:
+        return "<not shown>"
+    # A password can hold "/", "?" or "#", so the userinfo is read before
+    # the query is cut. The username holds none of ":", "/" or "@", so an
+    # "@" inside the query, as in "?password=a@b", is not read as userinfo.
+    # The password runs to the last "@", so no part of it reaches the host.
+    userinfo = re.match(r"([^:/@]*)(:.*)?@", rest)
+    location = rest[userinfo.end() :] if userinfo else rest
+    location = re.split(r"[?#]", location, maxsplit=1)[0]
+    if not userinfo:
+        return f"{scheme}://{location}"
+    username, password = userinfo.groups()
+    return f"{scheme}://{username}{':***' if password is not None else ''}@{location}"
 
 
 class Providers(collections.abc.MutableMapping[str, BaseProvider]):
@@ -114,7 +141,8 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
                 # Initialize a connection to check if everything is ok
                 if connect and not provider.is_alive():
                     raise ConfigurationError(
-                        f"Could not connect to database at {conn_info['database_uri']}"
+                        "Could not connect to database at "
+                        f"{_without_password(conn_info['database_uri'])}"
                     )
 
                 provider_objects[provider_name] = provider

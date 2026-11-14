@@ -10,6 +10,7 @@ import pytest
 from tests.shared import MARIADB_URI, MYSQL_URI
 from tests.support.migrations import (
     MigrationsProject,
+    assert_check_matches_at_head,
     assert_no_change_at_head,
     assert_raw_indexes_migrate,
     columns,
@@ -60,6 +61,10 @@ def test_a_new_field_becomes_a_column_and_the_rows_stay(project, database):
 
 def test_an_unchanged_model_writes_no_file(project, server):
     assert_no_change_at_head(project, server[1])
+
+
+def test_check_finds_an_unchanged_model_matches(project, server):
+    assert_check_matches_at_head(project, server[1])
 
 
 def test_raw_indexes_are_created_and_compared(project, database, server):

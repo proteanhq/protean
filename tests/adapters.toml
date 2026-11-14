@@ -140,6 +140,7 @@ paths = [
     "tests/adapters/repository/test_schema_autogenerate.py",
     "tests/adapters/repository/test_schema_migrator.py",
     "tests/cli/test_db_init.py",
+    "tests/cli/test_db_check.py",
     "tests/cli/test_db_migrations.py",
     "tests/support/migrations.py",
     "tests/outbox/test_outbox_indexes.py",
