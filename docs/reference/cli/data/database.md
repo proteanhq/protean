@@ -277,9 +277,9 @@ with an "unexpected extra argument" error and exits 2.
 | `--directory` | Folder that holds the provider's migrations | `migrations` |
 | `--sql` | Print the SQL instead of running it | `False` |
 
-The three commands, and `protean db check`, read the provider's name from the
-`protean_provider` option in `alembic.ini`, and make the same checks on the
-provider as `protean db init`. They stop with a message when the folder has no
+The three commands read the provider's name from the `protean_provider` option
+in `alembic.ini`, and make the same checks on the provider as
+`protean db init`. They stop with a message when the folder has no
 `alembic.ini`. For a second provider's folder, pass `--directory`:
 
 ```bash
@@ -290,33 +290,45 @@ protean db upgrade --directory=migrations/analytics
 
 Compares the provider's database with the table definitions the domain
 declares, and prints one line for each difference. It makes the same
-comparison as `protean db migrate` and writes nothing: no migration file, no
-row in `alembic_version`, and no change to a table. It is safe to run against
-a production database.
+comparison as `protean db migrate`. It writes no migration file, adds no row
+to `alembic_version` and changes no table. Like the other `protean db`
+commands, it reads the provider's name from the `protean_provider` option in
+`alembic.ini`.
 
 ```bash
 protean db check --domain=my_domain
 ```
 
 Each line names the operation a migration would need, then the table, then the
-column or index where there is one:
+column, index or constraint where there is one:
 
 ```text
 add_column order.discount
 remove_column order.legacy_code
 modify_type order.total
 add_index order.ix_order_status
+add_constraint order.sku
 ```
 
-`add_column` means the domain declares a column the table lacks.
-`remove_column` means the table has a column the domain does not declare. A
-table in the database that the domain does not declare is not reported. When
-they agree, the command prints
-`The database matches the table definitions.`
+The operation says what differs:
+
+- `add_table`, `add_column`, `add_index` and `add_constraint` name what the
+  domain declares and the database lacks.
+- `remove_column`, `remove_index` and `remove_constraint` name what a
+  declared table has in the database and the domain does not declare.
+- `modify_type` and `modify_nullable` name a column whose type or nullability
+  differs.
+
+A constraint with no name is named by its columns, such as
+`add_constraint order.sku` for a unique field. A table in the database that
+the domain does not declare is not reported. When the database and the domain
+agree, the command prints `The database matches the table definitions.`
 
 The command compares a database at the latest migration only. When the
-database is at another revision, the command stops and tells you to run
-`protean db upgrade`.
+database is at another revision, the command stops with a message that says
+what to do: run `protean db upgrade`, run `protean db upgrade heads` when the
+folder has more than one latest migration, or fix a database whose revision
+the folder does not have.
 
 **Exit codes**
 
@@ -328,16 +340,25 @@ database is at another revision, the command stops and tells you to run
 
 The command exits 2 when the domain does not load, when the provider fails
 the checks of `protean db init`, when Alembic is not installed, when the
-folder has no `alembic.ini`, when the database cannot be reached, and when the
-database is not at the latest migration.
+folder has no `alembic.ini`, when a file in the folder is broken, when the
+database cannot be reached, and when the database is not at the latest
+migration. On these errors, `protean db migrate`, `upgrade` and `downgrade`
+print the message to stdout and exit 1.
 
-Two uses:
+On SQLite, a database URI that names a missing file creates an empty file
+when the domain connects, as it does for every `protean db` command. The
+command then exits 2, because the empty database has no migration applied.
+
+The command has two uses:
 
 - In CI, run `protean db upgrade` on an empty database and then
   `protean db check`. Exit 1 means a model change has no migration. Write one
   with `protean db migrate`.
-- Against a production database, `protean db check` finds a table someone
-  changed by hand.
+- Against a production database, `protean db check` finds a column, index or
+  constraint that someone added or removed by hand, or a column whose type
+  they changed. It does not see the changes that `protean db migrate` cannot
+  detect, listed under [`protean db migrate`](#protean-db-migrate), or a
+  changed server default.
 
 **Options**
 

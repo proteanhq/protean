@@ -117,3 +117,48 @@ def test_a_column_added_by_hand(project, database):
 
     assert result.exit_code == 1, result.output
     assert result.stdout.splitlines() == ["remove_column order.extra"]
+
+
+def schema_state(url: str) -> tuple[list[str], dict[str, list[tuple]], list[str]]:
+    """The ``alembic_version`` rows, the columns of each table and the indexes."""
+    engine = sqlalchemy.create_engine(url)
+    try:
+        with engine.connect() as connection:
+            versions = [
+                row[0]
+                for row in connection.execute(
+                    sqlalchemy.text("SELECT version_num FROM alembic_version")
+                )
+            ]
+            inspector = sqlalchemy.inspect(connection)
+            tables = {
+                table: [
+                    (column["name"], str(column["type"]), column["nullable"])
+                    for column in inspector.get_columns(table)
+                ]
+                for table in inspector.get_table_names()
+            }
+            indexes = sorted(
+                row[0]
+                for row in connection.execute(
+                    sqlalchemy.text(
+                        "SELECT indexname FROM pg_indexes WHERE schemaname = 'public'"
+                    )
+                )
+            )
+    finally:
+        engine.dispose()
+    return versions, tables, indexes
+
+
+def test_a_check_that_finds_a_difference_writes_nothing(project, database):
+    start_at_head(project, ORDER)
+    execute(database, 'ALTER TABLE "order" ADD COLUMN extra VARCHAR(10)')
+    project.write(ORDER_WITH_DISCOUNT)
+    before = schema_state(database)
+    assert before[0] != []
+
+    result = project.run("check")
+
+    assert result.exit_code == 1, result.output
+    assert schema_state(database) == before

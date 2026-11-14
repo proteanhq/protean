@@ -28,6 +28,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.exc import SAWarning
 from sqlalchemy.sql import ClauseElement
+from sqlalchemy.sql.schema import ColumnCollectionConstraint
 
 from protean.adapters.repository.sqlalchemy import _raw_indexes_of
 from protean.core.index import RawIndex
@@ -35,6 +36,7 @@ from protean.exceptions import ConfigurationError
 
 if TYPE_CHECKING:
     from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
     from sqlalchemy.engine import Connection
 
 
@@ -134,14 +136,35 @@ def differences(context: Any, metadata: MetaData) -> list[str]:
             migrations folder.
     """
     migration_context = context.get_context()
-    if set(migration_context.get_current_heads()) != set(context.script.get_heads()):
+    database_heads = set(migration_context.get_current_heads())
+    folder_heads = set(context.script.get_heads())
+    if database_heads != folder_heads:
         raise ConfigurationError(
             "The database is not at the latest migration, so it cannot be "
-            "compared with the table definitions. Run `protean db upgrade` "
-            "first."
+            "compared with the table definitions. "
+            + _behind_head_hint(context.script, database_heads, folder_heads)
         )
 
     return _compare(migration_context, metadata)
+
+
+def _behind_head_hint(
+    script: ScriptDirectory, database_heads: set[str], folder_heads: set[str]
+) -> str:
+    """What to do about a database whose heads are not the folder's heads."""
+    known = {revision.revision for revision in script.walk_revisions()}
+    unknown = sorted(database_heads - known)
+    if unknown:
+        return (
+            f"The database is at revision {', '.join(unknown)}, which the "
+            "migrations folder does not have."
+        )
+    if len(folder_heads) > 1:
+        return (
+            "The migrations folder has more than one head. Run "
+            "`protean db upgrade heads` first."
+        )
+    return "Run `protean db upgrade` first."
 
 
 def _compare(migration_context: MigrationContext, metadata: MetaData) -> list[str]:
@@ -185,10 +208,19 @@ def _diff_line(diff: tuple[Any, ...]) -> str:
     if isinstance(subject, (Index, Constraint)):
         table = subject.table
         assert table is not None
-        # An unnamed constraint has a placeholder name that is not a string.
-        if not isinstance(subject.name, str):
+        if isinstance(subject.name, str):
+            return f"{operation} {table.name}.{subject.name}"
+        # An unnamed constraint has the name None when it is reflected and a
+        # placeholder that is not a string when it is declared, so the line
+        # names its columns.
+        columns: list[Column[Any]] = (
+            list(subject.columns)
+            if isinstance(subject, ColumnCollectionConstraint)
+            else []
+        )
+        if not columns:
             return f"{operation} {table.name}"
-        return f"{operation} {table.name}.{subject.name}"
+        return f"{operation} {table.name}.{','.join(column.name for column in columns)}"
     # A column change: ``(operation, schema, table, column, ...)``, where the
     # column is a ``Column`` or, in a ``modify_*`` change, its name.
     table, column = diff[2], diff[3]

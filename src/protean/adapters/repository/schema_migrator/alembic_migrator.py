@@ -98,21 +98,39 @@ class AlembicSchemaMigrator:
 
         Raises:
             ConfigurationError: The database is not at the latest migration,
-                it cannot be read, or Alembic reports an error.
+                it cannot be read, the migrations folder is broken, its
+                ``env.py`` does not run Protean's migration environment, or
+                Alembic reports an error.
         """
         config = self.alembic_config()
-        found: list[str] = []
-        config.attributes[CHECK_ATTRIBUTE] = found
+        config.attributes[CHECK_ATTRIBUTE] = None
         with _command_errors():
-            script = ScriptDirectory.from_config(config)
             try:
+                script = ScriptDirectory.from_config(config)
                 with EnvironmentContext(config, script, dont_mutate=True):
                     script.run_env()
+            except (CommandError, ConfigurationError):
+                raise
             except DBAPIError as exc:
                 raise ConfigurationError(
                     f"Cannot read the database of provider "
                     f"'{self.provider.name}': {exc.orig}"
                 ) from exc
+            except Exception as exc:
+                # Alembic raises plain errors for a broken folder: a revision
+                # file that does not compile, a ``down_revision`` the folder
+                # lacks, or a missing ``env.py``.
+                raise ConfigurationError(
+                    f"Cannot compare the database with the migrations in "
+                    f"'{self.directory}': "
+                    f"{type(exc).__name__}: {exc}"
+                ) from exc
+        found: list[str] | None = config.attributes[CHECK_ATTRIBUTE]
+        if found is None:
+            raise ConfigurationError(
+                f"The 'env.py' in '{self.directory}' did not run Protean's "
+                "migration environment, so the database was not compared."
+            )
         return found
 
     def alembic_config(self) -> Config:

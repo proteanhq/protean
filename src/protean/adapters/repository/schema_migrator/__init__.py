@@ -41,9 +41,11 @@ __all__ = [
 # passes the provider to ``run_migrations``.
 PROVIDER_ATTRIBUTE = "protean_provider"
 
-# The key in Alembic's ``Config.attributes`` under which ``protean db check``
-# passes a list. ``run_migrations`` then compares the database with the table
-# definitions, adds one line per difference to the list, and runs no migration.
+# The key in Alembic's ``Config.attributes`` that asks for a check. When the key
+# is present, ``run_migrations`` runs no migration: it compares the database
+# with the table definitions and stores the list of differences under the key.
+# A value still None afterwards means the folder's ``env.py`` never ran the
+# comparison.
 CHECK_ATTRIBUTE = "protean_check"
 
 # The thread that is inside ``run_migrations``, or None.
@@ -242,10 +244,10 @@ def run_migrations() -> None:
 
     Migrations run on the provider's engine, or, in offline mode, render SQL
     for the provider's database URL. The target metadata is the provider's
-    ``metadata``. When ``Config.attributes`` holds a list under
-    ``CHECK_ATTRIBUTE`` and the run is online, no migration runs: the list
-    receives the differences between the database and the metadata, and
-    nothing is written to the database.
+    ``metadata``. When ``Config.attributes`` holds ``CHECK_ATTRIBUTE`` and the
+    run is online, no migration runs: the list of differences between the
+    database and the metadata is stored under that key, and nothing is
+    written to the database.
 
     Does nothing when no Alembic command is running, and when called again
     from the thread that is running it.
@@ -369,17 +371,19 @@ def _run(context: Any, provider: SAProvider) -> None:
                 context.run_migrations()
             return
 
-        found: list[str] | None = context.config.attributes.get(CHECK_ATTRIBUTE)
+        checking = CHECK_ATTRIBUTE in context.config.attributes
         with provider._engine.connect() as connection:
             context.configure(
                 connection=connection,
                 **configure_options(metadata, dialect_name, connection),
             )
-            if found is not None:
+            if checking:
                 # No transaction is begun, so nothing is stamped, and the
                 # connection rolls back what reflection opened when it closes.
                 with expression_index_warnings_hidden():
-                    found += differences(context, metadata)
+                    context.config.attributes[CHECK_ATTRIBUTE] = differences(
+                        context, metadata
+                    )
                 return
             with expression_index_warnings_hidden(), context.begin_transaction():
                 context.run_migrations()

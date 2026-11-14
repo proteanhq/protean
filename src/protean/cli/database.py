@@ -293,6 +293,11 @@ def _differences(domain_path: str, directory: Path) -> list[str]:
         emit_usage_error(
             as_json=False, message=f"Error loading Protean domain: {exc.args[0]}"
         )
+    except Exception as exc:  # noqa: BLE001 - importing the domain runs user code
+        emit_usage_error(
+            as_json=False,
+            message=f"Error loading Protean domain: {type(exc).__name__}: {exc}",
+        )
     assert derived_domain is not None
 
     try:

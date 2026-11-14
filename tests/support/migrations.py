@@ -340,6 +340,19 @@ def assert_no_change_at_head(project: MigrationsProject, dialect: str) -> None:
     assert project.versions() == written
 
 
+def assert_check_matches_at_head(project: MigrationsProject, dialect: str) -> None:
+    """Bring the database to head for ``no_change_model``, then run ``check``."""
+    project.write(no_change_model(dialect))
+    project.run_ok("init")
+    project.run_ok("migrate", "-m", "initial")
+    project.run_ok("upgrade")
+
+    result = project.run("check")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "The database matches the table definitions."
+
+
 def columns(url: str, table: str, schema: str | None = None) -> set[str]:
     """The column names of ``table``, reflected from the database."""
     engine = sqlalchemy.create_engine(url)

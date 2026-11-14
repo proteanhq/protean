@@ -3,6 +3,7 @@
 import pytest
 import sqlalchemy
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     Computed,
     ForeignKeyConstraint,
@@ -182,7 +183,22 @@ class TestDiffLine:
         constraint = ForeignKeyConstraint([order.c.customer_id], ["customer.id"])
         order.append_constraint(constraint)
 
-        assert _diff_line(("add_fk", constraint)) == "add_fk order"
+        assert _diff_line(("add_fk", constraint)) == "add_fk order.customer_id"
+
+    def test_an_unnamed_constraint_on_two_columns(self, order):
+        constraint = UniqueConstraint(order.c.name, order.c.customer_id)
+        order.append_constraint(constraint)
+
+        assert (
+            _diff_line(("add_constraint", constraint))
+            == "add_constraint order.name,customer_id"
+        )
+
+    def test_an_unnamed_constraint_without_columns(self, order):
+        constraint = CheckConstraint("length(name) > 0")
+        order.append_constraint(constraint)
+
+        assert _diff_line(("add_constraint", constraint)) == "add_constraint order"
 
 
 class TestCompare:

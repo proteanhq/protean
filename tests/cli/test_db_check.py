@@ -4,12 +4,16 @@ The aggregate ``Order`` has the table ``order``, a reserved word, so each
 statement and each line of output has to handle a quoted name.
 """
 
+import re
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 import sqlalchemy
 
+from protean.adapters.repository.sqlalchemy import SAProvider
+from protean.port.provider import BaseProvider
 from tests.support.migrations import (
     MigrationsProject,
     block_alembic,
@@ -49,6 +53,33 @@ ORDER_WITH_RAW_INDEX = """
 ])
 class Order:
     name = String(max_length=50)
+"""
+
+ORDER_WITH_STATUS = """
+@domain.aggregate
+class Order:
+    name = String(max_length=50)
+    status = String(max_length=10)
+"""
+
+ORDER_WITH_UNIQUE_FIELDS = """
+@domain.aggregate
+class Order:
+    name = String(max_length=50, unique=True)
+    status = String(max_length=10, unique=True)
+"""
+
+SHOP_ORDER = """
+@domain.aggregate(provider="shop")
+class Order:
+    name = String(max_length=50)
+"""
+
+SHOP_ORDER_WITH_DISCOUNT = """
+@domain.aggregate(provider="shop")
+class Order:
+    name = String(max_length=50)
+    discount = Integer()
 """
 
 PRODUCT_MODEL = """
@@ -102,25 +133,56 @@ def execute(database: Path, statement: str) -> None:
         engine.dispose()
 
 
-def schema_state(database: Path) -> tuple[list[str], dict[str, list[str]]]:
-    """The ``alembic_version`` rows and the column names of every table."""
+def schema_state(
+    database: Path,
+) -> tuple[list[str], dict[str, list[tuple[str, str, bool]]], list[str]]:
+    """The ``alembic_version`` rows, the columns of every table and the indexes.
+
+    A column is its name, type and nullability. The indexes are read from
+    ``sqlite_master``, because SQLAlchemy skips expression indexes when it
+    reflects a SQLite table.
+    """
     engine = sqlalchemy.create_engine(sqlite_url(database))
     try:
         with engine.connect() as connection:
-            versions = [
-                row[0]
-                for row in connection.execute(
-                    sqlalchemy.text("SELECT version_num FROM alembic_version")
-                )
-            ]
             inspector = sqlalchemy.inspect(connection)
             tables = {
-                table: [column["name"] for column in inspector.get_columns(table)]
+                table: [
+                    (column["name"], str(column["type"]), column["nullable"])
+                    for column in inspector.get_columns(table)
+                ]
                 for table in inspector.get_table_names()
             }
+            versions = (
+                [
+                    row[0]
+                    for row in connection.execute(
+                        sqlalchemy.text("SELECT version_num FROM alembic_version")
+                    )
+                ]
+                if "alembic_version" in tables
+                else []
+            )
+            indexes = sorted(
+                row[0]
+                for row in connection.execute(
+                    sqlalchemy.text(
+                        "SELECT name FROM sqlite_master WHERE type = 'index'"
+                    )
+                )
+            )
     finally:
         engine.dispose()
-    return versions, tables
+    return versions, tables, indexes
+
+
+def revision_id(path: Path) -> str:
+    """The revision a migration file declares."""
+    found = re.search(
+        r"^revision: str = '(\w+)'$", path.read_text("utf-8"), re.MULTILINE
+    )
+    assert found is not None
+    return found.group(1)
 
 
 def one_line(text: str) -> str:
@@ -150,10 +212,32 @@ class TestCheckReportsAgreement:
     @pytest.mark.parametrize(
         "model", [no_change_model("sqlite"), raw_index_model("sqlite")]
     )
+    # SQLAlchemy warns that it skips an expression index when it reflects a
+    # SQLite table; ``check`` hides that warning as ``migrate`` does.
+    @pytest.mark.filterwarnings(
+        "error:Skipped unsupported reflection:sqlalchemy.exc.SAWarning"
+    )
     def test_declared_and_raw_indexes_report_no_difference(self, project, model):
         start_at_head(project, model)
 
         result = project.run("check")
+
+        assert result.exit_code == 0, result.output
+        assert result.stdout.strip() == MATCHES
+        assert result.stderr == ""
+
+    def test_a_second_provider_through_directory(self, project, tmp_path):
+        shop = tmp_path / "shop-orders.db"
+        project.databases = {
+            "default": {"provider": "memory"},
+            "shop": {"provider": "sqlite", "database_uri": sqlite_url(shop)},
+        }
+        project.write(SHOP_ORDER)
+        project.run_ok("init", "--provider", "shop", "--directory", "migrations/shop")
+        project.run_ok("migrate", "-m", "initial", "--directory", "migrations/shop")
+        project.run_ok("upgrade", "--directory", "migrations/shop")
+
+        result = project.run("check", "--directory", "migrations/shop")
 
         assert result.exit_code == 0, result.output
         assert result.stdout.strip() == MATCHES
@@ -207,17 +291,48 @@ class TestCheckReportsDifferences:
         assert result.stdout.splitlines() == ["add_table product"]
 
     def test_the_lines_are_sorted(self, project, database):
+        # ``compare_metadata`` reports the column before the raw index is
+        # added, so only the sort puts ``add_index`` first.
         start_at_head(project, ORDER)
         execute(database, 'ALTER TABLE "order" ADD COLUMN extra VARCHAR(10)')
-        project.write(ORDER_WITH_DISCOUNT)
+        project.write(ORDER_WITH_RAW_INDEX)
 
         result = project.run("check")
 
         assert result.exit_code == 1, result.output
         assert result.stdout.splitlines() == [
-            "add_column order.discount",
+            "add_index order.ix_order_raw",
             "remove_column order.extra",
         ]
+
+    def test_an_unnamed_constraint_names_its_columns(self, project):
+        start_at_head(project, ORDER_WITH_STATUS)
+        project.write(ORDER_WITH_UNIQUE_FIELDS)
+
+        result = project.run("check")
+
+        assert result.exit_code == 1, result.output
+        assert result.stdout.splitlines() == [
+            "add_constraint order.name",
+            "add_constraint order.status",
+        ]
+
+    def test_a_field_without_a_migration_for_a_second_provider(self, project, tmp_path):
+        shop = tmp_path / "shop-orders.db"
+        project.databases = {
+            "default": {"provider": "memory"},
+            "shop": {"provider": "sqlite", "database_uri": sqlite_url(shop)},
+        }
+        project.write(SHOP_ORDER)
+        project.run_ok("init", "--provider", "shop", "--directory", "migrations/shop")
+        project.run_ok("migrate", "-m", "initial", "--directory", "migrations/shop")
+        project.run_ok("upgrade", "--directory", "migrations/shop")
+        project.write(SHOP_ORDER_WITH_DISCOUNT)
+
+        result = project.run("check", "--directory", "migrations/shop")
+
+        assert result.exit_code == 1, result.output
+        assert result.stdout.splitlines() == ["add_column order.discount"]
 
 
 class TestCheckWritesNothing:
@@ -237,18 +352,20 @@ class TestCheckWritesNothing:
 
 
 class TestCheckRefusesADatabaseBehindHead:
-    def test_one_migration_behind(self, project):
+    def test_one_migration_behind(self, project, database):
         start_at_head(project, ORDER)
         project.write(ORDER_WITH_DISCOUNT)
         project.run_ok("migrate", "-m", "add discount")
         project.run_ok("upgrade")
         project.run_ok("downgrade", "-1")
+        before = schema_state(database)
 
         result = project.run("check")
 
         assert result.exit_code == 2, result.output
-        assert "protean db upgrade" in one_line(result.stderr)
+        assert "Run `protean db upgrade` first." in one_line(result.stderr)
         assert result.stdout == ""
+        assert schema_state(database) == before
 
     def test_a_database_never_upgraded(self, project, database):
         project.write(ORDER)
@@ -261,6 +378,38 @@ class TestCheckRefusesADatabaseBehindHead:
         assert "protean db upgrade" in one_line(result.stderr)
         assert result.stdout == ""
         assert schema_state(database)[0] == []
+
+    def test_a_revision_the_folder_does_not_have(self, project):
+        start_at_head(project, ORDER)
+        for path in project.versions():
+            path.unlink()
+
+        result = project.run("check")
+
+        assert result.exit_code == 2, result.output
+        assert "which the migrations folder does not have" in one_line(result.stderr)
+        assert "protean db upgrade" not in one_line(result.stderr)
+
+    def test_two_heads_name_upgrade_heads(self, project):
+        start_at_head(project, ORDER)
+        (initial,) = project.versions()
+        project.write(ORDER_WITH_DISCOUNT)
+        project.run_ok("migrate", "-m", "add discount")
+        (added,) = set(project.versions()) - {initial}
+        # A copy of the new revision under another id also follows the initial
+        # one, so the folder has two heads and the database is at neither.
+        added.with_name("ffffffffffff_copy.py").write_text(
+            added.read_text(encoding="utf-8").replace(
+                f"revision: str = {revision_id(added)!r}",
+                "revision: str = 'ffffffffffff'",
+            ),
+            encoding="utf-8",
+        )
+
+        result = project.run("check")
+
+        assert result.exit_code == 2, result.output
+        assert "Run `protean db upgrade heads` first." in one_line(result.stderr)
 
     def test_an_empty_folder_and_an_empty_database_report_each_table(self, project):
         project.write(ORDER)
@@ -343,4 +492,57 @@ class TestCheckEnvironmentErrors:
 
         assert result.exit_code == 2, result.output
         assert "Could not connect to database" in one_line(result.stderr)
+        assert result.stdout == ""
+
+    def test_a_domain_that_raises_on_import(self, project):
+        start_at_head(project, ORDER)
+        with (project.root / "domain.py").open("a", encoding="utf-8") as file:
+            file.write("\ndef broken(:\n")
+
+        result = project.run("check")
+
+        assert result.exit_code == 2, result.output
+        assert "Error loading Protean domain: SyntaxError" in one_line(result.stderr)
+        assert result.stdout == ""
+
+    def test_a_revision_file_that_does_not_compile(self, project):
+        start_at_head(project, ORDER)
+        (revision,) = project.versions()
+        with revision.open("a", encoding="utf-8") as file:
+            file.write("\ndef broken(:\n")
+
+        result = project.run("check")
+
+        assert result.exit_code == 2, result.output
+        assert "Cannot compare the database with the migrations in 'migrations'" in (
+            one_line(result.stderr)
+        )
+        assert result.stdout == ""
+
+    def test_an_env_py_that_does_not_run_the_comparison(self, project):
+        start_at_head(project, ORDER)
+        (project.root / "migrations" / "env.py").write_text(
+            "# Runs nothing.\n", encoding="utf-8"
+        )
+        shutil.rmtree(project.root / "migrations" / "__pycache__", ignore_errors=True)
+        project.write(ORDER_WITH_DISCOUNT)
+
+        result = project.run("check")
+
+        assert result.exit_code == 2, result.output
+        assert "did not run Protean's migration environment" in one_line(result.stderr)
+        assert result.stdout == ""
+
+    def test_a_provider_that_does_not_implement_migrations(self, project, monkeypatch):
+        start_at_head(project, ORDER)
+        # An adapter that declares SCHEMA_MIGRATIONS and keeps the default
+        # ``_schema_migrator``.
+        monkeypatch.setattr(
+            SAProvider, "_schema_migrator", BaseProvider._schema_migrator
+        )
+
+        result = project.run("check")
+
+        assert result.exit_code == 2, result.output
+        assert "does not implement schema migrations" in one_line(result.stderr)
         assert result.stdout == ""
