@@ -2250,8 +2250,17 @@ class TestDeprecationWarningVisibility:
         assert "v0.20.0" in result.stderr
 
     def test_a_warning_filter_from_the_user_still_applies(self):
+        # The filter matches the warning's message so that a deprecation
+        # warning from a dependency at import time (Typer below 0.26 against
+        # a newer Click) does not end the script first.
         result = subprocess.run(
-            [sys.executable, "-W", "error::DeprecationWarning", "-c", self.SCRIPT],
+            [
+                sys.executable,
+                "-W",
+                "error:The option:DeprecationWarning",
+                "-c",
+                self.SCRIPT,
+            ],
             capture_output=True,
             text=True,
             check=False,

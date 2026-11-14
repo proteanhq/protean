@@ -10,8 +10,13 @@ import subprocess
 import sys
 import tempfile
 import types
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
+
+import structlog
+from structlog.testing import capture_logs
+from structlog.typing import EventDict
 
 from protean import Domain
 
@@ -63,6 +68,25 @@ def load_example(path: str, root: Path = DOCS_SRC) -> types.ModuleType:
         sys.modules.pop(name, None)
         raise
     return module
+
+
+@contextmanager
+def capture_logs_with_contextvars() -> Generator[list[EventDict], None, None]:
+    """Capture structlog events with the bound context variables merged in.
+
+    Yields the list of captured event dicts, like
+    ``structlog.testing.capture_logs()``, and restores the configured
+    processors on exit.
+    """
+    # ``capture_logs(processors=...)`` arrived after structlog 24.1.0, the
+    # declared floor. ``capture_logs`` clears and refills the configured
+    # processor list in place, so inserting into that same list puts
+    # ``merge_contextvars`` ahead of the capture on every structlog version.
+    with capture_logs() as logs:
+        structlog.get_config()["processors"].insert(
+            0, structlog.contextvars.merge_contextvars
+        )
+        yield logs
 
 
 def domain_from_config(

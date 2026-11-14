@@ -106,8 +106,10 @@ def _save(
         raise typer.Abort()
 
 
-def _require_reason(value: str) -> str:
-    if not value.strip():
+def _require_reason(value: str | None) -> str:
+    # Older Typer releases do not stop on a missing required option: they pass
+    # ``None`` to this callback and then run the command with it.
+    if value is None or not value.strip():
         raise typer.BadParameter("give the reason the row is skipped")
     return value
 
