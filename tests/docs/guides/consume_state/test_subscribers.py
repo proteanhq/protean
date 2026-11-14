@@ -174,20 +174,23 @@ def test_the_engine_survives_a_failing_handle_error(caplog):
     assert "recovery store is down" in caplog.text
 
 
-def test_valid_payload_issues_record_payment():
+@pytest.mark.parametrize("amount", [12.5, 10])
+def test_valid_payload_issues_record_payment(amount):
     example = load_example("guides/consume-state/subscribers/003.py")
     example.domain.init(traverse=False)
 
     with example.domain.domain_context():
         example.PaymentWebhookSubscriber()(
-            {"order_id": "order-7", "status": "PAID", "amount": 25.5}
+            {"order_id": "order-7", "status": "PAID", "amount": amount}
         )
-        payment = example.domain.repository_for(example.Payment).find_by(
-            order_id="order-7"
+        recorded = example.domain.repository_for(example.Payment).find(
+            Q(order_id="order-7")
         )
 
+    assert recorded.total == 1
+    payment = recorded.items[0]
     assert payment.status == "PAID"
-    assert payment.amount == 25.5
+    assert payment.amount == amount
 
 
 @pytest.mark.parametrize(
@@ -197,6 +200,14 @@ def test_valid_payload_issues_record_payment():
         (
             {"order_id": "order-7", "status": "PAID", "amount": "25.5"},
             "Invalid amount type: <class 'str'>",
+        ),
+        (
+            {"order_id": "order-7", "status": "PAID", "amount": True},
+            "Invalid amount type: <class 'bool'>",
+        ),
+        (
+            {"order_id": "order-7", "status": "PAID", "amount": False},
+            "Invalid amount type: <class 'bool'>",
         ),
     ],
 )

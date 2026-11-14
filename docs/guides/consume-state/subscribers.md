@@ -212,7 +212,8 @@ def handle_error(cls, exc: Exception, message: dict) -> None:
 ### Payload Validation
 
 Subscribers receive raw dicts from external systems. Validate shape and types
-before trusting the data:
+before trusting the data. In Python, `bool` is a subclass of `int`, so a check
+for a number must turn away `True` and `False` first:
 
 ```python
 --8<-- "guides/consume-state/subscribers/003.py:subscriber"
