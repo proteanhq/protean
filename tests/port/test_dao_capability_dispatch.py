@@ -17,7 +17,7 @@ from protean.adapters.repository.memory import DictDAO, MemorySession
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import Integer, String
-from protean.port.dao import BaseDAO, HoldBack
+from protean.port.dao import BaseDAO, HoldBack, NativeClaimPort, portable_claim
 from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
 
@@ -46,6 +46,24 @@ BareDAO.__abstractmethods__ = frozenset()
 def _bare_dao(test_domain, flags: DatabaseCapabilities) -> BareDAO:
     provider = SimpleNamespace(name="stub", capabilities=flags)
     return BareDAO(test_domain, provider, Task, None)
+
+
+class NativeOnlyDAO(BareDAO, NativeClaimPort):
+    """A DAO that subclasses only :class:`NativeClaimPort` and records each
+    ``claim`` call."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.claims: list[tuple] = []
+
+    def claim(self, criteria, claim_fields, limit, order_by=(), hold_back=None):
+        self.claims.append((criteria, claim_fields, limit, order_by, hold_back))
+        return []
+
+
+def _native_only_dao(test_domain, flags: DatabaseCapabilities) -> NativeOnlyDAO:
+    provider = SimpleNamespace(name="stub", capabilities=flags)
+    return NativeOnlyDAO(test_domain, provider, Task, None)
 
 
 HOLD_BY_KEY = HoldBack(
@@ -83,6 +101,32 @@ class TestMissingPortRaises:
         assert "BareDAO" in str(exc.value)
         assert "ClaimCandidatesPort" in str(exc.value)
 
+    def test_filtered_claim_candidates_without_the_port_on_a_plain_claim(
+        self, test_domain
+    ):
+        dao = _bare_dao(test_domain, DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES)
+
+        with pytest.raises(ConfigurationError) as exc:
+            dao._claim(Q(status="ready"), {"status": "claimed"}, limit=1)
+
+        assert "FILTERED_CLAIM_CANDIDATES" in str(exc.value)
+        assert "ClaimCandidatesPort" in str(exc.value)
+
+    def test_native_claim_dao_without_the_claim_candidates_port(self, test_domain):
+        dao = _native_only_dao(
+            test_domain,
+            DatabaseCapabilities.NATIVE_CLAIM
+            | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES,
+        )
+
+        with pytest.raises(ConfigurationError) as exc:
+            dao._claim(Q(status="ready"), {"status": "claimed"}, limit=1)
+
+        assert "FILTERED_CLAIM_CANDIDATES" in str(exc.value)
+        assert "NativeOnlyDAO" in str(exc.value)
+        assert "ClaimCandidatesPort" in str(exc.value)
+        assert dao.claims == []
+
     def test_bounded_delete_without_the_port(self, test_domain):
         dao = _bare_dao(test_domain, DatabaseCapabilities.BOUNDED_DELETE)
 
@@ -101,6 +145,19 @@ class TestMissingPortRaises:
 
         assert dao._claim(Q(), {"status": "claimed"}, limit=0) == []
         assert dao._delete_top(Q(), limit=0) == 0
+
+
+class TestPortableClaimOrder:
+    def test_a_bare_string_order_is_one_key(self, test_domain):
+        repo = test_domain.repository_for(Task)
+        for seq in (1, 3, 2):
+            repo.add(Task(status="ready", seq=seq))
+
+        rows = portable_claim(
+            repo._dao, Q(status="ready"), {"status": "claimed"}, 1, "-seq"
+        )
+
+        assert [row.seq for row in rows] == [3]
 
 
 class TestClaimLock:

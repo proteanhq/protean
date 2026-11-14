@@ -462,9 +462,10 @@ class MyDAO(BaseDAO, BoundedDeletePort):
 the provider does not declare it, `BaseDAO` runs the portable claim or delete,
 which works on every adapter. A DAO class can subclass a port whose flag its
 provider does not declare. A provider that declares a flag for a DAO class
-without the port fails with `ConfigurationError` on the first call that would
-run the DAO method. For `FILTERED_CLAIM_CANDIDATES`, that is the first claim
-with a `hold_back`.
+without the port fails with `ConfigurationError`. A claim with a positive
+`limit` checks `NATIVE_CLAIM` and `FILTERED_CLAIM_CANDIDATES`, with or without
+a `hold_back`. A bounded delete with a positive `limit` checks
+`BOUNDED_DELETE`.
 
 The portable claim and delete run inside `BaseDAO.claim_lock()`, which locks
 nothing by default. Override it when the store has no row locks, so that two
@@ -474,8 +475,9 @@ provider's reentrant lock.
 !!!warning
     Only declare capabilities you actually implement. The conformance test
     suite checks most declared capabilities. It does not check
-    `OPTIMISTIC_LOCKING`, `CONNECTION_POOLING`, `SCHEMA_MIGRATIONS`,
-    `NATIVE_CLAIM`, `BOUNDED_DELETE` or `FILTERED_CLAIM_CANDIDATES`.
+    `OPTIMISTIC_LOCKING`, `CONNECTION_POOLING` or `SCHEMA_MIGRATIONS`. For
+    `NATIVE_CLAIM`, `BOUNDED_DELETE` and `FILTERED_CLAIM_CANDIDATES`, it checks
+    that `BaseDAO` runs the DAO's own operation.
 
 ### Supporting schema migrations (optional)
 

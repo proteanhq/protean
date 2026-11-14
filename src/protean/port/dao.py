@@ -442,6 +442,7 @@ def portable_claim(
     if limit <= 0:
         return []
 
+    order_by = _order_keys(order_by)
     id_name = _entity_id_name(dao)
     try_claim = partial(_try_claim, dao, id_name, criteria, dict(claim_fields))
 
@@ -873,14 +874,17 @@ class BaseDAO(metaclass=ABCMeta):
             The claimed entities, with ``claim_fields`` applied.
 
         Raises:
-            ConfigurationError: The provider declares ``NATIVE_CLAIM`` (or
-                ``FILTERED_CLAIM_CANDIDATES``, for a claim with ``hold_back``)
-                and the DAO class does not subclass the matching port.
+            ConfigurationError: The provider declares ``NATIVE_CLAIM`` or
+                ``FILTERED_CLAIM_CANDIDATES`` and the DAO class does not
+                subclass the matching port.
         """
         if limit <= 0:
             return []
 
         order = _order_keys(order_by)
+        # Check the page-read flag on every claim, so a DAO class without its
+        # port fails on its first claim instead of its first held-back one.
+        _uses_adapter_operation(self, DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES)
         if _uses_adapter_operation(self, DatabaseCapabilities.NATIVE_CLAIM):
             return cast(NativeClaimPort, self).claim(
                 criteria, claim_fields, limit, order, hold_back
