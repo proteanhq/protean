@@ -2961,7 +2961,7 @@ provides-extras = ["elasticsearch", "redis", "postgresql", "postgresql-psycopg2"
 dev = [
     { name = "bump-my-version", specifier = ">=1.4.1" },
     { name = "check-manifest", specifier = ">=0.51" },
-    { name = "complexipy", specifier = ">=8.3.0" },
+    { name = "complexipy", specifier = ">=8.3.0,<9" },
     { name = "coverage", specifier = ">=7.15.2" },
     { name = "docutils", specifier = ">=0.23" },
     { name = "nox", specifier = ">=2026.7.11" },
