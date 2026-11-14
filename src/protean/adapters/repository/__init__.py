@@ -36,8 +36,10 @@ def _without_password(uri: Any) -> str:
     # A password can hold "/", "?" or "#", so the userinfo is read before
     # the query is cut. The username holds none of ":", "/" or "@", so an
     # "@" inside the query, as in "?password=a@b", is not read as userinfo.
-    # The password runs to the last "@", so no part of it reaches the host.
-    userinfo = re.match(r"([^:/@]*)(:.*)?@", rest)
+    # The password runs to its first "@", then on to each later "@" that no
+    # "/", "?" or "#" comes before, so an "@" in the password is kept out of
+    # the host and an "@" in the path or query is kept out of the password.
+    userinfo = re.match(r"([^:/@]*)(:[^@]*(?:@[^@/?#]*)*)?@", rest)
     location = rest[userinfo.end() :] if userinfo else rest
     location = re.split(r"[?#]", location, maxsplit=1)[0]
     if not userinfo:

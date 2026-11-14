@@ -316,8 +316,10 @@ The operation says what differs:
   domain declares and the database lacks.
 - `remove_column`, `remove_index` and `remove_constraint` name what a
   declared table has in the database and the domain does not declare.
-- `modify_type` and `modify_nullable` name a column whose type or nullability
-  differs.
+- `modify_type`, `modify_nullable` and `modify_comment` name a column whose
+  type, nullability or comment differs.
+- `add_fk` and `remove_fk` name a foreign key that the domain declares and the
+  database lacks, or that the database has and the domain does not declare.
 
 A constraint with no name is named by its columns, such as
 `add_constraint order.sku` for a unique field. A table in the database that

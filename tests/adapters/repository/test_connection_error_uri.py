@@ -38,6 +38,14 @@ from protean.adapters.repository import _without_password
             "postgresql://shop:s3@cret@db.internal/shop",
             "postgresql://shop:***@db.internal/shop",
         ),
+        (
+            "postgresql://shop:s3cret@db.internal/shop?x=a@b",
+            "postgresql://shop:***@db.internal/shop",
+        ),
+        (
+            "postgresql://shop:s3cret@db.internal?x=a@b",
+            "postgresql://shop:***@db.internal",
+        ),
         ("not a uri", "<not shown>"),
         ({"hosts": ["https://elastic:s3cret@es:9200"]}, "<not shown>"),
     ],
