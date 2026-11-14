@@ -789,8 +789,9 @@ def _check_conformance_pair(name: str, pair: object) -> None:
     registered = _registered_adapters(group)
     if not registered:
         raise ValueError(
-            f"No adapter is registered in {group}, so the package metadata is "
-            "missing; run `uv sync`"
+            f"Adapter '{name}' has conformance pair '{pair}', but no adapter is "
+            f"registered in {group}, so the package metadata is missing; "
+            "run `uv sync`"
         )
     if adapter not in registered:
         raise ValueError(

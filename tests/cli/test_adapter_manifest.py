@@ -302,7 +302,10 @@ class TestLoadAdapterManifest:
     def test_an_empty_entry_point_group_says_to_sync(self, tmp_path):
         path = self.write(tmp_path, '["event_store:message_db"]')
         with patch("protean.cli.test._registered_adapters", return_value=set()):
-            with pytest.raises(ValueError, match=r"protean\.event_stores.*uv sync"):
+            with pytest.raises(
+                ValueError,
+                match=r"Adapter 'store'.*'event_store:message_db'.*protean\.event_stores.*uv sync",
+            ):
                 load_adapter_manifest(path)
 
     def test_a_pair_that_is_not_a_string_is_rejected(self, tmp_path):
