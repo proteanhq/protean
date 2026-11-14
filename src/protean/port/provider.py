@@ -253,10 +253,12 @@ class ProviderPort(Protocol):
     ) -> "type[BaseDatabaseModel]":
         """The database model class for `entity_cls`.
 
-        With `model_cls`, a user-defined model, it returns that model with the
-        adapter's internals added. Without it, it builds a model from the
-        entity's fields. The first call for an entity fixes the class, and
-        later calls for that entity return it.
+        With `model_cls`, a user-defined model, it returns a subclass of that
+        model with the adapter's internals added, or `model_cls` unchanged when it
+        already subclasses the adapter's model class. Without it, it builds a model
+        from the entity's fields. The adapter caches each class it builds or
+        decorates per entity, and later calls for that entity return the
+        cached class.
         """
 
     @abstractmethod

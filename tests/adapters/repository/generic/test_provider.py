@@ -70,8 +70,9 @@ class TestBasicProvider:
         assert provider.__class__.database_type is not None
 
     def test_health_reports_a_pool_only_for_sql_databases(self, test_domain):
-        """``pool`` carries counters for a SQL database. Memory and
-        Elasticsearch keep no connection pool."""
+        """``pool`` carries counters for a SQL database on a file or server
+        engine, which pools through a ``QueuePool``. Memory and Elasticsearch
+        report no pool counters."""
         provider = test_domain.providers["default"]
         health = provider.health()
 

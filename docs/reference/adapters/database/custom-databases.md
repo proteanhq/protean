@@ -352,15 +352,18 @@ region = "us-east-1"
 
 ## Session Protocol
 
-The object returned by `get_session()` must support three methods:
+The object returned by `get_session()` must support three methods. So must
+the object returned by `get_connection()` when your DAO uses `BaseDAO`'s
+standalone path:
 
 - `commit()`: Flush pending changes to the database
 - `rollback()`: Discard pending changes
 - `close()`: Release the connection back to the pool
 
-`BaseDAO._commit_if_standalone()` calls these methods when operating outside a
-Unit of Work. Adapters without real transactions (like the DynamoDB example
-above) should provide a session object with no-op implementations.
+Outside a Unit of Work, `BaseDAO._get_session()` returns `get_connection()`,
+and `BaseDAO._commit_if_standalone()` calls these methods on that object.
+Adapters without real transactions (like the DynamoDB example above) should
+provide a session object with no-op implementations.
 
 ## Call Flow
 
