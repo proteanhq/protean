@@ -2,6 +2,7 @@ from protean import Domain, current_domain, handle
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
+from protean.exceptions import ValidationError
 from protean.fields import Auto, Identifier, Integer
 
 domain = Domain(name="EventHandlerProcessesCommand")
@@ -35,6 +36,13 @@ class Inventory:
     reserved: Integer(default=0)
 
     def reserve(self, quantity: int) -> None:
+        if quantity <= 0:
+            raise ValidationError({"quantity": ["Quantity must be greater than zero"]})
+        if quantity > self.available:
+            raise ValidationError(
+                {"quantity": [f"Only {self.available} units of {self.product_id} left"]}
+            )
+
         self.available -= quantity
         self.reserved += quantity
 
