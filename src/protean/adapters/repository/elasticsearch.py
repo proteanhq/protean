@@ -68,6 +68,7 @@ from protean.utils.reflection import attributes, id_field
 
 if typing.TYPE_CHECKING:
     from protean.core.entity import BaseEntity
+    from protean.core.projection import BaseProjection
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
@@ -961,7 +962,7 @@ class ESProvider(BaseProvider, ProviderPort):
 
     def model_for(
         self,
-        entity_cls: "type[BaseEntity]",
+        entity_cls: "type[BaseEntity | BaseProjection]",
         model_cls: type[BaseDatabaseModel] | None = None,
     ) -> type[BaseDatabaseModel]:
         """The Elasticsearch model for `entity_cls`, decorating `model_cls` when given."""

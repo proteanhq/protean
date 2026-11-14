@@ -20,6 +20,7 @@ from protean.utils.query import RegisterLookupMixin
 if TYPE_CHECKING:
     from protean.core.database_model import BaseDatabaseModel
     from protean.core.entity import BaseEntity
+    from protean.core.projection import BaseProjection
     from protean.domain import Domain
     from protean.port.dao import BaseLookup
 
@@ -240,7 +241,7 @@ class ProviderPort(Protocol):
     @abstractmethod
     def dao_for(
         self,
-        entity_cls: "type[BaseEntity]",
+        entity_cls: "type[BaseEntity | BaseProjection]",
         model_cls: "type[BaseDatabaseModel]",
     ) -> Any:
         """A DAO for `entity_cls` that stores it through `model_cls`."""
@@ -248,7 +249,7 @@ class ProviderPort(Protocol):
     @abstractmethod
     def model_for(
         self,
-        entity_cls: "type[BaseEntity]",
+        entity_cls: "type[BaseEntity | BaseProjection]",
         model_cls: "type[BaseDatabaseModel] | None" = None,
     ) -> "type[BaseDatabaseModel]":
         """The database model class for `entity_cls`.
