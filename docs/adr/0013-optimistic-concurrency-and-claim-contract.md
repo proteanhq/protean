@@ -203,9 +203,9 @@ same mapping the commit path applies.
 - New adapters get correct behaviour from the portable default at no extra
   cost. Implementing the fast path is an opt-in optimization.
 - The fast path depends on the SQL backend supporting `SKIP LOCKED` and
-  `RETURNING`. The dialect allow-list (`_SKIP_LOCKED_DIALECTS`) keeps the
-  decision explicit; an unlisted dialect silently and correctly uses the
-  portable default.
+  `RETURNING`. A dialect allow-list in the SQL adapter first made this choice.
+  The November 2026 amendment replaces it with the `NATIVE_CLAIM` capability
+  flag: a provider that does not declare the flag uses the portable default.
 
 ## Alternatives Considered
 
@@ -260,12 +260,13 @@ Held rows must not fill the batch, or a halted group with more rows than
   candidate it queries for an earlier holding row of the group that this call
   has not claimed. Once a group has a held row, its later rows in the call are
   skipped. There is no cap on the scan, because a cap would let a halted
-  group starve the others. Pages come from `_claim_candidates`. The SQL
-  adapter's version adds the same candidate filter as the PostgreSQL
-  statement, so on SQLite, MySQL, MariaDB and SQL Server a halted group's
-  backlog never enters a page. The base version of `_claim_candidates` reads
-  held rows too. On an adapter that does not override it, a large halted
-  backlog therefore costs one page read per `limit` held rows on every call.
+  group starve the others. The SQL adapter reads each page with the same
+  candidate filter as the PostgreSQL statement, so on SQLite, MySQL, MariaDB
+  and SQL Server a halted group's backlog never enters a page. The portable
+  page read includes held rows. On any other adapter, a large halted backlog
+  therefore costs one page read per `limit` held rows on every call. The
+  November 2026 amendment moves the SQL adapter's page read behind the
+  `FILTERED_CLAIM_CANDIDATES` capability flag.
 - **The memory adapter** runs the portable default under its lock, as before.
 
 ## Amendment (November 2026): capability flags choose the claim path
