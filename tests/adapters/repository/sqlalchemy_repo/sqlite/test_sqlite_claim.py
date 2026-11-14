@@ -1,9 +1,9 @@
 """SQLite coverage for ``_claim``.
 
-SQLite has no row-level locking or ``SKIP LOCKED``; the SQLAlchemy adapter
-falls back to the portable :meth:`BaseDAO._claim` default, which is
-correct because SQLite serializes writers. These tests assert that fallback
-produces correct claims through the SQLAlchemy DAO's ``_filter``/``_update_all``.
+SQLite has no row-level locking or ``SKIP LOCKED``, so the SQLite provider
+does not declare ``NATIVE_CLAIM`` and ``_claim`` takes the portable path,
+which is correct because SQLite serializes writers. The claim contract itself
+is covered by the generic claim tests.
 """
 
 import itertools
@@ -13,7 +13,9 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.fields import Auto, DateTime, Integer, String
+from protean.port import dao as dao_module
 from protean.port.dao import HoldBack
+from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
 
 
@@ -49,52 +51,35 @@ def _seed(domain, count, status="ready"):
 
 @pytest.mark.sqlite
 class TestSqliteClaim:
-    def test_uses_portable_fallback(self, claim_domain):
-        """SQLite dispatches to the portable default rather than SKIP LOCKED."""
-        dao = claim_domain.repository_for(ClaimJob)._dao
-        assert dao.provider._engine.dialect.name == "sqlite"
-
-    def test_claims_persist_and_skip_already_claimed(self, claim_domain):
-        _seed(claim_domain, 4)
-        dao = claim_domain.repository_for(ClaimJob)._dao
-
-        claimed = dao._claim(
-            Q(status="ready"),
-            {"status": "claimed", "locked_by": "w1"},
-            limit=10,
-        )
-        assert len(claimed) == 4
-        assert all(j.status == "claimed" for j in claimed)
-
-        repo = claim_domain.repository_for(ClaimJob)
-        for job in claimed:
-            assert repo.get(job.id).status == "claimed"
-
-        assert (
-            dao._claim(
-                Q(status="ready"), {"status": "claimed", "locked_by": "w2"}, limit=10
-            )
-            == []
-        )
-
-    def test_orders_and_limits(self, claim_domain):
-        _seed(claim_domain, 6)
-        dao = claim_domain.repository_for(ClaimJob)._dao
-
-        claimed = dao._claim(
-            Q(status="ready"),
-            {"status": "claimed", "locked_by": "w1"},
-            limit=3,
-            order_by="-priority",
-        )
-        assert [j.priority for j in claimed] == [5, 4, 3]
-
-    def test_non_positive_limit_claims_nothing(self, claim_domain):
+    def test_claim_takes_the_portable_path(self, claim_domain, monkeypatch):
+        """SQLite does not declare ``NATIVE_CLAIM``, so ``_claim`` runs
+        ``portable_claim`` and never the DAO's single-statement ``claim``."""
         _seed(claim_domain, 3)
         dao = claim_domain.repository_for(ClaimJob)._dao
+        assert DatabaseCapabilities.NATIVE_CLAIM not in dao.provider.capabilities
 
-        assert dao._claim(Q(status="ready"), {"status": "claimed"}, 0) == []
-        assert dao._claim(Q(status="ready"), {"status": "claimed"}, -1) == []
+        portable_calls = []
+        original = dao_module.portable_claim
+
+        def spy(*args, **kwargs):
+            portable_calls.append(True)
+            return original(*args, **kwargs)
+
+        def fail(*args, **kwargs):
+            raise AssertionError("claim must not run without NATIVE_CLAIM")
+
+        monkeypatch.setattr(dao_module, "portable_claim", spy)
+        monkeypatch.setattr(dao, "claim", fail)
+
+        claimed = dao._claim(
+            Q(status="ready"),
+            {"status": "claimed", "locked_by": "w1"},
+            limit=2,
+            order_by="-priority",
+        )
+
+        assert [j.priority for j in claimed] == [2, 1]
+        assert portable_calls == [True]
 
 
 @pytest.mark.sqlite

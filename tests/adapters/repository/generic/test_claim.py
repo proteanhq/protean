@@ -20,7 +20,9 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
+from protean.port import dao as dao_module
 from protean.port.dao import HoldBack
+from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
 
 
@@ -320,6 +322,11 @@ def _keyed(test_domain, *rows: tuple[str, int, str | None, str, int]) -> None:
         repo.add(KeyedJob(id=label, seq=seq, key=key, status=status, priority=priority))
 
 
+def _skip_unless_declared(dao, flag: DatabaseCapabilities) -> None:
+    if flag not in dao.provider.capabilities:
+        pytest.skip(f"the provider does not declare {flag.name}")
+
+
 def _skip_unless_postgresql(test_domain) -> None:
     dao = test_domain.repository_for(KeyedJob)._dao
     if dao.provider._engine.dialect.name != "postgresql":
@@ -612,15 +619,106 @@ class TestClaimHoldBack:
 
     def test_a_sql_page_leaves_out_the_rows_of_a_held_key(self, test_domain):
         dao = test_domain.repository_for(KeyedJob)._dao
-        if not hasattr(dao, "provider") or not hasattr(dao.provider, "_engine"):
-            pytest.skip("the page filter is in the SQLAlchemy adapter")
+        _skip_unless_declared(dao, DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES)
         _keyed(test_domain, _row("k1-0", 0, "k1", "failed"))
         _keyed(test_domain, *_key_rows("k1", range(1, 6)))
         _keyed(test_domain, _row("k2-0", 10, "k2"))
 
-        page = dao._claim_candidates(Q(status="ready"), 3, 0, ["seq"], HOLD_BY_KEY)
+        page = dao.claim_candidates(Q(status="ready"), 3, 0, ["seq"], HOLD_BY_KEY)
 
         assert [job.id for job in page] == ["k2-0"]
+
+    def test_a_held_back_claim_reads_pages_through_claim_candidates(
+        self, test_domain, monkeypatch
+    ):
+        """A provider that declares ``FILTERED_CLAIM_CANDIDATES`` but not
+        ``NATIVE_CLAIM`` reads each page of a held-back claim through the DAO's
+        ``claim_candidates``, so a held key's backlog never fills a page."""
+        dao = test_domain.repository_for(KeyedJob)._dao
+        _skip_unless_declared(dao, DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES)
+        if DatabaseCapabilities.NATIVE_CLAIM in dao.provider.capabilities:
+            pytest.skip("a NATIVE_CLAIM provider claims in one statement")
+        _keyed(test_domain, _row("k1-0", 0, "k1", "failed"))
+        _keyed(test_domain, *_key_rows("k1", range(1, 6)))
+        _keyed(test_domain, _row("k2-0", 10, "k2"))
+
+        pages: list[list[str]] = []
+        read_page = dao.claim_candidates
+
+        def recording_read(*args, **kwargs):
+            page = read_page(*args, **kwargs)
+            pages.append([job.id for job in page])
+            return page
+
+        monkeypatch.setattr(dao, "claim_candidates", recording_read)
+
+        claimed = dao._claim(
+            Q(status="ready"),
+            {"status": "claimed"},
+            limit=3,
+            order_by=["seq"],
+            hold_back=HOLD_BY_KEY,
+        )
+
+        assert [job.id for job in claimed] == ["k2-0"]
+        assert pages
+        assert ["k2-0"] in pages
+        assert not any(job_id.startswith("k1") for page in pages for job_id in page)
+
+
+@pytest.mark.transactional
+class TestClaimDispatch:
+    """``_claim`` runs the DAO's own ``claim`` when the provider declares
+    ``NATIVE_CLAIM``, and the portable claim otherwise."""
+
+    def test_a_native_claim_provider_runs_the_dao_claim(self, test_domain, monkeypatch):
+        dao = test_domain.repository_for(ClaimJob)._dao
+        _skip_unless_declared(dao, DatabaseCapabilities.NATIVE_CLAIM)
+        _seed(test_domain, 4)
+
+        def fail(*args, **kwargs):
+            raise AssertionError("portable_claim must not run with NATIVE_CLAIM")
+
+        monkeypatch.setattr(dao_module, "portable_claim", fail)
+        calls: list[tuple] = []
+        native_claim = dao.claim
+
+        def recording_claim(criteria, claim_fields, limit, order_by, hold_back):
+            calls.append((limit, order_by, hold_back))
+            return native_claim(criteria, claim_fields, limit, order_by, hold_back)
+
+        monkeypatch.setattr(dao, "claim", recording_claim)
+
+        claimed = dao._claim(
+            Q(status="ready"), {"status": "claimed"}, limit=2, order_by="-priority"
+        )
+
+        assert [job.priority for job in claimed] == [3, 2]
+        assert calls == [(2, ("-priority",), None)]
+
+    def test_a_provider_without_native_claim_runs_the_portable_claim(
+        self, test_domain, monkeypatch
+    ):
+        dao = test_domain.repository_for(ClaimJob)._dao
+        if DatabaseCapabilities.NATIVE_CLAIM in dao.provider.capabilities:
+            pytest.skip("this provider declares NATIVE_CLAIM")
+        _seed(test_domain, 4)
+
+        calls: list[tuple] = []
+        portable = dao_module.portable_claim
+
+        def recording_portable(dao, criteria, claim_fields, limit, order_by, hold_back):
+            calls.append((limit, order_by, hold_back))
+            return portable(dao, criteria, claim_fields, limit, order_by, hold_back)
+
+        monkeypatch.setattr(dao_module, "portable_claim", recording_portable)
+
+        claimed = dao._claim(
+            Q(status="ready"), {"status": "claimed"}, limit=2, order_by="-priority"
+        )
+
+        assert [job.priority for job in claimed] == [3, 2]
+        assert calls == [(2, ("-priority",), None)]
 
 
 @dataclass

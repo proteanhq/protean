@@ -26,7 +26,6 @@ from protean.adapters.repository.sqlalchemy import (
     _MYSQL_DEFAULT_COLLATION,
     _MYSQL_DIALECTS,
     GUID,
-    SADAO,
     MysqlProvider,
     PostgresqlProvider,
     SqliteProvider,
@@ -1249,18 +1248,20 @@ class TestPortableStatementPaths:
     """Two single-statement fast paths are PostgreSQL-shaped; MySQL takes neither."""
 
     @pytest.mark.parametrize(
-        "dialect", ["mysql", "mariadb"], ids=["mysql-dialect", "mariadb-dialect"]
+        "uri", [MYSQL_URI, MARIADB_URI], ids=["mysql-dialect", "mariadb-dialect"]
     )
-    def test_claim_falls_back_to_the_portable_path(self, dialect):
+    def test_claim_falls_back_to_the_portable_path(self, uri):
         """MySQL has SKIP LOCKED but no UPDATE ... RETURNING."""
-        assert dialect not in SADAO._SKIP_LOCKED_DIALECTS
+        capabilities = mysql_provider(host_domain([]), uri).capabilities
+        assert DatabaseCapabilities.NATIVE_CLAIM not in capabilities
 
     @pytest.mark.parametrize(
-        "dialect", ["mysql", "mariadb"], ids=["mysql-dialect", "mariadb-dialect"]
+        "uri", [MYSQL_URI, MARIADB_URI], ids=["mysql-dialect", "mariadb-dialect"]
     )
-    def test_bounded_delete_falls_back_to_the_portable_path(self, dialect):
+    def test_bounded_delete_falls_back_to_the_portable_path(self, uri):
         """MySQL rejects a subquery that reads the table being deleted from."""
-        assert dialect not in SADAO._BOUNDED_DELETE_DIALECTS
+        capabilities = mysql_provider(host_domain([]), uri).capabilities
+        assert DatabaseCapabilities.BOUNDED_DELETE not in capabilities
 
 
 class TestRepositoryBinding:

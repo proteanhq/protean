@@ -3,11 +3,11 @@ import logging
 import operator
 from abc import ABCMeta, abstractmethod
 from collections import Counter
-from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from functools import partial, reduce
-from typing import TYPE_CHECKING, Any, ClassVar, get_args
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast, get_args
 
 from protean._deprecation import deprecated_from_registry
 from protean.core.aggregate import BaseAggregate, _pre_persist_change
@@ -16,11 +16,12 @@ from protean.core.entity import BaseEntity
 from protean.core.index import Index
 from protean.core.queryset import QuerySet, ResultSet
 from protean.exceptions import (
+    ConfigurationError,
     ObjectNotFoundError,
     TooManyObjectsError,
     ValidationError,
 )
-from protean.port.provider import BaseProvider
+from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import DomainObjects, _callable_qualname
 from protean.utils.globals import _domain_now, current_domain, current_uow
 from protean.utils.query import Q
@@ -32,8 +33,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Max identifiers per ``IN (...)`` clause in the portable ``_delete_top``
-# default. Kept under SQLite's default ``SQLITE_MAX_VARIABLE_NUMBER`` of 999 so
+# Max identifiers per ``IN (...)`` clause in :func:`portable_delete_top`. Kept under SQLite's default ``SQLITE_MAX_VARIABLE_NUMBER`` of 999 so
 # the fallback path is safe on every backend regardless of batch size.
 _DELETE_IN_CHUNK_SIZE = 900
 
@@ -77,6 +77,115 @@ class HoldBack:
     order: tuple[str, ...]
     lane_of: Callable[[Any], int | None]
     lanes: tuple[Q, ...] = ()
+
+
+class NativeClaimPort(Protocol):
+    """A DAO that claims rows in one statement.
+
+    A DAO class subclasses this port when it implements :meth:`claim`.
+    :meth:`BaseDAO._claim` calls it when the provider declares
+    ``DatabaseCapabilities.NATIVE_CLAIM``, and calls :func:`portable_claim`
+    otherwise.
+    """
+
+    @abstractmethod
+    def claim(
+        self,
+        criteria: Q,
+        claim_fields: Mapping[str, Any],
+        limit: int,
+        order_by: Sequence[str] = (),
+        hold_back: HoldBack | None = None,
+    ) -> list[Any]:
+        """Claim rows with the promises :meth:`BaseDAO._claim` states.
+
+        ``limit`` is at least 1.
+        """
+
+
+class ClaimCandidatesPort(Protocol):
+    """A DAO that leaves held rows out of a claim's candidate page.
+
+    A DAO class subclasses this port when it implements
+    :meth:`claim_candidates`. :func:`portable_claim` reads its pages through
+    it when the provider declares
+    ``DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES`` and the claim has a
+    ``hold_back``.
+    """
+
+    @abstractmethod
+    def claim_candidates(
+        self,
+        criteria: Q,
+        limit: int,
+        offset: int,
+        order_by: Sequence[str],
+        hold_back: HoldBack,
+    ) -> list[Any]:
+        """Read one page of claim candidates.
+
+        Returns up to ``limit`` entities matching ``criteria`` in ``order_by``
+        order, skipping the first ``offset``, and leaves out rows that
+        ``hold_back`` holds. It must not leave out a row that the claim could
+        take.
+        """
+
+
+class BoundedDeletePort(Protocol):
+    """A DAO that deletes up to ``limit`` rows in one operation.
+
+    A DAO class subclasses this port when it implements :meth:`delete_top`.
+    :meth:`BaseDAO._delete_top` calls it when the provider declares
+    ``DatabaseCapabilities.BOUNDED_DELETE``, and calls
+    :func:`portable_delete_top` otherwise.
+    """
+
+    @abstractmethod
+    def delete_top(self, criteria: Q, limit: int, order_by: str | None = None) -> int:
+        """Delete rows with the promises :meth:`BaseDAO._delete_top` states.
+
+        ``limit`` is at least 1.
+        """
+
+
+# The port a DAO class must subclass when its provider declares the flag.
+_FLAG_PORTS: dict[DatabaseCapabilities, type[object]] = {
+    DatabaseCapabilities.NATIVE_CLAIM: NativeClaimPort,
+    DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES: ClaimCandidatesPort,
+    DatabaseCapabilities.BOUNDED_DELETE: BoundedDeletePort,
+}
+
+
+def _uses_adapter_operation(dao: "BaseDAO", flag: DatabaseCapabilities) -> bool:
+    """Whether ``dao``'s provider declares ``flag``, so the DAO's own operation
+    runs instead of the portable one.
+
+    Raises:
+        ConfigurationError: The provider declares ``flag`` and the DAO class
+            does not subclass the port that goes with it.
+    """
+    if flag not in dao.provider.capabilities:
+        return False
+    port = _FLAG_PORTS[flag]
+    # The ports are not ``runtime_checkable``, so check the MRO.
+    if port not in type(dao).__mro__:
+        raise ConfigurationError(
+            f"Provider `{dao.provider.name}` declares `{flag.name}`, but DAO "
+            f"class `{type(dao).__name__}` does not subclass `{port.__name__}`"
+        )
+    return True
+
+
+def _order_keys(order_by: str | Sequence[str] | None) -> tuple[str, ...]:
+    """Normalize an ``order_by`` argument to a tuple of keys.
+
+    A bare string is one key, not a sequence of one-character keys.
+    """
+    if not order_by:
+        return ()
+    if isinstance(order_by, str):
+        return (order_by,)
+    return tuple(order_by)
 
 
 def _lookup(key: str, value: Any) -> Q:
@@ -196,9 +305,10 @@ def _claim_held_back(
     dao: "BaseDAO",
     criteria: Q,
     limit: int,
-    order_by: str | list[str] | None,
+    order_by: Sequence[str],
     hold_back: HoldBack,
     try_claim: Callable[[Any], bool],
+    read_page: Callable[[Q, int, int, Sequence[str]], list[Any]],
 ) -> list[BaseEntity]:
     """Claim up to ``limit`` rows page by page, keeping back each grouped row
     whose group has an earlier holding row this call did not claim."""
@@ -213,13 +323,11 @@ def _claim_held_back(
     # claimed or none remain, so held rows never use up the batch. Claimed
     # rows stop matching ``criteria``, which shifts the next page's offset
     # back by the rows claimed. Pages are not capped: a cap would let a held
-    # group fill every batch and starve the other groups. The default
-    # ``_claim_candidates`` reads held rows too, so a large held backlog
-    # costs one page read per ``limit`` held rows on every call.
+    # group fill every batch and starve the other groups. The portable
+    # page read returns held rows too, so a large held backlog costs one page
+    # read per ``limit`` held rows on every call.
     while len(claimed) < limit:
-        page = dao._claim_candidates(
-            criteria, limit, rows_read - len(claimed), order_by, hold_back
-        )
+        page = read_page(criteria, limit, rows_read - len(claimed), order_by)
         if not page:
             break
         rows_read += len(page)
@@ -273,6 +381,114 @@ def _try_claim_in_group(
 
     claimed_in_group[group] += 1
     return True
+
+
+def _read_claim_candidates(
+    dao: "BaseDAO", criteria: Q, limit: int, offset: int, order_by: Sequence[str]
+) -> list[Any]:
+    """Read one page of claim candidates: up to ``limit`` entities matching
+    ``criteria`` in ``order_by`` order, skipping the first ``offset``."""
+    # The entity-level query API returns entities; the low-level ``_filter``
+    # returns raw model objects.
+    candidate_qs = dao.query.filter(criteria)
+    if order_by:
+        candidate_qs = candidate_qs.order_by(list(order_by))
+    return list(candidate_qs.offset(offset).limit(limit).all(with_total=False).items)
+
+
+def _claim_page_reader(
+    dao: "BaseDAO", hold_back: HoldBack
+) -> Callable[[Q, int, int, Sequence[str]], list[Any]]:
+    """The page read for a claim with ``hold_back``: the DAO's
+    ``claim_candidates`` when the provider declares
+    ``FILTERED_CLAIM_CANDIDATES``, else the portable read."""
+    if _uses_adapter_operation(dao, DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES):
+        return partial(
+            cast(ClaimCandidatesPort, dao).claim_candidates, hold_back=hold_back
+        )
+    return partial(_read_claim_candidates, dao)
+
+
+def _entity_id_name(dao: "BaseDAO") -> str:
+    """The attribute name of the identifier of ``dao``'s entity class."""
+    entity_id_field = id_field(dao.entity_cls)
+    assert entity_id_field is not None, (
+        f"`{dao.entity_cls.__name__}` does not have an identity field"
+    )
+    assert entity_id_field.field_name is not None
+    return entity_id_field.field_name
+
+
+def portable_claim(
+    dao: "BaseDAO",
+    criteria: Q,
+    claim_fields: Mapping[str, Any],
+    limit: int,
+    order_by: Sequence[str] = (),
+    hold_back: HoldBack | None = None,
+) -> list[BaseEntity]:
+    """Claim rows on any adapter, with the promises :meth:`BaseDAO._claim`
+    states.
+
+    It reads candidates, then claims each one with a guarded update that
+    re-checks ``criteria`` (``1 + N`` round trips). It runs inside
+    ``dao.claim_lock()``.
+
+    Raises:
+        ConfigurationError: The provider declares
+            ``FILTERED_CLAIM_CANDIDATES``, the claim has a ``hold_back``, and
+            the DAO class does not subclass :class:`ClaimCandidatesPort`.
+    """
+    if limit <= 0:
+        return []
+
+    id_name = _entity_id_name(dao)
+    try_claim = partial(_try_claim, dao, id_name, criteria, dict(claim_fields))
+
+    with dao.claim_lock():
+        if hold_back is None:
+            candidates = _read_claim_candidates(dao, criteria, limit, 0, order_by)
+            return [entity for entity in candidates if try_claim(entity)]
+
+        read_page = _claim_page_reader(dao, hold_back)
+        return _claim_held_back(
+            dao, criteria, limit, order_by, hold_back, try_claim, read_page
+        )
+
+
+def portable_delete_top(
+    dao: "BaseDAO", criteria: Q, limit: int, order_by: str | None = None
+) -> int:
+    """Delete rows on any adapter, with the promises
+    :meth:`BaseDAO._delete_top` states.
+
+    It reads up to ``limit`` identifiers, then deletes by identifier. It runs
+    inside ``dao.claim_lock()``.
+    """
+    if limit <= 0:
+        return 0
+
+    id_name = _entity_id_name(dao)
+
+    with dao.claim_lock():
+        # Read up to ``limit`` identifiers through the entity-level query
+        # API, projecting only the id so blob columns are left unread.
+        candidate_qs = dao.query.filter(criteria)
+        if order_by:
+            candidate_qs = candidate_qs.order_by(order_by)
+        records = candidate_qs.only(id_name).limit(limit).all(with_total=False).items
+
+        # Delete by identifier in sub-batches so the ``IN`` clause never
+        # exceeds a backend's bind-parameter ceiling (e.g. SQLite's default
+        # limit of 999). ``limit`` can be larger than that, so chunk rather
+        # than emit one oversized ``IN (...)``.
+        ids = [getattr(record, id_name) for record in records]
+        deleted = 0
+        for start in range(0, len(ids), _DELETE_IN_CHUNK_SIZE):
+            chunk = ids[start : start + _DELETE_IN_CHUNK_SIZE]
+            chunk_filter: dict[str, Any] = {f"{id_name}__in": chunk}
+            deleted += dao._delete_all(Q(**chunk_filter))
+        return deleted
 
 
 class BaseDAO(metaclass=ABCMeta):
@@ -655,52 +871,30 @@ class BaseDAO(metaclass=ABCMeta):
 
         Returns:
             The claimed entities, with ``claim_fields`` applied.
+
+        Raises:
+            ConfigurationError: The provider declares ``NATIVE_CLAIM`` (or
+                ``FILTERED_CLAIM_CANDIDATES``, for a claim with ``hold_back``)
+                and the DAO class does not subclass the matching port.
         """
         if limit <= 0:
             return []
 
-        entity_id_field = id_field(self.entity_cls)
-        assert entity_id_field is not None, (
-            f"`{self.entity_cls.__name__}` does not have an identity field"
-        )
-        assert entity_id_field.field_name is not None
-        id_name = entity_id_field.field_name
+        order = _order_keys(order_by)
+        if _uses_adapter_operation(self, DatabaseCapabilities.NATIVE_CLAIM):
+            return cast(NativeClaimPort, self).claim(
+                criteria, claim_fields, limit, order, hold_back
+            )
+        return portable_claim(self, criteria, claim_fields, limit, order, hold_back)
 
-        # The portable default: read candidates, then re-assert ``criteria`` in
-        # a guarded update per row (1 + N round trips). Adapters that can claim
-        # in one statement override ``_claim``.
-        try_claim = partial(_try_claim, self, id_name, criteria, claim_fields)
+    def claim_lock(self) -> AbstractContextManager[object]:
+        """A lock that :func:`portable_claim` and :func:`portable_delete_top`
+        hold while they run.
 
-        if hold_back is None:
-            candidates = self._claim_candidates(criteria, limit, 0, order_by, hold_back)
-            return [entity for entity in candidates if try_claim(entity)]
-
-        return _claim_held_back(self, criteria, limit, order_by, hold_back, try_claim)
-
-    def _claim_candidates(
-        self,
-        criteria: Q,
-        limit: int,
-        offset: int,
-        order_by: str | list[str] | None,
-        hold_back: HoldBack | None,
-    ) -> list[Any]:
-        """Read one page of claim candidates for the portable :meth:`_claim`.
-
-        Returns up to ``limit`` entities matching ``criteria`` in ``order_by``
-        order, skipping the first ``offset``. An adapter may also leave out
-        rows that ``hold_back`` would hold, so that a held group's backlog is
-        not read page after page. It must not leave out a row that the claim
-        could take. This default ignores ``hold_back``.
+        This default returns ``contextlib.nullcontext()``, which locks
+        nothing. An adapter whose store has no row locks overrides it.
         """
-        # The entity-level query API returns entities; the low-level
-        # ``_filter`` returns raw model objects.
-        candidate_qs = self.query.filter(criteria)
-        if order_by:
-            candidate_qs = candidate_qs.order_by(order_by)
-        return list(
-            candidate_qs.offset(offset).limit(limit).all(with_total=False).items
-        )
+        return nullcontext()
 
     def _delete_top(
         self,
@@ -727,40 +921,17 @@ class BaseDAO(metaclass=ABCMeta):
 
         Returns:
             The number of rows deleted, at most ``limit``.
+
+        Raises:
+            ConfigurationError: The provider declares ``BOUNDED_DELETE`` and
+                the DAO class does not subclass :class:`BoundedDeletePort`.
         """
         if limit <= 0:
             return 0
 
-        entity_id_field = id_field(self.entity_cls)
-        assert entity_id_field is not None, (
-            f"`{self.entity_cls.__name__}` does not have an identity field"
-        )
-        assert entity_id_field.field_name is not None
-        id_name = entity_id_field.field_name
-
-        # The portable default takes two statements: read the ids, then delete
-        # by id. Adapters with a single-statement bounded delete override this.
-        # Read up to ``limit`` identifiers via the entity-level query API,
-        # projecting only the id so blob columns are left unread.
-        candidate_qs = self.query.filter(criteria)
-        if order_by:
-            candidate_qs = candidate_qs.order_by(order_by)
-        records = candidate_qs.only(id_name).limit(limit).all(with_total=False).items
-
-        if not records:
-            return 0
-
-        # Delete by identifier in sub-batches so the ``IN`` clause never
-        # exceeds a backend's bind-parameter ceiling (e.g. SQLite's default
-        # limit of 999). ``limit`` can be larger than that on this portable
-        # path, so chunk rather than emit one oversized ``IN (...)``.
-        ids = [getattr(record, id_name) for record in records]
-        deleted = 0
-        for start in range(0, len(ids), _DELETE_IN_CHUNK_SIZE):
-            chunk = ids[start : start + _DELETE_IN_CHUNK_SIZE]
-            chunk_filter: dict[str, Any] = {f"{id_name}__in": chunk}
-            deleted += self._delete_all(Q(**chunk_filter))
-        return deleted
+        if _uses_adapter_operation(self, DatabaseCapabilities.BOUNDED_DELETE):
+            return cast(BoundedDeletePort, self).delete_top(criteria, limit, order_by)
+        return portable_delete_top(self, criteria, limit, order_by)
 
     ######################
     # Life-cycle methods #

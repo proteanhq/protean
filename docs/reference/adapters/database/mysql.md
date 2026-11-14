@@ -309,8 +309,9 @@ each candidate row with both a partition key and a stream category adds one
 more query. That query checks for an earlier row of the same key. The `SELECT`
 leaves out rows that are held, so a halted key's backlog adds no queries.
 
-The bounded delete in `_delete_top` also takes the portable path, because MySQL
-rejects a `DELETE` whose subquery reads the same table.
+The bounded delete also takes the portable path, because MySQL rejects a
+`DELETE` whose subquery reads the same table. The MySQL provider does not
+declare `BOUNDED_DELETE` for this reason.
 
 ## SQLAlchemy model
 

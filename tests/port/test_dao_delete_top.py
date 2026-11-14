@@ -1,4 +1,4 @@
-"""Contract tests for ``BaseDAO._delete_top`` — the bounded-batch delete
+"""Contract tests for ``BaseDAO._delete_top``, the bounded-batch delete
 primitive that backs batched outbox cleanup.
 
 These run against the in-memory adapter (core suite). The contract is:
@@ -19,7 +19,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
-from protean.port.dao import BaseDAO
+from protean.port.dao import portable_delete_top
 from protean.utils.query import Q
 
 
@@ -102,15 +102,15 @@ class TestDeleteTopContract:
 
 
 class TestPortableDefault:
-    """The portable ``BaseDAO._delete_top`` (select-ids then delete-by-id) is
-    what non-overriding adapters use. Invoke it directly so it is exercised
-    even though the memory adapter ships a faster override."""
+    """The portable ``portable_delete_top`` (select-ids then delete-by-id) is
+    what an adapter without ``BOUNDED_DELETE`` uses. Invoke it directly so it
+    is exercised even though the memory adapter declares the flag."""
 
     def test_portable_default_deletes_bounded_batch(self, dao, seed):
         seed(6)
 
         # Call the unbound base implementation against the memory DAO.
-        deleted = BaseDAO._delete_top(dao, Q(), limit=4)
+        deleted = portable_delete_top(dao, Q(), limit=4)
 
         assert deleted == 4
         assert dao.query.count() == 2
@@ -118,7 +118,7 @@ class TestPortableDefault:
     def test_portable_default_honours_order_by(self, dao, seed):
         seed(5)  # ranks 0..4
 
-        BaseDAO._delete_top(dao, Q(), limit=2, order_by="-rank")
+        portable_delete_top(dao, Q(), limit=2, order_by="-rank")
 
         remaining = sorted(w.rank for w in dao.query.all().items)
         assert remaining == [0, 1, 2]
@@ -126,13 +126,13 @@ class TestPortableDefault:
     def test_portable_default_limit_zero(self, dao, seed):
         seed(3)
 
-        assert BaseDAO._delete_top(dao, Q(), limit=0) == 0
+        assert portable_delete_top(dao, Q(), limit=0) == 0
         assert dao.query.count() == 3
 
     def test_portable_default_no_matches(self, dao, seed):
         seed(3, status="active")
 
-        assert BaseDAO._delete_top(dao, Q(status="missing"), limit=5) == 0
+        assert portable_delete_top(dao, Q(status="missing"), limit=5) == 0
         assert dao.query.count() == 3
 
     def test_portable_default_chunks_large_in_clause(self, dao, seed):
@@ -149,7 +149,7 @@ class TestPortableDefault:
 
         dao._delete_all = spy
 
-        deleted = BaseDAO._delete_top(dao, Q(), limit=1000)
+        deleted = portable_delete_top(dao, Q(), limit=1000)
 
         assert deleted == 1000
         assert dao.query.count() == 0

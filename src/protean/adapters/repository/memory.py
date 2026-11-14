@@ -22,7 +22,7 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.infra.registry import providers
-from protean.port.dao import BaseDAO, BaseLookup, HoldBack
+from protean.port.dao import BaseDAO, BaseLookup, BoundedDeletePort
 from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import _fully_qualified_name, ensure_utc_aware, occ_trace
 from protean.utils.container import Options
@@ -191,7 +191,7 @@ class MemorySession:
             # unlocked deepcopy could iterate a dict another thread's commit is
             # resizing and raise "dictionary changed size during iteration". The
             # lock is reentrant, so taking it here is safe even when the caller
-            # (e.g. ``_claim``) already holds it on this thread.
+            # (e.g. a claim under ``claim_lock``) already holds it on this thread.
             with lock:
                 data = copy.deepcopy(self._provider._databases)
             self._db = {
@@ -358,7 +358,7 @@ class MemoryProvider(BaseProvider):
 
         # Global in-memory store of dict data.
         self._databases: dict[str, dict[typing.Any, typing.Any]] = defaultdict(dict)
-        # Reentrant so a method that already holds the lock (e.g. ``_claim``) can
+        # Reentrant so a method that already holds the lock (e.g. a claim) can
         # call through to a standalone ``commit`` — which re-acquires it — in the
         # same thread without deadlocking.
         self._locks: dict[str, RLock] = defaultdict(RLock)
@@ -599,7 +599,7 @@ def _compound_sort_key(
     return tuple(key_parts)
 
 
-class DictDAO(BaseDAO):
+class DictDAO(BaseDAO, BoundedDeletePort):
     """A repository for storing data in a dictionary"""
 
     def __repr__(self) -> str:
@@ -948,31 +948,21 @@ class DictDAO(BaseDAO):
 
         return update_count
 
-    def _claim(
-        self,
-        criteria: Q,
-        claim_fields: dict[str, typing.Any],
-        limit: int,
-        order_by: str | list[str] | None = None,
-        hold_back: HoldBack | None = None,
-    ) -> list[typing.Any]:
-        """Atomic find-and-claim for the in-memory adapter.
+    def claim_lock(self) -> RLock:
+        """The provider's lock, held by the portable claim and bounded delete.
 
         The memory adapter has no row-level locking, and its ``_update_all`` is
         not atomic across threads (it reads-then-writes). Holding the provider's
         lock across the whole read-and-claim section serializes concurrent
         claimers in-process, which is the strongest guarantee the single-process
-        memory store can offer. With the lock held, the portable
-        :meth:`BaseDAO._claim` default is race-free.
+        memory store can offer.
 
         The lock is a reentrant ``RLock``: ``_update_all`` commits standalone,
         and :meth:`MemorySession.commit` re-acquires the same lock on this
         thread to run its compare-and-set, so it must nest without deadlocking.
         """
-        conn = self._get_session()
-        assert conn is not None
-        with conn._db["lock"]:
-            return super()._claim(criteria, claim_fields, limit, order_by, hold_back)
+        provider = cast(MemoryProvider, self.provider)
+        return provider._locks[provider.name]
 
     def _delete(self, model_obj: typing.Any) -> typing.Any:
         """Delete the entity record in the dictionary"""
@@ -1006,7 +996,7 @@ class DictDAO(BaseDAO):
             return len(self._filter_items(criteria, records))
         return len(records)
 
-    def _delete_top(
+    def delete_top(
         self,
         criteria: Q,
         limit: int,
@@ -1016,11 +1006,8 @@ class DictDAO(BaseDAO):
 
         Holds the provider lock across the match-and-delete so a concurrent
         writer cannot remove or insert rows between selecting the batch and
-        deleting it, mirroring :meth:`_claim`'s serialization guarantee.
+        deleting it, the same guarantee :meth:`claim_lock` gives a claim.
         """
-        if limit <= 0:
-            return 0
-
         conn = self._get_session()
         assert conn is not None
 

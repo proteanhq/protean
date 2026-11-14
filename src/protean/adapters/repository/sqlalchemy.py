@@ -13,7 +13,7 @@ import typing
 import uuid
 import weakref
 from abc import abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC
 from datetime import date as _date
 from datetime import datetime as _datetime
@@ -74,7 +74,14 @@ from protean.fields.embedded import ValueObject, _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET, FieldSpec
 from protean.infra.registry import providers
-from protean.port.dao import BaseDAO, BaseLookup, HoldBack
+from protean.port.dao import (
+    BaseDAO,
+    BaseLookup,
+    BoundedDeletePort,
+    ClaimCandidatesPort,
+    HoldBack,
+    NativeClaimPort,
+)
 from protean.port.provider import BaseProvider, DatabaseCapabilities, SchemaMigrator
 from protean.utils import (
     Database,
@@ -129,7 +136,7 @@ query_logger = logging.getLogger(__name__ + ".query")
 _QUERY_START_KEY = "protean_query_start_time"
 
 
-def _order_keys(order_by: str | list[str] | None) -> list[str]:
+def _order_keys(order_by: str | Sequence[str] | None) -> list[str]:
     """Normalize a DAO ``order_by`` argument to a list of keys."""
     if not order_by:
         return []
@@ -1967,7 +1974,7 @@ def _refuse_unexpected_version(
         )
 
 
-class SADAO(BaseDAO):
+class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
     """DAO implementation for Databases compliant with SQLAlchemy"""
 
     # An ``SADAO`` is always constructed with an ``SAProvider`` (see
@@ -2400,26 +2407,19 @@ class SADAO(BaseDAO):
         clauses.append(col.desc() if descending else col)
         return clauses
 
-    # Dialects that support the single-statement claim below. It relies on
-    # ``UPDATE … RETURNING`` with a ``FOR UPDATE SKIP LOCKED`` sub-select, which
-    # only PostgreSQL provides together. MySQL and MariaDB have ``SKIP LOCKED``
-    # but no ``UPDATE … RETURNING``; SQL Server and SQLite use different
-    # constructs. All of those — and any future dialect — fall back to the
-    # portable :meth:`BaseDAO._claim` default, which is correct everywhere.
-    _SKIP_LOCKED_DIALECTS = frozenset({"postgresql"})
-
     def _bounded_id_select(
-        self, criteria: Q, limit: int, order_by: str | list[str] | None
+        self, criteria: Q, limit: int, order_by: str | Sequence[str] | None
     ) -> tuple[typing.Any, typing.Any, typing.Any]:
         """Build ``(table, id_col, select-of-ids)`` for bounded id-subquery
-        operations (:meth:`_claim`, :meth:`_delete_top`).
+        operations (:meth:`claim`, :meth:`claim_candidates`,
+        :meth:`delete_top`).
 
         The returned ``select`` yields up to ``limit`` identifiers matching
         ``criteria`` in ``order_by`` order, one key or a list of keys
         (identifier-ascending when unspecified, keeping the bounded set
         deterministic). Callers wrap it:
-        ``_claim`` adds ``FOR UPDATE SKIP LOCKED`` under an ``UPDATE …
-        RETURNING``; ``_delete_top`` wraps it in ``DELETE … WHERE id IN (…)``.
+        ``claim`` adds ``FOR UPDATE SKIP LOCKED`` under an ``UPDATE …
+        RETURNING``; ``delete_top`` wraps it in ``DELETE … WHERE id IN (…)``.
         """
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
@@ -2505,7 +2505,7 @@ class SADAO(BaseDAO):
         return and_(*clauses)
 
     def _blocks_candidate(
-        self, hold_back: HoldBack, criteria: Q, order_by: str | list[str] | None
+        self, hold_back: HoldBack, criteria: Q, order_by: Sequence[str]
     ) -> typing.Any:
         """SQL ``EXISTS`` that is true when the outer row must not be a claim
         candidate.
@@ -2536,29 +2536,23 @@ class SADAO(BaseDAO):
             .exists()
         )
 
-    def _claim_candidates(
+    def claim_candidates(
         self,
         criteria: Q,
         limit: int,
         offset: int,
-        order_by: str | list[str] | None,
-        hold_back: HoldBack | None,
+        order_by: Sequence[str],
+        hold_back: HoldBack,
     ) -> list[typing.Any]:
         """Read one page of claim candidates for the portable claim path.
 
-        With ``hold_back``, the page leaves out every row that
-        :meth:`_blocks_candidate` holds, the same filter the PostgreSQL
-        statement applies. A held group's backlog then never fills a page, so
-        a halted key costs no extra reads on SQLite, MySQL, MariaDB and SQL
-        Server. The portable claim still checks each candidate, because
-        another worker can claim an earlier row between this read and the
-        claim.
+        The page leaves out every row that :meth:`_blocks_candidate` holds,
+        the same filter the PostgreSQL statement applies. A held group's
+        backlog then never fills a page, so a halted key costs no extra reads
+        on SQLite, MySQL, MariaDB and SQL Server. The portable claim still
+        checks each candidate, because another worker can claim an earlier
+        row between this read and the claim.
         """
-        if hold_back is None:
-            return super()._claim_candidates(
-                criteria, limit, offset, order_by, hold_back
-            )
-
         table, _, inner = self._bounded_id_select(criteria, limit, order_by)
         stmt = (
             inner.where(~self._blocks_candidate(hold_back, criteria, order_by))
@@ -2578,27 +2572,22 @@ class SADAO(BaseDAO):
             self._commit_if_standalone(conn)
         return candidates
 
-    def _claim(
+    def claim(
         self,
         criteria: Q,
-        claim_fields: dict[str, typing.Any],
+        claim_fields: Mapping[str, typing.Any],
         limit: int,
-        order_by: str | list[str] | None = None,
+        order_by: Sequence[str] = (),
         hold_back: HoldBack | None = None,
     ) -> "list[BaseEntity]":
-        """Claim rows as :meth:`BaseDAO._claim` describes.
+        """Claim rows as :meth:`BaseDAO._claim` describes, in one
+        ``UPDATE … RETURNING`` statement over a ``FOR UPDATE SKIP LOCKED``
+        sub-select, with or without ``hold_back``.
 
-        On PostgreSQL the claim is one ``UPDATE … RETURNING`` statement over a
-        ``FOR UPDATE SKIP LOCKED`` sub-select, with or without ``hold_back``.
-        Every other dialect uses the base method, which takes ``1 + N`` round
-        trips. ADR-0013 shows the PostgreSQL statement.
+        Only PostgreSQL has both constructs, so only ``PostgresqlProvider``
+        declares ``NATIVE_CLAIM``, and every other dialect takes the portable
+        claim. ADR-0013 shows the statement.
         """
-        if limit <= 0:
-            return []
-
-        if self.provider._engine.dialect.name not in self._SKIP_LOCKED_DIALECTS:
-            return super()._claim(criteria, claim_fields, limit, order_by, hold_back)
-
         table, id_col, inner = self._bounded_id_select(criteria, limit, order_by)
         inner = inner.with_for_update(skip_locked=True, of=table)
 
@@ -2733,30 +2722,21 @@ class SADAO(BaseDAO):
 
         return del_count
 
-    # Dialects on which the single-statement bounded delete below is known to
-    # work: ``DELETE … WHERE id IN (SELECT id … LIMIT n)``. SQLAlchemy renders
-    # the inner ``LIMIT`` per dialect (PostgreSQL/SQLite ``LIMIT``, SQL Server
-    # ``OFFSET/FETCH`` or ``TOP``). MySQL/MariaDB reject a subquery that selects
-    # from the same table being deleted, so they fall back to the portable
-    # :meth:`BaseDAO._delete_top` default (select-ids then delete-by-id).
-    _BOUNDED_DELETE_DIALECTS = frozenset({"postgresql", "sqlite", "mssql"})
-
-    def _delete_top(
+    def delete_top(
         self,
         criteria: Q,
         limit: int,
         order_by: str | None = None,
     ) -> int:
         """Bounded delete in a single ``DELETE … WHERE id IN (SELECT … LIMIT n)``
-        statement on supported dialects; falls back to the portable
-        :meth:`BaseDAO._delete_top` default elsewhere.
+        statement.
+
+        SQLAlchemy renders the inner ``LIMIT`` per dialect (PostgreSQL and
+        SQLite ``LIMIT``, SQL Server ``OFFSET/FETCH`` or ``TOP``). MySQL and
+        MariaDB reject a subquery that selects from the table being deleted,
+        so ``MysqlProvider`` does not declare ``BOUNDED_DELETE`` and takes the
+        portable delete.
         """
-        if limit <= 0:
-            return 0
-
-        if self.provider._engine.dialect.name not in self._BOUNDED_DELETE_DIALECTS:
-            return super()._delete_top(criteria, limit, order_by)
-
         table, id_col, inner = self._bounded_id_select(criteria, limit, order_by)
         stmt = delete(table).where(id_col.in_(inner.scalar_subquery()))
 

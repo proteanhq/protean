@@ -267,3 +267,30 @@ Held rows must not fill the batch, or a halted group with more rows than
   held rows too. On an adapter that does not override it, a large halted
   backlog therefore costs one page read per `limit` held rows on every call.
 - **The memory adapter** runs the portable default under its lock, as before.
+
+## Amendment (November 2026): capability flags choose the claim path
+
+**Amended decision:** the provider's capability flags choose the claim path
+and the bounded-delete path. The SQL adapter's dialect allow-lists are
+removed.
+
+- A provider that declares `NATIVE_CLAIM` claims through its DAO's own
+  `claim` operation. PostgreSQL declares it and keeps the single statement
+  this ADR describes. Every other provider takes the portable claim.
+- A provider that declares `FILTERED_CLAIM_CANDIDATES` supplies the candidate
+  pages of a portable claim with `hold_back`, through its DAO's
+  `claim_candidates` operation. SQLite, MySQL, MariaDB and SQL Server declare
+  it, so a halted group's backlog never enters a page there.
+- A provider that declares `BOUNDED_DELETE` deletes through its DAO's own
+  `delete_top` operation. Every other provider takes the portable delete,
+  which reads the ids and then deletes by id.
+- A DAO class marks each operation it implements by subclassing the matching
+  port. When a provider declares a flag and its DAO class lacks the port, the
+  claim or delete raises `ConfigurationError`.
+- The memory adapter's lock moves into a DAO method that the portable claim
+  and delete run under. Its default locks nothing, and the memory adapter
+  returns its provider's reentrant lock, so the in-process guarantee above
+  still holds.
+- Elasticsearch keeps the portable claim. When two claims race for one row,
+  the row is claimed at most once, and the losing claim returns no rows or
+  raises `DatabaseError` on a version conflict.

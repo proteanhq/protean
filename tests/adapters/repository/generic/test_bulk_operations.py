@@ -11,6 +11,8 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import DateTime, Integer, String
+from protean.port import dao as dao_module
+from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
 
 
@@ -310,3 +312,57 @@ class TestDeleteTop:
         assert seeded_dao._delete_top(Q(), limit=0) == 0
         assert seeded_dao._delete_top(Q(), limit=-1) == 0
         assert seeded_dao.query.count() == 7
+
+    def test_a_bounded_delete_provider_runs_the_dao_delete_top(
+        self, seeded_dao, monkeypatch
+    ):
+        if DatabaseCapabilities.BOUNDED_DELETE not in seeded_dao.provider.capabilities:
+            pytest.skip("this provider does not declare BOUNDED_DELETE")
+
+        def fail(*args, **kwargs):
+            raise AssertionError("portable_delete_top must not run")
+
+        monkeypatch.setattr(dao_module, "portable_delete_top", fail)
+        calls: list[tuple] = []
+        delete_top = seeded_dao.delete_top
+
+        def recording_delete_top(criteria, limit, order_by=None):
+            calls.append((limit, order_by))
+            return delete_top(criteria, limit, order_by)
+
+        monkeypatch.setattr(seeded_dao, "delete_top", recording_delete_top)
+
+        assert seeded_dao._delete_top(Q(), limit=2, order_by="rank") == 2
+        remaining = sorted(t.rank for t in seeded_dao.query.all().items)
+        assert remaining == [2, 3, 4, 5, 6]
+        assert calls == [(2, "rank")]
+
+    def test_a_provider_without_bounded_delete_runs_the_portable_delete(
+        self, seeded_dao, monkeypatch
+    ):
+        provider_cls = type(seeded_dao.provider)
+        declared = seeded_dao.provider.capabilities
+        monkeypatch.setattr(
+            provider_cls,
+            "capabilities",
+            property(lambda self: declared & ~DatabaseCapabilities.BOUNDED_DELETE),
+        )
+
+        def fail(*args, **kwargs):
+            raise AssertionError("delete_top must not run without BOUNDED_DELETE")
+
+        if hasattr(seeded_dao, "delete_top"):
+            monkeypatch.setattr(seeded_dao, "delete_top", fail)
+        calls: list[tuple] = []
+        portable = dao_module.portable_delete_top
+
+        def recording_portable(dao, criteria, limit, order_by=None):
+            calls.append((limit, order_by))
+            return portable(dao, criteria, limit, order_by)
+
+        monkeypatch.setattr(dao_module, "portable_delete_top", recording_portable)
+
+        assert seeded_dao._delete_top(Q(), limit=2, order_by="rank") == 2
+        remaining = sorted(t.rank for t in seeded_dao.query.all().items)
+        assert remaining == [2, 3, 4, 5, 6]
+        assert calls == [(2, "rank")]

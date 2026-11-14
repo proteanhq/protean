@@ -1,12 +1,13 @@
-"""SQLite coverage for ``SqlalchemyDAO._delete_top`` — verifies the
-single-statement bounded-delete path is used on a supported dialect and that
-unsupported dialects fall back to the portable ``BaseDAO._delete_top``."""
+"""SQLite coverage for ``BaseDAO._delete_top`` dispatch: a provider that
+declares ``BOUNDED_DELETE`` runs the single-statement ``SADAO.delete_top``,
+and one that does not falls back to the portable ``portable_delete_top``."""
 
 import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
-from protean.port.dao import BaseDAO
+from protean.port import dao as dao_module
+from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
 
 
@@ -34,48 +35,58 @@ def _seed(domain, count):
 
 
 def _spy_on_portable_default(monkeypatch):
-    """Record calls into the portable ``BaseDAO._delete_top`` default."""
+    """Record calls into the portable ``portable_delete_top``."""
     calls = []
-    original = BaseDAO._delete_top
+    original = dao_module.portable_delete_top
 
-    def spy(self, criteria, limit, order_by=None):
+    def spy(dao, criteria, limit, order_by=None):
         calls.append(True)
-        return original(self, criteria, limit, order_by)
+        return original(dao, criteria, limit, order_by)
 
-    monkeypatch.setattr(BaseDAO, "_delete_top", spy)
+    monkeypatch.setattr(dao_module, "portable_delete_top", spy)
     return calls
 
 
 @pytest.mark.sqlite
 class TestSqliteDeleteTopDispatch:
-    def test_supported_dialect_uses_single_statement_path(
-        self, prune_domain, monkeypatch
-    ):
+    def test_sqlite_declares_bounded_delete(self, prune_domain):
+        provider = prune_domain.providers["default"]
+        assert DatabaseCapabilities.BOUNDED_DELETE in provider.capabilities
+
+    def test_declared_flag_uses_single_statement_path(self, prune_domain, monkeypatch):
         _seed(prune_domain, 5)
         dao = prune_domain.repository_for(Prunable)._dao
 
         portable_calls = _spy_on_portable_default(monkeypatch)
 
-        deleted = dao._delete_top(Q(), limit=2)
+        deleted = dao._delete_top(Q(), limit=2, order_by="rank")
 
         assert deleted == 2
-        assert dao.query.count() == 3
-        # SQLite is a bounded-delete dialect: the single-statement override
-        # runs and never falls through to the portable default.
+        assert sorted(p.rank for p in dao.query.all().items) == [2, 3, 4]
         assert portable_calls == []
 
-    def test_unsupported_dialect_falls_back_to_portable_default(
+    def test_missing_flag_falls_back_to_portable_default(
         self, prune_domain, monkeypatch
     ):
         _seed(prune_domain, 5)
         dao = prune_domain.repository_for(Prunable)._dao
+        provider_cls = type(dao.provider)
+        declared = provider_cls.capabilities.fget(dao.provider)
 
-        # Pretend this dialect lacks single-statement bounded-delete support.
-        monkeypatch.setattr(type(dao), "_BOUNDED_DELETE_DIALECTS", frozenset())
+        monkeypatch.setattr(
+            provider_cls,
+            "capabilities",
+            property(lambda self: declared & ~DatabaseCapabilities.BOUNDED_DELETE),
+        )
         portable_calls = _spy_on_portable_default(monkeypatch)
 
-        deleted = dao._delete_top(Q(), limit=2)
+        def fail(*args, **kwargs):
+            raise AssertionError("delete_top must not run without BOUNDED_DELETE")
+
+        monkeypatch.setattr(dao, "delete_top", fail)
+
+        deleted = dao._delete_top(Q(), limit=2, order_by="rank")
 
         assert deleted == 2
-        assert dao.query.count() == 3
+        assert sorted(p.rank for p in dao.query.all().items) == [2, 3, 4]
         assert portable_calls == [True]
