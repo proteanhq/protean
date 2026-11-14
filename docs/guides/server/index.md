@@ -43,6 +43,9 @@ protean db init --domain=my_domain
 protean db migrate -m "add price" --domain=my_domain
 protean db upgrade --domain=my_domain
 
+# Report the tables that differ from the table definitions
+protean db check --domain=my_domain
+
 # Drop all tables (requires confirmation)
 protean db drop --domain=my_domain
 protean db drop --domain=my_domain --yes  # Skip confirmation

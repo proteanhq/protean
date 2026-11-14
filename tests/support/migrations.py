@@ -31,6 +31,25 @@ from protean.utils.domain_discovery import derive_domain
 
 runner = CliRunner()
 
+MIGRATOR_MODULE = "protean.adapters.repository.schema_migrator.alembic_migrator"
+
+
+class _AlembicNotInstalled:
+    """A meta path finder that fails ``import alembic`` as an install without it does."""
+
+    def find_spec(self, fullname: str, path: Any = None, target: Any = None) -> None:
+        if fullname == "alembic" or fullname.startswith("alembic."):
+            raise ModuleNotFoundError("No module named 'alembic'", name="alembic")
+
+
+def block_alembic(monkeypatch: Any) -> None:
+    """Make ``import alembic`` fail for the rest of the test."""
+    for name in [n for n in sys.modules if n == "alembic" or n.startswith("alembic.")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.delitem(sys.modules, MIGRATOR_MODULE, raising=False)
+    monkeypatch.setattr(sys, "meta_path", [_AlembicNotInstalled(), *sys.meta_path])
+
+
 DOMAIN_HEADER = """
 from protean import Domain, Index
 from protean.fields import Auto, DateTime, Dict, Integer, List, String
@@ -319,6 +338,19 @@ def assert_no_change_at_head(project: MigrationsProject, dialect: str) -> None:
 
     assert "No changes detected; no migration written." in result.output
     assert project.versions() == written
+
+
+def assert_check_matches_at_head(project: MigrationsProject, dialect: str) -> None:
+    """Bring the database to head for ``no_change_model``, then run ``check``."""
+    project.write(no_change_model(dialect))
+    project.run_ok("init")
+    project.run_ok("migrate", "-m", "initial")
+    project.run_ok("upgrade")
+
+    result = project.run("check")
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "The database matches the table definitions."
 
 
 def columns(url: str, table: str, schema: str | None = None) -> set[str]:
