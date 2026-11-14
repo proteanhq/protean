@@ -431,7 +431,9 @@ def portable_claim(
     states.
 
     It reads candidates, then claims each one with a guarded update that
-    re-checks ``criteria`` (``1 + N`` round trips). It runs inside
+    re-checks ``criteria``. An ungrouped claim costs ``1 + N`` round trips.
+    A claim with ``hold_back`` also counts earlier rows for each grouped
+    candidate and may read more than one page of candidates. It runs inside
     ``dao.claim_lock()``.
 
     Raises:
