@@ -436,11 +436,48 @@ The claim and delete flags `NATIVE_CLAIM`, `BOUNDED_DELETE` and
 `FILTERED_CLAIM_CANDIDATES` are in no convenience set. A provider declares each
 of them on its own, next to the set it returns.
 
+Each of these flags goes with an operation that the provider's DAO class
+implements. The DAO class subclasses the matching port from `protean.port.dao`
+after `BaseDAO`:
+
+| Flag | Port | DAO method |
+|------|------|------------|
+| `NATIVE_CLAIM` | `NativeClaimPort` | `claim(criteria, claim_fields, limit, order_by=(), hold_back=None)` |
+| `FILTERED_CLAIM_CANDIDATES` | `ClaimCandidatesPort` | `claim_candidates(criteria, limit, offset, order_by, hold_back)` |
+| `BOUNDED_DELETE` | `BoundedDeletePort` | `delete_top(criteria, limit, order_by=None)` |
+
+```python
+# fragment
+from protean.port.dao import BaseDAO, BoundedDeletePort
+
+
+class MyDAO(BaseDAO, BoundedDeletePort):
+    def delete_top(self, criteria, limit, order_by=None) -> int:
+        # Delete up to ``limit`` matching rows in one operation and return
+        # how many went.
+        ...
+```
+
+`BaseDAO` calls the DAO method only when the provider declares the flag. When
+the provider does not declare it, `BaseDAO` runs the portable claim or delete,
+which works on every adapter. A DAO class can subclass a port whose flag its
+provider does not declare. A provider that declares a flag for a DAO class
+without the port fails with `ConfigurationError`. A claim with a positive
+`limit` checks `NATIVE_CLAIM` and `FILTERED_CLAIM_CANDIDATES`, with or without
+a `hold_back`. A bounded delete with a positive `limit` checks
+`BOUNDED_DELETE`.
+
+The portable claim and delete run inside `BaseDAO.claim_lock()`, which locks
+nothing by default. Override it when the store has no row locks, so that two
+claims in one process cannot take the same row. The memory adapter returns its
+provider's reentrant lock.
+
 !!!warning
     Only declare capabilities you actually implement. The conformance test
     suite checks most declared capabilities. It does not check
-    `OPTIMISTIC_LOCKING`, `CONNECTION_POOLING`, `SCHEMA_MIGRATIONS`,
-    `NATIVE_CLAIM`, `BOUNDED_DELETE` or `FILTERED_CLAIM_CANDIDATES`.
+    `OPTIMISTIC_LOCKING`, `CONNECTION_POOLING` or `SCHEMA_MIGRATIONS`. For
+    `NATIVE_CLAIM`, `BOUNDED_DELETE` and `FILTERED_CLAIM_CANDIDATES`, it checks
+    that `BaseDAO` runs the DAO's own operation.
 
 ### Supporting schema migrations (optional)
 

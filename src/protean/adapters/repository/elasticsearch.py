@@ -52,7 +52,7 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.infra.registry import providers
-from protean.port.dao import BaseDAO, BaseLookup
+from protean.port.dao import BaseDAO, BaseLookup, BoundedDeletePort
 from protean.port.provider import BaseProvider, DatabaseCapabilities
 from protean.utils import _fully_qualified_name
 from protean.utils.container import Options
@@ -433,7 +433,7 @@ def _custom_model_mapping(entity_cls: _Any, custom_attrs: dict[str, _Any]) -> Ma
     return m
 
 
-class ElasticsearchDAO(BaseDAO):
+class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
     # Narrow the base ``type[BaseDatabaseModel]`` to the concrete ES model class.
     # ``ElasticsearchModel`` subclasses ``elasticsearch_dsl.Document``, which
     # provides ``_index``, ``meta``, ``get`` and (dynamically) ``_keyword_fields``.
@@ -712,16 +712,13 @@ class ElasticsearchDAO(BaseDAO):
         count: int = s.count()
         return count
 
-    def _delete_top(
+    def delete_top(
         self,
         criteria: Q,
         limit: int,
         order_by: str | None = None,
     ) -> int:
         """Bounded delete via ``delete_by_query`` with ``max_docs``."""
-        if limit <= 0:
-            return 0
-
         conn = self.provider.get_connection()
 
         q = elasticsearch_dsl.Q()

@@ -84,7 +84,10 @@ disappears.
 
 - **The ports** for third-party adapter authors: the `BaseProvider`,
   `BaseBroker` and `BaseEventStore` ABCs and the `CachePort` protocols, with the `BaseDAO` and
-  `BaseLookup` classes a database provider subclasses in `protean.port.dao`.
+  `BaseLookup` classes a database provider subclasses in `protean.port.dao`,
+  and the `NativeClaimPort`, `ClaimCandidatesPort` and `BoundedDeletePort`
+  protocols a DAO class subclasses there to match its provider's capability
+  flags.
   These stay provisional until
   the adapter conformance suite ships publicly and has been exercised by an
   adapter Protean does not maintain.

@@ -18,6 +18,8 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import DateTime, Integer, String
+from protean.port import dao as dao_module
+from protean.port.dao import _read_claim_candidates
 from protean.utils.query import Q
 
 
@@ -130,13 +132,15 @@ class TestClaimContract:
         """A worker that read its candidates before another worker claimed
         them gets none of them: each row's update re-checks ``criteria``."""
         _seed(test_domain, 3)
-        stale = dao._claim_candidates(_ready(), 10, 0, None, None)
+        stale = _read_claim_candidates(dao, _ready(), 10, 0, ())
         assert len(stale) == 3
 
         assert len(dao._claim(_ready(), CLAIM, limit=10)) == 3
 
         # Hand the second claim the candidate list read before the first claim.
-        monkeypatch.setattr(dao, "_claim_candidates", lambda *args, **kwargs: stale)
+        monkeypatch.setattr(
+            dao_module, "_read_claim_candidates", lambda *args, **kwargs: stale
+        )
         second = dao._claim(
             _ready(), {"status": "claimed", "locked_by": "worker-B"}, limit=10
         )

@@ -1,5 +1,7 @@
-"""PostgreSQL coverage for ``SqlalchemyDAO._claim`` — the
-``FOR UPDATE SKIP LOCKED`` fast path used by the outbox processing loop."""
+"""PostgreSQL coverage for ``SADAO.claim``, the ``FOR UPDATE SKIP LOCKED``
+single-statement claim that ``_claim`` runs because the PostgreSQL provider
+declares ``NATIVE_CLAIM``. The claim contract itself is covered by the generic
+claim tests."""
 
 import threading
 
@@ -7,6 +9,8 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import DateTime, Integer, String
+from protean.integrations.pytest import assert_query_count
+from protean.port.dao import HoldBack
 from protean.utils.query import Q
 
 
@@ -37,6 +41,23 @@ def claim_domain(test_domain):
     yield test_domain
 
 
+class KeyedClaimJob(BaseAggregate):
+    status = String(max_length=20, default="ready")
+    key = String(max_length=20)
+    seq = Integer(required=True)
+
+
+@pytest.fixture
+def keyed_claim_domain(test_domain):
+    test_domain.register(KeyedClaimJob, schema_name="pg_keyed_claim_job")
+    test_domain.init(traverse=False)
+    dao = test_domain.repository_for(KeyedClaimJob)._dao
+    provider = test_domain.providers["default"]
+    provider._metadata.create_all(provider._engine)
+    dao._delete_all()
+    yield test_domain
+
+
 def _seed(domain, count, status="ready"):
     repo = domain.repository_for(ClaimJob)
     for i in range(count):
@@ -45,46 +66,55 @@ def _seed(domain, count, status="ready"):
 
 @pytest.mark.postgresql
 class TestPostgresClaim:
-    def test_claims_persist_and_skip_already_claimed(self, claim_domain):
-        _seed(claim_domain, 5)
+    def test_claim_is_one_update_returning_statement(self, claim_domain):
+        """PostgreSQL declares ``NATIVE_CLAIM``, so a claim is a single
+        ``UPDATE ... RETURNING`` round trip."""
+        _seed(claim_domain, 4)
         dao = claim_domain.repository_for(ClaimJob)._dao
+        engine = claim_domain.providers["default"]._engine
 
-        claimed = dao._claim(
-            Q(status="ready"),
-            {"status": "claimed", "locked_by": "w1"},
-            limit=10,
-        )
-        assert len(claimed) == 5
-        assert all(j.status == "claimed" and j.locked_by == "w1" for j in claimed)
-
-        # Durable, and a second claim finds nothing eligible.
-        repo = claim_domain.repository_for(ClaimJob)
-        for job in claimed:
-            assert repo.get(job.id).status == "claimed"
-        assert (
-            dao._claim(
-                Q(status="ready"), {"status": "claimed", "locked_by": "w2"}, limit=10
+        with assert_query_count(1, engine) as statements:
+            claimed = dao._claim(
+                Q(status="ready"),
+                {"status": "claimed", "locked_by": "w1"},
+                limit=2,
+                order_by="-priority",
             )
-            == []
-        )
 
-    def test_orders_and_limits(self, claim_domain):
-        _seed(claim_domain, 6)
-        dao = claim_domain.repository_for(ClaimJob)._dao
+        assert [j.priority for j in claimed] == [3, 2]
+        assert "UPDATE" in statements[0]
+        assert "RETURNING" in statements[0]
 
-        claimed = dao._claim(
-            Q(status="ready"),
-            {"status": "claimed", "locked_by": "w1"},
-            limit=3,
-            order_by="-priority",
-        )
-        priorities = [j.priority for j in claimed]
-        assert priorities == [5, 4, 3]
+    def test_held_back_claim_is_one_update_returning_statement(
+        self, keyed_claim_domain
+    ):
+        """With ``hold_back``, the claim is still one statement: the held key's
+        rows are left out inside it, with no page reads before it."""
+        repo = keyed_claim_domain.repository_for(KeyedClaimJob)
+        repo.add(KeyedClaimJob(key="k1", seq=0, status="failed"))
+        repo.add(KeyedClaimJob(key="k1", seq=1))
+        repo.add(KeyedClaimJob(key="k2", seq=2))
+        dao = repo._dao
+        engine = keyed_claim_domain.providers["default"]._engine
 
-    def test_non_positive_limit_claims_nothing(self, claim_domain):
-        _seed(claim_domain, 3)
-        dao = claim_domain.repository_for(ClaimJob)._dao
-        assert dao._claim(Q(status="ready"), {"status": "claimed"}, 0) == []
+        with assert_query_count(1, engine) as statements:
+            claimed = dao._claim(
+                Q(status="ready"),
+                {"status": "claimed"},
+                limit=10,
+                order_by=["seq"],
+                hold_back=HoldBack(
+                    group_by=("key",),
+                    applies=Q(key__isnull=False),
+                    holds=Q(status__in=["ready", "claimed", "failed"]),
+                    order=("seq",),
+                    lane_of=lambda row: None if row.key is None else 0,
+                ),
+            )
+
+        assert [(j.key, j.seq) for j in claimed] == [("k2", 2)]
+        assert "UPDATE" in statements[0]
+        assert "RETURNING" in statements[0]
 
     def test_skip_locked_prevents_double_claim_under_contention(self, claim_domain):
         """Two workers drain the pool concurrently; ``SKIP LOCKED`` ensures
