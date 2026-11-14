@@ -1201,11 +1201,6 @@ class TestTutorialCh19(_TutorialBase):
 
         assert priorities == {"...": Priority.BULK.value, "Walden": 0}
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="enrich rebuilds the command and drops its priority (issue #1826)",
-    )
     def test_queued_command_keeps_its_priority(self):
         """Ch19: a command queued for the server carries its BULK priority."""
         domain = ch19.domain
