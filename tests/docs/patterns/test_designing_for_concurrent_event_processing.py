@@ -1,12 +1,17 @@
 """Run the examples on ``docs/patterns/designing-for-concurrent-event-processing.md``."""
 
+import re
+
 import pytest
 
 from protean.exceptions import ObjectNotFoundError, ValidationError
 from protean.utils.eventing import Message
-from tests.docs.support import load_example
+from tests.docs.support import DOCS, load_example
 
 pytestmark = pytest.mark.no_test_domain
+
+PAGE = DOCS / "patterns/designing-for-concurrent-event-processing.md"
+SOLUTION_C_ANCHOR = "solution-c-idempotent-retry-with-unique-constraints"
 
 
 def _deliver(handler, events):
@@ -162,3 +167,36 @@ def test_an_early_association_event_fails_until_the_client_exists():
         )
 
         assert _client_state(example) == ("Acme", ["c1", "c2"])
+
+
+def _page_sections():
+    """Map each ``###`` heading on the page to the text under it."""
+    sections = {}
+    heading = None
+    for line in PAGE.read_text(encoding="utf-8").splitlines():
+        if line.startswith("#"):
+            heading = line.lstrip("#").strip() if line.startswith("### ") else None
+            if heading:
+                sections[heading] = ""
+        elif heading:
+            sections[heading] += line + "\n"
+    return sections
+
+
+@pytest.mark.parametrize(
+    "solution",
+    ["Solution A: Combine into a single handler", "Solution B: Process Manager"],
+)
+def test_solutions_a_and_b_link_to_solution_c_for_redelivery(solution):
+    section = _page_sections()[solution]
+    assert f"(#{SOLUTION_C_ANCHOR})" in section
+    assert "`ValidationError`" in section
+
+
+def test_the_solution_c_anchor_matches_its_heading():
+    slugs = [
+        re.sub(r"[^a-z0-9 -]", "", heading.lower()).replace(" ", "-")
+        for heading in _page_sections()
+    ]
+    assert slugs
+    assert SOLUTION_C_ANCHOR in slugs
