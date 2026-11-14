@@ -33,7 +33,7 @@ def test_init_halts_when_the_database_cannot_be_reached():
         ConfigurationError,
         match=(
             "Could not connect to database at "
-            "postgresql://postgres:postgres@localhost:5444/foobar"
+            "postgresql://postgres:\\*\\*\\*@localhost:5444/foobar"
         ),
     ):
         load_example("adapters/001.py")

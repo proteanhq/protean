@@ -5,6 +5,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit, urlunsplit
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
@@ -17,6 +18,22 @@ if TYPE_CHECKING:
     from protean.utils.container import OptionsMixin
 
 logger = logging.getLogger(__name__)
+
+
+def _without_password(uri: Any) -> str:
+    """Return ``uri`` with any password replaced by ``***``, safe to show.
+
+    A URI that is not a string, such as Elasticsearch's dict of hosts, is
+    replaced as a whole, because its credentials can sit anywhere in it.
+    """
+    if not isinstance(uri, str):
+        return "<not shown>"
+    parts = urlsplit(uri)
+    if parts.password is None:
+        return uri
+    userinfo, _, host = parts.netloc.rpartition("@")
+    username = userinfo.partition(":")[0]
+    return urlunsplit(parts._replace(netloc=f"{username}:***@{host}"))
 
 
 class Providers(collections.abc.MutableMapping[str, BaseProvider]):
@@ -114,7 +131,8 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
                 # Initialize a connection to check if everything is ok
                 if connect and not provider.is_alive():
                     raise ConfigurationError(
-                        f"Could not connect to database at {conn_info['database_uri']}"
+                        "Could not connect to database at "
+                        f"{_without_password(conn_info['database_uri'])}"
                     )
 
                 provider_objects[provider_name] = provider

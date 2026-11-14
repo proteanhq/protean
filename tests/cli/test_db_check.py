@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 import sqlalchemy
 
+from protean.adapters.repository.memory import MemoryProvider
 from protean.adapters.repository.sqlalchemy import SAProvider
 from protean.port.provider import BaseProvider
 from tests.support.migrations import (
@@ -493,6 +494,24 @@ class TestCheckEnvironmentErrors:
         assert result.exit_code == 2, result.output
         assert "Could not connect to database" in one_line(result.stderr)
         assert result.stdout == ""
+
+    def test_a_failed_connection_hides_the_password(self, project, monkeypatch):
+        start_at_head(project, ORDER)
+        project.databases = {
+            "default": {
+                "provider": "memory",
+                "database_uri": "postgresql://shop:s3cret@db.internal:5432/shop",
+            }
+        }
+        project.write(ORDER)
+        monkeypatch.setattr(MemoryProvider, "is_alive", lambda self: False)
+
+        result = project.run("check")
+
+        assert result.exit_code == 2, result.output
+        stderr = one_line(result.stderr)
+        assert "postgresql://shop:***@db.internal:5432/shop" in stderr
+        assert "s3cret" not in result.output
 
     def test_a_domain_that_raises_on_import(self, project):
         start_at_head(project, ORDER)
