@@ -196,10 +196,11 @@ true when the provider declares at least one of them:
 On the memory provider, `results` holds one record, Ada's.
 
 !!!note
-    Methods that require a specific capability (like `raw()`) automatically
-    check for it and raise `NotSupportedError` if the provider does not declare
-    the required capability. You only need to check capabilities explicitly when
-    writing code that adapts its behavior based on what is available.
+    `QuerySet.raw()` checks for `RAW_QUERIES` and raises `NotSupportedError`
+    when the provider does not declare it. A provider without its own `raw()`,
+    such as Elasticsearch, raises `NotSupportedError` from `provider.raw()`.
+    You only need to check capabilities explicitly when writing code that
+    adapts its behavior based on what is available.
 
 ### Provider Capability Matrix
 
