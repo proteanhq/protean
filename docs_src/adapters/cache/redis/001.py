@@ -30,18 +30,19 @@ with domain.domain_context():
     # Check connectivity
     reachable = cache.ping()  # True if Redis is reachable
 
-    # Store a projection; its key is "order_summary:::ord-123"
+    # Store a projection, then ask the cache for its key
     cache.add(OrderSummary(order_id="ord-123", total=42.5))
+    key = cache.key_for(OrderSummary, "ord-123")  # "order_summary:::ord-123"
 
     # Retrieve a cached projection
-    entry = cache.get("order_summary:::ord-123")
+    entry = cache.get(key)
 
-    # Count cached entries
-    count = cache.count("order_summary:::*")
+    # Count the projection's cached entries
+    count = cache.count(cache.pattern_for(OrderSummary))  # "order_summary:::*"
 
     # Set a custom TTL on a specific key
-    cache.set_ttl("order_summary:::ord-123", ttl=600)  # 10 minutes
-    remaining = cache.get_ttl("order_summary:::ord-123")
+    cache.set_ttl(key, ttl=600)  # 10 minutes
+    remaining = cache.get_ttl(key)
 
     # Remove every key in the cache's configured database
     cache.clear()

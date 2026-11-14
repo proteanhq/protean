@@ -30,10 +30,10 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import ConfigurationError
+from protean.exceptions import ConfigurationError, NotSupportedError
+from protean.port.cache import CacheCapabilities
 from protean.utils import DomainObjects, fqn
 from protean.utils.eventing import Message
-from protean.utils.inflection import underscore
 from protean.utils.query import Q
 from protean.utils.telemetry import describe_exception
 
@@ -103,6 +103,11 @@ def rebuild_projection(
 
     Returns:
         RebuildResult with counts and any errors.
+
+    Raises:
+        NotSupportedError: The projection is cache-backed and its cache does
+            not support ``CacheCapabilities.PATTERN_MATCH``. It is raised
+            before any event is replayed.
     """
     result = RebuildResult(projection_name=projection_cls.__name__)
 
@@ -113,6 +118,8 @@ def rebuild_projection(
             f"No projectors found for projection `{projection_cls.__name__}`"
         )
         return result
+
+    _check_truncatable(domain, projection_cls)
 
     # Truncate projection data
     _truncate_projection(domain, projection_cls, projectors)
@@ -155,16 +162,44 @@ def rebuild_all_projections(
 
     Returns:
         Dictionary mapping projection class names to their RebuildResult.
+
+    Raises:
+        NotSupportedError: A cache-backed projection's cache does not support
+            ``CacheCapabilities.PATTERN_MATCH``. It is raised before any
+            projection is truncated or any event is replayed.
     """
-    results: dict[str, RebuildResult] = {}
+    projection_classes = [
+        record.cls
+        for record in domain.registry._elements[DomainObjects.PROJECTION.value].values()
+        if not record.internal
+    ]
+    for projection_cls in projection_classes:
+        if domain.projectors_for(projection_cls):
+            _check_truncatable(domain, projection_cls)
 
-    for record in domain.registry._elements[DomainObjects.PROJECTION.value].values():
-        if record.internal:
-            continue
-        result = rebuild_projection(domain, record.cls, batch_size)
-        results[record.cls.__name__] = result
+    return {
+        projection_cls.__name__: rebuild_projection(domain, projection_cls, batch_size)
+        for projection_cls in projection_classes
+    }
 
-    return results
+
+def _check_truncatable(
+    domain: "Domain", projection_cls: "type[BaseProjection]"
+) -> None:
+    """Raise ``NotSupportedError`` if the projection's entries cannot be removed.
+
+    A cache-backed projection is truncated with a key pattern, so its cache
+    must support ``CacheCapabilities.PATTERN_MATCH``.
+    """
+    if not projection_cls.meta_.cache:
+        return
+    cache = domain.cache_for(projection_cls)
+    if CacheCapabilities.PATTERN_MATCH not in cache.capabilities:
+        raise NotSupportedError(
+            f"Cache '{cache.name}' does not support "
+            f"CacheCapabilities.PATTERN_MATCH, which rebuilding projection "
+            f"`{projection_cls.__name__}` needs."
+        )
 
 
 def _truncate_projection(
@@ -180,10 +215,7 @@ def _truncate_projection(
     """
     if projection_cls.meta_.cache:
         cache = domain.cache_for(projection_cls)
-        # Keys are `name:::identifier`, so the glob for every entry of this
-        # projection is the name, the three-colon separator, then `*`.
-        key_pattern = f"{underscore(projection_cls.__name__)}:::*"
-        cache.remove_by_key_pattern(key_pattern)
+        cache.remove_by_key_pattern(cache.pattern_for(projection_cls))
         return
 
     # A marker left behind makes the replay skip its event as an

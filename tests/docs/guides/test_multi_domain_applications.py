@@ -3,13 +3,17 @@
 from unittest.mock import patch
 
 import pytest
+import redis
 from fastapi.testclient import TestClient
 
+from protean.adapters.broker.redis import RedisBroker
+from protean.adapters.repository.elasticsearch import ESProvider
 from protean.domain.context import has_domain_context
 from protean.exceptions import ConfigurationError
+from protean.infra import registry
 from protean.utils import DomainObjects
 from protean.utils.globals import current_domain
-from tests.docs.support import DOCS_SRC, load_example
+from tests.docs.support import DOCS_SRC, domain_from_config, load_example
 from tests.support.lifespan import empty_with_blocks, lifespan_yields
 
 pytestmark = pytest.mark.no_test_domain
@@ -262,3 +266,31 @@ def test_the_process_manager_waits_for_payment_before_stock(example):
 
     assert final.state["status"] == "awaiting_payment"
     assert final.is_complete is False
+
+
+CATALOGUE = "guides/multi-domain-applications/catalogue.toml"
+
+
+@pytest.mark.elasticsearch
+def test_catalogue_domain_stores_in_elasticsearch(tmp_path):
+    # Built without domain.init(), which would ping localhost:9200.
+    domain = domain_from_config(CATALOGUE, tmp_path, name="Catalogue")
+    conn_info = dict(domain.config["databases"]["default"])
+
+    provider = registry.providers.get(conn_info["provider"])(
+        "default", domain, conn_info
+    )
+
+    assert type(provider) is ESProvider
+    nodes = provider._client.transport.node_pool.all()
+    assert [node.base_url for node in nodes] == ["http://localhost:9200"]
+
+
+def test_catalogue_domain_uses_its_own_redis_database(tmp_path):
+    domain = domain_from_config(CATALOGUE, tmp_path, name="Catalogue")
+    broker = domain.config["brokers"]["default"]
+
+    assert registry.brokers.get(broker["provider"]) is RedisBroker
+    # The broker builds its connection pool from this URI.
+    pool = redis.ConnectionPool.from_url(broker["URI"])
+    assert pool.connection_kwargs["db"] == 1

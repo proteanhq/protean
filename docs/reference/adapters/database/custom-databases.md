@@ -444,8 +444,8 @@ of them on its own, next to the set it returns.
 
 ### Supporting schema migrations (optional)
 
-`protean db init` works only with a provider that declares
-`SCHEMA_MIGRATIONS`. `RELATIONAL` does not include the flag, so
+The `protean db init`, `migrate`, `upgrade` and `downgrade` commands work only
+with a provider that declares `SCHEMA_MIGRATIONS`. `RELATIONAL` does not include the flag, so
 an adapter adds it on its own:
 
 ```python
@@ -457,9 +457,19 @@ def capabilities(self) -> DatabaseCapabilities:
 
 An adapter that declares the flag also overrides `_schema_migrator(directory)`.
 It returns an object that satisfies the `SchemaMigrator` protocol from
-`protean.port.provider`. The protocol has one method, `init(domain_path)`,
-which creates the migrations folder in `directory`. It raises
-`ConfigurationError` when the folder exists and is not empty.
+`protean.port.provider`. The protocol has four methods:
+
+- `init(domain_path)` creates the migrations folder in `directory`. It raises
+  `ConfigurationError` when the folder exists and is not empty.
+- `migrate(message)` writes a migration for the differences between the
+  domain's tables and the database, and returns the file's path. It returns
+  `None` and writes no file when there is no difference.
+- `upgrade(revision="head", sql=False)` applies migrations up to `revision`.
+- `downgrade(revision, sql=False)` reverts migrations down to `revision`.
+
+With `sql=True`, `upgrade` and `downgrade` print the SQL and do not connect.
+Each method raises `ConfigurationError` when the migration tool reports an
+error.
 
 Callers use `provider.schema_migrator(directory)`. It raises
 `NotSupportedError` when the provider does not declare the flag. An adapter

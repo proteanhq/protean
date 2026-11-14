@@ -120,7 +120,9 @@ def abort_for_missing_dependency(
     raise typer.Abort() from exc
 
 
-def load_domain(domain_path: str, *, as_json: bool = False) -> "Domain":
+def load_domain(
+    domain_path: str, *, as_json: bool = False, connect: bool = True
+) -> "Domain":
     """Load and initialize a domain from ``domain_path``, or abort cleanly.
 
     Shared by the ``protean`` subcommands that operate on a domain (``outbox``
@@ -132,6 +134,9 @@ def load_domain(domain_path: str, *, as_json: bool = False) -> "Domain":
     Pass ``as_json=True`` from a command emitting the result envelope: a load
     failure then becomes the shared ``status="error"`` envelope on stdout and
     exit ``2``, so machine output stays exactly one JSON object.
+
+    With ``connect=False``, the domain is initialized without connecting to
+    its databases, for a command that only renders SQL.
     """
     try:
         derived_domain = derive_domain(domain_path)
@@ -146,7 +151,10 @@ def load_domain(domain_path: str, *, as_json: bool = False) -> "Domain":
     assert derived_domain is not None
 
     try:
-        derived_domain.init()
+        if connect:
+            derived_domain.init()
+        else:
+            derived_domain._init(connect=False)
     except Exception as exc:
         # Under ``--json`` an init failure (bad config, an adapter that will not
         # connect) becomes the error envelope too, so the machine payload stays

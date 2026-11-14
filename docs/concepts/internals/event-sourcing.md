@@ -368,7 +368,7 @@ The rebuild performs three steps:
    projectors that target the given projection.
 2. **Truncate projection data**: All existing data is cleared. Database-backed
    projections use `_dao._delete_all()`; cache-backed projections use
-   `remove_by_key_pattern()` with the projection's key prefix.
+   `remove_by_key_pattern()` with the pattern `cache.pattern_for()` returns.
 3. **Replay events**: For each projector, events are read from all stream
    categories and merged by `global_position` to maintain cross-aggregate
    ordering. Each event is dispatched through `_handle()`, which converts the

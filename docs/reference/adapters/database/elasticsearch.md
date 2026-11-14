@@ -45,7 +45,7 @@ upper case only. In lower case they are ignored.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `provider` | Required | Must be `"elasticsearch"` for Elasticsearch |
-| `database_uri` | Required | A table with a `hosts` list. Each host is a `scheme://host:port` URL, or `host:port` (the scheme is then `http`) |
+| `database_uri` | Required | A table with a `hosts` list. Each host is a `scheme://host:port` URL. A host without a scheme gets `http`, or `https` when `USE_SSL` is true. A host without a port gets port 9200, except an `https://` URL, which the client gives port 443 |
 | `NAMESPACE_PREFIX` | `None` | Prefix for index names (e.g. `prod` → `prod_person`) |
 | `NAMESPACE_SEPARATOR` | `"_"` | Character joining prefix and index name |
 | `SETTINGS` | `None` | Index settings passed as-is to Elasticsearch |

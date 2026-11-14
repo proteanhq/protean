@@ -39,6 +39,10 @@ protean db setup-outbox --domain=my_domain
 # Create the migrations folder of the default provider
 protean db init --domain=my_domain
 
+# Write a migration for the model's changes, then apply it
+protean db migrate -m "add price" --domain=my_domain
+protean db upgrade --domain=my_domain
+
 # Drop all tables (requires confirmation)
 protean db drop --domain=my_domain
 protean db drop --domain=my_domain --yes  # Skip confirmation

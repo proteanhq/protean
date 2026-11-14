@@ -48,9 +48,10 @@ class PaymentWebhookSubscriber:
             logger.warning(f"Missing fields {missing}, skipping message")
             return
 
-        # Validate types
-        if not isinstance(payload["amount"], (int, float)):
-            logger.warning(f"Invalid amount type: {type(payload['amount'])}")
+        # Validate types. bool is a subclass of int, so reject it first.
+        amount = payload["amount"]
+        if isinstance(amount, bool) or not isinstance(amount, (int, float)):
+            logger.warning(f"Invalid amount type: {type(amount)}")
             return
 
         # Safe to process
@@ -58,7 +59,7 @@ class PaymentWebhookSubscriber:
             RecordPayment(
                 order_id=payload["order_id"],
                 status=payload["status"],
-                amount=payload["amount"],
+                amount=amount,
             )
         )
 

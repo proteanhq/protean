@@ -95,23 +95,7 @@ handles delivery semantics from that point.
 Turn on the outbox and add the external broker(s) to its configuration:
 
 ```toml
-# domain.toml
-[server]
-default_subscription_type = "stream"     # Turns on the outbox
-
-[brokers.default]
-provider = "redis"
-URI = "redis://localhost:6379/0"
-
-[brokers.partner_events]
-provider = "redis"
-URI = "redis://partner-redis:6379/0"
-
-[outbox]
-broker = "default"                       # Internal broker
-external_brokers = ["partner_events"]    # External broker(s) for published events
-messages_per_tick = 50
-tick_interval = 1
+--8<-- "patterns/publishing-events-to-external-brokers/partner_broker.toml"
 ```
 
 If your domain already uses stream subscriptions, the outbox is already on and
@@ -201,24 +185,7 @@ Only `OrderShipped` will be dispatched to external brokers.
 ### Step 2: Configure external brokers
 
 ```toml
-[server]
-default_subscription_type = "stream"
-
-[brokers.default]
-provider = "redis"
-URI = "redis://localhost:6379/0"
-
-[brokers.fulfillment_broker]
-provider = "redis"
-URI = "redis://fulfillment-redis:6379/0"
-
-[brokers.analytics_broker]
-provider = "redis"
-URI = "redis://analytics-redis:6379/0"
-
-[outbox]
-broker = "default"
-external_brokers = ["fulfillment_broker", "analytics_broker"]
+--8<-- "patterns/publishing-events-to-external-brokers/two_external_brokers.toml"
 ```
 
 With this configuration, `OrderShipped` creates three outbox rows:

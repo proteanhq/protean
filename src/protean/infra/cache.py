@@ -120,13 +120,20 @@ def _missing_port_members(adapter_cls: type, port: type[object]) -> list[str]:
 
 _REQUIRED_ADAPTER_ATTRIBUTES = ("capabilities", "config")
 
+_KEY_SEPARATOR = ":::"
+
+
+def _prefix_for(projection_cls: "type[BaseProjection]") -> str:
+    """The key prefix of `projection_cls`: its class name in snake case."""
+    return underscore(projection_cls.__name__)
+
 
 class Cache:
     """The framework's view of one cache adapter.
 
     `domain.caches[<name>]` and `domain.cache_for(<projection>)` return one.
-    Keys have the form `<projection_name>:::<identifier>`, where
-    `<projection_name>` is the projection class name in snake case.
+    The service builds every cache key: callers ask `key_for` for an entry's
+    key and `pattern_for` for the glob over a projection's entries.
 
     Raises:
         ConfigurationError: When it is built, if the adapter has no
@@ -196,20 +203,37 @@ class Cache:
         self._require(CacheCapabilities.PATTERN_MATCH)
         return cast(CachePatternPort, self._adapter)
 
+    def key_for(self, projection_cls: "type[BaseProjection]", identifier: Any) -> str:
+        """The key the entry for `identifier` of `projection_cls` lives under.
+
+        The key is the projection class name in snake case, then `:::`, then
+        `str(identifier)`: `key_for(OrderSummary, "ord-1")` returns
+        `"order_summary:::ord-1"`. It needs no capability and does no I/O.
+        """
+        return f"{_prefix_for(projection_cls)}{_KEY_SEPARATOR}{identifier!s}"
+
+    def pattern_for(self, projection_cls: "type[BaseProjection]") -> str:
+        """The glob that matches every entry of `projection_cls`.
+
+        `pattern_for(OrderSummary)` returns `"order_summary:::*"`, the pattern
+        `count` and `remove_by_key_pattern` take. It needs no capability and
+        does no I/O.
+        """
+        return f"{_prefix_for(projection_cls)}{_KEY_SEPARATOR}*"
+
     def _key_for(self, projection: "BaseProjection") -> str:
         id_f = id_field(projection)
         assert id_f is not None
         assert id_f.field_name is not None
         identifier = getattr(projection, id_f.field_name)
-        return f"{underscore(projection.__class__.__name__)}:::{identifier}"
+        return self.key_for(type(projection), identifier)
 
     def _projection_cls(self, key: str) -> "type[BaseProjection]":
-        prefix = key.split(":::")[0]
+        prefix = key.split(_KEY_SEPARATOR)[0]
         if prefix not in self._projections:
             raise KeyError(
                 f"No projection is registered in {self._source} under {prefix!r}. "
-                "A key or pattern starts with a projection name in snake case, "
-                "then `:::`, such as 'user_profile:::*'."
+                "Build keys with `key_for` and patterns with `pattern_for`."
             )
         return self._projections[prefix]
 
@@ -256,7 +280,7 @@ class Cache:
 
     def _register_projection(self, projection_cls: "type[BaseProjection]") -> None:
         """Register a projection class so `get` can rebuild its entries."""
-        self._projections[underscore(projection_cls.__name__)] = projection_cls
+        self._projections[_prefix_for(projection_cls)] = projection_cls
 
     def _close(self) -> None:
         """Close the adapter."""
@@ -309,10 +333,8 @@ class Cache:
 
         `key_pattern` is a glob. `*` matches any run of characters, `?`
         matches one, `[...]` is a character class, and other characters,
-        including `.`, are literal. Keys are `name:::identifier`, so a
-        projection's entries are `"user_profile:::*"`. Bracket negation and
-        escaping can differ between adapters, so keep patterns to the
-        `name:::*` shape.
+        including `.`, are literal. Bracket negation and escaping can differ
+        between adapters, so pass the pattern `pattern_for` returns.
 
         It returns at most `GET_ALL_MAX` entries. Past that it returns the
         first `GET_ALL_MAX` in key order and logs a warning.
@@ -502,8 +524,7 @@ class Caches(MutableMapping[str, Cache]):
 
         cache = self[cache_name]
 
-        projection_name = underscore(projection_cls.__name__)
-        if projection_name not in cache._projections:
+        if _prefix_for(projection_cls) not in cache._projections:
             cache._register_projection(projection_cls)
 
         return cache
