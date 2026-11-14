@@ -5,7 +5,7 @@ import hashlib
 import pytest
 from fastapi.testclient import TestClient
 
-from protean.exceptions import ValidationError
+from protean.exceptions import TransactionError, ValidationError
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -292,3 +292,66 @@ def test_event_handler_reserves_stock_through_a_command():
                 {"product_id": "prod-1", "quantity": 3, "order_id": order.order_id},
             )
         ]
+
+
+def _validation_error(error):
+    """Return the first ``ValidationError`` in ``error``'s ``__cause__`` chain."""
+    while error is not None and not isinstance(error, ValidationError):
+        error = error.__cause__
+    assert error is not None, "no ValidationError in the cause chain"
+    return error
+
+
+def _stored_stock(example):
+    inventory = example.domain.repository_for(example.Inventory).get("prod-1")
+    return inventory.available, inventory.reserved
+
+
+@pytest.fixture(params=["004.py", "005.py"])
+def stock_example(request):
+    example = load_example(
+        f"patterns/application-service-vs-command-handler/{request.param}"
+    )
+    example.domain.config["event_processing"] = "sync"
+    example.domain.config["command_processing"] = "sync"
+    with example.domain.domain_context():
+        example.domain.repository_for(example.Inventory).add(
+            example.Inventory(product_id="prod-1", available=5)
+        )
+        yield example
+
+
+@pytest.mark.parametrize("quantity", [0, -2, 6])
+def test_order_placed_with_a_bad_quantity_leaves_stock_unchanged(
+    stock_example, quantity
+):
+    order = stock_example.Order()
+    order.place("prod-1", quantity)
+
+    with pytest.raises(TransactionError) as exc:
+        stock_example.domain.repository_for(stock_example.Order).add(order)
+
+    assert "quantity" in _validation_error(exc.value).messages
+    assert _stored_stock(stock_example) == (5, 0)
+
+
+@pytest.mark.parametrize("quantity", [0, -2, 6])
+def test_reserve_inventory_command_with_a_bad_quantity_leaves_stock_unchanged(
+    quantity,
+):
+    example = load_example("patterns/application-service-vs-command-handler/005.py")
+    example.domain.config["command_processing"] = "sync"
+    with example.domain.domain_context():
+        example.domain.repository_for(example.Inventory).add(
+            example.Inventory(product_id="prod-1", available=5)
+        )
+
+        with pytest.raises(ValidationError) as exc:
+            example.domain.process(
+                example.ReserveInventory(
+                    product_id="prod-1", quantity=quantity, order_id="ord-1"
+                )
+            )
+
+        assert "quantity" in exc.value.messages
+        assert _stored_stock(example) == (5, 0)
