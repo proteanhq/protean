@@ -36,10 +36,12 @@ Each test runs against one adapter. With no options, a test runs against the
 default adapter of its folder's port: `inline` for `broker`, `memory` for the
 other three. A plain `pytest tests/conformance` needs no services.
 
-`protean test` runs each suite on the in-memory adapter as part of the core
-run. It runs a suite on another adapter when that adapter's entry in
-`tests/adapters.toml` lists the pair in its `conformance` key, as the
-`message-db` entry does for `event_store:message_db`. See
+`protean test` runs each suite on its port's default adapter as part of the
+core run. In an adapter's leg, `-c FULL` and `-c COVERAGE`, it runs a suite on
+another adapter when that adapter's entry in `tests/adapters.toml` lists the
+pair in its `conformance` key, as the `message-db` entry does for
+`event_store:message_db`. `-c EVENTSTORE` runs the event-store suite on Message
+DB from its own store list. See
 [Which runs include the conformance suites](../../community/contributing/testing.md#which-runs-include-the-conformance-suites).
 
 The suites are tests, so the wheel that `pip install protean` fetches does

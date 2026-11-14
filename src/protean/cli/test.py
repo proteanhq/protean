@@ -105,9 +105,10 @@ class RunCategory(Enum):
     PR = "PR"
 
 
-# Database and event-store suites that point at the same server and database.
-# Suites that share a database cannot run at the same time: they create, drop
-# or truncate the same tables.
+# Database and event-store suites that point at the same server and database,
+# keyed by the ``TEST_CONFIGS`` name. A conformance run looks up its adapter's
+# registry name in upper case. Suites that share a database cannot run at the
+# same time: they create, drop or truncate the same tables.
 SHARED_DATABASES = {
     "POSTGRESQL": "postgresql",
     "POSTGRESQL_PSYCOPG2": "postgresql",
@@ -115,10 +116,6 @@ SHARED_DATABASES = {
     # truncate the whole Message DB store between tests.
     "MESSAGE_DB": "message_db",
 }
-
-# The shared database of each conformance run, keyed by its "<port>:<adapter>"
-# pair, with the same values as SHARED_DATABASES.
-CONFORMANCE_SHARED_DATABASES = {"event_store:message_db": "message_db"}
 
 
 @dataclass
@@ -627,6 +624,16 @@ CONFORMANCE_PORT_GROUPS = {
 }
 CONFORMANCE_PORTS = tuple(CONFORMANCE_PORT_GROUPS)
 
+# The adapter each conformance suite runs on with no ``--adapter``, as in
+# tests/conformance/conftest.py. The core run covers it, so no manifest entry
+# may list it.
+CONFORMANCE_DEFAULT_ADAPTERS = {
+    "database": "memory",
+    "broker": "inline",
+    "cache": "memory",
+    "event_store": "memory",
+}
+
 
 @dataclass
 class AdapterEntry:
@@ -741,35 +748,55 @@ def _registered_adapters(group: str) -> set[str]:
     return {ep.name for ep in metadata.entry_points(group=group)}
 
 
-def _conformance_pairs(name: str, pairs: list[Any]) -> list[str]:
-    """Check an entry's ``conformance`` pairs and return them.
+def _conformance_pairs(name: str, pairs: object) -> list[str]:
+    """Check an entry's ``conformance`` value and return its pairs.
 
-    Raises ``ValueError`` naming the entry when a pair is not
-    ``"<port>:<adapter>"``, names an unknown port, or names an adapter that is
-    not registered in the port's entry-point group. No adapter module is
-    imported.
+    Raises ``ValueError`` naming the entry when the value is not a list, when a
+    pair is not ``"<port>:<adapter>"``, names an unknown port, names the port's
+    default adapter, or names an adapter that is not registered in the port's
+    entry-point group. No adapter module is imported.
     """
+    if not isinstance(pairs, list):
+        # load_adapter_manifest raises ValueError for every bad value in the
+        # manifest, a wrong type included, so a caller catches one exception.
+        raise ValueError(  # noqa: TRY004
+            f"Adapter '{name}' has conformance {pairs!r}; "
+            "use a list of '<port>:<adapter>' pairs"
+        )
     for pair in pairs:
-        port, _, adapter = str(pair).partition(":")
-        if not isinstance(pair, str) or not port or not adapter:
-            raise ValueError(
-                f"Adapter '{name}' has conformance pair {pair!r}; "
-                "use '<port>:<adapter>'"
-            )
-        group = CONFORMANCE_PORT_GROUPS.get(port)
-        if group is None:
-            raise ValueError(
-                f"Adapter '{name}' has conformance port '{port}'; "
-                f"use one of {list(CONFORMANCE_PORTS)}"
-            )
-        registered = _registered_adapters(group)
-        if adapter not in registered:
-            raise ValueError(
-                f"Adapter '{name}' has conformance adapter '{adapter}', "
-                f"which is not registered in {group}; use one of "
-                f"{sorted(registered)}"
-            )
+        _check_conformance_pair(name, pair)
     return list(pairs)
+
+
+def _check_conformance_pair(name: str, pair: object) -> None:
+    """Raise ``ValueError`` naming the entry unless ``pair`` is a valid pair."""
+    port, _, adapter = str(pair).partition(":")
+    if not isinstance(pair, str) or not port or not adapter:
+        raise ValueError(
+            f"Adapter '{name}' has conformance pair {pair!r}; use '<port>:<adapter>'"
+        )
+    group = CONFORMANCE_PORT_GROUPS.get(port)
+    if group is None:
+        raise ValueError(
+            f"Adapter '{name}' has conformance port '{port}'; "
+            f"use one of {list(CONFORMANCE_PORTS)}"
+        )
+    if adapter == CONFORMANCE_DEFAULT_ADAPTERS[port]:
+        raise ValueError(
+            f"Adapter '{name}' has conformance pair '{pair}'; the core run "
+            f"already runs the {port} suite on '{adapter}'"
+        )
+    registered = _registered_adapters(group)
+    if not registered:
+        raise ValueError(
+            f"No adapter is registered in {group}, so the package metadata is "
+            "missing; run `uv sync`"
+        )
+    if adapter not in registered:
+        raise ValueError(
+            f"Adapter '{name}' has conformance adapter '{adapter}', "
+            f"which is not registered in {group}; use one of {sorted(registered)}"
+        )
 
 
 def conformance_run(runner: TestRunner, pair: str) -> tuple[str, list[str]]:
@@ -797,7 +824,7 @@ def build_conformance_suites(
             TestSuite(
                 name,
                 runner.build_coverage_command(cmd),
-                shared_database=CONFORMANCE_SHARED_DATABASES.get(pair),
+                shared_database=SHARED_DATABASES.get(pair.partition(":")[2].upper()),
             )
         )
     return suites

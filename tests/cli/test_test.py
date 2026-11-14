@@ -194,7 +194,12 @@ class TestTestRunner:
         # or a pair to the manifest that the generator does not pick up fails
         # here.
         event_stores = [s for s in TEST_CONFIGS["eventstores"] if s != "MEMORY"]
-        pairs = {p for e in load_adapter_manifest().adapters for p in e.conformance}
+        pairs = {
+            p
+            for e in load_adapter_manifest().adapters
+            if e.lane != "off"
+            for p in e.conformance
+        }
         assert pairs
         expected = (
             2
@@ -2525,6 +2530,8 @@ class TestConformanceRuns:
             ["-c", "FULL"],
             ["-c", "COVERAGE"],
             ["-c", "EVENTSTORE"],
+            ["-c", "DATABASE"],
+            ["-c", "BROKER"],
         ],
     )
     def test_no_category_runs_the_memory_suite_a_second_time(self, args):
@@ -2532,24 +2539,34 @@ class TestConformanceRuns:
         assert result.exit_code == 0, result.output
         assert commands
         assert self.MEMORY_SUITE not in names
-        assert not any("--adapter" in c and "memory" in c for c in commands)
+        # A command that names a conformance folder runs it on one adapter,
+        # and with no --adapter the plugin picks the port's default adapter.
+        for command in commands:
+            if any(arg.startswith("tests/conformance") for arg in command):
+                assert "--adapter" in command, command
+                adapter = command[command.index("--adapter") + 1]
+                assert adapter not in ("memory", "inline"), command
 
-    def test_core_collects_the_conformance_suites(self):
+    def test_the_core_command_names_no_path(self):
         command = TestRunner().build_core_command("logical")
         assert command == [*PYTEST_BASE_CMD, "-n", "logical", "--dist", "loadfile"]
         assert not any("conformance" in arg for arg in command)
 
-    def test_core_runs_each_event_store_test_once_on_the_memory_store(self):
-        # The core command's own flags, in one process, over the suite's folder.
-        command = [*TestRunner().build_core_command("0"), "-p", "no:cacheprovider"]
+    @staticmethod
+    def _collected_ids(*paths: str) -> list[str]:
+        """The test ids the core command's flags collect from ``paths``."""
+        command = TestRunner().build_core_command("0")
         command.remove("--cache-clear")
         result = subprocess.run(
             [
                 sys.executable,
                 "-m",
                 *command,
-                "tests/conformance/event_store",
-                "-v",
+                "-p",
+                "no:cacheprovider",
+                "--collect-only",
+                "-q",
+                *paths,
             ],
             capture_output=True,
             text=True,
@@ -2557,14 +2574,26 @@ class TestConformanceRuns:
             check=False,
         )
         assert result.returncode == 0, result.stdout + result.stderr
-        test_id = (
-            "tests/conformance/event_store/test_placeholder.py::"
-            "test_the_adapter_declares_event_store_capabilities"
-        )
-        assert result.stdout.count(f"{test_id} PASSED") == 1
-        assert "1 passed" in result.stdout
+        return [line for line in result.stdout.splitlines() if "::" in line]
 
-    def test_core_fails_when_a_suite_fails(self):
-        result, _, commands = self._invoke([], return_value=1)
-        assert commands == [TestRunner().build_core_command("logical")]
-        assert result.exit_code == 1
+    def test_core_collects_each_event_store_test_once(self):
+        # The core command names no path, so pytest collects the testpaths.
+        # Collecting the folder by name gives the full list to look for.
+        suite = self._collected_ids("tests/conformance/event_store")
+        assert suite
+        core = self._collected_ids()
+        for test_id in suite:
+            assert core.count(test_id) == 1, test_id
+
+    def test_core_fails_when_a_conformance_test_fails(self, tmp_path, monkeypatch):
+        # The core command collects the working directory when it finds no
+        # pytest configuration, so it runs this failing suite test.
+        suite = tmp_path / "tests" / "conformance" / "event_store"
+        suite.mkdir(parents=True)
+        (suite / "test_fails.py").write_text("def test_fails():\n    assert False\n")
+        (tmp_path / "tests" / "test_passes.py").write_text(
+            "def test_passes():\n    pass\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        result = CliRunner().invoke(app, ["test", "--workers", "0"])
+        assert result.exit_code == 1, result.output

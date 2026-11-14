@@ -9,9 +9,8 @@ the PR lane cannot silently stop testing an adapter.
 
 import json
 import re
-import subprocess
-import sys
 import tomllib
+from importlib import metadata
 from pathlib import Path
 from unittest.mock import patch
 
@@ -23,6 +22,7 @@ from protean.cli import app
 from protean.cli.test import (
     ADAPTER_LANES,
     ADAPTER_MANIFEST,
+    CONFORMANCE_DEFAULT_ADAPTERS,
     CONFORMANCE_PORT_GROUPS,
     REPO_ROOT,
     TEST_CONFIGS,
@@ -269,6 +269,42 @@ class TestLoadAdapterManifest:
         with pytest.raises(ValueError, match="Adapter 'store'.*'<port>:<adapter>'"):
             load_adapter_manifest(path)
 
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "false",
+            "0",
+            '""',
+            "{}",
+            '{ "event_store:message_db" = 1 }',
+            '"event_store:message_db"',
+        ],
+    )
+    def test_a_conformance_value_that_is_not_a_list_is_rejected(self, tmp_path, value):
+        path = self.write(tmp_path, value)
+        with pytest.raises(ValueError, match="Adapter 'store' has conformance .*list"):
+            load_adapter_manifest(path)
+
+    @pytest.mark.parametrize(
+        "pair",
+        ["event_store:memory", "database:memory", "cache:memory", "broker:inline"],
+    )
+    def test_a_pair_naming_the_default_adapter_is_rejected(self, tmp_path, pair):
+        path = self.write(tmp_path, f'["{pair}"]')
+        with pytest.raises(ValueError, match="Adapter 'store'.*core run already runs"):
+            load_adapter_manifest(path)
+
+    def test_the_default_adapters_match_the_conformance_plugin(self):
+        from tests.conformance.conftest import DEFAULT_ADAPTERS
+
+        assert CONFORMANCE_DEFAULT_ADAPTERS == DEFAULT_ADAPTERS
+
+    def test_an_empty_entry_point_group_says_to_sync(self, tmp_path):
+        path = self.write(tmp_path, '["event_store:message_db"]')
+        with patch("protean.cli.test._registered_adapters", return_value=set()):
+            with pytest.raises(ValueError, match=r"protean\.event_stores.*uv sync"):
+                load_adapter_manifest(path)
+
     def test_a_pair_that_is_not_a_string_is_rejected(self, tmp_path):
         path = self.write(tmp_path, "[1]")
         with pytest.raises(ValueError, match="Adapter 'store'.*'<port>:<adapter>'"):
@@ -292,39 +328,32 @@ class TestLoadAdapterManifest:
         registered.assert_called_once_with("protean.event_stores")
 
     @pytest.mark.parametrize(
-        "port,builtin",
+        "port,present,absent",
         [
-            ("database", "memory"),
-            ("broker", "inline"),
-            ("cache", "memory"),
-            ("event_store", "memory"),
+            ("database", {"memory", "sqlite"}, {"inline", "message_db", "redis"}),
+            ("broker", {"inline", "redis_pubsub"}, {"memory"}),
+            ("cache", {"memory", "redis"}, {"inline", "sqlite", "message_db"}),
+            ("event_store", {"memory", "message_db"}, {"inline", "sqlite", "redis"}),
         ],
     )
-    def test_each_port_reads_the_group_its_adapters_register_in(self, port, builtin):
-        assert builtin in _registered_adapters(CONFORMANCE_PORT_GROUPS[port])
+    def test_each_port_reads_the_group_its_adapters_register_in(
+        self, port, present, absent
+    ):
+        # Each row names adapters that only one group holds, so a port mapped
+        # to another port's group fails here.
+        registered = _registered_adapters(CONFORMANCE_PORT_GROUPS[port])
+        assert present <= registered
+        assert not absent & registered
 
     def test_the_real_manifest_loads_without_importing_an_adapter(self):
-        # A fresh interpreter, because this session has already imported the
-        # Message DB adapter.
-        script = (
-            "import sys\n"
-            "from protean.cli.test import load_adapter_manifest\n"
-            "before = set(sys.modules)\n"
-            "manifest = load_adapter_manifest()\n"
-            "print(sorted(m for m in set(sys.modules) - before"
-            " if m.startswith('protean.adapters')))\n"
-            "print([p for e in manifest.adapters for p in e.conformance])\n"
-        )
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
-            cwd=REPO_ROOT,
-            check=True,
-        )
-        imported, pairs = result.stdout.splitlines()
-        assert imported == "[]"
-        assert pairs == "['event_store:message_db']"
+        # Importing protean.cli.test already imports some adapter modules, so
+        # the check is that no entry point is loaded at all.
+        with patch.object(
+            metadata.EntryPoint, "load", side_effect=AssertionError("loaded")
+        ):
+            manifest = load_adapter_manifest()
+        pairs = [p for e in manifest.adapters for p in e.conformance]
+        assert pairs == ["event_store:message_db"]
 
     def test_a_manifest_without_triggers_has_none(self, tmp_path):
         path = tmp_path / "adapters.toml"
@@ -378,6 +407,8 @@ class TestSelect:
         [
             "src/protean/adapters/event_store/message_db.py",
             "tests/conformance/event_store/test_placeholder.py",
+            "tests/conformance/__init__.py",
+            "tests/conformance/flag_coverage.py",
         ],
     )
     def test_the_real_manifest_runs_message_db_on_an_event_store_change(
@@ -530,6 +561,13 @@ class TestBuildAdapterSuites:
         message_db, redis = build_conformance_suites(TestRunner(), entries)
         assert message_db.shared_database == "message_db"
         assert redis.shared_database is None
+
+    def test_a_conformance_suite_takes_the_lock_of_its_adapters_database(self):
+        # The lock comes from SHARED_DATABASES, so a database suite on
+        # PostgreSQL never runs beside "Database: POSTGRESQL".
+        entries = [_entry("a", conformance=["database:postgresql"])]
+        (suite,) = build_conformance_suites(TestRunner(), entries)
+        assert suite.shared_database == "postgresql"
 
     def test_an_adapter_without_conformance_pairs_builds_no_suite(self):
         suites = build_adapter_suites(TestRunner(), [_entry("x", markers=["redis"])])

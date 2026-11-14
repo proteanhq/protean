@@ -1,7 +1,7 @@
 # The adapter manifest: which adapter suites a PR runs.
 #
-# Read by `protean test -c PR` and `protean test select-adapters`
-# (src/protean/cli/test.py), and by the `Adapters` job in ci.yml. The guard
+# Read by `protean test -c PR`, `-c FULL`, `-c COVERAGE` and
+# `protean test select-adapters` (src/protean/cli/test.py), and by the `Adapters` job in ci.yml. The guard
 # test tests/cli/test_adapter_manifest.py fails when a module under
 # src/protean/adapters/ is in no entry, when a test marked for a "touched"
 # adapter is outside that adapter's paths, or when a database, broker,
@@ -24,10 +24,11 @@
 # - conformance: "<port>:<adapter>" pairs, such as "event_store:message_db".
 #   For each pair, `protean test` runs `tests/conformance/<port>/` with
 #   `--port <port> --adapter <adapter>` under coverage, in the entry's leg and
-#   in `-c FULL`. The adapter must be registered in the port's entry-point
-#   group. Add `tests/conformance/<port>/` to the entry's paths. The memory
-#   entry lists no pair, because the core run already runs each suite on the
-#   in-memory adapter.
+#   in `-c FULL` and `-c COVERAGE`. The adapter must be registered in the
+#   port's entry-point group. Add `tests/conformance/<port>/` to the entry's
+#   paths. No pair names a port's default adapter (`inline` for `broker`,
+#   `memory` for the others), because the core run already runs each suite on
+#   it.
 #
 # Pushes to main and the nightly run still run every adapter (`-c FULL`).
 
@@ -39,7 +40,9 @@ all = [
     "pyproject.toml",
     "src/protean/cli/test.py",
     "tests/adapters.toml",
+    "tests/conformance/__init__.py",
     "tests/conformance/conftest.py",
+    "tests/conformance/flag_coverage.py",
     "tests/conftest.py",
     "tests/shared.py",
     "uv.lock",
