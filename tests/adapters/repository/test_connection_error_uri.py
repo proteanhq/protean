@@ -14,6 +14,19 @@ from protean.adapters.repository import _without_password
         ),
         ("postgresql://shop@db.internal/shop", "postgresql://shop@db.internal/shop"),
         ("sqlite:///shop.db", "sqlite:///shop.db"),
+        (
+            "postgresql://shop@db.internal/shop?password=s3cret",
+            "postgresql://shop@db.internal/shop",
+        ),
+        (
+            "postgresql://shop:s3/cret@db.internal/shop",
+            "postgresql://shop:***@db.internal/shop",
+        ),
+        (
+            "postgresql://shop:s3?cr#et@db.internal/shop",
+            "postgresql://shop:***@db.internal/shop",
+        ),
+        ("not a uri", "<not shown>"),
         ({"hosts": ["https://elastic:s3cret@es:9200"]}, "<not shown>"),
     ],
 )

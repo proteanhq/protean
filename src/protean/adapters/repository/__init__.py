@@ -2,10 +2,10 @@
 
 import collections.abc
 import logging
+import re
 from collections import defaultdict
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlsplit, urlunsplit
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
@@ -23,17 +23,25 @@ logger = logging.getLogger(__name__)
 def _without_password(uri: Any) -> str:
     """Return ``uri`` with any password replaced by ``***``, safe to show.
 
-    A URI that is not a string, such as Elasticsearch's dict of hosts, is
-    replaced as a whole, because its credentials can sit anywhere in it.
+    The query string and fragment are left out, because a driver can read
+    credentials from them. A URI that is not a string, such as
+    Elasticsearch's dict of hosts, is replaced as a whole, because its
+    credentials can sit anywhere in it.
     """
     if not isinstance(uri, str):
         return "<not shown>"
-    parts = urlsplit(uri)
-    if parts.password is None:
-        return uri
-    userinfo, _, host = parts.netloc.rpartition("@")
-    username = userinfo.partition(":")[0]
-    return urlunsplit(parts._replace(netloc=f"{username}:***@{host}"))
+    scheme, separator, rest = uri.partition("://")
+    if not separator:
+        return "<not shown>"
+    # SQLAlchemy reads a password up to the "@", so it can hold "/", "?"
+    # or "#". Split on the last "@" before cutting the query, or such a
+    # password would pass through as part of the host or path.
+    userinfo, at, location = rest.rpartition("@")
+    location = re.split(r"[?#]", location, maxsplit=1)[0]
+    if not at:
+        return f"{scheme}://{location}"
+    username, colon, _ = userinfo.partition(":")
+    return f"{scheme}://{username}{':***' if colon else ''}@{location}"
 
 
 class Providers(collections.abc.MutableMapping[str, BaseProvider]):
