@@ -32,6 +32,7 @@ follow the standard today.
 | [`protean db migrate`](data/database.md)     | Write a migration for model changes |
 | [`protean db upgrade`](data/database.md)     | Apply migrations to the database   |
 | [`protean db downgrade`](data/database.md)   | Revert migrations in the database  |
+| [`protean db check`](data/database.md)       | Report tables that differ from the domain |
 | [`protean snapshot create`](data/snapshot.md)| Create snapshots for ES aggregates |
 | [`protean projection rebuild`](data/projection.md) | Rebuild projections from events |
 | [`protean events read`](data/events.md)     | Read and display events from a stream |

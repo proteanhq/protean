@@ -10,10 +10,13 @@ from typing import TYPE_CHECKING
 
 from alembic import command
 from alembic.config import Config
-from alembic.script import Script
+from alembic.runtime.environment import EnvironmentContext
+from alembic.script import Script, ScriptDirectory
 from alembic.util import CommandError
+from sqlalchemy.exc import DBAPIError
 
 from protean.adapters.repository.schema_migrator import (
+    CHECK_ATTRIBUTE,
     PROVIDER_ATTRIBUTE,
     write_migrations_folder,
 )
@@ -86,6 +89,31 @@ class AlembicSchemaMigrator:
         """
         with _command_errors():
             command.downgrade(self.alembic_config(), revision, sql=sql)
+
+    def check(self) -> list[str]:
+        """The differences between the database and the table definitions.
+
+        Returns one line per difference, as ``add_column order.discount``, or
+        an empty list when they agree. Writes nothing to the database.
+
+        Raises:
+            ConfigurationError: The database is not at the latest migration,
+                it cannot be read, or Alembic reports an error.
+        """
+        config = self.alembic_config()
+        found: list[str] = []
+        config.attributes[CHECK_ATTRIBUTE] = found
+        with _command_errors():
+            script = ScriptDirectory.from_config(config)
+            try:
+                with EnvironmentContext(config, script, dont_mutate=True):
+                    script.run_env()
+            except DBAPIError as exc:
+                raise ConfigurationError(
+                    f"Cannot read the database of provider "
+                    f"'{self.provider.name}': {exc.orig}"
+                ) from exc
+        return found
 
     def alembic_config(self) -> Config:
         """Alembic's configuration for the folder, carrying this provider.

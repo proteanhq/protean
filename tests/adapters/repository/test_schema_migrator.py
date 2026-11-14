@@ -309,6 +309,26 @@ class TestMigratingThroughTheProvider:
         assert "VALUES ('lamp')" in capsys.readouterr().out
 
 
+class TestCheckThroughTheProvider:
+    def test_reports_a_table_the_database_lacks(self, provider, tmp_path):
+        migrator = provider.schema_migrator(tmp_path / "migrations")
+        migrator.init("domain.py")
+
+        assert migrator.check() == ["add_table product"]
+        assert tables(provider) == set()
+
+    def test_a_database_that_cannot_be_read(self, provider, tmp_path):
+        migrator = provider.schema_migrator(tmp_path / "migrations")
+        migrator.init("domain.py")
+        provider._engine.dispose()
+        (tmp_path / "shop.db").write_bytes(b"not a database" * 100)
+
+        with pytest.raises(
+            ConfigurationError, match="Cannot read the database of provider 'default'"
+        ):
+            migrator.check()
+
+
 class TestRunMigrationsFromAlembicIni:
     def test_does_nothing_outside_an_alembic_run(self):
         assert run_migrations() is None

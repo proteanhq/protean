@@ -31,6 +31,25 @@ from protean.utils.domain_discovery import derive_domain
 
 runner = CliRunner()
 
+MIGRATOR_MODULE = "protean.adapters.repository.schema_migrator.alembic_migrator"
+
+
+class _AlembicNotInstalled:
+    """A meta path finder that fails ``import alembic`` as an install without it does."""
+
+    def find_spec(self, fullname: str, path: Any = None, target: Any = None) -> None:
+        if fullname == "alembic" or fullname.startswith("alembic."):
+            raise ModuleNotFoundError("No module named 'alembic'", name="alembic")
+
+
+def block_alembic(monkeypatch: Any) -> None:
+    """Make ``import alembic`` fail for the rest of the test."""
+    for name in [n for n in sys.modules if n == "alembic" or n.startswith("alembic.")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.delitem(sys.modules, MIGRATOR_MODULE, raising=False)
+    monkeypatch.setattr(sys, "meta_path", [_AlembicNotInstalled(), *sys.meta_path])
+
+
 DOMAIN_HEADER = """
 from protean import Domain, Index
 from protean.fields import Auto, DateTime, Dict, Integer, List, String

@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from protean.port.provider import BaseProvider
 
 __all__ = [
+    "CHECK_ATTRIBUTE",
     "PROVIDER_ATTRIBUTE",
     "migration_provider",
     "run_migrations",
@@ -39,6 +40,11 @@ __all__ = [
 # The key in Alembic's ``Config.attributes`` under which a Protean command
 # passes the provider to ``run_migrations``.
 PROVIDER_ATTRIBUTE = "protean_provider"
+
+# The key in Alembic's ``Config.attributes`` under which ``protean db check``
+# passes a list. ``run_migrations`` then compares the database with the table
+# definitions, adds one line per difference to the list, and runs no migration.
+CHECK_ATTRIBUTE = "protean_check"
 
 # The thread that is inside ``run_migrations``, or None.
 _running_thread: int | None = None
@@ -236,7 +242,10 @@ def run_migrations() -> None:
 
     Migrations run on the provider's engine, or, in offline mode, render SQL
     for the provider's database URL. The target metadata is the provider's
-    ``metadata``.
+    ``metadata``. When ``Config.attributes`` holds a list under
+    ``CHECK_ATTRIBUTE`` and the run is online, no migration runs: the list
+    receives the differences between the database and the metadata, and
+    nothing is written to the database.
 
     Does nothing when no Alembic command is running, and when called again
     from the thread that is running it.
@@ -244,7 +253,8 @@ def run_migrations() -> None:
     Raises:
         ConfigurationError: ``alembic.ini`` names no domain or no provider, a
             domain that cannot be loaded, or a provider that fails the checks
-            of ``migration_provider``; or another thread is running it.
+            of ``migration_provider``; another thread is running it; or, in a
+            check, the database is not at the latest migration.
     """
     # Domain traversal imports every module beside the domain file and in its
     # immediate subfolders, so a ``migrations/`` folder next to ``domain.py``
@@ -341,6 +351,7 @@ def _run(context: Any, provider: SAProvider) -> None:
     # Alembic is running, so the module that imports it can be imported.
     from protean.adapters.repository.schema_migrator.autogenerate import (  # noqa: PLC0415
         configure_options,
+        differences,
         expression_index_warnings_hidden,
     )
 
@@ -358,10 +369,17 @@ def _run(context: Any, provider: SAProvider) -> None:
                 context.run_migrations()
             return
 
+        found: list[str] | None = context.config.attributes.get(CHECK_ATTRIBUTE)
         with provider._engine.connect() as connection:
             context.configure(
                 connection=connection,
                 **configure_options(metadata, dialect_name, connection),
             )
+            if found is not None:
+                # No transaction is begun, so nothing is stamped, and the
+                # connection rolls back what reflection opened when it closes.
+                with expression_index_warnings_hidden():
+                    found += differences(context, metadata)
+                return
             with expression_index_warnings_hidden(), context.begin_transaction():
                 context.run_migrations()

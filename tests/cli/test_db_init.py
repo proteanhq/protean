@@ -14,27 +14,11 @@ from typer.testing import CliRunner
 from protean.adapters.repository.sqlalchemy import SqliteProvider
 from protean.cli import app
 from protean.port.provider import BaseProvider
+from tests.support.migrations import block_alembic
 
 pytestmark = [pytest.mark.sqlite, pytest.mark.no_test_domain]
 
 runner = CliRunner()
-
-MIGRATOR_MODULE = "protean.adapters.repository.schema_migrator.alembic_migrator"
-
-
-class _AlembicNotInstalled:
-    """A meta path finder that fails ``import alembic`` as an install without it does."""
-
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname == "alembic" or fullname.startswith("alembic."):
-            raise ModuleNotFoundError("No module named 'alembic'", name="alembic")
-
-
-def block_alembic(monkeypatch) -> None:
-    for name in [n for n in sys.modules if n == "alembic" or n.startswith("alembic.")]:
-        monkeypatch.delitem(sys.modules, name)
-    monkeypatch.delitem(sys.modules, MIGRATOR_MODULE, raising=False)
-    monkeypatch.setattr(sys, "meta_path", [_AlembicNotInstalled(), *sys.meta_path])
 
 
 def write_domain(directory: Path, databases: dict) -> None:

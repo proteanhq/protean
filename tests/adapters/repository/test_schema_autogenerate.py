@@ -2,17 +2,32 @@
 
 import pytest
 import sqlalchemy
-from sqlalchemy import Column, Computed, Integer, MetaData, String, Table, text
+from sqlalchemy import (
+    Column,
+    Computed,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    UniqueConstraint,
+    text,
+)
 
 pytest.importorskip("alembic")
 from alembic.operations import ops
+from alembic.runtime.migration import MigrationContext
 
 from protean.adapters.repository.schema_migrator.autogenerate import (
+    _compare,
     _Comparison,
     _copies_table,
+    _diff_line,
     _drop_primary_key_nullability,
     _index_names,
     _qualified,
+    configure_options,
 )
 
 pytestmark = [pytest.mark.sqlite, pytest.mark.no_test_domain]
@@ -123,3 +138,93 @@ class TestQualified:
             assert _qualified(connection, "ix_name", None) == "ix_name"
             assert _qualified(connection, "ix_name", "shop") == "shop.ix_name"
             assert _qualified(connection, "ix name", "my shop") == '"my shop"."ix name"'
+
+
+class TestDiffLine:
+    @pytest.fixture
+    def order(self):
+        return Table(
+            "order",
+            MetaData(),
+            Column("id", String(36), primary_key=True),
+            Column("name", String(50)),
+            Column("customer_id", String(36)),
+        )
+
+    def test_a_table(self, order):
+        assert _diff_line(("add_table", order)) == "add_table order"
+
+    def test_a_column(self, order):
+        diff = ("remove_column", None, "order", order.c.name)
+
+        assert _diff_line(diff) == "remove_column order.name"
+
+    def test_a_column_change_names_the_column(self, order):
+        diff = ("modify_type", None, "order", "name", {}, String(50), String(100))
+
+        assert _diff_line(diff) == "modify_type order.name"
+
+    def test_an_index(self, order):
+        index = Index("ix_order_name", order.c.name)
+
+        assert _diff_line(("add_index", index)) == "add_index order.ix_order_name"
+
+    def test_a_named_constraint(self, order):
+        constraint = UniqueConstraint(order.c.name, name="uq_order_name")
+        order.append_constraint(constraint)
+
+        assert (
+            _diff_line(("remove_constraint", constraint))
+            == "remove_constraint order.uq_order_name"
+        )
+
+    def test_an_unnamed_foreign_key(self, order):
+        constraint = ForeignKeyConstraint([order.c.customer_id], ["customer.id"])
+        order.append_constraint(constraint)
+
+        assert _diff_line(("add_fk", constraint)) == "add_fk order"
+
+
+class TestCompare:
+    """``_compare`` on a SQLite database whose primary key is stored NOT NULL."""
+
+    @pytest.fixture
+    def connection(self):
+        engine = sqlalchemy.create_engine("sqlite://")
+        with engine.connect() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE product (id VARCHAR(36) NOT NULL PRIMARY KEY, "
+                    "name VARCHAR(50) NOT NULL)"
+                )
+            )
+            yield connection
+        engine.dispose()
+
+    def compare(self, connection, metadata):
+        context = MigrationContext.configure(
+            connection, opts=configure_options(metadata, "sqlite", connection)
+        )
+        return _compare(context, metadata)
+
+    def test_drops_a_nullability_change_on_the_primary_key(self, connection):
+        metadata = MetaData()
+        Table(
+            "product",
+            metadata,
+            Column("id", String(36), primary_key=True, nullable=True),
+            Column("name", String(50), nullable=False),
+        )
+
+        assert self.compare(connection, metadata) == []
+
+    def test_reports_a_nullability_change_on_another_column(self, connection):
+        metadata = MetaData()
+        Table(
+            "product",
+            metadata,
+            Column("id", String(36), primary_key=True, nullable=True),
+            Column("name", String(50), nullable=True),
+        )
+
+        assert self.compare(connection, metadata) == ["modify_nullable product.name"]
