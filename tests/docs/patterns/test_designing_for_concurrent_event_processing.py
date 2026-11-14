@@ -61,6 +61,20 @@ def test_the_single_handler_needs_the_creation_event_first():
         _run_single_handler("reversed")
 
 
+def test_the_single_handler_rejects_a_redelivered_creation_event():
+    example = load_example("patterns/designing-for-concurrent-event-processing/001.py")
+    example.domain.init(traverse=False)
+    with example.domain.domain_context():
+        _deliver(example.HubspotClientHandler, [_created(example)])
+
+        with pytest.raises(ValidationError) as exc_info:
+            _deliver(example.HubspotClientHandler, [_created(example)])
+
+        assert "hubspot_id" in exc_info.value.messages
+        repo = example.domain.repository_for(example.Client)
+        assert repo.query.filter(hubspot_id="h1").count() == 1
+
+
 @pytest.mark.parametrize("order", ["written", "reversed"])
 def test_the_process_manager_ends_in_the_same_state_in_either_order(order):
     assert _run_process_manager(order) == ("Acme", ["c1", "c2"])
@@ -76,6 +90,20 @@ def test_a_repeated_creation_event_creates_one_client():
         )
 
         assert _client_state(example) == ("Acme", ["c1", "c2"])
+
+
+def test_a_redelivered_create_client_command_fails_on_the_unique_key():
+    example = load_example("patterns/designing-for-concurrent-event-processing/002.py")
+    example.domain.init(traverse=False)
+    with example.domain.domain_context():
+        example.domain.process(example.CreateClient(hubspot_id="h1", name="Acme"))
+
+        with pytest.raises(ValidationError) as exc_info:
+            example.domain.process(example.CreateClient(hubspot_id="h1", name="Acme"))
+
+        assert "hubspot_id" in exc_info.value.messages
+        repo = example.domain.repository_for(example.Client)
+        assert repo.query.filter(hubspot_id="h1").count() == 1
 
 
 def test_the_process_manager_buffers_contacts_until_the_client_exists():
