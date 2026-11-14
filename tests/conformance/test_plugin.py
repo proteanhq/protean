@@ -395,7 +395,12 @@ class TestRunWithoutOptions:
             "test_requires_publish",
         }
         # Every port folder's test_ungated passed: one PASSED line per folder.
-        assert result.stdout.count("::test_ungated") == 4
+        passed_ungated = [
+            line
+            for line in result.stdout.splitlines()
+            if line.startswith("PASSED") and line.endswith("::test_ungated")
+        ]
+        assert len(passed_ungated) == 4
         assert sorted(reason for reason in found.values() if reason != "passed") == [
             "memory declares no capabilities",
             "memory does not declare CRUD|NATIVE_ARRAY",

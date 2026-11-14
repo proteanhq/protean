@@ -16,7 +16,7 @@ from protean.integrations.logging import (
 )
 from protean.utils.globals import g
 from protean.utils.logging import configure_logging
-from tests.docs.support import load_example
+from tests.docs.support import capture_logs_with_contextvars, load_example
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -123,9 +123,7 @@ def test_get_logger_writes_keyword_arguments_as_top_level_json_fields(
 
 
 def test_add_context_tags_records_until_clear_context():
-    with structlog.testing.capture_logs(
-        processors=[structlog.contextvars.merge_contextvars]
-    ) as logs:
+    with capture_logs_with_contextvars() as logs:
         example = load_example("guides/server/logging/001.py")
         example.logger.info("after_scope")
 

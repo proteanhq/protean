@@ -26,7 +26,7 @@ from protean.integrations.logging import (
 )
 from protean.utils.globals import g
 from protean.utils.logging import TailSamplingFilter
-from tests.docs.support import DOCS_SRC, load_example
+from tests.docs.support import DOCS_SRC, capture_logs_with_contextvars, load_example
 from tests.support.snippets import read_include
 
 pytestmark = pytest.mark.no_test_domain
@@ -415,9 +415,7 @@ def test_get_logger_passes_keyword_arguments_as_event_fields():
 
 
 def test_add_context_tags_records_until_clear_context():
-    with structlog.testing.capture_logs(
-        processors=[structlog.contextvars.merge_contextvars]
-    ) as logs:
+    with capture_logs_with_contextvars() as logs:
         load_example("reference/logging/003.py")
 
     events = {e["event"]: e for e in logs}
@@ -429,9 +427,7 @@ def test_add_context_tags_records_until_clear_context():
 def test_unbind_event_context_removes_only_the_named_field():
     example = load_example("reference/logging/003.py")
 
-    with structlog.testing.capture_logs(
-        processors=[structlog.contextvars.merge_contextvars]
-    ) as logs:
+    with capture_logs_with_contextvars() as logs:
         example.logger.info("next_record")
 
     [event] = logs

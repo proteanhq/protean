@@ -18,7 +18,7 @@ inputs:
     required: false
     default: "false"
   resolution:
-    description: "'highest' uses the locked latest-compatible versions; 'lowest-direct' re-resolves declared dependencies to their floor."
+    description: "'highest' uses the locked latest-compatible versions; 'lowest-direct' re-resolves declared dependencies to their floor and exports UV_RESOLUTION=lowest-direct for the rest of the job, so any uv command in a later caller step also resolves at the floors."
     required: false
     default: "highest"
   enforce-coverage:
@@ -298,10 +298,22 @@ runs:
         sudo apt-get update
         sudo apt-get install -y unixodbc-dev
 
+    # `uv run` syncs the environment before it runs, and it resolves at
+    # `highest` unless told otherwise. A `--resolution` flag on the install step
+    # alone would let the later `uv run protean test` and `uv run coverage
+    # report` re-resolve and replace the floors with the newest versions.
+    # Writing the variable to $GITHUB_ENV makes every later uv command in this
+    # job, including the caller's steps after this action, resolve the same way.
+    - name: Pin uv resolution for the lowest-direct leg
+      if: inputs.resolution == 'lowest-direct'
+      shell: bash
+      run: echo "UV_RESOLUTION=lowest-direct" >> "$GITHUB_ENV"
+
     - name: Install dependencies
       # A lowest-direct leg re-resolves declared deps to their floor (installing
-      # all extras so a floor without a wheel for the newest Python fails here);
-      # every other leg uses the locked latest-compatible resolution.
+      # all extras so a floor without a wheel for the newest Python fails here),
+      # through the UV_RESOLUTION variable the step above sets. Every other leg
+      # uses the locked latest-compatible resolution.
       #
       # The `mutation` group is excluded on purpose: it pulls `mutmut` and its
       # `libcst` (a PyO3 extension whose pinned pyo3 caps at 3.14 and won't build
@@ -311,7 +323,7 @@ runs:
       shell: bash
       env:
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ (inputs.python-version == '3.13' || inputs.python-version == '3.14') && '1' || '' }}
-      run: uv sync --all-extras --all-groups --no-group mutation ${{ inputs.resolution == 'lowest-direct' && '--resolution lowest-direct' || '' }}
+      run: uv sync --all-extras --all-groups --no-group mutation
 
     - name: Tests
       # FULL runs the adapter suite against the service containers, in one
