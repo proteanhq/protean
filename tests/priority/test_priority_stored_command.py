@@ -6,8 +6,6 @@ must carry that priority, so the server handles a deferred command, and routes
 the events it raises, at the same priority.
 """
 
-import asyncio
-
 import pytest
 
 from protean.core.aggregate import BaseAggregate
@@ -63,11 +61,12 @@ class GadgetRegistrationHandler(BaseCommandHandler):
 
 def _run_on_engine(domain, handler_cls, message):
     engine = Engine(domain=domain, test_mode=True)
-    loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(engine.handle_message(handler_cls, message))
+        return engine.loop.run_until_complete(
+            engine.handle_message(handler_cls, message)
+        )
     finally:
-        loop.close()
+        engine.loop.close()
 
 
 def _build_domain(command_processing: str):
