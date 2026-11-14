@@ -541,6 +541,17 @@ def test_reserve_rejects_a_negative_line_even_when_the_total_fits(warehouse):
     assert inventory.reserved_for == []
 
 
+def test_reserve_rejects_an_empty_list_of_lines(warehouse):
+    inventory = warehouse.Inventory(product_id="prod-1", available=5)
+
+    with pytest.raises(ValidationError) as exc:
+        inventory.reserve(order_id="ord-1", quantities=[])
+
+    assert exc.value.messages == {"quantity": ["An order needs at least one line"]}
+    assert (inventory.available, inventory.reserved) == (5, 0)
+    assert inventory.reserved_for == []
+
+
 def _validation_error(error):
     """Return the first ``ValidationError`` in ``error``'s ``__cause__`` chain."""
     while error is not None and not isinstance(error, ValidationError):

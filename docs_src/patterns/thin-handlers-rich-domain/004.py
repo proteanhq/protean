@@ -34,6 +34,9 @@ class Inventory:
         if order_id in self.reserved_for:
             return
 
+        if not quantities:
+            raise ValidationError({"quantity": ["An order needs at least one line"]})
+
         for quantity in quantities:
             if quantity <= 0:
                 raise ValidationError(
