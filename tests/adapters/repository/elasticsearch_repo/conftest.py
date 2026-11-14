@@ -33,8 +33,8 @@ def setup_db():
         domain.register(NumericEntity)
         domain.init(traverse=False)
 
-        domain.providers["default"]._create_database_artifacts()
+        domain.providers["default"].create_schema()
 
         yield
 
-        domain.providers["default"]._drop_database_artifacts()
+        domain.providers["default"].drop_schema()

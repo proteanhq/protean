@@ -22,7 +22,7 @@ def build_provider(test_domain, uri: str) -> PostgresqlProvider:
     return PostgresqlProvider(
         name="orders",
         domain=test_domain,
-        conn_info={"provider": "postgresql", "database_uri": uri},
+        config={"provider": "postgresql", "database_uri": uri},
     )
 
 
@@ -170,7 +170,7 @@ class TestUrlThatNamesItsDriver:
         monkeypatch.setattr(
             sa_module, "_postgresql_driver_import_error", checked.append
         )
-        provider.conn_info["database_uri"] = f"postgresql+pg8000://{URI_PARTS}"
+        provider.config["database_uri"] = f"postgresql+pg8000://{URI_PARTS}"
 
         assert provider._engine_url().drivername == "postgresql+pg8000"
         assert checked == []

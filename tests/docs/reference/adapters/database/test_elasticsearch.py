@@ -28,14 +28,14 @@ def test_schema_name_sets_the_index_name(example):
 def test_custom_model_fields_reach_the_index_mapping(example):
     with example.domain.domain_context():
         provider = example.domain.providers["default"]
-        provider._create_database_artifacts()
+        provider.create_schema()
         try:
             client = provider.get_connection()
             properties = client.indices.get_mapping(index="articles")["articles"][
                 "mappings"
             ]["properties"]
         finally:
-            provider._drop_database_artifacts()
+            provider.drop_schema()
 
     assert properties["title"] == {
         "type": "text",

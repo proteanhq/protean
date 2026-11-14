@@ -21,7 +21,7 @@ class CacheLeaderboard(BaseProjection):
 @pytest.fixture
 def provider(test_domain):
     provider = PostgresqlProvider(
-        domain=test_domain, name="default", conn_info={"database_uri": "sqlite://"}
+        domain=test_domain, name="default", config={"database_uri": "sqlite://"}
     )
     return provider
 
@@ -42,7 +42,7 @@ def test_create_database_artifacts_creates_tables(
     provider._metadata = Mock()
 
     # Execute
-    provider._create_database_artifacts()
+    provider.create_schema()
 
     # Assert
     # Verify engine.connect was called
@@ -69,7 +69,7 @@ def test_drop_database_artifacts_drops_tables(
     provider._metadata = Mock()
 
     # Execute
-    provider._drop_database_artifacts()
+    provider.drop_schema()
 
     # Assert
     # Verify engine.connect was called
@@ -94,7 +94,7 @@ class ESLineItem(BaseEntity):
 @pytest.mark.no_test_domain
 def test_create_artifacts_skips_event_sourced_aggregates():
     """Event-sourced aggregates use the event store, not SQL tables.
-    _create_database_artifacts should skip them and their child entities."""
+    create_schema should skip them and their child entities."""
     from protean import Domain
 
     domain = Domain(__file__, "ES-Test")
@@ -108,7 +108,7 @@ def test_create_artifacts_skips_event_sourced_aggregates():
     domain.init(traverse=False)
 
     provider = PostgresqlProvider(
-        domain=domain, name="default", conn_info={"database_uri": "sqlite://"}
+        domain=domain, name="default", config={"database_uri": "sqlite://"}
     )
 
     # Track which classes repository_for is called with
@@ -127,7 +127,7 @@ def test_create_artifacts_skips_event_sourced_aggregates():
     provider._engine = mock_engine
     provider._metadata = Mock()
 
-    provider._create_database_artifacts()
+    provider.create_schema()
 
     # Person (regular aggregate) should be processed
     assert Person in called_classes
@@ -139,7 +139,7 @@ def test_create_artifacts_skips_event_sourced_aggregates():
 @pytest.mark.no_test_domain
 def test_create_artifacts_skips_cache_backed_projections():
     """Cache-backed projections persist to a cache (provider is None), not a SQL
-    table. _create_database_artifacts must skip them; otherwise repository_for
+    table. create_schema must skip them; otherwise repository_for
     raises ConfigurationError ("No provider configured with name 'None'") and the
     whole database setup fails."""
     from protean import Domain
@@ -152,7 +152,7 @@ def test_create_artifacts_skips_cache_backed_projections():
     domain.init(traverse=False)
 
     provider = PostgresqlProvider(
-        domain=domain, name="default", conn_info={"database_uri": "sqlite://"}
+        domain=domain, name="default", config={"database_uri": "sqlite://"}
     )
 
     called_classes: list[type] = []
@@ -172,7 +172,7 @@ def test_create_artifacts_skips_cache_backed_projections():
 
     # Must not raise — before the fix this hit ConfigurationError on the cache
     # projection's None provider.
-    provider._create_database_artifacts()
+    provider.create_schema()
 
     assert Person in called_classes
     assert CacheLeaderboard not in called_classes

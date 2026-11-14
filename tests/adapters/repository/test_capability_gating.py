@@ -13,7 +13,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import NotSupportedError
 from protean.fields import Integer, String
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import BaseProvider, DatabaseCapabilities, ProviderPort
 
 
 class Widget(BaseAggregate):
@@ -90,24 +90,20 @@ class TestRawQueryErrorMessage:
     def test_error_includes_provider_details(self):
         """NotSupportedError from raw() includes provider name and class name."""
 
-        class NoRawProvider(BaseProvider):
+        class NoRawProvider(BaseProvider, ProviderPort):
             @property
             def capabilities(self) -> DatabaseCapabilities:
                 return DatabaseCapabilities.BASIC_STORAGE
 
             def get_session(self): ...
             def get_connection(self): ...
-            def is_alive(self) -> bool:
+            def ping(self) -> bool:
                 return True
 
-            def close(self): ...
-            def get_dao(self, entity_cls, database_model_cls): ...
-            def decorate_database_model_class(self, entity_cls, database_model_cls): ...
-            def construct_database_model_class(self, entity_cls): ...
-            def _raw(self, query, data=None): ...
-            def _data_reset(self) -> None: ...
-            def _create_database_artifacts(self) -> None: ...
-            def _drop_database_artifacts(self) -> None: ...
+            def health(self): ...
+            def clear(self) -> None: ...
+            def dao_for(self, entity_cls, model_cls): ...
+            def model_for(self, entity_cls, model_cls=None): ...
 
         provider = NoRawProvider("analytics", None, {})
 
@@ -119,13 +115,9 @@ class TestRawQueryErrorMessage:
         assert "NoRawProvider" in msg
         assert "does not support raw queries" in msg
 
-    def test_raw_is_no_longer_abstract(self):
-        """raw() should be a concrete method, not abstract."""
+    def test_raw_is_not_abstract_on_the_base_provider(self):
+        """``BaseProvider.raw`` is concrete: it raises for a provider without raw queries."""
         assert "raw" not in BaseProvider.__abstractmethods__
-
-    def test_internal_raw_is_abstract(self):
-        """_raw() should be declared as abstract."""
-        assert "_raw" in BaseProvider.__abstractmethods__
 
 
 class TestTransactionCapabilityWarnings:

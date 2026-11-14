@@ -123,7 +123,7 @@ class TestTheGuaranteeHoldsOnSQLAlchemyToo:
         domain.register(Placed, part_of=Order)
         domain.init(traverse=False)
         with domain.domain_context():
-            domain.providers["default"]._create_database_artifacts()
+            domain.providers["default"].create_schema()
             yield domain
 
     def test_no_pooled_connection_until_a_repository_is_touched(self, sqlite_domain):

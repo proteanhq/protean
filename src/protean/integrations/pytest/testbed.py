@@ -96,7 +96,7 @@ class DomainFixture:
         finally:
             try:
                 for provider in self.domain.providers.values():
-                    provider._data_reset()
+                    provider.clear()
 
                 for broker in self.domain.brokers.values():
                     broker._data_reset()

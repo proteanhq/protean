@@ -111,7 +111,7 @@ string.
 - **No Distribution**: All data lives in a single Python process. Cannot
   scale across multiple processes or machines.
 - **No Schema Management**: There are no tables or indices to create or
-  drop. `_create_database_artifacts()` and `_drop_database_artifacts()` are
+  drop. `create_schema()` and `drop_schema()` are
   no-ops.
 - **No Native JSON/Array**: Complex fields are stored as serialized Python
   objects, not as native database types.

@@ -1,6 +1,6 @@
 """Generic provider lifecycle tests that run against all database providers.
 
-Covers is_alive() lifecycle method on the provider across different states.
+Covers ping() lifecycle method on the provider across different states.
 """
 
 import pytest
@@ -21,11 +21,11 @@ def register_elements(test_domain):
 
 @pytest.mark.basic_storage
 class TestProviderIsAlive:
-    """Verify is_alive() returns True when provider is operational."""
+    """Verify ping() returns True when provider is operational."""
 
     def test_is_alive_after_initialization(self, test_domain):
         provider = test_domain.providers["default"]
-        assert provider.is_alive() is True
+        assert provider.ping() is True
 
     def test_is_alive_after_operations(self, test_domain):
         # Perform some operations
@@ -35,7 +35,7 @@ class TestProviderIsAlive:
 
         # Provider should still be alive
         provider = test_domain.providers["default"]
-        assert provider.is_alive() is True
+        assert provider.ping() is True
 
     def test_is_alive_after_multiple_operations(self, test_domain):
         # Multiple sequential operations
@@ -48,7 +48,7 @@ class TestProviderIsAlive:
         assert results.total == 3
 
         provider = test_domain.providers["default"]
-        assert provider.is_alive() is True
+        assert provider.ping() is True
 
 
 @pytest.mark.basic_storage
@@ -56,7 +56,7 @@ class TestProviderClose:
     """Verify close() is a callable method on all providers.
 
     Note: Actually calling close() on the active provider would prevent
-    test teardown from working (e.g., _data_reset needs the connection).
+    test teardown from working (e.g., clear needs the connection).
     This test verifies the method exists and is callable without
     actually closing the active test connection.
     """

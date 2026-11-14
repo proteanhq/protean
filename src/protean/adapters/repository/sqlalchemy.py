@@ -82,7 +82,15 @@ from protean.port.dao import (
     HoldBack,
     NativeClaimPort,
 )
-from protean.port.provider import BaseProvider, DatabaseCapabilities, SchemaMigrator
+from protean.port.health import PoolStats
+from protean.port.provider import (
+    BaseProvider,
+    DatabaseCapabilities,
+    ProviderHealth,
+    ProviderPort,
+    RawQueryProviderPort,
+    SchemaMigrator,
+)
 from protean.utils import (
     Database,
     DomainObjects,
@@ -100,6 +108,7 @@ from protean.utils.reflection import attributes, fields, id_field
 
 if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
+    from protean.domain import Domain
 
 logging.getLogger("sqlalchemy").setLevel(logging.ERROR)
 
@@ -445,10 +454,12 @@ def _checked_identity_field(
     models = provider.domain._database_models.get(
         _fully_qualified_name(element_cls), {}
     )
-    custom_model = models.get(provider.__database__) or models.get(None)
+    custom_model = models.get(provider.database_type) or models.get(None)
     attribute_name = id_fld.attribute_name or id_fld.field_name
-    if custom_model is not None and isinstance(
-        vars(custom_model).get(attribute_name), Column
+    if (
+        custom_model is not None
+        and attribute_name is not None
+        and isinstance(vars(custom_model).get(attribute_name), Column)
     ):
         return None
 
@@ -518,7 +529,7 @@ def _refuse_unstorable_identity(
     kind = element_type.value.title() if element_type else "Element"
     owner = (
         f"{kind} `{element_cls.__name__}` "
-        f"on provider `{provider.name}` ({provider.__database__})"
+        f"on provider `{provider.name}` ({provider.database_type})"
     )
 
     if identity_type == integer and identity_strategy == IdentityStrategy.UUID.value:
@@ -1978,7 +1989,7 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
     """DAO implementation for Databases compliant with SQLAlchemy"""
 
     # An ``SADAO`` is always constructed with an ``SAProvider`` (see
-    # ``SAProvider.get_dao``) and a ``SqlalchemyModel`` subclass; narrow the base
+    # ``SAProvider.dao_for``) and a ``SqlalchemyModel`` subclass; narrow the base
     # annotations so the SQLAlchemy-specific engine/session/table attributes
     # resolve.
     provider: "SAProvider"
@@ -2795,13 +2806,8 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
         return inspector.has_table(self.schema_name, schema=schema)
 
 
-class SAProvider(BaseProvider):
+class SAProvider(BaseProvider, RawQueryProviderPort):
     """Provider Implementation class for SQLAlchemy"""
-
-    # Concrete provider subclasses (Postgresql/Sqlite/Mssql) assign the
-    # database name here; declared for the type checkers since it is read on
-    # the abstract base.
-    __database__: ClassVar[str]
 
     # Populated in ``__init__``; declared here so the type checkers see the
     # SQLAlchemy-specific engine/session state that the DAO reads back off the
@@ -2834,9 +2840,9 @@ class SAProvider(BaseProvider):
             if exc.name is None or exc.name.split(".")[0] != "alembic":
                 raise
             raise ConfigurationError(
-                f"Database '{self.name}' ({self.__database__}) needs Alembic for "
+                f"Database '{self.name}' ({self.database_type}) needs Alembic for "
                 f"schema migrations, and it cannot be imported ({exc}). Install "
-                f'it with `pip install "{_alembic_extra(self.__database__)}"`.'
+                f'it with `pip install "{_alembic_extra(self.database_type)}"`.'
             ) from exc
         return AlembicSchemaMigrator(directory, self)
 
@@ -2906,7 +2912,7 @@ class SAProvider(BaseProvider):
         mysql = "mysql"
 
     # Config keys that describe the provider rather than the SQLAlchemy engine.
-    # Everything else in ``conn_info`` is forwarded to ``create_engine`` as a
+    # Everything else in ``config`` is forwarded to ``create_engine`` as a
     # keyword argument, so a provider that adds a config key of its own has to
     # add it here too or ``create_engine`` rejects it.
     _NON_ENGINE_CONN_KEYS: ClassVar[frozenset[str]] = frozenset(
@@ -2930,14 +2936,14 @@ class SAProvider(BaseProvider):
         extra_args.update(
             {
                 key: value
-                for key, value in self.conn_info.items()
+                for key, value in self.config.items()
                 if key not in self._NON_ENGINE_CONN_KEYS
             }
         )
 
         # SQLite uses SingletonThreadPool which does not support pool
         # configuration parameters like pool_size, max_overflow, or pool_recycle.
-        uri = self.conn_info.get("database_uri", "")
+        uri = self.config.get("database_uri", "")
         if uri.startswith("sqlite"):
             for key in ("pool_size", "max_overflow", "pool_recycle"):
                 extra_args.pop(key, None)
@@ -2954,10 +2960,10 @@ class SAProvider(BaseProvider):
             return None
 
     def __init__(
-        self, name: str, domain: typing.Any, conn_info: dict[str, typing.Any]
+        self, name: str, domain: "Domain", config: Mapping[str, typing.Any]
     ) -> None:
         """Initialize and maintain Engine"""
-        super().__init__(name, domain, conn_info)
+        super().__init__(name, domain, config)
 
         self._engine = create_engine(
             self._engine_url(),
@@ -2970,9 +2976,9 @@ class SAProvider(BaseProvider):
         # Use `schema` value if specified as part of the conn info. Otherwise, construct
         #   and use default schema name as `DB`_schema.
         schema = (
-            self.conn_info["schema"]
-            if "schema" in self.conn_info
-            else self._get_default_schema(self.__database__)
+            self.config["schema"]
+            if "schema" in self.config
+            else self._get_default_schema(self.database_type)
         )
 
         self._metadata = MetaData(schema=schema)
@@ -2990,7 +2996,7 @@ class SAProvider(BaseProvider):
 
     def _engine_url(self) -> URL:
         """The URL the engine is built from: ``database_uri`` as configured."""
-        return make_url(self.conn_info["database_uri"])
+        return make_url(self.config["database_uri"])
 
     @abstractmethod
     def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
@@ -3047,8 +3053,8 @@ class SAProvider(BaseProvider):
 
         return conn
 
-    def is_alive(self) -> bool:
-        """Check if the connection to the database is alive"""
+    def ping(self) -> bool:
+        """Whether a ``SELECT 1`` on a new connection succeeds."""
         conn = None
         try:
             conn = self.get_connection()
@@ -3058,7 +3064,7 @@ class SAProvider(BaseProvider):
             # Redact credentials from the URI before logging
             try:
                 safe_uri = str(
-                    make_url(self.conn_info["database_uri"]).set(password="***")
+                    make_url(self.config["database_uri"]).set(password="***")
                 )
             # make_url raises ArgumentError for a malformed URI and ValueError
             # for a port that is not a number.
@@ -3073,7 +3079,8 @@ class SAProvider(BaseProvider):
             if conn is not None and not current_uow:
                 conn.close()
 
-    def _data_reset(self) -> None:
+    def clear(self) -> None:
+        """Delete every row from the provider's tables."""
         # Discard any active Unit of Work FIRST. A leaked in-progress UoW can hold
         # row locks from a flushed write; the delete-all below would block on those
         # locks, and the rollback that frees them would be unreachable — a
@@ -3085,45 +3092,46 @@ class SAProvider(BaseProvider):
         try:
             transaction = conn.begin()
 
-            if self.__database__ == self.databases.sqlite.value:
+            if self.database_type == self.databases.sqlite.value:
                 conn.execute(text("PRAGMA foreign_keys = OFF;"))
 
             for table in self._metadata.sorted_tables:
                 conn.execute(table.delete())
 
-            if self.__database__ == self.databases.sqlite.value:
+            if self.database_type == self.databases.sqlite.value:
                 conn.execute(text("PRAGMA foreign_keys = ON;"))
 
             transaction.commit()
         finally:
             conn.close()
 
-    def pool_stats(self) -> dict[str, int]:
-        """Return SQLAlchemy connection pool statistics.
+    def health(self) -> ProviderHealth:
+        """The health record, with the engine's ``QueuePool`` counters.
 
-        Reads live pool counters from the engine's ``QueuePool``.
-        SQLite uses ``SingletonThreadPool`` which does not expose the
-        same attributes, so we return an empty dict for it.
+        ``pool`` is ``None`` without an engine, or when the pool keeps no
+        counters, such as SQLite's ``SingletonThreadPool``.
         """
-        if not hasattr(self, "_engine") or self._engine is None:
-            return {}
+        return ProviderHealth(pool=self._pool_stats())
 
-        # Only ``QueuePool`` exposes these counters; SingletonThreadPool
-        # (SQLite) does not. We keep the duck-typed access (any pool exposing
-        # the counters works) and let the AttributeError handler catch the
-        # rest — the cast is a static-only hint that does not narrow at
-        # runtime, so behaviour is unchanged.
+    def _pool_stats(self) -> PoolStats | None:
+        if not hasattr(self, "_engine") or self._engine is None:
+            return None
+
+        # ``QueuePool`` exposes these counters. ``SingletonThreadPool``, which
+        # an in-memory SQLite database uses, does not, and the AttributeError
+        # handler returns None for it. The cast is a static-only hint and does
+        # not narrow at runtime.
         pool = typing.cast("QueuePool", self._engine.pool)
         try:
-            return {
-                "size": pool.size(),
-                "checked_out": pool.checkedout(),
-                "overflow": pool.overflow(),
-                "checked_in": pool.checkedin(),
-            }
+            return PoolStats(
+                size=pool.size(),
+                checked_out=pool.checkedout(),
+                overflow=pool.overflow(),
+                checked_in=pool.checkedin(),
+            )
         except AttributeError:
             # Defensive: any pool implementation lacking these methods.
-            return {}
+            return None
 
     def close(self) -> None:
         """Close the provider and clean up all connections.
@@ -3137,7 +3145,8 @@ class SAProvider(BaseProvider):
         if hasattr(self, "_engine") and self._engine:
             self._engine.dispose()
 
-    def _create_database_artifacts(self) -> None:
+    def create_schema(self) -> None:
+        """Create every table in the provider's metadata that does not exist."""
         metadata = self.metadata
 
         # Create all tables in a single transaction
@@ -3149,7 +3158,8 @@ class SAProvider(BaseProvider):
         finally:
             conn.close()
 
-    def _drop_database_artifacts(self) -> None:
+    def drop_schema(self) -> None:
+        """Drop every table in the provider's metadata and forget them."""
         # Drop all tables in a single transaction
         conn = self._engine.connect()
         try:
@@ -3161,7 +3171,17 @@ class SAProvider(BaseProvider):
 
         self._metadata.clear()
 
-    def decorate_database_model_class(
+    def model_for(
+        self,
+        entity_cls: "type[BaseEntity]",
+        model_cls: type[BaseDatabaseModel] | None = None,
+    ) -> type[BaseDatabaseModel]:
+        """The SQLAlchemy model for `entity_cls`, decorating `model_cls` when given."""
+        if model_cls is None:
+            return self._build_model(entity_cls)
+        return self._decorate_model(entity_cls, model_cls)
+
+    def _decorate_model(
         self, entity_cls: typing.Any, database_model_cls: typing.Any
     ) -> type:
         schema_name = database_model_cls.derive_schema_name()
@@ -3238,7 +3258,7 @@ class SAProvider(BaseProvider):
 
             return decorated_database_database_model_cls
 
-    def construct_database_model_class(self, entity_cls: typing.Any) -> type:
+    def _build_model(self, entity_cls: typing.Any) -> type:
         """Return a fully-baked Model class for a given Entity class"""
         database_model_cls = None
         cache_key = _fully_qualified_name(entity_cls)
@@ -3275,13 +3295,11 @@ class SAProvider(BaseProvider):
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return database_model_cls
 
-    def get_dao(
-        self, entity_cls: typing.Any, database_model_cls: typing.Any
-    ) -> "SADAO":
+    def dao_for(self, entity_cls: typing.Any, model_cls: typing.Any) -> "SADAO":
         """Return a DAO object configured with a live connection"""
-        return SADAO(self.domain, self, entity_cls, database_model_cls)
+        return SADAO(self.domain, self, entity_cls, model_cls)
 
-    def _raw(self, query: typing.Any, data: typing.Any = None) -> typing.Any:
+    def raw(self, query: typing.Any, data: typing.Any = None) -> typing.Any:
         """Run raw query on Provider"""
         if data is None:
             data = {}
@@ -3337,7 +3355,7 @@ class PostgresqlProvider(SAProvider):
     ``domain.init()`` with the extra that installs it.
     """
 
-    __database__ = SAProvider.databases.postgresql.value
+    database_type = SAProvider.databases.postgresql.value
 
     def _engine_url(self) -> URL:
         url = super()._engine_url()
@@ -3437,7 +3455,7 @@ class PostgresqlProvider(SAProvider):
 
 
 class SqliteProvider(SAProvider):
-    __database__ = SAProvider.databases.sqlite.value
+    database_type = SAProvider.databases.sqlite.value
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
@@ -3520,7 +3538,7 @@ def _require_default_driver(
     for another backend, or naming another driver, goes to SQLAlchemy as
     written, so an installed alternative driver keeps working.
 
-    Callers skip this when ``conn_info`` has a ``module``. SQLAlchemy uses that
+    Callers skip this when ``config`` has a ``module``. SQLAlchemy uses that
     DBAPI module and never imports the URL's driver.
     """
     backend, plus, named = url.drivername.partition("+")
@@ -3557,15 +3575,15 @@ class MssqlProvider(SAProvider):
     A ``database_uri`` naming no driver (``mssql://``) or pyodbc
     (``mssql+pyodbc://``) fails at ``domain.init()`` with the extra that installs
     pyodbc when it cannot be imported. That includes pyodbc installed without the
-    unixODBC system library. A URI naming another driver, or a ``conn_info``
+    unixODBC system library. A URI naming another driver, or a ``config``
     with a ``module``, goes to SQLAlchemy as written.
     """
 
-    __database__ = SAProvider.databases.mssql.value
+    database_type = SAProvider.databases.mssql.value
 
     def _engine_url(self) -> URL:
         url = super()._engine_url()
-        if self.conn_info.get("module") is None:
+        if self.config.get("module") is None:
             _require_default_driver(
                 self.name, url, frozenset({"mssql"}), "pyodbc", "pyodbc"
             )
@@ -3650,7 +3668,7 @@ class MysqlProvider(SAProvider):
     naming another driver (``mysql+mysqldb://``) goes to SQLAlchemy as written.
     """
 
-    __database__ = SAProvider.databases.mysql.value
+    database_type = SAProvider.databases.mysql.value
 
     _NON_ENGINE_CONN_KEYS: ClassVar[frozenset[str]] = (
         SAProvider._NON_ENGINE_CONN_KEYS | {"collation"}
@@ -3683,26 +3701,26 @@ class MysqlProvider(SAProvider):
     _collation: str | None
 
     def __init__(
-        self, name: str, domain: typing.Any, conn_info: dict[str, typing.Any]
+        self, name: str, domain: "Domain", config: Mapping[str, typing.Any]
     ) -> None:
         # Resolve the collation before the engine is built, so a bad one fails
         # at ``domain.init()`` naming the config key, not at the first
         # ``CREATE TABLE`` with MySQL's own message. ``None`` means "not
         # configured", and the default is chosen later, from the server.
-        self._collation = self._resolve_collation(name, conn_info)
-        self._validate_connect_args(name, conn_info)
-        super().__init__(name, domain, conn_info)
+        self._collation = self._resolve_collation(name, config)
+        self._validate_connect_args(name, config)
+        super().__init__(name, domain, config)
 
     def _engine_url(self) -> URL:
         url = super()._engine_url()
-        if self.conn_info.get("module") is None:
+        if self.config.get("module") is None:
             _require_default_driver(
                 self.name, url, _MYSQL_DIALECTS, "pymysql", "MySQLdb"
             )
         return url
 
     @staticmethod
-    def _validate_connect_args(name: str, conn_info: dict[str, typing.Any]) -> None:
+    def _validate_connect_args(name: str, config: Mapping[str, typing.Any]) -> None:
         """Reject a ``connect_args`` that is not a table of driver arguments.
 
         Absence, then type. ``_additional_engine_args`` reads it as
@@ -3712,10 +3730,10 @@ class MysqlProvider(SAProvider):
         message. Turning a setting off is the likelier thing to write than
         turning it on, so the falsy shapes are the ones that most need naming.
         """
-        if "connect_args" not in conn_info:
+        if "connect_args" not in config:
             return
 
-        connect_args = conn_info["connect_args"]
+        connect_args = config["connect_args"]
         if not isinstance(connect_args, dict):
             raise ConfigurationError(
                 f"Database '{name}' sets connect_args={connect_args!r}. It must "
@@ -3725,7 +3743,7 @@ class MysqlProvider(SAProvider):
             )
 
     @staticmethod
-    def _resolve_collation(name: str, conn_info: dict[str, typing.Any]) -> str | None:
+    def _resolve_collation(name: str, config: Mapping[str, typing.Any]) -> str | None:
         """The configured collation, checked against the pinned charset.
 
         ``None`` when none is configured: the two servers spell the default
@@ -3735,10 +3753,10 @@ class MysqlProvider(SAProvider):
         mismatched pair at ``CREATE TABLE`` with "COLLATION ... is not valid for
         CHARACTER SET ...". Checking the prefix names the config key instead.
         """
-        if "collation" not in conn_info:
+        if "collation" not in config:
             return None
 
-        collation = conn_info["collation"]
+        collation = config["collation"]
         # Absence, then type, then emptiness. A plain ``or`` here would let
         # ``False``, ``0`` and ``""`` fall through to the default, so a config
         # that is wrong in a falsy way would be accepted in silence while the
@@ -3809,7 +3827,7 @@ class MysqlProvider(SAProvider):
     def _additional_engine_args(self) -> dict[str, typing.Any]:
         """Merge the caller's ``connect_args`` instead of letting them replace.
 
-        The shared implementation overlays every unrecognised ``conn_info`` key
+        The shared implementation overlays every unrecognised ``config`` key
         onto the defaults, so a caller passing ``connect_args`` of their own
         replaced this provider's whole dict and took ``charset`` with it. That
         silently restored the 4-byte-character failure the pinned charset
@@ -4175,3 +4193,11 @@ def register_mssql() -> None:
         logger.debug(
             f"MSSQL provider not registered: sqlalchemy package not available ({e})"
         )
+
+
+# ``SAProvider`` is abstract, and mypy refuses an abstract class here, so each
+# dialect provider is checked in its place.
+_PORT_CHECK: type[ProviderPort] = PostgresqlProvider
+_PORT_CHECK = SqliteProvider
+_PORT_CHECK = MssqlProvider
+_PORT_CHECK = MysqlProvider

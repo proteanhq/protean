@@ -14,6 +14,7 @@ import pytest
 import redis
 from fastapi.testclient import TestClient
 
+from protean.port.provider import ProviderHealth
 from protean.server.observatory import Observatory, metrics
 from protean.server.observatory.metrics import _scrape_cache, _ScrapeCache
 
@@ -783,10 +784,12 @@ def test_broker_up_needs_a_connected_and_healthy_broker(
 
 def test_pool_stats_list_each_provider_that_reports_a_pool(test_domain, monkeypatch):
     provider = test_domain.providers["default"]
-    monkeypatch.setattr(provider, "pool_stats", lambda: {"size": 5, "checked_out": 2})
+    monkeypatch.setattr(
+        provider, "health", lambda: ProviderHealth(pool={"size": 5, "checked_out": 2})
+    )
 
     assert metrics._collect_pool_stats([test_domain]) == [
-        ("default", provider.__database__, {"size": 5, "checked_out": 2})
+        ("default", provider.database_type, {"size": 5, "checked_out": 2})
     ]
 
 
@@ -808,7 +811,7 @@ def test_broker_pool_stats_read_the_redis_connection_pool(test_domain, monkeypat
 class _RaisingPoolAdapter:
     """A provider or broker whose pool lookup raises."""
 
-    def pool_stats(self):
+    def health(self):
         raise RuntimeError("pool down")
 
     @property
@@ -832,8 +835,10 @@ def test_pool_stats_keep_the_rows_before_a_provider_that_raises(
     test_domain, monkeypatch
 ):
     provider = test_domain.providers["default"]
-    monkeypatch.setattr(provider, "pool_stats", lambda: {"size": 5})
-    analytics = SimpleNamespace(__database__="SQLITE", pool_stats=lambda: {"size": 2})
+    monkeypatch.setattr(provider, "health", lambda: ProviderHealth(pool={"size": 5}))
+    analytics = SimpleNamespace(
+        database_type="SQLITE", health=lambda: ProviderHealth(pool={"size": 2})
+    )
 
     with _extra_entries(
         test_domain.providers._providers,
@@ -843,7 +848,7 @@ def test_pool_stats_keep_the_rows_before_a_provider_that_raises(
         collected = metrics._collect_pool_stats([test_domain])
 
     assert collected == [
-        ("default", provider.__database__, {"size": 5}),
+        ("default", provider.database_type, {"size": 5}),
         ("analytics", "SQLITE", {"size": 2}),
     ]
 

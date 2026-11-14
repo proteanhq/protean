@@ -84,7 +84,7 @@ class TestConnectionLifecyclePostgresql:
         domain.register(DummyEntity)
         domain.init(traverse=False)
         provider = domain.providers["default"]
-        provider._create_database_artifacts()
+        provider.create_schema()
         return provider
 
     def test_connection_returned_to_pool_after_dao_filter(self, setup_domain):
@@ -100,7 +100,7 @@ class TestConnectionLifecyclePostgresql:
         assert pool_obj.checkedout() == 0, (
             "Connection was not returned to pool after filter operation"
         )
-        provider._drop_database_artifacts()
+        provider.drop_schema()
 
     def test_connection_returned_to_pool_after_dao_create(self, setup_domain):
         """Connections should be returned to pool after DAO create operations."""
@@ -114,7 +114,7 @@ class TestConnectionLifecyclePostgresql:
         assert pool_obj.checkedout() == 0, (
             "Connection was not returned to pool after create operation"
         )
-        provider._drop_database_artifacts()
+        provider.drop_schema()
 
     def test_uow_releases_connections_on_commit(self, setup_domain):
         """UoW commit should release all connections back to the pool."""
@@ -128,7 +128,7 @@ class TestConnectionLifecyclePostgresql:
         assert pool_obj.checkedout() == 0, (
             "Connection was not returned to pool after UoW commit"
         )
-        provider._drop_database_artifacts()
+        provider.drop_schema()
 
     def test_uow_releases_connections_on_rollback(self, setup_domain):
         """UoW rollback should release all connections back to the pool."""
@@ -144,7 +144,7 @@ class TestConnectionLifecyclePostgresql:
         assert pool_obj.checkedout() == 0, (
             "Connection was not returned to pool after UoW rollback"
         )
-        provider._drop_database_artifacts()
+        provider.drop_schema()
 
     def test_uow_releases_connections_on_exception(self, setup_domain):
         """UoW should release connections even when an exception occurs."""
@@ -159,7 +159,7 @@ class TestConnectionLifecyclePostgresql:
         assert pool_obj.checkedout() == 0, (
             "Connection was not returned to pool after UoW exception"
         )
-        provider._drop_database_artifacts()
+        provider.drop_schema()
 
     def test_no_connection_leak_across_many_operations(self, setup_domain):
         """Repeatedly performing operations should not leak connections."""
@@ -180,7 +180,7 @@ class TestConnectionLifecyclePostgresql:
         dao.query.all()
         assert pool_obj.checkedout() == 0, "Connections leaked after query.all()"
 
-        provider._drop_database_artifacts()
+        provider.drop_schema()
 
 
 class TestProviderClose:
@@ -297,8 +297,8 @@ class TestPoolConfiguration:
                 p.close()
 
     @pytest.mark.postgresql
-    def test_pool_config_overridable_via_conn_info(self):
-        """Pool settings from conn_info should override defaults."""
+    def test_pool_config_overridable_via_config(self):
+        """Pool settings from config should override defaults."""
         domain = Domain("PG Pool Override Test")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
@@ -341,10 +341,10 @@ class TestPoolConfiguration:
 
 
 class TestIsAliveConnectionHandling:
-    """Test that is_alive() properly manages connections."""
+    """Test that ping() properly manages connections."""
 
     def test_is_alive_returns_true_for_valid_connection(self):
-        """is_alive() should return True for a valid database."""
+        """ping() should return True for a valid database."""
         domain = Domain("IsAlive Test")
         domain.config["databases"]["default"] = {
             "provider": "sqlite",
@@ -354,14 +354,14 @@ class TestIsAliveConnectionHandling:
 
         try:
             provider = domain.providers["default"]
-            assert provider.is_alive() is True
+            assert provider.ping() is True
         finally:
             for p in domain.providers.values():
                 p.close()
 
     @pytest.mark.postgresql
     def test_is_alive_closes_connection_on_success_postgresql(self):
-        """is_alive() should close its connection after a successful check."""
+        """ping() should close its connection after a successful check."""
         domain = Domain("PG IsAlive Test")
         domain.config["databases"]["default"] = {
             "provider": "postgresql",
@@ -373,11 +373,11 @@ class TestIsAliveConnectionHandling:
             provider = domain.providers["default"]
             pool_obj = provider._engine.pool
 
-            result = provider.is_alive()
+            result = provider.ping()
 
             assert result is True
             assert pool_obj.checkedout() == 0, (
-                "is_alive() should return connection to pool on success"
+                "ping() should return connection to pool on success"
             )
         finally:
             for p in domain.providers.values():

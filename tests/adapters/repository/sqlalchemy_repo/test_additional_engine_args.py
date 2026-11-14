@@ -9,7 +9,7 @@ class TestAdditionalEngineArgs:
         provider = PostgresqlProvider(
             name="test_provider",
             domain=test_domain,
-            conn_info={
+            config={
                 "provider": "postgresql",
                 "database_uri": POSTGRES_URI,
                 "echo": True,
@@ -32,7 +32,7 @@ class TestAdditionalEngineArgs:
         provider = SqliteProvider(
             name="test_provider",
             domain=test_domain,
-            conn_info={
+            config={
                 "provider": "sqlite",
                 "database_uri": "sqlite:///:memory:",
                 "echo": True,
@@ -55,7 +55,7 @@ class TestAdditionalEngineArgs:
         provider = PostgresqlProvider(
             name="test_provider",
             domain=test_domain,
-            conn_info={
+            config={
                 "provider": "postgresql",
                 "database_uri": POSTGRES_URI,
                 "schema": "test_schema",
@@ -74,7 +74,7 @@ class TestAdditionalEngineArgs:
         provider = PostgresqlProvider(
             name="test_provider",
             domain=test_domain,
-            conn_info={
+            config={
                 "provider": "postgresql",
                 "database_uri": POSTGRES_URI,
                 "echo": True,
@@ -89,12 +89,12 @@ class TestAdditionalEngineArgs:
         # (the Unit of Work is a real transaction at read-committed isolation).
         assert "isolation_level" not in result
 
-    def test_database_specific_args_override_conn_info_args(self, test_domain):
-        """Test that args in conn_info override default database-specific args with the same key"""
+    def test_database_specific_args_override_config_args(self, test_domain):
+        """Test that args in config override default database-specific args with the same key"""
         provider = PostgresqlProvider(
             name="test_provider",
             domain=test_domain,
-            conn_info={
+            config={
                 "provider": "postgresql",
                 "database_uri": POSTGRES_URI,
                 "isolation_level": "SERIALIZABLE",
@@ -107,11 +107,11 @@ class TestAdditionalEngineArgs:
         assert "isolation_level" in result
         assert result["isolation_level"] == "SERIALIZABLE"  # Overridden value
 
-    def test_minimal_conn_info(self, test_domain):
+    def test_minimal_config(self, test_domain):
         provider = SqliteProvider(
             name="test_provider",
             domain=test_domain,
-            conn_info={
+            config={
                 "provider": "sqlalchemy",
                 "database_uri": "sqlite:///:memory:",
             },
@@ -125,7 +125,7 @@ class TestAdditionalEngineArgs:
         provider = PostgresqlProvider(
             name="test_provider",
             domain=test_domain,
-            conn_info={
+            config={
                 "provider": "sqlalchemy",
                 "database_uri": "postgresql://user:pass@localhost/testdb",
                 "echo": True,
@@ -144,7 +144,7 @@ class TestAdditionalEngineArgs:
         provider = SqliteProvider(
             name="test_provider",
             domain=test_domain,
-            conn_info={
+            config={
                 "provider": "sqlalchemy",
                 "database_uri": "sqlite:///:memory:",
                 "echo": True,
@@ -162,7 +162,7 @@ class TestAdditionalEngineArgs:
         provider = PostgresqlProvider(
             name="test_provider",
             domain=test_domain,
-            conn_info={
+            config={
                 "provider": "postgresql",
                 "database_uri": POSTGRES_URI,
                 "managed": False,

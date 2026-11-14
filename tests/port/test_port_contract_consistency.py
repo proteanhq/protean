@@ -14,7 +14,7 @@ from protean.adapters.broker.inline import InlineBroker
 from protean.infra.cache import Cache
 from protean.port.broker import BaseBroker
 from protean.port.cache import CachePatternPort, CachePort, CacheTTLPort
-from protean.port.provider import BaseProvider
+from protean.port.provider import BaseProvider, ProviderPort, RawQueryProviderPort
 
 
 # ---------------------------------------------------------------------------
@@ -89,27 +89,34 @@ class TestCachePortTypeHints:
         assert "return" in hints
 
 
+PROVIDER_PORT_MEMBERS = sorted(
+    (port.__name__, name)
+    for port in (ProviderPort, RawQueryProviderPort)
+    for name in port.__abstractmethods__
+)
+
+
 class TestProviderPortTypeHints:
-    def test_get_session_has_return_type(self):
-        hints = get_type_hints(BaseProvider.get_session)
-        assert "return" in hints
+    """Each abstract member names its return type.
 
-    def test_get_connection_has_return_type(self):
-        hints = get_type_hints(BaseProvider.get_connection)
-        assert "return" in hints
+    The annotations are read as written, because several name classes the
+    port imports only for type checking.
+    """
 
-    def test_close_has_return_type(self):
-        hints = get_type_hints(BaseProvider.close)
-        assert "return" in hints
+    def test_every_provider_port_declares_abstract_members(self):
+        ports = {port for port, _name in PROVIDER_PORT_MEMBERS}
+        assert ports == {"ProviderPort", "RawQueryProviderPort"}
 
-    def test_get_dao_has_return_type(self):
-        hints = get_type_hints(BaseProvider.get_dao)
-        assert "return" in hints
+    @pytest.mark.parametrize(("port_name", "member"), PROVIDER_PORT_MEMBERS)
+    def test_member_has_return_type(self, port_name, member):
+        port = {
+            "ProviderPort": ProviderPort,
+            "RawQueryProviderPort": RawQueryProviderPort,
+        }[port_name]
+        attribute = getattr(port, member)
+        function = attribute.fget if isinstance(attribute, property) else attribute
+        assert "return" in function.__annotations__
 
-    def test_raw_has_return_type(self):
+    def test_base_provider_raw_has_return_type(self):
         hints = get_type_hints(BaseProvider.raw)
-        assert "return" in hints
-
-    def test_private_raw_has_return_type(self):
-        hints = get_type_hints(BaseProvider._raw)
         assert "return" in hints

@@ -43,7 +43,7 @@ def test_domain_uses_the_custom_provider():
 
         assert isinstance(provider, delegating_provider.DelegatingProvider)
         assert isinstance(provider._delegate, MemoryProvider)
-        assert provider.__database__ == "delegating_memory"
+        assert provider.database_type == "delegating_memory"
 
 
 def test_saved_aggregate_is_read_back():

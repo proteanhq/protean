@@ -326,7 +326,7 @@ Providers may register additional lookups beyond this required set.
    `@domain.database_model` when you need to customize column types, indices, or other
    database-specific details.
 
-6. **Monitor provider health**: Use `provider.is_alive()` to verify
+6. **Monitor provider health**: Use `provider.ping()` to verify
    connectivity during health checks.
 
 ## Indexes

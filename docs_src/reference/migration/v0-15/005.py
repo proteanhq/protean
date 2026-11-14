@@ -16,8 +16,8 @@ domain.config["databases"]["elasticsearch"] = {
 def recreate_indexes():
     with domain.domain_context():
         provider = domain.providers["elasticsearch"]
-        provider._drop_database_artifacts()
-        provider._create_database_artifacts()
+        provider.drop_schema()
+        provider.create_schema()
 
 
 # --8<-- [end:recreate_indexes]

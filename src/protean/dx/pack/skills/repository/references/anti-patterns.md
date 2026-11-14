@@ -163,7 +163,7 @@ with domain.domain_context():
 @handle(PlaceOrder)
 def handle_place_order(self, command):
     # Wrong! Bypassing the repository
-    dao = domain.providers.get_dao(Order)
+    dao = domain.providers.dao_for(Order)
     dao.create(order_id=command.order_id, status="placed")
 ```
 

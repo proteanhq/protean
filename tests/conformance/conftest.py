@@ -162,7 +162,7 @@ ADAPTER_OF: dict[str, Callable[[Domain], Any]] = {
 
 
 RESET: dict[str, Callable[[Any], None]] = {
-    "database": lambda provider: provider._data_reset(),
+    "database": lambda provider: provider.clear(),
     "broker": lambda broker: broker._data_reset(),
     "cache": lambda cache: cache.clear(),
     "event_store": lambda store: store._data_reset(),

@@ -1,15 +1,26 @@
-"""Base class for Providers"""
+"""The database provider Ports: what a database adapter implements.
+
+A provider holds one database's connection settings. It hands out sessions and
+DAOs, builds the database model for each entity, and creates and drops the
+tables or indices the domain's elements need.
+"""
 
 import logging
 import pathlib
-from abc import ABCMeta, abstractmethod
+from abc import abstractmethod
+from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import Flag, auto
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 
 from protean.exceptions import ConfigurationError, NotSupportedError
+from protean.port.health import PoolStats
 from protean.utils.query import RegisterLookupMixin
 
 if TYPE_CHECKING:
+    from protean.core.database_model import BaseDatabaseModel
+    from protean.core.entity import BaseEntity
+    from protean.domain import Domain
     from protean.port.dao import BaseLookup
 
 logger = logging.getLogger(__name__)
@@ -74,9 +85,8 @@ class DatabaseCapabilities(Flag):
 class SessionProtocol(Protocol):
     """Protocol that database session objects must satisfy.
 
-    Objects returned by ``get_session()`` and ``get_connection()`` must
-    implement ``commit``, ``rollback``, and ``close``, and expose an
-    ``is_active`` flag.
+    Objects returned by ``get_session()`` must implement ``commit``,
+    ``rollback``, and ``close``, and expose an ``is_active`` flag.
 
     Adapters without real transaction support (e.g., Elasticsearch)
     should provide no-op implementations and set ``is_active = True``
@@ -149,29 +159,140 @@ class SchemaMigrator(Protocol):
         """
 
 
-class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
-    """Base class for database providers.
+@dataclass(frozen=True)
+class ProviderHealth:
+    """What `ProviderPort.health` reports."""
 
-    A provider holds one database's connection settings. It hands out sessions
-    and DAOs, builds the database model for each entity, and creates and drops
-    the tables or indices the domain's elements need.
+    pool: PoolStats | None
+    """The provider's connection pool, or `None` for a provider without one or
+    whose pool keeps no counters."""
 
-    A subclass sets ``__database__``, implements every abstract method and the
-    ``capabilities`` property, and registers every lookup in
-    ``REQUIRED_LOOKUPS``. ``get_session()`` and ``get_connection()`` return
-    objects that satisfy ``SessionProtocol``. A backend without transactions
-    returns a session whose methods do nothing and whose ``is_active`` is
-    ``True``.
+
+class ProviderPort(Protocol):
+    """The members every database provider implements.
+
+    An adapter subclasses this, or `RawQueryProviderPort`, explicitly.
+    """
+
+    database_type: ClassVar[str]
+    """A short identifier for the database, such as `"memory"`,
+    `"elasticsearch"` or one of the SQLAlchemy dialect names."""
+
+    name: str
+    domain: "Domain"
+    config: Mapping[str, Any]
+
+    def __init__(
+        self, name: str, domain: "Domain", config: Mapping[str, Any]
+    ) -> None: ...
+
+    @property
+    @abstractmethod
+    def capabilities(self) -> DatabaseCapabilities:
+        """The behaviours this provider supports."""
+
+    @abstractmethod
+    def get_session(self) -> SessionProtocol:
+        """A new session, which the Unit of Work commits or rolls back.
+
+        A backend without transactions returns a session whose methods do
+        nothing and whose `is_active` is `True`.
+        """
+
+    @abstractmethod
+    def get_connection(self) -> object:
+        """The adapter's native handle, such as a SQLAlchemy session or an
+        Elasticsearch client."""
+
+    @abstractmethod
+    def ping(self) -> bool:
+        """Whether the database is reachable."""
+
+    @abstractmethod
+    def health(self) -> ProviderHealth:
+        """The provider's health record."""
+
+    def close(self) -> None:
+        """Release the provider's connections and pools. Does nothing by
+        default."""
+        # mypy treats a Protocol member whose body is only a docstring as
+        # abstract, which would make every adapter implement `close`.
+        return None  # noqa: RET501
+
+    @abstractmethod
+    def clear(self) -> None:
+        """Remove every record from the provider's store."""
+
+    def create_schema(self) -> None:
+        """Create the tables or indices the domain's elements need, leaving
+        existing ones untouched. Does nothing by default."""
+        # mypy treats a Protocol member whose body is only a docstring as
+        # abstract; a provider without schema objects inherits this no-op.
+        return None  # noqa: RET501
+
+    def drop_schema(self) -> None:
+        """Drop the tables or indices the domain's elements own. Does nothing
+        by default."""
+        # mypy treats a Protocol member whose body is only a docstring as
+        # abstract; a provider without schema objects inherits this no-op.
+        return None  # noqa: RET501
+
+    @abstractmethod
+    def dao_for(
+        self,
+        entity_cls: "type[BaseEntity]",
+        model_cls: "type[BaseDatabaseModel]",
+    ) -> Any:
+        """A DAO for `entity_cls` that stores it through `model_cls`."""
+
+    @abstractmethod
+    def model_for(
+        self,
+        entity_cls: "type[BaseEntity]",
+        model_cls: "type[BaseDatabaseModel] | None" = None,
+    ) -> "type[BaseDatabaseModel]":
+        """The database model class for `entity_cls`.
+
+        With `model_cls`, a user-defined model, it returns that model with the
+        adapter's internals added. Without it, it builds a model from the
+        entity's fields. Repeated calls for one entity return the same class.
+        """
+
+    @abstractmethod
+    def get_lookup(self, lookup_name: str) -> "type[BaseLookup]":
+        """The lookup class registered under `lookup_name`."""
+
+
+class RawQueryProviderPort(ProviderPort, Protocol):
+    """The raw-query member, unlocked by `DatabaseCapabilities.RAW_QUERIES`."""
+
+    @abstractmethod
+    def raw(self, query: Any, data: Any = None) -> Any:
+        """Run `query` on the database in its own transaction and return the
+        database's result unchanged."""
+
+
+CAPABILITY_PORTS: dict[DatabaseCapabilities, type[object]] = {
+    DatabaseCapabilities.RAW_QUERIES: RawQueryProviderPort,
+}
+"""The sub-protocol a provider subclasses when it declares each flag.
+
+Typed `type[object]` because mypy in strict mode rejects a Protocol with
+abstract members where `type[ProviderPort]` is expected.
+"""
+
+
+class BaseProvider(RegisterLookupMixin, ProviderPort):
+    """Framework logic shared by the built-in providers.
+
+    A provider subclasses this class first and then `ProviderPort`, or
+    `RawQueryProviderPort` when it declares `DatabaseCapabilities.RAW_QUERIES`.
+    It sets `database_type`, implements the Port's abstract members, and
+    registers every lookup in `REQUIRED_LOOKUPS`.
 
     The Custom Database Adapters guide walks through building an adapter: the
     DAO, the database model, lookups, registration, and the call flow.
     """
-
-    # Short database identifier every concrete provider must set (e.g.
-    # ``"memory"``, ``"elasticsearch"``, or one of the SQLAlchemy dialect
-    # values). Declared here so the adapter contract is visible to both type
-    # checkers; concrete providers assign it as a class attribute.
-    __database__: ClassVar[str]
 
     # Minimum lookups every adapter must register
     REQUIRED_LOOKUPS: frozenset[str] = frozenset(
@@ -191,17 +312,11 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         }
     )
 
-    def __init__(self, name: str, domain: Any, conn_info: dict[str, Any]) -> None:
-        """Initialize Provider with Connection/Adapter details"""
+    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
         self.name = name
         self.domain = domain
-        self.conn_info = conn_info
-        self.managed = conn_info.get("managed", True)
-
-    @property
-    @abstractmethod
-    def capabilities(self) -> DatabaseCapabilities:
-        """Return the capabilities of this database provider."""
+        self.config = config
+        self.managed = config.get("managed", True)
 
     @classmethod
     def validate_lookups(cls) -> list[str]:
@@ -226,101 +341,16 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         # Construct and assign the lookup class as a filter criteria
         return parts[0], self.get_lookup(op)
 
-    @abstractmethod
-    def get_session(self) -> SessionProtocol:
-        """Establish a new session with the database.
-
-        Must return an object satisfying `SessionProtocol`.
-
-        Typically the session factory should be created once per application. Which is then
-        held on to and passed to different transactions.
-
-        In Protean's case, the session scope and the transaction scope match. Which means that a
-        new session is created when a transaction needs to be initiated (at the beginning of
-        request handling, for example) and terminated (after committing or rolling back) at the end
-        of the process. The session will be used as a component in Unit of Work Pattern, to handle
-        transactions reliably.
-
-        Sessions are made available to requests as part of a Context Manager.
-        """
-
-    @abstractmethod
-    def get_connection(self) -> Any:
-        """Get the connection object for the repository.
-
-        Must return an object satisfying `SessionProtocol`.
-        """
-
-    @abstractmethod
-    def is_alive(self) -> bool:
-        """Check if the connection is alive"""
-
-    @abstractmethod
-    def close(self) -> None:
-        """Close the provider and clean up any persistent connections or resources.
-
-        This method should be called to properly dispose of connections and free up
-        resources when the provider is no longer needed. Implementations should:
-
-        - Close any connection pools
-        - Dispose of any persistent connections
-        - Clean up any other resources (engines, clients, etc.)
-        """
-
-    @abstractmethod
-    def get_dao(self, entity_cls: type[Any], database_model_cls: type[Any]) -> Any:
-        """Return a DAO object configured with a live connection"""
-
-    @abstractmethod
-    def decorate_database_model_class(
-        self, entity_cls: type[Any], database_model_cls: type[Any]
-    ) -> type[Any]:
-        """Enhance a user-defined DatabaseModel class with adapter internals.
-
-        Called when the user has defined a custom ``@domain.model`` for an
-        entity. The model class is passed in, so add adapter-specific base
-        classes, column mappings, or metadata as needed.
-
-        Must return the decorated model class.
-        """
-
-    @abstractmethod
-    def construct_database_model_class(self, entity_cls: type[Any]) -> type[Any]:
-        """Dynamically build a DatabaseModel class for an entity.
-
-        Called when no user-defined ``@domain.model`` exists for the entity.
-        The framework calls this during domain initialization for every
-        aggregate/entity that doesn't have an explicit model mapping.
-
-        Must return a class that extends ``BaseDatabaseModel`` with
-        ``from_entity()`` and ``to_entity()`` implemented.
-        """
-
     def raw(self, query: Any, data: Any = None) -> Any:
-        """Run raw query directly on the database.
+        """Raise `NotSupportedError` naming the provider.
 
-        Query should be executed immediately on the database as a separate unit of work
-            (in a different transaction context). The results should be returned as returned by
-            the database without any intervention. It is left to the consumer to interpret and
-            organize the results correctly.
-
-        Raises NotSupportedError if the provider does not support raw queries.
+        A provider that declares `DatabaseCapabilities.RAW_QUERIES` overrides
+        this with its own `raw`.
         """
-        if DatabaseCapabilities.RAW_QUERIES not in self.capabilities:
-            raise NotSupportedError(
-                f"Provider '{self.name}' ({self.__class__.__name__}) "
-                "does not support raw queries"
-            )
-        return self._raw(query, data)
-
-    @abstractmethod
-    def _raw(self, query: Any, data: Any = None) -> Any:
-        """Internal raw query implementation.
-
-        Override in adapters that support RAW_QUERIES capability.
-        Adapters without RAW_QUERIES need not provide a meaningful implementation
-        as the base class gates access via ``raw()``.
-        """
+        raise NotSupportedError(
+            f"Provider '{self.name}' ({self.__class__.__name__}) "
+            "does not support raw queries"
+        )
 
     def schema_migrator(self, directory: pathlib.Path) -> SchemaMigrator:
         """Return the schema migrator that keeps its history in ``directory``.
@@ -346,16 +376,6 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
             f"Provider '{self.name}' ({self.__class__.__name__}) "
             "does not implement schema migrations"
         )
-
-    def pool_stats(self) -> dict[str, int]:
-        """Return connection pool statistics.
-
-        Providers that support connection pooling should override this to
-        return a dict with keys ``size``, ``checked_out``, ``overflow``,
-        and ``checked_in``.  The default implementation returns an empty
-        dict, signalling that no pool metrics are available.
-        """
-        return {}
 
     def owns(self, element_cls: type[Any]) -> bool:
         """Return whether this provider materializes a table/index for ``element_cls``.
@@ -405,21 +425,3 @@ class BaseProvider(RegisterLookupMixin, metaclass=ABCMeta):
         # provider. Provider names are the unique keys of the provider registry,
         # so comparing names resolves ownership without indexing on ``None``.
         return bool(provider_name == self.name)
-
-    @abstractmethod
-    def _data_reset(self) -> None:
-        """Flush all data in the provider's persistence store.
-
-        Useful for clearing data between tests.
-        """
-
-    @abstractmethod
-    def _create_database_artifacts(self) -> None:
-        """Create tables, indices, or other storage structures.
-
-        Should be idempotent: existing structures are left untouched.
-        """
-
-    @abstractmethod
-    def _drop_database_artifacts(self) -> None:
-        """Drop all tables, indices, or storage structures."""

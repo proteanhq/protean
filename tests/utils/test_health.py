@@ -39,7 +39,7 @@ class TestCheckProviders:
     def test_returns_unavailable_when_provider_returns_false(self, domain):
         with domain.domain_context():
             for p in domain.providers.values():
-                p.is_alive = lambda: False
+                p.ping = lambda: False
             statuses, all_ok = check_providers(domain)
             assert all_ok is False
             for v in statuses.values():
@@ -48,7 +48,7 @@ class TestCheckProviders:
     def test_returns_unavailable_when_provider_raises(self, domain):
         with domain.domain_context():
             for p in domain.providers.values():
-                p.is_alive = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
+                p.ping = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
             _statuses, all_ok = check_providers(domain)
             assert all_ok is False
 

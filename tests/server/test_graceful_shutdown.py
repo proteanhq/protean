@@ -349,7 +349,7 @@ class TestProvidersReinitializeClosesExisting:
         domain.init(traverse=False)
 
         mock_provider = MagicMock()
-        mock_provider.is_alive.return_value = True
+        mock_provider.ping.return_value = True
         domain.providers._providers = {"default": mock_provider}
 
         # Re-initialize should close the old provider

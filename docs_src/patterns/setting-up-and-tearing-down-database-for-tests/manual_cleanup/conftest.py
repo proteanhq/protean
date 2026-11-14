@@ -16,7 +16,7 @@ def _domain():
 def clean_data():
     yield
     for provider in domain.providers.values():
-        provider._data_reset()
+        provider.clear()
     for broker in domain.brokers.values():
         broker._data_reset()
     domain.event_store.store._data_reset()

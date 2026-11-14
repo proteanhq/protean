@@ -539,9 +539,10 @@ endpoint. See [Observability](./observability.md).
 | `protean.subscription.pending_messages` | Observable gauge | `domain`, `handler`, `stream`, `type` |
 | `protean.outbox.pending_count` | Observable gauge | `domain` |
 
-`BaseProvider.pool_stats()` returns `{size, checked_out, overflow,
-checked_in}`. SQLAlchemy providers return live counts; memory and
-Elasticsearch providers return an empty dict.
+The gauges read `provider.health().pool`, which holds `{size, checked_out,
+overflow, checked_in}`. SQLAlchemy providers return live counts. Memory and
+Elasticsearch providers keep no connection pool and return `None`, and the
+gauges skip them.
 
 ## Shutdown sequence
 

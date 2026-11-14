@@ -42,10 +42,10 @@ def column_type(dialect_name, attribute):
     provider = provider_cls(
         name=dialect_name,
         domain=domain,
-        conn_info={"provider": dialect_name, "database_uri": uri},
+        config={"provider": dialect_name, "database_uri": uri},
     )
     with domain.domain_context():
-        table = provider.construct_database_model_class(Profile).__table__
+        table = provider.model_for(Profile).__table__
     return table.c[attribute].type.compile(dialect=dialect)
 
 

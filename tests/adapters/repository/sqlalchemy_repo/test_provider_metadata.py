@@ -225,7 +225,7 @@ class TestMetadataAfterDrop:
             domain.drop_database()
 
             # The order the ``db`` fixture teardown uses: no read in between.
-            provider._data_reset()
+            provider.clear()
 
     def test_data_reset_after_drop_read_and_setup_raises_nothing(self):
         domain = _domain(outbox=True)
@@ -236,9 +236,9 @@ class TestMetadataAfterDrop:
 
             assert _table_names(provider.metadata) == ELEMENT_TABLES | {"outbox"}
             # The read puts the dropped tables back into the metadata, so
-            # ``_data_reset()`` needs them to exist in the database again.
+            # ``clear()`` needs them to exist in the database again.
             domain.setup_database()
-            provider._data_reset()
+            provider.clear()
 
 
 @pytest.mark.postgresql

@@ -5,6 +5,7 @@ import json
 import logging
 import types
 import typing
+from collections.abc import Mapping as TypingMapping
 from collections.abc import Sequence
 from datetime import date as _date
 from datetime import datetime as _datetime
@@ -53,12 +54,21 @@ from protean.fields.embedded import _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.infra.registry import providers
 from protean.port.dao import BaseDAO, BaseLookup, BoundedDeletePort
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import (
+    BaseProvider,
+    DatabaseCapabilities,
+    ProviderHealth,
+    ProviderPort,
+)
 from protean.utils import _fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import F, Q
 from protean.utils.reflection import attributes, id_field
+
+if typing.TYPE_CHECKING:
+    from protean.core.entity import BaseEntity
+    from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +182,7 @@ class ElasticsearchModel(Document, BaseDatabaseModel):
 
     # Precomputed set of field names needing a ``.keyword`` subfield for exact
     # matching. Assigned dynamically on the decorated/constructed model class
-    # (see ``decorate_database_model_class`` / ``construct_database_model_class``).
+    # (see ``ESProvider.model_for``).
     _keyword_fields: typing.ClassVar[set[str]]
 
     @classmethod
@@ -380,7 +390,7 @@ def _lookup_expression(
 
 
 def _custom_index_options(
-    database_model_cls: _Any, schema_name: str, conn_info: dict[str, _Any]
+    database_model_cls: _Any, schema_name: str, config: TypingMapping[str, _Any]
 ) -> dict[str, _Any]:
     """The inner ``Index`` options for a model built from a custom model.
 
@@ -402,8 +412,8 @@ def _custom_index_options(
     options["name"] = database_model_cls.meta_.schema_name or index_name or schema_name
 
     # Gather adapter settings
-    if conn_info.get("SETTINGS"):
-        options["settings"] = conn_info["SETTINGS"]
+    if config.get("SETTINGS"):
+        options["settings"] = config["SETTINGS"]
 
     return options
 
@@ -826,24 +836,25 @@ def _normalize_host(host: str, scheme: str) -> str:
     return f"{prefix}://{netloc}{slash}{path}"
 
 
-class ESProvider(BaseProvider):
-    __database__ = "elasticsearch"
+class ESProvider(BaseProvider, ProviderPort):
+    database_type = "elasticsearch"
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
         """Elasticsearch supports document storage, schema management and bounded deletes, but no transactions."""
         return DatabaseCapabilities.DOCUMENT_STORE | DatabaseCapabilities.BOUNDED_DELETE
 
-    def __init__(self, name: str, domain: _Any, conn_info: dict[str, _Any]) -> None:
+    def __init__(
+        self, name: str, domain: "Domain", config: TypingMapping[str, _Any]
+    ) -> None:
         """Initialize Provider with Connection/Adapter details"""
 
-        # Use database_uri as is if it's a json, otherwise convert it to json
-        if isinstance(conn_info["database_uri"], str):
-            conn_info["database_uri"] = json.loads(conn_info["database_uri"])
-        else:
-            conn_info["database_uri"] = conn_info["database_uri"]
+        super().__init__(name, domain, config)
 
-        super().__init__(name, domain, conn_info)
+        # Use database_uri as is if it's a json, otherwise convert it to json
+        database_uri = config["database_uri"]
+        if isinstance(database_uri, str):
+            database_uri = json.loads(database_uri)
 
         # A temporary cache of already constructed model classes
         self._database_model_classes: dict[str, type[_Any]] = {}
@@ -854,11 +865,11 @@ class ESProvider(BaseProvider):
         # are normalized here, using ``USE_SSL`` to pick the scheme and 9200 as
         # the port (so ``localhost``, ``localhost:9200`` and ``http://es`` all
         # connect, and ``USE_SSL`` keeps its meaning).
-        use_ssl = self.conn_info.get("USE_SSL", False)
+        use_ssl = self.config.get("USE_SSL", False)
         scheme = "https" if use_ssl else "http"
         hosts = [
             _normalize_host(host, scheme) if isinstance(host, str) else host
-            for host in self.conn_info["database_uri"]["hosts"]
+            for host in database_uri["hosts"]
         ]
         # The v8 client validates host URLs eagerly (scheme + host + port), so a
         # malformed host raises here rather than at first use. Surface it as a
@@ -870,7 +881,7 @@ class ESProvider(BaseProvider):
         try:
             self._client = Elasticsearch(
                 hosts,
-                verify_certs=self.conn_info.get("VERIFY_CERTS", False),
+                verify_certs=self.config.get("VERIFY_CERTS", False),
             )
         except ValueError:
             raise ConfigurationError(
@@ -880,15 +891,13 @@ class ESProvider(BaseProvider):
 
     def namespaced_schema_name(self, schema_name: str) -> str:
         # Prepend Namespace prefix if one has been provided
-        if self.conn_info.get("NAMESPACE_PREFIX"):
+        if self.config.get("NAMESPACE_PREFIX"):
             # Use custom separator if provided
             separator = "_"
-            if self.conn_info.get("NAMESPACE_SEPARATOR"):
-                separator = self.conn_info["NAMESPACE_SEPARATOR"]
+            if self.config.get("NAMESPACE_SEPARATOR"):
+                separator = self.config["NAMESPACE_SEPARATOR"]
 
-            schema_name = (
-                f"{self.conn_info['NAMESPACE_PREFIX']}{separator}{schema_name}"
-            )
+            schema_name = f"{self.config['NAMESPACE_PREFIX']}{separator}{schema_name}"
 
         return schema_name
 
@@ -938,15 +947,29 @@ class ESProvider(BaseProvider):
         """Get the connection object for the repository"""
         return self._client
 
-    def is_alive(self) -> bool:
-        """Check if the connection is alive"""
-        return self._client.ping()
+    def ping(self) -> bool:
+        """Whether the Elasticsearch cluster answers a ping."""
+        return bool(self._client.ping())
 
-    def get_dao(self, entity_cls: _Any, database_model_cls: _Any) -> "ElasticsearchDAO":
+    def health(self) -> ProviderHealth:
+        """A health record without a pool: the client reports no pool counters."""
+        return ProviderHealth(pool=None)
+
+    def dao_for(self, entity_cls: _Any, model_cls: _Any) -> "ElasticsearchDAO":
         """Return a DAO object configured with a live connection"""
-        return ElasticsearchDAO(self.domain, self, entity_cls, database_model_cls)
+        return ElasticsearchDAO(self.domain, self, entity_cls, model_cls)
 
-    def decorate_database_model_class(
+    def model_for(
+        self,
+        entity_cls: "type[BaseEntity]",
+        model_cls: type[BaseDatabaseModel] | None = None,
+    ) -> type[BaseDatabaseModel]:
+        """The Elasticsearch model for `entity_cls`, decorating `model_cls` when given."""
+        if model_cls is None:
+            return self._build_model(entity_cls)
+        return self._decorate_model(entity_cls, model_cls)
+
+    def _decorate_model(
         self, entity_cls: _Any, database_model_cls: type[_Any]
     ) -> type[_Any]:
         schema_name = self.namespaced_schema_name(
@@ -971,7 +994,7 @@ class ESProvider(BaseProvider):
 
             # Construct Inner Index class with options
             options = _custom_index_options(
-                database_model_cls, schema_name, self.conn_info
+                database_model_cls, schema_name, self.config
             )
 
             # Set options into `Index` inner class for ElasticsearchModel
@@ -1013,7 +1036,7 @@ class ESProvider(BaseProvider):
 
             return decorated_database_database_model_cls
 
-    def construct_database_model_class(self, entity_cls: _Any) -> type[_Any]:
+    def _build_model(self, entity_cls: _Any) -> type[_Any]:
         """Return a fully-baked Model class for a given Entity class"""
         database_model_cls = None
         cache_key = _fully_qualified_name(entity_cls)
@@ -1029,8 +1052,8 @@ class ESProvider(BaseProvider):
             # Construct Inner Index class with options
             options = {}
             options["name"] = schema_name
-            if self.conn_info.get("SETTINGS"):
-                options["settings"] = self.conn_info["SETTINGS"]
+            if self.config.get("SETTINGS"):
+                options["settings"] = self.config["SETTINGS"]
 
             index_cls = type("Index", (object,), options)
 
@@ -1073,20 +1096,8 @@ class ESProvider(BaseProvider):
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return database_model_cls
 
-    def _raw(self, query: _Any, data: _Any = None) -> _Any:
-        """Not supported — Elasticsearch does not support raw queries.
-
-        This method is never reached because the base class ``raw()`` gates
-        access via capability checks. It exists only to satisfy the abstract
-        method contract.
-        """
-        raise NotSupportedError(
-            f"Provider '{self.name}' ({self.__class__.__name__}) "
-            "does not support raw queries"
-        )
-
-    def _data_reset(self) -> None:
-        """Reset data"""
+    def clear(self) -> None:
+        """Delete every document from the provider's indices, keeping the indices."""
         conn = self.get_connection()
 
         # Get all elements that have been registered with the domain
@@ -1128,7 +1139,8 @@ class ESProvider(BaseProvider):
         if hasattr(self, "_client") and self._client:
             self._client.close()
 
-    def _create_database_artifacts(self) -> None:
+    def create_schema(self) -> None:
+        """Create each missing index, with its mapping."""
         conn = self.get_connection()
 
         # Loop through self.domain.registry._elements and extract the classes under
@@ -1153,7 +1165,8 @@ class ESProvider(BaseProvider):
                 # We use database_model_cls here to ensure the index is created along with mappings
                 database_model_cls.init(using=conn)
 
-    def _drop_database_artifacts(self) -> None:
+    def drop_schema(self) -> None:
+        """Delete the index of every element this provider owns."""
         conn = self.get_connection()
 
         elements = {
@@ -1466,3 +1479,6 @@ def register() -> None:
             f"Elasticsearch provider not registered: "
             f"elasticsearch package not available ({e})"
         )
+
+
+_PORT_CHECK: type[ProviderPort] = ESProvider

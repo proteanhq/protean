@@ -64,9 +64,7 @@ class TestMssqlLookups:
         test_domain.init(traverse=False)
 
         provider = test_domain.providers["default"]
-        dao = provider.get_dao(
-            MssqlTestEntity, provider.construct_database_model_class(MssqlTestEntity)
-        )
+        dao = provider.dao_for(MssqlTestEntity, provider.model_for(MssqlTestEntity))
 
         # Get the exact lookup class and create an instance
         exact_lookup_cls = provider.get_lookup("exact")

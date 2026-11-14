@@ -151,14 +151,14 @@ class InfrastructureManager:
         """Create all database tables (aggregates, entities, projections, outbox,
         and the consume-side idempotency marker).
 
-        Delegates to each managed provider's ``_create_database_artifacts()``
+        Delegates to each managed provider's ``create_schema()``
         which is idempotent — existing tables are left untouched.
         Providers with ``managed = false`` are skipped.
         """
         for provider in self._domain.providers.values():
             if not provider.managed:
                 continue
-            provider._create_database_artifacts()
+            provider.create_schema()
 
     def setup_outbox(self) -> None:
         """Create only outbox tables.
@@ -177,7 +177,7 @@ class InfrastructureManager:
         for provider in self._domain.providers.values():
             if not provider.managed:
                 continue
-            provider._create_database_artifacts()  # Idempotent
+            provider.create_schema()  # Idempotent
 
     def truncate_database(self) -> None:
         """Delete all rows from every table without dropping the tables.
@@ -194,7 +194,7 @@ class InfrastructureManager:
         for provider in domain.providers.values():
             if not provider.managed:
                 continue
-            provider._data_reset()
+            provider.clear()
 
         domain._require_event_store()._data_reset()
 
@@ -206,4 +206,4 @@ class InfrastructureManager:
         for provider in self._domain.providers.values():
             if not provider.managed:
                 continue
-            provider._drop_database_artifacts()
+            provider.drop_schema()

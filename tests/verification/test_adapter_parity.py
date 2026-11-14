@@ -206,7 +206,7 @@ def postgresql_parity():
         # close() runs even if the drop raises, so the engine never leaks.
         try:
             with pg_domain.domain_context():
-                provider._drop_database_artifacts()
+                provider.drop_schema()
         finally:
             provider.close()
 

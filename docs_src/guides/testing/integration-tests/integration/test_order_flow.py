@@ -84,5 +84,5 @@ def check_history(customer, name, count):
 
 
 def test_the_provider_follows_test_db():
-    provider = domain.providers["default"].conn_info["provider"]
+    provider = domain.providers["default"].config["provider"]
     assert provider == os.environ.get("TEST_DB", "memory")

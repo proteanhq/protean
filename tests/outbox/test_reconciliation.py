@@ -458,7 +458,7 @@ class TestReconcileBesideALiveWriter:
         message_id = _newest_message_id(domain)
         outbox_repo._dao._delete_all()  # simulate the crash window
 
-        live_dao = domain.providers["default"].get_dao(
+        live_dao = domain.providers["default"].dao_for(
             Outbox, outbox_repo._database_model
         )
         live_rows = []

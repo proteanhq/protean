@@ -16,7 +16,7 @@ class TestSqlAlchemyCredentialRedaction:
 
     @pytest.mark.no_test_domain
     def test_connection_failed_redacts_password(self, caplog):
-        """is_alive() failure logs a redacted URI with password replaced by ***."""
+        """ping() failure logs a redacted URI with password replaced by ***."""
         try:
             from sqlalchemy.exc import DatabaseError
 
@@ -25,9 +25,9 @@ class TestSqlAlchemyCredentialRedaction:
             pytest.skip("sqlalchemy not installed")
 
         # Build a mock that passes isinstance checks but has the attrs
-        # is_alive() needs — avoids instantiating the abstract class.
+        # ping() needs — avoids instantiating the abstract class.
         provider = MagicMock(spec=SAProvider)
-        provider.conn_info = {
+        provider.config = {
             "database_uri": "postgresql://admin:s3cret@localhost:5432/mydb"
         }
 
@@ -35,9 +35,9 @@ class TestSqlAlchemyCredentialRedaction:
         mock_conn.execute.side_effect = DatabaseError("", {}, Exception("conn refused"))
         provider.get_connection = MagicMock(return_value=mock_conn)
 
-        # Call the real is_alive method with our mock as self
+        # Call the real ping method with our mock as self
         with caplog.at_level(logging.ERROR):
-            result = SAProvider.is_alive(provider)
+            result = SAProvider.ping(provider)
 
         assert result is False
 
@@ -63,7 +63,7 @@ class TestSqlAlchemyCredentialRedaction:
 
     @pytest.mark.no_test_domain
     def test_connection_failed_handles_unparseable_uri(self, caplog):
-        """is_alive() failure with an unparseable URI logs '<unparseable>'."""
+        """ping() failure with an unparseable URI logs '<unparseable>'."""
         try:
             from sqlalchemy.exc import DatabaseError
 
@@ -72,14 +72,14 @@ class TestSqlAlchemyCredentialRedaction:
             pytest.skip("sqlalchemy not installed")
 
         provider = MagicMock(spec=SAProvider)
-        provider.conn_info = {"database_uri": "not-a-valid-uri"}
+        provider.config = {"database_uri": "not-a-valid-uri"}
 
         mock_conn = MagicMock()
         mock_conn.execute.side_effect = DatabaseError("", {}, Exception("conn refused"))
         provider.get_connection = MagicMock(return_value=mock_conn)
 
         with caplog.at_level(logging.ERROR):
-            result = SAProvider.is_alive(provider)
+            result = SAProvider.ping(provider)
 
         assert result is False
 
@@ -104,14 +104,14 @@ class TestSqlAlchemyCredentialRedaction:
             pytest.skip("sqlalchemy not installed")
 
         provider = MagicMock(spec=SAProvider)
-        provider.conn_info = {"database_uri": "postgresql://u:s3cret@host:abc/db"}
+        provider.config = {"database_uri": "postgresql://u:s3cret@host:abc/db"}
 
         mock_conn = MagicMock()
         mock_conn.execute.side_effect = DatabaseError("", {}, Exception("conn refused"))
         provider.get_connection = MagicMock(return_value=mock_conn)
 
         with caplog.at_level(logging.ERROR):
-            assert SAProvider.is_alive(provider) is False
+            assert SAProvider.ping(provider) is False
 
         records = [
             r
@@ -132,11 +132,11 @@ class TestSqlAlchemyCredentialRedaction:
             pytest.skip("sqlalchemy not installed")
 
         provider = MagicMock(spec=SAProvider)
-        provider.conn_info = {}
+        provider.config = {}
 
         mock_conn = MagicMock()
         mock_conn.execute.side_effect = DatabaseError("", {}, Exception("conn refused"))
         provider.get_connection = MagicMock(return_value=mock_conn)
 
         with pytest.raises(KeyError, match="database_uri"):
-            SAProvider.is_alive(provider)
+            SAProvider.ping(provider)

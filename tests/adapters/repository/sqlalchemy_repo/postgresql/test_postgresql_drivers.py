@@ -15,14 +15,14 @@ def test_driver_connects_and_queries(test_domain, driver):
     provider = PostgresqlProvider(
         name="driver_check",
         domain=test_domain,
-        conn_info={
+        config={
             "provider": "postgresql",
             "database_uri": uri.render_as_string(hide_password=False),
         },
     )
     try:
         assert provider._engine.dialect.driver == driver
-        assert provider.is_alive()
+        assert provider.ping()
         with provider._engine.connect() as conn:
             assert conn.execute(text("SELECT 1")).scalar() == 1
     finally:

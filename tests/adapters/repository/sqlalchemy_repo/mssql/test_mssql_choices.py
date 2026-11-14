@@ -27,10 +27,10 @@ def build_table(aggregate_cls):
     provider = MssqlProvider(
         name="mssql",
         domain=domain,
-        conn_info={"provider": "mssql", "database_uri": MSSQL_URI},
+        config={"provider": "mssql", "database_uri": MSSQL_URI},
     )
     with domain.domain_context():
-        return provider.construct_database_model_class(aggregate_cls).__table__
+        return provider.model_for(aggregate_cls).__table__
 
 
 def test_a_unique_string_with_choices_keeps_its_length():

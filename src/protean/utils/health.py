@@ -21,13 +21,13 @@ STATUS_UNAVAILABLE = "unavailable"
 
 
 def check_providers(domain: Domain) -> tuple[dict[str, str], bool]:
-    """Check database provider connectivity via ``is_alive()``."""
+    """Check database provider connectivity via ``ping()``."""
     statuses: dict[str, str] = {}
     all_ok = True
     try:
         for name, provider in domain.providers.items():
             try:
-                alive = provider.is_alive()
+                alive = provider.ping()
                 statuses[name] = STATUS_OK if alive else STATUS_UNAVAILABLE
                 if not alive:
                     all_ok = False

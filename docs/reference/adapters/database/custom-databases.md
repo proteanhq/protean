@@ -17,13 +17,17 @@ All database adapters are built from five components that work together:
 
 ### 1. Provider
 
-**Extends**: `protean.port.provider.BaseProvider`
+**Extends**: `protean.port.provider.BaseProvider`, and implements
+`protean.port.provider.ProviderPort`
 
 The Provider is the central coordinator. It manages connections, sessions, and
-the database lifecycle. You implement the abstract methods and the
-`capabilities` property listed in the table below.
+the database lifecycle. List `BaseProvider` first in the class bases, then the
+port the provider implements. `ProviderPort` declares the members every
+provider has. `RawQueryProviderPort` adds `raw()`, and a provider that declares
+`DatabaseCapabilities.RAW_QUERIES` implements it. You implement the abstract
+methods and the `capabilities` property listed in the table below.
 
-The provider class also sets a `__database__` attribute to the database's
+The provider class also sets a `database_type` attribute to the database's
 name. Protean reads it when it picks a custom repository or database model
 registered for one database (`database="..."`). Without it, getting a
 repository fails with an `AttributeError`.
@@ -33,15 +37,22 @@ repository fails with an `AttributeError`.
 | `capabilities` | Property returning `DatabaseCapabilities` flags |
 | `get_session()` | Return a session object for transaction management |
 | `get_connection()` | Return the underlying database connection |
-| `is_alive()` | Health check, return `True` if the database is reachable |
-| `close()` | Release connections and clean up resources |
-| `get_dao(entity_cls, model_cls)` | Return a DAO for a given entity |
-| `construct_database_model_class(entity_cls)` | Auto-generate a database model |
-| `decorate_database_model_class(entity_cls, model_cls)` | Enhance a user-defined model |
-| `_raw(query, data)` | Execute a raw/native query |
-| `_data_reset()` | Flush all data (used in tests) |
-| `_create_database_artifacts()` | Create tables, indices, or collections |
-| `_drop_database_artifacts()` | Drop all storage structures |
+| `ping()` | Health check, return `True` if the database is reachable |
+| `health()` | Return a `ProviderHealth`; its `pool` holds connection pool counters, or `None` |
+| `dao_for(entity_cls, model_cls)` | Return a DAO for a given entity |
+| `model_for(entity_cls, model_cls=None)` | Build a database model, or decorate `model_cls` when given |
+| `clear()` | Delete all data (used in tests) |
+
+The port gives three members a default that does nothing. Override them when
+the database needs the work:
+
+- `close()` releases connections and cleans up resources.
+- `create_schema()` creates tables, indices, or collections.
+- `drop_schema()` drops all storage structures.
+
+A provider that implements `RawQueryProviderPort` also implements
+`raw(query, data=None)`, which runs a native query. On a provider without its
+own `raw()`, the `BaseProvider` version raises `NotSupportedError`.
 
 ### 2. DAO (Data Access Object)
 
@@ -223,10 +234,13 @@ def register():
 # src/protean_dynamodb/provider.py
 """DynamoDB provider implementation."""
 
-from typing import Any
-
 import boto3
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import (
+    BaseProvider,
+    DatabaseCapabilities,
+    ProviderHealth,
+    ProviderPort,
+)
 
 
 class DynamoDBSession:
@@ -246,18 +260,18 @@ class DynamoDBSession:
         pass
 
 
-class DynamoDBProvider(BaseProvider):
+class DynamoDBProvider(BaseProvider, ProviderPort):
     """DynamoDB database provider for Protean."""
 
-    __database__ = "dynamodb"
+    database_type = "dynamodb"
 
-    def __init__(self, name, domain, conn_info: dict):
-        super().__init__(name, domain, conn_info)
+    def __init__(self, name, domain, config):
+        super().__init__(name, domain, config)
 
         self._client = boto3.resource(
             "dynamodb",
-            endpoint_url=conn_info.get("database_uri", "http://localhost:8000"),
-            region_name=conn_info.get("region", "us-east-1"),
+            endpoint_url=config.get("database_uri", "http://localhost:8000"),
+            region_name=config.get("region", "us-east-1"),
         )
 
     @property
@@ -270,22 +284,27 @@ class DynamoDBProvider(BaseProvider):
     def get_connection(self):
         return self._client
 
-    def is_alive(self) -> bool:
+    def ping(self) -> bool:
         try:
             self._client.meta.client.describe_endpoints()
             return True
         except Exception:
             return False
 
-    def close(self):
-        pass  # boto3 manages connections internally
+    def health(self) -> ProviderHealth:
+        # boto3 manages connections internally and exposes no pool counters
+        return ProviderHealth(pool=None)
 
-    def get_dao(self, entity_cls, database_model_cls):
+    def dao_for(self, entity_cls, database_model_cls):
         from protean_dynamodb.dao import DynamoDBDAO
 
         return DynamoDBDAO(self.domain, self, entity_cls, database_model_cls)
 
-    def construct_database_model_class(self, entity_cls):
+    def model_for(self, entity_cls, model_cls=None):
+        if model_cls is not None:
+            # Enhance user-defined model with DynamoDB-specific attributes
+            return model_cls
+
         from protean_dynamodb.model import DynamoDBModel
 
         # Build a model class dynamically
@@ -295,15 +314,7 @@ class DynamoDBProvider(BaseProvider):
             {"Meta": type("Meta", (), {"part_of": entity_cls})},
         )
 
-    def decorate_database_model_class(self, entity_cls, database_model_cls):
-        # Enhance user-defined model with DynamoDB-specific attributes
-        return database_model_cls
-
-    def _raw(self, query: Any, data: Any = None):
-        # Not supported -- capability not declared
-        raise NotImplementedError
-
-    def _data_reset(self):
+    def clear(self):
         # Scan and delete all items from all tables
         for table in self._client.tables.all():
             scan = table.scan()
@@ -311,11 +322,11 @@ class DynamoDBProvider(BaseProvider):
                 for item in scan["Items"]:
                     batch.delete_item(Key={"id": item["id"]})
 
-    def _create_database_artifacts(self):
+    def create_schema(self):
         # Create DynamoDB tables for registered entities
         ...
 
-    def _drop_database_artifacts(self):
+    def drop_schema(self):
         # Drop DynamoDB tables
         ...
 ```
@@ -361,8 +372,8 @@ Protean routes data through the adapter components as follows:
 ```
 Domain.init()
   → providers.get(name)                    # loads your Provider class
-  → Provider.__init__(name, domain, conn_info)
-  → Provider._create_database_artifacts()  # if setup_database() called
+  → Provider.__init__(name, domain, config)
+  → Provider.create_schema()  # if setup_database() called
 ```
 
 **Persist (within Unit of Work):**
@@ -560,7 +571,7 @@ pytest --db-provider=dynamodb --db-uri="http://localhost:8000" \
 ## Guidance for adapter authors
 
 1. **Handle Connection Failures**: Implement reconnection logic, and make
-   `is_alive()` return `True` only when the database is reachable.
+   `ping()` return `True` only when the database is reachable.
 2. **Declare Accurate Capabilities**: Only declare capabilities you actually
    support. Use the conformance test suite to verify.
 3. **Use `_entity_to_dict()`**: Avoid duplicating entity-to-dict conversion

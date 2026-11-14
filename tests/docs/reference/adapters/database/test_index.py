@@ -57,7 +57,7 @@ def test_analytics_database_connects_to_elasticsearch(tmp_path, monkeypatch):
     assert type(provider) is ESProvider
     nodes = provider._client.transport.node_pool.all()
     assert [node.base_url for node in nodes] == [es_host]
-    assert provider.is_alive()
+    assert provider.ping()
 
 
 @pytest.mark.postgresql
@@ -74,7 +74,7 @@ def test_reporting_database_connects_to_postgresql(tmp_path, monkeypatch):
         POSTGRES_PORT,
         "postgres",
     )
-    assert provider.is_alive()
+    assert provider.ping()
 
 
 def test_configuration_shown_defaults_to_the_documented_values(tmp_path, monkeypatch):

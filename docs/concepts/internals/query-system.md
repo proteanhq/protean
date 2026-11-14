@@ -41,7 +41,7 @@ Access Object. The DAO is constructed lazily and cached:
 
 ```
 BaseRepository._dao
-    → provider.get_dao(entity_cls, database_model_cls)
+    → provider.dao_for(entity_cls, database_model_cls)
         → ConcreteDAO(domain, provider, entity_cls, database_model_cls)
 ```
 

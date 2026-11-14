@@ -1,8 +1,8 @@
 """Tests for connection pool and backpressure OTEL metrics.
 
 Verifies that:
-- ``BaseProvider.pool_stats()`` returns ``{}`` by default.
-- ``SAProvider.pool_stats()`` reads live pool counters from the engine.
+- A provider without a connection pool reports ``health().pool`` as ``None``.
+- ``SAProvider.health()`` reads live pool counters from the engine.
 - Observable gauges for DB pool metrics produce correct measurements.
 - Observable gauges for broker pool metrics produce correct measurements.
 - Backpressure gauges (outbox, subscription lag/pending) use the correct
@@ -24,7 +24,6 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.domain import Domain
 from protean.fields import Identifier, String
-from protean.port.provider import BaseProvider
 from protean.server.observatory.metrics import (
     _collect_broker_pool_stats,
     _collect_pool_stats,
@@ -193,40 +192,35 @@ def _outbox_domain(rows: dict[str, int]) -> Domain:
 
 
 # ---------------------------------------------------------------------------
-# BaseProvider.pool_stats() tests
+# MemoryProvider.health() tests
 # ---------------------------------------------------------------------------
 
 
-class TestBaseProviderPoolStats:
-    """BaseProvider.pool_stats() returns empty dict by default."""
+class TestMemoryProviderHealth:
+    """The memory provider has no connection pool to report."""
 
-    def test_memory_provider_inherits_empty_pool_stats(self, test_domain):
+    def test_memory_provider_reports_no_pool(self, test_domain):
         provider = test_domain.providers["default"]
 
-        assert type(provider).pool_stats is BaseProvider.pool_stats
-        assert provider.pool_stats() == {}
-
-    def test_pool_stats_is_not_abstract(self):
-        """pool_stats is a concrete method, not abstract."""
-        assert not getattr(BaseProvider.pool_stats, "__isabstractmethod__", False)
+        assert provider.health().pool is None
 
 
 # ---------------------------------------------------------------------------
-# SAProvider.pool_stats() tests
+# SAProvider.health() tests
 # ---------------------------------------------------------------------------
 
 
-class TestSAProviderPoolStats:
-    """SAProvider.pool_stats() reads pool counters from the SQLAlchemy engine."""
+class TestSAProviderHealth:
+    """SAProvider.health() reads pool counters from the SQLAlchemy engine."""
 
     def test_returns_pool_counters(self, sqlite_domain):
-        """pool_stats returns size, checked_out, overflow, checked_in."""
+        """health().pool holds size, checked_out, overflow, checked_in."""
         with sqlite_domain.domain_context():
             provider = sqlite_domain.providers["default"]
             pool = provider._engine.pool
 
             with provider._engine.connect():
-                result = provider.pool_stats()
+                result = provider.health().pool
                 expected = {
                     "size": pool.size(),
                     "checked_out": 1,
@@ -238,8 +232,8 @@ class TestSAProviderPoolStats:
         assert result["size"] == 5
 
     @pytest.mark.parametrize("remove", [False, True], ids=["none", "missing"])
-    def test_returns_empty_without_engine(self, sqlite_domain, remove):
-        """pool_stats returns {} when _engine is None or does not exist."""
+    def test_reports_no_pool_without_engine(self, sqlite_domain, remove):
+        """health().pool is None when _engine is None or does not exist."""
         with sqlite_domain.domain_context():
             provider = sqlite_domain.providers["default"]
         engine = provider._engine
@@ -248,12 +242,12 @@ class TestSAProviderPoolStats:
         else:
             provider._engine = None
 
-        assert provider.pool_stats() == {}
+        assert provider.health().pool is None
 
         provider._engine = engine
 
-    def test_returns_empty_for_pool_without_counters(self, sqlite_domain):
-        """pool_stats returns {} for a pool that exposes no counters."""
+    def test_reports_no_pool_for_pool_without_counters(self, sqlite_domain):
+        """health().pool is None for a pool that exposes no counters."""
         from sqlalchemy import create_engine
         from sqlalchemy.pool import NullPool
 
@@ -262,7 +256,7 @@ class TestSAProviderPoolStats:
         engine = provider._engine
         provider._engine = create_engine("sqlite://", poolclass=NullPool)
 
-        assert provider.pool_stats() == {}
+        assert provider.health().pool is None
 
         provider._engine.dispose()
         provider._engine = engine
@@ -286,7 +280,9 @@ class TestCollectPoolStats:
         assert stats["size"] == 5
         assert stats["checked_out"] == 0
 
-    def test_skips_provider_with_empty_stats(self, test_domain):
+    def test_skips_provider_without_a_pool(self, test_domain):
+        assert test_domain.providers["default"].health().pool is None
+
         assert _collect_pool_stats([test_domain]) == []
 
     def test_handles_domain_exception(self, sqlite_domain, monkeypatch):
@@ -296,7 +292,7 @@ class TestCollectPoolStats:
         def _fail():
             raise RuntimeError("boom")
 
-        monkeypatch.setattr(provider, "pool_stats", _fail)
+        monkeypatch.setattr(provider, "health", _fail)
 
         assert _collect_pool_stats([sqlite_domain]) == []
 
@@ -378,7 +374,7 @@ class TestDBPoolOTELGauges:
                 data = metric_reader.get_metrics_data()
                 # Read the pool after the scrape: other gauges may open and
                 # return connections while it runs.
-                expected = provider.pool_stats()
+                expected = provider.health().pool
 
         points = {
             metric.name: list(metric.data.data_points)

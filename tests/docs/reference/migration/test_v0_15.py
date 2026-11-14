@@ -150,7 +150,7 @@ def search_example(monkeypatch):
     example.domain.init(traverse=False)
     yield example
     with example.domain.domain_context():
-        example.domain.providers["elasticsearch"]._drop_database_artifacts()
+        example.domain.providers["elasticsearch"].drop_schema()
 
 
 @pytest.mark.elasticsearch

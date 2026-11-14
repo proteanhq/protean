@@ -81,7 +81,7 @@ def _cleanup(domain) -> None:
     for provider_name in domain.providers:
         provider = domain.providers[provider_name]
         try:
-            provider._data_reset()
+            provider.clear()
         finally:
             provider.close()
 
@@ -122,12 +122,12 @@ class _TutorialBase:
 
         has_projections = mod in _HAS_PROJECTIONS
         if has_projections:
-            domain.providers["default"]._create_database_artifacts()
+            domain.providers["default"].create_schema()
 
         yield domain
 
         if has_projections:
-            domain.providers["default"]._drop_database_artifacts()
+            domain.providers["default"].drop_schema()
 
         _cleanup(domain)
 

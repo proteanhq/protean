@@ -843,7 +843,7 @@ def test_record_step_conflict_on_postgresql(processing):
 
     with domain.domain_context():
         provider = domain.providers["default"]
-        provider._create_database_artifacts()
+        provider.create_schema()
         try:
             with patch("protean.utils.mixins.time.sleep"):
                 Probe.conflicts_left = 1
@@ -853,4 +853,4 @@ def test_record_step_conflict_on_postgresql(processing):
             assert Probe.attempts == 2
             assert _status(domain, notification_id) == "SENT"
         finally:
-            provider._drop_database_artifacts()
+            provider.drop_schema()
