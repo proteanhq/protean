@@ -291,9 +291,9 @@ protean db upgrade --directory=migrations/analytics
 Compares the provider's database with the table definitions the domain
 declares, and prints one line for each difference. It makes the same
 comparison as `protean db migrate`. It writes no migration file, adds no row
-to `alembic_version` and changes no table. Like the other `protean db`
-commands, it reads the provider's name from the `protean_provider` option in
-`alembic.ini`.
+to `alembic_version` and changes no table. Like `protean db migrate`, `upgrade`
+and `downgrade`, it reads the provider's name from the `protean_provider`
+option in `alembic.ini`.
 
 ```bash
 protean db check --domain=my_domain
@@ -345,9 +345,8 @@ database cannot be reached, and when the database is not at the latest
 migration.
 
 On SQLite, a database URI that names a missing file creates an empty file
-when the domain connects, as it does for every `protean db` command. When the
-folder holds a migration, the command then exits 2, because the empty
-database is not at the latest migration.
+when the domain connects. When the folder holds a migration, the command then
+exits 2, because the empty database is not at the latest migration.
 
 The command has two uses:
 
