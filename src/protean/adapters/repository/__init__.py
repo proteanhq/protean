@@ -33,15 +33,17 @@ def _without_password(uri: Any) -> str:
     scheme, separator, rest = uri.partition("://")
     if not separator:
         return "<not shown>"
-    # SQLAlchemy reads a password up to the "@", so it can hold "/", "?"
-    # or "#". Split on the last "@" before cutting the query, or such a
-    # password would pass through as part of the host or path.
-    userinfo, at, location = rest.rpartition("@")
+    # A password can hold "/", "?" or "#", so the userinfo is read before
+    # the query is cut. The username holds none of ":", "/" or "@", so an
+    # "@" inside the query, as in "?password=a@b", is not read as userinfo.
+    # The password runs to the last "@", so no part of it reaches the host.
+    userinfo = re.match(r"([^:/@]*)(:.*)?@", rest)
+    location = rest[userinfo.end() :] if userinfo else rest
     location = re.split(r"[?#]", location, maxsplit=1)[0]
-    if not at:
+    if not userinfo:
         return f"{scheme}://{location}"
-    username, colon, _ = userinfo.partition(":")
-    return f"{scheme}://{username}{':***' if colon else ''}@{location}"
+    username, password = userinfo.groups()
+    return f"{scheme}://{username}{':***' if password is not None else ''}@{location}"
 
 
 class Providers(collections.abc.MutableMapping[str, BaseProvider]):
