@@ -163,11 +163,14 @@ with domain.domain_context():
 @handle(PlaceOrder)
 def handle_place_order(self, command):
     # Wrong! Bypassing the repository
-    dao = domain.providers.dao_for(Order)
-    dao.create(order_id=command.order_id, status="placed")
+    provider = domain.providers["default"]
+    provider.raw(
+        "INSERT INTO orders (order_id, status) VALUES (:order_id, 'placed')",
+        {"order_id": command.order_id},
+    )
 ```
 
-**Why it's wrong**: The repository handles Unit of Work integration, child syncing, version tracking and event dispatch. A direct DAO call skips all of them.
+**Why it's wrong**: The repository handles Unit of Work integration, child syncing, version tracking and event dispatch. A direct database call skips all of them.
 
 **Instead**: Use `domain.repository_for()`.
 

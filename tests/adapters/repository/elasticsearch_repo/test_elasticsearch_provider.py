@@ -60,7 +60,10 @@ class TestElasticsearchProvider:
         provider = test_domain.providers["default"]
 
         # Provider-level gate
-        with pytest.raises(NotSupportedError, match="does not support raw queries"):
+        with pytest.raises(
+            NotSupportedError,
+            match=r"'default' \(ESProvider\) does not support raw queries",
+        ):
             provider.raw("SELECT * FROM person")
 
         # QuerySet-level gate

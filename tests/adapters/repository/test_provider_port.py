@@ -17,7 +17,6 @@ from protean.adapters.repository.sqlalchemy import (
     PostgresqlProvider,
     SqliteProvider,
 )
-from protean.exceptions import NotSupportedError
 from protean.port.provider import BaseProvider, ProviderPort, RawQueryProviderPort
 
 PROVIDER_PORT_MEMBERS = sorted(ProviderPort.__abstractmethods__)
@@ -103,10 +102,3 @@ class TestBuiltInProvidersImplementThePorts:
     @pytest.mark.parametrize("provider_cls", CONCRETE_PROVIDERS)
     def test_built_in_providers_leave_no_member_abstract(self, provider_cls):
         assert provider_cls.__abstractmethods__ == frozenset()
-
-
-@pytest.mark.elasticsearch
-def test_elasticsearch_raw_raises_not_supported(test_domain):
-    provider = test_domain.providers["default"]
-    with pytest.raises(NotSupportedError, match="'default'.*ESProvider"):
-        provider.raw("{}")

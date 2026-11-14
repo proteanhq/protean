@@ -258,6 +258,24 @@ class TestSAProviderHealth:
 
         assert provider.health().pool is None
 
+        provider._engine = engine
+
+    def test_reports_no_pool_for_in_memory_sqlite(self, sqlite_domain):
+        """An in-memory SQLite engine uses ``SingletonThreadPool``, whose
+        ``size`` is an int attribute, and health().pool is None for it."""
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import SingletonThreadPool
+
+        with sqlite_domain.domain_context():
+            provider = sqlite_domain.providers["default"]
+        engine = provider._engine
+        provider._engine = create_engine("sqlite://")
+        assert isinstance(provider._engine.pool, SingletonThreadPool)
+
+        assert provider.health().pool is None
+
+        provider._engine = engine
+
         provider._engine.dispose()
         provider._engine = engine
 

@@ -3108,8 +3108,9 @@ class SAProvider(BaseProvider, RawQueryProviderPort):
     def health(self) -> ProviderHealth:
         """The health record, with the engine's ``QueuePool`` counters.
 
-        ``pool`` is ``None`` without an engine, or when the pool keeps no
-        counters, such as SQLite's ``SingletonThreadPool``.
+        ``pool`` is ``None`` without an engine, or when the engine's pool is
+        not a ``QueuePool``, such as the ``SingletonThreadPool`` an in-memory
+        SQLite database uses.
         """
         return ProviderHealth(pool=self._pool_stats())
 
@@ -3117,21 +3118,17 @@ class SAProvider(BaseProvider, RawQueryProviderPort):
         if not hasattr(self, "_engine") or self._engine is None:
             return None
 
-        # ``QueuePool`` exposes these counters. ``SingletonThreadPool``, which
-        # an in-memory SQLite database uses, does not, and the AttributeError
-        # handler returns None for it. The cast is a static-only hint and does
-        # not narrow at runtime.
-        pool = typing.cast("QueuePool", self._engine.pool)
-        try:
-            return PoolStats(
-                size=pool.size(),
-                checked_out=pool.checkedout(),
-                overflow=pool.overflow(),
-                checked_in=pool.checkedin(),
-            )
-        except AttributeError:
-            # Defensive: any pool implementation lacking these methods.
+        # Only ``QueuePool`` keeps these counters. ``SingletonThreadPool`` has
+        # an int ``size`` attribute, so calling ``size()`` on it would raise.
+        pool = self._engine.pool
+        if not isinstance(pool, QueuePool):
             return None
+        return PoolStats(
+            size=pool.size(),
+            checked_out=pool.checkedout(),
+            overflow=pool.overflow(),
+            checked_in=pool.checkedin(),
+        )
 
     def close(self) -> None:
         """Close the provider and clean up all connections.
