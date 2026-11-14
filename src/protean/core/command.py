@@ -187,8 +187,8 @@ class BaseCommand(BaseMessageType):
         else:
             headers = MessageHeaders(type=self.__class__.__type__, time=_domain_now())
 
-        # If metadata already has domain with sequence_id and asynchronous set (from enrich),
-        # preserve those values
+        # If metadata already has domain with sequence_id, asynchronous and
+        # priority set (from enrich), preserve those values
         existing_domain = (
             incoming.domain if incoming and hasattr(incoming, "domain") else None
         )
@@ -212,14 +212,9 @@ class BaseCommand(BaseMessageType):
             fqn=fqn(self.__class__),
             origin_stream=origin_stream,
             version=version,
-            sequence_id=existing_domain.sequence_id
-            if existing_domain and hasattr(existing_domain, "sequence_id")
-            else None,
-            asynchronous=existing_domain.asynchronous
-            if existing_domain and hasattr(existing_domain, "asynchronous")
-            else True,
             correlation_id=correlation_id,
             causation_id=causation_id,
+            **_enriched_domain_fields(existing_domain),
         )
 
         # Also preserve envelope if it exists
@@ -255,6 +250,17 @@ class BaseCommand(BaseMessageType):
         if rebuild and incoming and getattr(incoming, "event_store", None) is not None:
             metadata_kwargs["event_store"] = incoming.event_store
         self._metadata = Metadata(**metadata_kwargs)
+
+
+def _enriched_domain_fields(existing_domain: DomainMeta | None) -> dict[str, Any]:
+    """Return the domain fields `_enrich_command()` set, or their defaults."""
+    if existing_domain is None:
+        return {"sequence_id": None, "asynchronous": True, "priority": 0}
+    return {
+        "sequence_id": getattr(existing_domain, "sequence_id", None),
+        "asynchronous": getattr(existing_domain, "asynchronous", True),
+        "priority": existing_domain.priority,
+    }
 
 
 # ---------------------------------------------------------------------------
