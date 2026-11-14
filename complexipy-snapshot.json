@@ -192,16 +192,6 @@
     ]
   },
   {
-    "path": "src/protean/server/observatory/api.py",
-    "file_name": "api.py",
-    "functions": [
-      {
-        "name": "create_api_router",
-        "complexity": 451
-      }
-    ]
-  },
-  {
     "path": "src/protean/server/outbox_processor.py",
     "file_name": "outbox_processor.py",
     "functions": [
