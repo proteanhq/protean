@@ -3054,7 +3054,7 @@ class SAProvider(BaseProvider, RawQueryProviderPort):
         return conn
 
     def ping(self) -> bool:
-        """Whether a ``SELECT 1`` on a new connection succeeds."""
+        """Whether a ``SELECT 1`` on the session from `get_connection()` succeeds."""
         conn = None
         try:
             conn = self.get_connection()
