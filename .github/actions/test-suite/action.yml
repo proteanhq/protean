@@ -18,7 +18,7 @@ inputs:
     required: false
     default: "false"
   resolution:
-    description: "'highest' uses the locked latest-compatible versions; 'lowest-direct' re-resolves declared dependencies to their floor."
+    description: "'highest' uses the locked latest-compatible versions; 'lowest-direct' re-resolves declared dependencies to their floor and exports UV_RESOLUTION=lowest-direct for the rest of the job, so any uv command in a later caller step also resolves at the floors."
     required: false
     default: "highest"
   enforce-coverage:
