@@ -82,8 +82,9 @@ class TestSetTTLOnAMissingKey:
         cache.add(CacheEntry(key="alpha", value="one"), ttl=SHORT_TTL)
         assert cache.get(_key("alpha")) is not None
         time.sleep(PAST_SHORT_TTL)
-        assert cache.get(_key("alpha")) is None
 
+        # No read before `set_ttl`: a read could evict the expired entry, and
+        # then this would test an absent key instead of an expired one.
         cache.set_ttl(_key("alpha"), 60)
 
         assert cache.get(_key("alpha")) is None
@@ -95,12 +96,13 @@ class TestGetTTLOnAMissingKey:
         assert cache.get_ttl(_key("does-not-exist")) is None
 
     def test_get_ttl_returns_none_for_an_expired_key(self, cache):
-        # An expired-then-evicted key is absent as far as the port is
+        # An expired key is absent as far as the port is
         # concerned, so `get_ttl` answers `None` for it too, matching `get`.
         # Not a stale negative number and not a raise.
         cache.add(CacheEntry(key="alpha", value="one"), ttl=SHORT_TTL)
         assert cache.get(_key("alpha")) is not None
         time.sleep(PAST_SHORT_TTL)
-        assert cache.get(_key("alpha")) is None
 
+        # `get_ttl` reads first, so the entry is still stored when it asks.
         assert cache.get_ttl(_key("alpha")) is None
+        assert cache.get(_key("alpha")) is None
