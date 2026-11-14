@@ -8,7 +8,7 @@ import pytest
 
 from protean.port.cache import CacheCapabilities
 
-from .conftest import CacheEntry
+from .conftest import PAST_SHORT_TTL, SHORT_TTL, CacheEntry
 
 
 def _key(identifier: str) -> str:
@@ -92,8 +92,9 @@ class TestRemoveByProjection:
     @pytest.mark.requires(CacheCapabilities.TTL)
     def test_remove_is_silent_when_the_projection_has_expired(self, cache):
         entry = CacheEntry(key="alpha", value="one")
-        cache.add(entry, ttl=0.05)
-        time.sleep(0.3)
+        cache.add(entry, ttl=SHORT_TTL)
+        assert cache.get(_key("alpha")) is not None
+        time.sleep(PAST_SHORT_TTL)
         assert cache.get(_key("alpha")) is None
 
         cache.remove(entry)

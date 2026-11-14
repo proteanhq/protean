@@ -11,15 +11,19 @@ from protean.domain import Domain
 from protean.fields import Identifier, String
 from protean.infra.cache import Cache
 
+# An expiry test writes with `SHORT_TTL`, reads the entry back, and sleeps for
+# `PAST_SHORT_TTL`. The TTL is long enough that a slow Redis still holds the
+# entry at the first read.
+SHORT_TTL = 0.5
+PAST_SHORT_TTL = 1.0
+
 
 class CacheEntry(BaseProjection):
-    """`Identifier` + `String` only.
+    """A projection with one `Identifier` and one `String` field.
 
-    Narrow on purpose, but it means the memory cache's live `to_dict()`
-    dict vs Redis' `json.dumps`/`json.loads` round trip is never exercised
-    for value shapes where the two diverge (e.g. a `Dict` field with
-    integer keys survives on memory but comes back with string keys from
-    Redis' JSON round trip). Deliberately deferred, not covered here.
+    The suite does not test value shapes that a JSON round trip changes. For
+    example, a `Dict` field with integer keys keeps them on the memory cache,
+    and comes back from Redis with string keys.
     """
 
     key: Identifier(identifier=True)

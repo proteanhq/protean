@@ -1,10 +1,8 @@
 """TTL behaviour of the cache port.
 
-Every TTL on this port is documented as seconds (`CacheTTLPort.get_ttl`), and
-#1307 was exactly this suite's blind spot: each adapter's own tests asserted
-their own units, and both passed. These tests read a TTL set on one adapter
-back through the same assertion used for the other, so a future split fails
-here instead of shipping unnoticed.
+Every TTL on this port is in seconds (`CacheTTLPort.get_ttl`). Each adapter
+runs the same assertions on the TTL it reads back, so an adapter that answers
+in another unit fails here.
 
 The service's handling of TTL argument shapes is tested once, on the memory
 cache, in `tests/cache/test_ttl_shapes.py`.
@@ -12,13 +10,14 @@ cache, in `tests/cache/test_ttl_shapes.py`.
 
 from __future__ import annotations
 
+import math
 import time
 
 import pytest
 
 from protean.port.cache import CacheCapabilities
 
-from .conftest import CacheEntry
+from .conftest import PAST_SHORT_TTL, SHORT_TTL, CacheEntry
 
 TTL = pytest.mark.requires(CacheCapabilities.KEY_VALUE, CacheCapabilities.TTL)
 
@@ -45,6 +44,20 @@ class TestTTLUnitsAgree:
 
         assert 2995 < ttl <= 3000
 
+    def test_set_ttl_gives_a_never_expiring_key_an_expiry(self, adapter):
+        adapter.put("k", {"a": 1}, None)
+
+        adapter.set_ttl("k", 60.0)
+
+        assert 55 < adapter.get_ttl("k") <= 60
+
+    def test_put_without_a_ttl_drops_the_earlier_expiry(self, adapter):
+        adapter.put("k", {"a": 1}, 60.0)
+
+        adapter.put("k", {"a": 2}, None)
+
+        assert adapter.get_ttl("k") == math.inf
+
     def test_get_ttl_is_at_most_the_ttl_given_to_put(self, adapter):
         adapter.put("k", {"a": 1}, 120.0)
 
@@ -66,8 +79,9 @@ class TestSetTTLOnAMissingKey:
         assert cache.get(_key("does-not-exist")) is None
 
     def test_set_ttl_is_silent_when_the_key_has_expired(self, cache):
-        cache.add(CacheEntry(key="alpha", value="one"), ttl=0.05)
-        time.sleep(0.3)
+        cache.add(CacheEntry(key="alpha", value="one"), ttl=SHORT_TTL)
+        assert cache.get(_key("alpha")) is not None
+        time.sleep(PAST_SHORT_TTL)
         assert cache.get(_key("alpha")) is None
 
         cache.set_ttl(_key("alpha"), 60)
@@ -84,8 +98,9 @@ class TestGetTTLOnAMissingKey:
         # An expired-then-evicted key is absent as far as the port is
         # concerned, so `get_ttl` answers `None` for it too, matching `get`.
         # Not a stale negative number and not a raise.
-        cache.add(CacheEntry(key="alpha", value="one"), ttl=0.05)
-        time.sleep(0.3)
+        cache.add(CacheEntry(key="alpha", value="one"), ttl=SHORT_TTL)
+        assert cache.get(_key("alpha")) is not None
+        time.sleep(PAST_SHORT_TTL)
         assert cache.get(_key("alpha")) is None
 
         assert cache.get_ttl(_key("alpha")) is None

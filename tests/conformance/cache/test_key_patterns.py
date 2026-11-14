@@ -4,12 +4,13 @@ the adapter's glob members."""
 from __future__ import annotations
 
 import logging
+import time
 
 import pytest
 
 from protean.port.cache import CacheCapabilities
 
-from .conftest import CacheEntry
+from .conftest import PAST_SHORT_TTL, SHORT_TTL, CacheEntry
 
 PATTERNS = pytest.mark.requires(
     CacheCapabilities.KEY_VALUE, CacheCapabilities.PATTERN_MATCH
@@ -43,6 +44,18 @@ class TestSharedPatternBehaviour:
         cache.remove_by_key_pattern("cache_entry:::*")
 
         assert cache.count("cache_entry:::*") == 0
+
+    @pytest.mark.requires(CacheCapabilities.TTL)
+    def test_an_expired_entry_drops_out_of_every_pattern_read(self, cache, adapter):
+        cache.add(CacheEntry(key="alpha", value="one"))
+        cache.add(CacheEntry(key="beta", value="two"), ttl=SHORT_TTL)
+        assert cache.count("cache_entry:::*") == 2
+
+        time.sleep(PAST_SHORT_TTL)
+
+        assert cache.count("cache_entry:::*") == 1
+        assert adapter.keys_matching("cache_entry:::*") == ["cache_entry:::alpha"]
+        assert [entry.key for entry in cache._get_all("cache_entry:::*")] == ["alpha"]
 
 
 @PATTERNS

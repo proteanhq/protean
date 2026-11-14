@@ -230,7 +230,7 @@ Total: 62 passed, 0 failed, 0 errors, 4 capabilities skipped
 For the memory cache, the rows are `unmarked` and then the `CacheCapabilities`
 flags. Every cache test names a flag, so the `unmarked` row collects no test.
 A test that names two flags runs in both rows, so the row counts add up to more
-than the number of tests:
+than the number of tests. The counts change as tests join the suite:
 
 ```
 Conformance Report: memory
@@ -239,13 +239,13 @@ Conformance Report: memory
 Capability               Status     Tests
 --------------------------------------------------------
 unmarked                 SKIP       (no tests collected)
-KEY_VALUE                PASS       52/52
-TTL                      PASS       12/12
-PATTERN_MATCH            PASS       19/19
+KEY_VALUE                PASS       55/55
+TTL                      PASS       15/15
+PATTERN_MATCH            PASS       20/20
 SHARED                   SKIP       (not declared)
 DURABLE                  SKIP       (not declared)
 --------------------------------------------------------
-Total: 83 passed, 0 failed, 0 errors, 2 capabilities skipped
+Total: 90 passed, 0 failed, 0 errors, 2 capabilities skipped
 ```
 
 ## Capability Markers

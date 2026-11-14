@@ -1,7 +1,9 @@
 """Behaviour of the Redis cache adapter that the cache conformance suite does
-not reach: batched deletes, `FLUSHDB` scope, `decode_responses` keys and the
-`PTTL` answer for a key with no expiry."""
+not reach: the connection type, the JSON storage format, batched deletes,
+`decode_responses` keys, `FLUSHDB` scope, the `PTTL` answer for a key with no
+expiry, and the health record."""
 
+import json
 import math
 
 import pytest
@@ -19,6 +21,25 @@ class Token(BaseProjection):
     key: Identifier(identifier=True)
     user_id: Identifier(required=True)
     email: String(required=True)
+
+
+class TestTheConnection:
+    def test_the_connection_is_a_redis_client(self, test_domain):
+        assert isinstance(test_domain.caches.get_connection("default"), Redis)
+
+
+class TestStorageFormat:
+    def test_an_entry_is_stored_as_the_json_of_the_projection_dict(self, test_domain):
+        cache = test_domain.cache_for(Token)
+        cache.add(Token(key="qux", user_id="foo", email="bar@baz.com"))
+
+        raw_value = test_domain.caches.get_connection("default").get("token:::qux")
+
+        assert json.loads(raw_value) == {
+            "key": "qux",
+            "user_id": "foo",
+            "email": "bar@baz.com",
+        }
 
 
 class TestRemovalByKeyPattern:

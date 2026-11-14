@@ -2,6 +2,8 @@
 
 Each test builds its own adapters from the configuration under test, so the
 adapter the conformance plugin clears and closes after the test stays open.
+The extra adapters use the name of the plugin's adapter, `default`, because
+SHARED and DURABLE promise the entries to an adapter built from the same config.
 """
 
 from typing import Any
@@ -21,7 +23,7 @@ def _build(name: str, domain: Domain, config: dict[str, Any]) -> CachePort:
 def test_a_second_adapter_from_the_same_config_reads_the_first_ones_writes(
     adapter, adapter_config, test_domain
 ):
-    second = _build("second", test_domain, adapter_config)
+    second = _build("default", test_domain, adapter_config)
     try:
         adapter.put("shared:::1", {"value": "one"}, 60.0)
 
@@ -32,13 +34,13 @@ def test_a_second_adapter_from_the_same_config_reads_the_first_ones_writes(
 
 @pytest.mark.requires(CacheCapabilities.KEY_VALUE, CacheCapabilities.DURABLE)
 def test_an_entry_outlasts_the_adapter_that_wrote_it(adapter_config, test_domain):
-    writer = _build("writer", test_domain, adapter_config)
+    writer = _build("default", test_domain, adapter_config)
     try:
         writer.put("durable:::1", {"value": "one"}, 60.0)
     finally:
         writer.close()
 
-    reader = _build("reader", test_domain, adapter_config)
+    reader = _build("default", test_domain, adapter_config)
     try:
         assert reader.get("durable:::1") == {"value": "one"}
     finally:

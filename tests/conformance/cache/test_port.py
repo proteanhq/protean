@@ -39,7 +39,11 @@ class TestGetAllAtTheRealCap:
             entries = cache._get_all("cache_entry:::*")
 
         assert [str(e.key) for e in entries] == keys[:GET_ALL_MAX]
-        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        warnings = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.WARNING and r.name == "protean.infra.cache"
+        ]
         assert len(warnings) == 1
         assert "'cache_entry:::*'" in warnings[0].getMessage()
         assert str(GET_ALL_MAX + 1) in warnings[0].getMessage()
