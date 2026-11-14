@@ -342,12 +342,12 @@ The command exits 2 when the domain does not load, when the provider fails
 the checks of `protean db init`, when Alembic is not installed, when the
 folder has no `alembic.ini`, when a file in the folder is broken, when the
 database cannot be reached, and when the database is not at the latest
-migration. On these errors, `protean db migrate`, `upgrade` and `downgrade`
-print the message to stdout and exit 1.
+migration.
 
 On SQLite, a database URI that names a missing file creates an empty file
-when the domain connects, as it does for every `protean db` command. The
-command then exits 2, because the empty database has no migration applied.
+when the domain connects, as it does for every `protean db` command. When the
+folder holds a migration, the command then exits 2, because the empty
+database is not at the latest migration.
 
 The command has two uses:
 
