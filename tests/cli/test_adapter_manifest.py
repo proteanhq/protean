@@ -10,6 +10,7 @@ the PR lane cannot silently stop testing an adapter.
 import json
 import re
 import tomllib
+from importlib import metadata
 from pathlib import Path
 from unittest.mock import patch
 
@@ -21,13 +22,17 @@ from protean.cli import app
 from protean.cli.test import (
     ADAPTER_LANES,
     ADAPTER_MANIFEST,
+    CONFORMANCE_DEFAULT_ADAPTERS,
+    CONFORMANCE_PORT_GROUPS,
     REPO_ROOT,
     TEST_CONFIGS,
     AdapterEntry,
     AdapterManifest,
     TestRunner,
+    _registered_adapters,
     build_adapter_matrix,
     build_adapter_suites,
+    build_conformance_suites,
     load_adapter_manifest,
     run_pr_lane,
 )
@@ -178,6 +183,19 @@ class TestManifestIsCurrent:
         missing = [p for p in paths if not (REPO_ROOT / p).exists()]
         assert not missing, f"{ADAPTER_MANIFEST.name} names missing paths: {missing}"
 
+    def test_every_conformance_suite_is_in_its_adapters_paths(self, manifest):
+        # A "touched" leg runs only when the PR changes one of its paths, so a
+        # suite outside them would run on no PR that edits it.
+        pairs = [(e, pair) for e in manifest.adapters for pair in e.conformance]
+        assert pairs
+        missing = []
+        for entry, pair in pairs:
+            folder = f"tests/conformance/{pair.partition(':')[0]}/"
+            assert (REPO_ROOT / folder).is_dir()
+            if folder not in entry.paths:
+                missing.append((entry.name, folder))
+        assert not missing, f"Add these folders to the entries' paths: {missing}"
+
     def test_every_lane_is_known(self, manifest):
         assert {e.lane for e in manifest.adapters} <= set(ADAPTER_LANES)
 
@@ -225,6 +243,121 @@ class TestLoadAdapterManifest:
         with pytest.raises(ValueError, match="lane 'sometimes'"):
             load_adapter_manifest(path)
 
+    def write(self, tmp_path, conformance: str) -> Path:
+        path = tmp_path / "adapters.toml"
+        path.write_text(
+            f'[adapters.store]\nlane = "touched"\nconformance = {conformance}\n'
+        )
+        return path
+
+    def test_conformance_pairs_are_read(self, tmp_path):
+        path = self.write(tmp_path, '["event_store:message_db"]')
+        (entry,) = load_adapter_manifest(path).adapters
+        assert entry.conformance == ["event_store:message_db"]
+
+    def test_an_entry_without_conformance_lists_none(self, tmp_path):
+        path = tmp_path / "adapters.toml"
+        path.write_text('[adapters.solo]\nlane = "touched"\n')
+        (entry,) = load_adapter_manifest(path).adapters
+        assert entry.conformance == []
+
+    @pytest.mark.parametrize(
+        "pair", ["event_store", "event_store:", ":message_db", "event_store-memory"]
+    )
+    def test_a_pair_without_a_port_and_an_adapter_is_rejected(self, tmp_path, pair):
+        path = self.write(tmp_path, f'["{pair}"]')
+        with pytest.raises(ValueError, match="Adapter 'store'.*'<port>:<adapter>'"):
+            load_adapter_manifest(path)
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "false",
+            "0",
+            '""',
+            "{}",
+            '{ "event_store:message_db" = 1 }',
+            '"event_store:message_db"',
+        ],
+    )
+    def test_a_conformance_value_that_is_not_a_list_is_rejected(self, tmp_path, value):
+        path = self.write(tmp_path, value)
+        with pytest.raises(ValueError, match="Adapter 'store' has conformance .*list"):
+            load_adapter_manifest(path)
+
+    @pytest.mark.parametrize(
+        "pair",
+        ["event_store:memory", "database:memory", "cache:memory", "broker:inline"],
+    )
+    def test_a_pair_naming_the_default_adapter_is_rejected(self, tmp_path, pair):
+        path = self.write(tmp_path, f'["{pair}"]')
+        with pytest.raises(ValueError, match="Adapter 'store'.*core run already runs"):
+            load_adapter_manifest(path)
+
+    def test_the_default_adapters_match_the_conformance_plugin(self):
+        from tests.conformance.conftest import DEFAULT_ADAPTERS
+
+        assert CONFORMANCE_DEFAULT_ADAPTERS == DEFAULT_ADAPTERS
+
+    def test_an_empty_entry_point_group_says_to_sync(self, tmp_path):
+        path = self.write(tmp_path, '["event_store:message_db"]')
+        with patch("protean.cli.test._registered_adapters", return_value=set()):
+            with pytest.raises(
+                ValueError,
+                match=r"Adapter 'store'.*'event_store:message_db'.*protean\.event_stores.*uv sync",
+            ):
+                load_adapter_manifest(path)
+
+    def test_a_pair_that_is_not_a_string_is_rejected(self, tmp_path):
+        path = self.write(tmp_path, "[1]")
+        with pytest.raises(ValueError, match="Adapter 'store'.*'<port>:<adapter>'"):
+            load_adapter_manifest(path)
+
+    def test_an_unknown_port_is_rejected(self, tmp_path):
+        path = self.write(tmp_path, '["queue:x"]')
+        with pytest.raises(ValueError, match="Adapter 'store'.*port 'queue'"):
+            load_adapter_manifest(path)
+
+    def test_an_unregistered_adapter_is_rejected(self, tmp_path):
+        path = self.write(tmp_path, '["event_store:message_db"]')
+        with patch(
+            "protean.cli.test._registered_adapters", return_value={"memory"}
+        ) as registered:
+            with pytest.raises(
+                ValueError,
+                match=r"Adapter 'store'.*'message_db'.*protean\.event_stores",
+            ):
+                load_adapter_manifest(path)
+        registered.assert_called_once_with("protean.event_stores")
+
+    @pytest.mark.parametrize(
+        "port,present,absent",
+        [
+            ("database", {"memory", "sqlite"}, {"inline", "message_db", "redis"}),
+            ("broker", {"inline", "redis_pubsub"}, {"memory"}),
+            ("cache", {"memory", "redis"}, {"inline", "sqlite", "message_db"}),
+            ("event_store", {"memory", "message_db"}, {"inline", "sqlite", "redis"}),
+        ],
+    )
+    def test_each_port_reads_the_group_its_adapters_register_in(
+        self, port, present, absent
+    ):
+        # Each row names adapters that only one group holds, so a port mapped
+        # to another port's group fails here.
+        registered = _registered_adapters(CONFORMANCE_PORT_GROUPS[port])
+        assert present <= registered
+        assert not absent & registered
+
+    def test_the_real_manifest_loads_without_importing_an_adapter(self):
+        # Importing protean.cli.test already imports some adapter modules, so
+        # the check is that no entry point is loaded at all.
+        with patch.object(
+            metadata.EntryPoint, "load", side_effect=AssertionError("loaded")
+        ):
+            manifest = load_adapter_manifest()
+        pairs = [p for e in manifest.adapters for p in e.conformance]
+        assert pairs == ["event_store:message_db"]
+
     def test_a_manifest_without_triggers_has_none(self, tmp_path):
         path = tmp_path / "adapters.toml"
         path.write_text("")
@@ -271,6 +404,20 @@ class TestSelect:
 
     def test_an_off_adapter_never_runs(self, small):
         assert "mail" not in self.names(small.select(["src/mail.py"]))
+
+    @pytest.mark.parametrize(
+        "changed",
+        [
+            "src/protean/adapters/event_store/message_db.py",
+            "tests/conformance/event_store/test_placeholder.py",
+            "tests/conformance/__init__.py",
+            "tests/conformance/flag_coverage.py",
+        ],
+    )
+    def test_the_real_manifest_runs_message_db_on_an_event_store_change(
+        self, manifest, changed
+    ):
+        assert "message-db" in {e.name for e in manifest.select([changed])}
 
     def test_the_real_manifest_runs_every_dialect_on_a_sqlalchemy_change(
         self, manifest
@@ -380,6 +527,55 @@ class TestBuildAdapterSuites:
         store = by_name["Event Store: MESSAGE_DB"]
         assert store[-3:] == ["-m", "eventstore", "--store=MESSAGE_DB"]
 
+    def test_the_message_db_leg_runs_the_event_store_conformance_suite(self, manifest):
+        runner = TestRunner()
+        suites = build_adapter_suites(runner, manifest.resolve(["message-db"]))
+        assert [s.name for s in suites] == [
+            "Marker: message_db",
+            "Event Store: MESSAGE_DB",
+            "Conformance: event_store/message_db",
+        ]
+        assert suites[-1].command == runner.build_coverage_command(
+            [
+                "pytest",
+                "--cache-clear",
+                "--ignore=tests/support/",
+                "tests/conformance/event_store",
+                "--port",
+                "event_store",
+                "--adapter",
+                "message_db",
+            ]
+        )
+
+    def test_a_conformance_pair_runs_once_across_adapters(self):
+        entries = [
+            _entry("a", conformance=["event_store:message_db"]),
+            _entry("b", conformance=["event_store:message_db", "cache:redis"]),
+        ]
+        suites = build_conformance_suites(TestRunner(), entries)
+        assert [s.name for s in suites] == [
+            "Conformance: event_store/message_db",
+            "Conformance: cache/redis",
+        ]
+
+    def test_the_message_db_conformance_suite_shares_the_store_lock(self):
+        entries = [_entry("a", conformance=["event_store:message_db", "cache:redis"])]
+        message_db, redis = build_conformance_suites(TestRunner(), entries)
+        assert message_db.shared_database == "message_db"
+        assert redis.shared_database is None
+
+    def test_a_conformance_suite_takes_the_lock_of_its_adapters_database(self):
+        # The lock comes from SHARED_DATABASES, so a database suite on
+        # PostgreSQL never runs beside "Database: POSTGRESQL".
+        entries = [_entry("a", conformance=["database:postgresql"])]
+        (suite,) = build_conformance_suites(TestRunner(), entries)
+        assert suite.shared_database == "postgresql"
+
+    def test_an_adapter_without_conformance_pairs_builds_no_suite(self):
+        suites = build_adapter_suites(TestRunner(), [_entry("x", markers=["redis"])])
+        assert [s.name for s in suites] == ["Marker: redis"]
+
 
 class TestRunPrLane:
     def test_runs_core_under_coverage_then_the_adapters(self, manifest):
@@ -395,6 +591,21 @@ class TestRunPrLane:
         assert commands[2][-1] == "tests" and "--postgresql" in commands[2]
         assert commands[3][-1] == "--db=POSTGRESQL"
         assert ["coverage", "combine"] in commands
+
+    def test_the_message_db_lane_runs_the_conformance_suite(self, manifest):
+        runner = TestRunner()
+        with patch.object(runner, "run_command", return_value=0) as run:
+            run_pr_lane(runner, manifest.resolve(["message-db"]), None)
+        commands = [c.args[0] for c in run.call_args_list]
+        conformance = [c for c in commands if "tests/conformance/event_store" in c]
+        assert len(conformance) == 1
+        assert conformance[0][:4] == ["coverage", "run", "--parallel-mode", "-m"]
+        assert conformance[0][-4:] == [
+            "--port",
+            "event_store",
+            "--adapter",
+            "message_db",
+        ]
 
     def test_no_core_workers_skips_core(self):
         runner = TestRunner()
