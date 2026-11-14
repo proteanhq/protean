@@ -1,8 +1,7 @@
 """Every capability flag of a port gates at least one conformance test.
 
 Each port's suite joins ``SUITES`` when it moves under ``tests/conformance/``.
-Until then the one entry is a synthetic flag with a synthetic suite, which
-proves the check itself.
+A synthetic flag with a synthetic suite proves the check itself.
 """
 
 from collections.abc import Callable
@@ -11,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from protean.port.cache import CacheCapabilities
 from tests.conformance.flag_coverage import collect_items, untested_flags
 
 
@@ -59,6 +59,7 @@ def write_synthetic_suite(folder: Path) -> Path:
 # scratch folder to write a suite into.
 SUITES: list[tuple[type[Flag], Callable[[Path], Path]]] = [
     (SyntheticCapabilities, write_synthetic_suite),
+    (CacheCapabilities, lambda _: Path(__file__).parent / "cache"),
 ]
 
 

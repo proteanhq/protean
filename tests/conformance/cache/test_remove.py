@@ -1,8 +1,12 @@
-"""Cross-adapter `remove_by_key` behaviour."""
+"""`remove_by_key` through the `Cache` service."""
 
 from __future__ import annotations
 
 import time
+
+import pytest
+
+from protean.port.cache import CacheCapabilities
 
 from .conftest import CacheEntry
 
@@ -11,6 +15,7 @@ def _key(identifier: str) -> str:
     return f"cache_entry:::{identifier}"
 
 
+@pytest.mark.requires(CacheCapabilities.KEY_VALUE)
 class TestRemoveByKey:
     def test_remove_by_key_removes_a_present_key(self, cache):
         cache.add(CacheEntry(key="alpha", value="one"))
@@ -30,6 +35,7 @@ class TestRemoveByKey:
 
         assert cache.get(_key("alpha")) is not None
 
+    @pytest.mark.requires(CacheCapabilities.TTL)
     def test_remove_by_key_is_silent_when_the_key_has_expired(self, cache):
         cache.add(CacheEntry(key="alpha", value="one"), ttl=0.05)
         time.sleep(0.3)

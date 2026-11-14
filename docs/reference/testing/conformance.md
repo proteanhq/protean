@@ -26,7 +26,9 @@ The Protean repository has one folder per port under `tests/conformance/`:
 `tests/conformance/conftest.py`. pytest loads it as the folder's `conftest.py`,
 so you do not register it.
 
-Each folder holds one placeholder test until its port's suite moves in. The
+The `cache` folder holds the cache suite. Each of its tests names the
+`CacheCapabilities` flags it needs. The `database`, `broker` and `event_store`
+folders each hold one placeholder test until their port's suite moves in. The
 database suite is still in `tests/adapters/repository/generic/`, and
 `protean test test-adapter` runs it. For the other three ports,
 `protean test test-adapter --port <port>` runs the port's folder; see
@@ -39,8 +41,8 @@ other three. A plain `pytest tests/conformance` needs no services.
 `protean test` runs each suite on its port's default adapter as part of the
 core run. In an adapter's leg, `-c FULL` and `-c COVERAGE`, it runs a suite on
 another adapter when that adapter's entry in `tests/adapters.toml` lists the
-pair in its `conformance` key, as the `message-db` entry does for
-`event_store:message_db`. `-c EVENTSTORE` runs the event-store suite on Message
+pair in its `conformance` key, as the `redis-cache` entry does for
+`cache:redis` and the `message-db` entry does for `event_store:message_db`. `-c EVENTSTORE` runs the event-store suite on Message
 DB from its own store list. See
 [Which runs include the conformance suites](../../community/contributing/testing.md#which-runs-include-the-conformance-suites).
 
@@ -153,8 +155,8 @@ Then each flag the adapter declares gets a row, in the order the port's
 capability type defines them. A declared flag runs the tests whose `requires`
 or `requires_any` marker names it. Each flag the adapter does not declare gets
 a `SKIP (not declared)` row after all the run rows, and the command does not
-run pytest for it. A declared flag with no test
-yet is reported as `SKIP (no tests collected)`.
+run pytest for it. A row with no test, such as a declared flag no test names
+yet, is reported as `SKIP (no tests collected)`.
 
 With `--capabilities`, the report has only the rows of the named flags and no
 `unmarked` row. A named set of the port's capability type, such as `BASIC`
@@ -226,7 +228,9 @@ Total: 62 passed, 0 failed, 0 errors, 4 capabilities skipped
 ```
 
 For the memory cache, the rows are `unmarked` and then the `CacheCapabilities`
-flags:
+flags. Every cache test names a flag, so the `unmarked` row collects no test.
+A test that names two flags runs in both rows, so the row counts add up to more
+than the number of tests:
 
 ```
 Conformance Report: memory
@@ -234,14 +238,14 @@ Conformance Report: memory
 
 Capability               Status     Tests
 --------------------------------------------------------
-unmarked                 PASS       1/1
-KEY_VALUE                SKIP       (no tests collected)
-TTL                      SKIP       (no tests collected)
-PATTERN_MATCH            SKIP       (no tests collected)
+unmarked                 SKIP       (no tests collected)
+KEY_VALUE                PASS       52/52
+TTL                      PASS       12/12
+PATTERN_MATCH            PASS       19/19
 SHARED                   SKIP       (not declared)
 DURABLE                  SKIP       (not declared)
 --------------------------------------------------------
-Total: 1 passed, 0 failed, 0 errors, 2 capabilities skipped
+Total: 83 passed, 0 failed, 0 errors, 2 capabilities skipped
 ```
 
 ## Capability Markers
