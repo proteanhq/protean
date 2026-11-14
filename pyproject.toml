@@ -224,7 +224,8 @@ dev = [
     "nox>=2026.7.11",
     "bump-my-version>=1.4.1",
     "pyright>=1.1.411",
-    "complexipy>=8.3.0",
+    # complexipy-snapshot.json holds 8.x scores; 9.0 scores the same code higher.
+    "complexipy>=8.3.0,<9",
 ]
 test = [
     "chardet>=7.4.3,<8",
