@@ -757,8 +757,8 @@ def _conformance_pairs(name: str, pairs: object) -> list[str]:
     entry-point group. No adapter module is imported.
     """
     if not isinstance(pairs, list):
-        # load_adapter_manifest raises ValueError for every bad value in the
-        # manifest, a wrong type included, so a caller catches one exception.
+        # A wrong type gets the same ValueError naming the entry as every
+        # other bad conformance value.
         raise ValueError(  # noqa: TRY004
             f"Adapter '{name}' has conformance {pairs!r}; "
             "use a list of '<port>:<adapter>' pairs"
