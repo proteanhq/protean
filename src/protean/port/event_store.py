@@ -34,7 +34,7 @@ SNAPSHOT_TYPE = "SNAPSHOT"
 
 # Window size for the backward scan that skips a trailing snapshot in
 # ``read_last_message`` (see ``_last_non_snapshot_message``). One window is one
-# ``_read`` of at most this many rows near the tail. Matches the default read
+# ``_read_raw`` of at most this many rows near the tail. Matches the default read
 # page size so the common case (a single snapshot as the last row) resolves in
 # one small read.
 _SNAPSHOT_TAIL_WINDOW = 1000

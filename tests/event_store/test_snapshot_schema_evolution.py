@@ -413,7 +413,7 @@ class TestStaleSnapshotSelfHeals:
 
 
 class TestFullReplayPaging:
-    # ``_read`` is patched to reach a full-page boundary without writing a full
+    # ``_read_raw`` is patched to reach a full-page boundary without writing a full
     # page of real events, which is the only cheap way to exercise the loop.
 
     @pytest.mark.eventstore

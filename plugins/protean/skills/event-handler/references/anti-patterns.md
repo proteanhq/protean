@@ -151,12 +151,12 @@ The Unit of Work does not stop this. On a provider with transactions, such as th
 
 **Better:** Have the handler issue one command per target aggregate. Each target's command handler then changes its own aggregate. With async command processing, each runs in its own transaction. See [Cross-Aggregate](./cross-aggregate.md).
 
-## 6. Using Plain Strings for stream_category
+## 6. Hard-Coding the stream_category String
 
 **Wrong:**
 ```python
 # fragment
-@domain.event_handler(part_of=AuditLog, stream_category="task")  # Plain string: never matches
+@domain.event_handler(part_of=AuditLog, stream_category="task")  # Breaks when Task's category changes
 class TaskAuditor:
     @handle("$any")
     def on_any_task_event(self, event): ...
@@ -172,7 +172,7 @@ class TaskAuditor:
         domain.repository_for(AuditLog).add(AuditLog(event_type=event.__class__.__name__))
 ```
 
-A stream category is qualified with the domain name, such as `shop::task`. A handler given the plain string `"task"` registers without error and never receives an event.
+The domain adds its name to a plain string, so `"task"` registers as `shop::task` and matches today. The string does not follow the aggregate. When `Task` is renamed or sets its own `stream_category`, the handler still registers without error and stops receiving events.
 
 ## 7. Handling Another Cluster's Event (`EVENT_HANDLER_FOREIGN_EVENT`)
 
