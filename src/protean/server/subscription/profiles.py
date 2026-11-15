@@ -277,88 +277,113 @@ def build_profile_registry(
         return registry
 
     for raw_name, raw_config in custom_profiles.items():
-        # TOML keys are always strings, but a programmatic config could use a
-        # non-string key; normalize only after confirming it is a string.
-        if not isinstance(raw_name, str):
-            raise ConfigurationError(
-                f"Custom subscription profile names must be strings, got "
-                f"{type(raw_name).__name__} ({raw_name!r})."
-            )
-        name = raw_name.lower()
-
-        if name in BUILTIN_PROFILE_NAMES:
-            raise ConfigurationError(
-                f"Custom subscription profile '{raw_name}' shadows a built-in "
-                f"profile name. Built-in names are reserved: "
-                f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
-            )
-
-        if not isinstance(raw_config, dict):
-            raise ConfigurationError(
-                f"Custom subscription profile '{raw_name}' must be a table of "
-                f"config overrides, got {type(raw_config).__name__}."
-            )
-
-        overrides = dict(raw_config)
-        inherits = overrides.pop("inherits", None)
-
-        # Inheritance is a single level onto a built-in base. A custom or self
-        # name is not a built-in, so this rule also rejects the only reachable
-        # cycle shapes (self-inherit, custom -> custom).
-        if inherits is not None:
-            # ``inherits`` must name a built-in. A non-string value (TOML array
-            # or inline table) is not a name; catch it here so the membership
-            # test below never sees an unhashable value.
-            if not isinstance(inherits, str):
-                raise ConfigurationError(
-                    f"Custom subscription profile '{raw_name}' has a non-string "
-                    f"'inherits' value ({inherits!r}). 'inherits' must name a "
-                    f"built-in profile: "
-                    f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
-                )
-            inherits_name = inherits.lower()
-            if inherits_name not in BUILTIN_PROFILE_NAMES:
-                raise ConfigurationError(
-                    f"Custom subscription profile '{raw_name}' inherits from "
-                    f"'{inherits}', which is not a built-in profile. Inheritance "
-                    f"is a single level onto a built-in base: "
-                    f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
-                )
-            base = dict(registry[inherits_name])
-        else:
-            base = dict(DEFAULT_CONFIG)
-
-        # Field names are always strings from TOML, but a programmatic config
-        # could use a non-string key. Catch it here so the unknown-field check
-        # below never has to ``sorted()``/``join()`` a mix of strings and
-        # other types, which would raise a raw TypeError instead of a clean
-        # ConfigurationError.
-        non_string_fields = [key for key in overrides if not isinstance(key, str)]
-        if non_string_fields:
-            raise ConfigurationError(
-                f"Custom subscription profile '{raw_name}' has non-string "
-                f"field name(s): {non_string_fields!r}. Field names must be "
-                "strings."
-            )
-
-        unknown = set(overrides) - PROFILE_FIELDS
-        if unknown:
-            raise ConfigurationError(
-                f"Custom subscription profile '{raw_name}' has unknown "
-                f"field(s): {', '.join(sorted(unknown))}. Allowed fields: "
-                f"{', '.join(sorted(PROFILE_FIELDS))}."
-            )
-
-        # Skip None overrides so a None value means "keep the inherited (or
-        # default) value" rather than silently reverting the field to the
-        # hardcoded default once the resolver's _merge_configs drops it. This
-        # matches how _merge_configs treats None overrides downstream.
-        base.update(
-            {key: value for key, value in overrides.items() if value is not None}
-        )
-        registry[name] = base
+        name, defaults = _resolve_custom_profile(registry, raw_name, raw_config)
+        registry[name] = defaults
 
     return registry
+
+
+def _resolve_custom_profile(
+    registry: dict[str, dict[str, Any]], raw_name: Any, raw_config: Any
+) -> tuple[str, dict[str, Any]]:
+    """Return the lowercase name and resolved defaults of one custom profile.
+
+    Raises:
+        ConfigurationError: If the name is not a string or shadows a built-in,
+            the section is not a table, or ``inherits`` or a field is invalid.
+    """
+    # TOML keys are always strings, but a programmatic config could use a
+    # non-string key; normalize only after confirming it is a string.
+    if not isinstance(raw_name, str):
+        raise ConfigurationError(
+            f"Custom subscription profile names must be strings, got "
+            f"{type(raw_name).__name__} ({raw_name!r})."
+        )
+    name = raw_name.lower()
+
+    if name in BUILTIN_PROFILE_NAMES:
+        raise ConfigurationError(
+            f"Custom subscription profile '{raw_name}' shadows a built-in "
+            f"profile name. Built-in names are reserved: "
+            f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
+        )
+
+    if not isinstance(raw_config, dict):
+        raise ConfigurationError(
+            f"Custom subscription profile '{raw_name}' must be a table of "
+            f"config overrides, got {type(raw_config).__name__}."
+        )
+
+    overrides = dict(raw_config)
+    inherits = overrides.pop("inherits", None)
+    base = _custom_profile_base(registry, raw_name, inherits)
+    _check_custom_profile_fields(raw_name, overrides)
+
+    # Skip None overrides so a None value means "keep the inherited (or
+    # default) value" rather than silently reverting the field to the
+    # hardcoded default once the resolver's _merge_configs drops it. This
+    # matches how _merge_configs treats None overrides downstream.
+    base.update({key: value for key, value in overrides.items() if value is not None})
+    return name, base
+
+
+def _custom_profile_base(
+    registry: dict[str, dict[str, Any]], raw_name: str, inherits: Any
+) -> dict[str, Any]:
+    """Return a copy of the defaults a custom profile starts from.
+
+    That is the built-in profile ``inherits`` names, or :data:`DEFAULT_CONFIG`
+    when ``inherits`` is ``None``.
+    """
+    # Inheritance is a single level onto a built-in base. A custom or self
+    # name is not a built-in, so this rule also rejects the only reachable
+    # cycle shapes (self-inherit, custom -> custom).
+    if inherits is None:
+        return dict(DEFAULT_CONFIG)
+
+    # ``inherits`` must name a built-in. A non-string value (TOML array
+    # or inline table) is not a name; catch it here so the membership
+    # test below never sees an unhashable value.
+    if not isinstance(inherits, str):
+        raise ConfigurationError(
+            f"Custom subscription profile '{raw_name}' has a non-string "
+            f"'inherits' value ({inherits!r}). 'inherits' must name a "
+            f"built-in profile: "
+            f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
+        )
+    inherits_name = inherits.lower()
+    if inherits_name not in BUILTIN_PROFILE_NAMES:
+        raise ConfigurationError(
+            f"Custom subscription profile '{raw_name}' inherits from "
+            f"'{inherits}', which is not a built-in profile. Inheritance "
+            f"is a single level onto a built-in base: "
+            f"{', '.join(sorted(BUILTIN_PROFILE_NAMES))}."
+        )
+    return dict(registry[inherits_name])
+
+
+def _check_custom_profile_fields(raw_name: str, overrides: dict[Any, Any]) -> None:
+    """Raise ``ConfigurationError`` for a non-string or unknown field name."""
+    # Field names are always strings from TOML, but a programmatic config
+    # could use a non-string key. Catch it here so the unknown-field check
+    # below never has to ``sorted()``/``join()`` a mix of strings and
+    # other types, which would raise a raw TypeError instead of a clean
+    # ConfigurationError.
+    non_string_fields = [key for key in overrides if not isinstance(key, str)]
+    if non_string_fields:
+        raise ConfigurationError(
+            f"Custom subscription profile '{raw_name}' has non-string "
+            f"field name(s): {non_string_fields!r}. Field names must be "
+            "strings."
+        )
+
+    unknown = set(overrides) - PROFILE_FIELDS
+    if unknown:
+        raise ConfigurationError(
+            f"Custom subscription profile '{raw_name}' has unknown "
+            f"field(s): {', '.join(sorted(unknown))}. Allowed fields: "
+            f"{', '.join(sorted(PROFILE_FIELDS))}."
+        )
 
 
 @dataclass
@@ -470,66 +495,7 @@ class SubscriptionConfig:
         Raises:
             ConfigurationError: If validation fails due to incompatible options.
         """
-        errors: list[str] = []
-
-        # Validate numeric fields
-        if self.messages_per_tick <= 0:
-            errors.append("messages_per_tick must be positive")
-
-        if self.tick_interval < 0:
-            errors.append("tick_interval must be non-negative")
-
-        if self.blocking_timeout_ms <= 0:
-            errors.append(_BLOCKING_TIMEOUT_ERROR)
-
-        if self.max_retries < 0:
-            errors.append("max_retries must be non-negative")
-
-        if self.retry_delay_seconds < 0:
-            errors.append("retry_delay_seconds must be non-negative")
-
-        if self.position_update_interval <= 0:
-            errors.append("position_update_interval must be positive")
-
-        if self.dlq_retention_hours is not None and self.dlq_retention_hours <= 0:
-            errors.append("dlq_retention_hours must be positive when set")
-
-        if self.dlq_alert_threshold is not None and self.dlq_alert_threshold <= 0:
-            errors.append("dlq_alert_threshold must be positive when set")
-
-        if self.circuit_breaker_threshold < 1:
-            errors.append("circuit_breaker_threshold must be at least 1")
-
-        if self.circuit_breaker_reset_seconds <= 0 or not math.isfinite(
-            self.circuit_breaker_reset_seconds
-        ):
-            # Reject inf/nan too: inf would OPEN the breaker forever (it never
-            # reaches HALF_OPEN), and nan slips past ``> 0`` in the gate and
-            # silently disables the pause.
-            errors.append("circuit_breaker_reset_seconds must be positive and finite")
-
-        if self.retention_maxlen is not None and self.retention_maxlen <= 0:
-            errors.append("retention_maxlen must be positive when set")
-
-        # Validate DLQ is not enabled for EVENT_STORE
-        if self.subscription_type == SubscriptionType.EVENT_STORE and self.enable_dlq:
-            errors.append(
-                "enable_dlq is not supported for EVENT_STORE subscription type. "
-                "EventStoreSubscription handles messages without DLQ support."
-            )
-
-        # Validate retention_maxlen is not set for EVENT_STORE. An
-        # EventStoreSubscription reads the event store, not a broker stream, so
-        # there is nothing to trim — reject it rather than silently ignore it.
-        if (
-            self.subscription_type == SubscriptionType.EVENT_STORE
-            and self.retention_maxlen is not None
-        ):
-            errors.append(
-                "retention_maxlen is not supported for EVENT_STORE subscription "
-                "type. EventStoreSubscription reads the event store, which has no "
-                "broker stream to trim."
-            )
+        errors = _numeric_option_errors(self) + _event_store_option_errors(self)
 
         # Log warning if using EVENT_STORE in production
         if self.subscription_type == SubscriptionType.EVENT_STORE:
@@ -643,61 +609,23 @@ class SubscriptionConfig:
         profile_defaults = PROFILE_DEFAULTS[profile]
 
         # Build configuration with profile defaults, overriding with explicit values
-        config_kwargs: dict[str, Any] = {}
-
-        # Handle subscription_type specially to maintain enum type
-        if subscription_type is not None:
-            config_kwargs["subscription_type"] = subscription_type
-        else:
-            config_kwargs["subscription_type"] = profile_defaults["subscription_type"]
-
-        # Apply other overrides or profile defaults
-        config_kwargs["messages_per_tick"] = (
-            messages_per_tick
-            if messages_per_tick is not None
-            else profile_defaults["messages_per_tick"]
-        )
-        config_kwargs["tick_interval"] = (
-            tick_interval
-            if tick_interval is not None
-            else profile_defaults["tick_interval"]
-        )
-        config_kwargs["blocking_timeout_ms"] = (
-            blocking_timeout_ms
-            if blocking_timeout_ms is not None
-            else profile_defaults["blocking_timeout_ms"]
-        )
-        config_kwargs["max_retries"] = (
-            max_retries if max_retries is not None else profile_defaults["max_retries"]
-        )
-        config_kwargs["retry_delay_seconds"] = (
-            retry_delay_seconds
-            if retry_delay_seconds is not None
-            else profile_defaults["retry_delay_seconds"]
-        )
-        config_kwargs["enable_dlq"] = (
-            enable_dlq if enable_dlq is not None else profile_defaults["enable_dlq"]
-        )
-        config_kwargs["position_update_interval"] = (
-            position_update_interval
-            if position_update_interval is not None
-            else profile_defaults["position_update_interval"]
-        )
-        config_kwargs["origin_stream"] = (
-            origin_stream
-            if origin_stream is not None
-            else profile_defaults["origin_stream"]
-        )
-        config_kwargs["circuit_breaker_threshold"] = (
-            circuit_breaker_threshold
-            if circuit_breaker_threshold is not None
-            else profile_defaults["circuit_breaker_threshold"]
-        )
-        config_kwargs["circuit_breaker_reset_seconds"] = (
-            circuit_breaker_reset_seconds
-            if circuit_breaker_reset_seconds is not None
-            else profile_defaults["circuit_breaker_reset_seconds"]
-        )
+        overrides: dict[str, Any] = {
+            "subscription_type": subscription_type,
+            "messages_per_tick": messages_per_tick,
+            "tick_interval": tick_interval,
+            "blocking_timeout_ms": blocking_timeout_ms,
+            "max_retries": max_retries,
+            "retry_delay_seconds": retry_delay_seconds,
+            "enable_dlq": enable_dlq,
+            "position_update_interval": position_update_interval,
+            "origin_stream": origin_stream,
+            "circuit_breaker_threshold": circuit_breaker_threshold,
+            "circuit_breaker_reset_seconds": circuit_breaker_reset_seconds,
+        }
+        config_kwargs: dict[str, Any] = {
+            key: value if value is not None else profile_defaults[key]
+            for key, value in overrides.items()
+        }
         config_kwargs["retention_maxlen"] = (
             retention_maxlen
             if retention_maxlen is not None
@@ -895,6 +823,79 @@ class SubscriptionConfig:
             "circuit_breaker_reset_seconds": self.circuit_breaker_reset_seconds,
             "retention_maxlen": self.retention_maxlen,
         }
+
+
+def _numeric_option_errors(config: SubscriptionConfig) -> list[str]:
+    """Return an error for each numeric option outside its allowed range."""
+    errors: list[str] = []
+
+    # Validate numeric fields
+    if config.messages_per_tick <= 0:
+        errors.append("messages_per_tick must be positive")
+
+    if config.tick_interval < 0:
+        errors.append("tick_interval must be non-negative")
+
+    if config.blocking_timeout_ms <= 0:
+        errors.append(_BLOCKING_TIMEOUT_ERROR)
+
+    if config.max_retries < 0:
+        errors.append("max_retries must be non-negative")
+
+    if config.retry_delay_seconds < 0:
+        errors.append("retry_delay_seconds must be non-negative")
+
+    if config.position_update_interval <= 0:
+        errors.append("position_update_interval must be positive")
+
+    if config.dlq_retention_hours is not None and config.dlq_retention_hours <= 0:
+        errors.append("dlq_retention_hours must be positive when set")
+
+    if config.dlq_alert_threshold is not None and config.dlq_alert_threshold <= 0:
+        errors.append("dlq_alert_threshold must be positive when set")
+
+    if config.circuit_breaker_threshold < 1:
+        errors.append("circuit_breaker_threshold must be at least 1")
+
+    if config.circuit_breaker_reset_seconds <= 0 or not math.isfinite(
+        config.circuit_breaker_reset_seconds
+    ):
+        # Reject inf/nan too: inf would OPEN the breaker forever (it never
+        # reaches HALF_OPEN), and nan slips past ``> 0`` in the gate and
+        # silently disables the pause.
+        errors.append("circuit_breaker_reset_seconds must be positive and finite")
+
+    if config.retention_maxlen is not None and config.retention_maxlen <= 0:
+        errors.append("retention_maxlen must be positive when set")
+
+    return errors
+
+
+def _event_store_option_errors(config: SubscriptionConfig) -> list[str]:
+    """Return an error for each option an ``EVENT_STORE`` subscription rejects."""
+    errors: list[str] = []
+
+    # Validate DLQ is not enabled for EVENT_STORE
+    if config.subscription_type == SubscriptionType.EVENT_STORE and config.enable_dlq:
+        errors.append(
+            "enable_dlq is not supported for EVENT_STORE subscription type. "
+            "EventStoreSubscription handles messages without DLQ support."
+        )
+
+    # Validate retention_maxlen is not set for EVENT_STORE. An
+    # EventStoreSubscription reads the event store, not a broker stream, so
+    # there is nothing to trim — reject it rather than silently ignore it.
+    if (
+        config.subscription_type == SubscriptionType.EVENT_STORE
+        and config.retention_maxlen is not None
+    ):
+        errors.append(
+            "retention_maxlen is not supported for EVENT_STORE subscription "
+            "type. EventStoreSubscription reads the event store, which has no "
+            "broker stream to trim."
+        )
+
+    return errors
 
 
 __all__ = [

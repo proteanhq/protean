@@ -206,24 +206,6 @@
     ]
   },
   {
-    "path": "src/protean/server/subscription/profiles.py",
-    "file_name": "profiles.py",
-    "functions": [
-      {
-        "name": "SubscriptionConfig::from_profile",
-        "complexity": 18
-      },
-      {
-        "name": "SubscriptionConfig::validate",
-        "complexity": 21
-      },
-      {
-        "name": "build_profile_registry",
-        "complexity": 30
-      }
-    ]
-  },
-  {
     "path": "src/protean/server/subscription_status.py",
     "file_name": "subscription_status.py",
     "functions": [
