@@ -119,7 +119,7 @@ def test_the_report_handler_reads_the_all_orders_category():
 
         report = engine.subscriptions[fqn(example.OrderReportHandler)]
         handler = engine.subscriptions[fqn(example.OrderEventHandler)]
-        assert report.stream_category == "all_orders"
+        assert report.stream_category == "ecommerce::all_orders"
         # The report handler records only the event on its own category.
         assert [event["return_id"] for event in example.report] == [returned.id]
         assert handler.current_position == placed_at

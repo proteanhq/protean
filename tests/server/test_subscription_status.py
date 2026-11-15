@@ -263,8 +263,8 @@ class TestDiscovery:
 
         status = _statuses(test_domain)[fqn(OrderNotifier)]
 
-        assert status.stream_category == "audit"
-        assert status.position_stream == f"position-{fqn(OrderNotifier)}-audit"
+        assert status.stream_category == "test::audit"
+        assert status.position_stream == f"position-{fqn(OrderNotifier)}-test::audit"
 
     def test_stream_handler_without_a_redis_broker_is_unknown(self, test_domain):
         """The inline broker has no Redis client, so there is nothing to read."""
@@ -549,9 +549,11 @@ def test_event_store_status_is_unknown_when_the_domain_has_no_store():
     assert status.subscription_type == "event_store"
     assert status.position_stream is None
     assert status.recovery_checkpoint_stream == (
-        f"recovery-checkpoint-{fqn(OrderNotifier)}-order"
+        f"recovery-checkpoint-{fqn(OrderNotifier)}-nostore::order"
     )
-    assert status.failed_positions_stream == f"failed-{fqn(OrderNotifier)}-order"
+    assert status.failed_positions_stream == (
+        f"failed-{fqn(OrderNotifier)}-nostore::order"
+    )
 
 
 # ---------------------------------------------------------------------------

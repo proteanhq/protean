@@ -80,7 +80,7 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
     |--------|------|-------------|
     | ``part_of`` | ``type`` | The aggregate this handler is associated with. |
     | ``source_stream`` | ``str`` | Optional source stream filter for origin filtering. |
-    | ``stream_category`` | ``str`` | The stream category to subscribe to. Defaults to aggregate's category. |
+    | ``stream_category`` | ``str`` | The stream category to subscribe to. Defaults to aggregate's category. A value without ``::`` gets the domain prefix (``all_orders`` becomes ``<domain>::all_orders``); ``$all`` stays as written. |
     | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing. |
     | ``subscription_type`` | ``SubscriptionType`` or ``str`` | The subscription type (STREAM or EVENT_STORE), as the enum member or its name. |
     | ``subscription_profile`` | ``SubscriptionProfile`` or ``str`` | A built-in profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION) as the enum member or its name, or a custom profile name from ``[server.profiles]``. |
@@ -173,5 +173,12 @@ def event_handler_factory(element_cls: type[_T], domain: Any, **opts: Any) -> ty
         )
 
     _check_part_of_kind(element_cls)
+
+    # An explicit category names a stream inside this domain, the same way an
+    # aggregate's and a process manager's categories do. A category derived
+    # from a registered aggregate already carries the prefix.
+    category = element_cls.meta_.stream_category
+    if category and category != "$all" and "::" not in category:
+        element_cls.meta_.stream_category = f"{domain.normalized_name}::{category}"
 
     return element_cls

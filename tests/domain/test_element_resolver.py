@@ -311,7 +311,7 @@ class TestResolveHandlerAndRepositoryStringReference:
         test_domain.init(traverse=False)
 
         assert PostEventHandler.meta_.part_of is Post
-        assert PostEventHandler.meta_.stream_category == "custom-stream"
+        assert PostEventHandler.meta_.stream_category == "test::custom-stream"
 
     def test_repository_part_of_string_resolves_to_aggregate(self, test_domain):
         from protean.core.repository import BaseRepository

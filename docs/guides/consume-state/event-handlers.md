@@ -238,6 +238,9 @@ idempotent subscriber's `provider` (see
 - **`part_of`**: The aggregate to which the event handler is connected.
 - **`stream_category`**: The event handler listens to events on this [stream
 category](../../concepts/async-processing/stream-categories.md). The stream category defaults to the category of the aggregate associated with the handler.
+A value you set gets the domain prefix, so `stream_category="all_orders"` in
+the `ecommerce` domain reads `ecommerce::all_orders`. `$all` and a value that
+already contains `::` stay as written.
 
     When the handler reacts to its own aggregate's events, keep the default. To
     change another aggregate, do not point `stream_category` at the other

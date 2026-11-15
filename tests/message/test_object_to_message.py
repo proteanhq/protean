@@ -106,7 +106,7 @@ def test_construct_message_from_command(test_domain):
     command_with_metadata = test_domain._enrich_command(command, True)
     test_domain.process(command)
 
-    messages = test_domain.event_store.store.read("user:command")
+    messages = test_domain.event_store.store.read("test::user:command")
     assert len(messages) == 1
 
     message = messages[0]
@@ -140,7 +140,7 @@ def test_construct_message_from_command_without_identifier(test_domain):
     command = SendEmailCommand(to="john.doe@gmail.com", subject="Foo", content="Bar")
     test_domain.process(command)
 
-    messages = test_domain.event_store.store.read("send_email:command")
+    messages = test_domain.event_store.store.read("test::send_email:command")
     assert len(messages) == 1
 
     message = messages[0]

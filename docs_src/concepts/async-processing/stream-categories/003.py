@@ -35,7 +35,7 @@ report = []
 
 @domain.event_handler(part_of=Order, stream_category="all_orders")
 class OrderReportHandler:
-    # Subscribes to "all_orders" instead of Order's default
+    # Subscribes to "ecommerce::all_orders" instead of Order's default
 
     @handle("$any")
     def record(self, event):

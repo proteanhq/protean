@@ -253,7 +253,7 @@ class TestEngineInferStreamCategory:
         engine = Engine(test_domain, test_mode=True)
         stream_category = engine._infer_stream_category(ProjectionHandler)
 
-        assert stream_category == "custom-stream"
+        assert stream_category == "test::custom-stream"
 
     def test_infer_stream_category_raises_when_cannot_infer(self, test_domain):
         """Should raise ValueError when stream category cannot be inferred."""

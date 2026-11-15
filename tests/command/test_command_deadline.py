@@ -197,7 +197,7 @@ class TestDeadlineInMetadata:
 
         test_domain.process(command, deadline=deadline)
 
-        messages = test_domain.event_store.store.read("user:command")
+        messages = test_domain.event_store.store.read("test::user:command")
         assert len(messages) >= 1
         assert messages[0].metadata.headers.deadline == deadline
 
@@ -208,7 +208,7 @@ class TestDeadlineInMetadata:
         before = datetime.now(UTC)
         test_domain.process(command, timeout=timedelta(minutes=10))
 
-        messages = test_domain.event_store.store.read("user:command")
+        messages = test_domain.event_store.store.read("test::user:command")
         assert len(messages) >= 1
         stored = messages[0].metadata.headers.deadline
         assert stored is not None
@@ -220,7 +220,7 @@ class TestDeadlineInMetadata:
 
         test_domain.process(command)
 
-        messages = test_domain.event_store.store.read("user:command")
+        messages = test_domain.event_store.store.read("test::user:command")
         assert len(messages) >= 1
         assert messages[0].metadata.headers.deadline is None
 
@@ -342,7 +342,7 @@ class TestClockDrivenDeadline:
 
         test_domain.process(command, timeout=timedelta(seconds=30))
 
-        stored = test_domain.event_store.store.read("user:command")[0]
+        stored = test_domain.event_store.store.read("test::user:command")[0]
         # Exact, not "close to": the frozen clock removes scheduling slack, so
         # the deadline lands on the precise instant T0 + 30s.
         assert stored.metadata.headers.deadline == self.T0 + timedelta(seconds=30)
@@ -405,7 +405,7 @@ class TestDefaultTimeout:
 
         test_domain.process(command)
 
-        stored = test_domain.event_store.store.read("user:command")[0]
+        stored = test_domain.event_store.store.read("test::user:command")[0]
         deadline = stored.metadata.headers.deadline
         assert deadline is not None
         # ~now + 60s (allow scheduling slack)
@@ -417,7 +417,7 @@ class TestDefaultTimeout:
 
         test_domain.process(command)
 
-        stored = test_domain.event_store.store.read("user:command")[0]
+        stored = test_domain.event_store.store.read("test::user:command")[0]
         deadline = stored.metadata.headers.deadline
         assert deadline is not None
         assert (
@@ -433,7 +433,7 @@ class TestDefaultTimeout:
 
         test_domain.process(Ping(user_id=str(uuid4())))
 
-        stored = test_domain.event_store.store.read("user:command")[0]
+        stored = test_domain.event_store.store.read("test::user:command")[0]
         deadline = stored.metadata.headers.deadline
         assert (deadline - before) > timedelta(seconds=90)
 
@@ -443,12 +443,12 @@ class TestDefaultTimeout:
 
         test_domain.process(Ping(user_id=str(uuid4())), deadline=explicit)
 
-        stored = test_domain.event_store.store.read("user:command")[0]
+        stored = test_domain.event_store.store.read("test::user:command")[0]
         assert stored.metadata.headers.deadline == explicit
 
     def test_no_default_means_no_deadline(self, test_domain):
         # Register's handler declares no timeout and config default is unset.
         test_domain.process(Register(user_id=str(uuid4()), email="a@b.com"))
 
-        stored = test_domain.event_store.store.read("user:command")[0]
+        stored = test_domain.event_store.store.read("test::user:command")[0]
         assert stored.metadata.headers.deadline is None

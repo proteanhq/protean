@@ -361,7 +361,7 @@ class TestDiscoverSubscriptions:
 
         domain.init()
 
-        assert _infer_stream_category(CartHandler) == "all_carts"
+        assert _infer_stream_category(CartHandler) == "testinfer::all_carts"
 
     def test_infer_stream_category_via_part_of(self):
         domain = Domain(__file__, "TestInferPartOf")
