@@ -341,8 +341,8 @@ class TestRoleTags:
         assert index.role_of(helpers.LabelFormatter, "format") is None
 
     def test_internal_elements_are_not_tagged(self, index, domain):
-        """Protean's own machinery is registered too (the memory event store
-        registers a repository). Tagging its methods would put framework code
+        """Protean's own machinery is registered too (the outbox registers an
+        aggregate and a repository per provider). Tagging its methods would put framework code
         in a rule's findings."""
         internal = [
             record.cls

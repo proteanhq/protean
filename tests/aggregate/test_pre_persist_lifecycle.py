@@ -470,8 +470,8 @@ class TestAggregateEnricherAuditStamping:
         with UnitOfWork():
             test_domain.repository_for(Wallet).add(Wallet.open())
 
-        # The memory event store saves its message rows through a DAO, so the
-        # enricher sees those rows. It never receives the aggregate itself.
+        # An event-sourced aggregate is stored as events, not through a DAO,
+        # so the enricher never receives it.
         assert not any(isinstance(a, Wallet) for a in calls)
 
     def test_enricher_is_not_called_for_child_entities(self, test_domain):

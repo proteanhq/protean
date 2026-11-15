@@ -1708,8 +1708,8 @@ class TestReconcileSkipsStateBasedAggregates:
         real_repository_for = domain.repository_for
         real_load_aggregate = domain.event_store.store.load_aggregate
 
-        # The memory event store and the outbox reach their own tables through
-        # ``repository_for`` too, so only a wallet lookup counts.
+        # The outbox reaches its own table through ``repository_for`` too, so
+        # only a wallet lookup counts.
         def repository_for_spy(element_cls):
             if element_cls is Wallet:
                 lookups.append(("repository_for", element_cls))

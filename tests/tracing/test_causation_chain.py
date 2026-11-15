@@ -177,9 +177,7 @@ class TestCausationChainViaEventHandler:
     ``g.message_in_context`` still points to the original command. This means
     the chained command and its events inherit the original command's context.
 
-    Note: In the memory event store, the chained command may not appear in the
-    command stream due to nested UoW/session behavior. We verify the chain by
-    checking events, which are reliably stored.
+    The tests verify the chain by checking the events of both commands.
     """
 
     @pytest.fixture(autouse=True)

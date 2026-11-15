@@ -748,10 +748,10 @@ class TestCollectTimelineStatsMessageTimes:
         # Should count only the 3 real events, not the snapshot
         assert stats["total_events"] == 3
 
-    # The memory event store returns ``time`` as an ISO string and validates it
-    # as a datetime on write. A store that returns datetime objects (MessageDB),
-    # an unparseable string, a number, or no ``global_position`` cannot be
-    # produced with it, so these tests feed such rows through ``get_all_messages``.
+    # The memory event store stamps every row with a datetime ``time`` and a
+    # ``global_position``. An unparseable string, a number, or no
+    # ``global_position`` cannot be produced with it, so these tests feed such
+    # rows through ``get_all_messages``.
 
     def test_datetime_object_time(self, event_domain):
         """A datetime ``time`` is used as is for the last time and the rate."""
