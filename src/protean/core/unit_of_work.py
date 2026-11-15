@@ -612,8 +612,9 @@ class UnitOfWork:
             # version-guarded UPDATE on a state-based aggregate fails here,
             # before any event is durable, and not on the outbox save's
             # autoflush after the append. The in-memory session's flush checks
-            # the recorded versions. Sessions without a flush (Elasticsearch)
-            # check versions at commit.
+            # the recorded versions and holds the provider lock until commit,
+            # as the SQL row locks do, so no other commit lands in between.
+            # Sessions without a flush (Elasticsearch) check versions at commit.
             for session in self._sessions.values():
                 flush = getattr(session, "flush", None)
                 if flush is not None:

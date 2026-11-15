@@ -4,7 +4,9 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
+from protean.exceptions import ExpectedVersionError
 from protean.fields import Identifier, String
+from protean.utils.globals import current_uow
 
 
 class Registered(BaseEvent):
@@ -51,3 +53,19 @@ def test_that_method_is_enclosed_in_uow(mock_commit, mock_start, test_domain):
             mock.call.m2(),
         ]
     )
+
+
+def test_a_failed_standalone_add_rolls_back_its_unit_of_work(test_domain):
+    """A standalone ``add`` whose commit fails leaves no Unit of Work in
+    progress."""
+    repo = test_domain.repository_for(User)
+    user = User(id="1", email="john.doe@example.com", name="John Doe")
+    user.raise_(Registered(id="1", email="john.doe@example.com", name="John Doe"))
+    repo.add(user)
+
+    stale = User(id="1", email="john.doe@example.com", name="John Doe")
+    stale.raise_(Registered(id="1", email="jane@example.com", name="Jane"))
+    with pytest.raises(ExpectedVersionError):
+        repo.add(stale)
+
+    assert not (current_uow and current_uow.in_progress)

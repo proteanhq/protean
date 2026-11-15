@@ -20,6 +20,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _commit_or_roll_back(uow: UnitOfWork) -> None:
+    """Commit ``uow``, and roll it back when the commit fails.
+
+    A failed commit (an ``ExpectedVersionError`` on the append, for one) then
+    leaves no Unit of Work in progress and no session lock held.
+    """
+    try:
+        uow.commit()
+    except Exception:
+        if uow.in_progress:
+            uow.rollback()
+        raise
+
+
 class BaseEventSourcedRepository(Element, OptionsMixin):
     element_type = DomainObjects.EVENT_SOURCED_REPOSITORY
 
@@ -96,7 +110,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
 
             # If we started a UnitOfWork, commit it now
             if own_current_uow:
-                own_current_uow.commit()
+                _commit_or_roll_back(own_current_uow)
 
     def get(
         self,
