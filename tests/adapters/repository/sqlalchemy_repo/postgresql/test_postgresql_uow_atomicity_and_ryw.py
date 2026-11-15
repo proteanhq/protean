@@ -29,7 +29,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.exceptions import ExpectedVersionError, ValidationError
 from protean.fields import HasMany, Integer, Reference, String
-from tests.shared import POSTGRES_PORT
+from tests.shared import POSTGRES_PORT, provider_adapter
 
 # Own Domain per the repo convention; also carries the postgresql marker.
 pytestmark = [pytest.mark.postgresql, pytest.mark.no_test_domain]
@@ -75,7 +75,7 @@ def uow_domain():
     domain.register(Wallet)
     domain.init(traverse=False)
 
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     domain.repository_for(Register)._dao
     domain.repository_for(Posting)._dao
     domain.repository_for(Wallet)._dao
@@ -92,7 +92,7 @@ def _rows(domain, table: str, where: str = "", params: dict | None = None) -> in
     """Count rows on a SEPARATE connection from any open UoW, so this reads
     committed state (PostgreSQL MVCC read-committed never blocks on another
     connection's uncommitted rows)."""
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     with provider._engine.connect() as conn:
         return conn.execute(
             text(f"SELECT count(*) FROM {table} {where}"), params or {}
@@ -233,7 +233,7 @@ class TestUoWAtomicity:
         """A UoW writing to two tables where one write fails at commit leaves
         neither. This is also the transactional-outbox shape (domain write +
         outbox message in different tables)."""
-        provider = uow_domain.providers["default"]
+        provider = provider_adapter(uow_domain, "default")
         wallets = uow_domain.repository_for(Wallet)
         anchor = Wallet(name="anchor", balance=0)
         wallets.add(anchor)
@@ -286,7 +286,7 @@ class TestInUoWOptimisticConcurrency:
         version-guarded UPDATE. If a concurrent commit already advanced the
         version, that flush fails; the read must surface ``ExpectedVersionError``
         (not a raw ``StaleDataError``) so the version-retry path can handle it."""
-        provider = uow_domain.providers["default"]
+        provider = provider_adapter(uow_domain, "default")
         repo = uow_domain.repository_for(Wallet)
         anchor = Wallet(name="occ", balance=0)
         repo.add(anchor)
@@ -312,7 +312,7 @@ class TestInUoWOptimisticConcurrency:
     ):
         """Same as the read case, but the conflicting query is a ``count`` (the
         ``_count`` path), which also autoflushes and must translate the conflict."""
-        provider = uow_domain.providers["default"]
+        provider = provider_adapter(uow_domain, "default")
         repo = uow_domain.repository_for(Wallet)
         anchor = Wallet(name="occ-count", balance=0)
         repo.add(anchor)

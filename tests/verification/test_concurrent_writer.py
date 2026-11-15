@@ -24,7 +24,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ExpectedVersionError
 from protean.fields import Integer, String
-from tests.shared import POSTGRES_PORT
+from tests.shared import POSTGRES_PORT, provider_adapter
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -59,7 +59,7 @@ def concurrency_domain():
     domain.register(OCCCounter)
     domain.init(traverse=False)
 
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     domain.repository_for(OCCCounter)._dao  # materialize the model before create_all
     provider._metadata.create_all(provider._engine)
     try:

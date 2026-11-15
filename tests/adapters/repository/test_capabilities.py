@@ -2,6 +2,7 @@ import pytest
 
 from protean.port.dao import REQUIRED_LOOKUPS
 from protean.port.provider import BaseProvider, DatabaseCapabilities
+from tests.shared import provider_adapter
 
 
 class TestDatabaseCapabilities:
@@ -447,7 +448,7 @@ class TestProviderDeclaredCapabilities:
     @pytest.mark.basic_storage
     def test_configured_provider_declares_its_row(self, test_domain):
         """The provider the test run configures returns its class's row."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         class_name = provider.__class__.__name__
         assert class_name in _DECLARED_CAPABILITIES
 
@@ -525,7 +526,7 @@ class TestRequiredLookups:
         assert set(ESProvider.get_lookups()) >= REQUIRED_LOOKUPS
 
     def test_current_provider_has_all_required_lookups(self, test_domain):
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         assert set(provider.get_lookups()) >= REQUIRED_LOOKUPS
 

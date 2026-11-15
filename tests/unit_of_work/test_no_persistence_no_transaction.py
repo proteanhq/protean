@@ -25,6 +25,7 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.fields import Identifier, String
 from protean.utils.globals import _uow_context_stack
 from protean.utils.mixins import handle
+from tests.shared import provider_adapter
 
 observed: dict[str, list[str]] = {}
 
@@ -123,7 +124,7 @@ class TestTheGuaranteeHoldsOnSQLAlchemyToo:
         domain.register(Placed, part_of=Order)
         domain.init(traverse=False)
         with domain.domain_context():
-            domain.providers["default"].create_schema()
+            provider_adapter(domain, "default").create_schema()
             yield domain
 
     def test_no_pooled_connection_until_a_repository_is_touched(self, sqlite_domain):
@@ -133,7 +134,7 @@ class TestTheGuaranteeHoldsOnSQLAlchemyToo:
         checked out today. A warm-up or health probe on ``start()`` would leave
         ``_sessions`` empty while checking a connection out, so the pool is what
         the guarantee is actually about."""
-        pool = sqlite_domain.providers["default"]._engine.pool
+        pool = provider_adapter(sqlite_domain, "default")._engine.pool
 
         with UnitOfWork():
             assert pool.checkedout() == 0

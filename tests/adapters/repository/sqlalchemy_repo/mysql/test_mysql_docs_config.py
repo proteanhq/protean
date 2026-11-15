@@ -19,7 +19,7 @@ import pytest
 
 from protean.adapters.repository.sqlalchemy import MysqlProvider
 from protean.domain import Domain
-from tests.shared import MARIADB_URI, MYSQL_URI
+from tests.shared import MARIADB_URI, MYSQL_URI, provider_adapter
 from tests.support.snippets import expand_includes, extract_toml_blocks
 
 pytestmark = [pytest.mark.mysql, pytest.mark.no_test_domain]
@@ -88,7 +88,7 @@ def test_a_documented_config_initializes_a_live_domain(snippet, tmp_path):
     domain = Domain(name="DocSnippet", root_path=str(tmp_path / "domain.py"))
     domain.init(traverse=False)
 
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     try:
         assert isinstance(provider, MysqlProvider)
         assert provider.ping()

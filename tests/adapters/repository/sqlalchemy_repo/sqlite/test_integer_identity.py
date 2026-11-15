@@ -19,6 +19,7 @@ from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.fields import Auto, HasMany, Identifier, Integer, String
 from protean.utils.reflection import id_field
+from tests.shared import provider_adapter
 
 SQLITE = {"provider": "sqlite", "database_uri": "sqlite:///:memory:"}
 MEMORY = {"provider": "memory"}
@@ -43,7 +44,7 @@ def round_trip(domain, aggregate_cls, **values):
     """Save a new aggregate and load it back by its id."""
     with domain.domain_context():
         repo = domain.repository_for(aggregate_cls)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         repo._dao
         provider._metadata.create_all(provider._engine)
 
@@ -73,7 +74,7 @@ class TestIntegerIdentityUnderFunctionStrategy:
         with domain.domain_context():
             dao = domain.repository_for(Tiny)._dao
             column = dao.database_model_cls.__table__.columns["id"]
-            dialect = domain.providers["default"]._engine.dialect
+            dialect = provider_adapter(domain, "default")._engine.dialect
 
         assert column.type.compile(dialect=dialect) == "INTEGER"
 

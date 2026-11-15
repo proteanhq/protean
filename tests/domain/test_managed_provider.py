@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from protean.domain import Domain
+from tests.shared import provider_adapter
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +70,7 @@ class TestSetupDatabaseSkipsUnmanaged:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            unmanaged = domain.providers["unmanaged"]
+            unmanaged = provider_adapter(domain, "unmanaged")
             with patch.object(unmanaged, "create_schema") as mock_create:
                 domain.setup_database()
                 mock_create.assert_not_called()
@@ -85,7 +86,7 @@ class TestSetupDatabaseSkipsUnmanaged:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            managed = domain.providers["secondary"]
+            managed = provider_adapter(domain, "secondary")
             with patch.object(managed, "create_schema") as mock_create:
                 domain.setup_database()
                 mock_create.assert_called_once()
@@ -106,7 +107,7 @@ class TestDropDatabaseSkipsUnmanaged:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            unmanaged = domain.providers["unmanaged"]
+            unmanaged = provider_adapter(domain, "unmanaged")
             with patch.object(unmanaged, "drop_schema") as mock_drop:
                 domain.drop_database()
                 mock_drop.assert_not_called()
@@ -118,7 +119,7 @@ class TestDropDatabaseSkipsUnmanaged:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            managed = domain.providers["default"]
+            managed = provider_adapter(domain, "default")
             with patch.object(managed, "drop_schema") as mock_drop:
                 domain.drop_database()
                 mock_drop.assert_called_once()
@@ -139,7 +140,7 @@ class TestTruncateDatabaseSkipsUnmanaged:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            unmanaged = domain.providers["unmanaged"]
+            unmanaged = provider_adapter(domain, "unmanaged")
             with patch.object(unmanaged, "clear") as mock_reset:
                 # Also patch create_schema to avoid side effects
                 with patch.object(unmanaged, "create_schema") as mock_create:
@@ -212,7 +213,7 @@ class TestSetupOutboxSkipsUnmanaged:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            unmanaged = domain.providers["unmanaged"]
+            unmanaged = provider_adapter(domain, "unmanaged")
             with patch.object(unmanaged, "create_schema") as mock_create:
                 domain.setup_outbox()
                 mock_create.assert_not_called()
@@ -237,7 +238,7 @@ class TestMixedManagedUnmanaged:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            unmanaged = domain.providers["unmanaged_extra"]
+            unmanaged = provider_adapter(domain, "unmanaged_extra")
 
             with (
                 patch.object(unmanaged, "create_schema") as mock_create,

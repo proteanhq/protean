@@ -36,6 +36,7 @@ from protean.server.observatory.metrics import (
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.mixins import handle
 from protean.utils.outbox import Outbox
+from tests.shared import provider_adapter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -105,7 +106,7 @@ def sqlite_domain(tmp_path):
     domain.init(traverse=False)
     yield domain
     with domain.domain_context():
-        domain.providers["default"]._engine.dispose()
+        provider_adapter(domain, "default")._engine.dispose()
 
 
 class RedisPool:
@@ -217,7 +218,7 @@ class TestSAProviderHealth:
     def test_returns_pool_counters(self, sqlite_domain):
         """health().pool holds size, checked_out, overflow, checked_in."""
         with sqlite_domain.domain_context():
-            provider = sqlite_domain.providers["default"]
+            provider = provider_adapter(sqlite_domain, "default")
             pool = provider._engine.pool
 
             with provider._engine.connect():
@@ -236,7 +237,7 @@ class TestSAProviderHealth:
     def test_reports_no_pool_without_engine(self, sqlite_domain, remove):
         """health().pool is None when _engine is None or does not exist."""
         with sqlite_domain.domain_context():
-            provider = sqlite_domain.providers["default"]
+            provider = provider_adapter(sqlite_domain, "default")
         engine = provider._engine
         if remove:
             del provider._engine
@@ -253,7 +254,7 @@ class TestSAProviderHealth:
         from sqlalchemy.pool import NullPool
 
         with sqlite_domain.domain_context():
-            provider = sqlite_domain.providers["default"]
+            provider = provider_adapter(sqlite_domain, "default")
         engine = provider._engine
         provider._engine = create_engine("sqlite://", poolclass=NullPool)
         try:
@@ -269,7 +270,7 @@ class TestSAProviderHealth:
         from sqlalchemy.pool import SingletonThreadPool
 
         with sqlite_domain.domain_context():
-            provider = sqlite_domain.providers["default"]
+            provider = provider_adapter(sqlite_domain, "default")
         engine = provider._engine
         provider._engine = create_engine("sqlite://")
         try:
@@ -394,7 +395,7 @@ class TestDBPoolOTELGauges:
         _register_infrastructure_gauges([sqlite_domain])
 
         with sqlite_domain.domain_context():
-            provider = sqlite_domain.providers["default"]
+            provider = provider_adapter(sqlite_domain, "default")
             with provider._engine.connect():
                 data = metric_reader.get_metrics_data()
                 # Read the pool after the scrape: other gauges may open and

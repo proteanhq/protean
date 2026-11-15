@@ -23,7 +23,7 @@ from protean.core.entity import BaseEntity
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ExpectedVersionError
 from protean.fields import HasMany, Integer, Reference, String
-from tests.shared import POSTGRES_PORT
+from tests.shared import POSTGRES_PORT, provider_adapter
 
 # This module builds its own Domain (``concurrency_domain``), so skip the autouse
 # ``test_domain`` fixture per the repo convention.
@@ -74,7 +74,7 @@ def concurrency_domain():
     domain.register(OCCLine, part_of=OCCOrder)
     domain.init(traverse=False)
 
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     # Touch each DAO so the SQLAlchemy models + their tables are materialized
     # into the provider metadata before create_all.
     domain.repository_for(OCCCounter)._dao
@@ -185,7 +185,7 @@ def test_flush_time_version_conflict_raises_expected_version_error(concurrency_d
 
             # Advance the row's version through an independent connection, after
             # the in-UoW read+add but before the deferred flush at commit.
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             with provider._engine.connect() as conn:
                 conn.execute(
                     text(
@@ -283,7 +283,7 @@ def test_child_only_flush_conflict_raises_expected_version_error(concurrency_dom
 
             # Advance the root's version through an independent connection, after
             # the in-UoW read+mutation but before the forced flush at add time.
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             with provider._engine.connect() as conn:
                 conn.execute(
                     text("UPDATE occ_order SET _version = _version + 1 WHERE id = :id"),

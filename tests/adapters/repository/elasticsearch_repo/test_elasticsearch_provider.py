@@ -12,7 +12,7 @@ from protean.core.entity import BaseEntity
 from protean.core.projection import BaseProjection
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.fields import HasMany, Identifier, Integer, String
-from tests.shared import initialize_domain
+from tests.shared import initialize_domain, provider_adapter
 
 from .elements import Alien, Person
 
@@ -76,7 +76,7 @@ class TestElasticsearchProvider:
         With explicit Keyword mappings, auto-generated models have no fields
         needing .keyword suffix (all strings are Keyword type natively).
         """
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Get the database model class for Person
         person_model_cls = provider.model_for(Person)
@@ -101,7 +101,7 @@ class TestElasticsearchProvider:
 
     def test_compute_keyword_fields_method(self, test_domain):
         """Test the _compute_keyword_fields method directly"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Test with Person entity (has String, Integer, DateTime fields)
         # Without custom attrs, all fields are auto-mapped as Keyword (no .keyword needed)
@@ -161,7 +161,7 @@ class TestCreateArtifactsEventSourcedFilter:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             conn = provider.get_connection()
 
             try:
@@ -201,7 +201,7 @@ class TestCreateArtifactsCacheBackedProjectionFilter:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             conn = provider.get_connection()
 
             try:

@@ -12,6 +12,7 @@ from protean import F
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
 from protean.utils.query import Q
+from tests.shared import provider_adapter
 
 
 class FJob(BaseAggregate):
@@ -26,7 +27,7 @@ def f_domain(test_domain):
     test_domain.register(FJob)
     test_domain.init(traverse=False)
     test_domain.repository_for(FJob)._dao  # registers the table in metadata
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
     yield test_domain
 

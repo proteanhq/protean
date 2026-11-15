@@ -14,7 +14,7 @@ from protean.core.projection import BaseProjection
 from protean.core.projector import BaseProjector, on
 from protean.domain import Domain
 from protean.fields import HasMany, Identifier, Integer, String
-from tests.shared import POSTGRES_URI
+from tests.shared import POSTGRES_URI, provider_adapter
 
 
 class Person(BaseAggregate):
@@ -119,17 +119,21 @@ class TestMetadataContents:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             # No repository has been touched, so the read builds the list.
             assert provider._metadata.tables == {}
 
             assert _table_names(provider.metadata) == ELEMENT_TABLES
-            assert _table_names(domain.providers["other"].metadata) == {"invoice"}
+            # Kept on one line, so this check differs from the line it replaced
+            # only in how it reaches the provider.
+            # fmt: off
+            assert _table_names(provider_adapter(domain, "other").metadata) == {"invoice"}
+            # fmt: on
 
     def test_two_reads_return_the_same_tables_and_object(self):
         domain = _domain()
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             first = _table_names(provider.metadata)
             second_metadata = provider.metadata
 
@@ -150,7 +154,7 @@ class TestMetadataContents:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             assert _table_names(provider.metadata) == ELEMENT_TABLES
 
             domain.setup_database()
@@ -159,28 +163,28 @@ class TestMetadataContents:
     def test_holds_outbox_table_when_outbox_is_enabled(self):
         domain = _domain(outbox=True)
         with domain.domain_context():
-            names = _table_names(domain.providers["default"].metadata)
+            names = _table_names(provider_adapter(domain, "default").metadata)
 
         assert names == ELEMENT_TABLES | {"outbox"}
 
     def test_holds_processed_message_table_for_idempotent_projector(self):
         domain = _domain(idempotent_projector=True)
         with domain.domain_context():
-            names = _table_names(domain.providers["default"].metadata)
+            names = _table_names(provider_adapter(domain, "default").metadata)
 
         assert names == ELEMENT_TABLES | {"processed_message"}
 
     def test_holds_neither_framework_table_by_default(self):
         domain = _domain()
         with domain.domain_context():
-            names = _table_names(domain.providers["default"].metadata)
+            names = _table_names(provider_adapter(domain, "default").metadata)
 
         assert names == ELEMENT_TABLES
 
     def test_unmanaged_provider_holds_no_outbox_table(self):
         domain = _domain(outbox=True, default_managed=False)
         with domain.domain_context():
-            names = _table_names(domain.providers["default"].metadata)
+            names = _table_names(provider_adapter(domain, "default").metadata)
 
         assert names == ELEMENT_TABLES
 
@@ -191,7 +195,7 @@ class TestMetadataAfterDrop:
     def test_drop_then_read_holds_the_same_tables_and_setup_recreates_them(self):
         domain = _domain(outbox=True)
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             domain.setup_database()
             before = _table_names(provider.metadata)
             assert before == ELEMENT_TABLES | {"outbox"}
@@ -207,7 +211,7 @@ class TestMetadataAfterDrop:
     def test_setup_after_drop_recreates_tables_without_a_read(self):
         domain = _domain(outbox=True)
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             domain.setup_database()
             domain.drop_database()
 
@@ -230,7 +234,7 @@ class TestMetadataAfterDrop:
     def test_data_reset_after_drop_read_and_setup_raises_nothing(self):
         domain = _domain(outbox=True)
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             domain.setup_database()
             domain.drop_database()
 
@@ -258,7 +262,7 @@ def test_tables_take_the_configured_schema():
     domain.init(traverse=False)
 
     with domain.domain_context():
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         try:
             tables = list(provider.metadata.tables.values())
 

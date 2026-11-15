@@ -14,6 +14,7 @@ from protean.exceptions import ConfigurationError
 from protean.fields import String
 from protean.infra.registry import providers as provider_registry
 from protean.port.provider import ProviderHealth
+from tests.shared import provider_adapter
 
 
 class User(BaseAggregate):
@@ -35,11 +36,11 @@ def db(test_domain):
     test_domain.register(User)
     test_domain.init(traverse=False)
 
-    test_domain.providers["default"].create_schema()
+    provider_adapter(test_domain, "default").create_schema()
 
     yield
 
-    test_domain.providers["default"].drop_schema()
+    provider_adapter(test_domain, "default").drop_schema()
     test_domain.registry._reset()
 
 
@@ -65,7 +66,7 @@ class TestBasicProvider:
 
     def test_provider_has_database_setting(self, test_domain):
         """Test that provider has a database setting"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         assert hasattr(provider.__class__, "database_type")
         assert provider.__class__.database_type is not None
 
@@ -73,7 +74,7 @@ class TestBasicProvider:
         """``pool`` carries counters for a SQL database on a file or server
         engine, which pools through a ``QueuePool``. Memory and Elasticsearch
         report no pool counters."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         health = provider.health()
 
         assert isinstance(health, ProviderHealth)
@@ -109,7 +110,7 @@ class TestLifecycleMethodsIntegration:
 
     def test_create_schema_is_idempotent(self, test_domain):
         """Calling create_schema multiple times does not error."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         # Should not raise on repeated calls
         provider.create_schema()
         provider.create_schema()

@@ -15,6 +15,7 @@ from protean.core.index import Index
 from protean.core.unit_of_work import UnitOfWork
 from protean.fields import Auto, String
 from protean.port.dao import BaseDAO
+from tests.shared import provider_adapter
 
 
 class KeyedRow(BaseAggregate):
@@ -53,7 +54,7 @@ def _outside_dao(test_domain, cls):
     """A DAO of its own that writes outside the Unit of Work, so the flag does
     not stick to the repository's shared DAO."""
     repo = test_domain.repository_for(cls)
-    dao = test_domain.providers["default"].dao_for(cls, repo._database_model)
+    dao = provider_adapter(test_domain, "default").dao_for(cls, repo._database_model)
     return dao.outside_uow()
 
 

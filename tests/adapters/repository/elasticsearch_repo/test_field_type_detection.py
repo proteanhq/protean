@@ -6,6 +6,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Boolean, Date, DateTime, Float, Integer, String
+from tests.shared import provider_adapter
 
 
 class DummyEntity(BaseAggregate):
@@ -64,7 +65,7 @@ class TestFieldTypeDetectionIntegration:
         With explicit Keyword mapping for string fields, no fields need
         the .keyword subfield — all strings are already Keyword type.
         """
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Auto-generated models: all fields mapped explicitly, no .keyword needed
         test_keyword_fields = provider._compute_keyword_fields(DummyEntity)
@@ -72,7 +73,7 @@ class TestFieldTypeDetectionIntegration:
 
     def test_minimal_entity_all_string_fields(self, test_domain):
         """Test entity with only string fields has empty keyword_fields"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         keyword_fields = provider._compute_keyword_fields(MinimalEntity)
 
         # With explicit Keyword mapping, no fields need .keyword subfield
@@ -80,7 +81,7 @@ class TestFieldTypeDetectionIntegration:
 
     def test_numeric_entity_no_keyword_fields(self, test_domain):
         """Test entity with only numeric/date fields"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         keyword_fields = provider._compute_keyword_fields(NumericEntity)
 
         # No fields should need .keyword
@@ -253,7 +254,7 @@ class TestFieldTypeDetectionEdgeCases:
 
     def test_empty_keyword_fields_set(self, test_domain):
         """Test behavior when entity has no string fields"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         keyword_fields = provider._compute_keyword_fields(NumericEntity)
 
         # Should return empty set for entity with no string fields

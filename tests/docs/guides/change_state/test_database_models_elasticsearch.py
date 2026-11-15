@@ -9,7 +9,7 @@ afterwards.
 import pytest
 
 from tests.docs.support import load_example
-from tests.shared import ELASTICSEARCH_URI
+from tests.shared import ELASTICSEARCH_URI, provider_adapter
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.elasticsearch]
 
@@ -29,7 +29,7 @@ def index_mapping(module, aggregate_cls):
     """Create the indexes, return the aggregate's index name and fields, drop them."""
     with module.domain.domain_context():
         index = module.domain.repository_for(aggregate_cls)._database_model._index
-        provider = module.domain.providers["default"]
+        provider = provider_adapter(module.domain, "default")
         provider.create_schema()
         try:
             mapping = provider.get_connection().indices.get_mapping(index=index._name)

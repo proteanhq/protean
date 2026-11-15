@@ -27,6 +27,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.fields import DateTime, String
+from tests.shared import provider_adapter
 
 alembic_command = pytest.importorskip("alembic.command")
 from alembic.config import Config
@@ -67,7 +68,7 @@ def domain(tmp_path):
 
 @pytest.fixture
 def provider(domain):
-    return domain.providers["default"]
+    return provider_adapter(domain, "default")
 
 
 def tables(provider) -> set[str]:

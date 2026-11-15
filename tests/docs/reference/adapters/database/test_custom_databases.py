@@ -11,6 +11,7 @@ import sys
 import pytest
 
 from tests.docs.support import DOCS, DOCS_SRC
+from tests.shared import provider_adapter
 
 _PACKAGE_PARENT = str(DOCS_SRC / "adapters" / "database" / "custom-databases")
 if _PACKAGE_PARENT not in sys.path:
@@ -44,7 +45,7 @@ def test_registry_accepts_the_delegating_provider():
 
 def test_domain_uses_the_custom_provider():
     with delegating_provider.domain.domain_context():
-        provider = delegating_provider.domain.providers["default"]
+        provider = provider_adapter(delegating_provider.domain, "default")
 
         assert isinstance(provider, delegating_provider.DelegatingProvider)
         assert isinstance(provider._delegate, MemoryProvider)

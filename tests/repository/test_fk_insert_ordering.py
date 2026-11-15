@@ -38,6 +38,7 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.fields import HasMany, HasOne, Integer, Reference, String
 from protean.integrations.pytest import capture_queries
 from protean.utils.globals import current_domain
+from tests.shared import provider_adapter
 
 
 # --- HasMany: Vault (root) -> Coin (child) --------------------------------
@@ -131,7 +132,7 @@ def _assert_top_down(captured, *expected):
     """
     tables = _inserted_tables(captured)
     if not tables:
-        engine = getattr(current_domain.providers["default"], "_engine", None)
+        engine = getattr(provider_adapter(current_domain, "default"), "_engine", None)
         assert engine is None, (
             "no INSERTs captured on a SQL backend; capture_queries hook did not fire"
         )

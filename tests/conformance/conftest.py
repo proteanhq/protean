@@ -60,6 +60,7 @@ from tests.shared import (
     MYSQL_URI,
     POSTGRES_URI,
     REDIS_URI,
+    provider_adapter,
 )
 
 CONFORMANCE_DIR = Path(__file__).parent
@@ -154,7 +155,7 @@ CONFIGURE: dict[str, Callable[[Domain, dict[str, Any]], None]] = {
 }
 
 ADAPTER_OF: dict[str, Callable[[Domain], Any]] = {
-    "database": lambda domain: domain.providers["default"],
+    "database": lambda domain: provider_adapter(domain, "default"),
     "broker": lambda domain: domain.brokers["default"],
     "cache": lambda domain: domain.caches["default"]._adapter,
     "event_store": lambda domain: domain.event_store._adapter,

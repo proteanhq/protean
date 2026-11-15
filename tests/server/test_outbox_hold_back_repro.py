@@ -22,7 +22,7 @@ from protean.fields import Identifier, Integer
 from protean.server.outbox_processor import OutboxProcessor
 from protean.utils.mixins import handle
 from protean.utils.outbox import OutboxStatus
-from tests.shared import POSTGRES_URI, REDIS_URI
+from tests.shared import POSTGRES_URI, REDIS_URI, provider_adapter
 
 pytestmark = [pytest.mark.postgresql, pytest.mark.redis, pytest.mark.no_test_domain]
 
@@ -100,7 +100,7 @@ def domain():
     domain.init(traverse=False)
 
     with domain.domain_context():
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         provider.create_schema()
         domain.brokers["default"]._data_reset()
         try:

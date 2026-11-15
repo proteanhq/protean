@@ -19,6 +19,7 @@ from tests.outbox.test_reconciliation import (
     _lose_rows,
     _make_domain,
 )
+from tests.shared import provider_adapter
 
 runner = CliRunner()
 
@@ -107,7 +108,7 @@ class TestOutboxReconcile:
     def test_reconcile_repairs_a_lost_row_behind_a_later_commit(self, tmp_path):
         domain = _make_domain(tmp_path)
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             domain.repository_for(Account)._dao
             outbox_repo = domain._get_outbox_repo("default")
             outbox_repo._dao

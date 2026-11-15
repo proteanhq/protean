@@ -7,6 +7,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String
+from tests.shared import provider_adapter
 
 
 class LifecycleUser(BaseAggregate):
@@ -62,5 +63,5 @@ class TestProviderClose:
     """
 
     def test_close_is_callable(self, test_domain):
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         assert callable(provider.close)

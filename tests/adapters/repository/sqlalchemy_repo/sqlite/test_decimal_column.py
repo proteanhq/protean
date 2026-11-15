@@ -5,6 +5,7 @@ from sqlalchemy import Numeric
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Decimal, String
+from tests.shared import provider_adapter
 
 
 class Invoice(BaseAggregate):
@@ -18,7 +19,7 @@ def invoice_columns(test_domain):
     test_domain.register(Invoice)
     test_domain.init(traverse=False)
     dao = test_domain.repository_for(Invoice)._dao
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
     return dao.database_model_cls.__table__.columns
 

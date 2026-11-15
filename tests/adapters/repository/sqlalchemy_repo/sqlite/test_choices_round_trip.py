@@ -9,6 +9,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
+from tests.shared import provider_adapter
 
 
 class Ticket(BaseAggregate):
@@ -21,7 +22,7 @@ def ticket_repository(test_domain):
     test_domain.register(Ticket)
     test_domain.init(traverse=False)
 
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     repository = test_domain.repository_for(Ticket)
     table = repository._dao.database_model_cls.__table__
     # The test database is a file, so a table left by an earlier run would

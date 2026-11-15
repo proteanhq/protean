@@ -32,7 +32,7 @@ from protean.fields import (
     Text,
     ValueObject,
 )
-from tests.shared import MARIADB_URI, MYSQL_URI
+from tests.shared import MARIADB_URI, MYSQL_URI, provider_adapter
 
 pytestmark = [pytest.mark.mysql, pytest.mark.no_test_domain]
 
@@ -71,7 +71,7 @@ def mysql_domain(request):
     domain.register(Note)
     domain.init(traverse=False)
 
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     try:
         with domain.domain_context():
             # Touch the DAO inside the context: column mapping reads
@@ -86,7 +86,7 @@ def mysql_domain(request):
 
 def column_info(domain, column):
     """The ``information_schema`` row for one column of the ``note`` table."""
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     with provider._engine.connect() as conn:
         return conn.execute(
             text(
@@ -149,7 +149,7 @@ class TestCollation:
         _, charset, collation = column_info(mysql_domain, column)
 
         assert charset == "utf8mb4"
-        assert collation == mysql_domain.providers["default"].collation
+        assert collation == provider_adapter(mysql_domain, "default").collation
 
 
 class TestStoredColumnTypes:
@@ -203,7 +203,7 @@ class TestTransactionBehaviour:
         """InnoDB defaults to REPEATABLE READ, under which a transaction keeps
         reading the snapshot it opened with. ADR-0027 expects a read to see what
         other transactions have committed."""
-        provider = mysql_domain.providers["default"]
+        provider = provider_adapter(mysql_domain, "default")
         with provider._engine.connect() as conn:
             level = conn.execute(text("SELECT @@transaction_isolation")).scalar()
 
@@ -226,7 +226,7 @@ class TestTransactionBehaviour:
         commits whatever is pending. The adapter creates tables on a connection
         of its own, outside any Unit of Work, so this only bites a caller who
         runs DDL mid-transaction. Pinned here so the constraint is visible."""
-        provider = mysql_domain.providers["default"]
+        provider = provider_adapter(mysql_domain, "default")
         with provider._engine.connect() as conn:
             conn.execute(
                 text(
@@ -263,7 +263,7 @@ class TestIndexKeyWidthGuard:
         domain.register(aggregate_cls, indexes=indexes)
         domain.init(traverse=False)
 
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         try:
             with domain.domain_context():
                 domain.repository_for(aggregate_cls)._dao
@@ -319,7 +319,7 @@ class TestIndexKeyWidthGuard:
             },
         )
         domain.init(traverse=False)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         create = (
             "CREATE TABLE wide_probe ("
             "  bio_text VARCHAR(900) CHARACTER SET utf8mb4,"
@@ -371,7 +371,7 @@ class TestAssociationColumnWidth:
         )
         domain.init(traverse=False)
 
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         try:
             with domain.domain_context():
                 domain.repository_for(Comment)._dao
@@ -425,7 +425,7 @@ class TestStorageEngineAndRowFormat:
         domain.register(Note)
         domain.init(traverse=False)
 
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         try:
             with domain.domain_context():
                 domain.repository_for(Note)._dao
@@ -460,7 +460,7 @@ class TestStorageEngineAndRowFormat:
             },
         )
         domain.init(traverse=False)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         try:
             with provider._engine.connect() as conn:
                 with pytest.raises(DatabaseError) as exc:
@@ -505,7 +505,7 @@ class TestCompositeKeyBoundary:
         domain.register(Edge, indexes=[Index("slug", "rank", name="ix_edge")])
         domain.init(traverse=False)
 
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         try:
             with domain.domain_context():
                 domain.repository_for(Edge)._dao
@@ -541,7 +541,7 @@ class TestCompositeKeyBoundary:
             },
         )
         domain.init(traverse=False)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
 
         def create(length):
             with provider._engine.connect() as conn:
@@ -587,7 +587,7 @@ class TestDefaultCollationPerServer:
         domain.register(Note)
         domain.init(traverse=False)
 
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         try:
             with domain.domain_context():
                 domain.repository_for(Note)._dao
@@ -631,7 +631,7 @@ class TestDefaultCollationPerServer:
             },
         )
         domain.init(traverse=False)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         try:
             with provider._engine.connect() as conn:
                 is_mariadb = (

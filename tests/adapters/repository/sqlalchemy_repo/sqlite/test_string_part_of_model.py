@@ -7,6 +7,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.domain import Domain
 from protean.fields import String
+from tests.shared import provider_adapter
 
 
 @pytest.mark.sqlite
@@ -33,7 +34,7 @@ def test_an_aggregate_round_trips_through_a_string_part_of_model():
 
     with domain.domain_context():
         repo = domain.repository_for(Order)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         dao = repo._dao
         provider._metadata.create_all(provider._engine)
 

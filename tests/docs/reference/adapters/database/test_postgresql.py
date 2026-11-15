@@ -9,7 +9,7 @@ from protean.adapters.repository.sqlalchemy import (
     _maybe_log_query,
 )
 from tests.docs.support import DOCS_SRC, domain_from_config, load_example
-from tests.shared import POSTGRES_PORT, POSTGRES_URI
+from tests.shared import POSTGRES_PORT, POSTGRES_URI, provider_adapter
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.postgresql]
 
@@ -35,7 +35,7 @@ def test_raw_query_reads_the_users_table():
     example = load_example("adapters/database/postgresql/002.py")
 
     with example.domain.domain_context():
-        provider = example.domain.providers["default"]
+        provider = provider_adapter(example.domain, "default")
         provider.create_schema()
         try:
             repo = example.domain.repository_for(example.User)
@@ -57,7 +57,7 @@ def test_configuration_shown_builds_a_postgresql_provider(tmp_path):
     )
     domain.init(traverse=False)
 
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     assert type(provider) is PostgresqlProvider
     url = provider._engine.url
     assert (url.host, url.port, url.database) == (

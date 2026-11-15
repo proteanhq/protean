@@ -13,7 +13,7 @@ from sqlalchemy.dialects import mssql as mssql_dialect
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import DateTime
-from tests.shared import initialize_domain
+from tests.shared import initialize_domain, provider_adapter
 
 from .elements import MssqlTimestampedEntity
 
@@ -38,7 +38,7 @@ def register_elements(test_domain):
 @pytest.mark.mssql
 class TestDateTimePrecision:
     def test_the_created_column_is_datetime2(self, test_domain):
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         occurred_at = column_type(provider, "mssql_timestamped_entity", "occurred_at")
 
         assert isinstance(occurred_at, mssql_dialect.DATETIME2)
@@ -48,7 +48,7 @@ class TestDateTimePrecision:
         domain = initialize_domain(name="MSSQL existing table", root_path=__file__)
         domain.register(MssqlLegacyTimestampedEntity)
         domain.init(traverse=False)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         table = "mssql_legacy_timestamped_entity"
         with provider._engine.begin() as conn:
             conn.execute(

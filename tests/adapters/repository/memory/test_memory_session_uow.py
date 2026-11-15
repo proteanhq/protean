@@ -5,6 +5,7 @@ import pytest
 from protean import UnitOfWork
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
+from tests.shared import provider_adapter
 
 
 class Product(BaseAggregate):
@@ -25,7 +26,7 @@ def test_memory_session_uses_existing_uow_session(test_domain):
         test_domain.repository_for(Product).add(product)
 
         # Get the provider and create a new session
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # The first session should be stored in UoW
         first_session = provider.get_session()
@@ -56,7 +57,7 @@ def test_memory_session_commit_updates_uow_session(test_domain):
         product1 = Product(name="Mouse", price=25)
         test_domain.repository_for(Product).add(product1)
 
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         session = provider.get_session()
 
         # Modify data in the session
@@ -79,7 +80,7 @@ def test_memory_session_new_connection_bypasses_uow(test_domain):
         product = Product(name="Keyboard", price=50)
         test_domain.repository_for(Product).add(product)
 
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Get a new connection that should bypass UoW
         new_conn = provider.get_connection()
@@ -127,7 +128,7 @@ def test_memory_session_commit_without_uow(test_domain):
     product = Product(name="Monitor", price=200)
     test_domain.repository_for(Product).add(product)
 
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     session = provider.get_session()
 
     # Modify data in the session through the write choke-point (as the DAO does)

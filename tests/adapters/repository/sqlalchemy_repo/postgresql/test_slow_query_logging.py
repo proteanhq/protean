@@ -14,6 +14,8 @@ import logging
 import pytest
 from sqlalchemy import text
 
+from tests.shared import provider_adapter
+
 SLOW_QUERY_LOGGER = "protean.adapters.repository.sqlalchemy.slow_query"
 
 
@@ -25,7 +27,7 @@ class TestSlowQueryWarningEmittedPostgres:
 
     def test_slow_query_warning_emitted_postgres(self, test_domain, caplog):
         with caplog.at_level(logging.DEBUG, logger=SLOW_QUERY_LOGGER):
-            provider = test_domain.providers["default"]
+            provider = provider_adapter(test_domain, "default")
             with provider._engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
 
