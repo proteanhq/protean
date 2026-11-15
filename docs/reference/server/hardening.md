@@ -654,7 +654,7 @@ aggregate version. Each adapter makes the version check atomic in its own way:
 | SQLAlchemy repository | Version compared inside the same transaction as the update |
 | Elasticsearch repository | Native `if_seq_no` + `if_primary_term` on index operations |
 | Memory repository | `threading.Lock` serialises writes |
-| Memory event store | `threading.Lock` guards `write()` |
+| Memory event store | `threading.Lock` guards the version check and the append in `write_message()` |
 | MessageDB event store | Stored-procedure API enforces expected version inside PostgreSQL |
 
 Command handlers auto-retry on `ExpectedVersionError`; see

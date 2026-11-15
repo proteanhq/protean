@@ -2144,8 +2144,8 @@ class Domain:
         update through a repository, and for each row that ``query.update()``
         saves, so it can read the acting user from ``g``. It does not run for
         event-sourced aggregates, for a save that passes ``apply_hooks=False``,
-        or for the framework's internal aggregates (outbox rows, the memory
-        event store's messages, processed-message records).
+        or for the framework's internal aggregates (outbox rows and
+        processed-message records).
 
         Enrichers run in registration order. If one raises, the exception
         propagates and the save is aborted. On an update, the version is

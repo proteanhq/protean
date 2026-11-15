@@ -289,7 +289,7 @@ same version and both commit.
 | SQLAlchemy repository | Conditional `UPDATE ... WHERE _version = :expected` with rowcount verification inside the same transaction |
 | Memory repository | `threading.Lock` serialises the version check and the write |
 | Elasticsearch repository | Native `if_seq_no` and `if_primary_term` on the index operation |
-| Memory event store | `threading.Lock` guards the `write()` call |
+| Memory event store | `threading.Lock` guards the version check and the append in `write_message()` |
 | MessageDB event store | Stored-procedure API enforces expected version inside PostgreSQL |
 
 Earlier versions of the SQLAlchemy and memory adapters used a

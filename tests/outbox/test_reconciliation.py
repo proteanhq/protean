@@ -1948,9 +1948,8 @@ class TestOverlappingSweepsInMemory:
         copy. The live commit drops its copy, keeps the sweep's row and raises
         nothing.
 
-        On the memory event store the live event stays in the unit of work's
-        session until this commit, so no sweep can see it yet. The test
-        commits the row the sweep would save instead."""
+        The test runs no sweep. At the moment the live commit runs, it commits
+        the row a sweep would save for the live event."""
         domain = _make_memory_domain()
         with domain.domain_context():
             outbox_repo = domain._get_outbox_repo("default")
