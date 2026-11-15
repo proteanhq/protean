@@ -135,10 +135,11 @@ contexts are not the ones it declared. Aggregate names are stored as the class
 the scaffold emits, so a spec writing `orderItem` reads back as the `OrderItem`
 the gold carries.
 
-What a task omits until its transcript is recorded: `compare()` needs a live
-transcript for the installed pack's minor, and it raises on a task that has
-none. No task has one for the current minor until the live lane records it, so
-`compare()` runs both approaches only for a task the live lane has recorded.
+What a task omits until its transcript is recorded: `compare()` loads the
+task's transcript for the installed pack's minor, and it raises when that file
+does not exist. `compare()` does not check the live mark; the replay lane's
+guard does. So `compare()` runs both approaches only for a task with a
+transcript under the current minor's directory.
 The other tasks score their gold through the harness (Approach A and the
 scorer), and Approach B joins them once the live lane records a transcript for
 each.

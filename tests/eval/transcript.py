@@ -18,7 +18,7 @@ A transcript is one JSON file per run, at
   the recomputed hash must equal this; a divergence means the transcript no
   longer lands the same project (a stale transcript).
 - ``recorded_by``: ``"live"`` when the live lane recorded the run through a real
-  model, and absent otherwise. The guard rejects a transcript without it, so a
+  model, and ``null`` otherwise. The guard rejects a transcript without it, so a
   scripted record, which never carries it, cannot stand in for a recording.
 - ``model_id``: the model the live driver ran, stamped next to ``recorded_by``.
 
