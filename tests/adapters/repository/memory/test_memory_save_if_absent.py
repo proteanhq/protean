@@ -116,3 +116,65 @@ def test_commit_keeps_a_row_another_writer_committed_when_the_staged_row_was_del
         )
 
     assert _notes_with_key(test_domain, KeyedRow, "k") == ["committed first"]
+
+
+def test_commit_records_the_row_it_dropped(test_domain):
+    dao = test_domain.repository_for(KeyedRow)._dao
+    mine = KeyedRow(key="k", note="mine")
+
+    with UnitOfWork() as uow:
+        assert dao.save_if_absent(mine) is mine
+        session = uow._sessions["default"]
+        _outside_dao(test_domain, KeyedRow).save(
+            KeyedRow(key="k", note="committed first")
+        )
+
+    assert session.dropped_rows == {(dao.schema_name, mine.id)}
+    assert uow._dropped_rows == {(dao.schema_name, mine.id)}
+
+
+def test_commit_that_drops_nothing_records_nothing(test_domain):
+    dao = test_domain.repository_for(KeyedRow)._dao
+    mine = KeyedRow(key="k", note="mine")
+
+    with UnitOfWork() as uow:
+        assert dao.save_if_absent(mine) is mine
+        session = uow._sessions["default"]
+
+    assert _notes_with_key(test_domain, KeyedRow, "k") == ["mine"]
+    assert session.dropped_rows == frozenset()
+    assert uow._dropped_rows == set()
+
+
+def test_the_next_commit_of_the_session_resets_the_record(test_domain):
+    dao = test_domain.repository_for(KeyedRow)._dao
+
+    with UnitOfWork() as uow:
+        dao.save_if_absent(KeyedRow(key="k", note="mine"))
+        session = uow._sessions["default"]
+        _outside_dao(test_domain, KeyedRow).save(
+            KeyedRow(key="k", note="committed first")
+        )
+    assert len(session.dropped_rows) == 1
+
+    session.commit()
+
+    assert session.dropped_rows == frozenset()
+
+
+def test_a_reused_unit_of_work_starts_with_no_dropped_rows(test_domain):
+    dao = test_domain.repository_for(KeyedRow)._dao
+    uow = UnitOfWork()
+
+    with uow:
+        dao.save_if_absent(KeyedRow(key="k", note="mine"))
+        _outside_dao(test_domain, KeyedRow).save(
+            KeyedRow(key="k", note="committed first")
+        )
+    assert len(uow._dropped_rows) == 1
+
+    with uow:
+        assert dao.save_if_absent(KeyedRow(key="other", note="mine")) is not None
+
+    assert uow._dropped_rows == set()
+    assert _notes_with_key(test_domain, KeyedRow, "other") == ["mine"]
