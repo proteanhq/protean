@@ -1,3 +1,8 @@
+import pytest
+
+from protean.exceptions import ValidationError
+
+
 def test_write_to_event_store(test_domain):
     position = test_domain.event_store.store.write_message(
         "testStream-123", "Event1", {"foo": "bar"}
@@ -33,3 +38,17 @@ def test_multiple_writes_to_event_store(test_domain):
         "testStream-123", "Event1", {"foo": "bar"}
     )
     assert position == 5
+
+
+def test_a_write_with_rejected_metadata_leaves_the_stream_unchanged(test_domain):
+    store = test_domain.event_store.store
+    store.write_message("testStream-123", "Event1", {"foo": "bar"})
+
+    # Metadata without headers fails validation while the row is built.
+    with pytest.raises(ValidationError):
+        store.write_message("testStream-123", "Event1", {"foo": "baz"}, metadata={})
+
+    assert [m["data"] for m in store.get_stream_messages("testStream-123")] == [
+        {"foo": "bar"}
+    ]
+    assert store.write_message("testStream-123", "Event1", {"foo": "qux"}) == 1

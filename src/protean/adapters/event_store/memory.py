@@ -80,7 +80,7 @@ class MemoryEventStore(BaseEventStore):
         expected_version: int | None = None,
     ) -> int:
         with self._lock:
-            index = self._streams.setdefault(stream_name, [])
+            index = self._streams.get(stream_name, [])
             stream_version = len(index) - 1
 
             if expected_version is not None and expected_version != stream_version:
@@ -90,19 +90,20 @@ class MemoryEventStore(BaseEventStore):
                 )
 
             position = stream_version + 1
-            index.append(len(self._messages))
-            self._messages.append(
-                RawMessage(
-                    id=str(uuid4()),
-                    stream_name=stream_name,
-                    type=message_type,
-                    position=position,
-                    global_position=len(self._messages) + 1,
-                    data=copy.deepcopy(dict(data)),
-                    metadata=_normalized_metadata(metadata),
-                    time=_domain_now(),
-                )
+            # Build the row before touching the store, so a row that fails to
+            # build (rejected metadata, for one) leaves the stream unchanged.
+            row = RawMessage(
+                id=str(uuid4()),
+                stream_name=stream_name,
+                type=message_type,
+                position=position,
+                global_position=len(self._messages) + 1,
+                data=copy.deepcopy(dict(data)),
+                metadata=_normalized_metadata(metadata),
+                time=_domain_now(),
             )
+            self._streams.setdefault(stream_name, []).append(len(self._messages))
+            self._messages.append(row)
             return position
 
     def get_stream_messages(
