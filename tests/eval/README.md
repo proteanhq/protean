@@ -135,10 +135,13 @@ contexts are not the ones it declared. Aggregate names are stored as the class
 the scaffold emits, so a spec writing `orderItem` reads back as the `OrderItem`
 the gold carries.
 
-What the two new tasks omit, until their transcripts are recorded: only
-`place_order` is recorded, so `compare()` runs both approaches for it alone. The other two tasks score their gold through the harness (Approach
-A and the scorer), and Approach B joins them once the live lane records a
-transcript for each.
+What a task omits until its transcript is recorded: `compare()` needs a live
+transcript for the installed pack's minor, and it raises on a task that has
+none. No task has one for the current minor until the live lane records it, so
+`compare()` runs both approaches only for a task the live lane has recorded.
+The other tasks score their gold through the harness (Approach A and the
+scorer), and Approach B joins them once the live lane records a transcript for
+each.
 
 ### Reading Approach B's number
 
@@ -252,8 +255,9 @@ the transcripts for every 0.19.x release. The replay lane enforces these rules:
   falls back to an older minor. The message names the directory it looked in
   and `pytest tests/eval -m live`.
 - A transcript that lacks `"recorded_by": "live"` or a `model_id` fails the guard,
-  and the message names the file. A copied, scripted or hand-edited file cannot
-  pass.
+  and the message names the file. A scripted record never carries the mark, so
+  it fails. The guard checks the two fields only, so a file someone edits by
+  hand to add them passes; review a transcript's diff before you commit it.
 - A transcript's `pack_version` must equal its directory name, and its `task_id`
   must equal its file name.
 

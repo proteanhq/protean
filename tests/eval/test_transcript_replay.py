@@ -43,7 +43,7 @@ def test_a_live_transcript_exists_for_the_current_minor() -> None:
 @pytest.mark.parametrize("transcript_path", _CURRENT_TRANSCRIPTS, ids=_IDS)
 def test_transcript_is_a_live_recording(transcript_path: Path) -> None:
     """A committed transcript must carry ``recorded_by="live"`` and a
-    ``model_id``, so a scripted or copied file cannot satisfy the guard."""
+    ``model_id``, so a scripted record, which carries neither, fails it."""
     problems = live_marker_problems(Transcript.load(transcript_path), transcript_path)
     assert not problems, "\n".join(problems)
 
