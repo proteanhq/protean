@@ -1515,7 +1515,7 @@ def _install_process_signal_handlers(
 ) -> None:
     """Install shutdown handlers with ``signal.signal`` (Windows)."""
 
-    def signal_handler(sig: int, frame: Any = None) -> None:
+    def _signal_handler(sig: int, frame: Any = None) -> None:
         """Signal handler for non-asyncio signal handling (Windows)"""
         if not engine.shutting_down and engine.loop.is_running():
             asyncio.run_coroutine_threadsafe(engine.shutdown(signal=sig), engine.loop)
@@ -1526,7 +1526,7 @@ def _install_process_signal_handlers(
     for s in signals:
         try:
             # Store original handler for cleanup
-            engine._original_signal_handlers[s] = signal.signal(s, signal_handler)
+            engine._original_signal_handlers[s] = signal.signal(s, _signal_handler)
         except (OSError, ValueError) as e:
             # Some signals may not be available on all platforms
             logger.debug(f"Signal {s} not available on this platform: {e}")
@@ -1541,14 +1541,14 @@ def _install_loop_signal_handlers(
         try:
             # Create a proper signal handler that ensures task creation works
             # even when called from a signal context
-            def handle_signal(sig: signal.Signals = s) -> None:
+            def _handle_signal(sig: signal.Signals = s) -> None:
                 if not engine.shutting_down:
                     # Ensure we create the task in the proper context
                     engine.loop.call_soon_threadsafe(
                         lambda: asyncio.create_task(engine.shutdown(signal=sig))
                     )
 
-            engine.loop.add_signal_handler(s, handle_signal)
+            engine.loop.add_signal_handler(s, _handle_signal)
         except (OSError, ValueError) as e:
             # Some signals may not be available on all platforms
             logger.debug(f"Signal {s} not available on this platform: {e}")
@@ -1610,7 +1610,7 @@ def _loop_exception_handler(
 ) -> Callable[[asyncio.AbstractEventLoop, dict[str, Any]], None]:
     """Build the event-loop exception handler that shuts the engine down."""
 
-    def handle_exception(
+    def _handle_exception(
         loop: asyncio.AbstractEventLoop, context: dict[str, Any]
     ) -> None:
         exc = context.get("exception")
@@ -1635,7 +1635,7 @@ def _loop_exception_handler(
                 extra={"error": context.get("message", "unknown")},
             )
 
-    return handle_exception
+    return _handle_exception
 
 
 def _start_component_tasks(engine: Engine) -> list[asyncio.Task[Any]]:

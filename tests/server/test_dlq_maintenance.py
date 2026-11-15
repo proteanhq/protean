@@ -547,6 +547,31 @@ class TestEngineDLQMaintenanceIntegration:
             engine = Engine(domain, test_mode=True)
             assert engine._dlq_maintenance is None
 
+    @pytest.mark.no_test_domain
+    def test_engine_run_starts_dlq_maintenance_after_the_subscriptions(self, caplog):
+        """run() starts the DLQ maintenance task after every subscription."""
+        domain = _setup_domain()
+        domain.config["server"]["dlq"]["enabled"] = True
+        # The maintenance loop sleeps between cycles, so shutdown cancels it
+        # once this drain window ends.
+        domain.config["server"]["drain_timeout"] = 0.1
+        with domain.domain_context():
+            _register_handler(domain)
+
+            engine = Engine(domain, test_mode=True)
+            with caplog.at_level(logging.INFO, logger="protean.server.engine"):
+                engine.run()
+
+        started = [
+            r.getMessage()
+            for r in caplog.records
+            if r.getMessage().endswith("_started")
+        ]
+        assert started == [
+            "engine.subscription_started",
+            "engine.dlq_maintenance_started",
+        ]
+
 
 class TestDLQMaintenanceShutdown:
     @pytest.mark.no_test_domain
