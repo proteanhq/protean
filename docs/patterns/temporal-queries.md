@@ -232,17 +232,15 @@ def get_account_as_of(account_id: str, cutoff: datetime) -> dict:
 
     state = {}
     for event in events:
-        if datetime.fromisoformat(event.get("time", "")) > cutoff:
+        if event["time"] > cutoff:
             break
         state.update(event["data"])
 
     return state
 ```
 
-This code repeats the timestamp parsing, timezone normalization, and event
-filtering that the event store performs internally. It also fails across
-adapters (PostgreSQL returns `datetime` objects; memory returns ISO
-strings). Use the repository instead:
+This code repeats the timestamp comparison and event filtering that the
+event store performs internally. Use the repository instead:
 
 ```python
 # fragment

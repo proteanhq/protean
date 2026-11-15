@@ -179,7 +179,12 @@ def _in_category(category: str) -> Q:
 
 
 def _rows(query: Any) -> list[RawMessage]:
-    return [cast(RawMessage, item.to_dict()) for item in query.all().items]
+    # ``to_dict()`` serializes ``time`` to an ISO string; a ``RawMessage``
+    # carries the ``datetime``.
+    return [
+        cast(RawMessage, {**item.to_dict(), "time": item.time})
+        for item in query.all().items
+    ]
 
 
 def _first(query: Any) -> RawMessage | None:

@@ -790,9 +790,8 @@ class BaseEventStore(EventStorePort):
     def _parse_event_time(raw_time: Any) -> datetime | None:
         """Normalise a raw ``time`` value from an event message to ``datetime``.
 
-        Adapters may return the ``time`` field as either a ``datetime`` object
-        (e.g. MessageDB via psycopg2) or as an ISO-8601 string (e.g. the
-        memory adapter's ``to_dict()``).
+        Accepts a ``datetime`` (a ``RawMessage`` row) or an ISO-8601 string
+        (a serialized message or header).
         """
         if raw_time is None:
             return None

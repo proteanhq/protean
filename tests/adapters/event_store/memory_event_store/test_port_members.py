@@ -1,5 +1,7 @@
 """The ``EventStorePort`` members of the memory event store."""
 
+from datetime import datetime
+
 import pytest
 
 from protean.adapters.event_store.memory import MemoryEventStore
@@ -28,6 +30,23 @@ class TestConstruction:
 
         assert store.config is test_domain.config["event_store"]
         assert store.config["provider"] == "memory"
+
+
+class TestRowTime:
+    def test_every_read_returns_the_time_as_a_datetime(self, test_domain):
+        store = test_domain.event_store.store
+        _write(store, "user-1", 0)
+
+        rows = [
+            *store.get_stream_messages("user-1"),
+            *store.get_category_messages("user"),
+            *store.get_all_messages(),
+            store.get_last_stream_message("user-1"),
+            store.get_last_category_message("user"),
+            store.get_last_message(),
+        ]
+
+        assert all(isinstance(row["time"], datetime) for row in rows)
 
 
 class TestCategoryReads:

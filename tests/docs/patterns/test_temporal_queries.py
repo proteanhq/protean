@@ -6,7 +6,7 @@ the first save, gets two limit raises (v2, v3) in the second, and is
 suspended (v4) in the third.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -41,7 +41,7 @@ def write_times(example):
     """
     rows = example.compliance.event_store.store.get_stream_messages(STREAM)
     assert [row["position"] for row in rows] == [0, 1, 2, 3, 4]
-    return [datetime.fromisoformat(row["time"]) for row in rows]
+    return [row["time"] for row in rows]
 
 
 # --- at_version ---------------------------------------------------------------
@@ -209,7 +209,7 @@ def api():
     with module.compliance.domain_context():
         module.record_account_history()
         rows = module.compliance.event_store.store.get_stream_messages(STREAM)
-        times = [datetime.fromisoformat(row["time"]) for row in rows]
+        times = [row["time"] for row in rows]
     assert len(times) == 5
     yield TestClient(module.app), times
     with module.compliance.domain_context():
