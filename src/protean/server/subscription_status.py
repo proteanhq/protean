@@ -22,7 +22,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Protocol, cast, overload
 from uuid import uuid4
 
 from protean.port.event_store import row_data
@@ -362,82 +362,19 @@ def _collect_partitioned_stream_status(
             dlq_depth=0,
         )
 
-    total_lag = 0
-    total_pending = 0
-    total_len = 0
+    readings = [
+        _read_partition(broker, f"{stream_category}:{key}", consumer_group)
+        for key in sorted(keys)
+    ]
+    known_lags = [reading.lag for reading in readings if reading.lag is not None]
     consumer_names: set[str] = set()
-    any_lag_known = False
+    for reading in readings:
+        consumer_names |= reading.consumer_names
+    total_pending = sum(reading.pending for reading in readings)
 
-    for key in sorted(keys):
-        partition = f"{stream_category}:{key}"
-        try:
-            total_len += redis_conn.xlen(partition)
-        except Exception as exc:  # noqa: BLE001 - status probe: count length 0
-            logger.debug("Could not read length of %s: %r", partition, exc)
-        try:
-            groups = redis_conn.xinfo_groups(partition)
-        except Exception:  # a status probe skips a partition it cannot read; logged
-            logger.debug(
-                "Could not read groups of partition %s", partition, exc_info=True
-            )
-            continue
-        for group in groups:
-            if broker._get_field_value(group, "name") != consumer_group:
-                continue
-            total_pending += (
-                broker._get_field_value(group, "pending", convert_to_int=True) or 0
-            )
-            # Only a real reading counts as knowing the lag. Finding the group
-            # is not enough: a broker that reports neither would otherwise
-            # contribute 0 from every partition and describe a caught-up
-            # subscription whose lag was never read, which is the failure this
-            # whole function exists to remove.
-            native_lag = broker._get_field_value(group, "lag", convert_to_int=True)
-            if native_lag is not None:
-                any_lag_known = True
-                total_lag += native_lag
-            else:
-                # No native `lag` (Redis before 7.0, or nil). Count what is left after
-                # the group's last delivered entry, which is what the
-                # non-partitioned path does and what the subscription reference
-                # already promises for stream subscriptions. Without this, a
-                # partitioned category on Redis 6 reports `unknown` while an
-                # identical unpartitioned one reports a number.
-                last_delivered_id = broker._get_field_value(group, "last-delivered-id")
-                if last_delivered_id is not None:
-                    try:
-                        remaining = redis_conn.xrange(
-                            partition, min=f"({last_delivered_id}"
-                        )
-                    except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown
-                        logger.debug("Could not count lag of %s: %r", partition, exc)
-                    else:
-                        any_lag_known = True
-                        total_lag += len(remaining)
-            break
+    dlq_depth = _dlq_depth(redis_conn, stream_category)
 
-        # Consumers are counted by name, not summed. Each partition is its own
-        # stream with its own copy of the consumer group, so a single worker
-        # reading five partitions is five consumers by `XINFO GROUPS` and one
-        # worker in reality. Summing reports the partition count dressed up as a
-        # consumer count. The names are what identify a worker across streams.
-        try:
-            consumers = redis_conn.xinfo_consumers(partition, consumer_group)
-        except Exception as exc:  # noqa: BLE001 - status probe: count no consumers
-            logger.debug("Could not read consumers of %s: %r", partition, exc)
-            consumers = []
-        for consumer in consumers:
-            consumer_name = broker._get_field_value(consumer, "name")
-            if consumer_name is not None:
-                consumer_names.add(consumer_name)
-
-    dlq_depth = 0
-    try:
-        dlq_depth = redis_conn.xlen(f"{stream_category}:dlq")
-    except Exception as exc:  # noqa: BLE001 - status probe: show DLQ depth 0
-        logger.debug("Could not read DLQ depth of %s: %r", stream_category, exc)
-
-    lag = total_lag if any_lag_known else None
+    lag = sum(known_lags) if known_lags else None
     return SubscriptionStatus(
         name=name,
         handler_name=handler_cls.__name__,
@@ -446,11 +383,102 @@ def _collect_partitioned_stream_status(
         lag=lag,
         pending=total_pending,
         current_position=f"{len(keys)} partition(s)",
-        head_position=str(total_len),
+        head_position=str(sum(reading.length for reading in readings)),
         status=_classify_status(lag, total_pending),
         consumer_count=len(consumer_names),
         dlq_depth=dlq_depth,
     )
+
+
+class _PartitionReading(NamedTuple):
+    """What one partition stream of a partitioned category reports."""
+
+    length: int
+    pending: int
+    lag: int | None
+    consumer_names: set[str]
+
+
+def _read_partition(
+    broker: _RedisStyleBroker, partition: str, consumer_group: str
+) -> _PartitionReading:
+    """Read one partition's length, the group's pending and lag, and its consumers.
+
+    ``lag`` is ``None`` when no reading of it was possible. A partition whose
+    groups cannot be read reports its length and nothing else.
+    """
+    redis_conn = broker.redis_instance
+    length = 0
+    try:
+        length = redis_conn.xlen(partition)
+    except Exception as exc:  # noqa: BLE001 - status probe: count length 0
+        logger.debug("Could not read length of %s: %r", partition, exc)
+    try:
+        groups = redis_conn.xinfo_groups(partition)
+    except Exception:  # a status probe skips a partition it cannot read; logged
+        logger.debug("Could not read groups of partition %s", partition, exc_info=True)
+        return _PartitionReading(length, 0, None, set())
+    pending, lag = _partition_group_reading(broker, partition, consumer_group, groups)
+    return _PartitionReading(
+        length,
+        pending,
+        lag,
+        _partition_consumer_names(broker, partition, consumer_group),
+    )
+
+
+def _partition_group_reading(
+    broker: _RedisStyleBroker,
+    partition: str,
+    consumer_group: str,
+    groups: list[Any],
+) -> tuple[int, int | None]:
+    """Return the consumer group's pending count and lag on one partition."""
+    for group in groups:
+        if broker._get_field_value(group, "name") != consumer_group:
+            continue
+        pending = broker._get_field_value(group, "pending", convert_to_int=True) or 0
+        # Only a real reading counts as knowing the lag. Finding the group
+        # is not enough: a broker that reports neither would otherwise
+        # contribute 0 from every partition and describe a caught-up
+        # subscription whose lag was never read, which is the failure this
+        # whole function exists to remove.
+        native_lag = broker._get_field_value(group, "lag", convert_to_int=True)
+        if native_lag is not None:
+            return pending, native_lag
+        # No native `lag` (Redis before 7.0, or nil). Count what is left after
+        # the group's last delivered entry, which is what the
+        # non-partitioned path does and what the subscription reference
+        # already promises for stream subscriptions. Without this, a
+        # partitioned category on Redis 6 reports `unknown` while an
+        # identical unpartitioned one reports a number.
+        last_delivered_id = broker._get_field_value(group, "last-delivered-id")
+        return pending, _count_remaining(
+            broker.redis_instance, partition, last_delivered_id
+        )
+    return 0, None
+
+
+def _partition_consumer_names(
+    broker: _RedisStyleBroker, partition: str, consumer_group: str
+) -> set[str]:
+    """Return the names of the group's consumers on one partition."""
+    # Consumers are counted by name, not summed. Each partition is its own
+    # stream with its own copy of the consumer group, so a single worker
+    # reading five partitions is five consumers by `XINFO GROUPS` and one
+    # worker in reality. Summing reports the partition count dressed up as a
+    # consumer count. The names are what identify a worker across streams.
+    try:
+        consumers = broker.redis_instance.xinfo_consumers(partition, consumer_group)
+    except Exception as exc:  # noqa: BLE001 - status probe: count no consumers
+        logger.debug("Could not read consumers of %s: %r", partition, exc)
+        consumers = []
+    names: set[str] = set()
+    for consumer in consumers:
+        consumer_name = broker._get_field_value(consumer, "name")
+        if consumer_name is not None:
+            names.add(consumer_name)
+    return names
 
 
 def _collect_stream_status(
@@ -480,96 +508,138 @@ def _collect_stream_status(
                     name, handler_cls.__name__, "stream", stream_category
                 )
 
-            broker = cast(_RedisStyleBroker, base_broker)
-            redis_conn = broker.redis_instance
-
-            # Stream length
-            try:
-                stream_length = redis_conn.xlen(stream_category)
-            except Exception as exc:  # noqa: BLE001 - status probe: show length 0
-                logger.debug("Could not read length of %s: %r", stream_category, exc)
-                stream_length = 0
-
-            # Consumer group info
-            pending = 0
-            last_delivered_id: str | None = None
-            consumer_count = 0
-            lag: int | None = None
-
-            try:
-                groups = redis_conn.xinfo_groups(stream_category)
-                for g in groups:
-                    gname = broker._get_field_value(g, "name")
-                    if gname == consumer_group:
-                        pending = (
-                            broker._get_field_value(g, "pending", convert_to_int=True)
-                            or 0
-                        )
-                        last_delivered_id = broker._get_field_value(
-                            g, "last-delivered-id"
-                        )
-                        # Redis 7.0+ native lag field
-                        native_lag = broker._get_field_value(
-                            g, "lag", convert_to_int=True
-                        )
-                        if native_lag is not None:
-                            lag = native_lag
-                        consumer_count = (
-                            broker._get_field_value(g, "consumers", convert_to_int=True)
-                            or 0
-                        )
-                        break
-            # a status probe reports unknown lag instead of raising; logged
-            except Exception:
-                logger.debug(
-                    "Could not read group %s on stream %s",
-                    consumer_group,
-                    stream_category,
-                    exc_info=True,
-                )
-
-            # Fallback: count messages after last-delivered-id via xrange
-            if lag is None and last_delivered_id is not None:
-                try:
-                    remaining = redis_conn.xrange(
-                        stream_category, min=f"({last_delivered_id}"
-                    )
-                    lag = len(remaining)
-                except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown
-                    logger.debug("Could not count lag of %s: %r", stream_category, exc)
-                    # Leave lag unknown rather than falling back to `pending`.
-                    # With nothing pending that fallback yields lag=0, which
-                    # classifies as "ok" and reports a subscription as healthy
-                    # when its lag could not be read at all.
-                    lag = None
-
-            # DLQ depth
-            dlq_depth = 0
-            try:
-                dlq_depth = redis_conn.xlen(f"{stream_category}:dlq")
-            except Exception as exc:  # noqa: BLE001 - status probe: show DLQ depth 0
-                logger.debug("Could not read DLQ depth of %s: %r", stream_category, exc)
-
-            status = _classify_status(lag, pending)
-
-            return SubscriptionStatus(
-                name=name,
-                handler_name=handler_cls.__name__,
-                subscription_type="stream",
-                stream_category=stream_category,
-                lag=lag,
-                pending=pending,
-                current_position=str(last_delivered_id) if last_delivered_id else None,
-                head_position=str(stream_length),
-                status=status,
-                consumer_count=consumer_count,
-                dlq_depth=dlq_depth,
+            return _redis_stream_status(
+                cast(_RedisStyleBroker, base_broker),
+                name,
+                handler_cls.__name__,
+                "stream",
+                stream_category,
+                consumer_group,
             )
     except Exception as exc:  # noqa: BLE001 - status probe: any fault means unknown
         logger.debug(
             "Error collecting stream subscription status for %s: %s", name, exc
         )
         return _unknown_status(name, handler_cls.__name__, "stream", stream_category)
+
+
+class _GroupReading(NamedTuple):
+    """What ``XINFO GROUPS`` reports for one consumer group on one stream."""
+
+    pending: int = 0
+    last_delivered_id: str | None = None
+    lag: int | None = None
+    consumer_count: int = 0
+
+
+def _redis_stream_status(
+    broker: _RedisStyleBroker,
+    name: str,
+    handler_name: str,
+    subscription_type: Literal["stream", "broker"],
+    stream: str,
+    consumer_group: str,
+) -> SubscriptionStatus:
+    """Build a status from a Redis stream's length, consumer group and DLQ.
+
+    Only a ``"stream"`` subscription reads a DLQ depth. A ``"broker"`` one
+    reports 0.
+    """
+    redis_conn = broker.redis_instance
+
+    stream_length = _stream_length(redis_conn, stream)
+    group = _read_group(broker, stream, consumer_group)
+
+    lag = group.lag
+    # Fallback: count messages after last-delivered-id via xrange
+    if lag is None:
+        lag = _count_remaining(redis_conn, stream, group.last_delivered_id)
+
+    dlq_depth = _dlq_depth(redis_conn, stream) if subscription_type == "stream" else 0
+
+    return SubscriptionStatus(
+        name=name,
+        handler_name=handler_name,
+        subscription_type=subscription_type,
+        stream_category=stream,
+        lag=lag,
+        pending=group.pending,
+        current_position=str(group.last_delivered_id)
+        if group.last_delivered_id
+        else None,
+        head_position=str(stream_length),
+        status=_classify_status(lag, group.pending),
+        consumer_count=group.consumer_count,
+        dlq_depth=dlq_depth,
+    )
+
+
+def _read_group(
+    broker: _RedisStyleBroker, stream: str, consumer_group: str
+) -> _GroupReading:
+    """Read one consumer group's counters, or empty ones when they cannot be read."""
+    try:
+        for g in broker.redis_instance.xinfo_groups(stream):
+            gname = broker._get_field_value(g, "name")
+            if gname == consumer_group:
+                return _GroupReading(
+                    pending=broker._get_field_value(g, "pending", convert_to_int=True)
+                    or 0,
+                    last_delivered_id=broker._get_field_value(g, "last-delivered-id"),
+                    # Redis 7.0+ native lag field
+                    lag=broker._get_field_value(g, "lag", convert_to_int=True),
+                    consumer_count=broker._get_field_value(
+                        g, "consumers", convert_to_int=True
+                    )
+                    or 0,
+                )
+    # a status probe reports unknown lag instead of raising; logged
+    except Exception:
+        logger.debug(
+            "Could not read group %s on stream %s",
+            consumer_group,
+            stream,
+            exc_info=True,
+        )
+    return _GroupReading()
+
+
+def _stream_length(redis_conn: Any, stream: str) -> int:
+    """Return a stream's length, or 0 when it cannot be read."""
+    try:
+        length: int = redis_conn.xlen(stream)
+        return length
+    except Exception as exc:  # noqa: BLE001 - status probe: show length 0
+        logger.debug("Could not read length of %s: %r", stream, exc)
+        return 0
+
+
+def _count_remaining(
+    redis_conn: Any, stream: str, last_delivered_id: str | None
+) -> int | None:
+    """Count the entries after ``last_delivered_id``, or ``None`` when unknown."""
+    if last_delivered_id is None:
+        return None
+    try:
+        remaining = redis_conn.xrange(stream, min=f"({last_delivered_id}")
+    except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown
+        logger.debug("Could not count lag of %s: %r", stream, exc)
+        # Leave lag unknown rather than falling back to `pending`.
+        # With nothing pending that fallback yields lag=0, which
+        # classifies as "ok" and reports a subscription as healthy
+        # when its lag could not be read at all.
+        return None
+    return len(remaining)
+
+
+def _dlq_depth(redis_conn: Any, stream_category: str) -> int:
+    """Return the depth of a category's DLQ stream, or 0 when it cannot be read."""
+    try:
+        depth: int = redis_conn.xlen(f"{stream_category}:dlq")
+        return depth
+    except Exception as exc:  # noqa: BLE001 - status probe: show DLQ depth 0
+        logger.debug("Could not read DLQ depth of %s: %r", stream_category, exc)
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -597,83 +667,13 @@ def _collect_broker_status(
 
             # Try Redis-style introspection if available
             if hasattr(base_broker, "redis_instance"):
-                broker = cast(_RedisStyleBroker, base_broker)
-                redis_conn = broker.redis_instance
-
-                try:
-                    stream_length = redis_conn.xlen(stream_name)
-                except Exception as exc:  # noqa: BLE001 - status probe: show length 0
-                    logger.debug("Could not read length of %s: %r", stream_name, exc)
-                    stream_length = 0
-
-                pending = 0
-                consumer_count = 0
-                last_delivered_id: str | None = None
-                lag: int | None = None
-
-                try:
-                    groups = redis_conn.xinfo_groups(stream_name)
-                    for g in groups:
-                        gname = broker._get_field_value(g, "name")
-                        if gname == consumer_group:
-                            pending = (
-                                broker._get_field_value(
-                                    g, "pending", convert_to_int=True
-                                )
-                                or 0
-                            )
-                            last_delivered_id = broker._get_field_value(
-                                g, "last-delivered-id"
-                            )
-                            native_lag = broker._get_field_value(
-                                g, "lag", convert_to_int=True
-                            )
-                            if native_lag is not None:
-                                lag = native_lag
-                            consumer_count = (
-                                broker._get_field_value(
-                                    g, "consumers", convert_to_int=True
-                                )
-                                or 0
-                            )
-                            break
-                # a status probe reports unknown lag instead of raising; logged
-                except Exception:
-                    logger.debug(
-                        "Could not read group %s on stream %s",
-                        consumer_group,
-                        stream_name,
-                        exc_info=True,
-                    )
-
-                if lag is None and last_delivered_id is not None:
-                    try:
-                        remaining = redis_conn.xrange(
-                            stream_name, min=f"({last_delivered_id}"
-                        )
-                        lag = len(remaining)
-                    except Exception as exc:  # noqa: BLE001 - status probe: lag stays unknown
-                        logger.debug("Could not count lag of %s: %r", stream_name, exc)
-                        # See the stream path: an unknown lag must not be
-                        # reported as zero.
-                        lag = None
-
-                status = _classify_status(lag, pending)
-
-                return SubscriptionStatus(
-                    name=name,
-                    handler_name=handler_cls.__name__,
-                    subscription_type="broker",
-                    stream_category=stream_name,
-                    lag=lag,
-                    pending=pending,
-                    current_position=str(last_delivered_id)
-                    if last_delivered_id
-                    else None,
-                    head_position=str(stream_length),
-                    status=status,
-                    consumer_count=consumer_count,
-                    dlq_depth=0,
+                return _redis_stream_status(
+                    cast(_RedisStyleBroker, base_broker),
+                    name,
+                    handler_cls.__name__,
+                    "broker",
+                    stream_name,
+                    consumer_group,
                 )
 
             # Non-Redis brokers: use info() API
@@ -823,10 +823,47 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
         command handlers (one per stream category), projectors, process
         managers, broker subscribers, and outbox processors.
     """
-    statuses: list[SubscriptionStatus] = []
     config_resolver = ConfigResolver(domain)
 
-    # 1. Event handlers
+    return [
+        # 1. Event handlers
+        *_collect_event_handler_statuses(domain, config_resolver),
+        # 2. Command handlers — grouped by stream category
+        *_collect_command_handler_statuses(domain, config_resolver),
+        # 3. Projectors
+        *_collect_category_statuses(
+            domain, config_resolver, domain.registry.projectors
+        ),
+        # 4. Process managers
+        *_collect_category_statuses(
+            domain, config_resolver, domain.registry.process_managers
+        ),
+        # 5. Broker subscribers
+        *_collect_subscriber_statuses(domain),
+        # 6. Outbox processors
+        *_collect_outbox_statuses(domain),
+    ]
+
+
+def _collect_handler_status(
+    domain: Domain,
+    config_resolver: ConfigResolver,
+    name: str,
+    handler_cls: type[Any],
+    stream_category: str,
+) -> SubscriptionStatus:
+    """Collect one handler's status from the store its subscription type reads."""
+    config = config_resolver.resolve(handler_cls, stream_category=stream_category)
+    if config.subscription_type == SubscriptionType.EVENT_STORE:
+        return _collect_event_store_status(domain, name, handler_cls, stream_category)
+    return _collect_stream_status(domain, name, handler_cls, stream_category)
+
+
+def _collect_event_handler_statuses(
+    domain: Domain, config_resolver: ConfigResolver
+) -> list[SubscriptionStatus]:
+    """Collect one status per event handler whose stream category is known."""
+    statuses: list[SubscriptionStatus] = []
     for handler_name, record in domain.registry.event_handlers.items():
         handler_cls = record.cls
         try:
@@ -836,22 +873,18 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
                 "Leaving %s out of the subscription status", handler_name, exc_info=True
             )
             continue
-        config = config_resolver.resolve(handler_cls, stream_category=stream_category)
-
-        if config.subscription_type == SubscriptionType.EVENT_STORE:
-            statuses.append(
-                _collect_event_store_status(
-                    domain, handler_name, handler_cls, stream_category
-                )
+        statuses.append(
+            _collect_handler_status(
+                domain, config_resolver, handler_name, handler_cls, stream_category
             )
-        else:
-            statuses.append(
-                _collect_stream_status(
-                    domain, handler_name, handler_cls, stream_category
-                )
-            )
+        )
+    return statuses
 
-    # 2. Command handlers — grouped by stream category
+
+def _collect_command_handler_statuses(
+    domain: Domain, config_resolver: ConfigResolver
+) -> list[SubscriptionStatus]:
+    """Collect one status per stream category that has command handlers."""
     handlers_by_stream: dict[str, list[tuple[str, type[Any]]]] = defaultdict(list)
     for handler_name, record in domain.registry.command_handlers.items():
         handler_cls = record.cls
@@ -864,6 +897,7 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
             continue
         handlers_by_stream[stream_category].append((handler_name, handler_cls))
 
+    statuses: list[SubscriptionStatus] = []
     for stream_category, handlers in handlers_by_stream.items():
         _, first_handler_cls = handlers[0]
         display_name = f"commands:{stream_category}"
@@ -895,46 +929,29 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
                     consumer_group_name=dispatcher_fqn,
                 )
             )
+    return statuses
 
-    # 3. Projectors
-    for handler_name, record in domain.registry.projectors.items():
-        handler_cls = record.cls
-        for stream_category in handler_cls.meta_.stream_categories:
-            sub_name = f"{handler_name}-{stream_category}"
-            config = config_resolver.resolve(
-                handler_cls, stream_category=stream_category
-            )
-            if config.subscription_type == SubscriptionType.EVENT_STORE:
-                statuses.append(
-                    _collect_event_store_status(
-                        domain, sub_name, handler_cls, stream_category
-                    )
-                )
-            else:
-                statuses.append(
-                    _collect_stream_status(
-                        domain, sub_name, handler_cls, stream_category
-                    )
-                )
 
-    # 4. Process managers
-    for pm_name, record in domain.registry.process_managers.items():
-        pm_cls = record.cls
-        for stream_category in pm_cls.meta_.stream_categories:
-            sub_name = f"{pm_name}-{stream_category}"
-            config = config_resolver.resolve(pm_cls, stream_category=stream_category)
-            if config.subscription_type == SubscriptionType.EVENT_STORE:
-                statuses.append(
-                    _collect_event_store_status(
-                        domain, sub_name, pm_cls, stream_category
-                    )
-                )
-            else:
-                statuses.append(
-                    _collect_stream_status(domain, sub_name, pm_cls, stream_category)
-                )
+def _collect_category_statuses(
+    domain: Domain, config_resolver: ConfigResolver, records: Mapping[str, Any]
+) -> list[SubscriptionStatus]:
+    """Collect one status per stream category of each projector or process manager."""
+    return [
+        _collect_handler_status(
+            domain,
+            config_resolver,
+            f"{element_name}-{stream_category}",
+            record.cls,
+            stream_category,
+        )
+        for element_name, record in records.items()
+        for stream_category in record.cls.meta_.stream_categories
+    ]
 
-    # 5. Broker subscribers
+
+def _collect_subscriber_statuses(domain: Domain) -> list[SubscriptionStatus]:
+    """Collect one status per broker subscriber."""
+    statuses: list[SubscriptionStatus] = []
     for subscriber_name, record in domain.registry.subscribers.items():
         subscriber_cls = record.cls
         broker_name = subscriber_cls.meta_.broker
@@ -944,10 +961,6 @@ def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
                 domain, subscriber_name, subscriber_cls, stream, broker_name
             )
         )
-
-    # 6. Outbox processors
-    statuses.extend(_collect_outbox_statuses(domain))
-
     return statuses
 
 
@@ -1106,8 +1119,6 @@ def _collect_one_recovery_checkpoint(
     if not status.recovery_checkpoint_stream or not status.failed_positions_stream:
         return None
 
-    stale_positions: list[int] = []
-    any_unverified = False
     # A best-effort head, reported as context only (the per-position re-reads
     # decide staleness). Reuse the head the read-position collection already read,
     # and only read it from the store when that collection did not record one (it
@@ -1123,65 +1134,24 @@ def _collect_one_recovery_checkpoint(
             # Reading the head lets the recovery lane run even when the
             # read-position collection failed (its ``status`` then carries no
             # head), so a subscription with an unreadable read-position checkpoint
-            # but readable recovery streams is not skipped. A head-read failure
-            # must not block the scan, so fall back to the seeded head.
+            # but readable recovery streams is not skipped.
             if parsed_head is None:
-                try:
-                    head = store.stream_head_position(status.stream_category)
-                except Exception as exc:  # noqa: BLE001 - a head-read failure must not block the scan
-                    logger.debug(
-                        "Could not read stream head for %s: %s", status.name, exc
-                    )
-            if checkpoint_ahead_of_failed_stream(
+                head = _read_recovery_head(store, status, head)
+            if _recovery_checkpoint_ahead(
                 store,
+                status.name,
                 status.recovery_checkpoint_stream,
                 status.failed_positions_stream,
             ):
-                # A restore left the recovery checkpoint ahead of the failed
-                # stream it references (the checkpoint was captured after that
-                # stream). The failed stream reuses per-stream positions after
-                # such a truncation and the snapshot records only unresolved
-                # positions, not which ones were resolved, so the tracked set
-                # cannot be rebuilt reliably: re-reading the surviving records
-                # could resurrect a resolved position or miss one appended after
-                # the restore. Report it unverifiable rather than trust a set that
-                # may be wrong; the reset already refuses a non-stale finding.
-                logger.warning(
-                    "Recovery checkpoint for %s is ahead of its failed-positions "
-                    "stream; a restore left it inconsistent, so its recovery "
-                    "tracking cannot be verified.",
-                    status.name,
-                )
                 return _recovery_unknown(status, head)
             unresolved, _watermark, _read = reconstruct_unresolved(
                 store,
                 status.recovery_checkpoint_stream,
                 status.failed_positions_stream,
             )
-            # A position is stale when the recovery pass's own re-read would find
-            # nothing. Comparing the global position to the category head alone
-            # would miss a removed specific stream whose position still sits below
-            # the head (another aggregate has a later event). Re-read each on its
-            # own: a read error on one position (say a corrupt message in its
-            # stream) must not discard the stale entries already confirmed, which
-            # a plain comprehension would by aborting the whole scan.
-            for pos, info in unresolved.items():
-                try:
-                    found = read_recovery_message(
-                        store, status.stream_category, pos, info
-                    )
-                except Exception as exc:  # noqa: BLE001 - one bad position must not discard the rest
-                    logger.warning(
-                        "Could not re-read recovery position %s for %s: %s",
-                        pos,
-                        status.name,
-                        exc,
-                    )
-                    any_unverified = True
-                    continue
-                if not found:
-                    stale_positions.append(pos)
-            stale_positions.sort()
+            stale_positions, any_unverified = _find_stale_positions(
+                store, status, unresolved
+            )
     except Exception as exc:  # noqa: BLE001 - report any failure as unverified
         # The reconstruction (or a store-wide failure) can raise on its own: a
         # store error, or a corrupt checkpoint record left by a partial restore.
@@ -1212,6 +1182,72 @@ def _collect_one_recovery_checkpoint(
         unresolved=unresolved,
         watermark=_watermark,
     )
+
+
+def _read_recovery_head(store: Any, status: SubscriptionStatus, head: int) -> int:
+    """Return the category's head position, or ``head`` when it cannot be read."""
+    # A head-read failure must not block the scan, so fall back to the seeded head.
+    try:
+        position: int = store.stream_head_position(status.stream_category)
+        return position
+    except Exception as exc:  # noqa: BLE001 - a head-read failure must not block the scan
+        logger.debug("Could not read stream head for %s: %s", status.name, exc)
+        return head
+
+
+def _recovery_checkpoint_ahead(
+    store: Any, name: str, checkpoint_stream: str, failed_stream: str
+) -> bool:
+    """Return whether the recovery checkpoint is ahead of its failed stream, warning when it is."""
+    if not checkpoint_ahead_of_failed_stream(store, checkpoint_stream, failed_stream):
+        return False
+    # A restore left the recovery checkpoint ahead of the failed
+    # stream it references (the checkpoint was captured after that
+    # stream). The failed stream reuses per-stream positions after
+    # such a truncation and the snapshot records only unresolved
+    # positions, not which ones were resolved, so the tracked set
+    # cannot be rebuilt reliably: re-reading the surviving records
+    # could resurrect a resolved position or miss one appended after
+    # the restore. Report it unverifiable rather than trust a set that
+    # may be wrong; the reset already refuses a non-stale finding.
+    logger.warning(
+        "Recovery checkpoint for %s is ahead of its failed-positions "
+        "stream; a restore left it inconsistent, so its recovery "
+        "tracking cannot be verified.",
+        name,
+    )
+    return True
+
+
+def _find_stale_positions(
+    store: Any, status: SubscriptionStatus, unresolved: Mapping[int, Any]
+) -> tuple[list[int], bool]:
+    """Return the sorted positions whose message is gone, and whether any re-read failed."""
+    stale_positions: list[int] = []
+    any_unverified = False
+    # A position is stale when the recovery pass's own re-read would find
+    # nothing. Comparing the global position to the category head alone
+    # would miss a removed specific stream whose position still sits below
+    # the head (another aggregate has a later event). Re-read each on its
+    # own: a read error on one position (say a corrupt message in its
+    # stream) must not discard the stale entries already confirmed, which
+    # a plain comprehension would by aborting the whole scan.
+    for pos, info in unresolved.items():
+        try:
+            found = read_recovery_message(store, status.stream_category, pos, info)
+        except Exception as exc:  # noqa: BLE001 - one bad position must not discard the rest
+            logger.warning(
+                "Could not re-read recovery position %s for %s: %s",
+                pos,
+                status.name,
+                exc,
+            )
+            any_unverified = True
+            continue
+        if not found:
+            stale_positions.append(pos)
+    stale_positions.sort()
+    return stale_positions, any_unverified
 
 
 def _recovery_unknown(

@@ -206,32 +206,6 @@
     ]
   },
   {
-    "path": "src/protean/server/subscription_status.py",
-    "file_name": "subscription_status.py",
-    "functions": [
-      {
-        "name": "_collect_one_recovery_checkpoint",
-        "complexity": 18
-      },
-      {
-        "name": "_collect_stream_status",
-        "complexity": 20
-      },
-      {
-        "name": "_collect_broker_status",
-        "complexity": 25
-      },
-      {
-        "name": "collect_subscription_statuses",
-        "complexity": 28
-      },
-      {
-        "name": "_collect_partitioned_stream_status",
-        "complexity": 37
-      }
-    ]
-  },
-  {
     "path": "src/protean/server/supervisor.py",
     "file_name": "supervisor.py",
     "functions": [
