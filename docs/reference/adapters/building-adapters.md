@@ -50,8 +50,12 @@ for a complete guide with a worked Kafka example, including:
 
 ## Event Store and Cache Adapters
 
-Event store adapters extend `BaseEventStore`, implement stream write/read
-operations, and declare the guarantees they make on a `capabilities` property.
+Event store adapters extend `BaseEventStore`, which subclasses the
+`EventStorePort` protocol. An adapter implements the protocol's members:
+`write_message`, the reads by stream, category and whole store
+(`get_stream_messages`, `get_category_messages`, `get_all_messages`), the
+matching last-message reads, `stream_ids`, `ping`, `health`, `get_connection`
+and `clear`. It declares the guarantees it makes on a `capabilities` property.
 See [What each event store guarantees](./eventstore/index.md#what-each-event-store-guarantees).
 Cache adapters subclass the `CachePort` protocol, implement its key-value
 operations, and declare their capabilities through `CacheCapabilities`. An

@@ -52,6 +52,14 @@ class TestCategoryReads:
 
         assert _streams(store.get_category_messages("poweruser")) == ["poweruser-1"]
 
+    def test_category_read_includes_the_stream_named_as_the_category(self, test_domain):
+        store = test_domain.event_store.store
+        _write(store, "user", 0)
+        _write(store, "users-1", 1)
+        _write(store, "user-2", 2)
+
+        assert _streams(store.get_category_messages("user")) == ["user", "user-2"]
+
     def test_category_read_leaves_out_snapshot_streams(self, test_domain):
         store = test_domain.event_store.store
         _write(store, "user-1", 0)
@@ -120,6 +128,25 @@ class TestLastMessageReads:
         _write(store, "poweruser-1", 1)
 
         assert store.get_last_category_message("user")["stream_name"] == "user-1"
+
+    def test_last_category_message_leaves_out_longer_names_and_snapshots(
+        self, test_domain
+    ):
+        store = test_domain.event_store.store
+        _write(store, "user-1", 0)
+        _write(store, "users-1", 1)
+        store.write_message("user:snapshot-1", "SNAPSHOT", {"_version": 0})
+
+        assert store.get_last_category_message("user")["stream_name"] == "user-1"
+
+    def test_last_category_message_includes_the_stream_named_as_the_category(
+        self, test_domain
+    ):
+        store = test_domain.event_store.store
+        _write(store, "user-1", 0)
+        _write(store, "user", 1)
+
+        assert store.get_last_category_message("user")["stream_name"] == "user"
 
     def test_empty_scopes_return_none(self, test_domain):
         store = test_domain.event_store.store

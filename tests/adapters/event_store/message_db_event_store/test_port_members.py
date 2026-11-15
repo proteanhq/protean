@@ -3,7 +3,10 @@
 import pytest
 
 from protean import Domain
-from protean.adapters.event_store.message_db import MessageDBStore
+from protean.adapters.event_store.message_db import (
+    MessageDBStore,
+    _superuser_connection,
+)
 from protean.port.event_store import EventStoreHealth
 from tests.shared import MESSAGE_DB_PORT
 
@@ -44,6 +47,13 @@ class TestCategoryReads:
 
         assert _streams(store.get_category_messages("poweruser")) == ["poweruser-1"]
 
+    def test_category_read_includes_the_stream_named_as_the_category(self, store):
+        _write(store, "user", 0)
+        _write(store, "users-1", 1)
+        _write(store, "user-2", 2)
+
+        assert _streams(store.get_category_messages("user")) == ["user", "user-2"]
+
 
 class TestConsumerGroups:
     def test_two_members_split_the_category_into_disjoint_halves(self, store):
@@ -75,6 +85,15 @@ class TestConsumerGroups:
             "user-2",
             "user-3",
         ]
+
+    @pytest.mark.parametrize(
+        "group",
+        [{"consumer_group_member": 0}, {"consumer_group_size": 2}],
+        ids=["member-only", "size-only"],
+    )
+    def test_a_lone_group_argument_raises_value_error(self, store, group):
+        with pytest.raises(ValueError, match="must be given together"):
+            store.get_category_messages("user", **group)
 
 
 class TestLastMessageReads:
@@ -119,12 +138,32 @@ class TestHealth:
         assert health.pool["overflow"] == 0
         assert health.pool["checked_in"] >= 1
 
-    def test_health_before_first_use_has_no_pool(self, test_domain):
+    def test_pool_stats_are_none_before_first_use(self, test_domain):
         store = MessageDBStore(
             "default", test_domain, dict(test_domain.config["event_store"])
         )
 
         assert store._pool_stats() is None
+
+    def test_ping_replaces_a_connection_the_server_dropped(self, store):
+        assert store.ping() is True
+        pool = store.get_connection().connection_pool._connection_pool
+        assert len(pool._pool) == 1
+        dropped = pool._pool[0]
+
+        admin = _superuser_connection(store.config["database_uri"])
+        try:
+            with admin.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_terminate_backend(%s)", (dropped.get_backend_pid(),)
+                )
+            admin.commit()
+        finally:
+            admin.close()
+
+        assert store.ping() is True
+        assert dropped.closed
+        assert dropped not in pool._pool
 
 
 @pytest.mark.no_test_domain

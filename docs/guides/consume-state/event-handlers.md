@@ -250,8 +250,9 @@ already contains `::` stay as written.
     [Stream Categories](../../concepts/async-processing/stream-categories.md) guide.
 
 - **`source_stream`**: When specified, the event handler only consumes events
-whose `origin_stream` matches this value. This option filters events by what
-originally triggered them. Use it when the same event type can be raised from
+whose `origin_stream` is in this category. This option filters events by what
+originally triggered them. A value without `::` gets the domain prefix, like
+`stream_category`. Use it when the same event type can be raised from
 different contexts and you only want to react to a specific trigger.
 
     ```python

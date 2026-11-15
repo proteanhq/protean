@@ -127,3 +127,17 @@ def test_an_explicit_category_matches_the_partition_key_of_its_events(test_domai
 
     assert test_domain._partition_keys == {"test::order": "client_id"}
     assert OrderHandler.meta_.stream_category in test_domain._partition_keys
+
+
+def test_a_bare_source_stream_gets_the_domain_prefix(test_domain):
+    test_domain.register(ReportHandler, stream_category="$all", source_stream="user")
+
+    assert ReportHandler.meta_.source_stream == "test::user"
+
+
+def test_a_qualified_source_stream_stays_as_written(test_domain):
+    test_domain.register(
+        ReportHandler, stream_category="$all", source_stream="identity::user"
+    )
+
+    assert ReportHandler.meta_.source_stream == "identity::user"

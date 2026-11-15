@@ -172,7 +172,7 @@ class TaskAuditor:
         domain.repository_for(AuditLog).add(AuditLog(event_type=event.__class__.__name__))
 ```
 
-The domain adds its name to a plain string, so `"task"` registers as `shop::task` and matches today. The string does not follow the aggregate. When `Task` is renamed or sets its own `stream_category`, the handler still registers without error and stops receiving events.
+The domain adds its name to a plain string, so `"task"` registers as `shop::task` and matches today. A hard-coded string keeps its value when the aggregate changes. When `Task` is renamed or sets its own `stream_category`, the handler still registers without error and receives no events.
 
 ## 7. Handling Another Cluster's Event (`EVENT_HANDLER_FOREIGN_EVENT`)
 

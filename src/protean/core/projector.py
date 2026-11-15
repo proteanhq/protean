@@ -22,7 +22,7 @@ class BaseProjector(Element, HandlerMixin, OptionsMixin):
     |--------|------|-------------|
     | ``projector_for`` | ``type`` | The projection class this projector maintains. Required. |
     | ``aggregates`` | ``list`` | Aggregate classes whose events this projector listens to. |
-    | ``stream_categories`` | ``list`` | Explicit stream categories to subscribe to. Overrides ``aggregates``. |
+    | ``stream_categories`` | ``list`` | Explicit stream categories to subscribe to. Overrides ``aggregates``. A value without ``::`` gets the domain prefix; ``$all`` stays as written. |
     | ``retries`` | ``int`` | Max retry attempts on transient exceptions. Overrides ``server.transient_retry``; ``None`` defers to it. |
     | ``backoff`` | ``str`` | Retry delay strategy: ``"exponential"``, ``"linear"``, or ``"fixed"``. |
     | ``retry_exceptions`` | ``list`` | Exception types (classes or dotted paths) treated as transient for retry. |
@@ -125,6 +125,16 @@ def projector_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
         raise IncorrectUsageError(
             f"Projector `{element_cls.__name__}` needs to be associated with at least one Aggregate or Stream Category"
         )
+
+    # A category without ``::`` names a stream inside this domain, as on an
+    # event handler. A category taken from a registered aggregate already
+    # carries the prefix.
+    element_cls.meta_.stream_categories = [
+        category
+        if category == "$all" or "::" in category
+        else f"{domain.normalized_name}::{category}"
+        for category in element_cls.meta_.stream_categories
+    ]
 
     return element_cls
 

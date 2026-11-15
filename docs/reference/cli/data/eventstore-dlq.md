@@ -38,7 +38,7 @@ one filtered by stream category.
 protean eventstore dlq list --domain=my_domain
 
 # One subscription (by stream category)
-protean eventstore dlq list --subscription=order --domain=my_domain
+protean eventstore dlq list --subscription=shop::order --domain=my_domain
 
 # Machine-readable JSON
 protean eventstore dlq list --domain=my_domain --json
@@ -49,7 +49,7 @@ protean eventstore dlq list --domain=my_domain --json
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
-| `--subscription` | Filter by stream category (e.g. `order`) | All subscriptions |
+| `--subscription` | Filter by stream category (e.g. `shop::order`) | All subscriptions |
 | `--json` | Output the result envelope instead of a table | `False` |
 
 **Output**

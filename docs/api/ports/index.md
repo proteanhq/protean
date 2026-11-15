@@ -24,13 +24,14 @@ For concrete adapter documentation, see
 
     [:material-arrow-right-box: BaseBroker](broker.md)
 
--   **:material-history: BaseEventStore**
+-   **:material-history: EventStorePort**
 
     ---
 
-    Event store interface for event-sourced persistence.
+    Event store interface for event-sourced persistence, with the
+    `BaseEventStore` class that event store adapters extend.
 
-    [:material-arrow-right-box: BaseEventStore](event-store.md)
+    [:material-arrow-right-box: EventStorePort](event-store.md)
 
 -   **:material-cached: CachePort**
 

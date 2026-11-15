@@ -7,6 +7,7 @@ from urllib.parse import parse_qsl, urlparse
 
 import psycopg2
 from message_db.client import MessageDB
+from message_db.connection import ConnectionPool
 
 from protean.exceptions import ConfigurationError, ExpectedVersionError
 from protean.port.event_store import (
@@ -157,8 +158,12 @@ class MessageDBStore(BaseEventStore):
         consumer_group_member: int | None = None,
         consumer_group_size: int | None = None,
     ) -> list[RawMessage]:
-        # Message DB's ``category()`` matches the category exactly, so
-        # ``poweruser`` streams never answer a read of ``user``.
+        if (consumer_group_member is None) != (consumer_group_size is None):
+            raise ValueError(
+                "consumer_group_member and consumer_group_size must be given together"
+            )
+        # Message DB's ``category()`` matches the category exactly, so a read
+        # of ``user`` returns no ``poweruser`` streams.
         return _raw(
             self.get_connection().read_category(
                 category,
@@ -207,21 +212,19 @@ class MessageDBStore(BaseEventStore):
         return identifiers
 
     def ping(self) -> bool:
-        """Run ``SELECT 1`` on a pooled connection. Never raises."""
+        """Run ``SELECT 1`` on a pooled connection. Never raises.
+
+        A pooled connection that the server dropped while it stayed up is
+        closed, and the check runs once more on a fresh connection.
+        """
         try:
             pool = self.get_connection().connection_pool
-            conn = pool.get_connection()
-            try:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT 1")
-                    cursor.fetchone()
-                conn.rollback()
-            finally:
-                pool.release(conn)
+            return _select_one(pool) or _select_one(pool)
         except Exception:  # an unreachable database reports False; logged
-            logger.warning("Message DB ping failed", exc_info=True)
+            # Health checks call this on every poll, so an outage logs at
+            # debug instead of a warning per poll.
+            logger.debug("Message DB ping failed", exc_info=True)
             return False
-        return True
 
     def health(self) -> EventStoreHealth:
         return EventStoreHealth(reachable=self.ping(), pool=self._pool_stats())
@@ -270,7 +273,7 @@ _ALL_SQL = (
 )
 
 # ``category()`` is Message DB's own function, so the match is exact. A
-# ``LIKE 'user%'`` filter would also match ``poweruser``.
+# ``LIKE 'user%'`` filter would also match ``users-1``.
 _LAST_IN_CATEGORY_SQL = (
     _SELECT_COLUMNS + "WHERE category(stream_name) = %(stream_name)s "
     "ORDER BY global_position DESC "
@@ -278,6 +281,25 @@ _LAST_IN_CATEGORY_SQL = (
 )
 
 _LAST_SQL = _SELECT_COLUMNS + "ORDER BY global_position DESC LIMIT %(batch_size)s"
+
+
+def _select_one(pool: ConnectionPool) -> bool:
+    """Run ``SELECT 1`` on one pooled connection.
+
+    Returns False and closes the connection when the query fails. Raises when
+    the pool cannot hand out a connection.
+    """
+    conn = pool.get_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        conn.rollback()
+    except psycopg2.Error:
+        pool.release(conn, close=True)
+        return False
+    pool.release(conn)
+    return True
 
 
 def _raw(rows: list[dict[str, Any]]) -> list[RawMessage]:

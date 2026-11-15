@@ -19,6 +19,7 @@ from protean.port.event_store import (
 from protean.utils import OptionalStdlibDatetime
 from protean.utils.eventing import Metadata
 from protean.utils.globals import _domain_now, current_domain
+from protean.utils.query import Q
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -135,16 +136,14 @@ class MemoryMessageRepository(BaseRepository):
     ) -> list[RawMessage]:
         """Read a category by ``global_position`` (ADR-0024).
 
-        A category has no ``-``, so the ``<category>-`` prefix matches exactly
-        that category's streams. It leaves out a longer category that ends with
-        the same text (``poweruser`` for ``user``) and the snapshot streams
-        (``<category>:snapshot-<id>``).
+        A category has no ``-``, so a stream named ``<category>`` or starting
+        with ``<category>-`` is in exactly that category. The match leaves out a
+        longer category that shares the text (``poweruser`` or ``users`` for
+        ``user``) and the snapshot streams (``<category>:snapshot-<id>``).
         """
         q = (
             self._query()
-            .filter(
-                stream_name__startswith=f"{category}-", global_position__gte=position
-            )
+            .filter(_in_category(category), global_position__gte=position)
             .order_by("global_position")
         )
         return _rows(q.limit(limit))
@@ -166,15 +165,17 @@ class MemoryMessageRepository(BaseRepository):
         return _first(q.limit(1))
 
     def last_in_category(self, category: str) -> RawMessage | None:
-        q = (
-            self._query()
-            .filter(stream_name__startswith=f"{category}-")
-            .order_by("-global_position")
-        )
+        q = self._query().filter(_in_category(category)).order_by("-global_position")
         return _first(q.limit(1))
 
     def last_in_store(self) -> RawMessage | None:
         return _first(self._query().order_by("-global_position").limit(1))
+
+
+def _in_category(category: str) -> Q:
+    # Message DB's ``category(stream_name)`` is the text before the first
+    # ``-``, so the stream ``user`` is in category ``user`` too.
+    return Q(stream_name=category) | Q(stream_name__startswith=f"{category}-")
 
 
 def _rows(query: Any) -> list[RawMessage]:

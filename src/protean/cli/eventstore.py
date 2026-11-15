@@ -436,7 +436,7 @@ def list_dlq(
     domain: Annotated[str, typer.Option(help="Domain module path")] = ".",
     subscription: Annotated[
         str | None,
-        typer.Option(help="Filter by stream category (e.g. 'order')"),
+        typer.Option(help="Filter by stream category (e.g. 'shop::order')"),
     ] = None,
     output_json: Annotated[
         bool,

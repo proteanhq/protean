@@ -235,6 +235,8 @@ class EventStorePort(Protocol):
         Raises:
             NotSupportedError: When a consumer-group argument is given and the
                 adapter does not declare ``CONSUMER_GROUPS``.
+            ValueError: When an adapter that declares ``CONSUMER_GROUPS``
+                gets only one of the two consumer-group arguments.
         """
 
     @abstractmethod

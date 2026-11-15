@@ -47,14 +47,17 @@ class _RecordingStore(BaseEventStore):
         self.calls.append(("get_all_messages", (position, limit)))
         return []
 
-    def get_last_stream_message(self, stream_name: str) -> None:
+    def get_last_stream_message(self, stream_name: str) -> Any:
         self.calls.append(("get_last_stream_message", (stream_name,)))
+        return ("stream", stream_name)
 
-    def get_last_category_message(self, category: str) -> None:
+    def get_last_category_message(self, category: str) -> Any:
         self.calls.append(("get_last_category_message", (category,)))
+        return ("category", category)
 
-    def get_last_message(self) -> None:
+    def get_last_message(self) -> Any:
         self.calls.append(("get_last_message", ()))
+        return ("all",)
 
     # Members the dispatch never calls.
     def write_message(self, *args: Any, **kwargs: Any) -> int:  # pragma: no cover
@@ -112,20 +115,24 @@ class TestReadLastRaw:
     def test_all_reads_the_newest_row_of_the_store(self):
         store = _RecordingStore()
 
-        store._read_last_raw("$all")
-
+        assert store._read_last_raw("$all") == ("all",)
         assert store.calls == [("get_last_message", ())]
 
     def test_name_without_a_dash_reads_the_newest_row_of_a_category(self):
         store = _RecordingStore()
 
-        store._read_last_raw("test::user")
-
+        assert store._read_last_raw("test::user") == ("category", "test::user")
         assert store.calls == [("get_last_category_message", ("test::user",))]
 
     def test_name_with_a_dash_reads_the_newest_row_of_one_stream(self):
         store = _RecordingStore()
 
-        store._read_last_raw("test::user-1")
-
+        assert store._read_last_raw("test::user-1") == ("stream", "test::user-1")
         assert store.calls == [("get_last_stream_message", ("test::user-1",))]
+
+    def test_snapshot_stream_reads_the_newest_row_of_one_stream(self):
+        store = _RecordingStore()
+        stream = "test::user:snapshot-1"
+
+        assert store._read_last_raw(stream) == ("stream", stream)
+        assert store.calls == [("get_last_stream_message", (stream,))]
