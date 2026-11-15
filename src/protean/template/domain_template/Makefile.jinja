@@ -1,4 +1,4 @@
-.PHONY: help install test test-unit test-integration test-bdd test-cov lint format typecheck clean run shell server migrate
+.PHONY: help install test test-unit test-integration test-bdd test-cov lint format typecheck clean run shell server
 
 # Default target
 help: ## Show this help message
@@ -121,9 +121,20 @@ docker-prod-down: ## Stop production stack
 # Development
 dev: docker-up ## Start development environment (Docker services only)
 
+{%- if database in ["postgresql", "sqlite", "mssql"] %}
+
 # Database
-migrate: ## Run database migrations
-	@echo "Add your migration command here"
+.PHONY: db-migrate db-upgrade db-check
+
+db-migrate: ## Write a migration for model changes (m="message")
+	uv run protean db migrate -m "$(m)"
+
+db-upgrade: ## Apply migrations to the database
+	uv run protean db upgrade
+
+db-check: ## Check the database matches the table definitions
+	uv run protean db check
+{%- endif %}
 
 # Cleanup
 clean: ## Clean up generated files

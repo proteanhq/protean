@@ -133,6 +133,10 @@ plain `alembic` run, its value is used in place of `protean_domain`.
 A plain `alembic` run makes the same checks on the provider as
 `protean db init`.
 
+A project that [`protean new`](../project/new.md#schema-migrations) creates on
+the `postgresql`, `sqlite` or `mssql` database already has this folder, for the
+`default` provider.
+
 The command refuses, and writes nothing, when:
 
 - The provider does not declare the `SCHEMA_MIGRATIONS` capability. The

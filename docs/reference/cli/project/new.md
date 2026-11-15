@@ -51,7 +51,8 @@ clears an existing target the same way a plain `protean new` does.
 ### Behavior Modifiers
 
 - `--dry-run`: Prints the project-relative path of every file the command
-would create, one per line, and writes nothing. The target directory is left
+would create, one per line, and writes nothing. An empty folder the command
+would create is listed with a trailing `/`. The target directory is left
 alone whether or not it already has files in it, and `--force` does not clear
 it under a dry run.
 - `--force`, `-f`: Forces the command to run even if it would overwrite
@@ -77,6 +78,9 @@ The command creates a complete project structure with the following components:
 - `CLAUDE.md`: A one-line bridge (`@AGENTS.md`) that tells Claude to read the
   `AGENTS.md` guidance. Also maintained by `protean dx`.
 - `Makefile`: Common development tasks
+- `migrations/`: The schema migrations folder. Only a project on the
+  `postgresql`, `sqlite` or `mssql` database gets it. See
+  [Schema migrations](#schema-migrations).
 - `.gitignore`: Git ignore patterns
 - `.pre-commit-config.yaml`: Pre-commit hooks configuration
 - `.env.example`: Environment variables template
@@ -184,6 +188,28 @@ on day one.
 ### CI/CD Configuration
 
 - `.github/workflows/ci.yml`: GitHub Actions CI pipeline
+
+### Schema migrations
+
+A project on the `postgresql`, `sqlite` or `mssql` database starts with three
+additions for schema migrations:
+
+- The `migrations/` folder. It holds the same files
+  [`protean db init`](../data/database.md#protean-db-init) writes from the
+  project root, for the `default` provider. `migrations/versions/` is empty:
+  writing the first migration compares the models with a running database, so
+  `protean new` leaves that step to you.
+- Three `Makefile` targets: `make db-migrate m="message"` writes a migration,
+  `make db-upgrade` applies the migrations and `make db-check` checks that the
+  database matches the table definitions. They run `protean db migrate`,
+  `protean db upgrade` and `protean db check` with no `--domain`.
+- A CI step that runs `protean db upgrade` and then `protean db check` after
+  the tests. It runs only when `migrations/versions/` holds a migration, so a
+  new project's CI passes before its first migration.
+
+A `memory` or `elasticsearch` project gets none of the three.
+
+The `--dry-run` list shows the empty folder as `migrations/versions/`.
 
 ## Generated Modules
 

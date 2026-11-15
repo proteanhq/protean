@@ -20,6 +20,9 @@
 - [Available Commands](#available-commands)
 - [Testing](#testing)
 - [Code Quality](#code-quality)
+{%- if database in ["postgresql", "sqlite", "mssql"] %}
+- [Schema Migrations](#schema-migrations)
+{%- endif %}
 - [Configuration](#configuration)
 - [Contributing](#contributing)
 
@@ -228,6 +231,16 @@ make check            # Run all checks (lint, typecheck, test)
 make shell            # Start Protean interactive shell
 make server           # Start Protean message processing server
 ```
+{%- if database in ["postgresql", "sqlite", "mssql"] %}
+
+### Database Commands
+
+```bash
+make db-migrate m="add orders"  # Write a migration for model changes
+make db-upgrade                 # Apply migrations to the database
+make db-check                   # Check the database matches the table definitions
+```
+{%- endif %}
 
 ### Docker Commands
 
@@ -400,6 +413,32 @@ make pre-commit
 # Run specific hook
 uv run pre-commit run ruff --all-files
 ```
+{%- if database in ["postgresql", "sqlite", "mssql"] %}
+
+## Schema Migrations
+
+The `migrations/` folder holds the Alembic setup for the `default` database. It has no migration yet, because writing one compares the models with a running database.
+
+1. Make sure the database is reachable (SQLite needs no server), then write the first migration:
+   ```bash
+   make db-migrate m="initial"
+   ```
+2. Review the new file in `migrations/versions/` and commit it.
+3. Apply it:
+   ```bash
+   make db-upgrade
+   ```
+4. Confirm the database matches the table definitions:
+   ```bash
+   make db-check
+   ```
+
+Repeat these steps whenever you change a model.
+
+The tests use the same database as the app and drop its tables when they finish. Alembic's record of the applied migration stays, so after a test run `make db-upgrade` changes nothing and `make db-check` reports the missing tables. Run `uv run protean db setup` to create the tables again.
+
+Once `migrations/versions/` holds a migration, CI runs `protean db upgrade` and then `protean db check`, and fails when a model change has no migration.
+{%- endif %}
 
 ## Configuration
 
