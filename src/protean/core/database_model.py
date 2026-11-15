@@ -30,8 +30,8 @@ class BaseDatabaseModel(Element, OptionsMixin):
     maps each attribute back by name, using ``referenced_as`` when it is set.
     Override ``to_entity()`` only when the storage needs special handling.
 
-    It satisfies ``DatabaseModelPort``, the class methods the framework calls
-    on an adapter's model class.
+    A concrete subclass satisfies ``DatabaseModelPort``, which lists the class
+    methods the framework calls on an adapter's model class.
 
     **Meta Options**
 
@@ -100,9 +100,12 @@ class BaseDatabaseModel(Element, OptionsMixin):
     def _get_value(cls, item: Any, key: str) -> Any:
         """Extract a single value from a storage record by key.
 
+        ``to_entity()`` and ``to_records()`` read each value through it.
         Override in adapter subclasses for storage-specific access patterns.
         The default uses ``getattr()``, which works for object-based records
-        (e.g. SQLAlchemy ORM instances).
+        (e.g. SQLAlchemy ORM instances). The unique-key check in
+        ``BaseDAO.save_if_absent()`` reads through the DAO's
+        ``_stored_value()`` instead.
         """
         return getattr(item, key)
 

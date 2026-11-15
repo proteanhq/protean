@@ -3916,7 +3916,7 @@ class DefaultLookup(LookupPort):
         source: typing.Any,
         target: typing.Any,
         *,
-        database_model_cls: typing.Any = None,
+        database_model_cls: type[DatabaseModelPort] | None = None,
     ) -> None:
         """Source is the column name (LHS) and target the value (RHS) of the
         comparison."""

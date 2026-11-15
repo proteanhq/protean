@@ -184,7 +184,7 @@ class ElasticsearchModel(Document, BaseDatabaseModel):
 
     It satisfies `DatabaseModelPort` structurally. Subclassing the Port raises
     the metaclass conflict `TypeError`, because the metaclass of
-    `elasticsearch_dsl`'s `Document` and the Protocol metaclass are unrelated.
+    `elasticsearch.dsl`'s `Document` and the Protocol metaclass are unrelated.
     """
 
     # Precomputed set of field names needing a ``.keyword`` subfield for exact
@@ -821,6 +821,16 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
 _DEFAULT_ES_PORT = 9200
 
 
+def _index_model(model_cls: type[DatabaseModelPort]) -> type[ElasticsearchModel]:
+    """`model_cls` typed as the `ElasticsearchModel` subclass it is.
+
+    `ESProvider.model_for` builds every model it returns from
+    `ElasticsearchModel`, so the narrowing holds for each element the provider
+    owns.
+    """
+    return typing.cast("type[ElasticsearchModel]", model_cls)
+
+
 def _normalize_host(host: str, scheme: str) -> str:
     """Return ``host`` as a URL the client accepts.
 
@@ -1128,7 +1138,7 @@ class ESProvider(BaseProvider, ProviderPort):
                 continue
 
             repo = self.domain.repository_for(cls)
-            database_model_cls = repo._database_model
+            database_model_cls = _index_model(repo._database_model)
             if conn.indices.exists(index=database_model_cls._index._name):
                 # Delete all documents from the index using delete_by_query with match_all
                 # This clears the data but keeps the index structure
@@ -1172,7 +1182,9 @@ class ESProvider(BaseProvider, ProviderPort):
             if not self.owns(cls):
                 continue
 
-            database_model_cls = current_domain.repository_for(cls)._database_model
+            database_model_cls = _index_model(
+                current_domain.repository_for(cls)._database_model
+            )
             if not database_model_cls._index.exists(using=conn):
                 # We use database_model_cls here to ensure the index is created along with mappings
                 database_model_cls.init(using=conn)
@@ -1194,7 +1206,9 @@ class ESProvider(BaseProvider, ProviderPort):
             if not self.owns(cls):
                 continue
 
-            database_model_cls = self.domain.repository_for(cls)._database_model
+            database_model_cls = _index_model(
+                self.domain.repository_for(cls)._database_model
+            )
             if database_model_cls._index.exists(using=conn):
                 conn.indices.delete(index=database_model_cls._index._name)
 

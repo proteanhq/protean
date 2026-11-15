@@ -495,7 +495,9 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
             meta_ = Options()
             meta_.part_of = entity_cls
 
-            custom_attrs.update({"meta_": meta_})
+            # ``type()`` takes ``__module__`` from the calling frame, which is
+            # ``abc`` because ``MemoryModel``'s metaclass is the Protocol one.
+            custom_attrs.update({"meta_": meta_, "__module__": __name__})
             # User class is in the MRO; custom methods/properties resolve via standard Python MRO
             decorated_database_database_model_cls = type(
                 database_model_cls.__name__,
@@ -524,6 +526,7 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
 
             attrs = {
                 "meta_": meta_,
+                "__module__": __name__,
             }
             # Auto-generated model; no user-defined attributes to carry over
             database_model_cls = type(

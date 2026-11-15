@@ -1380,8 +1380,8 @@ class BaseDAO(metaclass=ABCMeta):
     def _stored_value(self, model_obj: Any, name: str) -> Any:
         """The value ``model_obj`` stores under ``name``.
 
-        The default reads an attribute. A DAO whose records are not objects
-        overrides it.
+        The default reads an attribute. A DAO whose records it cannot read by
+        attribute, such as dicts, overrides it.
         """
         return getattr(model_obj, name)
 

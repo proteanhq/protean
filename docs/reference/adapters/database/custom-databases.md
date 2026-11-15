@@ -84,8 +84,19 @@ underscored internals:
 the entity unless another row already holds its unique key, and returns `None`
 in that case. The unique key is the fields of each `Index` declared with
 `unique=True` and no `where` predicate. The outbox writes its rows through
-`save_if_absent`. The default implementation checks for the key with `_count`,
-then saves. Two writers that check at the same moment can both pass the check.
+`save_if_absent`. The default implementation reads each key value from the
+record `from_entity` returns with `_stored_value(model_obj, name)`, checks for
+the key with `_count`, then saves. `_stored_value` reads an attribute. When
+your records are dicts or another shape it cannot read by attribute, override
+it, as the memory adapter's `DictDAO` does:
+
+```python
+# fragment
+def _stored_value(self, model_obj, name):
+    return model_obj[name]
+```
+
+Two writers that check at the same moment can both pass the check.
 If your store has a unique index on the key, it rejects the second write with
 its own error. If it has none, both rows are kept. Override `save_if_absent` so
 that a lost race also returns `None`, for example with a conditional insert, or
@@ -109,8 +120,10 @@ needs it:
 | `to_records(items, fields)` | Build read-only records holding only `fields`, for `QuerySet.only()` |
 
 Subclass `BaseDatabaseModel` first and then `DatabaseModelPort`. When your
-model also subclasses a database library's base class with its own metaclass,
-Python raises a metaclass conflict `TypeError` for the Port. Leave the Port
+model also subclasses a database library's base class whose metaclass is not
+`type` or `abc.ABCMeta` itself, Python raises a metaclass conflict `TypeError`
+for the Port. A metaclass derived from `ABCMeta` conflicts too, unless it
+derives from the Protocol metaclass. Leave the Port
 out of the bases in that case and check the class with a typed assignment
 that mypy verifies, such as
 `_MODEL_PORT_CHECK: type[DatabaseModelPort] = YourModel`.

@@ -173,10 +173,9 @@ class ProviderHealth:
 class DatabaseModelPort(Protocol):
     """The class methods the framework calls on an adapter's database model.
 
-    A DAO converts an entity to a record with `from_entity` on every write,
-    and a query converts records back with `to_entity` or `to_records`. Every
-    member is a class method, so the framework works with the model class and
-    never with an instance of it.
+    A DAO converts an entity to a record with `from_entity` on each
+    single-entity write, and a query converts records back with `to_entity` or
+    `to_records`. Protean calls each member on the model class.
 
     `BaseDatabaseModel`, the class a user subclasses with
     `@domain.database_model`, satisfies this Protocol structurally.
