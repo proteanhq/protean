@@ -13,6 +13,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.fields import HasMany, Integer, String
+from tests.shared import provider_adapter
 
 
 class SchemaUser(BaseAggregate):
@@ -41,7 +42,7 @@ class TestCreateDatabaseArtifacts:
 
     def test_create_artifacts_enables_persistence(self, test_domain):
         """After create_schema, data can be persisted and retrieved."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         provider.create_schema()
 
         try:
@@ -57,7 +58,7 @@ class TestCreateDatabaseArtifacts:
 
     def test_create_artifacts_is_idempotent(self, test_domain):
         """Calling create_schema multiple times does not error."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         try:
             provider.create_schema()
@@ -76,7 +77,7 @@ class TestCreateDatabaseArtifacts:
         test_domain.register(SchemaLineItem, part_of=SchemaOrder)
         test_domain.init(traverse=False)
 
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         try:
             provider.create_schema()
@@ -104,14 +105,14 @@ class TestDropDatabaseArtifacts:
 
     def test_drop_artifacts_is_idempotent(self, test_domain):
         """Calling drop_schema multiple times does not error."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         provider.create_schema()
         provider.drop_schema()
         provider.drop_schema()  # Should not raise
 
     def test_has_table_true_after_create(self, test_domain):
         """After create_schema, has_table() returns True."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         try:
             provider.create_schema()
@@ -122,7 +123,7 @@ class TestDropDatabaseArtifacts:
 
     def test_has_table_false_after_drop(self, test_domain):
         """After drop_schema, has_table() returns False."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         provider.create_schema()
         provider.drop_schema()
 

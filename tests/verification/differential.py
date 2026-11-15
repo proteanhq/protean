@@ -50,6 +50,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.domain import Domain
 from protean.fields import Integer, String
+from tests.shared import provider_adapter
 from tests.verification.strategies import _names, property_settings
 
 # A single observation (one operation's outcome, or the final snapshot) and a
@@ -132,12 +133,12 @@ def build_parity_domain(
     domain.init(traverse=False)
 
     if bug is not None:
-        _install_memory_bug(domain.providers["default"], bug)
+        _install_memory_bug(provider_adapter(domain, "default"), bug)
 
     with domain.domain_context():
         repo = domain.repository_for(account_cls)
         _ = repo._dao  # materialize the model before creating tables
-        domain.providers["default"].create_schema()
+        provider_adapter(domain, "default").create_schema()
 
     return domain, repo
 

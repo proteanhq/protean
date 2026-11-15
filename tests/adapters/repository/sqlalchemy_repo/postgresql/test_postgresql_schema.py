@@ -7,7 +7,7 @@ from protean import Domain
 from protean.adapters.repository.sqlalchemy import PostgresqlProvider
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
-from tests.shared import POSTGRES_URI
+from tests.shared import POSTGRES_URI, provider_adapter
 
 
 @pytest.mark.postgresql
@@ -16,7 +16,7 @@ class TestPostgreSQLSchemaHandling:
 
     def test_default_schema_is_public(self, test_domain):
         """Test that default schema is 'public' for PostgreSQL"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         assert isinstance(provider, PostgresqlProvider)
         assert provider._metadata.schema == "public"
 
@@ -31,10 +31,11 @@ class TestPostgreSQLSchemaHandling:
         domain.init(traverse=False)
 
         try:
-            provider = domain.providers["custom_schema"]
+            provider = provider_adapter(domain, "custom_schema")
             assert provider._metadata.schema == "test_schema"
         finally:
-            for provider in domain.providers.values():
+            for name in domain.providers:
+                provider = provider_adapter(domain, name)
                 provider.close()
 
     def test_schema_none_defaults_to_public(self):
@@ -47,15 +48,16 @@ class TestPostgreSQLSchemaHandling:
         domain.init(traverse=False)
 
         try:
-            provider = domain.providers["default_schema"]
+            provider = provider_adapter(domain, "default_schema")
             assert provider._metadata.schema == "public"
         finally:
-            for provider in domain.providers.values():
+            for name in domain.providers:
+                provider = provider_adapter(domain, name)
                 provider.close()
 
     def test_existing_tables_are_in_configured_schema(self, test_domain):
         """Test that existing tables are in the configured schema"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Verify existing tables are in the correct schema
         inspector = inspect(provider._engine)
@@ -94,7 +96,7 @@ class TestPostgreSQLSchemaHandling:
                 assert not dao.has_table()
 
                 # Create the table
-                provider = domain.providers["default"]
+                provider = provider_adapter(domain, "default")
                 provider.create_schema()
 
                 # Now table should exist
@@ -103,7 +105,7 @@ class TestPostgreSQLSchemaHandling:
                 # Clean up
                 provider.drop_schema()
             finally:
-                domain.providers["default"].close()
+                provider_adapter(domain, "default").close()
 
     @pytest.mark.no_test_domain
     def test_custom_schema_name_in_entity_meta(self):
@@ -127,7 +129,7 @@ class TestPostgreSQLSchemaHandling:
         with domain.domain_context():
             try:
                 # Create database artifacts
-                provider = domain.providers["default"]
+                provider = provider_adapter(domain, "default")
                 provider.create_schema()
 
                 # Verify table was created with custom name
@@ -140,7 +142,7 @@ class TestPostgreSQLSchemaHandling:
                 # Clean up
                 provider.drop_schema()
             finally:
-                domain.providers["default"].close()
+                provider_adapter(domain, "default").close()
 
     def test_schema_isolation_between_providers(self):
         """Test that different providers can use different schemas"""
@@ -160,13 +162,14 @@ class TestPostgreSQLSchemaHandling:
         domain.init(traverse=False)
 
         try:
-            provider1 = domain.providers["schema1"]
-            provider2 = domain.providers["schema2"]
+            provider1 = provider_adapter(domain, "schema1")
+            provider2 = provider_adapter(domain, "schema2")
 
             assert provider1._metadata.schema == "schema_one"
             assert provider2._metadata.schema == "schema_two"
         finally:
-            for provider in domain.providers.values():
+            for name in domain.providers:
+                provider = provider_adapter(domain, name)
                 provider.close()
 
     def test_raw_sql_respects_schema_context(self, test_domain):
@@ -174,7 +177,7 @@ class TestPostgreSQLSchemaHandling:
         # Use existing person table for this test
         from .elements import Person
 
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Create a test record using the repository
         person = Person(first_name="John", last_name="Doe", age=30)
@@ -215,7 +218,7 @@ class TestPostgreSQLSchemaHandling:
 
         with domain.domain_context():
             try:
-                provider = domain.providers["default"]
+                provider = provider_adapter(domain, "default")
 
                 # Create artifacts
                 provider.create_schema()
@@ -230,7 +233,7 @@ class TestPostgreSQLSchemaHandling:
                 # Verify table no longer exists
                 assert not dao.has_table()
             finally:
-                domain.providers["default"].close()
+                provider_adapter(domain, "default").close()
 
     def test_concurrent_schema_operations(self, test_domain):
         """Test that concurrent operations on schema work correctly"""
@@ -259,7 +262,7 @@ class TestPostgreSQLSchemaHandling:
 
     def test_schema_metadata_consistency(self, test_domain):
         """Test that schema metadata is consistent across operations"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Check initial metadata state
         initial_schema = provider._metadata.schema

@@ -14,7 +14,7 @@ from sqlalchemy import orm, text
 from protean import Domain, UnitOfWork
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
-from tests.shared import POSTGRES_URI
+from tests.shared import POSTGRES_URI, provider_adapter
 
 
 class DummyEntity(BaseAggregate):
@@ -28,7 +28,7 @@ class TestSessionFactoryCaching:
 
     def test_get_session_returns_same_instance(self, test_domain):
         """get_session() should return the same scoped_session object every time."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         session1 = provider.get_session()
         session2 = provider.get_session()
@@ -40,14 +40,14 @@ class TestSessionFactoryCaching:
 
     def test_get_session_returns_same_instance_across_many_calls(self, test_domain):
         """get_session() should be stable across many invocations."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         sessions = [provider.get_session() for _ in range(100)]
         assert all(s is sessions[0] for s in sessions)
 
     def test_scoped_session_created_during_init(self, test_domain):
         """The scoped session should be created during provider __init__."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         assert hasattr(provider, "_scoped_session_cls")
         assert hasattr(provider, "_session_factory")
@@ -55,7 +55,7 @@ class TestSessionFactoryCaching:
 
     def test_session_factory_bound_to_engine(self, test_domain):
         """The session factory should be bound to the provider's engine."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         assert provider._session_factory.kw.get("bind") is provider._engine
 
@@ -77,13 +77,14 @@ class TestConnectionLifecyclePostgresql:
             yield domain
 
         # Ensure engine is disposed
-        for provider in domain.providers.values():
+        for name in domain.providers:
+            provider = provider_adapter(domain, name)
             provider.close()
 
     def _register_and_setup(self, domain):
         domain.register(DummyEntity)
         domain.init(traverse=False)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         provider.create_schema()
         return provider
 
@@ -195,7 +196,7 @@ class TestProviderClose:
         }
         domain.init(traverse=False)
 
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         engine = provider._engine
 
         # Verify engine is alive
@@ -214,7 +215,7 @@ class TestProviderClose:
         }
         domain.init(traverse=False)
 
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
 
         # Get a session to populate the registry
         scoped = provider.get_session()
@@ -235,7 +236,7 @@ class TestProviderClose:
         }
         domain.init(traverse=False)
 
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
 
         # Close multiple times — should not raise
         provider.close()
@@ -252,7 +253,7 @@ class TestProviderClose:
         }
         domain.init(traverse=False)
 
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         pool_obj = provider._engine.pool
 
         # Use a connection so the pool is populated
@@ -283,7 +284,7 @@ class TestPoolConfiguration:
         domain.init(traverse=False)
 
         try:
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             engine_pool = provider._engine.pool
 
             assert engine_pool.size() == 5, (
@@ -293,7 +294,8 @@ class TestPoolConfiguration:
                 f"Expected max_overflow=10, got {engine_pool._max_overflow}"
             )
         finally:
-            for p in domain.providers.values():
+            for name in domain.providers:
+                p = provider_adapter(domain, name)
                 p.close()
 
     @pytest.mark.postgresql
@@ -309,7 +311,7 @@ class TestPoolConfiguration:
         domain.init(traverse=False)
 
         try:
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             engine_pool = provider._engine.pool
 
             assert engine_pool.size() == 3, (
@@ -319,7 +321,8 @@ class TestPoolConfiguration:
                 f"Expected max_overflow=8 (overridden), got {engine_pool._max_overflow}"
             )
         finally:
-            for p in domain.providers.values():
+            for name in domain.providers:
+                p = provider_adapter(domain, name)
                 p.close()
 
     @pytest.mark.postgresql
@@ -333,10 +336,11 @@ class TestPoolConfiguration:
         domain.init(traverse=False)
 
         try:
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             assert provider._engine.pool._pre_ping is True
         finally:
-            for p in domain.providers.values():
+            for name in domain.providers:
+                p = provider_adapter(domain, name)
                 p.close()
 
 
@@ -356,7 +360,8 @@ class TestIsAliveConnectionHandling:
             provider = domain.providers["default"]
             assert provider.ping() is True
         finally:
-            for p in domain.providers.values():
+            for name in domain.providers:
+                p = provider_adapter(domain, name)
                 p.close()
 
     @pytest.mark.postgresql
@@ -370,7 +375,7 @@ class TestIsAliveConnectionHandling:
         domain.init(traverse=False)
 
         try:
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             pool_obj = provider._engine.pool
 
             result = provider.ping()
@@ -380,7 +385,8 @@ class TestIsAliveConnectionHandling:
                 "ping() should return connection to pool on success"
             )
         finally:
-            for p in domain.providers.values():
+            for name in domain.providers:
+                p = provider_adapter(domain, name)
                 p.close()
 
 

@@ -9,7 +9,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.fields import Integer, String
-from tests.shared import POSTGRES_URI
+from tests.shared import POSTGRES_URI, provider_adapter
 
 
 class Grade(BaseAggregate):
@@ -33,7 +33,7 @@ def test_choices_columns_save_and_load_back():
 
     with domain.domain_context():
         repo = domain.repository_for(Grade)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         columns = repo._dao.database_model_cls.__table__.columns
         dialect = provider._engine.dialect
         assert columns["status"].type.compile(dialect=dialect) == "VARCHAR(20)"

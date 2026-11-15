@@ -26,7 +26,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ExpectedVersionError
 from protean.fields import Integer
 from protean.utils import occ_trace
-from tests.shared import POSTGRES_PORT
+from tests.shared import POSTGRES_PORT, provider_adapter
 
 pytestmark = [pytest.mark.postgresql, pytest.mark.no_test_domain]
 
@@ -54,7 +54,7 @@ def trace_domain():
     domain.register(OCCTraceCounter)
     domain.init(traverse=False)
 
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     with domain.domain_context():
         # Materialize the model before create_all.
         domain.repository_for(OCCTraceCounter)._dao

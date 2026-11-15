@@ -13,7 +13,7 @@ from sqlalchemy.dialects import mssql as mssql_dialect
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import DateTime
-from tests.shared import initialize_domain
+from tests.shared import initialize_domain, provider_adapter
 
 from .elements import MssqlTimestampedEntity
 
@@ -48,7 +48,7 @@ class TestDateTimePrecision:
         domain = initialize_domain(name="MSSQL existing table", root_path=__file__)
         domain.register(MssqlLegacyTimestampedEntity)
         domain.init(traverse=False)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         table = "mssql_legacy_timestamped_entity"
         with provider._engine.begin() as conn:
             conn.execute(

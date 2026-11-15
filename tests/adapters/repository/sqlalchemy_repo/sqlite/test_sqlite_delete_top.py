@@ -9,6 +9,7 @@ from protean.fields import Integer, String
 from protean.port import dao as dao_module
 from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
+from tests.shared import provider_adapter
 
 
 class Prunable(BaseAggregate):
@@ -21,7 +22,7 @@ def prune_domain(test_domain):
     test_domain.register(Prunable)
     test_domain.init(traverse=False)
     dao = test_domain.repository_for(Prunable)._dao
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
     # Start from a clean slate; the table is shared across tests in this module.
     dao._delete_all()

@@ -12,7 +12,7 @@ from protean._deprecation import RemovedInProtean019Warning
 from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import Float
 from tests.docs.support import load_example
-from tests.shared import ELASTICSEARCH_URI
+from tests.shared import ELASTICSEARCH_URI, provider_adapter
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -150,7 +150,7 @@ def search_example(monkeypatch):
     example.domain.init(traverse=False)
     yield example
     with example.domain.domain_context():
-        example.domain.providers["elasticsearch"].drop_schema()
+        provider_adapter(example.domain, "elasticsearch").drop_schema()
 
 
 @pytest.mark.elasticsearch

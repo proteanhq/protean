@@ -1,6 +1,7 @@
 import pytest
 
 from protean.adapters.repository.sqlalchemy import MssqlProvider
+from tests.shared import provider_adapter
 
 from .elements import MssqlTestEntity
 
@@ -63,7 +64,7 @@ class TestMssqlLookups:
         test_domain.register(MssqlTestEntity)
         test_domain.init(traverse=False)
 
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         dao = provider.dao_for(MssqlTestEntity, provider.model_for(MssqlTestEntity))
 
         # Get the exact lookup class and create an instance

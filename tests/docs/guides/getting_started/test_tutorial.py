@@ -29,6 +29,7 @@ from tests.docs.support import (
     outcome_counts,
     run_example_tests,
 )
+from tests.shared import provider_adapter
 
 # Chapter 9's ``bookshelf`` package lives in the tutorial folder.
 _TUTORIAL_DIR = str(DOCS_SRC / "guides" / "getting-started" / "tutorial")
@@ -79,7 +80,7 @@ _HAS_PROJECTIONS = {ch07, bookshelf, bookshelf.api, ch21}
 def _cleanup(domain) -> None:
     """Reset all stores and close connections after a test."""
     for provider_name in domain.providers:
-        provider = domain.providers[provider_name]
+        provider = provider_adapter(domain, provider_name)
         try:
             provider.clear()
         finally:
@@ -122,12 +123,12 @@ class _TutorialBase:
 
         has_projections = mod in _HAS_PROJECTIONS
         if has_projections:
-            domain.providers["default"].create_schema()
+            provider_adapter(domain, "default").create_schema()
 
         yield domain
 
         if has_projections:
-            domain.providers["default"].drop_schema()
+            provider_adapter(domain, "default").drop_schema()
 
         _cleanup(domain)
 

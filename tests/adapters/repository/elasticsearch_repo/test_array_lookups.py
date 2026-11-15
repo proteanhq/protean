@@ -13,6 +13,7 @@ from elasticsearch.exceptions import NotFoundError
 from protean.adapters.repository import elasticsearch as repo
 from protean.core.aggregate import BaseAggregate
 from protean.fields import List, String
+from tests.shared import provider_adapter
 
 
 class Tagged(BaseAggregate):
@@ -59,7 +60,7 @@ class TestArrayLookupQueries:
     def repo_with_data(self, test_domain):
         test_domain.register(Tagged)
         test_domain.init(traverse=False)
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         provider.create_schema()
 
         repository = test_domain.repository_for(Tagged)

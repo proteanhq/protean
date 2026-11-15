@@ -13,6 +13,7 @@ from protean.upgrade import (
     _outbox_set_not_null_sql,
     run_upgrade_checks,
 )
+from tests.shared import provider_adapter
 
 
 def _codes(findings: list[UpgradeFinding]) -> set[str]:
@@ -147,7 +148,7 @@ class TestOutboxSchemaSqlite:
 
         from protean.upgrade import _check_outbox_schema
 
-        engine = sqlite_domain.providers["default"]._engine
+        engine = provider_adapter(sqlite_domain, "default")._engine
         with engine.begin() as conn:
             conn.execute(text("CREATE TABLE outbox (id varchar(36), message_id text)"))
         # SQLite does not enforce VARCHAR lengths -> the check skips it.
@@ -233,7 +234,7 @@ class TestOutboxSchemaPostgres:
             "database_uri": POSTGRES_URI,
         }
         domain.init(traverse=False)
-        engine = domain.providers["default"]._engine
+        engine = provider_adapter(domain, "default")._engine
         # Build a pre-0.16 (TEXT-column) outbox table with a representative row.
         with engine.begin() as conn:
             for stmt in filter(None, (s.strip() for s in _OLD_OUTBOX_DDL.split(";"))):
@@ -266,7 +267,7 @@ class TestOutboxSchemaPostgres:
         from protean.upgrade import _check_outbox_schema
 
         sql = _check_outbox_schema(pg_domain)[0].sql
-        engine = pg_domain.providers["default"]._engine
+        engine = provider_adapter(pg_domain, "default")._engine
         with engine.begin() as conn:
             conn.execute(text(sql))
             # The pre-existing row survives the migration.
@@ -282,7 +283,7 @@ class TestOutboxSchemaPostgres:
 
         from protean.upgrade import _check_outbox_schema
 
-        engine = pg_domain.providers["default"]._engine
+        engine = provider_adapter(pg_domain, "default")._engine
         # A table missing most bounded columns: only message_id is present.
         with engine.begin() as conn:
             conn.execute(text("DROP TABLE outbox"))
@@ -349,7 +350,7 @@ class TestOutboxMigrationsPostgres:
             "database_uri": POSTGRES_URI,
         }
         domain.init(traverse=False)
-        engine = domain.providers["default"]._engine
+        engine = provider_adapter(domain, "default")._engine
         # A nullable target_broker and the legacy message_id-only unique index.
         with engine.begin() as conn:
             for stmt in filter(
@@ -368,7 +369,7 @@ class TestOutboxMigrationsPostgres:
     def test_generated_sql_applies_and_clears_both_findings(self, pg_domain):
         from sqlalchemy import text
 
-        engine = pg_domain.providers["default"]._engine
+        engine = provider_adapter(pg_domain, "default")._engine
         for finding in _check_outbox_migrations(pg_domain):
             with engine.begin() as conn:
                 for stmt in filter(None, (s.strip() for s in finding.sql.split(";"))):
@@ -395,7 +396,7 @@ class TestOutboxMigrationsSqlite:
     def _create_outbox(self, domain, *, index_sql=None):
         from sqlalchemy import text
 
-        engine = domain.providers["default"]._engine
+        engine = provider_adapter(domain, "default")._engine
         with engine.begin() as conn:
             conn.execute(
                 text(
@@ -433,7 +434,7 @@ class TestOutboxMigrationsSqlite:
             for f in _check_outbox_migrations(sqlite_domain)
             if f.code == "OUTBOX_UNIQUE_INDEX_LEGACY"
         )
-        engine = sqlite_domain.providers["default"]._engine
+        engine = provider_adapter(sqlite_domain, "default")._engine
         with engine.begin() as conn:
             for stmt in filter(None, (s.strip() for s in finding.sql.split(";"))):
                 conn.execute(text(stmt))

@@ -21,6 +21,7 @@ from tests.shared import (
     POSTGRES_PSYCOPG2_URI,
     POSTGRES_URI,
     REDIS_URI,
+    provider_adapter,
 )
 
 
@@ -407,12 +408,12 @@ def db(test_domain):
     aggregates, entities, and projections.
     """
     # Call provider to create structures
-    test_domain.providers["default"].create_schema()
+    provider_adapter(test_domain, "default").create_schema()
 
     yield
 
     # Drop structures
-    test_domain.providers["default"].drop_schema()
+    provider_adapter(test_domain, "default").drop_schema()
 
     # Remove registry content so that `clear()` called on providers
     #   later (in `run_around_tests`) has no effect
@@ -425,7 +426,7 @@ def run_around_tests(test_domain, request):
 
     if test_domain:
         for provider_name in test_domain.providers:
-            provider = test_domain.providers[provider_name]
+            provider = provider_adapter(test_domain, provider_name)
             try:
                 provider.clear()
             finally:

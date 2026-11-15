@@ -8,6 +8,7 @@ blob fields stay unbounded.
 import pytest
 
 from protean.utils.outbox import Outbox
+from tests.shared import provider_adapter
 
 # Field -> expected VARCHAR length emitted by the SQLAlchemy adapter.
 EXPECTED_LENGTHS = {
@@ -30,7 +31,7 @@ def outbox_columns(test_domain):
     test_domain.init(traverse=False)
     dao = test_domain.repository_for(Outbox)._dao
     # Create the table so the autouse data-reset fixture's DELETE has a target.
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
     # Start from a clean slate when run in isolation against a persistent db.
     dao._delete_all()

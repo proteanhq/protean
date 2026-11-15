@@ -41,7 +41,7 @@ from protean.server.subscription.event_store_subscription import (
 from protean.utils import Processing
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
-from tests.shared import POSTGRES_URI
+from tests.shared import POSTGRES_URI, provider_adapter
 
 
 class DispatchStarted(BaseEvent):
@@ -847,7 +847,7 @@ def test_record_step_conflict_on_postgresql(processing):
     _register(domain)
 
     with domain.domain_context():
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         provider.create_schema()
         try:
             with patch("protean.utils.mixins.time.sleep"):

@@ -14,7 +14,7 @@ from protean.domain import Domain
 from protean.fields import Auto, Identifier, Integer, String
 from protean.utils.query import Q
 from protean.utils.reflection import id_field
-from tests.shared import POSTGRES_URI
+from tests.shared import POSTGRES_URI, provider_adapter
 
 _counter = itertools.count(1)
 
@@ -81,7 +81,7 @@ def test_an_integer_identity_saves_and_loads_back(aggregate_cls, config, values)
     domain = postgres_domain(aggregate_cls, **config)
     with domain.domain_context():
         repo = domain.repository_for(aggregate_cls)
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         table = repo._dao.database_model_cls.__table__
         id_name = id_field(aggregate_cls).field_name
         column_type = table.columns[id_name].type
@@ -128,7 +128,7 @@ def test_a_claim_breaks_order_ties_by_the_integer_id_value():
         repo = domain.repository_for(TiedJob)
         # Reading the DAO registers the table in the provider's metadata.
         dao = repo._dao
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         provider._metadata.create_all(provider._engine)
         try:
             repo.add(TiedJob(seq=0))

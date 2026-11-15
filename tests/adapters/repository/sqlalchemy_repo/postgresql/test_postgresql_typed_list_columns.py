@@ -7,7 +7,7 @@ from sqlalchemy.dialects import postgresql
 from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.fields import String
-from tests.shared import POSTGRES_URI
+from tests.shared import POSTGRES_URI, provider_adapter
 
 pytestmark = [pytest.mark.postgresql, pytest.mark.no_test_domain]
 
@@ -46,7 +46,7 @@ def domain():
 
 
 def column_type(domain, aggregate_cls, attribute):
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     table = provider.model_for(aggregate_cls).__table__
     return table.c[attribute].type.compile(dialect=postgresql.dialect())
 

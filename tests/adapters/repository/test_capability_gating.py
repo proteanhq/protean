@@ -14,6 +14,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.exceptions import NotSupportedError
 from protean.fields import Integer, String
 from protean.port.provider import BaseProvider, DatabaseCapabilities, ProviderPort
+from tests.shared import provider_adapter
 
 
 class Widget(BaseAggregate):
@@ -31,7 +32,7 @@ class TestRawQueryCapabilityGating:
 
     def test_provider_raw_succeeds_when_capable(self, test_domain):
         """Providers with RAW_QUERIES can call raw() without error."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         if DatabaseCapabilities.RAW_QUERIES not in provider.capabilities:
             return  # Not applicable to this provider
 
@@ -67,7 +68,7 @@ class TestRawQueryCapabilityGating:
 
     def test_queryset_raw_succeeds_when_capable(self, test_domain):
         """QuerySet.raw() works for providers with RAW_QUERIES."""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         if DatabaseCapabilities.RAW_QUERIES not in provider.capabilities:
             return  # Not applicable to this provider
 

@@ -17,6 +17,7 @@ from protean.port import dao as dao_module
 from protean.port.dao import HoldBack
 from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
+from tests.shared import provider_adapter
 
 
 class ClaimJob(BaseAggregate):
@@ -35,7 +36,7 @@ def claim_domain(test_domain):
     # autouse data-reset fixture clears rows between tests, so the table is left
     # in place (dropping it here would race that reset's DELETE).
     dao = test_domain.repository_for(ClaimJob)._dao
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
     # Start each test from a clean slate — rows persist across tests in this
     # module (the table is shared and not dropped between tests).
@@ -116,7 +117,7 @@ class TestSqliteClaimHoldBackWithIntegerIdentity:
         with domain.domain_context():
             repo = domain.repository_for(IntKeyedJob)
             dao = repo._dao
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             provider._metadata.create_all(provider._engine)
             head = IntKeyedJob(seq=0, key="k1")
             repo.add(head)

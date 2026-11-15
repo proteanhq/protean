@@ -25,7 +25,7 @@ from hypothesis import find, given
 from hypothesis import settings as hypothesis_settings
 
 from protean.exceptions import ExpectedVersionError, ObjectNotFoundError
-from tests.shared import POSTGRES_URI
+from tests.shared import POSTGRES_URI, provider_adapter
 from tests.verification.differential import (
     Add,
     ConcurrentUpdate,
@@ -199,7 +199,7 @@ def postgresql_parity():
     pg_domain, pg_repo = build_parity_domain(
         {"provider": "postgresql", "database_uri": POSTGRES_URI}
     )
-    provider = pg_domain.providers["default"]
+    provider = provider_adapter(pg_domain, "default")
     try:
         yield pg_domain, pg_repo
     finally:
