@@ -18,13 +18,10 @@ to `"sync"`, so the command handler runs inline, and its Unit of Work joins the
 saga handler's rather than opening one of its own. Under `"sync"` the
 compensating steps commit with the saga's transition, not after it.
 
-Whether a command issued just before the handler fails is written at all depends
-on the event store. The memory store writes the command through the handler's
-Unit of Work, so the failure discards it: raising inside a start handler that had
-just issued a command left the store with zero commands and zero saga
-transitions. Message-DB writes straight through on its own connection, so there
-the command survives while the saga's transition does not. Do not rely on
-either behavior. Keep compensating commands idempotent so re-issuing one is safe.
+A command issued just before the handler fails stays written. Both built-in
+event stores write the command at once, outside the Unit of Work, so the command
+survives while the saga's transition does not. Keep compensating commands
+idempotent so re-issuing one is safe.
 
 ## Rules for the failure path
 

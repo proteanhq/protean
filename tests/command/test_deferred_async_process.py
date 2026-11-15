@@ -428,8 +428,13 @@ class TestInsideUnitOfWork:
 
         assert Probe.attempts == 0
         assert _status(test_domain, notification_id) == "PENDING"
-        # The memory event store writes through the caller's unit of work
-        assert _stored_commands(test_domain) == []
+        # The event store append is not part of the unit of work, so the
+        # command stays stored. It is marked not asynchronous, so the
+        # command subscription never runs it.
+        stored = _stored_commands(test_domain)
+        assert [m.metadata.domain.asynchronous for m in stored] == [False]
+        assert _skipped_by_command_subscription(test_domain) == 0
+        assert Probe.attempts == 0
 
     def test_stored_as_not_asynchronous_and_skipped_by_the_subscription(
         self, test_domain
