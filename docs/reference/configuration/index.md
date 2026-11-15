@@ -23,6 +23,8 @@ Protean searches for configuration files in the following order:
 1. `domain.toml`
 1. `pyproject.toml` (under the `[tool.protean]` section)
 
+When none of these files exists, Protean uses its default configuration. `Domain.init()` then logs the directory it searched, once, at `DEBUG` level on the `protean.domain.config` logger.
+
 ### Generating a new configuration file
 
 When initializing a new Protean application using the [`new`](../cli/project/new.md) command, a `domain.toml` configuration file is automatically generated with sensible defaults.

@@ -36,7 +36,6 @@ import re
 import signal
 import sys
 import time
-import warnings
 from multiprocessing.process import BaseProcess
 from types import FrameType
 from typing import Any, Optional
@@ -216,11 +215,7 @@ def _configured_drain_window(domain_path: str) -> float:
     # a factory-style ``domain_path`` in the parent, which the worker already
     # runs in the child. A bad config is reported by the worker when it starts.
     try:
-        with warnings.catch_warnings():
-            # load_from_path warns when no config file is found; the worker
-            # reports that, so keep the parent quiet and use the default.
-            warnings.simplefilter("ignore")
-            config = Config2.load_from_path(_config_search_root(domain_path))
+        config = Config2.load_from_path(_config_search_root(domain_path))
         value = config.get("server", {}).get("drain_timeout", 0)
         if isinstance(value, bool):
             return 0.0

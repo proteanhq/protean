@@ -16,6 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from protean.cli import app
+from protean.domain.config import _find_config_file
 from tests.shared import change_working_directory_to
 
 pytestmark = pytest.mark.no_test_domain
@@ -63,13 +64,13 @@ def _run_script(tmp_path: Path, **env_overrides: str) -> subprocess.CompletedPro
     and pytest installs its own handlers on the root logger, either of which
     would hide the default under test.
     """
+    assert _find_config_file(str(tmp_path)) is None
     script = tmp_path / "script.py"
     script.write_text(SCRIPT)
     env = {k: v for k, v in os.environ.items() if k not in _ENV_VARS}
     env.update(env_overrides)
     result = subprocess.run(
-        # The "No configuration file found" UserWarning is not a log line.
-        [sys.executable, "-W", "ignore::UserWarning", str(script)],
+        [sys.executable, str(script)],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -97,6 +98,7 @@ class TestFreshScript:
         result = _run_script(tmp_path, **env)
 
         assert "Loaded database provider plugin: memory" in result.stderr
+        assert result.stderr.count("No configuration file found in") == 1
 
 
 class TestShellDefaultLevel:
