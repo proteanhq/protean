@@ -1051,6 +1051,36 @@ class TestRedisStreamStatus:
             f"Could not count lag of {self.stream}: {error!r}"
         ]
 
+    def test_group_fields_read_before_a_failing_field_are_kept(self, caplog):
+        """A ``lag`` value that cannot be decoded leaves pending and the last
+        delivered id as read, and the lag is counted after that id."""
+        for n in range(4):
+            self.broker.publish(self.stream, {"n": n})
+        first_id, _ = self.broker.get_next(self.stream, self.group)
+        real = self.broker._get_field_value
+        error = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+        def fail_on_lag(info, field_name, *args, **kwargs):
+            if field_name == "lag":
+                raise error
+            return real(info, field_name, *args, **kwargs)
+
+        with (
+            patch.object(self.broker, "_get_field_value", side_effect=fail_on_lag),
+            caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
+        ):
+            status = self._status()
+
+        assert status.pending == 1
+        assert status.current_position == first_id
+        assert status.lag == 3
+        assert status.consumer_count == 0
+        assert status.status == "lagging"
+        assert (
+            f"Could not read group {self.group} on stream {self.stream}"
+            in _messages_about(caplog, self.stream)
+        )
+
 
 @pytest.mark.redis
 @pytest.mark.no_test_domain

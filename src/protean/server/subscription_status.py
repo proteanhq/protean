@@ -577,22 +577,35 @@ def _redis_stream_status(
 def _read_group(
     broker: _RedisStyleBroker, stream: str, consumer_group: str
 ) -> _GroupReading:
-    """Read one consumer group's counters, or empty ones when they cannot be read."""
+    """Read one consumer group's counters.
+
+    A counter that cannot be read keeps its empty value. The counters read
+    before a failure keep what they read.
+    """
+    reading = _GroupReading()
     try:
         for g in broker.redis_instance.xinfo_groups(stream):
-            gname = broker._get_field_value(g, "name")
-            if gname == consumer_group:
-                return _GroupReading(
-                    pending=broker._get_field_value(g, "pending", convert_to_int=True)
-                    or 0,
-                    last_delivered_id=broker._get_field_value(g, "last-delivered-id"),
-                    # Redis 7.0+ native lag field
-                    lag=broker._get_field_value(g, "lag", convert_to_int=True),
-                    consumer_count=broker._get_field_value(
-                        g, "consumers", convert_to_int=True
-                    )
-                    or 0,
+            if broker._get_field_value(g, "name") != consumer_group:
+                continue
+            # One field at a time, so a later field that fails to decode does
+            # not throw away the ones already read.
+            reading = reading._replace(
+                pending=broker._get_field_value(g, "pending", convert_to_int=True) or 0
+            )
+            reading = reading._replace(
+                last_delivered_id=broker._get_field_value(g, "last-delivered-id")
+            )
+            # Redis 7.0+ native lag field
+            reading = reading._replace(
+                lag=broker._get_field_value(g, "lag", convert_to_int=True)
+            )
+            reading = reading._replace(
+                consumer_count=broker._get_field_value(
+                    g, "consumers", convert_to_int=True
                 )
+                or 0
+            )
+            break
     # a status probe reports unknown lag instead of raising; logged
     except Exception:
         logger.debug(
@@ -601,7 +614,7 @@ def _read_group(
             stream,
             exc_info=True,
         )
-    return _GroupReading()
+    return reading
 
 
 def _stream_length(redis_conn: Any, stream: str) -> int:
