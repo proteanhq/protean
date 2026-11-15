@@ -91,8 +91,10 @@ The `CausationNode` tree structure contains:
 
 - `message_id`: The message's unique identifier
 - `message_type`: The event or command type string
+- `kind`: `"EVENT"` or `"COMMAND"`
 - `stream`: The stream the message was written to
-- `timestamp`: When it was created
+- `time`: When it was written, from `isoformat()`
+- `global_position`: Its position across the whole event store
 - `children`: List of `CausationNode` children
 
 ## Automatic Propagation

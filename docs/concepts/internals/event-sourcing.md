@@ -348,7 +348,8 @@ prevent infinite recursion when message IDs overlap between parent and child
 (can happen with the MessageDB adapter in sync mode).
 
 `CausationNode` is a dataclass with: `message_id`, `message_type`, `kind`
-(`"EVENT"` or `"COMMAND"`), `stream`, `time` (an ISO 8601 string),
+(`"EVENT"` or `"COMMAND"`), `stream`, `time` (from `isoformat()`, or
+`str()` when the stored value has no `isoformat()`),
 `global_position`, and `children`. The Observatory builds the same tree from
 the same function and then fills in `handler`, `duration_ms` and `delta_ms`.
 

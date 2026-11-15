@@ -78,6 +78,17 @@ hierarchy of messages sharing a `correlation_id`.
 
 ---
 
+## verify
+
+The integrity check that `domain.event_store.verify()` runs. Pass it an
+adapter to check one that is not the domain's.
+
+::: protean.infra.integrity.verify
+    options:
+      show_root_heading: false
+
+---
+
 ## IntegrityReport
 
 The result of `verify()`, and the `data` payload of

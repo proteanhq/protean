@@ -1191,9 +1191,14 @@ class TestBuildCorrelationResponse:
         result = build_correlation_response([domain], "nonexistent-corr")
         assert result is None
 
-    def test_handles_broken_domain_gracefully(self, event_domain):
-        with _store_unavailable(event_domain, "get_all_messages"):
-            result = build_correlation_response([event_domain], "any-id")
+    def test_handles_broken_domain_gracefully(self, correlated_domain):
+        domain, corr_id, _, _ = correlated_domain
+        assert build_correlation_response([domain], corr_id) is not None
+
+        with _store_unavailable(domain, "get_all_messages") as failing_read:
+            result = build_correlation_response([domain], corr_id)
+
+        assert failing_read.called
         assert result is None
 
 

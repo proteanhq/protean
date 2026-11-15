@@ -7,8 +7,8 @@ caused it (``causation_id``) and the ID shared by every message of one request
 (`trace_causation`), down to the effects (`trace_effects`), or across a whole
 correlation group (`build_causation_tree`).
 
-They scan ``$all`` and filter in memory. They are for debugging and inspection,
-not for high-throughput paths.
+They scan ``$all`` and filter in memory, so they suit debugging and
+inspection.
 """
 
 from __future__ import annotations
@@ -82,8 +82,10 @@ def load_correlation_group(
 ) -> list[RawMessage]:
     """Return every raw message in ``adapter`` whose ``correlation_id`` matches.
 
-    Messages come back in ``global_position`` order. The list is new on each
-    call, so a caller may sort or change it.
+    Reads the first 1,000,000 rows of ``$all`` with
+    ``adapter.get_all_messages`` and keeps the adapter's order, which is
+    ``global_position`` order on the memory and Message DB stores. The list
+    is new on each call, so a caller may sort or change it.
     """
     all_messages = adapter.get_all_messages(limit=1_000_000)
     return [m for m in all_messages if _extract_correlation_id(m) == correlation_id]
@@ -275,8 +277,9 @@ def build_tree_from_group(
     The root is the earliest message with no ``causation_id``. When every
     message has one, it is the earliest whose ``causation_id`` names a message
     outside the group, or else the first message. Children are ordered by
-    ``global_position``. Each node's ``time`` is an ISO 8601 string, and its
-    ``handler``, ``duration_ms`` and ``delta_ms`` are ``None``.
+    ``global_position``. Each node's ``time`` is the row's ``time`` written with
+    ``isoformat()`` when the value has that method, and with ``str()``
+    otherwise. Its ``handler``, ``duration_ms`` and ``delta_ms`` are ``None``.
 
     Returns:
         The root node, or ``None`` when ``group`` is empty.
@@ -346,7 +349,10 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
 
 
 def _time_str(time_val: Any) -> str | None:
-    """Return ``time_val`` as an ISO 8601 string, or ``None`` when it is empty."""
+    """Return ``time_val.isoformat()`` when it has that method, else ``str(time_val)``.
+
+    Returns ``None`` when ``time_val`` is empty.
+    """
     if not time_val:
         return None
     if hasattr(time_val, "isoformat"):
