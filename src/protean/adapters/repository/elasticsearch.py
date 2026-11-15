@@ -57,6 +57,7 @@ from protean.port.dao import BaseDAO, BoundedDeletePort, LookupPort
 from protean.port.provider import (
     BaseProvider,
     DatabaseCapabilities,
+    DatabaseModelPort,
     ProviderHealth,
     ProviderPort,
 )
@@ -179,7 +180,12 @@ operators = {
 
 
 class ElasticsearchModel(Document, BaseDatabaseModel):
-    """A database model for the Elasticsearch index"""
+    """A database model for the Elasticsearch index
+
+    It satisfies `DatabaseModelPort` structurally. Subclassing the Port raises
+    the metaclass conflict `TypeError`, because the metaclass of
+    `elasticsearch_dsl`'s `Document` and the Protocol metaclass are unrelated.
+    """
 
     # Precomputed set of field names needing a ``.keyword`` subfield for exact
     # matching. Assigned dynamically on the decorated/constructed model class
@@ -450,7 +456,7 @@ def _custom_model_mapping(entity_cls: _Any, custom_attrs: dict[str, _Any]) -> Ma
 
 
 class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
-    # Narrow the base ``type[BaseDatabaseModel]`` to the concrete ES model class.
+    # Narrow the base ``type[DatabaseModelPort]`` to the concrete ES model class.
     # ``ElasticsearchModel`` subclasses ``elasticsearch_dsl.Document``, which
     # provides ``_index``, ``meta``, ``get`` and (dynamically) ``_keyword_fields``.
     database_model_cls: type["ElasticsearchModel"]
@@ -969,7 +975,7 @@ class ESProvider(BaseProvider, ProviderPort):
         self,
         entity_cls: "type[BaseEntity | BaseProjection]",
         model_cls: type[BaseDatabaseModel] | None = None,
-    ) -> type[BaseDatabaseModel]:
+    ) -> type[DatabaseModelPort]:
         """The Elasticsearch model for `entity_cls`, decorating `model_cls` when given."""
         if model_cls is None:
             return self._build_model(entity_cls)
@@ -1201,7 +1207,7 @@ class DefaultLookup(LookupPort):
         source: _Any,
         target: _Any,
         *,
-        database_model_cls: type[BaseDatabaseModel] | None = None,
+        database_model_cls: type[DatabaseModelPort] | None = None,
     ) -> None:
         self.source, self.target = source, target
         self.database_model_cls = database_model_cls
@@ -1502,3 +1508,4 @@ def register() -> None:
 
 
 _PORT_CHECK: type[ProviderPort] = ESProvider
+_MODEL_PORT_CHECK: type[DatabaseModelPort] = ElasticsearchModel

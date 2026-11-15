@@ -26,6 +26,7 @@ from protean.port.dao import BaseDAO, BoundedDeletePort, LookupPort
 from protean.port.provider import (
     BaseProvider,
     DatabaseCapabilities,
+    DatabaseModelPort,
     ProviderHealth,
     ProviderPort,
     RawQueryProviderPort,
@@ -82,7 +83,7 @@ class _ReverseCompare:
         return f"_ReverseCompare({self.value!r})"
 
 
-class MemoryModel(BaseDatabaseModel):
+class MemoryModel(BaseDatabaseModel, DatabaseModelPort):
     """A model for the dictionary repository"""
 
     @classmethod
@@ -465,7 +466,7 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
         self,
         entity_cls: "type[BaseEntity | BaseProjection]",
         model_cls: type[BaseDatabaseModel] | None = None,
-    ) -> type[BaseDatabaseModel]:
+    ) -> type[DatabaseModelPort]:
         """The memory model for `entity_cls`, decorating `model_cls` when given."""
         if model_cls is None:
             return self._build_model(entity_cls)
@@ -666,6 +667,10 @@ class DictDAO(BaseDAO, BoundedDeletePort):
 
     def __repr__(self) -> str:
         return f"DictDAO <{self.entity_cls.__name__}>"
+
+    def _stored_value(self, model_obj: typing.Any, name: str) -> typing.Any:
+        """The value the dictionary record ``model_obj`` stores under ``name``."""
+        return model_obj[name]
 
     def _set_auto_fields(
         self, model_obj: dict[str, typing.Any]
@@ -1155,7 +1160,7 @@ class MemoryLookup(LookupPort):
         source: typing.Any,
         target: typing.Any,
         *,
-        database_model_cls: type[BaseDatabaseModel] | None = None,
+        database_model_cls: type[DatabaseModelPort] | None = None,
     ) -> None:
         self.source, self.target = source, target
         self.database_model_cls = database_model_cls
@@ -1366,3 +1371,4 @@ def register() -> None:
 
 
 _PORT_CHECK: type[ProviderPort] = MemoryProvider
+_MODEL_PORT_CHECK: type[DatabaseModelPort] = MemoryModel

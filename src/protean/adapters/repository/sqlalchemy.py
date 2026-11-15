@@ -86,6 +86,7 @@ from protean.port.health import PoolStats
 from protean.port.provider import (
     BaseProvider,
     DatabaseCapabilities,
+    DatabaseModelPort,
     ProviderHealth,
     ProviderPort,
     RawQueryProviderPort,
@@ -1875,7 +1876,12 @@ def _map_entity_columns(model_cls: typing.Any) -> None:
 
 
 class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
-    """Model representation for the Sqlalchemy Database"""
+    """Model representation for the Sqlalchemy Database
+
+    It satisfies `DatabaseModelPort` structurally. Subclassing the Port raises
+    the metaclass conflict `TypeError`, because SQLAlchemy's declarative
+    metaclass and the Protocol metaclass are unrelated.
+    """
 
     def __init_subclass__(cls, **kwargs: typing.Any) -> None:
         # Update the class attrs with the entity attributes
@@ -3190,7 +3196,7 @@ class SAProvider(BaseProvider, RawQueryProviderPort):
         self,
         entity_cls: "type[BaseEntity | BaseProjection]",
         model_cls: type[BaseDatabaseModel] | None = None,
-    ) -> type[BaseDatabaseModel]:
+    ) -> type[DatabaseModelPort]:
         """The SQLAlchemy model for `entity_cls`, decorating `model_cls` when given."""
         if model_cls is None:
             return self._build_model(entity_cls)
@@ -4063,7 +4069,7 @@ class MSSQLStringLookupMixin:
         # the ``MSSQL*`` lookups below), which supply these attributes at
         # runtime. Declared here so the mixin's own methods type-check.
         source: typing.Any
-        database_model_cls: type[BaseDatabaseModel] | None
+        database_model_cls: type[DatabaseModelPort] | None
 
     def _is_string_type(self, column: typing.Any) -> bool:
         """Check if the column type is a string-based type"""
@@ -4218,3 +4224,4 @@ _PORT_CHECK: type[ProviderPort] = PostgresqlProvider
 _PORT_CHECK = SqliteProvider
 _PORT_CHECK = MssqlProvider
 _PORT_CHECK = MysqlProvider
+_MODEL_PORT_CHECK: type[DatabaseModelPort] = SqlalchemyModel

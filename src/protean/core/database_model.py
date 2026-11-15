@@ -30,6 +30,9 @@ class BaseDatabaseModel(Element, OptionsMixin):
     maps each attribute back by name, using ``referenced_as`` when it is set.
     Override ``to_entity()`` only when the storage needs special handling.
 
+    It satisfies ``DatabaseModelPort``, the class methods the framework calls
+    on an adapter's model class.
+
     **Meta Options**
 
     | Option | Type | Description |
