@@ -407,7 +407,7 @@ If your test raises domain events that are published to a broker, the broker acc
 --8<-- "patterns/setting-up-and-tearing-down-database-for-tests/manual_cleanup/conftest.py:clean_data"
 ```
 
-Each pair of tests below expects an empty database, broker stream, and event store at the start, so the second test of a pair fails if a store kept data. With the in-memory adapters, the provider reset also empties the event store, because the memory event store keeps its messages in the memory provider. The last line of `clean_data` matters for a separate event store such as MessageDB:
+Each pair of tests below expects an empty database, broker stream, and event store at the start, so the second test of a pair fails if a store kept data. The last line of `clean_data` empties the event store. A provider reset leaves the event store as it was, because the memory event store keeps its messages in its own list and MessageDB keeps them in its own database:
 
 ```python
 # fragment
