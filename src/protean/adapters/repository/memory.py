@@ -181,6 +181,8 @@ class MemorySession:
     #                      a live record holds the row's unique key; the commit
     #                      drops a row ``DictDAO.save_if_absent`` wrote when a
     #                      record that holds its key was committed first
+    #   ``dropped``        ``(schema, identifier)`` of each row the latest
+    #                      commit dropped that way; a commit resets it
     _db: dict[str, typing.Any]
 
     def __init__(
@@ -213,6 +215,7 @@ class MemorySession:
                 "version_checks": {},
                 "created": set(),
                 "if_absent": {},
+                "dropped": set(),
             }
 
     def write(
@@ -275,6 +278,12 @@ class MemorySession:
         """
         self._db["if_absent"][(schema, identifier)] = key_taken
 
+    @property
+    def dropped_rows(self) -> frozenset[tuple[str, typing.Any]]:
+        """The ``(schema, identifier)`` of each row that the latest
+        :meth:`commit` dropped because a live record held its unique key."""
+        return frozenset(self._db["dropped"])
+
     def _clear_changeset(self) -> None:
         self._db["ops"].clear()
         self._db["version_checks"].clear()
@@ -297,6 +306,7 @@ class MemorySession:
             if key_taken(self._db["data"][schema][identifier], others):
                 del ops[(schema, identifier)]
                 self._db["data"][schema].pop(identifier, None)
+                self._db["dropped"].add((schema, identifier))
 
     def commit(self) -> None:
         """Validate optimistic-concurrency versions and merge changes to the store.
@@ -310,6 +320,7 @@ class MemorySession:
             live = self._provider._databases
             data = self._db["data"]
             checks = self._db["version_checks"]
+            self._db["dropped"].clear()
 
             _refuse_stale_versions(live, checks)
 
@@ -732,7 +743,8 @@ class DictDAO(BaseDAO, BoundedDeletePort):
         Inside a Unit of Work the row is only staged. When another session
         commits a row with the same key before this one commits, the commit
         drops this row and keeps the other. This method has already returned
-        the entity in that case.
+        the entity in that case, so the commit records the dropped row in the
+        session's ``dropped_rows``.
         """
         conn = self._get_session()
         assert conn is not None
