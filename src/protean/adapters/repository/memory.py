@@ -331,6 +331,8 @@ class MemorySession:
             )
         except BaseException:
             lock.release()
+            # A failed flush after a passed one also drops the earlier hold.
+            self._release_flush_hold()
             raise
         if self._db["flush_held"]:
             # A second flush keeps the single hold the first one took.

@@ -173,6 +173,32 @@ def test_a_second_flush_keeps_one_hold(test_domain):
     assert _in_other_thread(test_domain, _set_value(test_domain, identifier, 4))
 
 
+def test_a_failed_flush_after_a_passed_one_releases_the_lock(test_domain):
+    current = _seed(test_domain)
+    stale = _seed(test_domain)
+    repo = test_domain.repository_for(Counter)
+    counter = repo.get(current)
+    loser = repo.get(stale)
+
+    uow = UnitOfWork()
+    uow.start()
+    try:
+        counter.value = 3
+        repo.add(counter)
+        # Commits after this session took its copy of the store.
+        _in_other_thread(test_domain, _set_value(test_domain, stale, 1))
+        uow._sessions["default"].flush()
+        loser.value = 2
+        repo.add(loser)
+        with pytest.raises(ExpectedVersionError):
+            uow._sessions["default"].flush()
+
+        # The failed flush dropped the passed flush's hold too.
+        assert _in_other_thread(test_domain, _set_value(test_domain, current, 8))
+    finally:
+        uow.rollback()
+
+
 def test_close_after_a_passed_flush_releases_the_lock(test_domain):
     identifier = _seed(test_domain)
     session = test_domain.providers["default"].get_session()
