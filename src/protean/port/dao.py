@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast, get_args
 
 from protean._deprecation import deprecated_from_registry
 from protean.core.aggregate import BaseAggregate, _pre_persist_change
-from protean.core.database_model import BaseDatabaseModel
 from protean.core.entity import BaseEntity
 from protean.core.index import Index
 from protean.core.queryset import QuerySet, ResultSet
@@ -21,7 +20,11 @@ from protean.exceptions import (
     TooManyObjectsError,
     ValidationError,
 )
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import (
+    BaseProvider,
+    DatabaseCapabilities,
+    DatabaseModelPort,
+)
 from protean.utils import DomainObjects, _callable_qualname
 from protean.utils.globals import _domain_now, current_domain, current_uow
 from protean.utils.query import Q
@@ -511,7 +514,8 @@ class BaseDAO(metaclass=ABCMeta):
         provider: The database provider the DAO gets sessions and connections
             from.
         entity_cls: The domain entity class the DAO stores.
-        database_model_cls: The database model class for ``entity_cls``.
+        database_model_cls: The adapter's database model class for
+            ``entity_cls``, which satisfies ``DatabaseModelPort``.
     """
 
     def __init__(
@@ -519,7 +523,7 @@ class BaseDAO(metaclass=ABCMeta):
         domain: "Domain",
         provider: BaseProvider,
         entity_cls: type[BaseEntity],
-        database_model_cls: type[BaseDatabaseModel],
+        database_model_cls: type[DatabaseModelPort],
     ):
         #: Holds a reference to the domain to which the DAO belongs to.
         self.domain = domain
@@ -1368,12 +1372,24 @@ class BaseDAO(metaclass=ABCMeta):
             # An index names either a field or the attribute it is stored
             # under, and ``_count`` matches stored names.
             stored_name = getattr(field_obj, "attribute_name", None) or name
-            values[stored_name] = self.database_model_cls._get_value(
-                model_obj, stored_name
-            )
+            values[stored_name] = self._stored_value(model_obj, stored_name)
         if any(value is None for value in values.values()):
             return None
         return values
+
+    def _stored_value(self, model_obj: Any, name: str) -> Any:
+        """The value ``model_obj`` stores under ``name``.
+
+        The default reads it through the model class's ``_get_value()`` when
+        the model defines one, and reads an attribute otherwise. A DAO whose
+        records neither can read overrides it.
+        """
+        # ``_get_value`` is not a ``DatabaseModelPort`` member, but every
+        # ``BaseDatabaseModel`` has it and adapters override it for dict records.
+        get_value = getattr(self.database_model_cls, "_get_value", None)
+        if get_value is not None:
+            return get_value(model_obj, name)
+        return getattr(model_obj, name)
 
     def _unique_key_taken(self, entity_obj: Any) -> bool:
         """Whether another stored row shares a unique key with ``entity_obj``."""
@@ -1570,12 +1586,12 @@ class LookupPort(Protocol):
 
     source: Any
     target: Any
-    database_model_cls: type[BaseDatabaseModel] | None
+    database_model_cls: type[DatabaseModelPort] | None
 
     def __init__(
         self,
         source: Any,
         target: Any,
         *,
-        database_model_cls: type[BaseDatabaseModel] | None = None,
+        database_model_cls: type[DatabaseModelPort] | None = None,
     ) -> None: ...

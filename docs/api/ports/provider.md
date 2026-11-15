@@ -35,6 +35,12 @@ to write one.
     options:
       show_root_heading: false
 
+## DatabaseModelPort
+
+::: protean.port.provider.DatabaseModelPort
+    options:
+      show_root_heading: false
+
 ## LookupPort
 
 ::: protean.port.dao.LookupPort

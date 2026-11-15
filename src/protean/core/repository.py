@@ -13,7 +13,7 @@ from protean.exceptions import (
 from protean.fields import HasMany, HasOne
 from protean.fields.tempdata import HasManyChanges, HasOneChanges
 from protean.port.dao import BaseDAO
-from protean.port.provider import BaseProvider
+from protean.port.provider import BaseProvider, DatabaseModelPort
 from protean.utils import (
     Database,
     DomainObjects,
@@ -67,7 +67,7 @@ class BaseRepository(Element, OptionsMixin):
 
     @property
     @lru_cache
-    def _database_model(self) -> type[Any]:
+    def _database_model(self) -> type[DatabaseModelPort]:
         """Retrieve Database Model class connected to Entity"""
         # Look up custom models registered for this entity, keyed by database type.
         # Prefer a model targeting this provider's database type; fall back to a

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from protean.core.database_model import BaseDatabaseModel
     from protean.core.entity import BaseEntity
     from protean.core.projection import BaseProjection
+    from protean.core.queryset import Record
     from protean.domain import Domain
     from protean.port.dao import LookupPort
 
@@ -169,6 +170,34 @@ class ProviderHealth:
     whose pool keeps no counters."""
 
 
+class DatabaseModelPort(Protocol):
+    """The class methods the framework calls on an adapter's database model.
+
+    A DAO converts an entity to a record with `from_entity` on each
+    single-entity write, and a query converts records back with `to_entity` or
+    `to_records`. Protean calls each member on the model class.
+
+    `BaseDatabaseModel`, the class a user subclasses with
+    `@domain.database_model`, satisfies this Protocol structurally.
+    """
+
+    @classmethod
+    @abstractmethod
+    def from_entity(cls, entity: "BaseEntity") -> Any:
+        """The storage record for `entity`, ready for the adapter to persist."""
+
+    @classmethod
+    @abstractmethod
+    def to_entity(cls, item: Any) -> "BaseEntity":
+        """The entity or aggregate that the storage record `item` holds."""
+
+    @classmethod
+    @abstractmethod
+    def to_records(cls, items: list[Any], fields: list[str]) -> "list[Record]":
+        """One read-only `Record` per storage record in `items`, in order,
+        holding only the attributes named in `fields`."""
+
+
 class ProviderPort(Protocol):
     """The members every database provider implements.
 
@@ -242,7 +271,7 @@ class ProviderPort(Protocol):
     def dao_for(
         self,
         entity_cls: "type[BaseEntity | BaseProjection]",
-        model_cls: "type[BaseDatabaseModel]",
+        model_cls: "type[DatabaseModelPort]",
     ) -> Any:
         """A DAO for `entity_cls` that stores it through `model_cls`."""
 
@@ -251,7 +280,7 @@ class ProviderPort(Protocol):
         self,
         entity_cls: "type[BaseEntity | BaseProjection]",
         model_cls: "type[BaseDatabaseModel] | None" = None,
-    ) -> "type[BaseDatabaseModel]":
+    ) -> "type[DatabaseModelPort]":
         """The database model class for `entity_cls`.
 
         With `model_cls`, a user-defined model, it returns a subclass of that

@@ -26,6 +26,7 @@ from protean.port.dao import BaseDAO, BoundedDeletePort, LookupPort
 from protean.port.provider import (
     BaseProvider,
     DatabaseCapabilities,
+    DatabaseModelPort,
     ProviderHealth,
     ProviderPort,
     RawQueryProviderPort,
@@ -82,7 +83,7 @@ class _ReverseCompare:
         return f"_ReverseCompare({self.value!r})"
 
 
-class MemoryModel(BaseDatabaseModel):
+class MemoryModel(BaseDatabaseModel, DatabaseModelPort):
     """A model for the dictionary repository"""
 
     @classmethod
@@ -93,6 +94,19 @@ class MemoryModel(BaseDatabaseModel):
     def from_entity(cls, entity: typing.Any) -> dict[str, typing.Any]:
         """Convert the entity to a dictionary record"""
         return cls._entity_to_dict(entity)
+
+
+def _model_metaclass(database_model_cls: type[typing.Any]) -> type[typing.Any]:
+    """The metaclass for a class that derives from both ``MemoryModel`` and
+    ``database_model_cls``."""
+    memory_meta, user_meta = type(MemoryModel), type(database_model_cls)
+    if issubclass(memory_meta, user_meta):
+        return memory_meta
+    if issubclass(user_meta, memory_meta):
+        return user_meta
+    # Python refuses a class whose bases have unrelated metaclasses, so a
+    # user model with its own metaclass needs one derived from both.
+    return type(user_meta.__name__, (user_meta, memory_meta), {})
 
 
 def _refuse_stale_versions(
@@ -465,7 +479,7 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
         self,
         entity_cls: "type[BaseEntity | BaseProjection]",
         model_cls: type[BaseDatabaseModel] | None = None,
-    ) -> type[BaseDatabaseModel]:
+    ) -> type[DatabaseModelPort]:
         """The memory model for `entity_cls`, decorating `model_cls` when given."""
         if model_cls is None:
             return self._build_model(entity_cls)
@@ -494,9 +508,12 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
             meta_ = Options()
             meta_.part_of = entity_cls
 
-            custom_attrs.update({"meta_": meta_})
+            # ``type()`` takes ``__module__`` from the calling frame, which is
+            # ``abc`` because ``MemoryModel``'s metaclass is the Protocol one.
+            custom_attrs.update({"meta_": meta_, "__module__": __name__})
             # User class is in the MRO; custom methods/properties resolve via standard Python MRO
-            decorated_database_database_model_cls = type(
+            metaclass = _model_metaclass(database_model_cls)
+            decorated_database_database_model_cls: type[typing.Any] = metaclass(
                 database_model_cls.__name__,
                 (MemoryModel, database_model_cls),
                 custom_attrs,
@@ -523,6 +540,7 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
 
             attrs = {
                 "meta_": meta_,
+                "__module__": __name__,
             }
             # Auto-generated model; no user-defined attributes to carry over
             database_model_cls = type(
@@ -1155,7 +1173,7 @@ class MemoryLookup(LookupPort):
         source: typing.Any,
         target: typing.Any,
         *,
-        database_model_cls: type[BaseDatabaseModel] | None = None,
+        database_model_cls: type[DatabaseModelPort] | None = None,
     ) -> None:
         self.source, self.target = source, target
         self.database_model_cls = database_model_cls
@@ -1366,3 +1384,4 @@ def register() -> None:
 
 
 _PORT_CHECK: type[ProviderPort] = MemoryProvider
+_MODEL_PORT_CHECK: type[DatabaseModelPort] = MemoryModel

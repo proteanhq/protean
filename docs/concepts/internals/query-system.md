@@ -262,7 +262,7 @@ class LookupPort(Protocol):
     lookup_name: ClassVar[str]   # e.g., "exact", "gte", "contains"
     source: Any                  # LHS of the comparison
     target: Any                  # RHS: comparison value
-    database_model_cls: type[BaseDatabaseModel] | None
+    database_model_cls: type[DatabaseModelPort] | None
 
     def __init__(self, source, target, *, database_model_cls=None) -> None: ...
 ```
