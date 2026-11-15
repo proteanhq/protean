@@ -16,6 +16,7 @@ import pytest
 from typer.main import get_command
 
 from protean.cli import app
+from protean.scaffold import create_project
 
 TEMPLATE = (
     Path(__file__).resolve().parents[2]
@@ -51,14 +52,37 @@ def _make_invocations(text: str) -> set[str]:
     return set(re.findall(r"\bmake\s+([a-z][\w-]*)", text))
 
 
+# The Makefile and README render per database, and only the SQL databases get
+# the `db-*` targets, so each check runs against a rendered project.
+DATABASES = [
+    pytest.param("memory", id="memory database"),
+    pytest.param("sqlite", id="sqlite database"),
+    pytest.param("postgresql", id="postgresql database"),
+]
+
+
+def _render(tmp_path: Path, database: str) -> Path:
+    create_project(
+        "shop",
+        output_folder=str(tmp_path),
+        data={"database": database},
+        defaults=True,
+    )
+    return tmp_path / "shop"
+
+
 class TestScaffoldCommandsExist:
     def test_the_template_is_where_we_think(self):
-        assert (TEMPLATE / "Makefile").is_file(), f"{TEMPLATE}/Makefile is missing"
+        assert (TEMPLATE / "Makefile.jinja").is_file(), (
+            f"{TEMPLATE}/Makefile.jinja is missing"
+        )
         assert (TEMPLATE / "README.md.jinja").is_file(), "template README is missing"
         assert _real_commands(), "no CLI commands discovered; the app moved"
 
-    def test_the_makefile_only_runs_commands_the_cli_has(self):
-        invoked = _invoked_commands((TEMPLATE / "Makefile").read_text(encoding="utf-8"))
+    @pytest.mark.parametrize("database", DATABASES)
+    def test_the_makefile_only_runs_commands_the_cli_has(self, tmp_path, database):
+        project = _render(tmp_path, database)
+        invoked = _invoked_commands((project / "Makefile").read_text(encoding="utf-8"))
         assert invoked, "parsed no `protean <cmd>` from the Makefile; check the regex"
 
         missing = sorted(invoked - _real_commands())
@@ -68,10 +92,25 @@ class TestScaffoldCommandsExist:
             f"Available: {sorted(_real_commands())}"
         )
 
-    def test_the_readme_only_points_at_targets_the_makefile_defines(self):
+    def test_the_db_targets_run_db_subcommands_the_cli_has(self, tmp_path):
+        """`protean db <sub>` must exist too, not only the `db` group."""
+        makefile = (_render(tmp_path, "sqlite") / "Makefile").read_text(
+            encoding="utf-8"
+        )
+        invoked = set(re.findall(r"\bprotean\s+db\s+([a-z][a-z0-9-]*)", makefile))
+        assert invoked == {"migrate", "upgrade", "check"}
+
+        db_group = get_command(app).commands["db"]
+        assert invoked <= set(db_group.commands)
+
+    @pytest.mark.parametrize("database", DATABASES)
+    def test_the_readme_only_points_at_targets_the_makefile_defines(
+        self, tmp_path, database
+    ):
         """The README is how a reader finds the targets, so it drifts the same way."""
-        readme = (TEMPLATE / "README.md.jinja").read_text(encoding="utf-8")
-        makefile = (TEMPLATE / "Makefile").read_text(encoding="utf-8")
+        project = _render(tmp_path, database)
+        readme = (project / "README.md").read_text(encoding="utf-8")
+        makefile = (project / "Makefile").read_text(encoding="utf-8")
 
         referenced = _make_invocations(readme)
         assert referenced, "parsed no `make <target>` from the README; check the regex"

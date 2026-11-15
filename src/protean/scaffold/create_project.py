@@ -4,10 +4,10 @@ This is the file-producing half of ``protean new``, lifted out of the Typer
 command so the CLI, the MCP server, tests, or any programmatic caller can run it
 directly. The core owns exactly the scaffolding: the lazy ``copier`` import
 guard, project-name validation, target-directory resolution, the ``--force``
-clear, the copier render, writing the derived manifest
-(:mod:`protean.scaffold.manifest`), and writing the dx-managed baseline
-(``AGENTS.md``, the ``CLAUDE.md`` bridge, and ``.protean/dx-state.json``) through
-the ``dx`` renderers. It leaves the post-generation setup (``uv sync``,
+clear, the copier render, the ``migrations/`` folder for a SQL database,
+writing the derived manifest (:mod:`protean.scaffold.manifest`), and writing
+the dx-managed baseline (``AGENTS.md``, the ``CLAUDE.md`` bridge, and
+``.protean/dx-state.json``) through the ``dx`` renderers. It leaves the post-generation setup (``uv sync``,
 ``git init``, pre-commit, console tips) in the CLI, because that is console and
 subprocess work, not scaffolding.
 
@@ -46,6 +46,7 @@ import tempfile
 from pathlib import Path
 
 import protean
+from protean.adapters.repository.schema_migrator import write_migrations_folder
 from protean.scaffold.manifest import write_manifest
 
 __all__ = ["create_project"]
@@ -56,6 +57,10 @@ __all__ = ["create_project"]
 # (``CON``, ``NUL``) and rejects a trailing dot; those are left to the
 # filesystem to refuse.
 _FORBIDDEN_NAME_CHARACTERS = re.compile(r'[<>:"/\\|?*\s]')
+
+# The ``database`` answers whose projects get a ``migrations/`` folder: the ones
+# a SQLAlchemy provider serves.
+_MIGRATION_DATABASES = frozenset({"postgresql", "sqlite", "mssql"})
 
 
 def _is_valid_project_name(project_name: object) -> bool:
@@ -91,17 +96,18 @@ def _clear_directory_contents(dir_path: str) -> None:
 
 
 def _relative_file_paths(root: str) -> list[str]:
-    """Return every file under *root* as a sorted list of relative POSIX paths.
+    """Return every file and empty folder under *root* as sorted relative paths.
 
     Walks the whole tree, hidden files (``.protean/project.json``, ``.gitignore``)
-    included, and returns paths relative to *root* so the list is stable across
-    operating systems and independent of where *root* lives.
+    included, and returns POSIX paths relative to *root* so the list is stable
+    across operating systems and independent of where *root* lives. An empty
+    folder (``migrations/versions``) is listed with a trailing ``/``.
     """
     root_path = Path(root)
     return sorted(
-        path.relative_to(root_path).as_posix()
+        path.relative_to(root_path).as_posix() + ("/" if path.is_dir() else "")
         for path in root_path.rglob("*")
-        if path.is_file()
+        if path.is_file() or (path.is_dir() and not any(path.iterdir()))
     )
 
 
@@ -189,7 +195,9 @@ def create_project(
     Renders the bundled project template into ``<output_folder>/<project_name>``,
     then writes the derived manifest (``.protean/project.json``) and the
     dx-managed baseline (``AGENTS.md``, the ``CLAUDE.md`` bridge, and
-    ``.protean/dx-state.json``). Returns the sorted list of project-relative POSIX
+    ``.protean/dx-state.json``). A project on ``postgresql``, ``sqlite`` or
+    ``mssql`` also gets the ``migrations/`` folder ``protean db init`` writes,
+    with no migration in it. Returns the sorted list of project-relative POSIX
     paths that were created.
 
     Args:
@@ -212,7 +220,7 @@ def create_project(
 
     Returns:
         The sorted project-relative POSIX paths created (apply) or that would be
-        created (dry-run).
+        created (dry-run). An empty folder is listed with a trailing ``/``.
 
     Raises:
         ImportError: The optional ``copier`` dependency (the ``[scaffold]``
@@ -226,6 +234,7 @@ def create_project(
         FileExistsError: Something already sits at the target path (a non-empty
             directory, or a non-directory such as a file or symlink) and *force*
             is false.
+        ConfigurationError: The ``migrations/`` folder cannot be written.
     """
     # ``copier`` is the optional ``[scaffold]`` extra. Import it first, before
     # any validation or clearing, so a lean install fails with the ImportError
@@ -266,7 +275,7 @@ def create_project(
         writes at a path that means nothing to them; the returned list is the
         answer instead.
         """
-        run_copy(
+        worker = run_copy(
             f"{protean.__path__[0]}/template",
             destination or ".",
             data=data_dict,
@@ -275,6 +284,15 @@ def create_project(
             pretend=False,
             quiet=quiet,
         )
+        # Read the answer copier resolved: with ``defaults`` the caller's data
+        # may hold no ``database`` key at all. The folder is the one
+        # ``protean db init`` writes from the project root with its default
+        # ``--domain`` and provider, so ``protean_root`` points at the project.
+        if worker.answers.combined.get("database") in _MIGRATION_DATABASES:
+            project_root = Path(destination or ".")
+            write_migrations_folder(
+                project_root / "migrations", ".", "default", project_root=project_root
+            )
         # The manifest is the first thing to create ``.protean/``, and it is
         # written before the dx files so the state file and CLAUDE.md are not
         # captured as manifest entries. The dx baseline goes through the same

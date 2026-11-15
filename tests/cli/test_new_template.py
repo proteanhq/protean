@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -637,3 +638,192 @@ class TestTemplateGeneration:
             assert "run:" in makefile or "server:" in makefile or "start:" in makefile
             assert "docker" in makefile.lower()
             assert "up:" in makefile or "down:" in makefile
+
+
+SQL_DATABASES = [
+    pytest.param("postgresql", id="postgresql database"),
+    pytest.param("sqlite", id="sqlite database"),
+    pytest.param("mssql", id="mssql database"),
+]
+
+NON_SQL_DATABASES = [
+    pytest.param("memory", id="memory database"),
+    pytest.param("elasticsearch", id="elasticsearch database"),
+]
+
+_MIGRATION_CONDITION = "hashFiles('migrations/versions/*.py') != ''"
+
+_MSSQL_URL = (
+    "mssql+pyodbc://sa:Protean123!@localhost:1433/shop_db"
+    "?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
+)
+
+
+def _render(tmp_path: Path, *answers: str) -> Path:
+    """Render a project named `shop` with the given `key=value` answers."""
+    args = ["new", "shop", "-o", str(tmp_path), "--defaults", "--skip-setup"]
+    for answer in answers:
+        args += ["-d", answer]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    return tmp_path / "shop"
+
+
+def _make_targets(makefile: str) -> set[str]:
+    return set(re.findall(r"(?m)^([a-zA-Z][\w-]*):", makefile))
+
+
+def _ci_steps(project: Path) -> list[dict]:
+    workflow = yaml.safe_load(
+        (project / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"]["test"]["steps"]
+    assert steps, "the CI workflow has no steps"
+    return steps
+
+
+def _step_index(steps: list[dict], predicate) -> int:
+    matches = [index for index, step in enumerate(steps) if predicate(step)]
+    assert len(matches) == 1, f"expected one matching step, found {len(matches)}"
+    return matches[0]
+
+
+def _runs(step: dict, text: str) -> bool:
+    return text in step.get("run", "")
+
+
+class TestSqlProjectMakefile:
+    @pytest.mark.parametrize("database", SQL_DATABASES)
+    def test_has_the_db_targets_and_no_migrate_target(self, tmp_path, database):
+        makefile = (_render(tmp_path, f"database={database}") / "Makefile").read_text(
+            encoding="utf-8"
+        )
+        targets = _make_targets(makefile)
+
+        assert {"db-migrate", "db-upgrade", "db-check"} <= targets
+        assert "migrate" not in targets
+        assert "{{" not in makefile
+        assert '\tuv run protean db migrate -m "$(m)"\n' in makefile
+        assert "\tuv run protean db upgrade\n" in makefile
+        assert "\tuv run protean db check\n" in makefile
+        assert "--domain" not in makefile
+
+    @pytest.mark.parametrize("database", NON_SQL_DATABASES)
+    def test_non_sql_project_has_no_db_targets(self, tmp_path, database):
+        project = _render(tmp_path, f"database={database}")
+        makefile = (project / "Makefile").read_text(encoding="utf-8")
+        targets = _make_targets(makefile)
+
+        assert "test-domain" in targets
+        assert not {target for target in targets if target.startswith("db-")}
+        assert "migrate" not in targets
+        assert "{{" not in makefile
+        assert "tests/shop/domain/" in makefile
+        assert not (project / "migrations").exists()
+
+
+class TestSqlProjectCiWorkflow:
+    @pytest.mark.parametrize("database", SQL_DATABASES)
+    def test_upgrade_and_check_run_after_the_tests(self, tmp_path, database):
+        steps = _ci_steps(_render(tmp_path, f"database={database}"))
+
+        tests_at = _step_index(steps, lambda step: step.get("name") == "Run tests")
+        migrations_at = _step_index(
+            steps, lambda step: _runs(step, "protean db upgrade")
+        )
+        migration_step = steps[migrations_at]
+
+        assert migrations_at > tests_at
+        assert migration_step["if"] == _MIGRATION_CONDITION
+        assert migration_step["run"].splitlines() == [
+            "uv run protean db upgrade",
+            "uv run protean db check",
+        ]
+
+    def test_postgresql_service_creates_the_project_database(self, tmp_path):
+        project = _render(tmp_path, "database=postgresql")
+        workflow = yaml.safe_load(
+            (project / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        )
+        steps = _ci_steps(project)
+        migration_step = steps[
+            _step_index(steps, lambda step: _runs(step, "protean db upgrade"))
+        ]
+
+        assert workflow["jobs"]["test"]["services"]["postgres"]["env"] == {
+            "POSTGRES_PASSWORD": "postgres",
+            "POSTGRES_DB": "shop_db",
+        }
+        assert "env" not in migration_step
+
+    def test_sqlite_migration_step_sets_no_database_url(self, tmp_path):
+        steps = _ci_steps(_render(tmp_path, "database=sqlite"))
+        migration_step = steps[
+            _step_index(steps, lambda step: _runs(step, "protean db upgrade"))
+        ]
+        assert "env" not in migration_step
+
+    def test_mssql_creates_the_database_before_the_migration_step(self, tmp_path):
+        steps = _ci_steps(_render(tmp_path, "database=mssql"))
+
+        tests_at = _step_index(steps, lambda step: step.get("name") == "Run tests")
+        create_at = _step_index(
+            steps, lambda step: _runs(step, "CREATE DATABASE shop_db")
+        )
+        migrations_at = _step_index(
+            steps, lambda step: _runs(step, "protean db upgrade")
+        )
+
+        assert tests_at < create_at < migrations_at
+        assert steps[create_at]["if"] == _MIGRATION_CONDITION
+        assert steps[create_at]["run"] == (
+            "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Protean123!' -C "
+            '-Q "CREATE DATABASE shop_db"'
+        )
+        assert steps[migrations_at]["env"] == {"DATABASE_URL": _MSSQL_URL}
+
+    @pytest.mark.parametrize("database", NON_SQL_DATABASES)
+    def test_non_sql_project_runs_no_migration_step(self, tmp_path, database):
+        steps = _ci_steps(_render(tmp_path, f"database={database}"))
+
+        assert any(step.get("name") == "Run tests" for step in steps)
+        assert not [step for step in steps if _runs(step, "protean db")]
+        assert not [step for step in steps if _runs(step, "CREATE DATABASE")]
+
+    @pytest.mark.parametrize(
+        "database",
+        [*SQL_DATABASES, pytest.param("memory", id="memory database")],
+    )
+    def test_workflow_parses_with_message_db(self, tmp_path, database):
+        project = _render(tmp_path, f"database={database}", "event_store=message-db")
+        workflow = yaml.safe_load(
+            (project / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        )
+        postgres_env = workflow["jobs"]["test"]["services"]["postgres"]["env"]
+
+        assert ("POSTGRES_DB" in postgres_env) == (database == "postgresql")
+        assert _ci_steps(project)
+
+
+class TestSqlProjectReadme:
+    @pytest.mark.parametrize("database", SQL_DATABASES)
+    def test_explains_the_first_migration(self, tmp_path, database):
+        readme = (_render(tmp_path, f"database={database}") / "README.md").read_text(
+            encoding="utf-8"
+        )
+
+        assert "## Schema Migrations" in readme
+        assert "- [Schema Migrations](#schema-migrations)" in readme
+        assert readme.index('make db-migrate m="initial"') < readme.index(
+            "make db-upgrade\n"
+        )
+
+    @pytest.mark.parametrize("database", NON_SQL_DATABASES)
+    def test_non_sql_readme_names_no_db_target(self, tmp_path, database):
+        readme = (_render(tmp_path, f"database={database}") / "README.md").read_text(
+            encoding="utf-8"
+        )
+
+        assert "## Testing" in readme
+        assert "Schema Migrations" not in readme
+        assert "make db-" not in readme

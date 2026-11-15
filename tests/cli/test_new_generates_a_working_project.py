@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -478,28 +479,153 @@ class TestCommandsFindTheGeneratedDomain:
         """No `--domain` and no `src` on `PYTHONPATH`: discovery must find the
         domain under `src/` and put `src` on the import path itself."""
         project = _generate(tmp_path, ["-d", "database=sqlite"])
-        env = _subprocess_env(project)
-        env["PYTHONPATH"] = os.pathsep.join(
-            entry
-            for entry in env["PYTHONPATH"].split(os.pathsep)
-            if entry != str(project / "src")
-        )
-        env.pop("PROTEAN_DOMAIN", None)
 
-        completed = subprocess.run(
-            [sys.executable, "-m", "protean", *command],
-            cwd=project,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=120,
-        )
+        completed = _run_protean(project, *command)
 
         assert completed.returncode == 0, (
             f"`protean {' '.join(command)}` with no --domain fails in a "
             f"generated project:\n{completed.stdout}\n{completed.stderr}"
         )
+
+
+def _env_without_src(project: Path) -> dict[str, str]:
+    """`_subprocess_env` with the project's `src/` taken back off `PYTHONPATH`.
+
+    A command run this way must find the domain through discovery alone, as it
+    does when a developer runs it from the project root. `PROTEAN_DOMAIN` is
+    dropped so a value exported in the parent shell cannot point it elsewhere.
+    """
+    env = _subprocess_env(project)
+    env["PYTHONPATH"] = os.pathsep.join(
+        entry
+        for entry in env["PYTHONPATH"].split(os.pathsep)
+        if entry != str(project / "src")
+    )
+    env.pop("PROTEAN_DOMAIN", None)
+    return env
+
+
+def _run_protean(project: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run `python -m protean <args>` from *project*'s root with no `--domain`."""
+    return subprocess.run(
+        [sys.executable, "-m", "protean", *args],
+        cwd=project,
+        env=_env_without_src(project),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+
+
+_MIGRATION_PATHS = [
+    "migrations/alembic.ini",
+    "migrations/env.py",
+    "migrations/script.py.mako",
+    "migrations/versions/",
+]
+
+
+class TestSqlProjectGetsMigrations:
+    """A SQL project starts with the folder `protean db init` writes."""
+
+    def test_folder_is_written_with_no_migration(self, tmp_path):
+        project = _generate(tmp_path, ["-d", "database=sqlite"])
+        migrations = project / "migrations"
+
+        for name in ("alembic.ini", "env.py", "script.py.mako"):
+            assert (migrations / name).is_file(), f"migrations/{name} is missing"
+        assert (migrations / "versions").is_dir()
+        assert list((migrations / "versions").iterdir()) == []
+
+    def test_folder_equals_what_db_init_writes(self, tmp_path):
+        """Each file is byte-for-byte what `protean db init` writes from the
+        project root with its default `--domain` and provider."""
+        scaffolded = _generate(tmp_path / "scaffolded", ["-d", "database=sqlite"])
+        initialised = _generate(tmp_path / "initialised", ["-d", "database=sqlite"])
+        shutil.rmtree(initialised / "migrations")
+
+        completed = _run_protean(initialised, "db", "init")
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+
+        for name in ("alembic.ini", "env.py", "script.py.mako"):
+            assert (scaffolded / "migrations" / name).read_bytes() == (
+                initialised / "migrations" / name
+            ).read_bytes(), f"migrations/{name} differs from `protean db init`"
+        assert list((scaffolded / "migrations" / "versions").iterdir()) == []
+        assert list((initialised / "migrations" / "versions").iterdir()) == []
+
+    def test_dry_run_lists_the_migrations_folder(self, tmp_path):
+        out = tmp_path / "out"
+        out.mkdir()
+        result = CliRunner().invoke(
+            app,
+            [
+                "new",
+                "scaffolded",
+                "-o",
+                str(out),
+                "-d",
+                "database=sqlite",
+                "--defaults",
+                "--skip-setup",
+                "--dry-run",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+
+        listed = result.output.splitlines()
+        for path in _MIGRATION_PATHS:
+            assert path in listed, f"--dry-run does not list {path}"
+        assert not (out / "scaffolded").exists()
+
+    def test_dry_run_lists_the_same_paths_an_apply_creates(self, tmp_path):
+        from protean.scaffold import create_project
+
+        dry_out = tmp_path / "dry"
+        dry_out.mkdir()
+        listed = create_project(
+            "scaffolded",
+            output_folder=str(dry_out),
+            data={"database": "sqlite"},
+            dry_run=True,
+            defaults=True,
+        )
+        apply_out = tmp_path / "apply"
+        apply_out.mkdir()
+        created = create_project(
+            "scaffolded",
+            output_folder=str(apply_out),
+            data={"database": "sqlite"},
+            defaults=True,
+        )
+
+        assert set(_MIGRATION_PATHS) <= set(listed)
+        assert set(listed) == set(created)
+
+    def test_default_project_gets_no_migrations_folder(self, tmp_path):
+        """`--defaults` with no `database` answer resolves to memory."""
+        project = _generate(tmp_path, [])
+        assert (project / "src").is_dir()
+        assert not (project / "migrations").exists()
+
+    def test_migrate_upgrade_and_check_run_from_the_project_root(self, tmp_path):
+        project = _generate(tmp_path, ["-d", "database=sqlite"])
+
+        for command in (
+            ["db", "migrate", "-m", "initial"],
+            ["db", "upgrade"],
+            ["db", "check"],
+        ):
+            completed = _run_protean(project, *command)
+            assert completed.returncode == 0, (
+                f"`protean {' '.join(command)}` fails in a generated SQLite "
+                f"project:\n{completed.stdout}\n{completed.stderr}"
+            )
+
+        revisions = list((project / "migrations" / "versions").glob("*.py"))
+        assert len(revisions) == 1, revisions
+        assert "op.create_table" in revisions[0].read_text(encoding="utf-8")
 
 
 class TestGeneratedProjectIsDxManaged:
