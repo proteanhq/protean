@@ -89,7 +89,13 @@ class SubscriptionStatus:
     """Status snapshot for a single subscription or outbox processor."""
 
     name: str
-    """Subscription key (matches ``Engine._subscriptions`` keys)."""
+    """Subscription key.
+
+    Matches the ``Engine._subscriptions`` key, except for a ``sequential_by``
+    process manager on a partitioning broker: the Engine keys its one subscription
+    ``{pm_name}-partitioned``, and this name is ``{pm_name}-{category}``, one per
+    stream category.
+    """
 
     handler_name: str
     """Short class name (e.g. ``"OrderProjector"``)."""
@@ -827,14 +833,16 @@ def _collect_outbox_statuses(domain: Domain) -> list[SubscriptionStatus]:
 
 
 def collect_subscription_statuses(domain: Domain) -> list[SubscriptionStatus]:
-    """Collect status for every subscription the domain's Engine would run.
+    """Collect status for the subscriptions the domain's Engine would run.
 
     The Engine does not need to be running. ``domain`` must be initialised.
 
     Returns:
-        One :class:`SubscriptionStatus` per subscription: event handlers,
-        command handlers (one per stream category), projectors, process
-        managers, broker subscribers, and outbox processors.
+        One :class:`SubscriptionStatus` for each event handler, broker subscriber
+        and outbox processor, and one for each stream category of each command
+        handler group, projector and process manager. A ``sequential_by``
+        process manager on a partitioning broker still gets one status per
+        category, though the Engine runs one subscription for it.
     """
     config_resolver = ConfigResolver(domain)
 
