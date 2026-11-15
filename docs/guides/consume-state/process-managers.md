@@ -116,11 +116,10 @@ Process managers advance a workflow by issuing commands to other aggregates:
    and `end=True` marks the PM as complete.
 
 If the handler fails after issuing a command, the PM's own state change rolls
-back. Whether the command is written at all depends on the event store. The
-memory store writes the command through the handler's Unit of Work, so the
-failure discards it. Message-DB writes straight through on its own connection,
-so there the command survives while the PM's transition does not. Do not rely
-on either behavior. Keep issued commands idempotent so re-issuing one is safe.
+back. The command is already written: the memory store and Message-DB both
+write it at once, outside the handler's Unit of Work, so the command survives
+while the PM's transition does not. Keep issued commands idempotent so
+re-issuing one is safe.
 
 ## Process Manager Workflow
 

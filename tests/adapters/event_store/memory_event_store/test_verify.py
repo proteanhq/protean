@@ -6,7 +6,7 @@ adapter output. The exhaustive per-branch coverage lives in
 ``tests/port/test_event_store_verify.py``.
 """
 
-from protean.adapters.event_store.memory import MemoryMessage
+from datetime import UTC, datetime
 
 
 def _metadata(stream_name, message_type, message_id):
@@ -55,11 +55,9 @@ def test_duplicate_message_id_is_caught(test_domain):
     store = test_domain.event_store.store
     _seed_two_events(store)
 
-    repo = store.domain.repository_for(MemoryMessage)
-    rows = repo._dao.query.order_by("global_position").all().items
+    rows = store.get_connection()
     # Point the second row's store id at the first, forging a duplicate.
-    rows[1].id = rows[0].id
-    repo.add(rows[1])
+    rows[1]["id"] = rows[0]["id"]
 
     report = store.verify()
 
@@ -73,16 +71,18 @@ def test_position_gap_is_caught_and_named(test_domain):
     store = test_domain.event_store.store
     _seed_two_events(store)
 
-    repo = store.domain.repository_for(MemoryMessage)
     # Append a row that skips position 2.
-    repo.add(
-        MemoryMessage(
-            stream_name="test::user-abc",
-            position=3,
-            type="Skipped",
-            data={},
-            global_position=999,
-        )
+    store.get_connection().append(
+        {
+            "id": "skipped",
+            "stream_name": "test::user-abc",
+            "type": "Skipped",
+            "position": 3,
+            "global_position": 999,
+            "data": {},
+            "metadata": None,
+            "time": datetime.now(UTC),
+        }
     )
 
     report = store.verify()
@@ -119,11 +119,9 @@ def test_message_with_null_data_is_caught(test_domain):
         _metadata("test::user-abc", "Closed", "m3"),
     )
 
-    repo = store.domain.repository_for(MemoryMessage)
-    rows = repo._dao.query.order_by("global_position").all().items
+    rows = store.get_connection()
     # Null the body of the middle row (position 1).
-    rows[1].data = None
-    repo.add(rows[1])
+    rows[1]["data"] = None
 
     report = store.verify()
 

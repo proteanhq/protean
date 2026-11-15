@@ -70,10 +70,9 @@ Named sets group the common combinations:
 The built-in stores declare:
 
 - **Memory**: `CONSISTENT`. The memory store keeps messages in process memory,
-  so it does not declare `DURABLE`. Its `EXPECTED_VERSION` and
-  `CATEGORY_COMMIT_ORDER` guarantees hold only while one Unit of Work writes at
-  a time. Two overlapping Units of Work can both pass the expected-version
-  check and commit out of global-position order.
+  so it does not declare `DURABLE`. One lock covers the expected-version check
+  and the append, and a write is visible at once, so `EXPECTED_VERSION` and
+  `CATEGORY_COMMIT_ORDER` hold for concurrent writers in one process.
 - **Message DB**: `PRODUCTION | CONSUMER_GROUPS`. See
   [Message DB](./message-db.md#what-message-db-guarantees) for the flag it
   leaves out.

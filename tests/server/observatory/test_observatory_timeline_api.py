@@ -22,7 +22,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from protean.adapters.event_store import EventStore
-from protean.adapters.event_store.memory import MemoryMessage
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.domain import Domain
@@ -114,8 +113,17 @@ def _write_at(domain: Domain, when: dt, stream: str, message_type: str) -> None:
 
 def _add_raw_message(domain: Domain, **fields) -> None:
     """Store a message row as given, bypassing the defaults ``_write`` fills in."""
-    domain.repository_for(MemoryMessage).add(
-        MemoryMessage(position=0, type="Test.Raw.v1", data={}, **fields)
+    rows = domain.event_store.store.get_connection()
+    rows.append(
+        {
+            "id": str(uuid.uuid4()),
+            "position": 0,
+            "global_position": len(rows) + 1,
+            "type": "Test.Raw.v1",
+            "data": {},
+            "metadata": None,
+            **fields,
+        }
     )
 
 
@@ -740,10 +748,10 @@ class TestCollectTimelineStatsMessageTimes:
         # Should count only the 3 real events, not the snapshot
         assert stats["total_events"] == 3
 
-    # The memory event store returns ``time`` as an ISO string and validates it
-    # as a datetime on write. A store that returns datetime objects (MessageDB),
-    # an unparseable string, a number, or no ``global_position`` cannot be
-    # produced with it, so these tests feed such rows through ``get_all_messages``.
+    # The memory event store stamps every row with a datetime ``time`` and a
+    # ``global_position``. An unparseable string, a number, or no
+    # ``global_position`` cannot be produced with it, so these tests feed such
+    # rows through ``get_all_messages``.
 
     def test_datetime_object_time(self, event_domain):
         """A datetime ``time`` is used as is for the last time and the rate."""

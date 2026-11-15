@@ -1708,8 +1708,8 @@ class TestReconcileSkipsStateBasedAggregates:
         real_repository_for = domain.repository_for
         real_load_aggregate = domain.event_store.store.load_aggregate
 
-        # The memory event store and the outbox reach their own tables through
-        # ``repository_for`` too, so only a wallet lookup counts.
+        # The outbox reaches its own table through ``repository_for`` too, so
+        # only a wallet lookup counts.
         def repository_for_spy(element_cls):
             if element_cls is Wallet:
                 lookups.append(("repository_for", element_cls))
@@ -1948,9 +1948,8 @@ class TestOverlappingSweepsInMemory:
         copy. The live commit drops its copy, keeps the sweep's row and raises
         nothing.
 
-        On the memory event store the live event stays in the unit of work's
-        session until this commit, so no sweep can see it yet. The test
-        commits the row the sweep would save instead."""
+        The test runs no sweep. At the moment the live commit runs, it commits
+        the row a sweep would save for the live event."""
         domain = _make_memory_domain()
         with domain.domain_context():
             outbox_repo = domain._get_outbox_repo("default")

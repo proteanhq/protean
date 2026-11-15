@@ -2,8 +2,8 @@
 ``command_processing = "sync"``.
 
 Outside any unit of work the command is handled inline. Inside one (a handler,
-a ``@use_case`` method or a ``with UnitOfWork():`` block) it is stored with the
-caller's writes, ``process`` returns ``None``, and the command is handled after
+a ``@use_case`` method or a ``with UnitOfWork():`` block) it is stored at once,
+``process`` returns ``None``, and the command is handled after
 the caller commits, in its own unit of work with its own version retry. A
 conflict there never re-runs the caller, so an outside call the caller made
 before ``process`` happens once. Either way the command is stored as not
@@ -428,8 +428,13 @@ class TestInsideUnitOfWork:
 
         assert Probe.attempts == 0
         assert _status(test_domain, notification_id) == "PENDING"
-        # The memory event store writes through the caller's unit of work
-        assert _stored_commands(test_domain) == []
+        # The event store append is not part of the unit of work, so the
+        # command stays stored. It is marked not asynchronous, so the
+        # command subscription never runs it.
+        stored = _stored_commands(test_domain)
+        assert [m.metadata.domain.asynchronous for m in stored] == [False]
+        assert _skipped_by_command_subscription(test_domain) == 0
+        assert Probe.attempts == 0
 
     def test_stored_as_not_asynchronous_and_skipped_by_the_subscription(
         self, test_domain

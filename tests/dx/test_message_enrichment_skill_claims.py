@@ -2,8 +2,8 @@
 
 An aggregate enricher runs when a repository saves an aggregate to a database,
 and never for an event-sourced aggregate. Protean also saves some of its own
-records through repositories (outbox rows, the in-memory event store's message
-records), and the enricher never runs for those. The skill, the message
+records through repositories (outbox rows and processed-message records), and
+the enricher never runs for those. The skill, the message
 enrichment guide and the audit fields pattern skip an aggregate without the
 audit field, so the enricher also works in a domain where some aggregates have
 no audit fields. These tests check both claims.

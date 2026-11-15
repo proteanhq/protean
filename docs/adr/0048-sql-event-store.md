@@ -76,7 +76,7 @@ One name covers both databases because one code path writes to both (decision
 ### 2. A shared store appends in the Unit of Work's transaction
 
 - Sharing `default`: the store appends on the provider's session, obtained from
-  the active Unit of Work as the memory store does, so `write_message` takes no
+  the active Unit of Work as a repository does, so `write_message` takes no
   session argument. Events, aggregate rows and outbox rows commit or roll back
   together.
 - Inside a Unit of Work, the store collects every message appended during the

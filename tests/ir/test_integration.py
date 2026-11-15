@@ -96,7 +96,6 @@ class TestTopLevelStructure:
 @pytest.mark.no_test_domain
 class TestClusters:
     def test_cluster_count(self, ir):
-        # 3 domain aggregates (MemoryMessage is internal, excluded)
         assert len(ir["clusters"]) == 3
 
     def test_cluster_names(self, ir):
@@ -262,7 +261,6 @@ class TestElementsIndex:
             assert etype in ir["elements"], f"Missing element type: {etype}"
 
     def test_aggregate_count(self, ir):
-        # 3 domain aggregates (MemoryMessage is internal, excluded)
         assert len(ir["elements"]["AGGREGATE"]) == 3
 
     def test_command_count(self, ir):

@@ -839,7 +839,6 @@ class TestTutorialCh13(_TutorialBase):
                 span.attributes["protean.aggregate.type"]
                 for span in exporter.get_finished_spans()
                 if span.name == "protean.repository.add"
-                and span.attributes["protean.aggregate.type"] != "MemoryMessage"
             ]
             assert saved == ["Order"]
 

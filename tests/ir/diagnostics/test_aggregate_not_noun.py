@@ -3,7 +3,6 @@
 import pytest
 
 from protean import Domain
-from protean.core.aggregate import BaseAggregate
 from protean.fields.simple import String
 from protean.ir.builder import IRBuilder
 from tests.ir.diagnostics._helpers import (
@@ -77,22 +76,4 @@ class TestAggregateNotNoun:
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
         findings = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NOT_NOUN"]
-        assert findings == []
-
-    def test_infrastructure_aggregate_skipped(self):
-        """An aggregate whose FQN is under ``protean.adapters.`` is skipped even
-        when its name (`Shipping`) ends in a flagged suffix."""
-
-        domain = Domain(name="AggNamingInfra", root_path=".")
-
-        class Shipping(BaseAggregate):
-            reference = String(max_length=50)
-
-        Shipping.__module__ = "protean.adapters.fake"
-        domain.register(Shipping)
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-        findings = [d for d in ir["diagnostics"] if d["code"] == "AGGREGATE_NOT_NOUN"]
-        assert not any("Shipping" in d["element"] for d in findings)
         assert findings == []

@@ -203,7 +203,7 @@ class _DomainRegistry:
 
     def is_internal(self, element_cls: type[Any]) -> bool:
         """Return ``True`` if the framework registered ``element_cls`` for its
-        own use, such as the outbox or the memory event store's message rows.
+        own use, such as the outbox or the processed-message records.
 
         An unregistered class is not internal.
         """

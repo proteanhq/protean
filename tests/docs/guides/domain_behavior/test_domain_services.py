@@ -153,7 +153,6 @@ def test_the_handler_confirms_the_order_and_saves_only_the_order(
         span.attributes["protean.aggregate.type"]
         for span in exporter.get_finished_spans()
         if span.name == "protean.repository.add"
-        and span.attributes["protean.aggregate.type"] != "MemoryMessage"
     ]
     assert saved == ["Order"]
 

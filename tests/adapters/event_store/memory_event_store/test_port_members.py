@@ -185,6 +185,19 @@ class TestStreamIds:
 
         assert sorted(store.stream_ids("user")) == ["1", "2"]
 
+    def test_category_reads_return_only_the_exact_category(self, test_domain):
+        store = test_domain.event_store.store
+        _write(store, "test::user-1", 0)
+        _write(store, "test::poweruser-1", 1)
+        store.write_message("test::user:snapshot-1", "SNAPSHOT", {"_version": 0})
+
+        rows = store.get_category_messages("test::user")
+
+        assert [(row["stream_name"], row["data"]) for row in rows] == [
+            ("test::user-1", {"n": 0})
+        ]
+        assert store.stream_ids("test::user") == ["1"]
+
 
 class TestHealth:
     def test_ping_returns_true(self, test_domain):
@@ -195,8 +208,15 @@ class TestHealth:
             reachable=True, pool=None
         )
 
-    def test_get_connection_returns_none(self, test_domain):
-        assert test_domain.event_store.store.get_connection() is None
+    def test_get_connection_returns_the_stored_rows(self, test_domain):
+        store = test_domain.event_store.store
+        _write(store, "user-1", 0)
+
+        rows = store.get_connection()
+
+        assert [(r["stream_name"], r["global_position"]) for r in rows] == [
+            ("user-1", 1)
+        ]
 
 
 def test_clear_removes_every_row(test_domain):
@@ -207,3 +227,47 @@ def test_clear_removes_every_row(test_domain):
     store.clear()
 
     assert store.get_all_messages() == []
+
+
+def test_a_write_after_clear_starts_the_positions_again(test_domain):
+    store = test_domain.event_store.store
+    _write(store, "user-1", 0)
+    _write(store, "user-1", 1)
+
+    store.clear()
+    _write(store, "user-1", 2)
+
+    assert [
+        (row["global_position"], row["position"], row["data"])
+        for row in store.get_all_messages()
+    ] == [(1, 0, {"n": 2})]
+
+
+def test_changing_a_read_result_leaves_the_stored_row_unchanged(test_domain):
+    store = test_domain.event_store.store
+    store.write_message("user-1", "Counted", {"n": 0, "tags": ["a"]})
+
+    for read in (
+        store.get_stream_messages("user-1")[0],
+        store.get_category_messages("user")[0],
+        store.get_all_messages()[0],
+        store.get_last_stream_message("user-1"),
+        store.get_last_category_message("user"),
+        store.get_last_message(),
+    ):
+        read["data"]["tags"].append("b")
+        read["position"] = 99
+
+    assert [(row["position"], row["data"]) for row in store.get_all_messages()] == [
+        (0, {"n": 0, "tags": ["a"]})
+    ]
+
+
+def test_changing_the_written_data_leaves_the_stored_row_unchanged(test_domain):
+    store = test_domain.event_store.store
+    data = {"n": 0, "tags": ["a"]}
+    store.write_message("user-1", "Counted", data)
+
+    data["tags"].append("b")
+
+    assert store.get_last_message()["data"] == {"n": 0, "tags": ["a"]}

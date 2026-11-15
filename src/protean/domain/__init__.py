@@ -2144,8 +2144,8 @@ class Domain:
         update through a repository, and for each row that ``query.update()``
         saves, so it can read the acting user from ``g``. It does not run for
         event-sourced aggregates, for a save that passes ``apply_hooks=False``,
-        or for the framework's internal aggregates (outbox rows, the memory
-        event store's messages, processed-message records).
+        or for the framework's internal aggregates (outbox rows and
+        processed-message records).
 
         Enrichers run in registration order. If one raises, the exception
         propagates and the save is aborted. On an update, the version is
@@ -2235,10 +2235,9 @@ class Domain:
         handled after the caller's unit of work commits, in its own unit of
         work. A failure while it runs, such as a deadline that passed before
         the commit, makes the caller's commit raise ``TransactionError``. A
-        rollback of the caller means the command never runs. The memory event
-        store discards it with the caller's writes; an event store that writes
-        outside the unit of work, such as Message DB, keeps it stored and
-        unhandled.
+        rollback of the caller means the command never runs. The built-in
+        event stores write outside the unit of work, so the command stays
+        stored and unhandled.
 
         Args:
             command: Instance of a ``@domain.command``-decorated class.

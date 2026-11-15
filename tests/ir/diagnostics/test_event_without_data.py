@@ -56,7 +56,7 @@ class TestEventWithoutData:
         domain.init(traverse=False)
         ir = IRBuilder(domain).build()
 
-        # Find the Order cluster (not MemoryMessage)
+        # Find the Order cluster
         order_cluster = next(
             c for c in ir["clusters"].values() if c["aggregate"]["name"] == "Order"
         )

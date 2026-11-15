@@ -3076,9 +3076,6 @@ class IRBuilder:
         abstract_fqns = self._abstract_aggregate_fqns()
         for cluster in ir["clusters"].values():
             aggregate = cluster["aggregate"]
-            # Skip infrastructure aggregates (e.g. MemoryMessage)
-            if aggregate["fqn"].startswith("protean.adapters."):
-                continue
             if aggregate["fqn"] in abstract_fqns:
                 continue
             if not cluster["command_handlers"]:
@@ -3661,9 +3658,6 @@ class IRBuilder:
         cluster_keys = set(ir["clusters"])
         abstract_fqns = self._abstract_aggregate_fqns()
         for own, cluster in ir["clusters"].items():
-            # Skip infrastructure and abstract aggregates
-            if cluster["aggregate"]["fqn"].startswith("protean.adapters."):
-                continue
             if cluster["aggregate"]["fqn"] in abstract_fqns:
                 continue
             # The root and every child entity belong to *this* cluster, so the
@@ -3718,9 +3712,6 @@ class IRBuilder:
         abstract_fqns = self._abstract_aggregate_fqns()
         for cluster in ir["clusters"].values():
             aggregate = cluster["aggregate"]
-            # Skip infrastructure and abstract aggregates
-            if aggregate["fqn"].startswith("protean.adapters."):
-                continue
             if aggregate["fqn"] in abstract_fqns:
                 continue
             if not aggregate["options"].get("is_event_sourced"):
@@ -4011,9 +4002,6 @@ class IRBuilder:
         limit = self._domain.config.get("lint", {}).get("aggregate_size_limit", 5)
         for cluster in ir["clusters"].values():
             aggregate = cluster["aggregate"]
-            # Skip infrastructure aggregates
-            if aggregate["fqn"].startswith("protean.adapters."):
-                continue
             entity_count = len(cluster["entities"])
             if entity_count > limit:
                 self._diagnostics.append(
@@ -4473,14 +4461,10 @@ class IRBuilder:
         gerund, verb, or adjective name (``OrderProcessing``, ``Notify``,
         ``Recursive``) reads like a process or a capability rather than a
         concept. Agent nouns legitimately end in ``-er``/``-or``/``-ator``
-        (``Customer``, ``Auditor``) and are *not* flagged. Infrastructure
-        aggregates under ``protean.adapters.`` are skipped.
+        (``Customer``, ``Auditor``) and are *not* flagged.
         """
         for cluster in ir["clusters"].values():
             aggregate = cluster["aggregate"]
-            # Skip infrastructure aggregates
-            if aggregate["fqn"].startswith("protean.adapters."):
-                continue
             name = aggregate["name"]
             lowered = name.lower()
             for suffix in NON_NOUN_AGGREGATE_SUFFIXES:

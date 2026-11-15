@@ -183,6 +183,8 @@ class MemorySession:
     #                      record that holds its key was committed first
     #   ``dropped``        ``(schema, identifier)`` of each row the latest
     #                      commit dropped that way; a commit resets it
+    #   ``flush_held``     ``True`` while a passed :meth:`flush` holds ``lock``
+    #                      for this thread until commit, rollback or close
     _db: dict[str, typing.Any]
 
     def __init__(
@@ -216,6 +218,7 @@ class MemorySession:
                 "created": set(),
                 "if_absent": {},
                 "dropped": set(),
+                "flush_held": False,
             }
 
     def write(
@@ -308,14 +311,54 @@ class MemorySession:
                 self._db["data"][schema].pop(identifier, None)
                 self._db["dropped"].add((schema, identifier))
 
+    def flush(self) -> None:
+        """Check the recorded versions and hold the provider lock until
+        :meth:`commit`, :meth:`rollback` or :meth:`close`.
+
+        Changes nothing in the store. A Unit of Work calls it before it appends
+        events, so a stale write fails before any event is durable, and no
+        other session can commit between this check and :meth:`commit`.
+
+        Raises:
+            ExpectedVersionError: A recorded version is stale. The lock is
+                released before the error propagates.
+        """
+        lock = self._db["lock"]
+        lock.acquire()
+        try:
+            _refuse_stale_versions(
+                self._provider._databases, self._db["version_checks"]
+            )
+        except BaseException:
+            lock.release()
+            # A failed flush after a passed one also drops the earlier hold.
+            self._release_flush_hold()
+            raise
+        if self._db["flush_held"]:
+            # A second flush keeps the single hold the first one took.
+            lock.release()
+        self._db["flush_held"] = True
+
+    def _release_flush_hold(self) -> None:
+        if self._db["flush_held"]:
+            self._db["flush_held"] = False
+            self._db["lock"].release()
+
     def commit(self) -> None:
         """Validate optimistic-concurrency versions and merge changes to the store.
 
         Runs the version checks and the merge together under the provider lock,
         so the whole compare-and-set is atomic with respect to other sessions'
         commits. A version mismatch raises :class:`ExpectedVersionError` and
-        leaves the live store untouched.
+        leaves the live store untouched. Either way, the commit releases the
+        lock a passed :meth:`flush` holds.
         """
+        try:
+            self._merge_into_live_store()
+        finally:
+            self._release_flush_hold()
+
+    def _merge_into_live_store(self) -> None:
         with self._db["lock"]:
             live = self._provider._databases
             data = self._db["data"]
@@ -344,9 +387,10 @@ class MemorySession:
         # changeset until ``commit`` publishes them, so discarding the changeset
         # (never applying it) is the rollback.
         self._clear_changeset()
+        self._release_flush_hold()
 
     def close(self) -> None:
-        pass
+        self._release_flush_hold()
 
 
 class MemoryProvider(BaseProvider, RawQueryProviderPort):

@@ -135,32 +135,6 @@ class TestCrossAggregateReference:
         codes = [d["code"] for d in ir["diagnostics"]]
         assert "CROSS_AGGREGATE_REFERENCE" not in codes
 
-    def test_infrastructure_aggregate_not_flagged(self):
-        """A framework/infrastructure aggregate (FQN under ``protean.adapters.``)
-        is skipped even when it carries a cross-aggregate ``Reference``. Deleting
-        the ``protean.adapters.`` guard must fail this test."""
-        domain = Domain(name="CrossRefInfra", root_path=".")
-
-        @domain.aggregate
-        class Order:
-            total = Float()
-
-        @domain.aggregate
-        class Customer:
-            name = String()
-            order = Reference(Order)
-
-        # Masquerade as an infrastructure aggregate so its cluster FQN sits under
-        # ``protean.adapters.`` (real adapter aggregates are internal and never
-        # clustered, so this override is how the guard is reached).
-        Customer.__module__ = "protean.adapters.fake"
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        codes = [d["code"] for d in ir["diagnostics"]]
-        assert "CROSS_AGGREGATE_REFERENCE" not in codes
-
     def test_suppress_checks_drops_code(self):
         domain = Domain(name="CrossRefSuppress", root_path=".")
 

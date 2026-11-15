@@ -131,7 +131,7 @@ by its per-stream `position`, and a category or `$all` read pages by
 
 | Adapter | Per-stream order | Global order | Append and OCC | Consistency |
 |---|---|---|---|---|
-| **Memory** | Gapless `position` | `global_position`, no gaps | Atomic under a class lock, single-threaded use only | Read-your-writes, in process |
+| **Memory** | Gapless `position` | `global_position`, no gaps | Atomic under a per-store lock, safe for concurrent writers in one process | Read-your-writes, in process |
 | **MessageDB** | Gapless `position` | `global_position`, gap-free within a category | `write_message` stored procedure with `expected_version` | Read-your-writes once `append` returns |
 
 ### Known exceptions {#event-store-exceptions}
@@ -142,9 +142,9 @@ by its per-stream `position`, and a category or `$all` read pages by
   `global_position`, so positions across categories can have gaps. Within one
   category there are none, because MessageDB holds a per-category advisory
   lock until commit.
-- **Memory with concurrent writers**: An append deferred into an enclosing
-  Unit of Work publishes after the class lock is released, so overlapping Units
-  of Work on one stream are not serialized. Use it with one writer.
+- **Memory append survives a rollback**: The memory store writes each
+  append at once, outside the Unit of Work, as MessageDB does. A Unit of Work
+  that rolls back leaves its appended events in the store.
 
 !!! warning "Interim: not yet a stable contract"
     The event-store append is written first, and the relational and outbox

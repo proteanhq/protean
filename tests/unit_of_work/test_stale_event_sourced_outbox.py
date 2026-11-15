@@ -314,15 +314,9 @@ class TestStaleWriteWithOutbox:
 
         assert exc_info.value.extra_info["original_exception"] == "ValueError"
         assert _outbox_ids(domain) == outbox_before
-        stream_after = _stream(domain, account.account_id)
-        if domain.event_store.store.__class__.__name__ == "MemoryEventStore":
-            # The in-memory store's append joins the unit of work and rolls
-            # back with it.
-            assert len(stream_after) == len(stream_before)
-        else:
-            # Message DB writes directly: the event is durable without its
-            # outbox row, as after a crash before the relational commit.
-            assert len(stream_after) == len(stream_before) + 1
+        # Both stores write the append directly: the event is durable without
+        # its outbox row, as after a crash before the relational commit.
+        assert len(_stream(domain, account.account_id)) == len(stream_before) + 1
 
     def test_outbox_rows_are_saved_inside_the_unit_of_work(
         self, make_domain, monkeypatch
