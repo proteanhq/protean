@@ -93,7 +93,7 @@ def trace_domain(tmp_path):
         order_stream = f"{Order.meta_.stream_category}-{order_id}"
 
         # Chain 1: User registration flow (corr-chain-A)
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             user_stream,
             "Test.RegisterUser.v1",
             {"user_id": user_id, "name": "Alice"},
@@ -112,7 +112,7 @@ def trace_domain(tmp_path):
                 },
             },
         )
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             user_stream,
             "Test.UserRegistered.v1",
             {"user_id": user_id, "name": "Alice"},
@@ -132,7 +132,7 @@ def trace_domain(tmp_path):
         )
 
         # Chain 2: Order placement flow (corr-chain-B)
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             order_stream,
             "Test.PlaceOrder.v1",
             {"order_id": order_id, "total": "99.99"},
@@ -151,7 +151,7 @@ def trace_domain(tmp_path):
                 },
             },
         )
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             order_stream,
             "Test.OrderPlaced.v1",
             {"order_id": order_id, "total": "99.99"},
@@ -171,7 +171,7 @@ def trace_domain(tmp_path):
         )
 
         # Chain 3: User rename (corr-chain-C) — shares user_id with chain A
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             user_stream,
             "Test.RenameUser.v1",
             {"user_id": user_id, "name": "Alice Smith"},
@@ -190,7 +190,7 @@ def trace_domain(tmp_path):
                 },
             },
         )
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             user_stream,
             "Test.UserRenamed.v1",
             {"user_id": user_id, "name": "Alice Smith"},
@@ -271,7 +271,7 @@ class TestGroupByCorrelation:
         domain, _, _ = trace_domain
 
         # Write a message without correlation_id
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             "tracetests::orphan-1",
             "Test.Orphan.v1",
             {"data": "orphan"},
@@ -473,7 +473,7 @@ class TestGroupByCorrelationEdgeCases:
         domain, _, _ = trace_domain
 
         # Write a snapshot message
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             "tracetests:snapshot-user-1",
             "SNAPSHOT",
             {"data": "snapshot"},
@@ -506,7 +506,9 @@ class TestGroupByCorrelationEdgeCases:
         # The memory event store cannot fail for real, so its read is forced
         # to raise as an unreachable database would.
         with patch.object(
-            broken.event_store.store, "_read", side_effect=RuntimeError("broken")
+            broken.event_store.store,
+            "get_all_messages",
+            side_effect=RuntimeError("broken"),
         ):
             # Should still return groups from the working domain
             groups = _group_by_correlation([domain, broken])

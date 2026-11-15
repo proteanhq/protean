@@ -54,7 +54,7 @@ $ protean dlq list --domain=my_domain
 Filter by stream category when you know which subscription is failing:
 
 ```shell
-$ protean dlq list --subscription=order --domain=my_domain
+$ protean dlq list --subscription=shop::order --domain=my_domain
 ```
 
 ---
@@ -121,13 +121,13 @@ and dozens or hundreds of messages with the same root cause have collected in
 the DLQ. In that case, replay the whole subscription at once:
 
 ```shell
-$ protean dlq replay-all --subscription=order --domain=my_domain
+$ protean dlq replay-all --subscription=shop::order --domain=my_domain
 ```
 
 You'll be prompted to confirm. In automation, skip the prompt with `-y`:
 
 ```shell
-$ protean dlq replay-all --subscription=order --yes --domain=my_domain
+$ protean dlq replay-all --subscription=shop::order --yes --domain=my_domain
 ```
 
 Only replay in bulk when you're confident the root cause is resolved.
@@ -148,7 +148,7 @@ Some DLQ entries are truly unrecoverable:
 In those cases, purge them rather than replay:
 
 ```shell
-$ protean dlq purge --subscription=order --domain=my_domain
+$ protean dlq purge --subscription=shop::order --domain=my_domain
 ```
 
 This is **irreversible**, there's no "undo" once a DLQ message is purged.

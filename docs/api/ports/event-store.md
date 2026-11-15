@@ -12,6 +12,38 @@ concrete adapter configuration.
 
 ---
 
+## EventStorePort
+
+The `typing.Protocol` every event store implements. `BaseEventStore`
+subclasses it and adds the features built on these members.
+
+::: protean.port.event_store.EventStorePort
+    options:
+      show_root_heading: false
+
+---
+
+## RawMessage
+
+The row an event store returns from a read.
+
+::: protean.port.event_store.RawMessage
+    options:
+      show_root_heading: false
+
+---
+
+## EventStoreHealth
+
+What `health()` reports: whether the store answered, and its connection pool
+counts when the store has a pool.
+
+::: protean.port.event_store.EventStoreHealth
+    options:
+      show_root_heading: false
+
+---
+
 ## EventStoreCapabilities
 
 The guarantees an event store declares on its `capabilities` property.

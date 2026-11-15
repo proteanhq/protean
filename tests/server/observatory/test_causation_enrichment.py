@@ -76,7 +76,7 @@ def _correlated_domain(tmp_path, config=None):
         stream = f"{User.meta_.stream_category}-{user_id}"
 
         # Root command
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             stream,
             "Test.RegisterUser.v1",
             {"user_id": user_id, "name": "Alice"},
@@ -95,7 +95,7 @@ def _correlated_domain(tmp_path, config=None):
         )
 
         # Event caused by command
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             stream,
             "Test.UserRegistered.v1",
             {"user_id": user_id, "name": "Alice"},
@@ -114,7 +114,7 @@ def _correlated_domain(tmp_path, config=None):
         )
 
         # Second event caused by first event
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             stream,
             "Test.UserRenamed.v1",
             {"user_id": user_id, "name": "Alice Smith"},

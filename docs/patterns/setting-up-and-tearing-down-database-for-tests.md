@@ -69,7 +69,7 @@ Every Protean adapter exposes lifecycle methods designed for exactly this separa
 
 | Method | Purpose |
 |--------|---------|
-| `domain.event_store.store._data_reset()` | Flush all stored events |
+| `domain.event_store.store.clear()` | Flush all stored events |
 
 The in-memory adapters implement these same methods as no-ops or simple dictionary clears, so the same fixture code works regardless of which adapter is active.
 
@@ -367,7 +367,7 @@ def test_no_orders_exist():
     assert len(orders.items) == 0  # FAILS: order from previous test
 ```
 
-Fix: use `DomainFixture.domain_context()`, which resets all data automatically. Or add a `function`-scoped `clean_data` fixture that calls `clear()` on all providers and `_data_reset()` on all brokers and the event store.
+Fix: use `DomainFixture.domain_context()`, which resets all data automatically. Or add a `function`-scoped `clean_data` fixture that calls `clear()` on all providers and the event store, and `_data_reset()` on all brokers.
 
 ### Recreating Schema Per Test
 
@@ -435,7 +435,7 @@ The recommended approach is to use `DomainFixture` from `protean.integrations.py
 | Data truncation | `domain.truncate_database()` | On demand |
 | Data cleanup (database) | `provider.clear()` | After every test |
 | Data cleanup (broker) | `broker._data_reset()` | After every test |
-| Data cleanup (event store) | `event_store.store._data_reset()` | After every test |
+| Data cleanup (event store) | `event_store.store.clear()` | After every test |
 
 `domain.truncate_database()` deletes all rows from every table while preserving
 the schema. It is also available as a CLI command (`protean db truncate`) for

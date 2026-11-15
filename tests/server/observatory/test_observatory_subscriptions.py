@@ -93,6 +93,8 @@ class _StatusDomain:
             stream_category=stream,
             subscription_type="stream",
         )
+        # Registration prefixes a bare category with the domain name.
+        stream = handler_cls.meta_.stream_category
         if in_group:
             self._groups.setdefault(stream, []).append(
                 {
@@ -118,6 +120,7 @@ class _StatusDomain:
             stream_category=stream,
             subscription_type="event_store",
         )
+        stream = handler_cls.meta_.stream_category
         self._event_store_writes.append((handler_cls, stream, events, position))
         return handler_cls
 
@@ -134,9 +137,9 @@ class _StatusDomain:
             store = self.domain.event_store.store
             for handler_cls, stream, events, position in self._event_store_writes:
                 for i in range(events):
-                    store._write(f"{stream}-{i}", "Placed", {"i": i})
+                    store.write_message(f"{stream}-{i}", "Placed", {"i": i})
                 if position is not None:
-                    store._write(
+                    store.write_message(
                         f"position-{fqn(handler_cls)}-{stream}",
                         "Read",
                         {"position": position},
@@ -242,7 +245,7 @@ class TestSubscriptionsEndpointUnit:
             for s in response.json()["test-domain"]["subscriptions"]
         }
         assert subs["OrderProjector"]["position_stream"] == (
-            f"position-{fqn(projector)}-order"
+            f"position-{fqn(projector)}-test_domain::order"
         )
         assert subs["StreamHandler"]["position_stream"] is None
 
@@ -296,7 +299,7 @@ class TestSubscriptionsMetrics:
 
         assert (
             'protean_subscription_consumer_lag{domain="metric-domain",'
-            'handler="OrderHandler",stream="order",type="stream"} 42'
+            'handler="OrderHandler",stream="metric_domain::order",type="stream"} 42'
         ) in body
 
     def test_metrics_contains_subscription_pending(self):
@@ -308,7 +311,7 @@ class TestSubscriptionsMetrics:
 
         assert (
             'protean_subscription_pending_messages{domain="metric-domain",'
-            'handler="SlowHandler",stream="order",type="stream"} 3'
+            'handler="SlowHandler",stream="metric_domain::order",type="stream"} 3'
         ) in body
 
     def test_metrics_contains_subscription_dlq_depth(self):
@@ -320,7 +323,7 @@ class TestSubscriptionsMetrics:
 
         assert (
             'protean_subscription_dlq_depth{domain="metric-domain",'
-            'handler="SlowHandler",stream="order",type="stream"} 1'
+            'handler="SlowHandler",stream="metric_domain::order",type="stream"} 1'
         ) in body
 
     def test_metrics_contains_subscription_status_gauge(self):
@@ -332,7 +335,7 @@ class TestSubscriptionsMetrics:
 
         assert (
             'protean_subscription_status{domain="metric-domain",'
-            'handler="TestHandler",stream="test",type="stream"} 1'
+            'handler="TestHandler",stream="metric_domain::test",type="stream"} 1'
         ) in body
 
     def test_metrics_skips_lag_when_none(self):
@@ -364,7 +367,7 @@ class TestSubscriptionsMetrics:
         assert "# TYPE protean_subscription_lag_seconds gauge" in body
         assert (
             'protean_subscription_lag_seconds{domain="metric-domain",'
-            'handler="OrderHandler",stream="order",type="event_store"} 12.5'
+            'handler="OrderHandler",stream="metric_domain::order",type="event_store"} 12.5'
         ) in body
 
     def test_metrics_skips_lag_seconds_when_none(self):

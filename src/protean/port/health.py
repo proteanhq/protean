@@ -6,8 +6,8 @@ from typing import TypedDict
 class PoolStats(TypedDict):
     """The state of an adapter's connection pool.
 
-    `CacheHealth.pool` carries one of these, or `None` for an adapter without
-    a pool.
+    `CacheHealth.pool` and `EventStoreHealth.pool` carry one of these, or
+    `None` for an adapter without a pool.
     """
 
     size: int

@@ -398,7 +398,7 @@ class TestEventSourcedAggregateOutbox:
             test_domain.repository_for(ESOrder).add(order)
 
         # Verify event store has the event
-        messages = test_domain.event_store.store._read("test::es_order")
+        messages = test_domain.event_store.store.get_category_messages("test::es_order")
         assert len(messages) == 1
         assert messages[0]["type"] == ESOrderPlaced.__type__
 

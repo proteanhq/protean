@@ -6,7 +6,7 @@ the first save, gets two limit raises (v2, v3) in the second, and is
 suspended (v4) in the third.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,7 +25,7 @@ def example():
     with module.compliance.domain_context():
         module.record_account_history()
         yield module
-        module.compliance.event_store.store._data_reset()
+        module.compliance.event_store.store.clear()
 
 
 @pytest.fixture
@@ -39,9 +39,9 @@ def write_times(example):
 
     These are the timestamps ``as_of`` compares against.
     """
-    rows = example.compliance.event_store.store._read(STREAM)
+    rows = example.compliance.event_store.store.get_stream_messages(STREAM)
     assert [row["position"] for row in rows] == [0, 1, 2, 3, 4]
-    return [datetime.fromisoformat(row["time"]) for row in rows]
+    return [row["time"] for row in rows]
 
 
 # --- at_version ---------------------------------------------------------------
@@ -208,12 +208,12 @@ def api():
     module = load_example("patterns/temporal-queries/001.py")
     with module.compliance.domain_context():
         module.record_account_history()
-        rows = module.compliance.event_store.store._read(STREAM)
-        times = [datetime.fromisoformat(row["time"]) for row in rows]
+        rows = module.compliance.event_store.store.get_stream_messages(STREAM)
+        times = [row["time"] for row in rows]
     assert len(times) == 5
     yield TestClient(module.app), times
     with module.compliance.domain_context():
-        module.compliance.event_store.store._data_reset()
+        module.compliance.event_store.store.clear()
 
 
 def test_api_returns_the_account_at_a_version(api):

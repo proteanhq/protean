@@ -457,7 +457,7 @@ class TestHealthServerIntegration:
         def _raise(*a, **kw):
             raise ConnectionError("unreachable")
 
-        engine.domain.event_store.store._read_last_message = _raise
+        engine.domain.event_store.store.ping = _raise
         status, body = _parse_http(_fetch_health(loop, port, path="/readyz"))
         assert "503" in status
         assert body["checks"]["event_store"] == "unavailable"
@@ -710,7 +710,7 @@ def _write_events(domain, count):
     store = domain.event_store.store
     category = HealthUser.meta_.stream_category
     for n in range(count):
-        store._write(
+        store.write_message(
             f"{category}-1",
             "HealthUserRegistered",
             {"n": n},
@@ -729,7 +729,7 @@ def _set_lag(domain, lag, lag_seconds=0.0, handler=HealthUserHandler):
     category = HealthUser.meta_.stream_category
     head = store.stream_head_position(category)
     domain.clock = FrozenClock(_POSITION_TIME)
-    store._write(
+    store.write_message(
         f"position-{fqn(handler)}-{category}", "Read", {"position": head - lag}
     )
     domain.clock = FrozenClock(_POSITION_TIME + timedelta(seconds=lag_seconds))
@@ -1335,7 +1335,7 @@ class TestLagDrainRate:
             assert self._rate(refresher) == 0.0
 
             # The store loses every event, so the lag goes unreadable.
-            domain.event_store.store._data_reset()
+            domain.event_store.store.clear()
             clock[0] += 2.0
             await refresher._refresh_once()
             assert refresher.block["details"][0]["lag_seconds"] is None

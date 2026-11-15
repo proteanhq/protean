@@ -112,6 +112,17 @@ This allows multiple aggregates to publish to shared stream categories for speci
 A handler like this one reads every event on the shared stream with `@handle("$any")`,
 for a report or an audit log, and leaves every aggregate as it is.
 
+Protean prefixes a handler's category with the domain name when the category
+has no `::`. In the `ecommerce` domain, `all_orders` registers as
+`ecommerce::all_orders`, which is where an aggregate with
+`stream_category="all_orders"` writes its events. `$all` and a value that
+already contains `::` stay as written. A projector's `stream_categories`
+follow the same rule. An aggregate's category is prefixed even when it
+contains `::`, so a handler that reads an aggregate with
+`stream_category="billing::invoice"` names `ecommerce::billing::invoice`, or
+uses `part_of`. Subscribers are not affected: they read broker streams by the
+name you give them.
+
 ### Changing Another Aggregate
 
 When an event on one aggregate's stream must change another aggregate, the

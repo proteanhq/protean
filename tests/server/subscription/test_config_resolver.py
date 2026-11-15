@@ -332,7 +332,7 @@ class TestConfigResolverHandlerMetaConfig:
         resolver = ConfigResolver(test_domain)
         config = resolver.resolve(TestHandler)
 
-        assert config.origin_stream == "external"
+        assert config.origin_stream == "test::external"
 
 
 class TestConfigResolverPriorityOrder:

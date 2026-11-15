@@ -88,7 +88,7 @@ class User(BaseAggregate):
         self.raise_(UserRenamed(user_id=self.user_id, name=name))
 
 
-def _store_unavailable(domain: Domain, method: str = "_read"):
+def _store_unavailable(domain: Domain, method: str = "get_all_messages"):
     """Make one read method of the domain's event store raise.
 
     The memory event store cannot be made to fail for real, so the read is
@@ -107,7 +107,7 @@ def _write_at(domain: Domain, when: dt, stream: str, message_type: str) -> None:
     domain.clock = FrozenClock(when)
     try:
         with domain.domain_context():
-            domain.event_store.store._write(stream, message_type, {})
+            domain.event_store.store.write_message(stream, message_type, {})
     finally:
         domain.clock = original_clock
 
@@ -499,7 +499,7 @@ class TestCollectAllEvents:
     def test_excludes_snapshots(self, domain_with_events):
         domain, user1_id, _ = domain_with_events
         # Write a snapshot to the event store
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             f"{User.meta_.stream_category}:snapshot-{user1_id}",
             "SNAPSHOT",
             {"user_id": user1_id, "name": "Alice Smith"},
@@ -730,7 +730,7 @@ class TestCollectTimelineStatsMessageTimes:
         domain, user1_id, _ = domain_with_events
 
         # Write a snapshot message
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             f"{User.meta_.stream_category}:snapshot-{user1_id}",
             "SNAPSHOT",
             {"user_id": user1_id, "name": "Alice Smith"},
@@ -743,7 +743,7 @@ class TestCollectTimelineStatsMessageTimes:
     # The memory event store returns ``time`` as an ISO string and validates it
     # as a datetime on write. A store that returns datetime objects (MessageDB),
     # an unparseable string, a number, or no ``global_position`` cannot be
-    # produced with it, so these tests feed such rows through ``_read``.
+    # produced with it, so these tests feed such rows through ``get_all_messages``.
 
     def test_datetime_object_time(self, event_domain):
         """A datetime ``time`` is used as is for the last time and the rate."""
@@ -766,7 +766,9 @@ class TestCollectTimelineStatsMessageTimes:
             },
         ]
         with patch.object(
-            event_domain.event_store.store, "_read", return_value=fake_messages
+            event_domain.event_store.store,
+            "get_all_messages",
+            return_value=fake_messages,
         ):
             stats = collect_timeline_stats([event_domain])
         assert stats["total_events"] == 2
@@ -787,7 +789,9 @@ class TestCollectTimelineStatsMessageTimes:
         ]
         with (
             patch.object(
-                event_domain.event_store.store, "_read", return_value=fake_messages
+                event_domain.event_store.store,
+                "get_all_messages",
+                return_value=fake_messages,
             ),
             caplog.at_level(
                 logging.DEBUG, logger="protean.server.observatory.routes.timeline"
@@ -817,7 +821,9 @@ class TestCollectTimelineStatsMessageTimes:
             },
         ]
         with patch.object(
-            event_domain.event_store.store, "_read", return_value=fake_messages
+            event_domain.event_store.store,
+            "get_all_messages",
+            return_value=fake_messages,
         ):
             stats = collect_timeline_stats([event_domain])
         assert stats["total_events"] == 1
@@ -923,7 +929,9 @@ class TestCollectAllEventsWithoutGlobalPosition:
             },
         ]
         with patch.object(
-            event_domain.event_store.store, "_read", return_value=fake_messages
+            event_domain.event_store.store,
+            "get_all_messages",
+            return_value=fake_messages,
         ):
             events, cursor = collect_all_events([event_domain], limit=2)
         assert len(events) == 2
@@ -952,7 +960,7 @@ def correlated_domain(tmp_path):
         stream = f"{User.meta_.stream_category}-{user_id}"
 
         # Root command (no causation_id)
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             stream,
             "Test.RegisterUser.v1",
             {"user_id": user_id, "name": "Alice"},
@@ -971,7 +979,7 @@ def correlated_domain(tmp_path):
         )
 
         # Event caused by the command
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             stream,
             "Test.UserRegistered.v1",
             {"user_id": user_id, "name": "Alice"},
@@ -990,7 +998,7 @@ def correlated_domain(tmp_path):
         )
 
         # Another event caused by the first event
-        domain.event_store.store._write(
+        domain.event_store.store.write_message(
             stream,
             "Test.UserRenamed.v1",
             {"user_id": user_id, "name": "Alice Smith"},
@@ -1220,7 +1228,7 @@ class TestCollectAggregateHistory:
         assert result is None
 
     def test_handles_broken_domain_gracefully(self, event_domain):
-        with _store_unavailable(event_domain):
+        with _store_unavailable(event_domain, "get_stream_messages"):
             result = collect_aggregate_history([event_domain], "cat", "id")
         assert result is None
 
@@ -1259,7 +1267,7 @@ class TestCorrelationEndpoint:
         a tree that holds each message once."""
         store = timeline_domain.event_store.store
         for msg_id, cause_id in (("msg-a", "msg-b"), ("msg-b", "msg-a")):
-            store._write(
+            store.write_message(
                 "test::cycle-1",
                 "Test.Cycle.v1",
                 {},
@@ -1403,7 +1411,7 @@ class TestUniqueStoreDomains:
         assert result == [d1, d2]
         assert "Cannot read the event store of domain broken" in caplog.text
 
-    def test_same_conn_info_deduplicates(self, tmp_path):
+    def test_same_database_uri_deduplicates(self, tmp_path):
         """Two domains with the same database_uri produce one entry."""
         d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://shared-db")
         d2 = _domain_with_store_uri(tmp_path, "d2", "postgresql://shared-db")
@@ -1412,25 +1420,12 @@ class TestUniqueStoreDomains:
         assert len(result) == 1
         assert result[0] is d1
 
-    def test_different_conn_info_keeps_both(self, tmp_path):
+    def test_different_database_uri_keeps_both(self, tmp_path):
         """Two domains with different database_uris are kept."""
         d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://db-a")
         d2 = _domain_with_store_uri(tmp_path, "d2", "postgresql://db-b")
 
         result = _unique_store_domains([d1, d2])
-        assert len(result) == 2
-
-    def test_store_without_conn_info_falls_back_to_id(self, tmp_path):
-        """Stores without conn_info attribute use id() as fallback."""
-        d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://shared-db")
-        d2 = _domain_with_store_uri(tmp_path, "d2", "postgresql://shared-db")
-        # Every built-in store sets conn_info; removing it stands for a
-        # third-party store that does not.
-        del d1.event_store.store.conn_info
-        del d2.event_store.store.conn_info
-
-        result = _unique_store_domains([d1, d2])
-        # Different store objects → different id() → both kept
         assert len(result) == 2
 
     def test_store_with_empty_database_uri_falls_back_to_id(self, tmp_path):
@@ -1501,7 +1496,7 @@ class TestMultiDomainDeduplication:
         """Passing the same domain twice should not double the events."""
         domain, _, _ = domain_with_events
 
-        # Simulate shared-store by passing same domain twice with same conn_info
+        # Simulate shared-store by passing same domain twice with same database_uri
         events_single, _ = collect_all_events([domain])
         events_double, _ = collect_all_events([domain, domain])
 

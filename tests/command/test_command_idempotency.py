@@ -57,7 +57,7 @@ class TestIdempotencyKeyInHeaders:
 
         test_domain.process(command, idempotency_key="key-1")
 
-        messages = test_domain.event_store.store.read("user:command")
+        messages = test_domain.event_store.store.read("test::user:command")
         assert len(messages) == 1
         assert messages[0].metadata.headers.idempotency_key == "key-1"
 
@@ -68,7 +68,7 @@ class TestIdempotencyKeyInHeaders:
 
         test_domain.process(command)
 
-        messages = test_domain.event_store.store.read("user:command")
+        messages = test_domain.event_store.store.read("test::user:command")
         assert len(messages) == 1
         assert messages[0].metadata.headers.idempotency_key is None
 

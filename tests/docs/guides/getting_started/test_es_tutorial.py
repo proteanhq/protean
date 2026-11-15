@@ -64,7 +64,7 @@ def _cleanup(domain) -> None:
 
     if domain.event_store.store:
         try:
-            domain.event_store.store._data_reset()
+            domain.event_store.store.clear()
         finally:
             domain.event_store.store.close()
 
@@ -250,7 +250,7 @@ class TestESTutorialCh05(_ESTutorialBase):
         """
         domain = _configure_chapter
         if domain.event_store.store:
-            domain.event_store.store._data_reset()
+            domain.event_store.store.clear()
 
     def _make_account_opened(self):
         return ch05.AccountOpened(
@@ -419,7 +419,7 @@ class TestESTutorialCh08(_ESTutorialBase):
             category = f"{ch08.Account.meta_.stream_category}:command"
             queued = [
                 message["data"]
-                for message in domain.event_store.store._read(category)
+                for message in domain.event_store.store.get_category_messages(category)
                 if message["type"].endswith(".MakeDeposit.v1")
             ]
             assert queued == [
@@ -559,8 +559,8 @@ def _write_old_deposit(domain, account_id: str, version: int, data: dict) -> Non
     category = ch11_v3.Account.meta_.stream_category
     stream = f"{category}-{account_id}"
     store = domain.event_store.store
-    position = len(store._read(stream))
-    store._write(
+    position = len(store.get_stream_messages(stream))
+    store.write_message(
         stream,
         type_string,
         {"account_id": account_id, **data},

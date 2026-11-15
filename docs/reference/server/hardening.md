@@ -37,7 +37,7 @@ Both adapters forward pool parameters to `redis.ConnectionPool`.
 
 ### MessageDB event store
 
-Forward `max_connections` directly through `conn_info`.
+Set `max_connections` in `[event_store]`. Message DB passes it to its connection pool.
 
 ```toml
 --8<-- "reference/server/hardening/message_db.toml"

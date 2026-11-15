@@ -1,6 +1,5 @@
 import logging
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import TYPE_CHECKING, Optional
 
 from protean.infra.registry import event_stores as event_store_registry
 
@@ -43,13 +42,9 @@ class EventStore:
 
     def _initialize_event_store(self) -> "BaseEventStore":
         configured_event_store = self.domain.config["event_store"]
-        # Event store adapters take (domain, conn_info) and pass their own name
-        # to BaseEventStore, so the base constructor does not describe them.
-        event_store_cls = cast(
-            "Callable[[Domain, dict[str, Any]], BaseEventStore]",
-            event_store_registry.get(configured_event_store["provider"]),
-        )
-        return event_store_cls(self.domain, configured_event_store)
+        event_store_cls = event_store_registry.get(configured_event_store["provider"])
+        # A domain has one event store, so its adapter is always named "default".
+        return event_store_cls("default", self.domain, configured_event_store)
 
     def _initialize(self) -> None:
         logger.debug("Initializing Event Store...")

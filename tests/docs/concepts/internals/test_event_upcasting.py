@@ -26,7 +26,7 @@ def example():
 
 
 def write_raw(example, type_string, version, data, position=0):
-    example.domain.event_store.store._write(
+    example.domain.event_store.store.write_message(
         STREAM,
         type_string,
         data,

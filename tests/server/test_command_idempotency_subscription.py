@@ -95,7 +95,7 @@ def _submit_and_read_back(test_domain, idempotency_key=None):
         asynchronous=True,
         idempotency_key=idempotency_key,
     )
-    messages = test_domain.event_store.store.read("account:command")
+    messages = test_domain.event_store.store.read("test::account:command")
     # Return the last message (the one we just wrote)
     return messages[-1]
 

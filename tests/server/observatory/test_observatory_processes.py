@@ -408,7 +408,9 @@ class TestMergePMSubscriptionStatus:
             strict=True,
         ):
             test_domain.clock = FrozenClock(written_at)
-            store._write(f"position-{fqn(pm_cls)}-{category}", "Read", {"position": 0})
+            store.write_message(
+                f"position-{fqn(pm_cls)}-{category}", "Read", {"position": 0}
+            )
         order_id = _start_order(app)
         _ship_order(app, order_id)
 
@@ -544,7 +546,7 @@ def _fail_stream_identifiers(domain):
     """Make the event store fail to list stream identifiers."""
     return patch.object(
         domain.event_store.store,
-        "_stream_identifiers",
+        "stream_ids",
         side_effect=Exception("fail"),
     )
 
@@ -614,15 +616,11 @@ class TestGetPMInstances:
         assert inst["event_count"] == 2 * small_read_page + 2
 
     def test_empty_stream(self, fulfillment, test_domain):
-        """A stream from another category whose name ends with the process
-        manager's category is listed as an identifier, but the process
-        manager's own stream for it is empty, so no instance is returned."""
-        store = test_domain.event_store.store
-        category = fulfillment.pm.meta_.stream_category
-        store._write(f"legacy_{category}-id1", "Noted", {})
-
-        assert store._stream_identifiers(category) == ["id1"]
-        assert get_pm_instances(test_domain, fulfillment.pm) == []
+        """An identifier whose stream holds no messages returns no instance."""
+        with patch.object(
+            test_domain.event_store.store, "stream_ids", return_value=["id1"]
+        ):
+            assert get_pm_instances(test_domain, fulfillment.pm) == []
 
     def test_respects_limit(self, fulfillment, test_domain):
         for _ in range(5):
@@ -799,7 +797,7 @@ class TestProcessesInstancesEndpoint:
         order_id = _start_order(fulfillment)
         with patch.object(
             test_domain.event_store.store,
-            "_stream_identifiers",
+            "stream_ids",
             side_effect=[[order_id], RuntimeError("store down")],
         ):
             resp = client.get("/api/processes/OrderFulfillment/instances")

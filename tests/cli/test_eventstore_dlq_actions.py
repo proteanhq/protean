@@ -237,7 +237,7 @@ def _write_event_to_store(test_domain, msg: Message) -> Message:
     """
     store = test_domain.event_store.store
     stream = msg.metadata.headers.stream
-    store._write(
+    store.write_message(
         stream, msg.metadata.headers.type, msg.data, metadata=msg.metadata.to_dict()
     )
     return store.read(stream, position=0, no_of_messages=1)[0]
@@ -328,7 +328,7 @@ def _exhaust_command_position(
         ),
     )
     position = stored.metadata.event_store.global_position
-    test_domain.event_store.store._write(
+    test_domain.event_store.store.write_message(
         stream,
         FailedPositionStatus.EXHAUSTED.value,
         {
@@ -861,7 +861,7 @@ class TestReplay:
         # category holds no message at; the read lands on ``stored_at`` instead.
         failed_stream = failed_positions_stream(fqn(ToggleEventHandler), category)
         missing = stored_at - 1
-        store._write(
+        store.write_message(
             failed_stream,
             FailedPositionStatus.EXHAUSTED.value,
             {
@@ -912,7 +912,7 @@ class TestReplay:
 
         gone = stored_at - 1  # the global position the dropped event held
         failed_stream = failed_positions_stream(fqn(ToggleEventHandler), category)
-        store._write(
+        store.write_message(
             failed_stream,
             FailedPositionStatus.EXHAUSTED.value,
             {
@@ -956,7 +956,7 @@ class TestReplay:
         store = test_domain.event_store.store
         category = User.meta_.stream_category
         failed_stream = failed_positions_stream(fqn(ToggleEventHandler), category)
-        store._write(
+        store.write_message(
             failed_stream,
             FailedPositionStatus.EXHAUSTED.value,
             {

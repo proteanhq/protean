@@ -183,7 +183,7 @@ class TestCommandCorrelationFromHeader:
         assert response.headers["X-Correlation-ID"] == "http-corr-123"
 
         # Verify the command stored in the event store has the right correlation ID
-        messages = test_domain.event_store.store.read("order:command")
+        messages = test_domain.event_store.store.read("test::order:command")
         assert len(messages) >= 1
         last_cmd = messages[-1]
         assert last_cmd.metadata.domain.correlation_id == "http-corr-123"
@@ -197,7 +197,7 @@ class TestCommandCorrelationFromHeader:
         assert response.status_code == 200
         assert response.headers["X-Correlation-ID"] == "fallback-req-789"
 
-        messages = test_domain.event_store.store.read("order:command")
+        messages = test_domain.event_store.store.read("test::order:command")
         assert len(messages) >= 1
         last_cmd = messages[-1]
         assert last_cmd.metadata.domain.correlation_id == "fallback-req-789"
@@ -213,7 +213,7 @@ class TestCommandCorrelationFromHeader:
         # The explicit override should win
         assert response.headers["X-Correlation-ID"] == "explicit-override-id"
 
-        messages = test_domain.event_store.store.read("order:command")
+        messages = test_domain.event_store.store.read("test::order:command")
         assert len(messages) >= 1
         last_cmd = messages[-1]
         assert last_cmd.metadata.domain.correlation_id == "explicit-override-id"
@@ -228,7 +228,7 @@ class TestCommandCorrelationFromHeader:
         auto_id = response.headers["X-Correlation-ID"]
         assert len(auto_id) == 32  # UUID4 hex is 32 chars
 
-        messages = test_domain.event_store.store.read("order:command")
+        messages = test_domain.event_store.store.read("test::order:command")
         assert len(messages) >= 1
         last_cmd = messages[-1]
         assert last_cmd.metadata.domain.correlation_id == auto_id

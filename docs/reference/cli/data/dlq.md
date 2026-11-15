@@ -28,7 +28,7 @@ Lists failed messages across all DLQ streams, or filtered by subscription.
 protean dlq list --domain=my_domain
 
 # Filter by subscription (stream category)
-protean dlq list --subscription=order --domain=my_domain
+protean dlq list --subscription=shop::order --domain=my_domain
 
 # Limit results
 protean dlq list --limit=50 --domain=my_domain
@@ -39,7 +39,7 @@ protean dlq list --limit=50 --domain=my_domain
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
-| `--subscription` | Filter by stream category (e.g. `order`) | All subscriptions |
+| `--subscription` | Filter by stream category (e.g. `shop::order`) | All subscriptions |
 | `--limit` | Maximum number of messages to show | `100` |
 
 **Output**
@@ -97,10 +97,10 @@ stream. This is a bulk operation, use with caution.
 
 ```bash
 # Interactive (prompts for confirmation)
-protean dlq replay-all --subscription=order --domain=my_domain
+protean dlq replay-all --subscription=shop::order --domain=my_domain
 
 # Skip confirmation
-protean dlq replay-all --subscription=order --yes --domain=my_domain
+protean dlq replay-all --subscription=shop::order --yes --domain=my_domain
 ```
 
 **Options**
@@ -118,10 +118,10 @@ be undone.**
 
 ```bash
 # Interactive (prompts for confirmation)
-protean dlq purge --subscription=order --domain=my_domain
+protean dlq purge --subscription=shop::order --domain=my_domain
 
 # Skip confirmation
-protean dlq purge --subscription=order --yes --domain=my_domain
+protean dlq purge --subscription=shop::order --yes --domain=my_domain
 ```
 
 **Options**

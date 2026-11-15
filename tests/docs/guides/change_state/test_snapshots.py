@@ -17,13 +17,13 @@ pytestmark = pytest.mark.no_test_domain
 def example():
     module = load_example("guides/change-state/snapshots/001.py")
     yield module
-    module.domain.event_store.store._data_reset()
+    module.domain.event_store.store.clear()
 
 
 def last_snapshot(module, identifier):
     """Return the newest row in the account's snapshot stream, or None."""
     category = module.Account.meta_.stream_category
-    return module.domain.event_store.store._read_last_message(
+    return module.domain.event_store.store.get_last_stream_message(
         f"{category}:snapshot-{identifier}"
     )
 
@@ -31,7 +31,9 @@ def last_snapshot(module, identifier):
 def snapshot_rows(module, identifier):
     """Return every row in the account's snapshot stream, oldest first."""
     category = module.Account.meta_.stream_category
-    return module.domain.event_store.store._read(f"{category}:snapshot-{identifier}")
+    return module.domain.event_store.store.get_stream_messages(
+        f"{category}:snapshot-{identifier}"
+    )
 
 
 def write_account(module, identifier, deposits):
@@ -135,7 +137,7 @@ def test_load_starts_from_the_snapshot_not_from_the_first_event(example):
         # Loading returns it only if the repository starts from the snapshot.
         category = example.Account.meta_.stream_category
         data = dict(last_snapshot(example, "acc-001")["data"], balance=999.0)
-        example.domain.event_store.store._write(
+        example.domain.event_store.store.write_message(
             f"{category}:snapshot-acc-001", "SNAPSHOT", data
         )
 

@@ -144,8 +144,8 @@ class TestStreamCategoriesOption:
             stream_categories=["dummy_stream_1", "dummy_stream_2"],
         )
         assert DummyProjector.meta_.stream_categories == [
-            "dummy_stream_1",
-            "dummy_stream_2",
+            "test::dummy_stream_1",
+            "test::dummy_stream_2",
         ]
 
     def test_stream_categories_derived_from_aggregates(self, test_domain):
@@ -173,6 +173,6 @@ class TestStreamCategoriesOption:
             aggregates=[DummyAggregate1, DummyAggregate2],
         )
         assert DummyProjector.meta_.stream_categories == [
-            "dummy_stream_1",
-            "dummy_stream_2",
+            "test::dummy_stream_1",
+            "test::dummy_stream_2",
         ]

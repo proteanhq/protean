@@ -1,4 +1,5 @@
 import threading
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
@@ -6,12 +7,19 @@ from pydantic import Field
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
-from protean.exceptions import ExpectedVersionError
+from protean.exceptions import ExpectedVersionError, NotSupportedError
 from protean.infra.registry import event_stores
-from protean.port.event_store import BaseEventStore, EventStoreCapabilities
+from protean.port.event_store import (
+    BaseEventStore,
+    EventStoreCapabilities,
+    EventStoreHealth,
+    EventStorePort,
+    RawMessage,
+)
 from protean.utils import OptionalStdlibDatetime
 from protean.utils.eventing import Metadata
 from protean.utils.globals import _domain_now, current_domain
+from protean.utils.query import Q
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -52,12 +60,6 @@ class MemoryMessageRepository(BaseRepository):
     # Class-level lock: repositories are instantiated per repository_for()
     # call, so an instance-level lock would not be shared across callers.
     _write_lock = threading.Lock()
-
-    def is_category(self, stream_name: str) -> bool:
-        if not stream_name:
-            return False
-
-        return "-" not in stream_name
 
     def stream_version(self, stream_name: str) -> int:
         repo = current_domain.repository_for(MemoryMessage)
@@ -114,44 +116,86 @@ class MemoryMessageRepository(BaseRepository):
 
             return next_position
 
-    def read(
-        self,
-        stream_name: str,
-        sql: str | None = None,
-        position: int = 0,
-        no_of_messages: int = 1000,
-    ) -> list[dict[str, Any]]:
+    def _query(self) -> Any:
         repo = current_domain.repository_for(MemoryMessage)
+        return repo._dao.query
 
-        # Read-position contract (ADR-0024): a ``$all`` or category read spans
-        # multiple streams, so it pages by ``global_position`` (inclusive) —
-        # consumers track ``global_position``, and keying on the per-stream
-        # ordinal would silently drop or misorder messages once a category holds
-        # more than one stream. A specific stream (``category-id``) pages by its
-        # own per-stream ``position``.
-        if stream_name == "$all" or self.is_category(stream_name):
-            q = repo._dao.query.filter(global_position__gte=position).order_by(
-                "global_position"
-            )
-            if stream_name != "$all":
-                # Keep the read to this category's streams (``user`` -> ``user-...``).
-                q = q.filter(stream_name__contains=f"{stream_name}-")
-        else:
-            q = (
-                repo._dao.query.filter(position__gte=position)
-                .filter(stream_name=stream_name)
-                .order_by("position")
-            )
+    def read_stream(
+        self, stream_name: str, position: int, limit: int
+    ) -> list[RawMessage]:
+        """Read one stream by its own per-stream ``position``."""
+        q = (
+            self._query()
+            .filter(stream_name=stream_name, position__gte=position)
+            .order_by("position")
+        )
+        return _rows(q.limit(limit))
 
-        items = q.limit(no_of_messages).all().items
-        return [item.to_dict() for item in items]
+    def read_category(
+        self, category: str, position: int, limit: int
+    ) -> list[RawMessage]:
+        """Read a category by ``global_position`` (ADR-0024).
+
+        A category has no ``-``, so a stream named ``<category>`` or starting
+        with ``<category>-`` is in exactly that category. The match leaves out a
+        longer category that shares the text (``poweruser`` or ``users`` for
+        ``user``) and the snapshot streams (``<category>:snapshot-<id>``).
+        """
+        q = (
+            self._query()
+            .filter(_in_category(category), global_position__gte=position)
+            .order_by("global_position")
+        )
+        return _rows(q.limit(limit))
+
+    def read_all(self, position: int, limit: int) -> list[RawMessage]:
+        """Read the whole store by ``global_position`` (ADR-0024)."""
+        q = (
+            self._query()
+            .filter(global_position__gte=position)
+            .order_by("global_position")
+        )
+        return _rows(q.limit(limit))
+
+    # A tail read orders descending and takes one row, so it returns the newest
+    # row however long the stream is. The append-only recovery-checkpoint stream
+    # grows past one read page over many restarts.
+    def last_in_stream(self, stream_name: str) -> RawMessage | None:
+        q = self._query().filter(stream_name=stream_name).order_by("-position")
+        return _first(q.limit(1))
+
+    def last_in_category(self, category: str) -> RawMessage | None:
+        q = self._query().filter(_in_category(category)).order_by("-global_position")
+        return _first(q.limit(1))
+
+    def last_in_store(self) -> RawMessage | None:
+        return _first(self._query().order_by("-global_position").limit(1))
+
+
+def _in_category(category: str) -> Q:
+    # Message DB's ``category(stream_name)`` is the text before the first
+    # ``-``, so the stream ``user`` is in category ``user`` too.
+    return Q(stream_name=category) | Q(stream_name__startswith=f"{category}-")
+
+
+def _rows(query: Any) -> list[RawMessage]:
+    # ``to_dict()`` serializes ``time`` to an ISO string; a ``RawMessage``
+    # carries the ``datetime``.
+    return [
+        cast(RawMessage, {**item.to_dict(), "time": item.time})
+        for item in query.all().items
+    ]
+
+
+def _first(query: Any) -> RawMessage | None:
+    rows = _rows(query)
+    return rows[0] if rows else None
 
 
 class MemoryEventStore(BaseEventStore):
-    def __init__(self, domain: "Domain", conn_info: dict[str, Any]) -> None:
-        super().__init__("Memory", domain, conn_info)
+    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
+        super().__init__(name, domain, config)
 
-        self.domain = domain
         self.domain.register(MemoryMessage, internal=True, provider="memory")
         self.domain.register(
             MemoryMessageRepository, internal=True, part_of=MemoryMessage
@@ -172,69 +216,79 @@ class MemoryEventStore(BaseEventStore):
         # and are lost on exit, so the store is not DURABLE.
         return EventStoreCapabilities.CONSISTENT
 
-    def _write(
+    def _repo(self) -> MemoryMessageRepository:
+        return cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
+
+    def write_message(
         self,
         stream_name: str,
         message_type: str,
-        data: dict[str, Any],
-        metadata: dict[str, Any] | None = None,
+        data: Mapping[str, Any],
+        metadata: Mapping[str, Any] | None = None,
         expected_version: int | None = None,
     ) -> int:
-        repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
-        return repo.write(stream_name, message_type, data, metadata, expected_version)
+        return self._repo().write(
+            stream_name,
+            message_type,
+            dict(data),
+            dict(metadata) if metadata is not None else None,
+            expected_version,
+        )
 
-    def _read(
+    def get_stream_messages(
+        self, stream_name: str, position: int = 0, limit: int = 1000
+    ) -> list[RawMessage]:
+        return self._repo().read_stream(stream_name, position, limit)
+
+    def get_category_messages(
         self,
-        stream_name: str,
-        sql: str | None = None,
+        category: str,
         position: int = 0,
-        no_of_messages: int = 1000,
-    ) -> list[dict[str, Any]]:
-        repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
-        return repo.read(stream_name, sql, position, no_of_messages)
+        limit: int = 1000,
+        *,
+        consumer_group_member: int | None = None,
+        consumer_group_size: int | None = None,
+    ) -> list[RawMessage]:
+        if consumer_group_member is not None or consumer_group_size is not None:
+            raise NotSupportedError(
+                "The memory event store does not support consumer groups"
+            )
+        return self._repo().read_category(category, position, limit)
 
-    def _read_last_message(self, stream_name: str) -> dict[str, Any] | None:
-        repo = cast(MemoryMessageRepository, self.domain.repository_for(MemoryMessage))
+    def get_all_messages(
+        self, position: int = 0, limit: int = 1000
+    ) -> list[RawMessage]:
+        return self._repo().read_all(position, limit)
 
-        # A true tail read: order descending and take one, so it returns the
-        # actual newest record. Reading the stream and taking the last of the
-        # page would return the newest of only the first page once the stream is
-        # longer than ``repo.read``'s row cap, and the append-only
-        # recovery-checkpoint stream grows past that over many restarts. A
-        # category/``$all`` read orders by ``global_position`` (ADR-0024), a
-        # specific stream by its own per-stream ``position``.
-        if stream_name == "$all" or repo.is_category(stream_name):
-            q = repo._dao.query.order_by("-global_position")
-            if stream_name != "$all":
-                q = q.filter(stream_name__contains=f"{stream_name}-")
-        else:
-            q = repo._dao.query.filter(stream_name=stream_name).order_by("-position")
+    def get_last_stream_message(self, stream_name: str) -> RawMessage | None:
+        return self._repo().last_in_stream(stream_name)
 
-        items = q.limit(1).all().items
-        return cast("dict[str, Any]", items[0].to_dict()) if items else None
+    def get_last_category_message(self, category: str) -> RawMessage | None:
+        return self._repo().last_in_category(category)
 
-    def _stream_head_position(self, stream_category: str) -> int:
-        messages = self._read(stream_category, no_of_messages=1_000_000)
-        if messages:
-            global_position: int = messages[-1].get("global_position", -1)
-            return global_position
-        return -1
+    def get_last_message(self) -> RawMessage | None:
+        return self._repo().last_in_store()
 
-    def _stream_identifiers(self, stream_category: str) -> list[str]:
-        messages = self._read(stream_category, no_of_messages=1_000_000)
+    def stream_ids(self, category: str) -> list[str]:
+        rows = self._repo().read_category(category, 0, 1_000_000)
         identifiers: set[str] = set()
-        for msg in messages:
-            stream_name = msg.get("stream_name", "")
-            _, sep, ident = stream_name.partition("-")
+        for row in rows:
+            _, sep, ident = row["stream_name"].partition("-")
             if sep and ident:
                 identifiers.add(ident)
         return sorted(identifiers)
 
-    def _data_reset(self) -> None:
-        """Flush all events.
+    def ping(self) -> bool:
+        return True
 
-        Useful for running tests with a clean slate.
-        """
+    def health(self) -> EventStoreHealth:
+        return EventStoreHealth(reachable=True, pool=None)
+
+    def get_connection(self) -> None:
+        return None
+
+    def clear(self) -> None:
+        """Delete every message. Test-harness use only."""
         repo = self.domain.repository_for(MemoryMessage)
         repo._dao._delete_all()
 
@@ -244,3 +298,6 @@ def register() -> None:
     event_stores.register(
         "memory", "protean.adapters.event_store.memory.MemoryEventStore"
     )
+
+
+_PORT_CHECK: type[EventStorePort] = MemoryEventStore

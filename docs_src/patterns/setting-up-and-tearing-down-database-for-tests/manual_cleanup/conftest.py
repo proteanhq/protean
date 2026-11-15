@@ -19,7 +19,7 @@ def clean_data():
         provider.clear()
     for broker in domain.brokers.values():
         broker._data_reset()
-    domain.event_store.store._data_reset()
+    domain.event_store.store.clear()
 
 
 # --8<-- [end:clean_data]

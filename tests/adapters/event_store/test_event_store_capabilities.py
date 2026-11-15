@@ -70,7 +70,7 @@ class TestMemoryEventStoreCapabilities:
 @pytest.mark.message_db
 @pytest.mark.no_test_domain
 class TestMessageDBStoreCapabilities:
-    def test_message_db_store_declares_production(self):
+    def test_message_db_store_declares_production_and_consumer_groups(self):
         domain = Domain(name="Message DB Capabilities")
         domain.config["event_store"] = {
             "provider": "message_db",
@@ -80,36 +80,55 @@ class TestMessageDBStoreCapabilities:
 
         store = domain.event_store.store
         assert isinstance(store, MessageDBStore)
-        assert store.capabilities == EventStoreCapabilities.PRODUCTION
-        assert EventStoreCapabilities.CONSUMER_GROUPS not in store.capabilities
+        assert store.capabilities == (
+            EventStoreCapabilities.PRODUCTION | EventStoreCapabilities.CONSUMER_GROUPS
+        )
         assert EventStoreCapabilities.SCHEMA_MANAGEMENT not in store.capabilities
 
 
 class _StoreWithoutCapabilities(BaseEventStore):
-    """Implements every abstract method of ``BaseEventStore`` except ``capabilities``."""
+    """Implements every abstract member of ``BaseEventStore`` except ``capabilities``."""
 
-    def _write(self, *args: Any, **kwargs: Any) -> int:  # pragma: no cover
+    def write_message(self, *args: Any, **kwargs: Any) -> int:  # pragma: no cover
         raise NotImplementedError
 
-    def _read(
+    def get_stream_messages(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
+        raise NotImplementedError
+
+    def get_category_messages(
         self, *args: Any, **kwargs: Any
-    ) -> list[dict[str, Any]]:  # pragma: no cover
+    ) -> Any:  # pragma: no cover
         raise NotImplementedError
 
-    def _read_last_message(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
+    def get_all_messages(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
         raise NotImplementedError
 
-    def _stream_identifiers(
+    def get_last_stream_message(
         self, *args: Any, **kwargs: Any
-    ) -> list[str]:  # pragma: no cover
+    ) -> Any:  # pragma: no cover
         raise NotImplementedError
 
-    def _stream_head_position(
+    def get_last_category_message(
         self, *args: Any, **kwargs: Any
-    ) -> int:  # pragma: no cover
+    ) -> Any:  # pragma: no cover
         raise NotImplementedError
 
-    def _data_reset(self) -> None:  # pragma: no cover
+    def get_last_message(self) -> Any:  # pragma: no cover
+        raise NotImplementedError
+
+    def stream_ids(self, *args: Any, **kwargs: Any) -> list[str]:  # pragma: no cover
+        raise NotImplementedError
+
+    def ping(self) -> bool:  # pragma: no cover
+        raise NotImplementedError
+
+    def health(self) -> Any:  # pragma: no cover
+        raise NotImplementedError
+
+    def get_connection(self) -> object:  # pragma: no cover
+        raise NotImplementedError
+
+    def clear(self) -> None:  # pragma: no cover
         raise NotImplementedError
 
 

@@ -107,7 +107,7 @@ def test_create_snapshots_handles_fact_events_aggregate(test_domain):
     assert count == 3
 
     for pid in ids:
-        snapshot = test_domain.event_store.store._read_last_message(
+        snapshot = test_domain.event_store.store.get_last_stream_message(
             f"test::promo:snapshot-{pid}"
         )
         assert snapshot is not None
@@ -128,7 +128,7 @@ def test_create_snapshots_keeps_fact_prefixed_id_without_fact_events(test_domain
     count = test_domain.create_snapshots(Coupon)
     assert count == 1
 
-    snapshot = test_domain.event_store.store._read_last_message(
+    snapshot = test_domain.event_store.store.get_last_stream_message(
         f"test::coupon:snapshot-{coupon_id}"
     )
     assert snapshot is not None

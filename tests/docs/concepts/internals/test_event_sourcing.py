@@ -76,7 +76,9 @@ def accounts():
 
 def snapshot_rows(example, aggregate_cls, identifier):
     category = aggregate_cls.meta_.stream_category
-    return example.domain.event_store.store._read(f"{category}:snapshot-{identifier}")
+    return example.domain.event_store.store.get_stream_messages(
+        f"{category}:snapshot-{identifier}"
+    )
 
 
 def test_manual_snapshot_is_written_below_the_threshold(accounts):

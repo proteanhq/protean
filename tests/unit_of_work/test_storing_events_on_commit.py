@@ -87,7 +87,9 @@ def test_persisting_events_on_commit(test_domain):
         )
     )
 
-    events = test_domain.event_store.store._read(f"test::user-{identifier}")
+    events = test_domain.event_store.store.get_stream_messages(
+        f"test::user-{identifier}"
+    )
 
     assert len(events) == 1
 

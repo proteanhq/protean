@@ -33,7 +33,7 @@ def example():
     module.domain.init(traverse=False)
     with module.domain.domain_context():
         yield module
-    module.domain.event_store.store._data_reset()
+    module.domain.event_store.store.clear()
 
 
 def open_account(example, deposits):

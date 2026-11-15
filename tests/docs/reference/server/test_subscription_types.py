@@ -99,7 +99,7 @@ def test_source_stream_becomes_the_event_store_origin_filter(example, engine):
     )
 
     assert isinstance(subscription, EventStoreSubscription)
-    assert subscription.origin_stream == "manage_order"
+    assert subscription.origin_stream == "shop::manage_order"
 
 
 def test_position_is_stored_as_a_read_message_on_the_position_stream(example, engine):
@@ -109,7 +109,7 @@ def test_position_is_stored_as_a_read_message_on_the_position_stream(example, en
 
     handler_name = f"{example.EventStoreHandler.__module__}.OrderEventHandler"
     stream_category = STREAM
-    records = example.domain.event_store.store._read(
+    records = example.domain.event_store.store.get_stream_messages(
         f"position-{handler_name}-{stream_category}"
     )
 

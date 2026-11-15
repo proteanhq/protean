@@ -10,7 +10,7 @@ Tests for:
 
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -494,10 +494,10 @@ def _seed_event_store_lag(domain, handler_cls, category, *, read_up_to):
     store = domain.event_store.store
     with domain.domain_context():
         for n in range(3):
-            store._write(f"{category}-1", "Happened", {"n": n})
+            store.write_message(f"{category}-1", "Happened", {"n": n})
         position_stream = f"position-{fqn(handler_cls)}-{category}"
-        store._write(position_stream, "Read", {"position": read_up_to})
-        return datetime.fromisoformat(store._read_last_message(position_stream)["time"])
+        store.write_message(position_stream, "Read", {"position": read_up_to})
+        return store.get_last_stream_message(position_stream)["time"]
 
 
 class TestMergeSubscriptionStatus:

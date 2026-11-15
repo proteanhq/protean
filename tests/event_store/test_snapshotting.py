@@ -85,7 +85,7 @@ def test_that_a_new_stream_has_no_snapshot(test_domain):
         user.activate()
         repo.add(user)
 
-    snapshot = test_domain.event_store.store._read_last_message(
+    snapshot = test_domain.event_store.store.get_last_stream_message(
         f"user:snapshot-{identifier}"
     )
     assert snapshot is None
@@ -113,7 +113,7 @@ def test_that_snapshot_is_constructed_after_threshold(test_domain):
             user.change_name(f"John Doe {i}")
             repo.add(user)
 
-    snapshot = test_domain.event_store.store._read_last_message(
+    snapshot = test_domain.event_store.store.get_last_stream_message(
         f"test::user:snapshot-{identifier}"
     )
     assert snapshot is not None
@@ -141,7 +141,7 @@ def test_that_a_stream_can_have_multiple_snapshots_but_latest_is_considered(
             user.change_name(f"John Doe {i}")
             repo.add(user)
 
-    snapshot = test_domain.event_store.store._read_last_message(
+    snapshot = test_domain.event_store.store.get_last_stream_message(
         f"test::user:snapshot-{identifier}"
     )
     assert snapshot is not None
@@ -169,7 +169,7 @@ def test_that_a_stream_with_a_snapshop_and_no_further_events_is_reconstructed_co
             user.change_name(f"John Doe {i}")
             repo.add(user)
 
-    snapshot = test_domain.event_store.store._read_last_message(
+    snapshot = test_domain.event_store.store.get_last_stream_message(
         f"test::user:snapshot-{identifier}"
     )
     assert snapshot is not None

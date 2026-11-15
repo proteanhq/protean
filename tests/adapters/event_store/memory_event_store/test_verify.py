@@ -17,13 +17,13 @@ def _metadata(stream_name, message_type, message_id):
 
 
 def _seed_two_events(store):
-    store._write(
+    store.write_message(
         "test::user-abc",
         "Registered",
         {"n": 1},
         _metadata("test::user-abc", "Registered", "m1"),
     )
-    store._write(
+    store.write_message(
         "test::user-abc",
         "Renamed",
         {"n": 2},
@@ -34,7 +34,7 @@ def _seed_two_events(store):
 def test_clean_store_passes(test_domain):
     store = test_domain.event_store.store
     _seed_two_events(store)
-    store._write("test::user:snapshot-abc", "SNAPSHOT", {"_version": 1})
+    store.write_message("test::user:snapshot-abc", "SNAPSHOT", {"_version": 1})
 
     report = store.verify()
 
@@ -98,7 +98,7 @@ def test_position_gap_is_caught_and_named(test_domain):
 def test_snapshot_ahead_of_stream_head_is_caught(test_domain):
     store = test_domain.event_store.store
     _seed_two_events(store)  # head position is 1
-    store._write("test::user:snapshot-abc", "SNAPSHOT", {"_version": 5})
+    store.write_message("test::user:snapshot-abc", "SNAPSHOT", {"_version": 5})
 
     report = store.verify()
 
@@ -112,7 +112,7 @@ def test_snapshot_ahead_of_stream_head_is_caught(test_domain):
 def test_message_with_null_data_is_caught(test_domain):
     store = test_domain.event_store.store
     _seed_two_events(store)
-    store._write(
+    store.write_message(
         "test::user-abc",
         "Closed",
         {"n": 3},

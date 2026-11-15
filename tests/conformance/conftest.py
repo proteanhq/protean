@@ -165,7 +165,7 @@ RESET: dict[str, Callable[[Any], None]] = {
     "database": lambda provider: provider.clear(),
     "broker": lambda broker: broker._data_reset(),
     "cache": lambda cache: cache.clear(),
-    "event_store": lambda store: store._data_reset(),
+    "event_store": lambda store: store.clear(),
 }
 
 

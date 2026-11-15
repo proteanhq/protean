@@ -152,6 +152,7 @@ class TestMessageDBPoolConfig:
         from protean.adapters.event_store.message_db import MessageDBStore
 
         store = MessageDBStore(
+            "default",
             test_domain,
             {
                 "database_uri": "postgresql://message_store@localhost:55433/message_store",
@@ -165,6 +166,7 @@ class TestMessageDBPoolConfig:
         from protean.adapters.event_store.message_db import MessageDBStore
 
         store = MessageDBStore(
+            "default",
             test_domain,
             {
                 "database_uri": "postgresql://localhost/message_store",
@@ -179,6 +181,7 @@ class TestMessageDBPoolConfig:
         from protean.adapters.event_store.message_db import MessageDBStore
 
         store = MessageDBStore(
+            "default",
             test_domain,
             {
                 "database_uri": "postgresql://message_store@localhost:55433/message_store",
@@ -186,7 +189,7 @@ class TestMessageDBPoolConfig:
             },
         )
         # Trigger lazy client creation
-        client = store.client
+        client = store.get_connection()
         assert client is not None
         store.close()
 

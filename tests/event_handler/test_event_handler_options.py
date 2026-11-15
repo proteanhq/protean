@@ -81,7 +81,7 @@ def test_source_stream_option(test_domain):
         pass
 
     test_domain.register(UserEventHandlers, part_of=User, source_stream="email")
-    assert UserEventHandlers.meta_.source_stream == "email"
+    assert UserEventHandlers.meta_.source_stream == "test::email"
 
 
 def test_that_aggregate_or_stream_category_has_to_be_specified(test_domain):

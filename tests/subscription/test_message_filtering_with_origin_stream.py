@@ -127,7 +127,7 @@ async def test_message_filtering_for_event_handlers_with_defined_origin_stream(
         domain=DomainMeta(
             fqn=messages[2].metadata.domain.fqn,
             kind=messages[2].metadata.domain.kind,
-            origin_stream=f"user-{identifier}",
+            origin_stream=f"{User.meta_.stream_category}-{identifier}",
             version=messages[2].metadata.domain.version,
             sequence_id=messages[2].metadata.domain.sequence_id,
             asynchronous=messages[2].metadata.domain.asynchronous,

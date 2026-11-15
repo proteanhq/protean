@@ -102,8 +102,10 @@ comprehensive views:
 For more granular control, use
 [stream categories](../../concepts/async-processing/stream-categories.md)
 instead of aggregates. A stream category is qualified with the domain name
-(`<domain>::<aggregate>`), so read it from the registered aggregate's
-`meta_.stream_category` or write it in full. A bare `"order"` never matches:
+(`<domain>::<aggregate>`). Protean adds the domain prefix to a value without
+`::`, so `"order"` registers as `<domain>::order`. Read the category from the
+registered aggregate's `meta_.stream_category`, so it stays correct when the
+aggregate sets its own category:
 
 ```python
 --8<-- "guides/consume-state/projectors/002.py:stream_categories"

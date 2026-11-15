@@ -218,8 +218,8 @@ both synchronous and asynchronous processing.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `part_of` | — | Source aggregate class. Registration fails unless `part_of` or `stream_category` is set |
-| `source_stream` | `None` | Custom event stream source |
-| `stream_category` | from aggregate | Message stream category |
+| `source_stream` | `None` | Category of the stream that triggered the event. A value without `::` gets the domain prefix |
+| `stream_category` | from aggregate | Message stream category. A value without `::` gets the domain prefix; `$all` stays as written |
 | `subscription_type` | `None` | `SubscriptionType` member or its name as a string, such as `"stream"` |
 | `subscription_profile` | `None` | `SubscriptionProfile` member, or a profile name as a string: a built-in name or a [custom profile](../server/configuration.md#custom-profiles) |
 | `subscription_config` | `{}` | Custom subscription configuration |
@@ -294,7 +294,7 @@ explicitly target a projection and can listen to multiple stream categories.
 |--------|---------|-------------|
 | `projector_for` | `None` | Target projection class |
 | `aggregates` | `[]` | Aggregate classes whose events to consume |
-| `stream_categories` | derived from `aggregates` | Stream categories to subscribe to |
+| `stream_categories` | derived from `aggregates` | Stream categories to subscribe to. A value without `::` gets the domain prefix; `$all` stays as written |
 | `subscription_type` | `None` | `SubscriptionType` member or its name as a string, such as `"stream"` |
 | `subscription_profile` | `None` | `SubscriptionProfile` member, or a profile name as a string: a built-in name or a [custom profile](../server/configuration.md#custom-profiles) |
 | `subscription_config` | `{}` | Custom subscription configuration |

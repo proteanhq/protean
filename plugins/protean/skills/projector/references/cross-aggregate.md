@@ -75,7 +75,7 @@ Pass `stream_categories` instead of `aggregates`, as in the SKILL.md `SystemMetr
 - You want to use custom stream category names
 - You're listening to streams from external bounded contexts
 
-A stream category is domain-qualified: `<domain>::<aggregate>`. A bare name like `"user"` never matches. Derive the category from the registered aggregate with `meta_.stream_category`, or write it in full, as in `"shop::user"` for a domain named `shop`.
+A stream category is domain-qualified: `<domain>::<aggregate>`. A bare name like `"user"` gets the domain prefix, so it registers as `"shop::user"` in a domain named `shop`. Derive the category from the registered aggregate with `meta_.stream_category`, so it stays correct when the aggregate is renamed or sets its own category, or write it in full.
 
 ## Event ordering considerations
 

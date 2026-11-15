@@ -189,7 +189,7 @@ class TestHandlingEventsFromOtherDomains:
         stream = "billing::payment-pay-1"
         # Written the way the billing domain stores it: only the type string
         # links the payload to this domain's PaymentReceived class.
-        store._write(
+        store.write_message(
             stream,
             "Billing.PaymentReceived.v1",
             {"payment_id": "pay-1", "order_id": "ord-1", "amount": 20.0},

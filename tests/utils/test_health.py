@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from protean.adapters.event_store.memory import MemoryEventStore
 from protean.domain import Domain
 from protean.utils.health import (
     STATUS_OK,
@@ -108,6 +109,20 @@ class TestCheckBrokers:
 # ---------------------------------------------------------------------------
 
 
+class _UnreachableEventStore(MemoryEventStore):
+    """A store whose ``ping`` reports it cannot reach its database."""
+
+    def ping(self) -> bool:
+        return False
+
+
+class _ReachableEventStore(MemoryEventStore):
+    """A store whose ``ping`` reports it reached its database."""
+
+    def ping(self) -> bool:
+        return True
+
+
 @pytest.mark.no_test_domain
 class TestCheckEventStore:
     def test_ok_with_memory_event_store(self, domain):
@@ -118,12 +133,30 @@ class TestCheckEventStore:
 
     def test_unavailable_when_event_store_raises(self, domain):
         with domain.domain_context():
-            domain.event_store.store._read_last_message = lambda _: (
-                _ for _ in ()
-            ).throw(RuntimeError("down"))
+            domain.event_store.store.ping = lambda: (_ for _ in ()).throw(
+                RuntimeError("down")
+            )
             status, ok = check_event_store(domain)
             assert ok is False
             assert status == STATUS_UNAVAILABLE
+
+    def test_unavailable_when_ping_returns_false(self, domain):
+        with domain.domain_context():
+            domain.event_store._event_store = _UnreachableEventStore(
+                "default", domain, domain.config["event_store"]
+            )
+            status, ok = check_event_store(domain)
+            assert ok is False
+            assert status == STATUS_UNAVAILABLE
+
+    def test_ok_when_ping_returns_true(self, domain):
+        with domain.domain_context():
+            domain.event_store._event_store = _ReachableEventStore(
+                "default", domain, domain.config["event_store"]
+            )
+            status, ok = check_event_store(domain)
+            assert ok is True
+            assert status == STATUS_OK
 
     def test_unavailable_when_event_store_not_initialized(self, domain):
         # When the backing store is ``None`` (before init / misconfigured),

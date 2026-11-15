@@ -83,7 +83,7 @@ def _write_raw_event(
     position: int,
 ) -> None:
     """Write a raw event dict directly to the event store (positional args)."""
-    store._write(
+    store.write_message(
         stream,
         type_string,
         data,

@@ -75,14 +75,14 @@ class TestWritePositionAsync:
 
     @pytest.mark.asyncio
     async def test_write_position_uses_to_thread(self, subscription):
-        """write_position() wraps store._write() in asyncio.to_thread()."""
+        """write_position() wraps store.write_message() in asyncio.to_thread()."""
         with patch("asyncio.to_thread", wraps=asyncio.to_thread) as mock_to_thread:
             await subscription.write_position(5)
 
-        # Verify to_thread was called with store._write
+        # Verify to_thread was called with store.write_message
         mock_to_thread.assert_called_once()
         args = mock_to_thread.call_args
-        assert args[0][0] == subscription.store._write
+        assert args[0][0] == subscription.store.write_message
 
     @pytest.mark.asyncio
     async def test_write_position_resets_counter(self, subscription):
@@ -110,13 +110,13 @@ class TestFetchLastPositionAsync:
 
     @pytest.mark.asyncio
     async def test_fetch_last_position_uses_to_thread(self, subscription):
-        """fetch_last_position() wraps store._read_last_message() in asyncio.to_thread()."""
+        """fetch_last_position() wraps store.get_last_stream_message() in asyncio.to_thread()."""
         with patch("asyncio.to_thread", wraps=asyncio.to_thread) as mock_to_thread:
             await subscription.fetch_last_position()
 
         mock_to_thread.assert_called_once()
         args = mock_to_thread.call_args
-        assert args[0][0] == subscription.store._read_last_message
+        assert args[0][0] == subscription.store.get_last_stream_message
 
     @pytest.mark.asyncio
     async def test_fetch_last_position_returns_minus_one_initially(self, subscription):

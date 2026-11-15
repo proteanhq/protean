@@ -199,7 +199,7 @@ def _write_event_to_store(test_domain, msg: Message) -> int:
     Returns the per-stream position assigned by the store.
     """
     stream_name = msg.metadata.headers.stream
-    return test_domain.event_store.store._write(
+    return test_domain.event_store.store.write_message(
         stream_name,
         msg.metadata.headers.type,
         msg.data,
@@ -904,7 +904,7 @@ class TestRecoveryCheckpoint:
         sub2 = _make_subscription(test_domain, AlwaysFailingEventHandler)
         await sub2._rebuild_retry_counts()
 
-        checkpoint = test_domain.event_store.store._read_last_message(
+        checkpoint = test_domain.event_store.store.get_last_stream_message(
             sub2.recovery_checkpoint_stream
         )
         assert checkpoint is not None
@@ -926,7 +926,7 @@ class TestRecoveryCheckpoint:
         await sub2._rebuild_retry_counts()
         assert len(sub2._failed_positions) == 3
 
-        checkpoint = test_domain.event_store.store._read_last_message(
+        checkpoint = test_domain.event_store.store.get_last_stream_message(
             sub2.recovery_checkpoint_stream
         )
         first_watermark = checkpoint["data"]["watermark"]
@@ -943,7 +943,7 @@ class TestRecoveryCheckpoint:
         assert 4 in sub3._failed_positions
 
         # Checkpoint should have advanced
-        checkpoint2 = test_domain.event_store.store._read_last_message(
+        checkpoint2 = test_domain.event_store.store.get_last_stream_message(
             sub3.recovery_checkpoint_stream
         )
         assert checkpoint2["data"]["watermark"] > first_watermark
@@ -1058,7 +1058,7 @@ class TestRecoveryCheckpoint:
         sub = _make_subscription(test_domain, SucceedingEventHandler)
         await sub._rebuild_retry_counts()
 
-        checkpoint = test_domain.event_store.store._read_last_message(
+        checkpoint = test_domain.event_store.store.get_last_stream_message(
             sub.recovery_checkpoint_stream
         )
         assert checkpoint is None
@@ -1086,7 +1086,7 @@ class TestRecoveryCheckpoint:
         await sub2._rebuild_retry_counts()
         assert len(sub2._failed_positions) == 0
 
-        checkpoint = test_domain.event_store.store._read_last_message(
+        checkpoint = test_domain.event_store.store.get_last_stream_message(
             sub2.recovery_checkpoint_stream
         )
         assert checkpoint is not None
@@ -1323,7 +1323,7 @@ class TestPollAndCleanup:
 
 
 class _FaultyWrite:
-    """Wrap ``store._write`` to raise on writes to one stream while ``armed``.
+    """Wrap ``store.write_message`` to raise on writes to one stream while ``armed``.
 
     Used to inject a store-write failure (a proxy for a crash) at a precise
     seam so the failed-record-before-cursor ordering can be tested. Construct it
@@ -1332,7 +1332,7 @@ class _FaultyWrite:
     """
 
     def __init__(self, store, target_stream: str) -> None:
-        self._real = store._write
+        self._real = store.write_message
         self._target = target_stream
         self.armed: bool = True
 
@@ -1362,7 +1362,7 @@ class TestFailureRecordOrdering:
         # Fail the recovery-stream write on the first tick. Recording the failure
         # happens before the cursor advances, so this raises before any cursor move.
         faulty = _FaultyWrite(sub.store, sub.failed_positions_stream)
-        monkeypatch.setattr(sub.store, "_write", faulty)
+        monkeypatch.setattr(sub.store, "write_message", faulty)
 
         with pytest.raises(RuntimeError, match="simulated store failure"):
             await sub.tick()
@@ -1411,7 +1411,7 @@ class TestFailureRecordOrdering:
         # Fail the cursor write (to the subscriber stream). It is issued only after
         # the recovery record, so the record is already written when this raises.
         faulty = _FaultyWrite(sub.store, sub.subscriber_stream_name)
-        monkeypatch.setattr(sub.store, "_write", faulty)
+        monkeypatch.setattr(sub.store, "write_message", faulty)
 
         with pytest.raises(RuntimeError, match="simulated store failure"):
             await sub.process_batch([msg])
@@ -1444,7 +1444,7 @@ class TestFailureRecordOrdering:
         msg2 = _create_message(global_position=2)
 
         faulty = _FaultyWrite(sub.store, sub.subscriber_stream_name)
-        monkeypatch.setattr(sub.store, "_write", faulty)
+        monkeypatch.setattr(sub.store, "write_message", faulty)
 
         with pytest.raises(RuntimeError, match="simulated store failure"):
             await sub.process_batch([msg1, msg2])

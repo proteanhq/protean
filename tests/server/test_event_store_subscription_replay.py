@@ -142,7 +142,7 @@ def _make_message(global_position: int = 1, stream_position: int = 0) -> Message
 
 
 def _write_event_to_store(test_domain, msg: Message) -> None:
-    test_domain.event_store.store._write(
+    test_domain.event_store.store.write_message(
         msg.metadata.headers.stream,
         msg.metadata.headers.type,
         msg.data,
@@ -435,7 +435,7 @@ class TestReplayCommandDispatcher:
         metadata_dict["domain"]["asynchronous"] = True
         metadata_dict["headers"]["stream"] = cmd_stream
         message.metadata = Metadata(**metadata_dict)
-        test_domain.event_store.store._write(
+        test_domain.event_store.store.write_message(
             cmd_stream,
             message.metadata.headers.type,
             message.data,
@@ -527,13 +527,13 @@ def _exhausted_command(
     metadata_dict["headers"]["stream"] = cmd_stream
     metadata_dict["headers"]["deadline"] = deadline
     message.metadata = Metadata(**metadata_dict)
-    test_domain.event_store.store._write(
+    test_domain.event_store.store.write_message(
         cmd_stream,
         message.metadata.headers.type,
         message.data,
         metadata=message.metadata.to_dict(),
     )
-    test_domain.event_store.store._write(
+    test_domain.event_store.store.write_message(
         sub.failed_positions_stream,
         FailedPositionStatus.EXHAUSTED.value,
         {

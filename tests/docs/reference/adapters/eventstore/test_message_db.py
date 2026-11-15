@@ -22,10 +22,10 @@ def test_configuration_shown_connects(tmp_path, monkeypatch):
     stream = f"doc_check-{uuid4()}"
     with domain.domain_context():
         store = domain.event_store.store
-        store._write(stream, "Checked", {"n": 1})
+        store.write_message(stream, "Checked", {"n": 1})
 
         assert type(store) is MessageDBStore
-        assert [m["data"] for m in store._read(stream)] == [{"n": 1}]
+        assert [m["data"] for m in store.get_stream_messages(stream)] == [{"n": 1}]
 
 
 def test_configuration_shown_defaults_to_the_documented_uri(tmp_path, monkeypatch):

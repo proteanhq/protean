@@ -72,7 +72,7 @@ def _write_record(
     store, failed_stream: str, position: int, status: FailedPositionStatus
 ) -> None:
     """Append one failed-position record, in the shape a subscription writes."""
-    store._write(
+    store.write_message(
         failed_stream,
         status.value,
         {"position": position, "message_id": str(uuid4()), "retry_count": 1},
@@ -86,7 +86,7 @@ def _write_record(
 def _write_events(store, stream_category: str, count: int) -> None:
     metadata = {"headers": {"id": str(uuid4()), "type": "OrderPlaced"}}
     for n in range(count):
-        store._write(f"{stream_category}-1", "OrderPlaced", {"n": n}, metadata)
+        store.write_message(f"{stream_category}-1", "OrderPlaced", {"n": n}, metadata)
 
 
 def _statuses(domain: Domain) -> dict[str, SubscriptionStatus]:

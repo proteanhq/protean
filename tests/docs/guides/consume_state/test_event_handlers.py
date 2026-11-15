@@ -125,8 +125,9 @@ def test_the_any_handler_records_every_order_event(orders):
 def test_source_stream_becomes_the_subscription_origin_stream_filter(orders):
     config = ConfigResolver(orders.domain).resolve(orders.EmailNotifications)
 
-    assert orders.EmailNotifications.meta_.source_stream == "manage_order"
-    assert config.origin_stream == "manage_order"
+    prefixed = f"{orders.domain.normalized_name}::manage_order"
+    assert orders.EmailNotifications.meta_.source_stream == prefixed
+    assert config.origin_stream == prefixed
 
 
 def test_a_handler_without_part_of_or_stream_category_fails_to_register(orders):

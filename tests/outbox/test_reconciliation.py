@@ -651,7 +651,7 @@ def _append_foreign_event(domain, foreign_domain):
         shipment = Shipment()
         shipment.raise_(Shipped(shipment_id=shipment.id))
         message = Message.from_domain_object(shipment._events[-1])
-    domain.event_store.store._write(
+    domain.event_store.store.write_message(
         message.metadata.headers.stream,
         message.metadata.headers.type,
         message.data,
@@ -1165,7 +1165,7 @@ class TestReconcileRepairsOlderEventVersions:
         assert message.metadata.headers.type == "Reconcile.Withdrawn.v1"
         with domain.domain_context():
             outbox_repo = _create_tables(domain)
-            domain.event_store.store._write(
+            domain.event_store.store.write_message(
                 message.metadata.headers.stream,
                 message.metadata.headers.type,
                 message.data,
@@ -1443,7 +1443,7 @@ class TestReconcileExternalBrokers:
         assert message.metadata.headers.type == "Reconcile.Withdrawn.v1"
         with domain.domain_context():
             outbox_repo = _create_tables(domain)
-            domain.event_store.store._write(
+            domain.event_store.store.write_message(
                 message.metadata.headers.stream,
                 message.metadata.headers.type,
                 message.data,

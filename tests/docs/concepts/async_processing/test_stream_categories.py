@@ -106,7 +106,9 @@ def test_an_explicit_handler_category_reads_the_shared_stream():
         return_id = Identifier(required=True)
 
     with _init(example):
-        assert example.OrderReportHandler.meta_.stream_category == "all_orders"
+        assert (
+            example.OrderReportHandler.meta_.stream_category == "ecommerce::all_orders"
+        )
 
         returned = Return()
         returned.raise_(ReturnRequested(return_id=returned.id))

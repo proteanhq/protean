@@ -79,8 +79,8 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
     | Option | Type | Description |
     |--------|------|-------------|
     | ``part_of`` | ``type`` | The aggregate this handler is associated with. |
-    | ``source_stream`` | ``str`` | Optional source stream filter for origin filtering. |
-    | ``stream_category`` | ``str`` | The stream category to subscribe to. Defaults to aggregate's category. |
+    | ``source_stream`` | ``str`` | Optional filter on the category of the stream that triggered an event. A value without ``::`` gets the domain prefix. |
+    | ``stream_category`` | ``str`` | The stream category to subscribe to. Defaults to aggregate's category. A value without ``::`` gets the domain prefix (``all_orders`` becomes ``<domain>::all_orders``); ``$all`` stays as written. |
     | ``sequential_by`` | ``str`` | Partition key field name for per-key sequential processing. |
     | ``subscription_type`` | ``SubscriptionType`` or ``str`` | The subscription type (STREAM or EVENT_STORE), as the enum member or its name. |
     | ``subscription_profile`` | ``SubscriptionProfile`` or ``str`` | A built-in profile (PRODUCTION, FAST, BATCH, DEBUG, PROJECTION) as the enum member or its name, or a custom profile name from ``[server.profiles]``. |
@@ -164,6 +164,14 @@ class BaseEventHandler(Element, HandlerMixin, OptionsMixin):
 _T = TypeVar("_T", bound=OptionsMixin)
 
 
+def _in_domain(category: str | None, domain: Any) -> str | None:
+    """Return ``category`` with the domain prefix, unless it is unset, ``$all``
+    or already contains ``::``."""
+    if category and category != "$all" and "::" not in category:
+        return f"{domain.normalized_name}::{category}"
+    return category
+
+
 def event_handler_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
     element_cls = _derive_element_class(element_cls, BaseEventHandler, **opts)
 
@@ -173,5 +181,11 @@ def event_handler_factory(element_cls: type[_T], domain: Any, **opts: Any) -> ty
         )
 
     _check_part_of_kind(element_cls)
+
+    # A category without ``::`` names a stream inside this domain. A category
+    # derived from a registered aggregate already carries the prefix.
+    meta = element_cls.meta_
+    meta.stream_category = _in_domain(meta.stream_category, domain)
+    meta.source_stream = _in_domain(meta.source_stream, domain)
 
     return element_cls

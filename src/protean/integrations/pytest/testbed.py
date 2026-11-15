@@ -101,7 +101,7 @@ class DomainFixture:
                 for broker in self.domain.brokers.values():
                     broker._data_reset()
 
-                self.domain._require_event_store()._data_reset()
+                self.domain._require_event_store().clear()
             finally:
                 try:
                     ctx.pop()

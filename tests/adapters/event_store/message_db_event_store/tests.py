@@ -32,7 +32,7 @@ class TestMessageDBEventStore:
         domain.init(traverse=False)
 
         with pytest.raises(ConfigurationError) as exc:
-            domain.event_store.store._write(
+            domain.event_store.store.write_message(
                 "testStream-123",
                 "Event1",
                 {"foo": "bar"},
@@ -42,7 +42,7 @@ class TestMessageDBEventStore:
         assert 'FATAL:  database "dummy" does not exist' in str(exc.value)
 
     def test_write_to_event_store(self, test_domain):
-        position = test_domain.event_store.store._write(
+        position = test_domain.event_store.store.write_message(
             "testStream-123", "Event1", {"foo": "bar"}
         )
 
@@ -50,19 +50,21 @@ class TestMessageDBEventStore:
 
     def test_multiple_writes_to_event_store(self, test_domain):
         for i in range(5):
-            position = test_domain.event_store.store._write(
+            position = test_domain.event_store.store.write_message(
                 "testStream-123", "Event1", {"foo": f"bar{i}"}
             )
 
-        position = test_domain.event_store.store._write(
+        position = test_domain.event_store.store.write_message(
             "testStream-123", "Event1", {"foo": "bar"}
         )
         assert position == 5
 
     def test_reading_stream_message(self, test_domain):
-        test_domain.event_store.store._write("testStream-123", "Event1", {"foo": "bar"})
+        test_domain.event_store.store.write_message(
+            "testStream-123", "Event1", {"foo": "bar"}
+        )
 
-        messages = test_domain.event_store.store._read("testStream-123")
+        messages = test_domain.event_store.store.get_stream_messages("testStream-123")
 
         assert len(messages) == 1
         assert messages[0]["position"] == 0
@@ -70,19 +72,21 @@ class TestMessageDBEventStore:
 
     def test_reading_multiple_stream_messages(self, test_domain):
         for i in range(5):
-            test_domain.event_store.store._write(
+            test_domain.event_store.store.write_message(
                 "testStream-123", "Event1", {"foo": f"bar{i}"}
             )
 
-        messages = test_domain.event_store.store._read("testStream-123")
+        messages = test_domain.event_store.store.get_stream_messages("testStream-123")
 
         assert len(messages) == 5
         assert messages[4]["data"] == {"foo": "bar4"}
 
     def test_reading_category_message(self, test_domain):
-        test_domain.event_store.store._write("testStream-123", "Event1", {"foo": "bar"})
+        test_domain.event_store.store.write_message(
+            "testStream-123", "Event1", {"foo": "bar"}
+        )
 
-        messages = test_domain.event_store.store._read("testStream")
+        messages = test_domain.event_store.store.get_category_messages("testStream")
 
         assert len(messages) == 1
         assert messages[0]["position"] == 0
@@ -90,41 +94,43 @@ class TestMessageDBEventStore:
 
     def test_reading_multiple_category_messages(self, test_domain):
         for i in range(5):
-            test_domain.event_store.store._write(
+            test_domain.event_store.store.write_message(
                 "testStream-123", "Event1", {"foo": f"bar{i}"}
             )
 
-        messages = test_domain.event_store.store._read("testStream")
+        messages = test_domain.event_store.store.get_category_messages("testStream")
 
         assert len(messages) == 5
         assert messages[4]["data"] == {"foo": "bar4"}
 
     def test_reading_targeted_stream_messages(self, test_domain):
         for i in range(5):
-            test_domain.event_store.store._write(
+            test_domain.event_store.store.write_message(
                 "testStream-123", "Event1", {"foo": f"bar{i}"}
             )
         for i in range(5):
-            test_domain.event_store.store._write(
+            test_domain.event_store.store.write_message(
                 "testStream-456", "Event1", {"foo": f"baz{i}"}
             )
 
-        messages = test_domain.event_store.store._read("testStream-456")
+        messages = test_domain.event_store.store.get_stream_messages("testStream-456")
 
         assert len(messages) == 5
         assert messages[4]["data"] == {"foo": "baz4"}
 
     def test_read_last_message(self, test_domain):
         for i in range(5):
-            test_domain.event_store.store._write(
+            test_domain.event_store.store.write_message(
                 "testStream-123", "Event1", {"foo": f"bar{i}"}
             )
 
-        message = test_domain.event_store.store._read_last_message("testStream-123")
+        message = test_domain.event_store.store.get_last_stream_message(
+            "testStream-123"
+        )
         assert message["position"] == 4
 
     def test_read_last_message_when_there_are_no_messages(self, test_domain):
-        message = test_domain.event_store.store._read_last_message("foo-bar")
+        message = test_domain.event_store.store.get_last_stream_message("foo-bar")
         assert message is None
 
     def test_read_last_message_category_stream(self, test_domain):
@@ -134,11 +140,11 @@ class TestMessageDBEventStore:
         adapter must fall back to reading the category.
         """
         for i in range(5):
-            test_domain.event_store.store._write(
+            test_domain.event_store.store.write_message(
                 "testStream-123", "Event1", {"foo": f"bar{i}"}
             )
 
-        message = test_domain.event_store.store._read_last_message("testStream")
+        message = test_domain.event_store.store.get_last_category_message("testStream")
         assert message is not None
         assert message["data"]["foo"] == "bar4"  # the newest, not None
 
@@ -148,17 +154,17 @@ class TestMessageDBEventStore:
         The exact failure: this returned None on Message-DB, making
         reconcile_outbox a permanent no-op (ADR-0015 crash-window recovery).
         """
-        test_domain.event_store.store._write("streamA-1", "EventA", {"n": 1})
-        test_domain.event_store.store._write("streamB-2", "EventB", {"n": 2})
+        test_domain.event_store.store.write_message("streamA-1", "EventA", {"n": 1})
+        test_domain.event_store.store.write_message("streamB-2", "EventB", {"n": 2})
 
-        message = test_domain.event_store.store._read_last_message("$all")
+        message = test_domain.event_store.store.get_last_message()
         assert message is not None  # was None before the fix
         # The newest global message is the *last one written* — asserted on
         # content, not by mirroring the fallback's own query. The client's
         # "$all" read has no ORDER BY, so the adapter must pick by global_position.
         assert message["type"] == "EventB"
         assert message["data"]["n"] == 2
-        all_msgs = test_domain.event_store.store._read("$all", no_of_messages=1_000_000)
+        all_msgs = test_domain.event_store.store.get_all_messages(limit=1_000_000)
         assert message["global_position"] == max(m["global_position"] for m in all_msgs)
 
     def test_read_last_message_empty_category_and_all(self, test_domain):
@@ -168,8 +174,8 @@ class TestMessageDBEventStore:
         fallback added — the existing None test only covers a *specific* stream.
         """
         store = test_domain.event_store.store
-        assert store._read_last_message("$all") is None
-        assert store._read_last_message("neverWritten") is None
+        assert store.get_last_message() is None
+        assert store.get_last_category_message("neverWritten") is None
 
     def test_stream_head_position_empty_stream(self, test_domain):
         """stream_head_position returns -1 for a stream with no messages."""
@@ -179,7 +185,7 @@ class TestMessageDBEventStore:
     def test_stream_head_position_with_messages(self, test_domain):
         """stream_head_position returns global_position of the newest message."""
         for i in range(5):
-            test_domain.event_store.store._write(
+            test_domain.event_store.store.write_message(
                 "testStream-123", "Event1", {"foo": f"bar{i}"}
             )
 
@@ -187,17 +193,21 @@ class TestMessageDBEventStore:
         assert result >= 0
 
         # Should match the last category message's global_position
-        all_msgs = test_domain.event_store.store._read(
-            "testStream", no_of_messages=1_000_000
+        all_msgs = test_domain.event_store.store.get_category_messages(
+            "testStream", limit=1_000_000
         )
         assert result == all_msgs[-1]["global_position"]
 
     def test_stream_head_position_per_category(self, test_domain):
         """stream_head_position returns correct head per stream category."""
         for i in range(3):
-            test_domain.event_store.store._write("streamA-123", "EventA", {"idx": i})
+            test_domain.event_store.store.write_message(
+                "streamA-123", "EventA", {"idx": i}
+            )
         for i in range(2):
-            test_domain.event_store.store._write("streamB-456", "EventB", {"idx": i})
+            test_domain.event_store.store.write_message(
+                "streamB-456", "EventB", {"idx": i}
+            )
 
         head_a = test_domain.event_store.store.stream_head_position("streamA")
         head_b = test_domain.event_store.store.stream_head_position("streamB")
@@ -211,7 +221,7 @@ class TestMessageDBEventStore:
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
         for i in range(12):
-            store._write("testStream-123", "Event1", {"n": i}, metadata)
+            store.write_message("testStream-123", "Event1", {"n": i}, metadata)
 
         paged = list(store.read_all("$all", page_size=5))
         gpos = [m.metadata.event_store.global_position for m in paged]
@@ -229,7 +239,7 @@ class TestMessageDBEventStore:
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
         for i in range(10):
-            store._write("testStream-123", "Event1", {"n": i}, metadata)
+            store.write_message("testStream-123", "Event1", {"n": i}, metadata)
 
         paged = list(store.read_all("$all", page_size=5))
         gpos = [m.metadata.event_store.global_position for m in paged]
@@ -243,10 +253,10 @@ class TestMessageDBEventStore:
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
         for i in range(7):
-            store._write("testStream-123", "Event1", {"n": i}, metadata)
+            store.write_message("testStream-123", "Event1", {"n": i}, metadata)
         # A sibling stream in the same category must not leak into the read.
         for i in range(4):
-            store._write("testStream-456", "Event1", {"n": i}, metadata)
+            store.write_message("testStream-456", "Event1", {"n": i}, metadata)
 
         paged = list(store.read_all("testStream-123", page_size=3))
         positions = [m.metadata.event_store.position for m in paged]
@@ -264,8 +274,8 @@ class TestMessageDBEventStore:
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
         for i in range(3):
-            store._write("testStream-123", "Event1", {"n": i}, metadata)
-        store._write("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
+            store.write_message("testStream-123", "Event1", {"n": i}, metadata)
+        store.write_message("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
 
         messages = store.read("$all")
 
@@ -278,12 +288,12 @@ class TestMessageDBEventStore:
         read nor desync the cursor: read_all pages on raw rows."""
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
-        store._write("testStream-123", "Event1", {"n": 0}, metadata)
+        store.write_message("testStream-123", "Event1", {"n": 0}, metadata)
         # Second (last) raw row of page 1 under page_size=2.
-        store._write("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
-        store._write("testStream-123", "Event1", {"n": 1}, metadata)
-        store._write("testStream-123", "Event1", {"n": 2}, metadata)
-        store._write("testStream-123", "Event1", {"n": 3}, metadata)
+        store.write_message("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
+        store.write_message("testStream-123", "Event1", {"n": 1}, metadata)
+        store.write_message("testStream-123", "Event1", {"n": 2}, metadata)
+        store.write_message("testStream-123", "Event1", {"n": 3}, metadata)
 
         paged = list(store.read_all("$all", page_size=2))
 
@@ -295,9 +305,9 @@ class TestMessageDBEventStore:
         the event after it, not stop on a zero yielded count."""
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
-        store._write("testStream:snapshot-1", "SNAPSHOT", {"_version": 0})
-        store._write("testStream:snapshot-2", "SNAPSHOT", {"_version": 0})
-        store._write("testStream-123", "Event1", {"n": 0}, metadata)
+        store.write_message("testStream:snapshot-1", "SNAPSHOT", {"_version": 0})
+        store.write_message("testStream:snapshot-2", "SNAPSHOT", {"_version": 0})
+        store.write_message("testStream-123", "Event1", {"n": 0}, metadata)
 
         paged = list(store.read_all("$all", page_size=2))
 
@@ -309,9 +319,9 @@ class TestMessageDBEventStore:
         nothing for its page but must not stop or re-loop the read."""
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
-        store._write("testStream-123", "Event1", {"n": 0}, metadata)
-        store._write("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
-        store._write("testStream-123", "Event1", {"n": 1}, metadata)
+        store.write_message("testStream-123", "Event1", {"n": 0}, metadata)
+        store.write_message("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
+        store.write_message("testStream-123", "Event1", {"n": 1}, metadata)
 
         paged = list(store.read_all("$all", page_size=1))
 
@@ -324,8 +334,8 @@ class TestMessageDBEventStore:
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
         for i in range(3):
-            store._write("testStream-123", "Event1", {"n": i}, metadata)
-        store._write("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
+            store.write_message("testStream-123", "Event1", {"n": i}, metadata)
+        store.write_message("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
 
         paged = list(store.read_all("testStream", page_size=2))
         direct = store.read("testStream")
@@ -341,8 +351,8 @@ class TestMessageDBEventStore:
         store = test_domain.event_store.store
         metadata = {"domain": {"kind": "EVENT"}}
         for i in range(3):
-            store._write("testStream-123", "Event1", {"n": i}, metadata)
-        store._write("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
+            store.write_message("testStream-123", "Event1", {"n": i}, metadata)
+        store.write_message("testStream:snapshot-123", "SNAPSHOT", {"_version": 0})
 
         last = store.read_last_message("$all")
 
@@ -356,8 +366,8 @@ class TestMessageDBEventStore:
         cursor or tail-read mismatch in the shared paths would surface here."""
         store = test_domain.event_store.store
         event_meta = {"domain": {"kind": "EVENT"}}
-        store._write("order-1", "Placed", {"n": 1}, event_meta)
-        store._write("order-1", "Placed", {"n": 2}, event_meta)
+        store.write_message("order-1", "Placed", {"n": 1}, event_meta)
+        store.write_message("order-1", "Placed", {"n": 2}, event_meta)
         head = store.stream_head_position("order")
 
         rec_stream = "recovery-checkpoint-Handler-order"
@@ -369,7 +379,7 @@ class TestMessageDBEventStore:
         }
         # One tracked position beyond the head (its message is gone -> stale) and
         # one at/below the head (its message is present -> healthy).
-        store._write(
+        store.write_message(
             rec_stream,
             "Checkpoint",
             {
@@ -432,7 +442,7 @@ class TestMessageDBEventStore:
             }
         }
         # One Failed record survived the restore, at per-stream position 0.
-        store._write(
+        store.write_message(
             failed_stream,
             "Failed",
             {
@@ -445,7 +455,7 @@ class TestMessageDBEventStore:
         )
         # A checkpoint whose watermark (10) sits past the failed-stream tail (0):
         # the checkpoint is ahead of the stream it references.
-        store._write(
+        store.write_message(
             rec_stream,
             "Checkpoint",
             {

@@ -53,7 +53,7 @@ def test_processing_messages_from_beginning_the_first_time(test_domain):
     user.raise_(UserLoggedIn(user_id=identifier))
     test_domain.repository_for(User).add(user)
 
-    messages = test_domain.event_store.store.read("authentication")
+    messages = test_domain.event_store.store.read("test::authentication")
     assert len(messages) == 1
 
     engine = Engine(domain=test_domain, test_mode=True)

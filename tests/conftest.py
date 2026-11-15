@@ -363,13 +363,20 @@ def small_read_page(monkeypatch, test_domain):
 
     Lowers the page-size default of ``BaseEventStore.read``,
     ``BaseEventStore.read_all``, ``BaseEventStore._read_all_raw``,
-    ``BaseEventStore._read_stream_fully`` and the configured store's ``_read``,
-    so a test can write a stream longer than one page in a few rows. Writing
-    1,000 rows to the memory store takes minutes. A caller that passes its own
-    page size, such as ``no_of_messages=1_000_000``, keeps it.
+    ``BaseEventStore._read_stream_fully``, ``BaseEventStore._read_raw`` and the
+    configured store's stream, category and all readers, so a test can write a
+    stream longer than one page in a few rows. Writing 1,000 rows to the memory
+    store takes minutes. A caller that passes its own page size, such as
+    ``limit=1_000_000``, keeps it.
     """
-    store_read = type(test_domain.event_store.store)._read
-    for func in (BaseEventStore.read, store_read):
+    store_cls = type(test_domain.event_store.store)
+    for func in (
+        BaseEventStore.read,
+        BaseEventStore._read_raw,
+        store_cls.get_stream_messages,
+        store_cls.get_category_messages,
+        store_cls.get_all_messages,
+    ):
         defaults = func.__defaults__
         assert defaults is not None and defaults[-1] == 1000
         monkeypatch.setattr(func, "__defaults__", (*defaults[:-1], SMALL_READ_PAGE))
@@ -441,10 +448,10 @@ def run_around_tests(test_domain, request):
                 # teardown truncate for those and only release the pool. Other
                 # stores (memory) still reset here.
                 if "message_db" not in request.keywords:
-                    test_domain.event_store.store._data_reset()
+                    test_domain.event_store.store.clear()
             finally:
                 # Always close event store connections to prevent pool exhaustion,
-                # even if _data_reset() fails
+                # even if clear() fails
                 test_domain.event_store.store.close()
 
 
@@ -459,7 +466,7 @@ def _isolate_message_db(request):
     which fails intermittently and depends on execution order. Truncating the
     store before each marked test gives it a clean start regardless of what ran
     before, so every Message-DB test is order-independent and tests no longer
-    need per-class ``_data_reset()`` scaffolding. Resetting before (not after)
+    need per-class ``clear()`` scaffolding. Resetting before (not after)
     is what breaks the dependence on a predecessor cleaning up after itself.
 
     The reset is a whole-store ``TRUNCATE``, so it assumes Message-DB tests run

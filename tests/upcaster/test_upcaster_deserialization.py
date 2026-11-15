@@ -178,7 +178,7 @@ class TestUpcastWorksWithEventStore:
         store = test_domain.event_store.store
 
         # Simulate a v1 event written to the store in the past
-        store._write(
+        store.write_message(
             "test::order-order-rt",
             "Test.OrderPlaced.v1",
             {"order_id": "order-rt", "amount": 77.77},

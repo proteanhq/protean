@@ -480,7 +480,7 @@ class TestUoWCommitSpanOnError:
         """Force a commit failure during event store append and verify
         the UoW commit span is marked ERROR with an exception event."""
         store = test_domain.event_store.store
-        original_write = store._write
+        original_write = store.write_message
         call_count = 0
 
         def _exploding_write(*args, **kwargs):
@@ -491,7 +491,7 @@ class TestUoWCommitSpanOnError:
                 raise RuntimeError("event store exploded")
             return original_write(*args, **kwargs)
 
-        monkeypatch.setattr(store, "_write", _exploding_write)
+        monkeypatch.setattr(store, "write_message", _exploding_write)
 
         with pytest.raises(Exception):
             test_domain.process(
