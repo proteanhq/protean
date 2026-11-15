@@ -115,14 +115,18 @@ jobs:
       - name: Run type checking
         run: uv run mypy src/{{ package_name }}
 
-      - name: Run tests
-        run: uv run pytest --cov=src/{{ package_name }} --cov-report=xml --cov-report=term-missing
 {%- if database == "mssql" %}
 
       - name: Create the database
-        if: hashFiles('migrations/versions/*.py') != ''
         run: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Protean123!' -C -Q "CREATE DATABASE {{ package_name }}_db"
 {%- endif %}
+
+      - name: Run tests
+{%- if database == "mssql" %}
+        env:
+          DATABASE_URL: "mssql+pyodbc://sa:Protean123!@localhost:1433/{{ package_name }}_db?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
+{%- endif %}
+        run: uv run pytest --cov=src/{{ package_name }} --cov-report=xml --cov-report=term-missing
 {%- if database in ["postgresql", "sqlite", "mssql"] %}
 
       - name: Apply and check migrations

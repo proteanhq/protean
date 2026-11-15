@@ -764,7 +764,7 @@ class TestSqlProjectCiWorkflow:
         ]
         assert "env" not in migration_step
 
-    def test_mssql_creates_the_database_before_the_migration_step(self, tmp_path):
+    def test_mssql_creates_the_database_before_the_tests(self, tmp_path):
         steps = _ci_steps(_render(tmp_path, "database=mssql"))
 
         tests_at = _step_index(steps, lambda step: step.get("name") == "Run tests")
@@ -775,12 +775,13 @@ class TestSqlProjectCiWorkflow:
             steps, lambda step: _runs(step, "protean db upgrade")
         )
 
-        assert tests_at < create_at < migrations_at
-        assert steps[create_at]["if"] == _MIGRATION_CONDITION
+        assert create_at < tests_at < migrations_at
+        assert "if" not in steps[create_at]
         assert steps[create_at]["run"] == (
             "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Protean123!' -C "
             '-Q "CREATE DATABASE shop_db"'
         )
+        assert steps[tests_at]["env"] == {"DATABASE_URL": _MSSQL_URL}
         assert steps[migrations_at]["env"] == {"DATABASE_URL": _MSSQL_URL}
 
     @pytest.mark.parametrize("database", NON_SQL_DATABASES)
