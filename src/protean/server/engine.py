@@ -6,10 +6,10 @@ import platform
 import signal
 import time
 from collections import defaultdict
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from signal import Signals
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -364,131 +364,14 @@ class Engine:
 
         # Gather broker subscriptions
         self._broker_subscriptions: dict[str, BrokerSubscription] = {}
-
-        for (
-            subscriber_name,
-            subscriber_record,
-        ) in self.domain.registry.subscribers.items():
-            subscriber_cls = subscriber_record.cls
-            broker_name = subscriber_cls.meta_.broker
-            broker = self.domain.brokers[broker_name]
-            stream = subscriber_cls.meta_.stream
-            self._broker_subscriptions[subscriber_name] = BrokerSubscription(
-                self,
-                broker,
-                stream,
-                subscriber_cls,
-            )
+        _wire_broker_subscriptions(self)
 
         # Gather outbox processors - one per broker for each provider an aggregate is stored in
         self._outbox_processors: dict[str, OutboxProcessor] = {}
 
         # Only if outbox is enabled in the domain
         if self.domain.has_outbox:
-            logger.debug("engine.outbox_initializing")
-            # Get the broker provider name from the config with validation
-            outbox_config = self.domain.config.get("outbox", {})
-            broker_provider_name = outbox_config.get("broker", "default")
-
-            if broker_provider_name not in self.domain.brokers:
-                raise ValueError(
-                    f"Broker provider '{broker_provider_name}' not configured in domain"
-                )
-
-            messages_per_tick = outbox_config.get("messages_per_tick", 10)
-            tick_interval = outbox_config.get("tick_interval", 1)
-            max_tick_interval = outbox_config.get("max_tick_interval")
-            logger.debug(
-                "engine.outbox_config",
-                extra={
-                    "batch_size": messages_per_tick,
-                    "interval_s": tick_interval,
-                    "max_interval_s": max_tick_interval,
-                },
-            )
-
-            # Create an outbox processor for each provider an aggregate is stored in
-            outbox_providers = _outbox_provider_names(self.domain)
-            for database_provider_name in outbox_providers:
-                processor_name = f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
-                logger.debug(
-                    "engine.creating_outbox_processor",
-                    extra={"processor": processor_name},
-                )
-                self._outbox_processors[processor_name] = OutboxProcessor(
-                    self,
-                    database_provider_name,
-                    broker_provider_name,
-                    messages_per_tick=messages_per_tick,
-                    tick_interval=tick_interval,
-                    max_tick_interval=max_tick_interval,
-                )
-
-            # Create external outbox processors for published event dispatch
-            external_brokers: list[str] = outbox_config.get("external_brokers", [])
-            for ext_broker_name in external_brokers:
-                if ext_broker_name not in self.domain.brokers:
-                    raise ValueError(
-                        f"External broker '{ext_broker_name}' configured in "
-                        f"outbox.external_brokers but not found in domain "
-                        f"broker configuration"
-                    )
-                for database_provider_name in outbox_providers:
-                    processor_name = f"outbox-processor-{database_provider_name}-to-{ext_broker_name}-external"
-                    logger.debug(
-                        "engine.creating_external_outbox_processor",
-                        extra={"processor": processor_name},
-                    )
-                    self._outbox_processors[processor_name] = OutboxProcessor(
-                        self,
-                        database_provider_name,
-                        ext_broker_name,
-                        messages_per_tick=messages_per_tick,
-                        tick_interval=tick_interval,
-                        max_tick_interval=max_tick_interval,
-                        is_external=True,
-                    )
-
-            # Verify outbox repos are initialised and DAO-accessible
-            for provider_name, outbox_repo in self.domain._outbox_repos.items():
-                try:
-                    outbox_repo._dao  # noqa: B018
-                # Any DAO error is reported as a missing outbox table.
-                except Exception as e:
-                    raise ConfigurationError(
-                        f"Outbox table not found for provider '{provider_name}'. "
-                        "Run 'protean db setup' or 'protean db setup-outbox' to create it."
-                    ) from e
-                if provider_name in outbox_providers:
-                    continue
-                # Rows left by an earlier deploy, before the last aggregate on
-                # this provider moved away. No processor runs here any more.
-                try:
-                    unpublished = outbox_repo._dao.query.filter(
-                        status__in=[
-                            OutboxStatus.PENDING.value,
-                            OutboxStatus.PROCESSING.value,
-                            OutboxStatus.FAILED.value,
-                            OutboxStatus.ABANDONED.value,
-                        ]
-                    ).count()
-                # The probe is diagnostic only: a provider no aggregate uses
-                # must not stop the engine from starting; logged.
-                except Exception:
-                    logger.warning(
-                        "engine.outbox_leftover_probe_failed",
-                        extra={"provider": provider_name},
-                        exc_info=True,
-                    )
-                    continue
-                if unpublished:
-                    logger.warning(
-                        "engine.outbox_rows_without_processor",
-                        extra={
-                            "provider": provider_name,
-                            "unpublished": unpublished,
-                        },
-                    )
+            _wire_outbox_processors(self)
         else:
             logger.debug("engine.outbox_disabled")
 
@@ -555,41 +438,7 @@ class Engine:
                 f"on stream '{stream_category}'"
             )
 
-        # Register command handler subscriptions — one per stream category
-        # Group all command handlers by their stream category, then create a single
-        # CommandDispatcher subscription per group. This ensures each command message
-        # is read by exactly one subscription and routed to the correct handler.
-        handlers_by_stream = defaultdict(list)
-        for handler_record in self.domain.registry.command_handlers.values():
-            handler_cls = handler_record.cls
-            stream_category = self._infer_stream_category(handler_cls)
-            handlers_by_stream[stream_category].append(handler_cls)
-
-        for stream_category, handler_classes in handlers_by_stream.items():
-            # Build command_type -> handler_cls mapping
-            handler_map = {}
-            handler_names = []
-            for handler_cls in handler_classes:
-                handler_names.append(handler_cls.__name__)
-                for command_type in handler_cls._handlers:
-                    if command_type != "$any":
-                        handler_map[command_type] = handler_cls
-
-            dispatcher = CommandDispatcher(
-                stream_category, handler_map, handler_classes[0]
-            )
-
-            subscription_key = f"commands:{stream_category}"
-            self._subscriptions[subscription_key] = (
-                self._subscription_factory.create_subscription(
-                    handler=dispatcher,
-                    stream_category=stream_category,
-                )
-            )
-            logger.debug(
-                f"Registered command subscription on stream '{stream_category}' "
-                f"with handlers: {', '.join(handler_names)}"
-            )
+        _register_command_subscriptions(self)
 
         # Register projector subscriptions (one per stream category)
         for handler_name, handler_record in self.domain.registry.projectors.items():
@@ -610,43 +459,7 @@ class Engine:
                     f"on stream '{stream_category}'"
                 )
 
-        # Register process manager subscriptions (one per stream category).
-        # A ``sequential_by`` process manager is the exception: it leases by
-        # correlation value spanning every category it subscribes to (ADR-0028
-        # decision 2), so it gets a single partitioned subscription across all
-        # its categories instead of one per category — otherwise two instances
-        # could each own a different category's partition for the same
-        # correlation value and process that instance's events concurrently.
-        for pm_name, pm_record in self.domain.registry.process_managers.items():
-            pm_cls = pm_record.cls
-
-            if self._is_partitioned_process_manager(pm_cls):
-                subscription_key = f"{pm_name}-partitioned"
-                self._subscriptions[subscription_key] = (
-                    self._subscription_factory.create_partitioned_pm_subscription(
-                        pm_cls
-                    )
-                )
-                logger.debug(
-                    f"Registered partitioned subscription for process manager "
-                    f"'{pm_name}' across streams "
-                    f"{list(pm_cls.meta_.stream_categories)}"
-                )
-                continue
-
-            for stream_category in pm_cls.meta_.stream_categories:
-                subscription_key = f"{pm_name}-{stream_category}"
-
-                self._subscriptions[subscription_key] = (
-                    self._subscription_factory.create_subscription(
-                        handler=pm_cls,
-                        stream_category=stream_category,
-                    )
-                )
-                logger.debug(
-                    f"Registered subscription for process manager '{pm_name}' "
-                    f"on stream '{stream_category}'"
-                )
+        _register_process_manager_subscriptions(self)
 
     def _is_partitioned_process_manager(self, pm_cls: type[BaseProcessManager]) -> bool:
         """Whether a PM opts into partitioning and the broker actually partitions.
@@ -884,241 +697,66 @@ class Engine:
 
             # Initialize variables used in the except block to avoid
             # UnboundLocalError if an exception occurs before assignment.
-            message_id = "unknown"
-            message_type = "unknown"
-            stream = "unknown"
+            labels = _MessageLabels()
             handler_name = "unknown"
             start_time = time.monotonic()
-            correlation_id = None
-            causation_id = None
 
             try:
                 assert message.metadata is not None, "Message metadata cannot be None"
 
-                message_id = message.metadata.headers.id or "unknown"
-                message_type = message.metadata.headers.type or "unknown"
-                stream = (
-                    message.metadata.domain.stream_category
-                    if message.metadata.domain
-                    else None
-                ) or "unknown"
-                correlation_id = (
-                    message.metadata.domain.correlation_id
-                    if message.metadata.domain
-                    else None
-                )
-                causation_id = (
-                    message.metadata.domain.causation_id
-                    if message.metadata.domain
-                    else None
-                )
+                labels = _message_labels(message.metadata)
+                handler_name = _resolved_handler_name(handler_cls, message)
 
-                # Resolve actual handler name (for CommandDispatcher, look up the specific handler)
-                if hasattr(handler_cls, "resolve_handler"):
-                    resolved = handler_cls.resolve_handler(message)
-                    handler_name = (
-                        resolved.__name__ if resolved else handler_cls.__name__
-                    )
-                else:
-                    handler_name = handler_cls.__name__
-
-                # Skip stale commands whose deadline elapsed while queued. The
-                # read position still advances (the message is acknowledged), so
-                # it is never retried — a retry would only expire again. This is
-                # expected operational behavior, not a handler failure, so it
-                # bypasses handle_error and the error/recovery path. Events carry
-                # no deadline, so this is a no-op for them.
-                headers = message.metadata.headers
-                if headers and headers.is_expired():
-                    # is_expired() is only True when a deadline is set, so
-                    # deadline is always present here; the guard narrows the
-                    # Optional for the type checkers.
-                    deadline_iso = (
-                        headers.deadline.isoformat() if headers.deadline else None
-                    )
-                    get_domain_metrics(self.domain).command_expired.add(
-                        1, {"command_type": message_type}
-                    )
-                    logger.info(
-                        "engine.command_expired",
-                        extra={
-                            "message_type": message_type,
-                            "message_id": message_id[:8],
-                            "handler": handler_name,
-                            "deadline": deadline_iso,
-                        },
-                    )
-                    self.emitter.emit(
-                        event="handler.skipped",
-                        stream=stream,
-                        message_id=message_id,
-                        message_type=message_type,
-                        status="expired",
-                        handler=handler_name,
-                        metadata={
-                            "reason": "deadline_exceeded",
-                            "deadline": deadline_iso,
-                        },
-                        worker_id=worker_id,
-                        correlation_id=correlation_id,
-                        causation_id=causation_id,
-                    )
+                if _skip_expired_command(
+                    self, message.metadata.headers, labels, handler_name, worker_id
+                ):
                     return True
 
                 # Emit handler.started trace (includes payload for lifecycle view)
                 self.emitter.emit(
                     event="handler.started",
-                    stream=stream,
-                    message_id=message_id,
-                    message_type=message_type,
+                    stream=labels.stream,
+                    message_id=labels.message_id,
+                    message_type=labels.message_type,
                     handler=handler_name,
                     payload=message.data,
                     worker_id=worker_id,
-                    correlation_id=correlation_id,
-                    causation_id=causation_id,
+                    correlation_id=labels.correlation_id,
+                    causation_id=labels.causation_id,
                 )
 
                 start_time = time.monotonic()
 
-                tracer = get_tracer(self.domain)
-
-                # Extract incoming traceparent as parent OTEL context so the
-                # processing span becomes a child of the distributed trace.
-                parent_ctx = None
-                if message.metadata and message.metadata.headers:
-                    parent_ctx = extract_context_from_traceparent(
-                        message.metadata.headers.traceparent
-                    )
-
-                with tracer.start_as_current_span(
-                    "protean.engine.handle_message",
-                    context=parent_ctx,
-                    record_exception=False,
-                    set_status_on_exception=False,
-                ) as span:
-                    span.set_attribute("protean.handler.name", handler_name)
-                    span.set_attribute("protean.message.type", message_type)
-                    span.set_attribute("protean.message.id", message_id)
-                    span.set_attribute("protean.stream_category", stream)
-                    if worker_id:
-                        span.set_attribute("protean.worker_id", worker_id)
-
-                    # Determine subscription type from handler
-                    if hasattr(handler_cls, "resolve_handler"):
-                        span.set_attribute(
-                            "protean.subscription_type", "command_dispatcher"
-                        )
-                    elif issubclass(handler_cls, BaseProcessManager):
-                        span.set_attribute(
-                            "protean.subscription_type", "process_manager"
-                        )
-                    elif issubclass(handler_cls, BaseEventHandler):
-                        span.set_attribute("protean.subscription_type", "event_handler")
-                    elif issubclass(handler_cls, BaseCommandHandler):
-                        span.set_attribute(
-                            "protean.subscription_type", "command_handler"
-                        )
-
-                    try:
-                        # Reconstruct the processing priority context from the
-                        # message metadata so that UoW.commit() tags outbox records
-                        # with the correct priority (important for async commands
-                        # where the original processing_priority() context is gone).
-                        msg_priority = 0
-                        if message.metadata.domain:
-                            msg_priority = getattr(
-                                message.metadata.domain, "priority", 0
-                            )
-                        with processing_priority(msg_priority):
-                            handler_cls._handle(message)
-                    except Exception as exc:  # marks the span as failed, then re-raises
-                        set_span_error(span, exc)
-                        raise
+                _handle_in_span(
+                    self, handler_cls, message, labels, handler_name, worker_id
+                )
 
                 duration_ms = (time.monotonic() - start_time) * 1000
-                logger.debug(
-                    "engine.message_processed",
-                    extra={
-                        "message_type": message_type,
-                        "message_id": message_id[:8],
-                        "handler": handler_name,
-                        "duration_ms": round(duration_ms, 1),
-                    },
+                _report_handler_completed(
+                    self, handler_cls, labels, handler_name, worker_id, duration_ms
                 )
-
-                # Emit handler.completed trace
-                self.emitter.emit(
-                    event="handler.completed",
-                    stream=stream,
-                    message_id=message_id,
-                    message_type=message_type,
-                    handler=handler_name,
-                    duration_ms=round(duration_ms, 2),
-                    worker_id=worker_id,
-                    correlation_id=correlation_id,
-                    causation_id=causation_id,
-                )
-
-                # Emit pm.transition trace for process managers. A command
-                # stream's handler is a CommandDispatcher *instance*, so guard
-                # the issubclass check: issubclass() on an instance raises
-                # TypeError, which the outer except would swallow and turn a
-                # succeeded command into a False return.
-                if isinstance(handler_cls, type) and issubclass(
-                    handler_cls, BaseProcessManager
-                ):
-                    self.emitter.emit(
-                        event="pm.transition",
-                        stream=stream,
-                        message_id=message_id,
-                        message_type=message_type,
-                        handler=handler_name,
-                        metadata={
-                            "pm_type": handler_cls.__name__,
-                            "pm_stream_category": getattr(
-                                handler_cls.meta_, "stream_category", None
-                            ),
-                        },
-                        duration_ms=round(duration_ms, 2),
-                        worker_id=worker_id,
-                        correlation_id=correlation_id,
-                        causation_id=causation_id,
-                    )
-
                 return True
             except Exception as exc:  # Includes handling `ConfigurationError`
                 duration_ms = (time.monotonic() - start_time) * 1000
                 logger.exception(
                     "engine.message_failed",
                     extra={
-                        "message_type": message_type,
-                        "message_id": message_id[:8],
+                        "message_type": labels.message_type,
+                        "message_id": labels.message_id[:8],
                         "handler": handler_name,
                         "duration_ms": round(duration_ms, 1),
                     },
                 )
-
-                # Emit handler.failed trace
-                self.emitter.emit(
-                    event="handler.failed",
-                    stream=stream,
-                    message_id=message_id,
-                    message_type=message_type,
-                    status="error",
-                    handler=handler_name,
-                    duration_ms=round(duration_ms, 2),
-                    error=describe_exception(exc),
-                    worker_id=worker_id,
-                    correlation_id=correlation_id,
-                    causation_id=causation_id,
+                _report_handler_failure(
+                    self,
+                    handler_cls,
+                    message,
+                    exc,
+                    labels,
+                    handler_name,
+                    worker_id,
+                    duration_ms,
                 )
-
-                try:
-                    # Call the error handler if it exists
-                    handler_cls.handle_error(exc, message)
-                # A broken error handler must not stop the engine; logged.
-                except Exception:
-                    logger.exception("engine.error_handler_failed")
                 # Continue processing instead of shutting down
                 return False
             finally:
@@ -1132,46 +770,15 @@ class Engine:
         On Windows, fall back to signal.signal as add_signal_handler is not available.
         """
 
-        def signal_handler(sig: int, frame: Any = None) -> None:
-            """Signal handler for non-asyncio signal handling (Windows)"""
-            if not self.shutting_down and self.loop.is_running():
-                asyncio.run_coroutine_threadsafe(self.shutdown(signal=sig), self.loop)
-
         signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
 
         # Check if we're on Windows or if add_signal_handler is not available
         if platform.system() == "Windows" or not hasattr(
             self.loop, "add_signal_handler"
         ):
-            logger.debug(
-                "Using signal.signal() for signal handling (Windows or unsupported platform)"
-            )
-            for s in signals:
-                try:
-                    # Store original handler for cleanup
-                    self._original_signal_handlers[s] = signal.signal(s, signal_handler)
-                except (OSError, ValueError) as e:
-                    # Some signals may not be available on all platforms
-                    logger.debug(f"Signal {s} not available on this platform: {e}")
+            _install_process_signal_handlers(self, signals)
         else:
-            logger.debug(
-                "Using asyncio.add_signal_handler() for signal handling (Unix-like)"
-            )
-            for s in signals:
-                try:
-                    # Create a proper signal handler that ensures task creation works
-                    # even when called from a signal context
-                    def handle_signal(sig: signal.Signals = s) -> None:
-                        if not self.shutting_down:
-                            # Ensure we create the task in the proper context
-                            self.loop.call_soon_threadsafe(
-                                lambda: asyncio.create_task(self.shutdown(signal=sig))
-                            )
-
-                    self.loop.add_signal_handler(s, handle_signal)
-                except (OSError, ValueError) as e:
-                    # Some signals may not be available on all platforms
-                    logger.debug(f"Signal {s} not available on this platform: {e}")
+            _install_loop_signal_handlers(self, signals)
 
     def _cleanup_signal_handlers(self) -> None:
         """
@@ -1265,16 +872,9 @@ class Engine:
         self.shutting_down = True  # Set shutdown flag
 
         try:
-            sig_name = (
-                signal.name
-                if isinstance(signal, Signals)
-                else str(signal)
-                if signal
-                else None
-            )
             logger.info(
                 "engine.shutting_down",
-                extra={"signal": sig_name},
+                extra={"signal": _signal_name(signal)},
             )
 
             # Store the exit code
@@ -1285,49 +885,13 @@ class Engine:
 
             # Step 1: Signal all subscriptions to stop (sets keep_going=False
             # and runs backend-specific cleanup like persisting positions)
-            subscription_shutdown_coros = [
-                subscription.shutdown()
-                for _, subscription in self._subscriptions.items()
-            ]
-            subscription_shutdown_coros.extend(
-                subscription.shutdown()
-                for _, subscription in self._broker_subscriptions.items()
-            )
-            subscription_shutdown_coros.extend(
-                processor.shutdown() for _, processor in self._outbox_processors.items()
-            )
-            if self._dlq_maintenance is not None:
-                subscription_shutdown_coros.append(self._dlq_maintenance.shutdown())
-
-            await asyncio.gather(*subscription_shutdown_coros, return_exceptions=True)
+            await _stop_components(self)
             logger.info("engine.subscriptions_stopped")
 
             # Step 2: Wait for in-flight tasks to finish with a bounded timeout.
             # This gives handlers processing messages a chance to complete
             # gracefully before we force-cancel them.
-            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-            if tasks:
-                logger.debug("engine.draining_tasks", extra={"count": len(tasks)})
-                done, pending = await asyncio.wait(tasks, timeout=self.drain_timeout)
-
-                # Retrieve exceptions from completed tasks so Python doesn't
-                # emit "Task exception was never retrieved" warnings.
-                for task in done:
-                    if task.done() and not task.cancelled() and task.exception():
-                        logger.debug(
-                            "Task %s raised during shutdown: %s",
-                            task.get_name(),
-                            task.exception(),
-                        )
-
-                if pending:
-                    logger.debug(
-                        "engine.cancelling_tasks",
-                        extra={"count": len(pending)},
-                    )
-                    for task in pending:
-                        task.cancel()
-                    await asyncio.gather(*pending, return_exceptions=True)
+            await _drain_tasks(self)
 
             # Step 2b: Write each event-store subscription's read position
             # again. Step 1 wrote it before the in-flight batch finished, and a
@@ -1425,32 +989,7 @@ class Engine:
         self._setup_signal_handlers()
 
         # Handle Exceptions
-        def handle_exception(
-            loop: asyncio.AbstractEventLoop, context: dict[str, Any]
-        ) -> None:
-            exc = context.get("exception")
-
-            if exc is not None:
-                logger.error(
-                    "engine.unhandled_exception",
-                    exc_info=(type(exc), exc, exc.__traceback__),
-                )
-                logger.info("engine.shutting_down")
-                if loop.is_running() and not self.shutting_down:
-                    self.shutting_down = (
-                        True  # Set flag immediately to prevent multiple shutdown calls
-                    )
-                    self._shutdown_task = asyncio.create_task(
-                        self.shutdown(exit_code=1)
-                    )
-                # Don't re-raise the exception - let the loop drain gracefully
-            else:
-                logger.error(
-                    "engine.unhandled_exception",
-                    extra={"error": context.get("message", "unknown")},
-                )
-
-        self.loop.set_exception_handler(handle_exception)
+        self.loop.set_exception_handler(_loop_exception_handler(self))
 
         # One-time outbox reconciliation sweep on startup (ADR-0015).
         self._reconcile_outbox_on_startup()
@@ -1470,81 +1009,13 @@ class Engine:
             health_task.add_done_callback(self._on_health_server_done)
 
         # Create all tasks with names for better debugging
-        subscription_tasks = []
-        for name, subscription in self._subscriptions.items():
-            task = self.loop.create_task(subscription.start())
-            task.set_name(f"subscription-{name}")
-            subscription_tasks.append(task)
-            logger.info("engine.subscription_started", extra={"subscription": name})
-
-        broker_subscription_tasks = []
-        for name, subscription in self._broker_subscriptions.items():
-            task = self.loop.create_task(subscription.start())
-            task.set_name(f"broker-{name}")
-            broker_subscription_tasks.append(task)
-            logger.info(
-                "engine.broker_subscription_started", extra={"subscription": name}
-            )
-
-        outbox_processor_tasks = []
-        for name, processor in self._outbox_processors.items():
-            task = self.loop.create_task(processor.start())
-            task.set_name(f"outbox-{name}")
-            outbox_processor_tasks.append(task)
-            logger.info("engine.outbox_processor_started", extra={"processor": name})
-
-        # Start DLQ maintenance task if a DLQ-capable broker is present
-        dlq_maintenance_tasks = []
-        if self._dlq_maintenance is not None:
-            task = self.loop.create_task(self._dlq_maintenance.start())
-            task.set_name("dlq-maintenance")
-            dlq_maintenance_tasks.append(task)
-            logger.info("engine.dlq_maintenance_started")
+        all_tasks = _start_component_tasks(self)
 
         try:
             if self.test_mode:
                 # In test mode, run the loop multiple times to ensure all messages are processed
                 # This is necessary for multi-step flows where handlers generate new messages
-                async def run_test_cycles() -> None:
-                    # Start all tasks
-                    all_tasks = (
-                        subscription_tasks
-                        + broker_subscription_tasks
-                        + outbox_processor_tasks
-                        + dlq_maintenance_tasks
-                    )
-
-                    # Run cycles until every poll loop has run out of work, so
-                    # multi-step flows (a handler raising a message another
-                    # handler consumes) settle before shutdown. A cycle ends
-                    # early as soon as the engine is idle.
-                    #
-                    # When some subscription cannot report idleness, or keeps
-                    # finding work, stop after `min_cycles` once the start()
-                    # tasks are done. Wait up to `max_cycles` for a start()
-                    # that is still running.
-                    # 50 cycles × 100ms = 5s max.
-                    min_cycles = 10
-                    max_cycles = 50
-                    for cycle in range(max_cycles):
-                        logger.debug(f"Test mode cycle {cycle + 1}/{max_cycles}")
-                        idle = await self._wait_for_test_mode_idle(0.1)
-
-                        if all(t.done() for t in all_tasks) and (
-                            idle or cycle >= min_cycles
-                        ):
-                            logger.debug("All tasks completed")
-                            break
-
-                    # Cancel remaining tasks
-                    for task in all_tasks:
-                        if not task.done():
-                            task.cancel()
-
-                    # Wait for cancellation to complete
-                    await asyncio.gather(*all_tasks, return_exceptions=True)
-
-                self.loop.run_until_complete(run_test_cycles())
+                self.loop.run_until_complete(_run_test_cycles(self, all_tasks))
                 # Then immediately call and await the shutdown directly
                 self.loop.run_until_complete(self.shutdown())
             else:
@@ -1564,3 +1035,669 @@ class Engine:
             if not self.loop.is_running():
                 self.loop.close()
             logger.info("engine.stopped")
+
+
+def _wire_broker_subscriptions(engine: Engine) -> None:
+    """Create a broker subscription for each registered subscriber."""
+    for (
+        subscriber_name,
+        subscriber_record,
+    ) in engine.domain.registry.subscribers.items():
+        subscriber_cls = subscriber_record.cls
+        broker_name = subscriber_cls.meta_.broker
+        broker = engine.domain.brokers[broker_name]
+        stream = subscriber_cls.meta_.stream
+        engine._broker_subscriptions[subscriber_name] = BrokerSubscription(
+            engine,
+            broker,
+            stream,
+            subscriber_cls,
+        )
+
+
+def _wire_outbox_processors(engine: Engine) -> None:
+    """Create the outbox processors and check every outbox repository.
+
+    Raises:
+        ValueError: when the outbox broker or an external broker is not configured.
+        ConfigurationError: when an outbox table cannot be reached.
+    """
+    logger.debug("engine.outbox_initializing")
+    # Get the broker provider name from the config with validation
+    outbox_config = engine.domain.config.get("outbox", {})
+    broker_provider_name = outbox_config.get("broker", "default")
+
+    if broker_provider_name not in engine.domain.brokers:
+        raise ValueError(
+            f"Broker provider '{broker_provider_name}' not configured in domain"
+        )
+
+    tick_settings = {
+        "messages_per_tick": outbox_config.get("messages_per_tick", 10),
+        "tick_interval": outbox_config.get("tick_interval", 1),
+        "max_tick_interval": outbox_config.get("max_tick_interval"),
+    }
+    logger.debug(
+        "engine.outbox_config",
+        extra={
+            "batch_size": tick_settings["messages_per_tick"],
+            "interval_s": tick_settings["tick_interval"],
+            "max_interval_s": tick_settings["max_tick_interval"],
+        },
+    )
+
+    # Create an outbox processor for each provider an aggregate is stored in
+    outbox_providers = _outbox_provider_names(engine.domain)
+    for database_provider_name in outbox_providers:
+        processor_name = (
+            f"outbox-processor-{database_provider_name}-to-{broker_provider_name}"
+        )
+        logger.debug(
+            "engine.creating_outbox_processor",
+            extra={"processor": processor_name},
+        )
+        engine._outbox_processors[processor_name] = OutboxProcessor(
+            engine,
+            database_provider_name,
+            broker_provider_name,
+            **tick_settings,
+        )
+
+    # Create external outbox processors for published event dispatch
+    external_brokers: list[str] = outbox_config.get("external_brokers", [])
+    for ext_broker_name in external_brokers:
+        _wire_external_outbox_processors(
+            engine, ext_broker_name, outbox_providers, tick_settings
+        )
+
+    # Verify outbox repos are initialised and DAO-accessible
+    for provider_name, outbox_repo in engine.domain._outbox_repos.items():
+        _check_outbox_repo(provider_name, outbox_repo, outbox_providers)
+
+
+def _wire_external_outbox_processors(
+    engine: Engine,
+    ext_broker_name: str,
+    outbox_providers: list[str],
+    tick_settings: dict[str, Any],
+) -> None:
+    """Create an external outbox processor per provider for one external broker."""
+    if ext_broker_name not in engine.domain.brokers:
+        raise ValueError(
+            f"External broker '{ext_broker_name}' configured in "
+            f"outbox.external_brokers but not found in domain "
+            f"broker configuration"
+        )
+    for database_provider_name in outbox_providers:
+        processor_name = (
+            f"outbox-processor-{database_provider_name}-to-{ext_broker_name}-external"
+        )
+        logger.debug(
+            "engine.creating_external_outbox_processor",
+            extra={"processor": processor_name},
+        )
+        engine._outbox_processors[processor_name] = OutboxProcessor(
+            engine,
+            database_provider_name,
+            ext_broker_name,
+            **tick_settings,
+            is_external=True,
+        )
+
+
+def _check_outbox_repo(
+    provider_name: str, outbox_repo: Any, outbox_providers: list[str]
+) -> None:
+    """Check an outbox repository's table, and warn about rows no processor publishes."""
+    try:
+        outbox_repo._dao  # noqa: B018
+    # Any DAO error is reported as a missing outbox table.
+    except Exception as e:
+        raise ConfigurationError(
+            f"Outbox table not found for provider '{provider_name}'. "
+            "Run 'protean db setup' or 'protean db setup-outbox' to create it."
+        ) from e
+    if provider_name in outbox_providers:
+        return
+    # Rows left by an earlier deploy, before the last aggregate on
+    # this provider moved away. No processor runs here any more.
+    try:
+        unpublished = outbox_repo._dao.query.filter(
+            status__in=[
+                OutboxStatus.PENDING.value,
+                OutboxStatus.PROCESSING.value,
+                OutboxStatus.FAILED.value,
+                OutboxStatus.ABANDONED.value,
+            ]
+        ).count()
+    # The probe is diagnostic only: a provider no aggregate uses
+    # must not stop the engine from starting; logged.
+    except Exception:
+        logger.warning(
+            "engine.outbox_leftover_probe_failed",
+            extra={"provider": provider_name},
+            exc_info=True,
+        )
+        return
+    if unpublished:
+        logger.warning(
+            "engine.outbox_rows_without_processor",
+            extra={
+                "provider": provider_name,
+                "unpublished": unpublished,
+            },
+        )
+
+
+def _register_command_subscriptions(engine: Engine) -> None:
+    """Register one command dispatcher subscription per command stream category."""
+    # Register command handler subscriptions — one per stream category
+    # Group all command handlers by their stream category, then create a single
+    # CommandDispatcher subscription per group. This ensures each command message
+    # is read by exactly one subscription and routed to the correct handler.
+    handlers_by_stream = defaultdict(list)
+    for handler_record in engine.domain.registry.command_handlers.values():
+        handler_cls = handler_record.cls
+        stream_category = engine._infer_stream_category(handler_cls)
+        handlers_by_stream[stream_category].append(handler_cls)
+
+    for stream_category, handler_classes in handlers_by_stream.items():
+        # Build command_type -> handler_cls mapping
+        handler_map = {}
+        handler_names = []
+        for handler_cls in handler_classes:
+            handler_names.append(handler_cls.__name__)
+            for command_type in handler_cls._handlers:
+                if command_type != "$any":
+                    handler_map[command_type] = handler_cls
+
+        dispatcher = CommandDispatcher(stream_category, handler_map, handler_classes[0])
+
+        subscription_key = f"commands:{stream_category}"
+        engine._subscriptions[subscription_key] = (
+            engine._subscription_factory.create_subscription(
+                handler=dispatcher,
+                stream_category=stream_category,
+            )
+        )
+        logger.debug(
+            f"Registered command subscription on stream '{stream_category}' "
+            f"with handlers: {', '.join(handler_names)}"
+        )
+
+
+def _register_process_manager_subscriptions(engine: Engine) -> None:
+    """Register the subscriptions of every process manager."""
+    # Register process manager subscriptions (one per stream category).
+    # A ``sequential_by`` process manager is the exception: it leases by
+    # correlation value spanning every category it subscribes to (ADR-0028
+    # decision 2), so it gets a single partitioned subscription across all
+    # its categories instead of one per category — otherwise two instances
+    # could each own a different category's partition for the same
+    # correlation value and process that instance's events concurrently.
+    for pm_name, pm_record in engine.domain.registry.process_managers.items():
+        pm_cls = pm_record.cls
+
+        if engine._is_partitioned_process_manager(pm_cls):
+            subscription_key = f"{pm_name}-partitioned"
+            engine._subscriptions[subscription_key] = (
+                engine._subscription_factory.create_partitioned_pm_subscription(pm_cls)
+            )
+            logger.debug(
+                f"Registered partitioned subscription for process manager "
+                f"'{pm_name}' across streams "
+                f"{list(pm_cls.meta_.stream_categories)}"
+            )
+            continue
+
+        for stream_category in pm_cls.meta_.stream_categories:
+            subscription_key = f"{pm_name}-{stream_category}"
+
+            engine._subscriptions[subscription_key] = (
+                engine._subscription_factory.create_subscription(
+                    handler=pm_cls,
+                    stream_category=stream_category,
+                )
+            )
+            logger.debug(
+                f"Registered subscription for process manager '{pm_name}' "
+                f"on stream '{stream_category}'"
+            )
+
+
+class _MessageLabels(NamedTuple):
+    """The message fields ``handle_message`` logs, traces and emits."""
+
+    message_id: str = "unknown"
+    message_type: str = "unknown"
+    stream: str = "unknown"
+    correlation_id: str | None = None
+    causation_id: str | None = None
+
+
+def _message_labels(metadata: Metadata) -> _MessageLabels:
+    """Read a message's id, type, stream category, correlation and causation ids."""
+    return _MessageLabels(
+        message_id=metadata.headers.id or "unknown",
+        message_type=metadata.headers.type or "unknown",
+        stream=(metadata.domain.stream_category if metadata.domain else None)
+        or "unknown",
+        correlation_id=metadata.domain.correlation_id if metadata.domain else None,
+        causation_id=metadata.domain.causation_id if metadata.domain else None,
+    )
+
+
+def _resolved_handler_name(
+    handler_cls: type[BaseCommandHandler | BaseEventHandler], message: Message
+) -> str:
+    """Return the name of the handler that will handle ``message``."""
+    # Resolve actual handler name (for CommandDispatcher, look up the specific handler)
+    if hasattr(handler_cls, "resolve_handler"):
+        resolved = handler_cls.resolve_handler(message)
+        return resolved.__name__ if resolved else handler_cls.__name__
+    return handler_cls.__name__
+
+
+def _skip_expired_command(
+    engine: Engine,
+    headers: MessageHeaders | None,
+    labels: _MessageLabels,
+    handler_name: str,
+    worker_id: str | None,
+) -> bool:
+    """Report a command whose deadline passed and return whether it was skipped."""
+    # Skip stale commands whose deadline elapsed while queued. The
+    # read position still advances (the message is acknowledged), so
+    # it is never retried — a retry would only expire again. This is
+    # expected operational behavior, not a handler failure, so it
+    # bypasses handle_error and the error/recovery path. Events carry
+    # no deadline, so this is a no-op for them.
+    if not headers or not headers.is_expired():
+        return False
+    # is_expired() is only True when a deadline is set, so
+    # deadline is always present here; the guard narrows the
+    # Optional for the type checkers.
+    deadline_iso = headers.deadline.isoformat() if headers.deadline else None
+    get_domain_metrics(engine.domain).command_expired.add(
+        1, {"command_type": labels.message_type}
+    )
+    logger.info(
+        "engine.command_expired",
+        extra={
+            "message_type": labels.message_type,
+            "message_id": labels.message_id[:8],
+            "handler": handler_name,
+            "deadline": deadline_iso,
+        },
+    )
+    engine.emitter.emit(
+        event="handler.skipped",
+        stream=labels.stream,
+        message_id=labels.message_id,
+        message_type=labels.message_type,
+        status="expired",
+        handler=handler_name,
+        metadata={
+            "reason": "deadline_exceeded",
+            "deadline": deadline_iso,
+        },
+        worker_id=worker_id,
+        correlation_id=labels.correlation_id,
+        causation_id=labels.causation_id,
+    )
+    return True
+
+
+def _handle_in_span(
+    engine: Engine,
+    handler_cls: type[BaseCommandHandler | BaseEventHandler],
+    message: Message,
+    labels: _MessageLabels,
+    handler_name: str,
+    worker_id: str | None,
+) -> None:
+    """Run the handler inside a ``protean.engine.handle_message`` span.
+
+    A handler exception marks the span failed and is re-raised.
+    """
+    assert message.metadata is not None, "Message metadata cannot be None"
+    tracer = get_tracer(engine.domain)
+
+    # Extract incoming traceparent as parent OTEL context so the
+    # processing span becomes a child of the distributed trace.
+    parent_ctx = None
+    if message.metadata and message.metadata.headers:
+        parent_ctx = extract_context_from_traceparent(
+            message.metadata.headers.traceparent
+        )
+
+    with tracer.start_as_current_span(
+        "protean.engine.handle_message",
+        context=parent_ctx,
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        span.set_attribute("protean.handler.name", handler_name)
+        span.set_attribute("protean.message.type", labels.message_type)
+        span.set_attribute("protean.message.id", labels.message_id)
+        span.set_attribute("protean.stream_category", labels.stream)
+        if worker_id:
+            span.set_attribute("protean.worker_id", worker_id)
+
+        subscription_type = _subscription_type(handler_cls)
+        if subscription_type is not None:
+            span.set_attribute("protean.subscription_type", subscription_type)
+
+        try:
+            # Reconstruct the processing priority context from the
+            # message metadata so that UoW.commit() tags outbox records
+            # with the correct priority (important for async commands
+            # where the original processing_priority() context is gone).
+            msg_priority = 0
+            if message.metadata.domain:
+                msg_priority = getattr(message.metadata.domain, "priority", 0)
+            with processing_priority(msg_priority):
+                handler_cls._handle(message)
+        except Exception as exc:  # marks the span as failed, then re-raises
+            set_span_error(span, exc)
+            raise
+
+
+def _subscription_type(
+    handler_cls: type[BaseCommandHandler | BaseEventHandler],
+) -> str | None:
+    """Name the kind of subscription a handler runs under, for the span."""
+    # Determine subscription type from handler
+    if hasattr(handler_cls, "resolve_handler"):
+        return "command_dispatcher"
+    if issubclass(handler_cls, BaseProcessManager):
+        return "process_manager"
+    if issubclass(handler_cls, BaseEventHandler):
+        return "event_handler"
+    if issubclass(handler_cls, BaseCommandHandler):
+        return "command_handler"
+    return None
+
+
+def _report_handler_completed(
+    engine: Engine,
+    handler_cls: type[BaseCommandHandler | BaseEventHandler],
+    labels: _MessageLabels,
+    handler_name: str,
+    worker_id: str | None,
+    duration_ms: float,
+) -> None:
+    """Log a handled message and emit its completion traces."""
+    logger.debug(
+        "engine.message_processed",
+        extra={
+            "message_type": labels.message_type,
+            "message_id": labels.message_id[:8],
+            "handler": handler_name,
+            "duration_ms": round(duration_ms, 1),
+        },
+    )
+
+    # Emit handler.completed trace
+    engine.emitter.emit(
+        event="handler.completed",
+        stream=labels.stream,
+        message_id=labels.message_id,
+        message_type=labels.message_type,
+        handler=handler_name,
+        duration_ms=round(duration_ms, 2),
+        worker_id=worker_id,
+        correlation_id=labels.correlation_id,
+        causation_id=labels.causation_id,
+    )
+
+    # Emit pm.transition trace for process managers. A command
+    # stream's handler is a CommandDispatcher *instance*, so guard
+    # the issubclass check: issubclass() on an instance raises
+    # TypeError, which the outer except would swallow and turn a
+    # succeeded command into a False return.
+    if isinstance(handler_cls, type) and issubclass(handler_cls, BaseProcessManager):
+        engine.emitter.emit(
+            event="pm.transition",
+            stream=labels.stream,
+            message_id=labels.message_id,
+            message_type=labels.message_type,
+            handler=handler_name,
+            metadata={
+                "pm_type": handler_cls.__name__,
+                "pm_stream_category": getattr(
+                    handler_cls.meta_, "stream_category", None
+                ),
+            },
+            duration_ms=round(duration_ms, 2),
+            worker_id=worker_id,
+            correlation_id=labels.correlation_id,
+            causation_id=labels.causation_id,
+        )
+
+
+def _report_handler_failure(
+    engine: Engine,
+    handler_cls: type[BaseCommandHandler | BaseEventHandler],
+    message: Message,
+    exc: Exception,
+    labels: _MessageLabels,
+    handler_name: str,
+    worker_id: str | None,
+    duration_ms: float,
+) -> None:
+    """Emit a failed message's trace and call the handler's error hook."""
+    # Emit handler.failed trace
+    engine.emitter.emit(
+        event="handler.failed",
+        stream=labels.stream,
+        message_id=labels.message_id,
+        message_type=labels.message_type,
+        status="error",
+        handler=handler_name,
+        duration_ms=round(duration_ms, 2),
+        error=describe_exception(exc),
+        worker_id=worker_id,
+        correlation_id=labels.correlation_id,
+        causation_id=labels.causation_id,
+    )
+
+    try:
+        # Call the error handler if it exists
+        handler_cls.handle_error(exc, message)
+    # A broken error handler must not stop the engine; logged.
+    except Exception:
+        logger.exception("engine.error_handler_failed")
+
+
+def _install_process_signal_handlers(
+    engine: Engine, signals: tuple[signal.Signals, ...]
+) -> None:
+    """Install shutdown handlers with ``signal.signal`` (Windows)."""
+
+    def signal_handler(sig: int, frame: Any = None) -> None:
+        """Signal handler for non-asyncio signal handling (Windows)"""
+        if not engine.shutting_down and engine.loop.is_running():
+            asyncio.run_coroutine_threadsafe(engine.shutdown(signal=sig), engine.loop)
+
+    logger.debug(
+        "Using signal.signal() for signal handling (Windows or unsupported platform)"
+    )
+    for s in signals:
+        try:
+            # Store original handler for cleanup
+            engine._original_signal_handlers[s] = signal.signal(s, signal_handler)
+        except (OSError, ValueError) as e:
+            # Some signals may not be available on all platforms
+            logger.debug(f"Signal {s} not available on this platform: {e}")
+
+
+def _install_loop_signal_handlers(
+    engine: Engine, signals: tuple[signal.Signals, ...]
+) -> None:
+    """Install shutdown handlers with ``loop.add_signal_handler`` (Unix-like)."""
+    logger.debug("Using asyncio.add_signal_handler() for signal handling (Unix-like)")
+    for s in signals:
+        try:
+            # Create a proper signal handler that ensures task creation works
+            # even when called from a signal context
+            def handle_signal(sig: signal.Signals = s) -> None:
+                if not engine.shutting_down:
+                    # Ensure we create the task in the proper context
+                    engine.loop.call_soon_threadsafe(
+                        lambda: asyncio.create_task(engine.shutdown(signal=sig))
+                    )
+
+            engine.loop.add_signal_handler(s, handle_signal)
+        except (OSError, ValueError) as e:
+            # Some signals may not be available on all platforms
+            logger.debug(f"Signal {s} not available on this platform: {e}")
+
+
+def _signal_name(sig: signal.Signals | int | None) -> str | None:
+    """Return the name of the signal that started a shutdown, for the log."""
+    return sig.name if isinstance(sig, Signals) else str(sig) if sig else None
+
+
+async def _stop_components(engine: Engine) -> None:
+    """Stop every subscription, outbox processor and the DLQ task together."""
+    subscription_shutdown_coros = [
+        subscription.shutdown() for _, subscription in engine._subscriptions.items()
+    ]
+    subscription_shutdown_coros.extend(
+        subscription.shutdown()
+        for _, subscription in engine._broker_subscriptions.items()
+    )
+    subscription_shutdown_coros.extend(
+        processor.shutdown() for _, processor in engine._outbox_processors.items()
+    )
+    if engine._dlq_maintenance is not None:
+        subscription_shutdown_coros.append(engine._dlq_maintenance.shutdown())
+
+    await asyncio.gather(*subscription_shutdown_coros, return_exceptions=True)
+
+
+async def _drain_tasks(engine: Engine) -> None:
+    """Wait up to ``drain_timeout`` for the other tasks, then cancel the rest."""
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    if not tasks:
+        return
+    logger.debug("engine.draining_tasks", extra={"count": len(tasks)})
+    done, pending = await asyncio.wait(tasks, timeout=engine.drain_timeout)
+
+    # Retrieve exceptions from completed tasks so Python doesn't
+    # emit "Task exception was never retrieved" warnings.
+    for task in done:
+        if task.done() and not task.cancelled() and task.exception():
+            logger.debug(
+                "Task %s raised during shutdown: %s",
+                task.get_name(),
+                task.exception(),
+            )
+
+    if pending:
+        logger.debug(
+            "engine.cancelling_tasks",
+            extra={"count": len(pending)},
+        )
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
+def _loop_exception_handler(
+    engine: Engine,
+) -> Callable[[asyncio.AbstractEventLoop, dict[str, Any]], None]:
+    """Build the event-loop exception handler that shuts the engine down."""
+
+    def handle_exception(
+        loop: asyncio.AbstractEventLoop, context: dict[str, Any]
+    ) -> None:
+        exc = context.get("exception")
+
+        if exc is not None:
+            logger.error(
+                "engine.unhandled_exception",
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
+            logger.info("engine.shutting_down")
+            if loop.is_running() and not engine.shutting_down:
+                engine.shutting_down = (
+                    True  # Set flag immediately to prevent multiple shutdown calls
+                )
+                engine._shutdown_task = asyncio.create_task(
+                    engine.shutdown(exit_code=1)
+                )
+            # Don't re-raise the exception - let the loop drain gracefully
+        else:
+            logger.error(
+                "engine.unhandled_exception",
+                extra={"error": context.get("message", "unknown")},
+            )
+
+    return handle_exception
+
+
+def _start_component_tasks(engine: Engine) -> list[asyncio.Task[Any]]:
+    """Start a named task for every subscription, outbox processor and the DLQ task.
+
+    Returns the tasks in the order they were started.
+    """
+    tasks = []
+    for name, subscription in engine._subscriptions.items():
+        task = engine.loop.create_task(subscription.start())
+        task.set_name(f"subscription-{name}")
+        tasks.append(task)
+        logger.info("engine.subscription_started", extra={"subscription": name})
+
+    for name, broker_subscription in engine._broker_subscriptions.items():
+        task = engine.loop.create_task(broker_subscription.start())
+        task.set_name(f"broker-{name}")
+        tasks.append(task)
+        logger.info("engine.broker_subscription_started", extra={"subscription": name})
+
+    for name, processor in engine._outbox_processors.items():
+        task = engine.loop.create_task(processor.start())
+        task.set_name(f"outbox-{name}")
+        tasks.append(task)
+        logger.info("engine.outbox_processor_started", extra={"processor": name})
+
+    # Start DLQ maintenance task if a DLQ-capable broker is present
+    if engine._dlq_maintenance is not None:
+        task = engine.loop.create_task(engine._dlq_maintenance.start())
+        task.set_name("dlq-maintenance")
+        tasks.append(task)
+        logger.info("engine.dlq_maintenance_started")
+
+    return tasks
+
+
+async def _run_test_cycles(engine: Engine, all_tasks: list[asyncio.Task[Any]]) -> None:
+    """Let the started tasks run until the engine is idle, then cancel them."""
+    # Run cycles until every poll loop has run out of work, so
+    # multi-step flows (a handler raising a message another
+    # handler consumes) settle before shutdown. A cycle ends
+    # early as soon as the engine is idle.
+    #
+    # When some subscription cannot report idleness, or keeps
+    # finding work, stop after `min_cycles` once the start()
+    # tasks are done. Wait up to `max_cycles` for a start()
+    # that is still running.
+    # 50 cycles × 100ms = 5s max.
+    min_cycles = 10
+    max_cycles = 50
+    for cycle in range(max_cycles):
+        logger.debug(f"Test mode cycle {cycle + 1}/{max_cycles}")
+        idle = await engine._wait_for_test_mode_idle(0.1)
+
+        if all(t.done() for t in all_tasks) and (idle or cycle >= min_cycles):
+            logger.debug("All tasks completed")
+            break
+
+    # Cancel remaining tasks
+    for task in all_tasks:
+        if not task.done():
+            task.cancel()
+
+    # Wait for cancellation to complete
+    await asyncio.gather(*all_tasks, return_exceptions=True)

@@ -621,3 +621,93 @@ class TestRedisCacheCloseEdgeCases:
             cache.close()  # Should not raise
 
         assert any("Error closing Redis cache" in r.message for r in caplog.records)
+
+
+class _RecordingComponent:
+    """Subscription stand-in that records when the engine stops it."""
+
+    def __init__(self, name: str, steps: list[str]) -> None:
+        self.name = name
+        self.steps = steps
+
+    async def shutdown(self) -> None:
+        self.steps.append(f"stop:{self.name}")
+
+
+class _RecordingShutdownEngine(Engine):
+    """Engine that records the shutdown steps it owns."""
+
+    steps: list[str]
+
+    async def _write_store_positions(self) -> None:
+        self.steps.append("write_positions")
+        await super()._write_store_positions()
+
+    def _cleanup_signal_handlers(self) -> None:
+        self.steps.append("cleanup_signals")
+        super()._cleanup_signal_handlers()
+
+
+@pytest.mark.no_test_domain
+class TestEngineShutdownSequence:
+    """Engine.shutdown() runs its steps in one fixed order."""
+
+    def test_shutdown_runs_each_step_in_order(self):
+        domain = Domain(name="Test")
+        domain.init(traverse=False)
+        steps: list[str] = []
+
+        with domain.domain_context():
+            engine = _RecordingShutdownEngine(domain, test_mode=True)
+            engine.steps = steps
+
+            async def stop_health_server() -> None:
+                steps.append("health_stop")
+
+            engine._health_server.stop = stop_health_server
+            engine._subscriptions = {"handler": _RecordingComponent("handler", steps)}
+            engine._broker_subscriptions = {
+                "subscriber": _RecordingComponent("subscriber", steps)
+            }
+            engine._outbox_processors = {"outbox": _RecordingComponent("outbox", steps)}
+            engine._dlq_maintenance = _RecordingComponent("dlq", steps)
+
+            original_loop_stop = engine.loop.stop
+
+            def stop_loop() -> None:
+                steps.append("loop_stop")
+                original_loop_stop()
+
+            engine.loop.stop = stop_loop
+
+            async def straggler() -> None:
+                try:
+                    await asyncio.sleep(10)
+                except asyncio.CancelledError:
+                    steps.append("cancelled:straggler")
+                    raise
+
+            async def run() -> None:
+                task = asyncio.ensure_future(straggler())
+                await asyncio.sleep(0)
+                engine.drain_timeout = 0.01
+                await engine.shutdown()
+                assert task.cancelled()
+
+            with patch.object(
+                domain, "close", side_effect=lambda: steps.append("domain_close")
+            ):
+                engine.loop.run_until_complete(run())
+
+        assert steps == [
+            "health_stop",
+            "stop:handler",
+            "stop:subscriber",
+            "stop:outbox",
+            "stop:dlq",
+            "cancelled:straggler",
+            "write_positions",
+            "domain_close",
+            "cleanup_signals",
+            "loop_stop",
+        ]

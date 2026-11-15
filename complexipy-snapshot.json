@@ -162,36 +162,6 @@
     ]
   },
   {
-    "path": "src/protean/server/engine.py",
-    "file_name": "engine.py",
-    "functions": [
-      {
-        "name": "Engine::_setup_signal_handlers",
-        "complexity": 19
-      },
-      {
-        "name": "Engine::_register_handler_subscriptions",
-        "complexity": 20
-      },
-      {
-        "name": "Engine::shutdown",
-        "complexity": 22
-      },
-      {
-        "name": "Engine::handle_message",
-        "complexity": 29
-      },
-      {
-        "name": "Engine::run",
-        "complexity": 29
-      },
-      {
-        "name": "Engine::_wire_components",
-        "complexity": 32
-      }
-    ]
-  },
-  {
     "path": "src/protean/server/supervisor.py",
     "file_name": "supervisor.py",
     "functions": [
