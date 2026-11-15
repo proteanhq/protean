@@ -71,10 +71,10 @@ class RegisterLookupMixin:
             )
         # `LookupPort` is not runtime-checkable, so `issubclass` would raise
         # `TypeError`; the MRO holds it for every class that subclasses it.
-        if LookupPort not in lookup.__mro__:
+        if LookupPort not in getattr(lookup, "__mro__", ()):
             raise NotImplementedError(
                 f"Lookup '{lookup_name}' on {self._describe()} is "
-                f"{lookup.__name__}, which does not subclass LookupPort"
+                f"{getattr(lookup, '__name__', lookup)}, which does not subclass LookupPort"
             )
 
         return lookup

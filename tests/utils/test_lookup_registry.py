@@ -64,3 +64,22 @@ class TestGetLookup:
             "PlainLookup, which does not subclass LookupPort"
         )
         assert "plain" not in MemoryProvider.get_lookups()
+
+    def test_function_registered_as_a_lookup_is_rejected(self):
+        def plain_lookup(source, target):
+            return source == target
+
+        MemoryProvider.register_lookup(plain_lookup, "plain")  # type: ignore[type-var]
+        try:
+            provider = MemoryProvider("primary", None, {})
+
+            with pytest.raises(NotImplementedError) as exc_info:
+                provider.get_lookup("plain")
+        finally:
+            MemoryProvider._delist_lookup(plain_lookup, "plain")  # type: ignore[arg-type]
+            MemoryProvider._clear_cached_lookups()
+
+        assert str(exc_info.value) == (
+            "Lookup 'plain' on provider 'primary' (MemoryProvider) is "
+            "plain_lookup, which does not subclass LookupPort"
+        )

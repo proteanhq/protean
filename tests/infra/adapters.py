@@ -51,7 +51,7 @@ class IncompleteCache(CachePort):
 class ProviderWithoutLookup(MemoryProvider):
     """A memory provider whose ``get_lookups()`` leaves out ``omitted``."""
 
-    omitted: ClassVar[str]
+    omitted: ClassVar[frozenset[str]]
 
     # Cached like the mixin's ``get_lookups``, because registering a lookup on
     # ``MemoryProvider`` calls ``cache_clear`` on every subclass.
@@ -59,7 +59,9 @@ class ProviderWithoutLookup(MemoryProvider):
     @functools.cache
     def get_lookups(cls) -> Mapping[str, type[LookupPort]]:
         lookups = MemoryProvider.get_lookups()
-        return {name: lookup for name, lookup in lookups.items() if name != cls.omitted}
+        return {
+            name: lookup for name, lookup in lookups.items() if name not in cls.omitted
+        }
 
 
 # One subclass per required lookup, at module level so the registry can import
@@ -69,10 +71,29 @@ for _lookup_name in sorted(REQUIRED_LOOKUPS):
     _provider_cls = type(
         f"ProviderWithout{_lookup_name.capitalize()}",
         (ProviderWithoutLookup,),
-        {"omitted": _lookup_name, "__module__": __name__},
+        {"omitted": frozenset({_lookup_name}), "__module__": __name__},
     )
     globals()[_provider_cls.__name__] = _provider_cls
     PROVIDERS_WITHOUT_LOOKUP[_lookup_name] = _provider_cls
+
+
+class ProviderWithoutInAndIsnull(ProviderWithoutLookup):
+    omitted = frozenset({"in", "isnull"})
+
+
+class PlainIsnull:
+    """A lookup class that does not subclass ``LookupPort``."""
+
+    lookup_name = "isnull"
+
+
+class ProviderWithPlainIsnull(MemoryProvider):
+    """A memory provider that registers ``isnull`` as ``PlainIsnull``."""
+
+    @classmethod
+    @functools.cache
+    def get_lookups(cls) -> Mapping[str, type[LookupPort]]:
+        return {**MemoryProvider.get_lookups(), "isnull": PlainIsnull}  # type: ignore[dict-item]
 
 
 def register_custom_provider() -> None:

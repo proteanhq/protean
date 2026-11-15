@@ -19,7 +19,7 @@ from importlib import import_module, metadata
 from typing import TYPE_CHECKING, Generic, TypeVar, cast
 
 from protean.exceptions import ConfigurationError
-from protean.port.dao import REQUIRED_LOOKUPS
+from protean.port.dao import REQUIRED_LOOKUPS, LookupPort
 
 if TYPE_CHECKING:
     # Runtime imports would cycle: the adapter modules import this one.
@@ -158,12 +158,26 @@ class AdapterRegistry(Generic[PortT]):
 
 def _check_required_lookups(name: str, provider_cls: type["BaseProvider"]) -> None:
     """Raise ``ConfigurationError`` naming the provider and every lookup in
-    ``REQUIRED_LOOKUPS`` that ``provider_cls`` does not register."""
-    missing = sorted(REQUIRED_LOOKUPS - set(provider_cls.get_lookups()))
+    ``REQUIRED_LOOKUPS`` that ``provider_cls`` does not register, or registers
+    as a class that does not subclass ``LookupPort``."""
+    lookups = provider_cls.get_lookups()
+    missing = sorted(REQUIRED_LOOKUPS - set(lookups))
     if missing:
         raise ConfigurationError(
             f"Database provider '{name}' ({provider_cls.__name__}) does not "
             f"register required lookups: {', '.join(missing)}."
+        )
+    # `LookupPort` is not runtime-checkable, so the check reads the MRO.
+    not_ports = sorted(
+        lookup_name
+        for lookup_name in REQUIRED_LOOKUPS
+        if LookupPort not in getattr(lookups[lookup_name], "__mro__", ())
+    )
+    if not_ports:
+        raise ConfigurationError(
+            f"Database provider '{name}' ({provider_cls.__name__}) registers "
+            f"required lookups that do not subclass LookupPort: "
+            f"{', '.join(not_ports)}."
         )
 
 

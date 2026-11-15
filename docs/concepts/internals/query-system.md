@@ -298,20 +298,19 @@ into a column-to-column comparison (`retry_count < max_retries`). SQLAlchemy's
 as native SQL. The memory adapter resolves it per record to the referenced
 attribute before it builds the lookup. The Elasticsearch adapter's
 `process_target` raises `NotImplementedError`, since the equivalent needs a
-Painless script query. Because each adapter resolves `F` in one place, each
-comparison lookup on the memory and SQLAlchemy adapters accepts an `F` target
-without per-lookup changes. The
-outbox poll and claim paths use `F` to push `retry_count < max_retries` into
-the database.
+Painless script query. Because the memory and SQLAlchemy adapters each resolve
+`F` in one place, each comparison lookup on those adapters accepts an `F`
+target without per-lookup changes. The outbox poll and claim paths use `F` to
+push `retry_count < max_retries` into the database.
 
 ### Lookup support across adapters
 
 Every adapter registers the same core set of lookups, `REQUIRED_LOOKUPS` in
 `protean.port.dao`. The provider registry raises `ConfigurationError` for a
 provider class that lacks one, naming the missing lookups. A filter on a lookup
-the provider does not register raises `NotImplementedError`. Beyond that core set, support varies by adapter, but the
-contract is the same everywhere: an unsupported lookup fails loudly and never
-silently returns wrong results.
+the provider does not register raises `NotImplementedError`. Beyond that core
+set, support varies by adapter, but the contract is the same everywhere: an
+unsupported lookup fails loudly and never silently returns wrong results.
 
 | Lookup            | Memory | SQLAlchemy        | Elasticsearch |
 |-------------------|:------:|:-----------------:|:-------------:|

@@ -14,6 +14,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.queryset import QuerySet
 from protean.exceptions import TooManyObjectsError
 from protean.fields import DateTime, Integer, String
+from protean.utils.query import Q
 
 
 class Person(BaseAggregate):
@@ -417,6 +418,24 @@ class TestDAOLookups:
             f"Lookup 'nosuch' is not registered on provider 'default' "
             f"({type(provider).__name__})"
         )
+
+    def test_unknown_lookup_fails_when_filter_is_called(self, test_domain):
+        query = test_domain.repository_for(Person)._dao.query
+
+        with pytest.raises(NotImplementedError) as exc_info:
+            query.filter(first_name__nosuch="x")
+
+        assert "Lookup 'nosuch' is not registered" in str(exc_info.value)
+
+    def test_unknown_lookup_in_a_q_object_fails_when_the_query_runs(self, test_domain):
+        query = test_domain.repository_for(Person)._dao.query.filter(
+            Q(first_name__nosuch="x")
+        )
+
+        with pytest.raises(NotImplementedError) as exc_info:
+            query.all()
+
+        assert "Lookup 'nosuch' is not registered" in str(exc_info.value)
 
 
 @pytest.mark.basic_storage

@@ -1559,8 +1559,10 @@ class LookupPort(Protocol):
     the memory lookups receive the stored value of that field.
 
     How a lookup becomes a query is private to the adapter that runs it. An
-    adapter subclasses this Protocol explicitly, and its constructor sets
-    `source`, `target` and `database_model_cls`.
+    adapter's lookup base class subclasses this Protocol explicitly, and the
+    base class constructor sets `source`, `target` and `database_model_cls`.
+    The Protocol supplies no constructor body, so a subclass without its own
+    constructor builds without these attributes.
     """
 
     lookup_name: ClassVar[str]

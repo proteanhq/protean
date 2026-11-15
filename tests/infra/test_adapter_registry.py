@@ -34,6 +34,8 @@ from tests.infra.adapters import (
     CustomCache,
     CustomEventStore,
     CustomProvider,
+    ProviderWithoutInAndIsnull,
+    ProviderWithPlainIsnull,
 )
 from tests.shared import module_unavailable
 
@@ -332,6 +334,32 @@ class TestAfterLoad:
         assert str(exc_info.value) == (
             f"Database provider 'short' ({provider_cls.__name__}) does not "
             f"register required lookups: {lookup_name}."
+        )
+
+    def test_error_names_every_missing_lookup(self):
+        providers.clear()
+        providers._discovered = True
+        providers.register("short", _path(ProviderWithoutInAndIsnull))
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            providers.get("short")
+
+        assert str(exc_info.value) == (
+            "Database provider 'short' (ProviderWithoutInAndIsnull) does not "
+            "register required lookups: in, isnull."
+        )
+
+    def test_required_lookup_that_is_not_a_lookup_port_is_rejected(self):
+        providers.clear()
+        providers._discovered = True
+        providers.register("plain", _path(ProviderWithPlainIsnull))
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            providers.get("plain")
+
+        assert str(exc_info.value) == (
+            "Database provider 'plain' (ProviderWithPlainIsnull) registers "
+            "required lookups that do not subclass LookupPort: isnull."
         )
 
     def test_provider_with_every_lookup_loads(self):
