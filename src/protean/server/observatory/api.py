@@ -44,11 +44,11 @@ _SUCCESS_EVENTS = {"handler.completed", "message.handled"}
 
 # Window → bucket width in milliseconds for timeline aggregation
 _TIMELINE_BUCKET_MS = {
-    "5m": 10_000,  # 10s  → 30 buckets
-    "15m": 30_000,  # 30s  → 30 buckets
-    "1h": 120_000,  # 2min → 30 buckets
-    "24h": 3_600_000,  # 1hr  → 24 buckets
-    "7d": 21_600_000,  # 6hr  → 28 buckets
+    "5m": 10_000,  # 10s  → 31 buckets
+    "15m": 30_000,  # 30s  → 31 buckets
+    "1h": 120_000,  # 2min → 31 buckets
+    "24h": 3_600_000,  # 1hr  → 25 buckets
+    "7d": 21_600_000,  # 6hr  → 29 buckets
 }
 
 # Worker throughput settings
@@ -209,7 +209,7 @@ def _xinfo_consumers(
 
 
 # Cache for the combined overview scan to avoid redundant XRANGE calls.
-# TTL is half the poller interval (5s) so data stays fresh but back-to-back
+# TTL is shorter than the 5s poller interval so data stays fresh but back-to-back
 # requests (e.g. window change triggering multiple pollers) are served instantly.
 _OVERVIEW_CACHE_TTL_S = 3.0
 
@@ -1412,7 +1412,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         Returns event counts, error rate, avg latency, AND pre-aggregated
         timeline buckets.  The frontend calls this once instead of two
         separate endpoints, halving Redis scan time for large windows.
-        Results are cached for 2 seconds to avoid redundant scans from
+        Results are cached for 3 seconds to avoid redundant scans from
         near-simultaneous requests.
         """
         return _traces_overview(domains, overview_cache, window)
