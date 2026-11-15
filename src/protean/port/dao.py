@@ -1380,9 +1380,15 @@ class BaseDAO(metaclass=ABCMeta):
     def _stored_value(self, model_obj: Any, name: str) -> Any:
         """The value ``model_obj`` stores under ``name``.
 
-        The default reads an attribute. A DAO whose records it cannot read by
-        attribute, such as dicts, overrides it.
+        The default reads it through the model class's ``_get_value()`` when
+        the model defines one, and reads an attribute otherwise. A DAO whose
+        records neither can read overrides it.
         """
+        # ``_get_value`` is not a ``DatabaseModelPort`` member, but every
+        # ``BaseDatabaseModel`` has it and adapters override it for dict records.
+        get_value = getattr(self.database_model_cls, "_get_value", None)
+        if get_value is not None:
+            return get_value(model_obj, name)
         return getattr(model_obj, name)
 
     def _unique_key_taken(self, entity_obj: Any) -> bool:

@@ -96,6 +96,19 @@ class MemoryModel(BaseDatabaseModel, DatabaseModelPort):
         return cls._entity_to_dict(entity)
 
 
+def _model_metaclass(database_model_cls: type[typing.Any]) -> type[typing.Any]:
+    """The metaclass for a class that derives from both ``MemoryModel`` and
+    ``database_model_cls``."""
+    memory_meta, user_meta = type(MemoryModel), type(database_model_cls)
+    if issubclass(memory_meta, user_meta):
+        return memory_meta
+    if issubclass(user_meta, memory_meta):
+        return user_meta
+    # Python refuses a class whose bases have unrelated metaclasses, so a
+    # user model with its own metaclass needs one derived from both.
+    return type(user_meta.__name__, (user_meta, memory_meta), {})
+
+
 def _refuse_stale_versions(
     live: dict[str, typing.Any], checks: dict[tuple[str, typing.Any], int]
 ) -> None:
@@ -499,7 +512,8 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
             # ``abc`` because ``MemoryModel``'s metaclass is the Protocol one.
             custom_attrs.update({"meta_": meta_, "__module__": __name__})
             # User class is in the MRO; custom methods/properties resolve via standard Python MRO
-            decorated_database_database_model_cls = type(
+            metaclass = _model_metaclass(database_model_cls)
+            decorated_database_database_model_cls: type[typing.Any] = metaclass(
                 database_model_cls.__name__,
                 (MemoryModel, database_model_cls),
                 custom_attrs,
@@ -670,10 +684,6 @@ class DictDAO(BaseDAO, BoundedDeletePort):
 
     def __repr__(self) -> str:
         return f"DictDAO <{self.entity_cls.__name__}>"
-
-    def _stored_value(self, model_obj: typing.Any, name: str) -> typing.Any:
-        """The value the dictionary record ``model_obj`` stores under ``name``."""
-        return model_obj[name]
 
     def _set_auto_fields(
         self, model_obj: dict[str, typing.Any]

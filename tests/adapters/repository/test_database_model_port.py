@@ -94,7 +94,7 @@ class TestDecoratedMemoryModel:
         assert model_cls.__name__ == "PersonModel"
         assert model_cls.__module__ == "protean.adapters.repository.memory"
 
-    def test_a_user_model_with_a_custom_metaclass_conflicts(self, test_domain):
+    def test_a_user_model_with_an_unrelated_metaclass_builds(self, test_domain):
         class CustomMeta(ABCMeta):
             pass
 
@@ -105,8 +105,14 @@ class TestDecoratedMemoryModel:
 
         _register_person_model(test_domain, MetaPersonModel)
 
-        with pytest.raises(TypeError, match="metaclass conflict"):
-            test_domain.repository_for(Person)._database_model
+        model_cls = test_domain.repository_for(Person)._database_model
+        assert issubclass(model_cls, MemoryModel)
+        assert isinstance(model_cls, CustomMeta)
+        assert isinstance(model_cls, type(Protocol))
+
+        person = Person(name="John")
+        restored = model_cls.to_entity(model_cls.from_entity(person))
+        assert restored.name == "John"
 
     def test_a_user_model_with_a_protocol_derived_metaclass_builds(self, test_domain):
         class CustomMeta(type(Protocol)):
@@ -124,11 +130,18 @@ class TestDecoratedMemoryModel:
         assert type(model_cls) is CustomMeta
 
 
+class _AttributeModel:
+    """A model class with no ``_get_value()``."""
+
+
 class TestStoredValue:
-    def test_the_default_reads_an_attribute(self, test_domain):
-        test_domain.register(Person)
-        test_domain.init(traverse=False)
-        dao = test_domain.repository_for(Person)._dao
+    def test_the_default_reads_through_the_models_get_value(self):
+        dao = SimpleNamespace(database_model_cls=MemoryModel)
+
+        assert BaseDAO._stored_value(dao, {"name": "John"}, "name") == "John"
+
+    def test_the_default_reads_an_attribute_without_get_value(self):
+        dao = SimpleNamespace(database_model_cls=_AttributeModel)
 
         record = SimpleNamespace(name="John")
         assert BaseDAO._stored_value(dao, record, "name") == "John"
