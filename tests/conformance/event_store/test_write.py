@@ -25,6 +25,7 @@ def test_the_first_write_to_a_stream_is_at_position_0(adapter):
     assert _write(adapter, "user-1", 0) == 0
 
 
+@pytest.mark.requires(EventStoreCapabilities.READ_STREAM)
 def test_each_write_returns_the_next_stream_position(adapter):
     assert [_write(adapter, "user-1", n) for n in range(6)] == [0, 1, 2, 3, 4, 5]
 
@@ -40,6 +41,7 @@ def test_each_stream_numbers_its_positions_from_0(adapter):
     assert _write(adapter, "user-2", 2) == 0
 
 
+@pytest.mark.requires(EventStoreCapabilities.READ_STREAM)
 def test_global_positions_increase_across_streams(adapter):
     _write(adapter, "user-1", 0)
     _write(adapter, "order-1", 1)
@@ -55,6 +57,7 @@ def test_global_positions_increase_across_streams(adapter):
     assert second["global_position"] < third["global_position"]
 
 
+@pytest.mark.requires(EventStoreCapabilities.READ_STREAM)
 def test_a_written_row_carries_its_stream_type_data_and_metadata(adapter):
     adapter.write_message("user-1", "Registered", {"email": "a@example.com"}, METADATA)
 
@@ -72,6 +75,7 @@ def test_a_written_row_carries_its_stream_type_data_and_metadata(adapter):
     assert isinstance(row["time"], datetime)
 
 
+@pytest.mark.requires(EventStoreCapabilities.READ_STREAM)
 def test_a_write_without_metadata_stores_none(adapter):
     _write(adapter, "user-1", 0)
 

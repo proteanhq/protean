@@ -18,7 +18,9 @@ def _build(domain: Domain, config: dict[str, Any]) -> BaseEventStore:
     return event_stores.get(config["provider"])("default", domain, dict(config))
 
 
-@pytest.mark.requires(EventStoreCapabilities.DURABLE)
+@pytest.mark.requires(
+    EventStoreCapabilities.DURABLE, EventStoreCapabilities.READ_STREAM
+)
 def test_a_reopened_store_returns_the_message_written_before_close(
     adapter_config, test_domain
 ):

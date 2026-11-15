@@ -14,7 +14,9 @@ import pytest
 
 from protean.port.event_store import EventStoreCapabilities
 
-pytestmark = pytest.mark.requires(EventStoreCapabilities.CATEGORY_COMMIT_ORDER)
+pytestmark = pytest.mark.requires(
+    EventStoreCapabilities.CATEGORY_COMMIT_ORDER, EventStoreCapabilities.READ_CATEGORY
+)
 
 WRITERS = 8
 WRITES_PER_WRITER = 25

@@ -13,7 +13,9 @@ import pytest
 from protean.exceptions import ExpectedVersionError
 from protean.port.event_store import EventStoreCapabilities
 
-pytestmark = pytest.mark.requires(EventStoreCapabilities.EXPECTED_VERSION)
+pytestmark = pytest.mark.requires(
+    EventStoreCapabilities.EXPECTED_VERSION, EventStoreCapabilities.READ_STREAM
+)
 
 
 def _write(adapter, stream_name: str, n: int, expected_version=None) -> int:
