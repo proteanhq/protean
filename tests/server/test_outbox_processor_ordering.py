@@ -1,10 +1,12 @@
 """Order of the calls ``OutboxProcessor`` makes per message in a batch.
 
 ``process_batch`` publishes each row to the broker, then records the outcome in
-its own transaction, and works through the rows in the order the batch gives
-them. ``specs/OutboxTrace.tla`` models that order. These tests record the
-publish and the committed mark of every row into one list and pin the order, so
-a change that reorders the two goes red.
+its own transaction. ``specs/OutboxTrace.tla`` models that order. Rows with no
+hold-back group are worked through in the order the batch gives them; rows in
+one group are put in commit order, and the later rows of a group whose row
+failed are released instead of published. These tests use rows with no group.
+They record the publish and the committed mark of every row into one list and
+pin the order, so a change that reorders the two goes red.
 """
 
 import pytest
