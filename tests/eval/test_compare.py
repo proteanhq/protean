@@ -7,8 +7,9 @@ once per module (it scaffolds the gold and replays the transcript), which keeps
 the run quick.
 
 The tests that score the committed transcript skip when the installed pack's
-minor has none. ``test_a_live_transcript_exists_for_the_current_minor`` fails
-in that case, so the missing recording is reported once, by the guard. The
+minor has no transcripts at all. ``test_a_live_transcript_exists_for_the_current_minor``
+fails in that case, so the missing recording is reported once, by the guard.
+When the minor has other transcripts but no ``place_order.json``, they fail. The
 other tests build their own transcript and run either way.
 """
 
@@ -34,6 +35,7 @@ from tests.eval.transcript import (
     LIVE_LANE_COMMAND,
     Transcript,
     Turn,
+    current_transcripts,
     transcript_path,
     transcript_version,
 )
@@ -42,20 +44,49 @@ from tests.eval.workspace import Workspace
 pytestmark = pytest.mark.no_test_domain
 
 
+def _require_committed_place_order(root: Path, version: str) -> None:
+    """Skip when the minor of *version* has no transcripts, which the guard
+    reports. Fail when it has others but no ``place_order.json``."""
+    committed = transcript_path(root, transcript_version(version), "place_order")
+    if committed.is_file():
+        return
+    message = (
+        f"no committed transcript at {committed}. "
+        f"Record one with `{LIVE_LANE_COMMAND}`."
+    )
+    # The guard only reports a minor with no transcripts at all. When the minor
+    # has others, a skip here would drop this coverage silently.
+    if current_transcripts(root, version):
+        pytest.fail(message)
+    pytest.skip(
+        f"{message} test_a_live_transcript_exists_for_the_current_minor "
+        f"reports the empty minor."
+    )
+
+
 @pytest.fixture(scope="module")
 def comparison(tmp_path_factory: pytest.TempPathFactory) -> Comparison:
-    committed = transcript_path(
-        eval_root(), transcript_version(PACK_VERSION), "place_order"
-    )
-    if not committed.is_file():
-        pytest.skip(
-            f"no committed transcript at {committed}; "
-            f"test_a_live_transcript_exists_for_the_current_minor reports it. "
-            f"Record one with `{LIVE_LANE_COMMAND}`."
-        )
+    _require_committed_place_order(eval_root(), PACK_VERSION)
     gold_dest = tmp_path_factory.mktemp("gold")
     replay_dest = tmp_path_factory.mktemp("replay")
     return compare("place_order", gold_dest, replay_dest)
+
+
+def test_missing_place_order_skips_when_the_minor_has_no_transcripts(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(pytest.skip.Exception):
+        _require_committed_place_order(tmp_path, "0.19.1")
+
+
+def test_missing_place_order_fails_when_the_minor_has_other_transcripts(
+    tmp_path: Path,
+) -> None:
+    other = transcript_path(tmp_path, "0.19.0", "order_and_payment")
+    other.parent.mkdir(parents=True)
+    other.write_text("{}")
+    with pytest.raises(pytest.fail.Exception, match="place_order.json"):
+        _require_committed_place_order(tmp_path, "0.19.1")
 
 
 def test_reports_both_approaches(comparison: Comparison) -> None:

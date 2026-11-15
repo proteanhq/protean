@@ -264,8 +264,9 @@ the transcripts for every 0.19.x release. The replay lane enforces these rules:
 
 `PACK_VERSION` is `protean.__version__`, and the recorder writes under the minor
 of the version in the checkout when it runs. So for a new minor, set the new
-version in the working tree first, run the live lane, and commit the transcript
-ahead of the bump commit. A recording made before the version changes lands
+version in the working tree first and run the live lane. Then restore the
+version edit, commit only the transcript, and run the normal bump. The bump
+refuses a dirty tree and searches for the old version. A recording made before the version changes lands
 under the old minor's directory.
 
 ## Recording a transcript (maintainer)
