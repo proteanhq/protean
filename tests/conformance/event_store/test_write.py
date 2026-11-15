@@ -84,6 +84,7 @@ def test_a_write_without_metadata_stores_none(adapter):
     assert row["metadata"] is None
 
 
+@pytest.mark.requires(EventStoreCapabilities.READ_STREAM)
 def test_each_row_gets_its_own_id(adapter):
     for n in range(3):
         _write(adapter, "user-1", n)
@@ -93,6 +94,7 @@ def test_each_row_gets_its_own_id(adapter):
     assert len(set(ids)) == 3
 
 
+@pytest.mark.requires(EventStoreCapabilities.READ_STREAM)
 def test_changing_the_written_data_leaves_the_stored_row_unchanged(adapter):
     data = {"n": 0, "tags": ["a"]}
     adapter.write_message("user-1", "Counted", data)

@@ -8,7 +8,11 @@ import pytest
 
 from protean.port.event_store import EventStoreCapabilities
 
-pytestmark = pytest.mark.requires(EventStoreCapabilities.SCHEMA_MANAGEMENT)
+pytestmark = pytest.mark.requires(
+    EventStoreCapabilities.SCHEMA_MANAGEMENT,
+    EventStoreCapabilities.WRITE,
+    EventStoreCapabilities.READ_STREAM,
+)
 
 
 def test_a_created_schema_takes_writes_and_reads(adapter):
