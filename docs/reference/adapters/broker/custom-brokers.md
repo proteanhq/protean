@@ -19,15 +19,14 @@ letter queue hooks as abstract methods. A blocking read falls back to `read`
 when the broker does not advertise `BLOCKING_READ`. The partition methods
 raise `NotSupportedError` unless the broker advertises `STREAM_PARTITIONING`.
 `trim` does nothing and returns 0 until the adapter overrides it. The adapter
-implements these methods, plus the `capabilities` property:
+implements these members:
 
+- Capabilities: the `capabilities` property
 - Publishing and reading: `publish`, `read`
 - Acknowledgment: `ack`, `nack`
 - Consumer groups: `create_group`, `consumer_groups`
-- Connection and health: `ping`, `health`, `get_connection`, `reconnect`,
-  `clear`
-- Dead letter queue: `_dlq_list`, `_dlq_inspect`, `_dlq_replay`,
-  `_dlq_replay_all`, `_dlq_purge`
+- Connection and health: `ping`, `health`, `get_connection`, `reconnect`, `clear`
+- Dead letter queue: `_dlq_list`, `_dlq_inspect`, `_dlq_replay`, `_dlq_replay_all`, `_dlq_purge`
 
 A broker that does not support a feature still implements the method. It
 returns an empty result, as the Redis PubSub broker does for the dead letter
