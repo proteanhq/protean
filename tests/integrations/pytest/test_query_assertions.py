@@ -17,6 +17,7 @@ from protean.integrations.pytest import (
     assert_query_count,
 )
 from protean.integrations.pytest.query_assertions import _limit_values
+from tests.shared import provider_adapter
 
 # SQLAlchemy is an optional dependency; skip the whole module if it's absent so
 # minimal environments can still collect the suite.
@@ -225,7 +226,7 @@ class TestEngineResolutionFromDomain:
         domain.register(_Counter)
         domain.init(traverse=False)
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             domain.repository_for(_Counter)._dao  # register the table in metadata
             provider._metadata.create_all(provider._engine)
             yield domain

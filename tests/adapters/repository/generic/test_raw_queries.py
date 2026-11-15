@@ -12,6 +12,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.exceptions import NotSupportedError
 from protean.fields import Integer, String
 from protean.port.provider import DatabaseCapabilities
+from tests.shared import provider_adapter
 
 
 class Person(BaseAggregate):
@@ -42,7 +43,7 @@ class TestRawQueries:
             first_name="John", last_name="Doe", age=25
         )
 
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         # Build a provider-appropriate query
         db_class = provider.__class__.database_type
         if db_class == "memory":

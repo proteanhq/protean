@@ -1,6 +1,6 @@
 import pytest
 
-from tests.shared import initialize_domain
+from tests.shared import initialize_domain, provider_adapter
 
 
 @pytest.fixture
@@ -33,8 +33,8 @@ def setup_db():
         domain.register(NumericEntity)
         domain.init(traverse=False)
 
-        domain.providers["default"].create_schema()
+        provider_adapter(domain, "default").create_schema()
 
         yield
 
-        domain.providers["default"].drop_schema()
+        provider_adapter(domain, "default").drop_schema()

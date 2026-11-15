@@ -14,6 +14,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import Custom, String, ValueObject
+from tests.shared import provider_adapter
 
 
 class Color:
@@ -56,7 +57,7 @@ def brand_repository(test_domain):
     test_domain.register(Brand)
     test_domain.init(traverse=False)
 
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     test_domain.repository_for(Brand)._dao
     provider._metadata.create_all(provider._engine)
 
@@ -116,7 +117,7 @@ def product_repository(test_domain):
     test_domain.register(Product)
     test_domain.init(traverse=False)
 
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     test_domain.repository_for(Product)._dao
     provider._metadata.create_all(provider._engine)
 

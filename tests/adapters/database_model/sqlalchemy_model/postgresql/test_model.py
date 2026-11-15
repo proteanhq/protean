@@ -1,6 +1,7 @@
 import pytest
 
 from protean.adapters.repository.sqlalchemy import SqlalchemyModel
+from tests.shared import provider_adapter
 
 from .elements import (
     ComplexUser,
@@ -116,7 +117,7 @@ class TestCustomModel:
 
         test_domain.repository_for(Receiver)._dao  # Registers and refreshes DB objects
 
-        default_provider = test_domain.providers["default"]
+        default_provider = provider_adapter(test_domain, "default")
         default_provider._metadata.create_all(default_provider._engine)
 
         database_model_cls = test_domain.repository_for(Receiver)._database_model

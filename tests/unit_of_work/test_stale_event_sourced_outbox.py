@@ -28,7 +28,7 @@ from protean.exceptions import (
 )
 from protean.fields import Identifier, Integer, String
 from protean.utils.globals import current_uow
-from tests.shared import MESSAGE_DB_URI, POSTGRES_URI
+from tests.shared import MESSAGE_DB_URI, POSTGRES_URI, provider_adapter
 
 
 class Opened(BaseEvent):
@@ -132,7 +132,7 @@ def make_domain(request, tmp_path):
         ctx.push()
         contexts.append((domain, ctx))
         if backend != "memory":
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             if outbox:
                 domain._get_outbox_repo("default")._dao  # register the outbox table
             domain.repository_for(Wallet)._dao  # and the wallet table
@@ -144,7 +144,7 @@ def make_domain(request, tmp_path):
 
     for domain, ctx in reversed(contexts):
         if backend != "memory":
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             provider._metadata.drop_all(provider._engine)
             provider._engine.dispose()
             domain.event_store.store.close()

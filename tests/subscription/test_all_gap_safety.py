@@ -425,7 +425,7 @@ async def test_get_next_batch_applies_gap_safety_for_all(all_subscription, monke
     sub = all_subscription
     sub.current_position = 0
 
-    def fake_read(stream_name, position, no_of_messages):
+    def fake_read(stream_name, position, limit):
         assert stream_name == "$all"
         return [_msg(1), _msg(3)], []  # 2 is missing
 
@@ -454,7 +454,7 @@ async def test_get_next_batch_does_not_gate_a_single_category(
     monkeypatch.setattr(
         sub.store,
         "read",
-        lambda stream_name, position, no_of_messages: [_msg(1), _msg(3)],
+        lambda stream_name, position, limit: [_msg(1), _msg(3)],
     )
 
     batch = await sub.get_next_batch_of_messages()

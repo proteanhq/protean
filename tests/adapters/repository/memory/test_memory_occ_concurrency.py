@@ -26,6 +26,7 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ExpectedVersionError
 from protean.fields import HasMany, Integer, Reference, String
 from protean.utils import occ_trace
+from tests.shared import provider_adapter
 
 _WORKERS = 8
 
@@ -225,7 +226,7 @@ def test_commit_time_version_conflict_raises_expected_version_error(test_domain)
     before the UoW commit makes the compare-and-set find a version it did not
     expect, so the commit raises ExpectedVersionError."""
     counter_id = _seed_counter(test_domain)
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
 
     with pytest.raises(ExpectedVersionError):
         with UnitOfWork():
@@ -253,7 +254,7 @@ def test_commit_time_vanished_record_raises_expected_version_error(test_domain):
     UoW commit makes the version check find nothing where it expected a version,
     which is a concurrency conflict -> ExpectedVersionError."""
     counter_id = _seed_counter(test_domain)
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
 
     with pytest.raises(ExpectedVersionError):
         with UnitOfWork():

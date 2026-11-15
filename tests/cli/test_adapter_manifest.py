@@ -122,6 +122,7 @@ class TestManifestIsCurrent:
                 "stores",
                 [
                     "src/protean/adapters/event_store/__init__.py",
+                    "src/protean/infra/event_store.py",
                     "src/protean/infra/registry.py",
                     "src/protean/port/event_store.py",
                 ],
@@ -133,7 +134,7 @@ class TestManifestIsCurrent:
     ):
         # Every database adapter loads through Providers and the DAO and
         # provider ports, every broker through the Brokers collection, and
-        # every event store through the EventStore wrapper and its port.
+        # every event store through the EventStore service and its port.
         # Every database, broker and event store is resolved by
         # its adapter registry. A change to one of them must run every such
         # adapter.

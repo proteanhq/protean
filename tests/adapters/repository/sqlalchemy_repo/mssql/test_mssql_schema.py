@@ -9,7 +9,7 @@ from protean import Domain
 from protean.adapters.repository.sqlalchemy import MssqlProvider
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Dict, Integer, List, String
-from tests.shared import MSSQL_URI
+from tests.shared import MSSQL_URI, provider_adapter
 
 
 @pytest.mark.mssql
@@ -18,7 +18,7 @@ class TestMSSQLSchemaHandling:
 
     def test_default_schema_is_dbo(self, test_domain):
         """Test that default schema is 'dbo' for MSSQL"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         assert isinstance(provider, MssqlProvider)
         assert provider._metadata.schema == "dbo"
 
@@ -33,10 +33,11 @@ class TestMSSQLSchemaHandling:
         domain.init(traverse=False)
 
         try:
-            provider = domain.providers["custom_schema"]
+            provider = provider_adapter(domain, "custom_schema")
             assert provider._metadata.schema == "test_mssql_schema"
         finally:
-            for provider in domain.providers.values():
+            for name in domain.providers:
+                provider = provider_adapter(domain, name)
                 provider.close()
 
     def test_schema_none_defaults_to_dbo(self):
@@ -49,15 +50,16 @@ class TestMSSQLSchemaHandling:
         domain.init(traverse=False)
 
         try:
-            provider = domain.providers["default_schema"]
+            provider = provider_adapter(domain, "default_schema")
             assert provider._metadata.schema == "dbo"
         finally:
-            for provider in domain.providers.values():
+            for name in domain.providers:
+                provider = provider_adapter(domain, name)
                 provider.close()
 
     def test_existing_tables_are_in_configured_schema(self, test_domain):
         """Test that existing tables are in the configured schema"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Verify existing tables are in the correct schema
         inspector = inspect(provider._engine)
@@ -97,7 +99,7 @@ class TestMSSQLSchemaHandling:
                 assert not dao.has_table()
 
                 # Create the table
-                provider = domain.providers["default"]
+                provider = provider_adapter(domain, "default")
                 provider.create_schema()
 
                 # Now table should exist
@@ -106,7 +108,7 @@ class TestMSSQLSchemaHandling:
                 # Clean up
                 provider.drop_schema()
             finally:
-                domain.providers["default"].close()
+                provider_adapter(domain, "default").close()
 
     @pytest.mark.no_test_domain
     def test_custom_schema_name_in_entity_meta(self):
@@ -132,7 +134,7 @@ class TestMSSQLSchemaHandling:
         with domain.domain_context():
             try:
                 # Create database artifacts
-                provider = domain.providers["default"]
+                provider = provider_adapter(domain, "default")
                 provider.create_schema()
 
                 # Verify table was created with custom name
@@ -144,7 +146,7 @@ class TestMSSQLSchemaHandling:
                 # Clean up
                 provider.drop_schema()
             finally:
-                domain.providers["default"].close()
+                provider_adapter(domain, "default").close()
 
     @pytest.mark.no_test_domain
     def test_mssql_json_type_handling_in_schema(self):
@@ -168,7 +170,7 @@ class TestMSSQLSchemaHandling:
 
         with domain.domain_context():
             try:
-                provider = domain.providers["default"]
+                provider = provider_adapter(domain, "default")
 
                 # Clean up any existing tables first
                 with contextlib.suppress(Exception):
@@ -197,7 +199,7 @@ class TestMSSQLSchemaHandling:
                 # Clean up
                 provider.drop_schema()
             finally:
-                domain.providers["default"].close()
+                provider_adapter(domain, "default").close()
 
     def test_schema_isolation_between_providers(self):
         """Test that different MSSQL providers can use different schemas"""
@@ -219,13 +221,14 @@ class TestMSSQLSchemaHandling:
         domain.init(traverse=False)
 
         try:
-            provider1 = domain.providers["mssql_schema1"]
-            provider2 = domain.providers["mssql_schema2"]
+            provider1 = provider_adapter(domain, "mssql_schema1")
+            provider2 = provider_adapter(domain, "mssql_schema2")
 
             assert provider1._metadata.schema == "mssql_schema_one"
             assert provider2._metadata.schema == "mssql_schema_two"
         finally:
-            for provider in domain.providers.values():
+            for name in domain.providers:
+                provider = provider_adapter(domain, name)
                 provider.close()
 
     def test_raw_sql_respects_schema_context(self, test_domain):
@@ -233,7 +236,7 @@ class TestMSSQLSchemaHandling:
         # Use existing entity for this test
         from .elements import MssqlTestEntity
 
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Create a test record using the repository
         entity = MssqlTestEntity(
@@ -278,7 +281,7 @@ class TestMSSQLSchemaHandling:
 
     def test_mssql_specific_engine_args_with_schema(self, test_domain):
         """Test that MSSQL-specific engine arguments work with schema"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Verify MSSQL-specific engine arguments are applied
         engine_args = provider._get_database_specific_engine_args()
@@ -315,7 +318,7 @@ class TestMSSQLSchemaHandling:
 
     def test_schema_metadata_consistency(self, test_domain):
         """Test that schema metadata is consistent across operations"""
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Check initial metadata state
         initial_schema = provider._metadata.schema
@@ -339,7 +342,7 @@ class TestMSSQLSchemaHandling:
     def test_mssql_string_length_handling_in_schema(self, test_domain):
         """Test that MSSQL string length handling works correctly in schema"""
         # This test specifically checks the Auto field string length fix for MSSQL
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
 
         # Get table info to check column definitions
         inspector = inspect(provider._engine)

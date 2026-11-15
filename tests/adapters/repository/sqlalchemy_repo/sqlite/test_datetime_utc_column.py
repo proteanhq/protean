@@ -13,6 +13,7 @@ from sqlalchemy.schema import CreateTable
 from protean.adapters.repository.sqlalchemy import UTCDateTime
 from protean.core.aggregate import BaseAggregate
 from protean.fields import DateTime, String
+from tests.shared import provider_adapter
 
 pytestmark = pytest.mark.sqlite
 
@@ -37,7 +38,7 @@ class Slot(BaseAggregate):
 def repo(test_domain):
     test_domain.register(Slot)
     test_domain.init(traverse=False)
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     repo = test_domain.repository_for(Slot)
     table = repo._dao.database_model_cls.__table__
     # The test database is a file, so a table left by an earlier run would
@@ -101,7 +102,7 @@ def test_naive_filter_value_is_read_as_utc(slot_repo):
 def test_an_offset_value_is_stored_as_utc_digits(test_domain, repo):
     repo.add(Slot(name="offset", at=SAME_INSTANT))
 
-    engine = test_domain.providers["default"]._engine
+    engine = provider_adapter(test_domain, "default")._engine
     with engine.connect() as conn:
         stored = conn.execute(text("SELECT at FROM slot")).scalar_one()
 
@@ -135,7 +136,7 @@ def test_a_null_value_stays_null(repo):
 
 def test_the_column_ddl_is_unchanged(test_domain, repo):
     table = repo._dao.database_model_cls.__table__
-    engine = test_domain.providers["default"]._engine
+    engine = provider_adapter(test_domain, "default")._engine
     ddl = str(CreateTable(table).compile(dialect=engine.dialect))
 
     assert isinstance(table.c["at"].type, UTCDateTime)

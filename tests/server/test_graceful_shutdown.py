@@ -397,10 +397,10 @@ class TestEventStoreCloseWhenNone:
     """Test EventStore.close() when no store is initialized."""
 
     def test_close_with_no_event_store(self):
-        """close() is a no-op when _event_store is None."""
+        """close() is a no-op when _adapter is None."""
         domain = Domain(name="Test")
         # Don't call init — event store is None
-        domain.event_store._event_store = None
+        domain.event_store._adapter = None
         domain.event_store.close()  # Should not raise
 
 

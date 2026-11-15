@@ -15,6 +15,7 @@ from protean.utils.outbox import (
 )
 from protean.utils.query import Q
 from protean.utils.reflection import declared_fields
+from tests.shared import provider_adapter
 
 
 class TestOutboxIndexDeclarations:
@@ -75,7 +76,7 @@ class TestOutboxIndexCreation:
         with domain.domain_context():
             repo = domain._get_outbox_repo("default")
             repo._dao  # ensure table registered
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             provider._metadata.create_all(provider._engine)
 
             insp = inspect(provider._engine)
@@ -140,7 +141,7 @@ class TestOutboxDualWriteUniqueness:
         with domain.domain_context():
             repo = domain._get_outbox_repo("default")
             repo._dao  # ensure the outbox table is registered before create_all
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             provider._metadata.create_all(provider._engine)
 
             metadata = self._sample_metadata()
@@ -189,7 +190,7 @@ class TestOutboxDualWriteUniqueness:
         with domain.domain_context():
             repo = domain._get_outbox_repo("default")
             repo._dao  # ensure the outbox table is registered before create_all
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             provider._metadata.create_all(provider._engine)
 
             metadata = self._sample_metadata()

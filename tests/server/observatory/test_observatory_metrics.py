@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from protean.port.provider import ProviderHealth
 from protean.server.observatory import Observatory, metrics
 from protean.server.observatory.metrics import _scrape_cache, _ScrapeCache
+from tests.shared import provider_adapter
 
 
 @pytest.fixture(autouse=True)
@@ -783,7 +784,7 @@ def test_broker_up_needs_a_connected_and_healthy_broker(
 
 
 def test_pool_stats_list_each_provider_that_reports_a_pool(test_domain, monkeypatch):
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     monkeypatch.setattr(
         provider, "health", lambda: ProviderHealth(pool={"size": 5, "checked_out": 2})
     )
@@ -834,7 +835,7 @@ def _extra_entries(registry, **entries):
 def test_pool_stats_keep_the_rows_before_a_provider_that_raises(
     test_domain, monkeypatch
 ):
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     monkeypatch.setattr(provider, "health", lambda: ProviderHealth(pool={"size": 5}))
     analytics = SimpleNamespace(
         database_type="SQLITE", health=lambda: ProviderHealth(pool={"size": 2})

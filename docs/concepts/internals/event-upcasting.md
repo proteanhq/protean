@@ -344,7 +344,7 @@ Upcasting works transparently in all paths that flow through
 
 | Path | How it reaches `to_domain_object()` |
 |------|-------------------------------------|
-| **Aggregate reconstruction** | `BaseEventStore.load_aggregate()` → reads events from store → `Message.to_domain_object()` → `aggregate._apply(event)` |
+| **Aggregate reconstruction** | `domain.event_store.load_aggregate()` → reads events from store → `Message.to_domain_object()` → `aggregate._apply(event)` |
 | **Repository.get()** | Delegates to event store → same as above |
 | **Event handler dispatch** | `EventStoreSubscription` reads events → `Message.to_domain_object()` → `handler.handle(event)` |
 | **Projector dispatch** | Same path as event handlers |

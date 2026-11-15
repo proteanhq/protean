@@ -5,7 +5,7 @@ import pytest
 from protean import Domain
 from protean.fields import String
 from tests.docs.support import DOCS_SRC, load_example
-from tests.shared import ELASTICSEARCH_PORT, ELASTICSEARCH_URI
+from tests.shared import ELASTICSEARCH_PORT, ELASTICSEARCH_URI, provider_adapter
 
 CONFIG = DOCS_SRC / "adapters/database/elasticsearch/domain.toml"
 
@@ -27,7 +27,7 @@ def test_schema_name_sets_the_index_name(example):
 
 def test_custom_model_fields_reach_the_index_mapping(example):
     with example.domain.domain_context():
-        provider = example.domain.providers["default"]
+        provider = provider_adapter(example.domain, "default")
         provider.create_schema()
         try:
             client = provider.get_connection()

@@ -8,7 +8,9 @@ messages between the parts of a Protean-based application.
 ## Overview
 
 An event store is fundamentally an append-only log. Events are written to named
-streams and read back in order. Protean's `BaseEventStore` interface provides:
+streams and read back in order. Protean's event store, `domain.event_store`,
+provides these features. Causation tracing is on its adapter,
+`domain.event_store.store`.
 
 - **Stream writes**: Append events and commands to named streams
 - **Stream reads**: Read messages from streams by position
@@ -17,8 +19,8 @@ streams and read back in order. Protean's `BaseEventStore` interface provides:
 - **Temporal queries**: Load an aggregate at a specific version or point in
   time
 - **Snapshots**: Create and restore aggregate snapshots for performance
-- **Causation tracing**: Traverse causal chains to understand how events
-  triggered other events
+- **Causation tracing** (on `domain.event_store.store`): Traverse causal
+  chains to understand how events triggered other events
 
 ## Available Event Stores
 

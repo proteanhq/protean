@@ -20,6 +20,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.index import RENDERED_INDEX_DIALECTS
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Integer, String
+from tests.shared import provider_adapter
 
 
 class IndexedJob(BaseAggregate):
@@ -49,7 +50,7 @@ def indexed_domain(test_domain):
     # Touch the DAO so the table is registered in the provider metadata before
     # create_all runs.
     test_domain.repository_for(IndexedJob)._dao
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
     yield test_domain
 
@@ -57,7 +58,7 @@ def indexed_domain(test_domain):
 @pytest.mark.sqlite
 class TestIndexCreation:
     def test_indexes_created_in_database(self, indexed_domain):
-        provider = indexed_domain.providers["default"]
+        provider = provider_adapter(indexed_domain, "default")
         indexed_domain.repository_for(IndexedJob)._dao  # ensure table registered
         insp = inspect(provider._engine)
         names = {i["name"] for i in insp.get_indexes("indexed_job")}
@@ -68,7 +69,7 @@ class TestIndexCreation:
         } <= names
 
     def test_unique_flag_emitted(self, indexed_domain):
-        provider = indexed_domain.providers["default"]
+        provider = provider_adapter(indexed_domain, "default")
         insp = inspect(provider._engine)
         by_name = {i["name"]: i for i in insp.get_indexes("indexed_job")}
         assert by_name["uq_indexed_job_message_id"]["unique"] == 1

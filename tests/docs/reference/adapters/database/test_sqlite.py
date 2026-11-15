@@ -5,6 +5,7 @@ import sqlalchemy as sa
 
 from protean.adapters.repository.sqlalchemy import SqliteProvider
 from tests.docs.support import domain_from_config, load_example
+from tests.shared import provider_adapter
 
 pytestmark = [pytest.mark.no_test_domain, pytest.mark.sqlite]
 
@@ -31,7 +32,7 @@ def test_configuration_shown_builds_a_sqlite_provider(tmp_path, monkeypatch):
     domain = domain_from_config("adapters/database/sqlite/configuration.toml", tmp_path)
     domain.init(traverse=False)
 
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     assert type(provider) is SqliteProvider
     assert provider._engine.url.database == str(database)
 

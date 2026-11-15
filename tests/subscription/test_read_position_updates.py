@@ -183,10 +183,10 @@ async def test_that_positions_are_not_written_when_already_in_sync(test_domain):
 
     # Fetch the current event store state
     # After reading 15 messages with batch size 100, we get all messages + position update
-    total_no_of_messages = len(test_domain.event_store.store.read("$all"))
+    total_messages = len(test_domain.event_store.store.read("$all"))
     # We should have 15 events + 1 position update = 16, but since all processed at once,
     # we might have an additional position update at the end
-    assert total_no_of_messages in [16, 17]  # Allow for extra position update
+    assert total_messages in [16, 17]  # Allow for extra position update
 
     # Simulating server shutdown
     # Try to manually update the position to the store
@@ -195,7 +195,7 @@ async def test_that_positions_are_not_written_when_already_in_sync(test_domain):
     # Ensure that the event store state did not change significantly
     #   We might have one more position update if the interval was reached
     new_total = len(test_domain.event_store.store.read("$all"))
-    assert new_total in [total_no_of_messages, total_no_of_messages + 1]
+    assert new_total in [total_messages, total_messages + 1]
     # Ensure last read message is 15 (all messages were processed in one batch)
     assert await email_event_handler_subscription.fetch_last_position() == 15
 

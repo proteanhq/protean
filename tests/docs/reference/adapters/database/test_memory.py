@@ -8,7 +8,7 @@ from protean.adapters.repository.memory import MemoryProvider
 from protean.adapters.repository.sqlalchemy import PostgresqlProvider
 from protean.exceptions import ConfigurationError
 from tests.docs.support import DOCS, DOCS_SRC, domain_from_config, load_example
-from tests.shared import POSTGRES_PORT, POSTGRES_URI
+from tests.shared import POSTGRES_PORT, POSTGRES_URI, provider_adapter
 from tests.support.snippets import expand_includes, extract_toml_blocks
 
 pytestmark = pytest.mark.no_test_domain
@@ -73,7 +73,7 @@ def test_production_configuration_builds_a_postgresql_provider(tmp_path, monkeyp
     domain = domain_from_config("adapters/database/memory/production.toml", tmp_path)
     domain.init(traverse=False)
 
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     assert type(provider) is PostgresqlProvider
     url = provider._engine.url
     assert (url.host, url.port, url.database) == (

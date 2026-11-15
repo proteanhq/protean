@@ -1,8 +1,8 @@
-"""Paging the whole store with ``read_all`` on the memory event store.
+"""Paging the whole store with ``read_all``.
 
-``read_all`` loops ``read`` in bounded pages and advances a cursor until a short
-page, so a cold-load reader (projection rebuild, backup, verify) reads the whole
-stream without the ``no_of_messages=1_000_000`` sentinel that silently truncates
+``read_all`` reads raw rows in bounded pages, leaves out snapshot rows, and
+advances a cursor until a short page, so a cold-load reader such as a
+projection rebuild reads the whole stream without the ``limit=1_000_000`` sentinel that silently truncates
 past the read cap.
 """
 
@@ -11,7 +11,9 @@ from unittest.mock import patch
 import pytest
 
 from protean.exceptions import IncorrectUsageError
-from protean.port.event_store import BaseEventStore
+from protean.infra.event_store import _next_cursor
+
+pytestmark = pytest.mark.eventstore
 
 
 def _metadata(stream_name, message_type, message_id):
@@ -49,7 +51,7 @@ def test_read_all_pages_across_boundary_no_gaps_no_dups(test_domain):
     assert gpos == sorted(gpos)  # global_position order
     assert len(set(gpos)) == len(gpos)  # no duplicates across the boundary
     # The same messages a single uncapped read would return.
-    baseline = _global_positions(store.read("$all", no_of_messages=1_000_000))
+    baseline = _global_positions(store.read("$all", limit=1_000_000))
     assert gpos == baseline
 
 
@@ -65,7 +67,8 @@ def test_read_all_exact_multiple_of_page_size(test_domain):
     page_size = 5
     _write_n(store, "counter-1", page_size * 2)
 
-    with patch.object(store, "_read_raw", wraps=store._read_raw) as spy:
+    service = test_domain.event_store
+    with patch.object(service, "_read_raw", wraps=service._read_raw) as spy:
         paged = list(store.read_all("$all", page_size=page_size))
 
     gpos = _global_positions(paged)
@@ -73,6 +76,22 @@ def test_read_all_exact_multiple_of_page_size(test_domain):
     assert len(set(gpos)) == page_size * 2  # no boundary-row duplicate
     assert gpos == sorted(gpos)
     # Two full pages, then one empty read that signals the end.
+    assert spy.call_count == 3
+
+
+def test_read_all_stops_after_a_short_page(test_domain):
+    """A store that is not a multiple of ``page_size`` ends on its short last
+    page, with no extra empty read after it."""
+    store = test_domain.event_store.store
+    page_size = 5
+    _write_n(store, "counter-1", page_size * 2 + 2)
+
+    service = test_domain.event_store
+    with patch.object(service, "_read_raw", wraps=service._read_raw) as spy:
+        paged = list(store.read_all("$all", page_size=page_size))
+
+    assert len(paged) == page_size * 2 + 2
+    # Two full pages, then the short page of two rows ends the read.
     assert spy.call_count == 3
 
 
@@ -97,7 +116,8 @@ def test_read_all_empty_stream_yields_nothing_in_one_read(test_domain):
     """An empty stream yields nothing and issues a single underlying read."""
     store = test_domain.event_store.store
 
-    with patch.object(store, "_read_raw", wraps=store._read_raw) as spy:
+    service = test_domain.event_store
+    with patch.object(service, "_read_raw", wraps=service._read_raw) as spy:
         result = list(store.read_all("$all", page_size=10))
 
     assert result == []
@@ -193,7 +213,7 @@ def test_next_cursor_raises_when_position_absent():
     raw_message = {"type": "X", "data": {}, "metadata": {"headers": {"id": "1"}}}
 
     with pytest.raises(IncorrectUsageError, match="missing its position"):
-        BaseEventStore._next_cursor(raw_message, by_global_position=True)
+        _next_cursor(raw_message, by_global_position=True)
 
 
 def test_next_cursor_raises_when_chosen_position_is_none():
@@ -209,4 +229,4 @@ def test_next_cursor_raises_when_chosen_position_is_none():
     }
 
     with pytest.raises(IncorrectUsageError, match="missing its position"):
-        BaseEventStore._next_cursor(raw_message, by_global_position=True)
+        _next_cursor(raw_message, by_global_position=True)

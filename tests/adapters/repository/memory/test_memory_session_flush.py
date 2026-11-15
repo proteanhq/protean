@@ -13,6 +13,7 @@ from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ExpectedVersionError
 from protean.fields import Identifier, Integer, String
+from tests.shared import provider_adapter
 
 
 class Counter(BaseAggregate):
@@ -108,7 +109,7 @@ def test_flush_of_a_current_write_passes_and_merges_nothing(test_domain):
     identifier = _seed(test_domain)
     repo = test_domain.repository_for(Counter)
     counter = repo.get(identifier)
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
 
     with UnitOfWork() as uow:
         counter.value = 3
@@ -201,7 +202,7 @@ def test_a_failed_flush_after_a_passed_one_releases_the_lock(test_domain):
 
 def test_close_after_a_passed_flush_releases_the_lock(test_domain):
     identifier = _seed(test_domain)
-    session = test_domain.providers["default"].get_session()
+    session = provider_adapter(test_domain, "default").get_session()
     session.flush()
     session.close()
 

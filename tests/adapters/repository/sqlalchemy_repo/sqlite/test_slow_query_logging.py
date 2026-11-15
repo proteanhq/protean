@@ -27,6 +27,7 @@ from protean.utils.eventing import (
     Metadata,
 )
 from protean.utils.globals import g
+from tests.shared import provider_adapter
 
 SLOW_QUERY_LOGGER = "protean.adapters.repository.sqlalchemy.slow_query"
 QUERY_LOGGER = "protean.adapters.repository.sqlalchemy.query"
@@ -42,7 +43,7 @@ def _query_records(caplog) -> list[logging.LogRecord]:
 
 def _run_trivial_query(test_domain) -> None:
     """Execute a trivial query via the SAProvider engine."""
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     with provider._engine.connect() as conn:
         conn.execute(text("SELECT 1"))
 
@@ -120,7 +121,7 @@ class TestStatementTruncation:
         assert len(big_sql) > 1000  # sanity: statement is long
 
         with caplog.at_level(logging.DEBUG, logger=SLOW_QUERY_LOGGER):
-            provider = test_domain.providers["default"]
+            provider = provider_adapter(test_domain, "default")
             with provider._engine.connect() as conn:
                 conn.execute(text(big_sql))
 

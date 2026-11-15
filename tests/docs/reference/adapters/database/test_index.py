@@ -7,7 +7,12 @@ from protean.adapters.repository.memory import MemoryProvider
 from protean.adapters.repository.sqlalchemy import PostgresqlProvider, SAProvider
 from protean.infra import registry
 from tests.docs.support import domain_from_config, load_example
-from tests.shared import ELASTICSEARCH_PORT, POSTGRES_PORT, POSTGRES_URI
+from tests.shared import (
+    ELASTICSEARCH_PORT,
+    POSTGRES_PORT,
+    POSTGRES_URI,
+    provider_adapter,
+)
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -23,7 +28,7 @@ def test_raw_query_returns_only_matching_rows():
 def test_metadata_lists_the_aggregate_table():
     example = load_example("adapters/database/index/002.py")
 
-    provider = example.domain.providers["default"]
+    provider = provider_adapter(example.domain, "default")
     assert isinstance(provider, SAProvider)
     with example.domain.domain_context():
         assert [table.name for table in provider.metadata.sorted_tables] == ["customer"]

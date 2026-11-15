@@ -16,6 +16,7 @@ import pytest
 
 from protean.exceptions import ObjectNotFoundError, ValidationError
 from tests.docs.support import load_example, outcome_counts, run_example_tests
+from tests.shared import provider_adapter
 
 # Load all 22 chapters at module level (each has its own Domain instance).
 # ``load_example`` runs a chapter afresh on every call, so load each one once.
@@ -56,7 +57,7 @@ _HAS_PROJECTIONS = {ch06, ch08, ch15, ch18, ch20, ch22}
 def _cleanup(domain) -> None:
     """Reset all stores and close connections after a test."""
     for provider_name in domain.providers:
-        provider = domain.providers[provider_name]
+        provider = provider_adapter(domain, provider_name)
         try:
             provider.clear()
         finally:
@@ -114,12 +115,12 @@ class _ESTutorialBase:
 
         has_projections = mod in _HAS_PROJECTIONS
         if has_projections:
-            domain.providers["default"].create_schema()
+            provider_adapter(domain, "default").create_schema()
 
         yield domain
 
         if has_projections:
-            domain.providers["default"].drop_schema()
+            provider_adapter(domain, "default").drop_schema()
 
         _cleanup(domain)
 

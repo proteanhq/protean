@@ -8,7 +8,7 @@ def test_domain_event_store_attribute(test_domain):
     assert isinstance(test_domain.event_store.store, BaseEventStore)
 
 
-@mock.patch("protean.adapters.event_store.EventStore._initialize")
+@mock.patch("protean.infra.event_store.EventStore._initialize")
 def test_event_store_initialization(mock_store_initialize, test_domain):
     test_domain._initialize()
 

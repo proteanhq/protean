@@ -118,9 +118,7 @@ def reconstruct_unresolved(
     # records. Memory stays bounded by the number of distinct unresolved
     # positions, since each record only adds or removes one key.
     while True:
-        page = store.read(
-            failed_positions_stream, position=cursor, no_of_messages=page_size
-        )
+        page = store.read(failed_positions_stream, position=cursor, limit=page_size)
         if not page:
             break
         for msg in page:
@@ -293,8 +291,8 @@ def read_recovery_message(
     stream_name = info.get("stream_name")
     stream_position = info.get("stream_position")
     if stream_name and stream_position is not None:
-        return store.read(stream_name, position=stream_position, no_of_messages=1)
-    return store.read(stream_category, position=global_position, no_of_messages=1)
+        return store.read(stream_name, position=stream_position, limit=1)
+    return store.read(stream_category, position=global_position, limit=1)
 
 
 def checkpoint_ahead_of_failed_stream(
@@ -864,7 +862,7 @@ class EventStoreSubscription(BaseSubscription):
                 self.store._read_with_snapshot_positions,
                 self.stream_category,
                 position=self.current_position + 1,
-                no_of_messages=self.messages_per_tick,
+                limit=self.messages_per_tick,
             )
             messages = self._gap_safe_batch(
                 messages, snapshot_positions=snapshot_positions
@@ -874,7 +872,7 @@ class EventStoreSubscription(BaseSubscription):
                 self.store.read,
                 self.stream_category,
                 position=self.current_position + 1,
-                no_of_messages=self.messages_per_tick,
+                limit=self.messages_per_tick,
             )
 
         return self.filter_on_origin(messages)

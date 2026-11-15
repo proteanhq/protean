@@ -1,6 +1,6 @@
 import pytest
 
-from tests.shared import initialize_domain
+from tests.shared import initialize_domain, provider_adapter
 
 
 @pytest.fixture
@@ -29,12 +29,12 @@ def setup_db():
         domain.repository_for(MssqlTestEntity)._dao
         domain.repository_for(MssqlTimestampedEntity)._dao
 
-        default_provider = domain.providers["default"]
+        default_provider = provider_adapter(domain, "default")
         default_provider._metadata.create_all(default_provider._engine)
 
         yield
 
         # Drop all tables and dispose the engine to release connections
-        default_provider = domain.providers["default"]
+        default_provider = provider_adapter(domain, "default")
         default_provider._metadata.drop_all(default_provider._engine)
         default_provider.close()

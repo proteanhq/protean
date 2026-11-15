@@ -25,6 +25,7 @@ from protean.fields import (
     ValueObject,
     ValueObjectList,
 )
+from tests.shared import provider_adapter
 
 
 class MappedAggregate(BaseAggregate):
@@ -43,7 +44,7 @@ class MappedAggregate(BaseAggregate):
 
 def _get_mapping_props(test_domain, entity_cls) -> dict:
     """Helper to extract field mapping properties as a dict of {name: type_string}"""
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     model_cls = provider.model_for(entity_cls)
     mapping_dict = model_cls._index._mapping.to_dict()
     return mapping_dict.get("properties", {})

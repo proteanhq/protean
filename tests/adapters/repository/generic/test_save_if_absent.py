@@ -20,6 +20,7 @@ from protean.fields import HasMany, String
 from protean.port.dao import BaseDAO
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
+from tests.shared import provider_adapter
 
 _KEYED_INDEXES = [Index("key_a", "key_b", unique=True)]
 
@@ -156,7 +157,7 @@ class TestSaveIfAbsent:
         assert len(_rows_with_key(test_domain, "m2", "internal")) == 1
 
     def test_a_none_key_value_never_collides(self, test_domain):
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         if getattr(provider, "database_type", None) == "mssql":
             pytest.skip("SQL Server's unique index treats NULLs as equal")
         first = KeyedRow(key_a="m1", key_b=None)
@@ -221,7 +222,7 @@ class TestSaveIfAbsent:
         assert [r.id for r in rows] == [first.id]
 
     def test_skips_an_entity_whose_key_is_taken(self, test_domain):
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         dao = provider.dao_for(KeyedChild, provider.model_for(KeyedChild))
         first = KeyedChild(code="c1")
         dao.save(first)
@@ -257,7 +258,7 @@ class TestBaseDAODefault:
         assert len(_rows_with_key(test_domain, "m1", "internal")) == 1
 
     def test_default_writes_a_row_with_a_none_key_value(self, test_domain):
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         if getattr(provider, "database_type", None) == "mssql":
             pytest.skip("SQL Server's unique index treats NULLs as equal")
         dao = _dao(test_domain)
@@ -308,7 +309,7 @@ class TestSaveIfAbsentInUnitOfWork:
         repo = test_domain.repository_for(KeyedRow)
         # A DAO of its own, so the flag that takes it outside the unit of work
         # does not stick to the repository's shared DAO.
-        outside_dao = test_domain.providers["default"].dao_for(
+        outside_dao = provider_adapter(test_domain, "default").dao_for(
             KeyedRow, repo._database_model
         )
         late = KeyedRow(key_a="m1", key_b="internal", note="committed first")
@@ -342,7 +343,7 @@ class TestSaveIfAbsentInUnitOfWork:
     def test_a_skip_outside_the_unit_of_work_keeps_its_tracked_copy(self, test_domain):
         repo = test_domain.repository_for(KeyedRow)
         outside_dao = (
-            test_domain.providers["default"]
+            provider_adapter(test_domain, "default")
             .dao_for(KeyedRow, repo._database_model)
             .outside_uow()
         )
@@ -411,7 +412,7 @@ class TestSaveIfAbsentAtomicity:
 
 
 def _skip_on_sqlite(test_domain):
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     if getattr(provider, "database_type", None) == "sqlite":
         pytest.skip("SQLite lets one transaction write at a time")
 

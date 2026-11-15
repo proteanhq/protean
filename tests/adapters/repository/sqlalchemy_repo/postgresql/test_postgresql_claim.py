@@ -12,6 +12,7 @@ from protean.fields import DateTime, Integer, String
 from protean.integrations.pytest import assert_query_count
 from protean.port.dao import HoldBack
 from protean.utils.query import Q
+from tests.shared import provider_adapter
 
 
 class ClaimJob(BaseAggregate):
@@ -33,7 +34,7 @@ def claim_domain(test_domain):
     # autouse data-reset fixture clears rows between tests, so the table is left
     # in place (dropping it here would race that reset's DELETE).
     dao = test_domain.repository_for(ClaimJob)._dao
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
     # Start each test from a clean slate — rows persist across tests in this
     # module (the table is shared and not dropped between tests).
@@ -52,7 +53,7 @@ def keyed_claim_domain(test_domain):
     test_domain.register(KeyedClaimJob, schema_name="pg_keyed_claim_job")
     test_domain.init(traverse=False)
     dao = test_domain.repository_for(KeyedClaimJob)._dao
-    provider = test_domain.providers["default"]
+    provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
     dao._delete_all()
     yield test_domain
@@ -71,7 +72,7 @@ class TestPostgresClaim:
         ``UPDATE ... RETURNING`` round trip."""
         _seed(claim_domain, 4)
         dao = claim_domain.repository_for(ClaimJob)._dao
-        engine = claim_domain.providers["default"]._engine
+        engine = provider_adapter(claim_domain, "default")._engine
 
         with assert_query_count(1, engine) as statements:
             claimed = dao._claim(
@@ -95,7 +96,7 @@ class TestPostgresClaim:
         repo.add(KeyedClaimJob(key="k1", seq=1))
         repo.add(KeyedClaimJob(key="k2", seq=2))
         dao = repo._dao
-        engine = keyed_claim_domain.providers["default"]._engine
+        engine = provider_adapter(keyed_claim_domain, "default")._engine
 
         with assert_query_count(1, engine) as statements:
             claimed = dao._claim(

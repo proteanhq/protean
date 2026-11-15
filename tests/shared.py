@@ -9,11 +9,22 @@ import tempfile
 from collections.abc import Iterator
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import pytest
 
 from protean.domain import Domain
+
+
+def provider_adapter(domain: Domain, name: str = "default") -> Any:
+    """Return the database adapter registered under ``name`` on ``domain``.
+
+    Tests that read or assign adapter members (``_engine``, ``_metadata``,
+    ``dao_for`` and the like) take the adapter from here, so a change in how the
+    domain holds its providers edits this one function.
+    """
+    return domain.providers[name]
 
 
 class FrozenClock:

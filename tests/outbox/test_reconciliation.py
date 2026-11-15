@@ -34,7 +34,7 @@ from protean.utils.outbox import (
     _written_after,
     reconcile_outbox,
 )
-from tests.shared import MESSAGE_DB_URI, POSTGRES_URI, FrozenClock
+from tests.shared import MESSAGE_DB_URI, POSTGRES_URI, FrozenClock, provider_adapter
 
 # Reconcile repairs only events of event-sourced aggregates, so the repair
 # tests raise events on the event-sourced ``Wallet``. The state-based
@@ -143,7 +143,7 @@ def domain_and_repo(tmp_path):
     """A domain with the outbox + aggregate tables created, inside its context."""
     domain = _make_domain(tmp_path)
     with domain.domain_context():
-        provider = domain.providers["default"]
+        provider = provider_adapter(domain, "default")
         domain.repository_for(Account)._dao  # register aggregate table
         domain._get_outbox_repo("default")._dao  # register outbox table
         provider._metadata.create_all(provider._engine)
@@ -414,7 +414,7 @@ class TestOutboxReconciliationOnMessageDB:
             event_store={"provider": "message_db", "database_uri": MESSAGE_DB_URI},
         )
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             domain.repository_for(Account)._dao
             domain._get_outbox_repo("default")._dao
             provider._metadata.create_all(provider._engine)
@@ -460,7 +460,7 @@ class TestReconcileBesideALiveWriter:
         message_id = _newest_message_id(domain)
         outbox_repo._dao._delete_all()  # simulate the crash window
 
-        live_dao = domain.providers["default"].dao_for(
+        live_dao = provider_adapter(domain, "default").dao_for(
             Outbox, outbox_repo._database_model
         )
         live_rows = []
@@ -518,7 +518,7 @@ class TestReconcileBesideALiveUnitOfWorkOnPostgres:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = provider_adapter(domain, "default")
             # Tables of their own, so this domain's outbox table does not meet
             # one another test left in the shared database.
             with provider._engine.begin() as conn:
@@ -694,7 +694,7 @@ def foreign_domain():
 
 
 def _create_tables(domain):
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     domain.repository_for(Account)._dao
     domain._get_outbox_repo("default")._dao
     provider._metadata.create_all(provider._engine)
@@ -1085,7 +1085,7 @@ class TestReconcileHonorsTheProvider:
         )
         with domain.domain_context():
             _create_tables(domain)
-            provider = domain.providers["analytics"]
+            provider = provider_adapter(domain, "analytics")
             domain._get_outbox_repo("analytics")._dao
             provider._metadata.create_all(provider._engine)
             yield domain
@@ -1813,7 +1813,7 @@ class TestReconcileSkipsStateBasedAggregates:
         )
         with domain.domain_context():
             _create_tables(domain)
-            provider = domain.providers["analytics"]
+            provider = provider_adapter(domain, "analytics")
             domain.repository_for(Note)._dao
             analytics_repo = domain._get_outbox_repo("analytics")
             analytics_repo._dao
@@ -1954,7 +1954,7 @@ class TestOverlappingSweepsInMemory:
         with domain.domain_context():
             outbox_repo = domain._get_outbox_repo("default")
             outbox_cls = outbox_repo._dao.entity_cls
-            sweep_dao = domain.providers["default"].dao_for(
+            sweep_dao = provider_adapter(domain, "default").dao_for(
                 outbox_cls, outbox_repo._database_model
             )
             real_commit = MemorySession.commit
