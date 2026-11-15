@@ -224,16 +224,6 @@
     ]
   },
   {
-    "path": "src/protean/server/subscription/stream_subscription.py",
-    "file_name": "stream_subscription.py",
-    "functions": [
-      {
-        "name": "StreamSubscription::poll",
-        "complexity": 35
-      }
-    ]
-  },
-  {
     "path": "src/protean/server/subscription_status.py",
     "file_name": "subscription_status.py",
     "functions": [

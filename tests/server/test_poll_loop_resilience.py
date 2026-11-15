@@ -734,3 +734,181 @@ class TestAFailedTickIsNotIdle:
 
         assert seen[1] is not None
         assert seen[2] is None
+
+
+class _RecordingStreamSubscription(StreamSubscription):
+    """Serves canned reads and records each step of a poll turn in ``steps``.
+
+    ``reads`` holds the results of the reads in order. A read with nothing
+    left stops the loop and returns empty.
+    """
+
+    def __init__(self, *args, reads, fail_on=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reads = list(reads)
+        self.fail_on = fail_on
+        self.steps: list[tuple] = []
+
+    def _next_read(self, empty):
+        if not self.reads:
+            self.keep_going = False
+            return empty
+        return self.reads.pop(0)
+
+    async def _read_primary_nonblocking(self):
+        self.steps.append(("read_primary",))
+        return self._next_read([])
+
+    async def _read_lanes_blocking(self):
+        self.steps.append(("read_lanes",))
+        return self._next_read(([], []))
+
+    async def get_next_batch_of_messages(self):
+        self.steps.append(("read",))
+        return self._next_read([])
+
+    async def process_batch(self, messages, stream=None):
+        self.steps.append(("process", stream, [id_ for id_, _ in messages]))
+        if (stream, messages[0][0]) == self.fail_on:
+            raise RuntimeError("batch failed")
+        return len(messages)
+
+    async def _maybe_trim(self, stream):
+        self.steps.append(("trim", stream))
+
+    def _record_tick(self, started, had_work):
+        self.steps.append(("tick", had_work))
+        super()._record_tick(started, had_work)
+
+
+def _make_recording_subscription(domain_setup, *, lanes, reads, fail_on=None):
+    sub = _RecordingStreamSubscription(
+        engine=Engine(domain_setup, test_mode=True),
+        stream_category="test_stream",
+        handler=UserEventHandler,
+        reads=reads,
+        fail_on=fail_on,
+    )
+    sub.broker = domain_setup.brokers["default"]
+    sub._lanes_enabled = lanes
+    return sub
+
+
+class TestStreamSubscriptionPollOrder:
+    """Pin the order of reads, batches, trims and tick records in one poll turn."""
+
+    @pytest.mark.asyncio
+    async def test_lanes_turn_processes_primary_before_backfill(self, domain_setup):
+        sub = _make_recording_subscription(
+            domain_setup,
+            lanes=True,
+            reads=[
+                [("p-1", {})],  # primary has work: processed at once
+                [],  # primary empty: one blocking read on both streams
+                ([("p-2", {})], [("b-1", {})]),
+            ],
+        )
+        stream, backfill = sub.stream_category, sub.backfill_stream
+
+        await sub.poll()
+
+        assert sub.steps == [
+            ("read_primary",),
+            ("process", stream, ["p-1"]),
+            ("trim", stream),
+            ("tick", True),
+            ("read_primary",),
+            ("read_lanes",),
+            ("process", stream, ["p-2"]),
+            ("trim", stream),
+            ("process", backfill, ["b-1"]),
+            ("trim", backfill),
+            ("tick", True),
+            ("read_primary",),
+            ("read_lanes",),
+            ("tick", False),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_lanes_turn_with_only_backfill_work(self, domain_setup):
+        sub = _make_recording_subscription(
+            domain_setup, lanes=True, reads=[[], ([], [("b-1", {})])]
+        )
+        backfill = sub.backfill_stream
+
+        await sub.poll()
+
+        assert sub.steps[:5] == [
+            ("read_primary",),
+            ("read_lanes",),
+            ("process", backfill, ["b-1"]),
+            ("trim", backfill),
+            ("tick", True),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_standard_turn_trims_after_each_batch(self, domain_setup):
+        sub = _make_recording_subscription(
+            domain_setup, lanes=False, reads=[[("m-1", {})], [], [("m-2", {})]]
+        )
+        stream = sub.stream_category
+
+        await sub.poll()
+
+        assert sub.steps == [
+            ("read",),
+            ("process", stream, ["m-1"]),
+            ("trim", stream),
+            ("tick", True),
+            ("read",),
+            ("tick", False),
+            ("read",),
+            ("process", stream, ["m-2"]),
+            ("trim", stream),
+            ("tick", True),
+            ("read",),
+            ("tick", False),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_error_inside_a_lanes_turn_backs_off_and_resets(
+        self, domain_setup, caplog
+    ):
+        """A batch that raises in the middle of a lanes turn reaches the poll
+        loop's backoff: two failing turns wait 1s then 2s, and a clean turn
+        resets the count, so the next failure waits 1s again."""
+        failing_turn = [[], ([("p-1", {})], [("b-1", {})])]
+        sub = _make_recording_subscription(
+            domain_setup,
+            lanes=True,
+            reads=[*failing_turn, *failing_turn, [("p-2", {})], *failing_turn],
+            fail_on=("test_stream:backfill", "b-1"),
+        )
+        sub.backfill_stream = "test_stream:backfill"
+        sleep_durations: list[float] = []
+        real_sleep = asyncio.sleep
+
+        async def record_sleep(duration):
+            sleep_durations.append(duration)
+            await real_sleep(0)
+
+        with (
+            caplog.at_level(logging.ERROR),
+            patch(
+                "protean.server.subscription.stream_subscription.asyncio.sleep",
+                side_effect=record_sleep,
+            ),
+        ):
+            await sub.poll()
+
+        assert "batch failed" in caplog.text
+        assert [d for d in sleep_durations if d >= 1] == [1, 2, 1]
+        # The failing batch stops the turn before its trim and tick record.
+        assert sub.steps[:5] == [
+            ("read_primary",),
+            ("read_lanes",),
+            ("process", "test_stream", ["p-1"]),
+            ("trim", "test_stream"),
+            ("process", "test_stream:backfill", ["b-1"]),
+        ]
+        assert sub.steps[5] == ("read_primary",)
