@@ -133,7 +133,7 @@ names the `EventStoreCapabilities` flag it needs:
 | `test_consumer_groups.py` | `CONSUMER_GROUPS` | Group members split a category into disjoint sets of streams |
 | `test_durability.py` | `DURABLE` | Rows written before `close()` are read by a new adapter |
 | `test_schema.py` | `SCHEMA_MANAGEMENT` | `create_schema()` and `drop_schema()` |
-| `test_lifecycle.py` | none | `capabilities`, `ping()`, `health()`, `clear()` and `close()` |
+| `test_lifecycle.py` | none; the `clear()` tests need `WRITE` and the flags of the reads they call | `capabilities`, `ping()`, `health()`, `get_connection()`, `clear()` and `close()` |
 
 The memory event store skips the `CONSUMER_GROUPS`, `DURABLE` and
 `SCHEMA_MANAGEMENT` tests. Message DB skips the `SCHEMA_MANAGEMENT` tests.

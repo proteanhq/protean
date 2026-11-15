@@ -34,12 +34,21 @@ def _write_stream(adapter, test_domain, barrier, member, errors) -> None:
 
 def _poll_category(adapter, test_domain, barrier, writers_done, reads, errors):
     deadline = time.monotonic() + TIMEOUT_SECONDS
+
+    def read() -> None:
+        rows = adapter.get_category_messages("order", limit=TOTAL * 2)
+        reads.append([row["id"] for row in rows])
+
     with test_domain.domain_context():
         try:
+            # One read before the writers start and one after they finish, so
+            # ``reads`` is never empty when the writers finish before the
+            # reader thread is scheduled.
+            read()
             barrier.wait()
             while not writers_done.is_set() and time.monotonic() < deadline:
-                rows = adapter.get_category_messages("order", limit=TOTAL * 2)
-                reads.append([row["id"] for row in rows])
+                read()
+            read()
         except BaseException as exc:  # checked by the test
             errors.append(exc)
 

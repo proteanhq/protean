@@ -1,4 +1,10 @@
-"""Members every event store has, whatever it declares: health, clear, close."""
+"""Members every event store has, whatever it declares: health, clear, close.
+
+The ``clear()`` tests read back through the read members, so each names the
+flags of the reads it calls.
+"""
+
+import pytest
 
 from protean.port.event_store import EventStoreCapabilities
 
@@ -23,6 +29,12 @@ def test_get_connection_returns_without_raising(adapter):
     adapter.get_connection()
 
 
+@pytest.mark.requires(
+    EventStoreCapabilities.WRITE,
+    EventStoreCapabilities.READ_STREAM,
+    EventStoreCapabilities.READ_CATEGORY,
+    EventStoreCapabilities.READ_ALL,
+)
 def test_clear_empties_every_read(adapter):
     _write(adapter, "user-1", 0)
     _write(adapter, "order-1", 1)
@@ -38,6 +50,7 @@ def test_clear_empties_every_read(adapter):
     assert list(adapter.stream_ids("user")) == []
 
 
+@pytest.mark.requires(EventStoreCapabilities.WRITE, EventStoreCapabilities.READ_STREAM)
 def test_a_write_after_clear_starts_the_stream_at_position_0(adapter):
     _write(adapter, "user-1", 0)
     _write(adapter, "user-1", 1)

@@ -1,9 +1,10 @@
-"""Category reads: exact category match, paged by ``global_position`` inclusive.
+"""Category reads: exact category match, paged by ``global_position`` inclusive
+(ADR-0024).
 
 A category read returns the streams ``<category>-<id>`` and the stream named
 ``<category>``. It leaves out a longer category that ends with the same text,
 such as ``poweruser`` for ``user``, and the snapshot streams
-``<category>:snapshot-<id>`` (ADR-0024).
+``<category>:snapshot-<id>``.
 """
 
 import pytest
